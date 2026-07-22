@@ -271,7 +271,7 @@ function missingFieldWarning(
     field === "limits.context_tokens"
       ? model.limits.context_tokens === undefined
       : field === "pricing"
-        ? model.pricing_status === "unknown"
+        ? model.pricing_status === "unknown" || model.pricing_status === "not_published"
         : model[field] === undefined,
   ).length;
   if (count === 0) return undefined;
@@ -288,7 +288,7 @@ function missingFieldWarning(
     provider_id: providerId,
     source_id: sourceId,
     field,
-    message: `${count} models do not publish ${fact}.`,
+    message: `${count} ${count === 1 ? "model does" : "models do"} not publish ${fact}.`,
   };
 }
 

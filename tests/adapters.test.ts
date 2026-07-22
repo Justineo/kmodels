@@ -114,6 +114,18 @@ async function databricksCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function vercelCatalog(path: string): Promise<ProviderModel[]> {
+  const value = manifest("vercel");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "vercel-catalog")
+    throw new Error("Missing Vercel source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "vercel-catalog", minModels: 1, maxModels: 20 },
+  };
+  return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -557,12 +569,20 @@ describe("document adapter", () => {
 
 describe("Vercel adapter", () => {
   it("parses the normal catalog shape", async () => {
-    const model = (await parsed("vercel", "vercel/normal.json"))[0];
-    expect(model?.limits).toEqual({ context_tokens: 32768, max_output_tokens: 4096 });
+    const model = (await vercelCatalog("vercel/normal.json"))[0];
+    expect({
+      limits: model?.limits,
+      release: model?.release_date,
+      pricing: model?.pricing_status,
+    }).toEqual({
+      limits: { context_tokens: 32768, max_output_tokens: 4096 },
+      release: "2025-05-29",
+      pricing: "not_published",
+    });
   });
 
   it("preserves pricing tiers and normalizes token units", async () => {
-    const model = (await parsed("vercel", "vercel/pricing.json"))[0];
+    const model = (await vercelCatalog("vercel/pricing.json"))[0];
     expect({
       id: model?.model_id,
       input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
@@ -572,8 +592,115 @@ describe("Vercel adapter", () => {
     }).toEqual(await expected("vercel/expected.json"));
   });
 
+  it("keeps structured multi-type, service-tier, and tool facts", async () => {
+    const model = (await vercelCatalog("vercel/pricing.json"))[0];
+    expect({
+      types: model?.types,
+      effort: model?.capabilities.effort_control,
+      services: model?.pricing
+        .filter((rate) => rate.conditions.service_tier === "flex")
+        .map((rate) => ({
+          meter: rate.meter,
+          min: rate.conditions.context_min_tokens,
+          max: rate.conditions.context_max_tokens,
+        })),
+      tools: model?.pricing
+        .filter((rate) => rate.meter === "tool_call")
+        .map((rate) => ({
+          operation: rate.conditions.operation,
+          price: rate.price,
+          unit: rate.unit,
+        })),
+    }).toEqual({
+      types: ["generate", "realtime"],
+      effort: true,
+      services: [
+        { meter: "input_text", min: undefined, max: 200000 },
+        { meter: "output_text", min: undefined, max: 200000 },
+        { meter: "input_text", min: 200000, max: undefined },
+        { meter: "output_text", min: 200000, max: undefined },
+      ],
+      tools: [
+        { operation: "web_search", price: "10", unit: "thousand_requests" },
+        { operation: "maps_search", price: "14", unit: "thousand_requests" },
+      ],
+    });
+  });
+
+  it("normalizes specialized modalities, lifecycle, and native pricing units", async () => {
+    const models = await vercelCatalog("vercel/pricing.json");
+    const byId = new Map(models.map((model) => [model.model_id, model]));
+    const embedding = byId.get("acme/embed-1");
+    const image = byId.get("acme/image-1");
+    const video = byId.get("acme/video-1");
+    const videoToken = byId.get("acme/video-token-1");
+    const speech = byId.get("acme/speech-1");
+    const transcription = byId.get("acme/transcribe-preview");
+    expect({
+      embedding: {
+        modalities: embedding?.modalities,
+        maxOutput: embedding?.limits.max_output_tokens,
+        meter: embedding?.pricing[0]?.meter,
+      },
+      image: image?.pricing.map((rate) => ({ price: rate.price, conditions: rate.conditions })),
+      video: video?.pricing[0],
+      videoToken: videoToken?.pricing.map((rate) => ({
+        price: rate.price,
+        conditions: rate.conditions,
+      })),
+      speech: speech?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
+      transcription: {
+        types: transcription?.types,
+        status: transcription?.status,
+        deprecatedAt: transcription?.deprecated_at,
+        pricing: transcription?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
+      },
+    }).toEqual({
+      embedding: {
+        modalities: { input: ["text"], output: ["embedding"] },
+        maxOutput: undefined,
+        meter: "embedding",
+      },
+      image: [
+        { price: "0.04", conditions: {} },
+        { price: "0.08", conditions: { operation: undefined, resolution: "4K", style: undefined } },
+        {
+          price: "0.12",
+          conditions: { operation: undefined, resolution: undefined, style: "vector" },
+        },
+      ],
+      video: {
+        meter: "video_generation",
+        price: "0.2",
+        currency: "USD",
+        unit: "second",
+        conditions: {
+          resolution: "1080p",
+          quality: "pro",
+          audio: true,
+          voice_control: true,
+        },
+        source_ref: "vercel-models",
+        derived: false,
+        raw_price: "0.2",
+        raw_unit: "second",
+      },
+      videoToken: [
+        { price: "7", conditions: { video_input: false } },
+        { price: "4.3", conditions: { video_input: true } },
+      ],
+      speech: [{ meter: "input_text", unit: "character" }],
+      transcription: {
+        types: ["audio_transcription", "realtime"],
+        status: "deprecated",
+        deprecatedAt: "2025-07-01",
+        pricing: [{ meter: "input_audio", unit: "second" }],
+      },
+    });
+  });
+
   it("detects item schema drift", async () => {
-    await expect(parsed("vercel", "vercel/broken.json")).rejects.toThrow("schema drift");
+    await expect(vercelCatalog("vercel/broken.json")).rejects.toThrow("schema drift");
   });
 });
 
@@ -681,7 +808,7 @@ describe("runtime adapters", () => {
 
 describe("provider drift validation", () => {
   it("quarantines large deletions and price jumps", async () => {
-    const model = (await parsed("vercel", "vercel/pricing.json"))[0];
+    const model = (await vercelCatalog("vercel/pricing.json"))[0];
     if (model === undefined) throw new Error("Missing fixture model");
     const second = {
       ...model,

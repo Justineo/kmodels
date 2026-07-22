@@ -7,7 +7,7 @@ export type Extractor =
   | { kind: "openai-deprecations" }
   | { kind: "anthropic-catalog" }
   | { kind: "anthropic-api" }
-  | { kind: "vercel" }
+  | { kind: "vercel-catalog"; minModels: number; maxModels: number }
   | { kind: "cerebras" }
   | { kind: "huggingface" }
   | { kind: "ollama" }
@@ -525,13 +525,34 @@ export const manifests = [
         url: "https://ai-gateway.vercel.sh/v1/models",
         type: "official_public_api",
         stability: "documented",
-        extractor: { kind: "vercel" },
-        extractorVersion: "vercel-v1",
-        fields: ["model_id", "name", "types", "modalities", "capabilities", "limits", "pricing"],
+        extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
+        extractorVersion: "vercel-catalog-v2",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+        ],
         allowedHosts: ["ai-gateway.vercel.sh"],
         maxResponseBytes: mebibytes(16),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
       },
     ],
+    warnOnMissing: {
+      sourceId: "vercel-models",
+      fields: ["pricing"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {

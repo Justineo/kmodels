@@ -9,6 +9,7 @@ import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import { classifyModelTypes } from "./task.ts";
+import { parseVercelCatalog } from "./vercel.ts";
 import {
   modalitySchema,
   type Modality,
@@ -25,39 +26,6 @@ export { classifyModelTypes, normalizeModelTypes } from "./task.ts";
 const decimalValue = z
   .union([z.string(), z.number().finite().nonnegative()])
   .transform((value) => String(value));
-
-const tierSchema = z.object({
-  cost: decimalValue,
-  min: z.number().int().nonnegative().optional(),
-  max: z.number().int().nonnegative().optional(),
-});
-
-const vercelItemSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  released: z.number().int().nonnegative().optional(),
-  type: z.string().optional(),
-  tags: z.array(z.string()).optional(),
-  context_window: z.number().int().nonnegative().optional(),
-  max_tokens: z.number().int().nonnegative().optional(),
-  modalities: z
-    .object({ input: z.array(z.string()).optional(), output: z.array(z.string()).optional() })
-    .optional(),
-  supported_parameters: z.array(z.string()).optional(),
-  pricing: z
-    .object({
-      input: decimalValue.optional(),
-      output: decimalValue.optional(),
-      input_cache_read: decimalValue.optional(),
-      input_cache_write: decimalValue.optional(),
-      input_tiers: z.array(tierSchema).optional(),
-      output_tiers: z.array(tierSchema).optional(),
-      input_cache_read_tiers: z.array(tierSchema).optional(),
-      input_cache_write_tiers: z.array(tierSchema).optional(),
-    })
-    .optional(),
-});
 
 const cerebrasItemSchema = z.object({
   id: z.string().min(1),
@@ -129,7 +97,6 @@ interface ParseInput {
   observedAt: string;
 }
 
-type Tier = z.infer<typeof tierSchema>;
 type LoadedDocument = ReturnType<typeof load>;
 type Selection = ReturnType<LoadedDocument>;
 
@@ -175,27 +142,6 @@ function tokenRate(
     raw_price: value,
     raw_unit: rawUnit,
   };
-}
-
-function addTieredRates(
-  rates: PriceRate[],
-  meter: PriceRate["meter"],
-  sourceId: string,
-  value: string | undefined,
-  tiers: Tier[] | undefined,
-): void {
-  if (tiers !== undefined && tiers.length > 0) {
-    for (const tier of tiers) {
-      rates.push(
-        tokenRate(meter, tier.cost, sourceId, "token", {
-          context_min_tokens: tier.min,
-          context_max_tokens: tier.max,
-        }),
-      );
-    }
-    return;
-  }
-  if (value !== undefined) rates.push(tokenRate(meter, value, sourceId, "token"));
 }
 
 function normalizedText(value: string): string {
@@ -761,86 +707,6 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function parseVercel(input: ParseInput): ProviderModel[] {
-  const list = listSchema.parse(parseJson(input.body));
-  const results = list.data.map((item) => vercelItemSchema.safeParse(item));
-  const invalid = results.filter((result) => !result.success).length;
-  if (list.data.length === 0 || invalid / list.data.length > 0.05)
-    throw new Error("Vercel model schema drift");
-
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
-    const tags = item.tags ?? [];
-    const parameters = item.supported_parameters ?? [];
-    const modelModalities = {
-      input: modalities(item.modalities?.input),
-      output: modalities(item.modalities?.output),
-    };
-    const prices: PriceRate[] = [];
-    const pricing = item.pricing;
-    if (pricing !== undefined) {
-      addTieredRates(prices, "input_text", input.source.id, pricing.input, pricing.input_tiers);
-      addTieredRates(prices, "output_text", input.source.id, pricing.output, pricing.output_tiers);
-      addTieredRates(
-        prices,
-        "cache_read_text",
-        input.source.id,
-        pricing.input_cache_read,
-        pricing.input_cache_read_tiers,
-      );
-      addTieredRates(
-        prices,
-        "cache_write_text",
-        input.source.id,
-        pricing.input_cache_write,
-        pricing.input_cache_write_tiers,
-      );
-    }
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.id,
-          name: item.name ?? item.id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        description: item.description || undefined,
-        types: classifyModelTypes({
-          modelId: item.id,
-          name: item.name ?? item.id,
-          rawType: item.type,
-          modalities: modelModalities,
-          fallback: "other",
-        }),
-        raw_type: item.type,
-        modalities: modelModalities,
-        capabilities: {
-          ...unknownCapabilities(),
-          reasoning: tags.includes("reasoning") ? true : "unknown",
-          tool_call: tags.includes("tool-use") || parameters.includes("tools") ? true : "unknown",
-          structured_output: parameters.includes("response_format") ? true : "unknown",
-          streaming: "unknown",
-          batch: "unknown",
-          prompt_cache:
-            prices.some(
-              (rate) => rate.meter === "cache_read_text" || rate.meter === "cache_write_text",
-            ) || tags.includes("implicit-caching")
-              ? true
-              : "unknown",
-          fine_tuning: "unknown",
-        },
-        limits: { context_tokens: item.context_window, max_output_tokens: item.max_tokens },
-        release_date: unixDate(item.released),
-        status: "active",
-        pricing_status: prices.length > 0 ? "derived" : "unknown",
-        pricing: prices,
-      },
-    ];
-  });
-}
-
 function parseCerebras(input: ParseInput): ProviderModel[] {
   const list = listSchema.parse(parseJson(input.body));
   const results = list.data.map((item) => cerebrasItemSchema.safeParse(item));
@@ -1123,8 +989,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseAnthropicCatalog(input);
     case "anthropic-api":
       return parseAnthropicApi(input);
-    case "vercel":
-      return parseVercel(input);
+    case "vercel-catalog":
+      return parseVercelCatalog(input);
     case "cerebras":
       return parseCerebras(input);
     case "huggingface":

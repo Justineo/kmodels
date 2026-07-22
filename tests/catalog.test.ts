@@ -58,4 +58,26 @@ describe("generated static catalog", () => {
     expect(preview?.name).toBe("o1 Preview");
     expect(o1?.aliases).not.toContain("o1-preview-2024-09-12");
   });
+
+  it("publishes the complete structured Vercel catalog without hiding missing prices", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const models = catalog.models.filter((model) => model.provider_id === "vercel");
+    const rates = models.flatMap((model) => model.pricing);
+    const embedding = models.find((model) => model.model_id === "alibaba/qwen3-embedding-0.6b");
+    const realtime = models.find((model) => model.model_id === "openai/gpt-5.6-luna");
+    expect(models.length).toBeGreaterThan(250);
+    expect(rates.length).toBeGreaterThan(1_000);
+    expect(models.every((model) => model.release_date !== undefined)).toBe(true);
+    expect(embedding?.modalities.output).toEqual(["embedding"]);
+    expect(realtime?.types).toEqual(["generate", "realtime"]);
+    expect(
+      catalog.warnings.some(
+        (warning) =>
+          warning.code === "missing_field" &&
+          "provider_id" in warning &&
+          warning.provider_id === "vercel" &&
+          warning.field === "pricing",
+      ),
+    ).toBe(true);
+  });
 });

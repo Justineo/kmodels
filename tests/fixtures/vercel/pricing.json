@@ -1,18 +1,145 @@
 {
+  "object": "list",
   "data": [
     {
       "id": "acme/text-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
       "name": "Text One",
+      "description": "A text model.",
       "type": "language",
-      "tags": ["tool-use", "implicit-caching"],
-      "supported_parameters": ["tools"],
+      "tags": ["reasoning", "tool-use", "implicit-caching", "websocket-realtime"],
+      "modalities": { "input": ["text", "image"], "output": ["text"] },
+      "supported_parameters": ["tools", "reasoning"],
+      "reasoning_options": [{ "type": "effort", "values": ["low", "high"] }],
       "pricing": {
         "input": "0.00000012",
         "output": "0.000002",
         "input_cache_read_tiers": [
           { "cost": "0.00000003", "min": 0, "max": 32000 },
           { "cost": "0.00000006", "min": 32000 }
+        ],
+        "service_tiers": {
+          "flex": {
+            "input": "0.00000006",
+            "output": "0.000001",
+            "long_context": {
+              "threshold": 200000,
+              "input": "0.00000012",
+              "output": "0.0000015"
+            }
+          }
+        },
+        "web_search": "10",
+        "maps_search": "14"
+      }
+    },
+    {
+      "id": "acme/embed-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Embed One",
+      "description": "An embedding model.",
+      "context_window": 8192,
+      "max_tokens": 8192,
+      "type": "embedding",
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "pricing": { "input": "0.00000002" }
+    },
+    {
+      "id": "acme/image-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Image One",
+      "description": "An image model.",
+      "type": "image",
+      "tags": ["image-generation"],
+      "modalities": { "input": ["text"], "output": ["image"] },
+      "pricing": {
+        "image": "0.04",
+        "image_dimension_quality_pricing": [
+          { "size": "4K", "cost": "0.08" },
+          { "style": "vector", "cost": "0.12" }
         ]
+      }
+    },
+    {
+      "id": "acme/video-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Video One",
+      "description": "A video model.",
+      "type": "video",
+      "tags": ["video-generation"],
+      "modalities": { "input": ["text", "image"], "output": ["video"] },
+      "pricing": {
+        "video_duration_pricing": [
+          {
+            "resolution": "1080p",
+            "mode": "pro",
+            "audio": true,
+            "voice_control": true,
+            "cost_per_second": "0.2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "acme/video-token-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Video Token One",
+      "description": "A token-priced video model.",
+      "type": "video",
+      "modalities": { "input": ["text", "video"], "output": ["video"] },
+      "pricing": {
+        "video_token_pricing": {
+          "no_video_input": { "cost_per_million_tokens": "7" },
+          "with_video_input": { "cost_per_million_tokens": "4.3" },
+          "notes": "All video tokens use the selected tier."
+        }
+      }
+    },
+    {
+      "id": "acme/speech-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Speech One",
+      "description": "A speech model.",
+      "type": "speech",
+      "modalities": { "input": ["text"], "output": ["audio"] },
+      "pricing": {
+        "input": "0.000015",
+        "speech_input_character_cost": "0.000015"
+      }
+    },
+    {
+      "id": "acme/transcribe-preview",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Transcribe Preview",
+      "description": "A transcription model.",
+      "type": "transcription",
+      "tags": ["websocket-transcription"],
+      "modalities": { "input": ["audio"], "output": ["text"] },
+      "deprecated_at": 1751328000000,
+      "pricing": {
+        "input": "0.0000000001",
+        "transcription_duration_cost_per_second": "0.0001"
       }
     }
   ]
