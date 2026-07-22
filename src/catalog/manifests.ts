@@ -5,6 +5,8 @@ export type Extractor =
   | { kind: "openai-overview" }
   | { kind: "openai-api" }
   | { kind: "openai-deprecations" }
+  | { kind: "anthropic-catalog" }
+  | { kind: "anthropic-api" }
   | { kind: "vercel" }
   | { kind: "cerebras" }
   | { kind: "huggingface" }
@@ -25,6 +27,7 @@ export interface LinkedDocuments {
   maxDocuments: number;
   concurrency: number;
   maxDocumentBytes?: number;
+  markdownSuffix?: boolean;
 }
 
 export type SourceField =
@@ -36,9 +39,11 @@ export type SourceField =
   | "modalities"
   | "capabilities"
   | "limits"
+  | "release_date"
   | "pricing"
   | "status"
   | "is_deprecated"
+  | "deprecated_at"
   | "retired_at"
   | "replacement_model_ids";
 
@@ -66,7 +71,8 @@ export interface SourceManifest {
   exhaustive?: boolean;
   role?: "catalog" | "overlay" | "inventory";
   optional?: boolean;
-  auth?: { scheme: "bearer"; env: string };
+  auth?: { scheme: "bearer"; env: string } | { scheme: "header"; env: string; header: string };
+  headers?: { name: string; value: string }[];
   snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
@@ -77,7 +83,11 @@ export interface ProviderManifest {
   notConfiguredReason?: string;
   supersededIdKinds?: ProviderModel["id_kind"][];
   supersededModelIds?: string[];
-  warnOnMissing?: { sourceId: string; fields: CoverageField[] };
+  warnOnMissing?: {
+    sourceId: string;
+    fields: CoverageField[];
+    statuses?: ProviderModel["status"][];
+  };
 }
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
@@ -214,12 +224,68 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource(
-        "anthropic-models",
-        "https://platform.claude.com/docs/en/about-claude/models/overview",
-        [/^claude-[a-z0-9.-]+$/i],
-      ),
+      {
+        id: "anthropic-models",
+        url: "https://platform.claude.com/docs/en/about-claude/models/overview.md",
+        type: "official_markdown",
+        stability: "semi_structured",
+        extractor: { kind: "anthropic-catalog" },
+        extractorVersion: "anthropic-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["platform.claude.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^\/docs\/en\/about-claude\/(?:pricing|model-deprecations|models\/introducing-claude-fable-5-and-claude-mythos-5)$/,
+          minDocuments: 3,
+          maxDocuments: 3,
+          concurrency: 3,
+          maxDocumentBytes: mebibytes(2),
+          markdownSuffix: true,
+        },
+      },
+      {
+        id: "anthropic-api",
+        url: "https://api.anthropic.com/v1/models?limit=1000",
+        type: "official_authenticated_api",
+        stability: "documented",
+        extractor: { kind: "anthropic-api" },
+        extractorVersion: "anthropic-api-v1",
+        fields: ["name", "release_date", "modalities", "capabilities", "limits"],
+        allowedHosts: ["api.anthropic.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "header", env: "ANTHROPIC_API_KEY", header: "x-api-key" },
+        headers: [{ name: "anthropic-version", value: "2023-06-01" }],
+        snapshotPolicy: "none",
+      },
     ],
+    warnOnMissing: {
+      sourceId: "anthropic-models",
+      fields: ["limits.context_tokens", "pricing"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
