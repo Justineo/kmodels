@@ -56,5 +56,6 @@ describe("generated static catalog", () => {
       context: 200_000,
     });
     expect(preview?.name).toBe("o1 Preview");
+    expect(o1?.aliases).not.toContain("o1-preview-2024-09-12");
   });
 });

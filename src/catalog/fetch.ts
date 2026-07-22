@@ -67,6 +67,28 @@ function checkedUrl(raw: string, source: SourceManifest): URL {
   return url;
 }
 
+function databricksSource(source: SourceManifest, hostEnv: string): SourceManifest {
+  const raw = process.env[hostEnv];
+  if (raw === undefined || raw.trim() === "") throw new Error(`Missing credential ${hostEnv}`);
+  const origin = new URL(raw);
+  const hostname = origin.hostname.toLowerCase();
+  if (
+    origin.protocol !== "https:" ||
+    origin.port !== "" ||
+    origin.username !== "" ||
+    origin.password !== "" ||
+    (origin.pathname !== "" && origin.pathname !== "/") ||
+    origin.search !== "" ||
+    origin.hash !== "" ||
+    ![".cloud.databricks.com", ".azuredatabricks.net", ".gcp.databricks.com"].some((suffix) =>
+      hostname.endsWith(suffix),
+    )
+  )
+    throw new Error("DATABRICKS_HOST is not a reviewed Databricks workspace origin");
+  const url = new URL("/api/2.0/serving-endpoints", origin);
+  return { ...source, url: url.href, allowedHosts: [hostname] };
+}
+
 export function curlResponse(value: string): Response {
   let cursor = 0;
   let status = 0;
@@ -338,6 +360,11 @@ export async function fetchSource(
       notModified: false,
       dependencies: [],
     };
+  }
+  if (source.transport?.kind === "databricks") {
+    const configured = databricksSource(source, source.transport.hostEnv);
+    const payload = await fetchPayload(providerId, configured, undefined);
+    return { ...payload, dependencies: [] };
   }
 
   const crawl = source.linkedDocuments;

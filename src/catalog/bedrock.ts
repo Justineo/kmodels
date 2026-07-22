@@ -14,7 +14,7 @@ import {
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTask } from "./task.ts";
+import { classifyModelTypes } from "./task.ts";
 
 interface ParseInput {
   provider: Provider;
@@ -41,7 +41,7 @@ interface Card {
   retiredAt: string | undefined;
   status: ProviderModel["status"];
   isDeprecated: ProviderModel["is_deprecated"];
-  type: ModelType;
+  types: ModelType[];
   identityKeys: Set<string>;
 }
 
@@ -390,12 +390,12 @@ function parseCard(body: string): Card {
   const output = tokens(fact(body, "Max output tokens"));
   if (context !== undefined) limits.context_tokens = context;
   if (output !== undefined) limits.max_output_tokens = output;
-  const type = classifyModelTask({
+  const types = classifyModelTypes({
     modelId: cardIds.keys().next().value ?? name,
     name,
     rawType: undefined,
     modalities,
-    fallback: "text_generation",
+    fallback: "generate",
   });
   return {
     name,
@@ -410,7 +410,7 @@ function parseCard(body: string): Card {
     retiredAt,
     status,
     isDeprecated,
-    type,
+    types,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
   };
 }
@@ -439,7 +439,7 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function meter(text: string, type: ModelType): PriceRate["meter"] | undefined {
+function meter(text: string, types: ModelType[]): PriceRate["meter"] | undefined {
   if (/provisioned|reserved|model.?units|tokens per minute|tpm/.test(text))
     return "provisioned_throughput";
   if (/cache.?read/.test(text)) {
@@ -452,10 +452,10 @@ function meter(text: string, type: ModelType): PriceRate["meter"] | undefined {
     if (/image/.test(text)) return "cache_write_image";
     return "cache_write_text";
   }
-  if (type === "rerank" && /search|rerank|request/.test(text)) return "rerank_request";
-  if (type === "embedding" && /input|token|second|minute|image|request|page/.test(text))
+  if (types.includes("rerank") && /search|rerank|request/.test(text)) return "rerank_request";
+  if (types.includes("embeddings") && /input|token|second|minute|image|request|page/.test(text))
     return "embedding";
-  if (type === "image_generation" && /output image|created.?image|per image/.test(text))
+  if (types.includes("image") && /output image|created.?image|per image/.test(text))
     return "image_generation";
   if (/output.*video|video.*output/.test(text)) return "output_video";
   if (/input.*video|video.*input/.test(text)) return "input_video";
@@ -467,13 +467,15 @@ function meter(text: string, type: ModelType): PriceRate["meter"] | undefined {
   if (/text input/.test(text)) return "input_text";
   if (/rerank/.test(text)) return "rerank_request";
   if (/output|response/.test(text))
-    return type === "text_to_speech" || type === "speech_to_speech"
+    return types.includes("audio_speech") || types.includes("realtime")
       ? "output_audio"
       : "output_text";
   if (/input|prompt/.test(text))
-    return type === "speech_to_text" || type === "speech_to_speech" ? "input_audio" : "input_text";
-  if (type === "image_generation" && /image/.test(text)) return "image_generation";
-  if (type === "video_generation" && /video|second/.test(text)) return "video_generation";
+    return types.includes("audio_transcription") || types.includes("realtime")
+      ? "input_audio"
+      : "input_text";
+  if (types.includes("image") && /image/.test(text)) return "image_generation";
+  if (types.includes("video") && /video|second/.test(text)) return "video_generation";
 }
 
 function tier(attributes: Record<string, string>, text: string): string | undefined {
@@ -544,14 +546,14 @@ function rate(
   unit: string,
   price: string,
   effectiveDate: string | undefined,
-  type: ModelType,
+  types: ModelType[],
   sourceId: string,
 ): PriceRate | undefined {
   const usage = attributes.usagetype ?? "";
   const text =
     `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
   if (/\bcustom\b|customization|training|storage/.test(text)) return undefined;
-  const observedMeter = meter(text, type);
+  const observedMeter = meter(text, types);
   const endpoint =
     offerCode === "AmazonBedrockFoundationModels"
       ? undefined
@@ -597,7 +599,7 @@ function rate(
   }
   const finalMeter =
     observedMeter ??
-    (normalizedUnit === "image" && type === "image_generation"
+    (normalizedUnit === "image" && types.includes("image")
       ? "image_generation"
       : normalizedUnit === "second" || normalizedUnit === "video"
         ? "video_generation"
@@ -668,7 +670,7 @@ function parsePrices(
             dimension.unit,
             price,
             term.effectiveDate,
-            card.type,
+            card.types,
             sourceId,
           );
           if (parsed === undefined) continue;
@@ -717,7 +719,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         }),
         description: card.description,
         aliases: [...access.aliases].sort(),
-        types: [card.type],
+        types: card.types,
         modalities: card.modalities,
         capabilities: {
           ...card.capabilities,

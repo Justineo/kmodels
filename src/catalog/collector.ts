@@ -19,7 +19,7 @@ import {
   type SourceRecord,
 } from "./schema.ts";
 import { preserveMissing, validateProvider } from "./validation.ts";
-import { normalizeModelTask } from "./task.ts";
+import { normalizeModelTypes } from "./task.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -49,7 +49,7 @@ function message(error: unknown): string {
 
 function previousModels(catalog: Catalog | undefined, providerId: string): ProviderModel[] {
   return (
-    catalog?.models.filter((model) => model.provider_id === providerId).map(normalizeModelTask) ??
+    catalog?.models.filter((model) => model.provider_id === providerId).map(normalizeModelTypes) ??
     []
   );
 }
@@ -110,7 +110,10 @@ function applyFields(
     aliases: fields.has("aliases")
       ? [...new Set([...current.aliases, ...incoming.aliases])]
       : current.aliases,
-    types: fields.has("types") && incomingType ? incoming.types : current.types,
+    types:
+      fields.has("types") && incomingType
+        ? [...new Set([...current.types.filter((type) => type !== "other"), ...incoming.types])]
+        : current.types,
     raw_type:
       fields.has("types") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
     modalities:
@@ -154,6 +157,10 @@ function applyFields(
       fields.has("release_date") && incoming.release_date !== undefined
         ? incoming.release_date
         : current.release_date,
+    updated_date:
+      fields.has("updated_date") && incoming.updated_date !== undefined
+        ? incoming.updated_date
+        : current.updated_date,
     deprecated_at:
       fields.has("deprecated_at") && incoming.deprecated_at !== undefined
         ? incoming.deprecated_at
@@ -224,17 +231,25 @@ function applyGroups(
 }
 
 function missingCredential(source: SourceManifest): boolean {
-  if (source.auth === undefined) return false;
-  const envs = source.auth.scheme === "aws" ? source.auth.envs : [source.auth.env];
-  return envs.some((env) => {
+  return requiredEnvs(source).some((env) => {
     const value = process.env[env];
     return value === undefined || value.trim() === "";
   });
 }
 
+function requiredEnvs(source: SourceManifest): string[] {
+  const auth =
+    source.auth === undefined
+      ? []
+      : source.auth.scheme === "aws"
+        ? source.auth.envs
+        : [source.auth.env];
+  const transport = source.transport?.kind === "databricks" ? [source.transport.hostEnv] : [];
+  return [...new Set([...auth, ...transport])];
+}
+
 function credentialLabel(source: SourceManifest): string {
-  if (source.auth === undefined) return "Credential";
-  return source.auth.scheme === "aws" ? source.auth.envs.join(" and ") : source.auth.env;
+  return requiredEnvs(source).join(" and ") || "Credential";
 }
 
 function sourceWarning(
@@ -255,13 +270,19 @@ function missingFieldWarning(
   const count = models.filter((model) =>
     field === "limits.context_tokens"
       ? model.limits.context_tokens === undefined
-      : model.pricing_status === "unknown",
+      : field === "pricing"
+        ? model.pricing_status === "unknown"
+        : model[field] === undefined,
   ).length;
   if (count === 0) return undefined;
   const fact =
     field === "limits.context_tokens"
       ? "a token context limit"
-      : "machine-readable pricing in the configured official sources";
+      : field === "pricing"
+        ? "machine-readable pricing in the configured official sources"
+        : field === "release_date"
+          ? "an official release date"
+          : "an official update date";
   return {
     code: "missing_field",
     provider_id: providerId,
@@ -437,6 +458,7 @@ async function collectProvider(
         );
       candidate = applyGroups(candidate, [inventory], false);
     }
+    candidate = candidate.map(normalizeModelTypes);
     const warnOnMissing = manifest.warnOnMissing;
     if (warnOnMissing !== undefined)
       warnings.push(

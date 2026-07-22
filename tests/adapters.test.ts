@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import {
-  classifyModelTask,
+  classifyModelTypes,
   multiplyDecimal,
   parseSource,
   scaleDecimal,
@@ -72,6 +72,48 @@ async function anthropicCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function databricksCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("databricks");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "databricks-catalog")
+    throw new Error("Missing Databricks source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "databricks-catalog", minModels: 5, maxModels: 10 },
+  };
+  const documents = [
+    [
+      "https://docs.databricks.com/aws/en/machine-learning/model-serving/foundation-model-overview",
+      "overview.html",
+    ],
+    ["https://docs.databricks.com/aws/en/machine-learning/retired-models-policy", "lifecycle.html"],
+    ["https://www.databricks.com/product/pricing/foundation-model-serving", "pricing-open.html"],
+    [
+      "https://www.databricks.com/product/pricing/proprietary-foundation-model-serving",
+      "pricing-partner.html",
+    ],
+    [
+      "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits",
+      "limits.html",
+    ],
+    [
+      "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference",
+      "api-reference.html",
+    ],
+    ["https://docs.databricks.com/aws/en/feed.xml", "release-feed.xml"],
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("databricks/models.html") },
+    documents: await Promise.all(
+      documents.map(async ([url, path]) => ({
+        url,
+        body: await fixture(`databricks/${path}`),
+      })),
+    ),
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -82,33 +124,37 @@ describe("decimal normalization", () => {
 });
 
 describe("model task taxonomy", () => {
-  it("normalizes explicit task markers into one task dimension", () => {
-    const task = (modelId: string): ReturnType<typeof classifyModelTask> =>
-      classifyModelTask({
+  it("normalizes operation families and permits multiple observed types", () => {
+    const types = (modelId: string): ReturnType<typeof classifyModelTypes> =>
+      classifyModelTypes({
         modelId,
         name: modelId,
         rawType: undefined,
         modalities: { input: [], output: [] },
-        fallback: "text_generation",
+        fallback: "generate",
       });
     expect([
-      task("text-embedding-3-large"),
-      task("cohere/rerank-v4-fast"),
-      task("gpt-4o-transcribe"),
-      task("gpt-image-2"),
-      task("gpt-realtime-2"),
-      task("computer-use-preview"),
-      task("voxtral-tts-26-03"),
-      task("claude-sonnet-5"),
+      types("text-embedding-3-large"),
+      types("cohere/rerank-v4-fast"),
+      types("gpt-4o-transcribe"),
+      types("gpt-image-2"),
+      types("gpt-realtime-2"),
+      types("computer-use-realtime-preview"),
+      types("voxtral-tts-26-03"),
+      types("amazon.titan-embed-image-v1"),
+      types("wan2.7-image-pro"),
+      types("claude-sonnet-5"),
     ]).toEqual([
-      "embedding",
-      "rerank",
-      "speech_to_text",
-      "image_generation",
-      "speech_to_speech",
-      "computer_use",
-      "text_to_speech",
-      "text_generation",
+      ["embeddings"],
+      ["rerank"],
+      ["audio_transcription"],
+      ["image"],
+      ["realtime"],
+      ["agentic", "realtime"],
+      ["audio_speech"],
+      ["embeddings"],
+      ["image"],
+      ["generate"],
     ]);
   });
 });
@@ -171,6 +217,7 @@ describe("OpenAI adapters", () => {
     const embedding = models.find((candidate) => candidate.model_id === "text-embedding-3-large");
     expect({
       name: model?.name,
+      types: model?.types,
       aliases: model?.aliases,
       context: model?.limits.context_tokens,
       output: model?.limits.max_output_tokens,
@@ -182,6 +229,7 @@ describe("OpenAI adapters", () => {
       embedding_deprecated: embedding?.is_deprecated,
     }).toEqual({
       name: "GPT-5.4",
+      types: ["generate", "agentic"],
       aliases: ["gpt-5.4-2026-03-05"],
       context: 1_050_000,
       output: 128_000,
@@ -201,7 +249,7 @@ describe("OpenAI adapters", () => {
         computer_use: "unknown",
       },
       status: "active",
-      embedding_type: ["embedding"],
+      embedding_type: ["embeddings"],
       embedding_output: ["embedding"],
       embedding_deprecated: true,
     });
@@ -339,11 +387,103 @@ describe("Anthropic adapters", () => {
   });
 });
 
+describe("Databricks adapters", () => {
+  it("combines labeled endpoints with lifecycle, limits, feature support, and DBU rates", async () => {
+    const models = await databricksCatalog();
+    const sol = models.find((model) => model.model_id === "databricks-gpt-5-6-sol");
+    const retired = models.find((model) => model.model_id === "databricks-claude-sonnet-4");
+    const replacement = models.find((model) => model.model_id === "databricks-claude-sonnet-4-6");
+    const embedding = models.find((model) => model.model_id === "databricks-gte-large-en");
+    expect({
+      count: models.length,
+      name: sol?.name,
+      release: sol?.release_date,
+      modalities: sol?.modalities,
+      limits: sol?.limits,
+      reasoning: sol?.capabilities.reasoning,
+      tools: sol?.capabilities.tool_call,
+      streaming: sol?.capabilities.streaming,
+      batch: sol?.capabilities.batch,
+      status: retired?.status,
+      retired_at: retired?.retired_at,
+      replacements: retired?.replacement_model_ids,
+      replacement_output: replacement?.limits.max_output_tokens,
+      embedding_type: embedding?.types,
+      embedding_context: embedding?.limits.context_tokens,
+      embedding_dimensions: embedding?.limits.embedding_dimensions,
+    }).toEqual({
+      count: 7,
+      name: "OpenAI GPT-5.6 Sol",
+      release: "2026-07-09",
+      modalities: { input: ["text", "image"], output: ["text"] },
+      limits: { context_tokens: 1_050_000, max_output_tokens: 128_000 },
+      reasoning: true,
+      tools: true,
+      streaming: true,
+      batch: true,
+      status: "deprecated",
+      retired_at: "2026-10-09",
+      replacements: ["databricks-claude-sonnet-4-6"],
+      replacement_output: 64_000,
+      embedding_type: ["embeddings"],
+      embedding_context: 8_192,
+      embedding_dimensions: [1_024],
+    });
+    expect(
+      sol?.pricing.find(
+        (rate) =>
+          rate.meter === "input_text" &&
+          rate.conditions.endpoint === "global" &&
+          rate.conditions.context_tier === "short",
+      ),
+    ).toMatchObject({ price: "71.429", currency: "DBU", unit: "million_tokens" });
+    expect(
+      sol?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.context_min_tokens === 200_001,
+      )?.price,
+    ).toBe("142.857");
+  });
+
+  it("retains promotional and future standard rates as dated conditions", async () => {
+    const models = await databricksCatalog();
+    const gemini = models.find((model) => model.model_id === "databricks-gemini-3-5-flash");
+    const sonnet = models.find((model) => model.model_id === "databricks-claude-sonnet-5");
+    expect(
+      gemini?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
+      ),
+    ).toMatchObject({
+      price: "21.4288",
+      derived: true,
+      conditions: { effective_until: "2026-07-31" },
+    });
+    expect(
+      sonnet?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.effective_from === "2026-09-01",
+      ),
+    ).toMatchObject({ price: "42.857", derived: true });
+    expect(
+      sonnet?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
+      )?.conditions.effective_until,
+    ).toBe("2026-08-31");
+  });
+
+  it("parses workspace endpoints only as a scoped inventory", async () => {
+    const models = await parsed("databricks", "databricks/api.json", "databricks-api");
+    expect(models.map((model) => [model.model_id, model.types[0], model.scope])).toEqual([
+      ["databricks-gpt-5-6-sol", "generate", "runtime_observation"],
+      ["databricks-qwen3-embedding-0-6b", "embeddings", "runtime_observation"],
+      ["private-endpoint", "generate", "runtime_observation"],
+    ]);
+  });
+});
+
 describe("document adapter", () => {
   it("uses a matching link target when its display label is not an API ID", async () => {
     const models = await parsed("xai", "document/xai.md");
     expect(models.map(({ model_id, types }) => ({ model_id, types }))).toEqual([
-      { model_id: "grok-4.5", types: ["text_generation"] },
+      { model_id: "grok-4.5", types: ["generate"] },
     ]);
   });
 
@@ -365,7 +505,7 @@ describe("document adapter", () => {
     const runtime = models.find(
       (model) => model.model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
     );
-    expect(models[0]?.types).toEqual(["text_generation"]);
+    expect(models[0]?.types).toEqual(["generate"]);
     expect(models[0]?.modalities.input).toEqual(["text", "image"]);
     expect(runtime?.aliases).toEqual([
       "global.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -441,7 +581,7 @@ describe("Cerebras adapter", () => {
   it("retains explicit capabilities and preview status", async () => {
     const model = (await parsed("cerebras", "cerebras/normal.json"))[0];
     expect(model?.capabilities.reasoning).toBe(true);
-    expect(model?.types).toEqual(["text_generation"]);
+    expect(model?.types).toEqual(["generate"]);
     expect(model?.capabilities.structured_output).toBe(false);
     expect(model?.status).toBe("preview");
   });
@@ -466,7 +606,7 @@ describe("Hugging Face adapter", () => {
     const model = (await parsed("huggingface", "huggingface/normal.json"))[0];
     expect(model?.limits.context_tokens).toBe(65536);
     expect(model?.capabilities.tool_call).toBe(true);
-    expect(model?.types).toEqual(["text_generation"]);
+    expect(model?.types).toEqual(["generate"]);
     expect(model?.modalities.input).toEqual(["text", "image"]);
   });
 
@@ -495,6 +635,7 @@ describe("runtime adapters", () => {
       id: model?.model_id,
       pricing_status: model?.pricing_status,
       scope: model?.scope,
+      updated: model?.updated_date,
     }).toEqual(await expected("ollama/expected.json"));
     expect((await parsed("ollama", "ollama/pricing.json"))[0]?.pricing.length).toBe(0);
     await expect(parsed("ollama", "ollama/broken.json")).rejects.toThrow("schema drift");
