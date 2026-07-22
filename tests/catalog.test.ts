@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { manifests } from "../src/catalog/manifests.ts";
+import { modelUid } from "../src/catalog/model.ts";
 import { catalogEnvelopeSchema, catalogSchema } from "../src/catalog/schema.ts";
 
 async function json(path: string): Promise<unknown> {
@@ -19,7 +20,7 @@ describe("generated static catalog", () => {
     for (const model of catalog.models) {
       expect(modelIds.has(model.uid)).toBe(false);
       modelIds.add(model.uid);
-      expect(model.uid).toBe(`${model.provider_id}/${model.model_id}`);
+      expect(model.uid).toBe(modelUid(model.provider_id, model.model_id, model.version));
       expect(model.source_refs.every((source) => sourceIds.has(source))).toBe(true);
       expect(model.pricing.every((rate) => sourceIds.has(rate.source_ref))).toBe(true);
       expect(model.account_availability).toBe("unknown");

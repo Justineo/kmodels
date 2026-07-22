@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
+import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { linkedBundleSchema } from "./bundle.ts";
@@ -1007,6 +1008,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseDatabricksCatalog(input);
     case "databricks-api":
       return parseDatabricksApi(input);
+    case "azure-catalog":
+      return parseAzureCatalog(input);
+    case "azure-api":
+      return parseAzureApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }

@@ -1,3 +1,4 @@
+import { modelUid } from "./model.ts";
 import { providerModelSchema, type PriceRate, type ProviderModel } from "./schema.ts";
 
 export interface ValidationResult {
@@ -42,7 +43,7 @@ export function validateProvider(
   for (const model of models) {
     const parsed = providerModelSchema.safeParse(model);
     if (!parsed.success) return { ok: false, reason: `schema validation failed for ${model.uid}` };
-    if (model.uid !== `${model.provider_id}/${model.model_id}`)
+    if (model.uid !== modelUid(model.provider_id, model.model_id, model.version))
       return { ok: false, reason: `UID mismatch for ${model.model_id}` };
     if (uids.has(model.uid)) return { ok: false, reason: `duplicate model ${model.uid}` };
     uids.add(model.uid);

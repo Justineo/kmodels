@@ -9,6 +9,27 @@ import { readSnapshot, rootDirectory, sha256, writeSnapshot } from "./io.ts";
 
 const execute = promisify(execFile);
 
+const azureTokenSchema = z.object({ access_token: z.string().min(1) });
+const azureModelsPageSchema = z.object({
+  value: z.array(z.unknown()),
+  nextLink: z.string().nullable().optional(),
+});
+const azureMeterSchema = z.object({
+  model: z.object({
+    skus: z
+      .array(
+        z.object({
+          cost: z.array(z.object({ meterId: z.string().min(1) })).optional(),
+        }),
+      )
+      .optional(),
+  }),
+});
+const azurePricesPageSchema = z.object({
+  Items: z.array(z.unknown()),
+  NextPageLink: z.string().nullable().optional(),
+});
+
 export const sourceStateSchema = z.object({
   etag: z.string().optional(),
   lastModified: z.string().optional(),
@@ -143,8 +164,8 @@ async function curlRequest(
       : "Accept: text/html, text/markdown;q=0.9",
   ];
   if (source.auth !== undefined) {
-    if (source.auth.scheme === "aws")
-      throw new Error("AWS sources require their reviewed signed transport");
+    if (source.auth.scheme === "aws" || source.auth.scheme === "azure")
+      throw new Error("Cloud sources require their reviewed authenticated transport");
     const credential = process.env[source.auth.env];
     if (credential === undefined || credential.trim() === "")
       throw new Error(`Missing credential ${source.auth.env}`);
@@ -171,6 +192,190 @@ async function curlRequest(
   } catch {
     throw new TransientFetchError("Transient transport failure");
   }
+}
+
+function environment(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value.trim() === "") throw new Error(`Missing credential ${name}`);
+  return value;
+}
+
+async function azureCurl(
+  url: URL,
+  maxResponseBytes: number,
+  headers: string[],
+  form: { name: string; value: string }[] = [],
+): Promise<string> {
+  const args = [
+    "--silent",
+    "--show-error",
+    "--compressed",
+    "--fail-with-body",
+    "--max-time",
+    "30",
+    "--connect-timeout",
+    "10",
+    "--max-redirs",
+    "0",
+    "--proto",
+    "=https",
+    "--retry",
+    "2",
+    "--retry-all-errors",
+    "--retry-max-time",
+    "30",
+    "--user-agent",
+    "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
+  ];
+  for (const header of headers) args.push("--header", header);
+  for (const field of form) args.push("--data-urlencode", `${field.name}=${field.value}`);
+  args.push(url.href);
+  try {
+    const result = await execute("curl", args, {
+      encoding: "utf8",
+      maxBuffer: maxResponseBytes + 64 * 1024,
+    });
+    if (Buffer.byteLength(result.stdout) > maxResponseBytes)
+      throw new Error("Azure response exceeded byte limit");
+    return result.stdout;
+  } catch {
+    throw new TransientFetchError("Azure transport failure");
+  }
+}
+
+function azurePageUrl(raw: string, pathPrefix: string): URL {
+  const url = new URL(raw);
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "management.azure.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    !url.pathname.toLowerCase().startsWith(pathPrefix.toLowerCase())
+  )
+    throw new Error("Azure pagination left the reviewed ARM endpoint");
+  return url;
+}
+
+function retailPageUrl(raw: string): URL {
+  const url = new URL(raw);
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "prices.azure.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/api/retail/prices"
+  )
+    throw new Error("Azure pricing pagination left the reviewed endpoint");
+  return url;
+}
+
+async function fetchAzureModels(
+  source: SourceManifest,
+  subscriptionEnv: string,
+  locationEnv: string,
+): Promise<string> {
+  const auth = source.auth;
+  if (auth?.scheme !== "azure") throw new Error("Azure transport requires Azure credentials");
+  const [tenantEnv, clientEnv, secretEnv] = auth.envs;
+  const tenant = environment(tenantEnv);
+  const client = environment(clientEnv);
+  const secret = environment(secretEnv);
+  const subscription = environment(subscriptionEnv);
+  const location = environment(locationEnv);
+  if (!/^[0-9a-f-]{36}$/i.test(tenant) || !/^[0-9a-f-]{36}$/i.test(client))
+    throw new Error("Azure tenant and client IDs must be GUIDs");
+  if (!/^[0-9a-f-]{36}$/i.test(subscription) || !/^[a-z0-9-]+$/i.test(location))
+    throw new Error("Azure subscription or location is invalid");
+
+  const tokenUrl = new URL(`/${tenant}/oauth2/v2.0/token`, "https://login.microsoftonline.com");
+  const token = azureTokenSchema.parse(
+    JSON.parse(
+      await azureCurl(
+        tokenUrl,
+        1024 * 1024,
+        ["Accept: application/json"],
+        [
+          { name: "client_id", value: client },
+          { name: "client_secret", value: secret },
+          { name: "grant_type", value: "client_credentials" },
+          { name: "scope", value: "https://management.azure.com/.default" },
+        ],
+      ),
+    ),
+  );
+  const path = `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/locations/${location}/models`;
+  let next: URL | undefined = new URL(
+    `${path}?api-version=2025-06-01`,
+    "https://management.azure.com",
+  );
+  const models: unknown[] = [];
+  for (let pageCount = 0; next !== undefined && pageCount < 20; pageCount += 1) {
+    const page = azureModelsPageSchema.parse(
+      JSON.parse(
+        await azureCurl(next, source.maxResponseBytes, [
+          "Accept: application/json",
+          `Authorization: Bearer ${token.access_token}`,
+        ]),
+      ),
+    );
+    models.push(...page.value);
+    if (models.length > 5_000) throw new Error("Azure Models API exceeded item limit");
+    next =
+      page.nextLink === undefined || page.nextLink === null
+        ? undefined
+        : azurePageUrl(page.nextLink, path);
+    if (pageCount === 19 && next !== undefined)
+      throw new Error("Azure Models API exceeded page limit");
+  }
+  if (models.length === 0) throw new Error("Azure Models API returned no models");
+
+  const meterIds = unique(
+    models.flatMap((item) => {
+      const parsed = azureMeterSchema.safeParse(item);
+      return parsed.success
+        ? (parsed.data.model.skus ?? []).flatMap((sku) =>
+            (sku.cost ?? []).map((cost) => cost.meterId),
+          )
+        : [];
+    }),
+  );
+  const prices: unknown[] = [];
+  for (let start = 0; start < meterIds.length; start += 20) {
+    const ids = meterIds.slice(start, start + 20);
+    const filter = `serviceName eq 'Foundry Models' and (${ids
+      .map((id) => `meterId eq '${id.replaceAll("'", "''")}'`)
+      .join(" or ")})`;
+    const url = new URL("https://prices.azure.com/api/retail/prices");
+    url.searchParams.set("api-version", "2023-01-01-preview");
+    url.searchParams.set("currencyCode", "USD");
+    url.searchParams.set("$filter", filter);
+    let pricePage: URL | undefined = url;
+    for (let pageCount = 0; pricePage !== undefined && pageCount < 20; pageCount += 1) {
+      const page = azurePricesPageSchema.parse(
+        JSON.parse(
+          await azureCurl(pricePage, source.maxResponseBytes, ["Accept: application/json"]),
+        ),
+      );
+      prices.push(...page.Items);
+      if (prices.length > 20_000) throw new Error("Azure Retail Prices API exceeded item limit");
+      pricePage =
+        page.NextPageLink === undefined || page.NextPageLink === null
+          ? undefined
+          : retailPageUrl(page.NextPageLink);
+      if (pageCount === 19 && pricePage !== undefined)
+        throw new Error("Azure Retail Prices API exceeded page limit");
+    }
+  }
+  const body = JSON.stringify({ location, models, prices });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Azure inventory bundle exceeded byte limit");
+  return body;
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
 }
 
 async function request(
@@ -365,6 +570,22 @@ export async function fetchSource(
     const configured = databricksSource(source, source.transport.hostEnv);
     const payload = await fetchPayload(providerId, configured, undefined);
     return { ...payload, dependencies: [] };
+  }
+  if (source.transport?.kind === "azure-models") {
+    const body = await fetchAzureModels(
+      source,
+      source.transport.subscriptionEnv,
+      source.transport.locationEnv,
+    );
+    return {
+      body,
+      contentHash: sha256(body),
+      snapshotUri: undefined,
+      etag: undefined,
+      lastModified: undefined,
+      notModified: false,
+      dependencies: [],
+    };
   }
 
   const crawl = source.linkedDocuments;

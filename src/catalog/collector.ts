@@ -180,6 +180,20 @@ function applyFields(
     pricing_status:
       fields.has("pricing") && incomingPricing ? incoming.pricing_status : current.pricing_status,
     pricing: fields.has("pricing") && incomingPricing ? incoming.pricing : current.pricing,
+    availability: fields.has("availability")
+      ? [
+          ...new Map(
+            [...(current.availability ?? []), ...(incoming.availability ?? [])].map((item) => [
+              `${item.region}\u0000${item.deployment_type}`,
+              item,
+            ]),
+          ).values(),
+        ].sort((left, right) =>
+          `${left.deployment_type}\u0000${left.region}`.localeCompare(
+            `${right.deployment_type}\u0000${right.region}`,
+          ),
+        )
+      : current.availability,
     source_refs: [...new Set([...current.source_refs, ...incoming.source_refs])],
     observed_at: incoming.observed_at,
     last_seen_at: incoming.last_seen_at,
@@ -241,10 +255,15 @@ function requiredEnvs(source: SourceManifest): string[] {
   const auth =
     source.auth === undefined
       ? []
-      : source.auth.scheme === "aws"
+      : source.auth.scheme === "aws" || source.auth.scheme === "azure"
         ? source.auth.envs
         : [source.auth.env];
-  const transport = source.transport?.kind === "databricks" ? [source.transport.hostEnv] : [];
+  const transport =
+    source.transport?.kind === "databricks"
+      ? [source.transport.hostEnv]
+      : source.transport?.kind === "azure-models"
+        ? [source.transport.subscriptionEnv, source.transport.locationEnv]
+        : [];
   return [...new Set([...auth, ...transport])];
 }
 
@@ -432,11 +451,13 @@ async function collectProvider(
 
     if (groups.length === 0) throw new Error("No global catalog source succeeded");
     let candidate = applyGroups(applyGroups([], groups, true), overlays, false);
+    const identity = (model: ProviderModel): string =>
+      `${model.model_id}${model.version === undefined ? "" : `@${model.version}`}`;
     const catalogIdentities = new Set(
-      candidate.flatMap((model) => [model.model_id, ...model.aliases]),
+      candidate.flatMap((model) => [identity(model), ...model.aliases]),
     );
     for (const inventory of inventories) {
-      const inventoryIds = new Set(inventory.models.map((model) => model.model_id));
+      const inventoryIds = new Set(inventory.models.map(identity));
       const missing = [...catalogIdentities].filter((id) => !inventoryIds.has(id)).length;
       const extra = [...inventoryIds].filter((id) => !catalogIdentities.has(id)).length;
       warnings.push(

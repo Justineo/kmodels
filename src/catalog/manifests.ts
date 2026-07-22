@@ -16,6 +16,8 @@ export type Extractor =
   | { kind: "bedrock-api" }
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
+  | { kind: "azure-catalog"; minModels: number; maxModels: number }
+  | { kind: "azure-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -40,6 +42,7 @@ export interface LinkedDocuments {
 
 export type SourceField =
   | "model_id"
+  | "version"
   | "name"
   | "description"
   | "aliases"
@@ -50,6 +53,7 @@ export type SourceField =
   | "release_date"
   | "updated_date"
   | "pricing"
+  | "availability"
   | "status"
   | "is_deprecated"
   | "deprecated_at"
@@ -83,9 +87,13 @@ export interface SourceManifest {
   auth?:
     | { scheme: "bearer"; env: string }
     | { scheme: "header"; env: string; header: string }
-    | { scheme: "aws"; envs: [string, string] };
+    | { scheme: "aws"; envs: [string, string] }
+    | { scheme: "azure"; envs: [string, string, string, string, string] };
   headers?: { name: string; value: string }[];
-  transport?: { kind: "aws-bedrock"; region: string } | { kind: "databricks"; hostEnv: string };
+  transport?:
+    | { kind: "aws-bedrock"; region: string }
+    | { kind: "databricks"; hostEnv: string }
+    | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string };
   snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
@@ -561,19 +569,126 @@ export const manifests = [
       kind: "cloud_platform",
       homepage: "https://azure.microsoft.com/products/ai-foundry/",
       docs_url:
-        "https://learn.microsoft.com/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure",
-      catalog_scope: "regional",
+        "https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure",
+      catalog_scope: "mixed",
     },
     sources: [
-      documentSource(
-        "azure-models",
-        "https://learn.microsoft.com/en-us/azure/ai-foundry/foundry-models/concepts/models-sold-directly-by-azure",
-        [
-          /^(?:gpt(?:-|$)|o[1345](?:-|$)|codex-|computer-use-|sora(?:-|$)|text-embedding-|tts(?:-|$)|whisper(?:-|$)|grok-|deepseek-|llama-|mistral-|ministral-|cohere-|command-|rerank-|embed-|flux[.-]|kimi-|mai-|qwen-|phi-)[a-z0-9._:-]*$/i,
+      {
+        id: "azure-models",
+        url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/models-azure-direct-openai.md",
+        type: "official_github",
+        stability: "semi_structured",
+        extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
+        extractorVersion: "azure-catalog-v1",
+        fields: [
+          "model_id",
+          "version",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "availability",
+          "status",
+          "is_deprecated",
+          "retired_at",
+          "replacement_model_ids",
         ],
-        "display_name",
-      ),
+        allowedHosts: ["raw.githubusercontent.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 7,
+          documents: [
+            {
+              id: "direct-others",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-azure-direct-others.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "partners",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-partners.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "lifecycle",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-model-retirement-schedule-content.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "standard",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-standard.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "provisioned",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-provisioned.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "batch",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-batch.md",
+              maxResponseBytes: mebibytes(1),
+            },
+          ],
+        },
+      },
+      {
+        id: "azure-api",
+        url: "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/location/models?api-version=2025-06-01",
+        type: "official_authenticated_api",
+        stability: "documented",
+        extractor: { kind: "azure-api" },
+        extractorVersion: "azure-api-v1",
+        fields: [
+          "model_id",
+          "version",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "pricing",
+          "availability",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+        ],
+        allowedHosts: ["management.azure.com", "login.microsoftonline.com", "prices.azure.com"],
+        maxResponseBytes: mebibytes(32),
+        scope: "region",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: {
+          scheme: "azure",
+          envs: [
+            "AZURE_TENANT_ID",
+            "AZURE_CLIENT_ID",
+            "AZURE_CLIENT_SECRET",
+            "AZURE_SUBSCRIPTION_ID",
+            "AZURE_LOCATION",
+          ],
+        },
+        transport: {
+          kind: "azure-models",
+          subscriptionEnv: "AZURE_SUBSCRIPTION_ID",
+          locationEnv: "AZURE_LOCATION",
+        },
+        snapshotPolicy: "none",
+      },
     ],
+    supersededIdKinds: ["display_name"],
+    supersededModelIds: ["Cohere-command-a", "Mistral-medium-2505", "Mistral-small-2503"],
+    warnOnMissing: {
+      sourceId: "azure-models",
+      fields: ["limits.context_tokens", "pricing", "release_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {

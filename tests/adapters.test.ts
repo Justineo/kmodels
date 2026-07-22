@@ -126,6 +126,35 @@ async function vercelCatalog(path: string): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
+async function azureCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("azure");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "azure-catalog")
+    throw new Error("Missing Azure source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "azure-catalog", minModels: 1, maxModels: 20 },
+  };
+  const documents = [
+    ["models-azure-direct-others.md", "others.md"],
+    ["models-partners.md", "partners.md"],
+    ["concepts-model-retirement-schedule-content.md", "lifecycle.md"],
+    ["deployments-standard.md", "standard.md"],
+    ["deployments-provisioned.md", "provisioned.md"],
+    ["deployments-batch.md", "batch.md"],
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("azure/openai.md") },
+    documents: await Promise.all(
+      documents.map(async ([name, path]) => ({
+        url: `https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/${name}`,
+        body: await fixture(`azure/${path}`),
+      })),
+    ),
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -331,6 +360,99 @@ describe("OpenAI adapters", () => {
   it("fails closed when the index and model pages disagree", async () => {
     await expect(parsed("openai", "openai/broken-catalog.json")).rejects.toThrow(
       "index and model pages disagree",
+    );
+  });
+});
+
+describe("Azure adapters", () => {
+  it("keeps exact model/version tuples and unions every observed operation", async () => {
+    const models = await azureCatalog();
+    const model = models.find((candidate) => candidate.uid === "azure/gpt-multi@2026-01-01");
+    const whisper = models.find((candidate) => candidate.uid === "azure/whisper@001");
+    const rerank = models.find((candidate) => candidate.uid === "azure/cohere-rerank-v4.0-fast@1");
+    const embedding = models.find(
+      (candidate) => candidate.uid === "azure/Cohere-embed-v3-english@1",
+    );
+    const retired = models.find((candidate) => candidate.uid === "azure/gpt-old@1");
+    expect({
+      types: model?.types,
+      modalities: model?.modalities,
+      context: model?.limits.context_tokens,
+      output: model?.limits.max_output_tokens,
+      availability: model?.availability?.length,
+      whisper: whisper?.types,
+      rerank: rerank?.types,
+      embedding: [embedding?.types, embedding?.modalities.output],
+      retired: [retired?.status, retired?.replacement_model_ids],
+    }).toEqual({
+      types: ["generate", "agentic"],
+      modalities: { input: ["text", "image"], output: ["text"] },
+      context: 128_000,
+      output: 16_384,
+      availability: 5,
+      whisper: ["audio_transcription", "audio_translation"],
+      rerank: ["rerank", "classification"],
+      embedding: [["embeddings"], ["embedding"]],
+      retired: ["retired", ["gpt-multi"]],
+    });
+  });
+
+  it("parses the scoped ARM inventory and exact billing-meter price join", async () => {
+    const model = (await parsed("azure", "azure/api.json", "azure-api"))[0];
+    expect({
+      uid: model?.uid,
+      description: model?.description,
+      types: model?.types,
+      capabilities: model?.capabilities,
+      context: model?.limits.context_tokens,
+      status: model?.status,
+      deprecatedAt: model?.deprecated_at,
+      availability: model?.availability,
+      price: model?.pricing[0],
+      imagePrice: model?.pricing.find((rate) => rate.meter === "input_image")?.price,
+      scope: model?.scope,
+    }).toEqual({
+      uid: "azure/gpt-multi@2026-01-01",
+      description: "A structured regional model.",
+      types: ["generate", "agentic"],
+      capabilities: {
+        reasoning: "unknown",
+        tool_call: "unknown",
+        structured_output: true,
+        streaming: true,
+        batch: "unknown",
+        prompt_cache: "unknown",
+        fine_tuning: false,
+        citations: "unknown",
+        code_execution: "unknown",
+        context_management: "unknown",
+        effort_control: "unknown",
+        computer_use: "unknown",
+      },
+      context: 128_000,
+      status: "active",
+      deprecatedAt: "2027-01-01",
+      availability: [{ region: "eastus", deployment_type: "GlobalStandard" }],
+      price: {
+        meter: "input_text",
+        price: "1.25",
+        currency: "USD",
+        unit: "million_tokens",
+        conditions: {
+          region: "eastus",
+          deployment_scope: "GlobalStandard",
+          effective_from: "2026-01-01",
+        },
+        source_ref: "azure-api",
+        derived: false,
+        raw_price: "1.25",
+        raw_unit: "1M Tokens",
+      },
+      imagePrice: "2.5",
+      scope: "runtime_observation",
+    });
+    await expect(parsed("azure", "azure/broken-api.json", "azure-api")).rejects.toThrow(
+      "schema drift",
     );
   });
 });

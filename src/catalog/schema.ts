@@ -110,6 +110,7 @@ export const priceRateSchema = z.object({
 export const providerModelSchema = z.object({
   provider_id: z.string().min(1),
   model_id: z.string().min(1),
+  version: z.string().min(1).optional(),
   uid: z.string().min(3),
   id_kind: z.enum(["api_id", "alias", "sku", "display_name", "source_generated"]),
   name: z.string().min(1),
@@ -157,6 +158,14 @@ export const providerModelSchema = z.object({
     "unknown",
   ]),
   pricing: z.array(priceRateSchema),
+  availability: z
+    .array(
+      z.object({
+        region: z.string().min(1),
+        deployment_type: z.string().min(1),
+      }),
+    )
+    .optional(),
   scope: z.enum(["global_catalog", "regional_catalog", "runtime_observation"]),
   account_availability: z.literal("unknown"),
   first_seen_at: dateTime,
