@@ -1,9 +1,42 @@
 {
+  "object": "list",
   "data": [
     {
       "id": "fixture-8b",
+      "object": "model",
+      "created": 1754438400,
+      "owned_by": "Fixture",
       "name": "Fixture 8B",
-      "pricing": { "prompt": "0.00000085", "completion": "0.0000012" }
+      "description": "A fixture model.",
+      "hugging_face_id": "fixture/model-8b",
+      "pricing": { "prompt": "0.00000085", "completion": "0.0000012" },
+      "capabilities": {
+        "streaming": true,
+        "function_calling": true,
+        "structured_outputs": true,
+        "vision": true,
+        "json_mode": true,
+        "tools": true,
+        "tool_choice": true,
+        "parallel_tool_calls": true,
+        "response_format": true,
+        "reasoning": true
+      },
+      "supported_parameters": { "temperature": true },
+      "architecture": {
+        "modality": "text+vision",
+        "tokenizer": "Fixture",
+        "instruct_type": "fixture"
+      },
+      "limits": {
+        "max_context_length": 131072,
+        "max_completion_tokens": 40960,
+        "requests_per_minute": null,
+        "tokens_per_minute": null
+      },
+      "deprecated": false,
+      "preview": false,
+      "quantization": "FP16"
     }
   ]
 }

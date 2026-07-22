@@ -93,6 +93,19 @@ function known<T extends boolean | "unknown">(current: T, incoming: T): T {
   return incoming === "unknown" ? current : incoming;
 }
 
+function rateKey(rate: ProviderModel["pricing"][number]): string {
+  return `${rate.meter}\0${rate.currency}\0${rate.unit}\0${JSON.stringify(rate.conditions)}`;
+}
+
+function mergeRates(current: ProviderModel, incoming: ProviderModel): ProviderModel["pricing"] {
+  if (incoming.pricing.length === 0) return incoming.pricing;
+  return [
+    ...new Map(
+      [...current.pricing, ...incoming.pricing].map((rate) => [rateKey(rate), rate]),
+    ).values(),
+  ].sort((left, right) => rateKey(left).localeCompare(rateKey(right)));
+}
+
 function applyFields(
   current: ProviderModel,
   incoming: ProviderModel,
@@ -191,7 +204,8 @@ function applyFields(
       : current.replacement_model_ids,
     pricing_status:
       fields.has("pricing") && incomingPricing ? incoming.pricing_status : current.pricing_status,
-    pricing: fields.has("pricing") && incomingPricing ? incoming.pricing : current.pricing,
+    pricing:
+      fields.has("pricing") && incomingPricing ? mergeRates(current, incoming) : current.pricing,
     availability: fields.has("availability")
       ? [
           ...new Map(
