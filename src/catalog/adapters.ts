@@ -104,6 +104,12 @@ const ollamaItemSchema = z.object({
 
 const listSchema = z.object({ data: z.array(z.unknown()) });
 const ollamaListSchema = z.object({ models: z.array(z.unknown()) });
+const bedrockBundleSchema = z.object({
+  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
+});
+const bedrockModelIdSchema = z
+  .string()
+  .regex(/^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,3}(?::[a-z0-9-]{1,63}){0,2}$/);
 
 interface ParseInput {
   provider: Provider;
@@ -493,19 +499,14 @@ function identifierCandidates(fragment: string): string[] {
 }
 
 function parseDocument(input: ParseInput): ProviderModel[] {
-  if (input.source.extractor.kind !== "document-identifiers")
-    throw new Error("Wrong document extractor");
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "document-identifiers") throw new Error("Wrong document extractor");
   const ids = unique(
     documentFragments(input.body, input.source).flatMap((fragment) =>
-      (input.source.extractor.kind === "document-identifiers" &&
-      input.source.extractor.linkTarget !== undefined
+      (extractor.linkTarget !== undefined
         ? [fragment.trim()]
         : identifierCandidates(fragment)
-      ).filter((candidate) =>
-        input.source.extractor.kind === "document-identifiers"
-          ? input.source.extractor.patterns.some((pattern) => pattern.test(candidate))
-          : false,
-      ),
+      ).filter((candidate) => extractor.patterns.some((pattern) => pattern.test(candidate))),
     ),
   ).sort();
   if (ids.length === 0) throw new Error("No model identifiers found in document");
@@ -517,12 +518,73 @@ function parseDocument(input: ParseInput): ProviderModel[] {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    id_kind:
-      input.source.extractor.kind === "document-identifiers"
-        ? input.source.extractor.idKind
-        : "api_id",
+    id_kind: extractor.idKind,
     pricing_status: input.provider.kind === "model_publisher" ? "not_applicable" : "unknown",
   }));
+}
+
+function markdownCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\||\|$/g, "")
+    .split("|")
+    .map((cell) => cell.replaceAll("**", "").replaceAll("`", "").trim());
+}
+
+function bedrockCard(body: string): { name: string; ids: string[] } {
+  const name = body.match(/^# ([^\n]+)$/m)?.[1]?.trim();
+  if (name === undefined || name === "") throw new Error("Bedrock model card omitted its name");
+  const programmaticAccess = body.split("## Programmatic Access")[1]?.split(/\n## /)[0];
+  if (programmaticAccess === undefined)
+    throw new Error(`Bedrock model card omitted Programmatic Access for ${name}`);
+  const lines = programmaticAccess.split("\n");
+  const headerIndex = lines.findIndex((line) => {
+    const cells = markdownCells(line);
+    return cells.includes("Endpoint") && cells.includes("Model ID");
+  });
+  if (headerIndex < 0) throw new Error(`Bedrock model card omitted its ID table for ${name}`);
+  const header = markdownCells(lines[headerIndex] ?? "");
+  const endpointIndex = header.indexOf("Endpoint");
+  const modelIdIndex = header.indexOf("Model ID");
+  const ids = unique(
+    lines.slice(headerIndex + 2).flatMap((line) => {
+      if (!line.trim().startsWith("|")) return [];
+      const cells = markdownCells(line);
+      const endpoint = cells[endpointIndex];
+      const result = bedrockModelIdSchema.safeParse(cells[modelIdIndex]);
+      return endpoint?.startsWith("bedrock-") && result.success ? [result.data] : [];
+    }),
+  );
+  if (ids.length === 0)
+    throw new Error(`Bedrock model card omitted official model IDs for ${name}`);
+  return { name, ids };
+}
+
+function parseBedrock(input: ParseInput): ProviderModel[] {
+  const bundle = bedrockBundleSchema.parse(parseJson(input.body));
+  const identities = new Map<string, string>();
+  for (const document of bundle.documents) {
+    const card = bedrockCard(document.body);
+    for (const id of card.ids) {
+      const existing = identities.get(id);
+      if (existing !== undefined && existing !== card.name)
+        throw new Error(`Bedrock model ID ${id} has conflicting display names`);
+      identities.set(id, card.name);
+    }
+  }
+  return [...identities]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([id, name]) => ({
+      ...baseModel({
+        providerId: input.provider.id,
+        id,
+        name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      id_kind: "api_id",
+      scope: "regional_catalog",
+    }));
 }
 
 function parseOllama(input: ParseInput): ProviderModel[] {
@@ -579,6 +641,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseOllama(input);
     case "vllm":
       return parseVllm(input);
+    case "bedrock-model-cards":
+      return parseBedrock(input);
     case "document-identifiers":
       return parseDocument(input);
   }

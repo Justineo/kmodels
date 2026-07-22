@@ -28,7 +28,7 @@ app.innerHTML = `
       <output id="result-count" aria-live="polite">—</output>
     </div>
     <div class="ledger-head" aria-hidden="true">
-      <span>Model</span><span>Provider</span><span>Type</span><span>Context</span><span>Input / output</span>
+      <span>Model</span><span>Display name</span><span>Provider</span><span>Type</span><span>Context</span><span>Input / output</span>
     </div>
     <div class="ledger" id="ledger" aria-live="polite"><p class="loading">Loading…</p></div>
   </main>
@@ -96,8 +96,9 @@ function showDetails(model: ProviderModel): void {
   dialogContent.replaceChildren();
   const heading = appendText(dialogContent, "p", model.provider_id, "overline");
   heading.id = "dialog-title";
-  appendText(dialogContent, "h2", model.name);
-  appendText(dialogContent, "code", model.model_id, "model-id");
+  const hasDisplayName = model.name !== model.model_id;
+  appendText(dialogContent, "h2", hasDisplayName ? model.name : model.model_id);
+  if (hasDisplayName) appendText(dialogContent, "code", model.model_id, "model-id");
   if (model.description !== undefined)
     appendText(dialogContent, "p", model.description, "dialog-description");
 
@@ -154,11 +155,14 @@ function modelRow(model: ProviderModel): HTMLButtonElement {
   const row = document.createElement("button");
   row.className = "model-row";
   row.type = "button";
-  row.setAttribute("aria-label", `View ${model.name} details`);
+  row.setAttribute(
+    "aria-label",
+    `View ${model.name === model.model_id ? model.model_id : model.name} details`,
+  );
   const identity = document.createElement("span");
-  appendText(identity, "strong", model.name);
   appendText(identity, "code", model.model_id);
   row.append(identity);
+  appendText(row, "span", model.name === model.model_id ? "" : model.name, "display-name");
   appendText(row, "span", model.provider_id, "provider-name");
   appendText(row, "span", model.types.join(" · "), "model-type");
   appendText(row, "span", formatNumber(model.limits.context_tokens), "numeric");

@@ -1,4 +1,4 @@
-import type { Provider } from "./schema.ts";
+import type { Provider, ProviderModel } from "./schema.ts";
 
 export type Extractor =
   | { kind: "vercel" }
@@ -6,12 +6,20 @@ export type Extractor =
   | { kind: "huggingface" }
   | { kind: "ollama" }
   | { kind: "vllm" }
+  | { kind: "bedrock-model-cards" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
       idKind: "api_id" | "alias" | "display_name" | "source_generated";
       linkTarget?: RegExp;
     };
+
+export interface LinkedDocuments {
+  path: RegExp;
+  minDocuments: number;
+  maxDocuments: number;
+  concurrency: number;
+}
 
 export interface SourceManifest {
   id: string;
@@ -30,12 +38,14 @@ export interface SourceManifest {
   fields: string[];
   allowedHosts: string[];
   maxResponseBytes: number;
+  linkedDocuments?: LinkedDocuments;
 }
 
 export interface ProviderManifest {
   provider: Omit<Provider, "source_ids" | "last_successful_sync_at" | "catalog_version">;
   sources: SourceManifest[];
   notConfiguredReason?: string;
+  supersededIdKinds?: ProviderModel["id_kind"][];
 }
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
@@ -111,14 +121,25 @@ export const manifests = [
       catalog_scope: "regional",
     },
     sources: [
-      documentSource(
-        "bedrock-models",
-        "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
-        [/^[a-z0-9][a-z0-9 +._-]{2,100}$/i],
-        "display_name",
-        /(?:^|\/)model-card-[^)]+\.md$/,
-      ),
+      {
+        id: "bedrock-models",
+        url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
+        type: "official_markdown",
+        stability: "semi_structured",
+        extractor: { kind: "bedrock-model-cards" },
+        extractorVersion: "bedrock-model-cards-v1",
+        fields: ["model_id", "name"],
+        allowedHosts: ["docs.aws.amazon.com"],
+        maxResponseBytes: mebibytes(8),
+        linkedDocuments: {
+          path: /^\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/,
+          minDocuments: 100,
+          maxDocuments: 200,
+          concurrency: 8,
+        },
+      },
     ],
+    supersededIdKinds: ["display_name"],
   },
   {
     provider: {
