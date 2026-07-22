@@ -8,7 +8,7 @@ import {
 } from "../src/catalog/adapters.ts";
 import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
-import type { Provider, ProviderModel } from "../src/catalog/schema.ts";
+import { sourceKindSchema, type Provider, type ProviderModel } from "../src/catalog/schema.ts";
 import { validateProvider } from "../src/catalog/validation.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
@@ -186,6 +186,41 @@ async function geminiCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function vertexCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("vertex");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "vertex-catalog")
+    throw new Error("Missing Vertex source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "vertex-catalog", minModels: 2, maxModels: 5 },
+  };
+  const documents = [
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/gemini-test",
+      "model.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+      "lifecycle.html",
+    ],
+    [
+      "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+      "pricing.html",
+    ],
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: "<main></main>" },
+    documents: await Promise.all(
+      documents.map(async ([url, path]) => ({
+        url,
+        body: await fixture(`vertex/${path}`),
+      })),
+    ),
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -232,22 +267,16 @@ describe("model task taxonomy", () => {
 });
 
 describe("source taxonomy", () => {
-  it("keeps origin, access, and representation orthogonal", () => {
-    expect(
-      manifests.flatMap((item) =>
-        item.sources.map((source) => [source.type, source.access, source.format]),
-      ),
-    ).toContainEqual(["api", "authenticated", "json"]);
+  it("publishes a compact array of source kinds", () => {
     expect(manifest("azure").sources[0]).toMatchObject({
       type: "repository",
-      access: "public",
-      format: "markdown",
     });
     expect(manifest("amazon-bedrock").sources[0]).toMatchObject({
       type: "website",
-      access: "public",
-      format: "mixed",
+      source: ["website", "api"],
     });
+    expect(manifest("ollama").sources[0]?.type).toBe("api");
+    expect(sourceKindSchema.safeParse("runtime").success).toBe(false);
   });
 });
 
@@ -640,6 +669,88 @@ describe("Gemini adapters", () => {
     await expect(parsed("gemini", "gemini/truncated-api.json", "gemini-api")).rejects.toThrow(
       "truncated",
     );
+  });
+});
+
+describe("Vertex AI adapters", () => {
+  it("joins exact card IDs with lifecycle, capabilities, and multimodal pricing", async () => {
+    const models = await vertexCatalog();
+    const current = models.find((model) => model.model_id === "gemini-test");
+    const retired = models.find((model) => model.model_id === "gemini-old");
+    expect({
+      name: current?.name,
+      types: current?.types,
+      modalities: current?.modalities,
+      limits: current?.limits,
+      capabilities: current?.capabilities,
+      release: current?.release_date,
+      status: current?.status,
+      retiredAt: current?.retired_at,
+      meters: current?.pricing.map((rate) => rate.meter),
+      storageUnit: current?.pricing.find((rate) => rate.meter === "cache_storage")?.unit,
+      retired: {
+        status: retired?.status,
+        release: retired?.release_date,
+        retiredAt: retired?.retired_at,
+        replacement: retired?.replacement_model_ids,
+      },
+    }).toEqual({
+      name: "Gemini Test",
+      types: ["generate", "agentic", "image"],
+      modalities: { input: ["text", "image"], output: ["text", "image"] },
+      limits: {
+        context_tokens: 1_000_000,
+        max_input_tokens: 1_000_000,
+        max_output_tokens: 65_536,
+      },
+      capabilities: {
+        reasoning: true,
+        tool_call: true,
+        structured_output: "unknown",
+        streaming: "unknown",
+        batch: "unknown",
+        prompt_cache: "unknown",
+        fine_tuning: "unknown",
+        citations: "unknown",
+        code_execution: "unknown",
+        context_management: "unknown",
+        effort_control: "unknown",
+        computer_use: true,
+      },
+      release: "2026-07-21",
+      status: "active",
+      retiredAt: undefined,
+      meters: [
+        "cache_read_image",
+        "cache_read_text",
+        "cache_storage",
+        "cache_storage",
+        "cache_storage",
+        "cache_storage",
+        "input_image",
+        "input_image",
+        "input_text",
+        "input_text",
+        "output_text",
+        "output_text",
+      ],
+      storageUnit: "million_tokens_per_hour",
+      retired: {
+        status: "retired",
+        release: "2025-05-01",
+        retiredAt: "2026-05-01",
+        replacement: ["gemini-test"],
+      },
+    });
+  });
+
+  it("parses authenticated Model Garden inventory as scoped validation", async () => {
+    const model = (await parsed("vertex", "vertex/api.json", "vertex-model-garden-api"))[0];
+    expect({ id: model?.model_id, status: model?.status, scope: model?.scope }).toEqual({
+      id: "gemini-test",
+      status: "active",
+      scope: "runtime_observation",
+    });
   });
 });
 
@@ -1088,7 +1199,7 @@ describe("runtime adapters", () => {
     const source: SourceManifest = {
       id: "vllm-fixture",
       url: "https://runtime.example.test/v1/models",
-      type: "runtime",
+      type: "api",
       access: "configured",
       format: "json",
       stability: "documented",

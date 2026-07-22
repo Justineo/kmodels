@@ -4,7 +4,7 @@ import type {
   ProviderModel,
   SourceAccess,
   SourceFormat,
-  SourceType,
+  SourceKind,
 } from "./schema.ts";
 
 export type Extractor =
@@ -27,6 +27,8 @@ export type Extractor =
   | { kind: "azure-api" }
   | { kind: "gemini-catalog"; minModels: number; maxModels: number }
   | { kind: "gemini-api" }
+  | { kind: "vertex-catalog"; minModels: number; maxModels: number }
+  | { kind: "vertex-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -75,7 +77,8 @@ export type CoverageField = "limits.context_tokens" | "pricing" | "release_date"
 export interface SourceManifest {
   id: string;
   url: string;
-  type: SourceType;
+  type: SourceKind;
+  source?: SourceKind[];
   access: SourceAccess;
   format: SourceFormat;
   stability: "documented" | "semi_structured" | "undocumented";
@@ -92,12 +95,14 @@ export interface SourceManifest {
     | { scheme: "bearer"; env: string }
     | { scheme: "header"; env: string; header: string }
     | { scheme: "aws"; envs: [string, string] }
-    | { scheme: "azure"; envs: [string, string, string, string, string] };
+    | { scheme: "azure"; envs: [string, string, string, string, string] }
+    | { scheme: "google-service-account"; env: string };
   headers?: { name: string; value: string }[];
   transport?:
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
-    | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string };
+    | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string }
+    | { kind: "google-model-garden"; publishers: string[] };
   snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
@@ -340,6 +345,7 @@ export const manifests = [
         id: "bedrock-models",
         url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
         type: "website",
+        source: ["website", "api"],
         access: "public",
         format: "mixed",
         stability: "semi_structured",
@@ -833,19 +839,211 @@ export const manifests = [
       name: "Vertex AI",
       kind: "cloud_platform",
       homepage: "https://cloud.google.com/vertex-ai/",
-      docs_url: "https://cloud.google.com/vertex-ai/generative-ai/docs/supported-models",
+      docs_url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models",
       catalog_scope: "regional",
     },
     sources: [
-      documentSource(
-        "vertex-models",
-        "https://cloud.google.com/vertex-ai/generative-ai/docs/supported-models",
-        [/^(?:gemini|imagen|veo|chirp|text-embedding|claude|llama|mistral)-[a-z0-9._-]+$/i],
-        "api_id",
-        undefined,
-        ["docs.cloud.google.com"],
-      ),
+      {
+        id: "vertex-google-models",
+        url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/google-models",
+        type: "website",
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "vertex-catalog", minModels: 25, maxModels: 90 },
+        extractorVersion: "vertex-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "availability",
+          "status",
+          "is_deprecated",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["docs.cloud.google.com", "cloud.google.com"],
+        maxResponseBytes: mebibytes(48),
+        scope: "region",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          indexFormat: "html",
+          path: /^\/gemini-enterprise-agent-platform\/models\/(?:gemini\/(?!gemini-robotics-er$)|veo\/|lyria\/)[a-z0-9-]+$/,
+          minDocuments: 20,
+          maxDocuments: 40,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "lifecycle",
+              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "imagen",
+              url: "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/4-0-generate",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "pricing",
+              url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+              maxResponseBytes: mebibytes(6),
+            },
+          ],
+        },
+      },
+      {
+        id: "vertex-partner-models",
+        url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/use-partner-models",
+        type: "website",
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "vertex-catalog", minModels: 20, maxModels: 80 },
+        extractorVersion: "vertex-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "availability",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["docs.cloud.google.com", "cloud.google.com"],
+        maxResponseBytes: mebibytes(48),
+        scope: "region",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          indexFormat: "html",
+          path: /^\/gemini-enterprise-agent-platform\/models\/partner-models\/(?:claude|grok|mistral|llama)\/[a-z0-9-]+$/,
+          minDocuments: 20,
+          maxDocuments: 45,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "deprecations",
+              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/partner-models",
+              maxResponseBytes: mebibytes(4),
+            },
+            {
+              id: "pricing",
+              url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+              maxResponseBytes: mebibytes(6),
+            },
+          ],
+        },
+      },
+      {
+        id: "vertex-open-models",
+        url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/open-models/choose-serving-option",
+        type: "website",
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "vertex-catalog", minModels: 15, maxModels: 60 },
+        extractorVersion: "vertex-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "availability",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+        ],
+        allowedHosts: ["docs.cloud.google.com", "cloud.google.com"],
+        maxResponseBytes: mebibytes(40),
+        scope: "region",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          indexFormat: "html",
+          path: /^\/gemini-enterprise-agent-platform\/models\/maas\/[a-z0-9-]+\/[a-z0-9-]+$/,
+          minDocuments: 15,
+          maxDocuments: 40,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "deprecations",
+              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/open-models",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "pricing",
+              url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+              maxResponseBytes: mebibytes(6),
+            },
+          ],
+        },
+      },
+      {
+        id: "vertex-model-garden-api",
+        url: "https://aiplatform.googleapis.com/v1beta1/publishers/google/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "vertex-api" },
+        extractorVersion: "vertex-api-v1",
+        fields: ["model_id", "status", "is_deprecated"],
+        allowedHosts: ["aiplatform.googleapis.com", "oauth2.googleapis.com"],
+        maxResponseBytes: mebibytes(32),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "google-service-account", env: "GOOGLE_SERVICE_ACCOUNT_JSON" },
+        transport: {
+          kind: "google-model-garden",
+          publishers: [
+            "google",
+            "anthropic",
+            "xai",
+            "ai21",
+            "mistralai",
+            "meta",
+            "deepseek-ai",
+            "qwen",
+            "zai-org",
+            "moonshotai",
+            "minimaxai",
+            "openai",
+          ],
+        },
+        snapshotPolicy: "none",
+      },
     ],
+    warnOnMissing: {
+      sourceId: "vertex-google-models",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
@@ -1001,7 +1199,7 @@ export const manifests = [
       {
         id: "ollama-cloud-models",
         url: "https://ollama.com/api/tags",
-        type: "runtime",
+        type: "api",
         access: "configured",
         format: "json",
         stability: "undocumented",

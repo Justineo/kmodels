@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createSign } from "node:crypto";
 import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
 import { load } from "cheerio";
@@ -28,6 +29,19 @@ const azureMeterSchema = z.object({
 const azurePricesPageSchema = z.object({
   Items: z.array(z.unknown()),
   NextPageLink: z.string().nullable().optional(),
+});
+const googleServiceAccountSchema = z.object({
+  type: z.literal("service_account"),
+  project_id: z.string().min(1),
+  private_key_id: z.string().min(1).optional(),
+  private_key: z.string().min(1),
+  client_email: z.email(),
+  token_uri: z.literal("https://oauth2.googleapis.com/token"),
+});
+const googleTokenSchema = z.object({ access_token: z.string().min(1) });
+const googleModelsPageSchema = z.object({
+  publisherModels: z.array(z.unknown()),
+  nextPageToken: z.string().min(1).optional(),
 });
 
 export const sourceStateSchema = z.object({
@@ -166,7 +180,11 @@ async function curlRequest(
           : "Accept: */*",
   ];
   if (source.auth !== undefined) {
-    if (source.auth.scheme === "aws" || source.auth.scheme === "azure")
+    if (
+      source.auth.scheme === "aws" ||
+      source.auth.scheme === "azure" ||
+      source.auth.scheme === "google-service-account"
+    )
       throw new Error("Cloud sources require their reviewed authenticated transport");
     const credential = process.env[source.auth.env];
     if (credential === undefined || credential.trim() === "")
@@ -202,7 +220,8 @@ function environment(name: string): string {
   return value;
 }
 
-async function azureCurl(
+async function cloudCurl(
+  label: string,
   url: URL,
   maxResponseBytes: number,
   headers: string[],
@@ -241,7 +260,7 @@ async function azureCurl(
       throw new Error("Azure response exceeded byte limit");
     return result.stdout;
   } catch {
-    throw new TransientFetchError("Azure transport failure");
+    throw new TransientFetchError(`${label} transport failure`);
   }
 }
 
@@ -294,7 +313,8 @@ async function fetchAzureModels(
   const tokenUrl = new URL(`/${tenant}/oauth2/v2.0/token`, "https://login.microsoftonline.com");
   const token = azureTokenSchema.parse(
     JSON.parse(
-      await azureCurl(
+      await cloudCurl(
+        "Azure",
         tokenUrl,
         1024 * 1024,
         ["Accept: application/json"],
@@ -316,7 +336,7 @@ async function fetchAzureModels(
   for (let pageCount = 0; next !== undefined && pageCount < 20; pageCount += 1) {
     const page = azureModelsPageSchema.parse(
       JSON.parse(
-        await azureCurl(next, source.maxResponseBytes, [
+        await cloudCurl("Azure", next, source.maxResponseBytes, [
           "Accept: application/json",
           `Authorization: Bearer ${token.access_token}`,
         ]),
@@ -357,7 +377,9 @@ async function fetchAzureModels(
     for (let pageCount = 0; pricePage !== undefined && pageCount < 20; pageCount += 1) {
       const page = azurePricesPageSchema.parse(
         JSON.parse(
-          await azureCurl(pricePage, source.maxResponseBytes, ["Accept: application/json"]),
+          await cloudCurl("Azure", pricePage, source.maxResponseBytes, [
+            "Accept: application/json",
+          ]),
         ),
       );
       prices.push(...page.Items);
@@ -373,6 +395,104 @@ async function fetchAzureModels(
   const body = JSON.stringify({ location, models, prices });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure inventory bundle exceeded byte limit");
+  return body;
+}
+
+function base64url(value: string): string {
+  return Buffer.from(value).toString("base64url");
+}
+
+async function googleAccessToken(
+  source: SourceManifest,
+): Promise<{ token: string; project: string }> {
+  const auth = source.auth;
+  if (auth?.scheme !== "google-service-account")
+    throw new Error("Google transport requires service-account credentials");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(environment(auth.env));
+  } catch {
+    throw new Error("Google service-account JSON is invalid");
+  }
+  const account = googleServiceAccountSchema.parse(parsed);
+  const now = Math.floor(Date.now() / 1000);
+  const header = base64url(
+    JSON.stringify({
+      alg: "RS256",
+      typ: "JWT",
+      ...(account.private_key_id === undefined ? {} : { kid: account.private_key_id }),
+    }),
+  );
+  const claim = base64url(
+    JSON.stringify({
+      iss: account.client_email,
+      scope: "https://www.googleapis.com/auth/cloud-platform",
+      aud: account.token_uri,
+      iat: now,
+      exp: now + 3600,
+    }),
+  );
+  const unsigned = `${header}.${claim}`;
+  const signature = createSign("RSA-SHA256").update(unsigned).end().sign(account.private_key);
+  const assertion = `${unsigned}.${signature.toString("base64url")}`;
+  const token = googleTokenSchema.parse(
+    JSON.parse(
+      await cloudCurl(
+        "Google",
+        new URL(account.token_uri),
+        1024 * 1024,
+        ["Accept: application/json"],
+        [
+          { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
+          { name: "assertion", value: assertion },
+        ],
+      ),
+    ),
+  );
+  return { token: token.access_token, project: account.project_id };
+}
+
+async function fetchGoogleModelGarden(
+  source: SourceManifest,
+  publishers: string[],
+): Promise<string> {
+  const credential = await googleAccessToken(source);
+  const results = await Promise.all(
+    publishers.map(async (publisher) => {
+      if (!/^[a-z0-9-]+$/.test(publisher)) throw new Error("Invalid Model Garden publisher");
+      const models: unknown[] = [];
+      let pageToken: string | undefined;
+      for (let pageCount = 0; pageCount < 20; pageCount += 1) {
+        const url = new URL(
+          `/v1beta1/publishers/${publisher}/models`,
+          "https://aiplatform.googleapis.com",
+        );
+        url.searchParams.set("pageSize", "1000");
+        url.searchParams.set("view", "PUBLISHER_MODEL_VIEW_BASIC");
+        if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
+        const page = googleModelsPageSchema.parse(
+          JSON.parse(
+            await cloudCurl("Google", url, source.maxResponseBytes, [
+              "Accept: application/json",
+              `Authorization: Bearer ${credential.token}`,
+              `x-goog-user-project: ${credential.project}`,
+            ]),
+          ),
+        );
+        models.push(...page.publisherModels);
+        if (models.length > 5_000) throw new Error("Model Garden publisher exceeded item limit");
+        pageToken = page.nextPageToken;
+        if (pageToken === undefined) break;
+        if (pageCount === 19) throw new Error("Model Garden publisher exceeded page limit");
+      }
+      return { publisher, models };
+    }),
+  );
+  if (results.every((result) => result.models.length === 0))
+    throw new Error("Vertex Model Garden API returned no models");
+  const body = JSON.stringify({ publishers: results });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Vertex Model Garden inventory exceeded byte limit");
   return body;
 }
 
@@ -580,6 +700,18 @@ export async function fetchSource(
       source.transport.subscriptionEnv,
       source.transport.locationEnv,
     );
+    return {
+      body,
+      contentHash: sha256(body),
+      snapshotUri: undefined,
+      etag: undefined,
+      lastModified: undefined,
+      notModified: false,
+      dependencies: [],
+    };
+  }
+  if (source.transport?.kind === "google-model-garden") {
+    const body = await fetchGoogleModelGarden(source, source.transport.publishers);
     return {
       body,
       contentHash: sha256(body),

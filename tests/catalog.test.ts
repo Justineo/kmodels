@@ -32,6 +32,10 @@ describe("generated static catalog", () => {
     for (const source of catalog.sources) {
       const configured = manifestsBySource.get(source.id);
       expect(configured?.allowedHosts).toContain(new URL(source.url).hostname);
+      expect(source.source.length).toBeGreaterThan(0);
+      expect(source).not.toHaveProperty("source_type");
+      expect(source).not.toHaveProperty("access");
+      expect(source).not.toHaveProperty("format");
     }
   });
 

@@ -331,8 +331,10 @@ async function collectProvider(
   observedAt: string,
 ): Promise<ProviderResult> {
   const oldModels = previousModels(previous, manifest.provider.id);
+  const currentSourceIds = new Set(manifest.sources.map((source) => source.id));
   const comparableOldModels = oldModels.filter(
     (model) =>
+      model.source_refs.some((sourceId) => currentSourceIds.has(sourceId)) &&
       !manifest.supersededIdKinds?.includes(model.id_kind) &&
       !manifest.supersededModelIds?.includes(model.model_id),
   );
@@ -428,9 +430,7 @@ async function collectProvider(
         id: source.id,
         provider_id: manifest.provider.id,
         url: source.url,
-        source_type: source.type,
-        access: source.access,
-        format: source.format,
+        source: source.source ?? [source.type],
         stability: source.stability,
         scope: source.scope ?? "global",
         exhaustive: source.exhaustive ?? false,
@@ -626,6 +626,12 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     warnings: [availabilityWarning, ...results.flatMap((result) => result.warnings)],
   });
 
+  const configuredSourceIds = manifests.flatMap((manifest) =>
+    manifest.sources.map((source) => source.id),
+  );
+  for (const key of Object.keys(state.sources))
+    if (!configuredSourceIds.some((sourceId) => key === sourceId || key.startsWith(`${sourceId}/`)))
+      delete state.sources[key];
   await writeJson(join(rootDirectory, "data/fetch-state.json"), state);
   await writeJson(
     join(rootDirectory, "data/quarantine.json"),

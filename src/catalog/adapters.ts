@@ -12,6 +12,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import { classifyModelTypes } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
+import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
 import {
   modalitySchema,
   type Modality,
@@ -1017,6 +1018,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseGeminiCatalog(input);
     case "gemini-api":
       return parseGeminiApi(input);
+    case "vertex-catalog":
+      return parseVertexCatalog(input);
+    case "vertex-api":
+      return parseVertexApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }
