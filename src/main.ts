@@ -172,7 +172,7 @@ function showDetails(model: ProviderModel): void {
     link.href = source.url;
     link.target = "_blank";
     link.rel = "noreferrer";
-    link.textContent = `${source.id} · ${source.source_type} · ${source.access} · ${source.format} ↗`;
+    link.textContent = `${source.id} · ${source.source.join(" + ")} ↗`;
     item.append(link);
     sourceList.append(item);
   }

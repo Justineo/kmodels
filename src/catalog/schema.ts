@@ -28,7 +28,7 @@ export const modelTypeSchema = z.enum([
 
 export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
-export const sourceTypeSchema = z.enum(["api", "website", "repository", "runtime"]);
+export const sourceKindSchema = z.enum(["api", "website", "repository"]);
 export const sourceAccessSchema = z.enum(["public", "authenticated", "configured"]);
 export const sourceFormatSchema = z.enum(["json", "html", "markdown", "mixed"]);
 
@@ -199,13 +199,14 @@ export const providerSchema = z.object({
   catalog_version: z.string().optional(),
 });
 
-export const sourceRecordSchema = z.object({
+export const sourceRecordSchema = z.strictObject({
   id: z.string().min(1),
   provider_id: z.string().min(1),
   url: z.url(),
-  source_type: sourceTypeSchema,
-  access: sourceAccessSchema,
-  format: sourceFormatSchema,
+  source: z
+    .array(sourceKindSchema)
+    .min(1)
+    .transform((values) => [...new Set(values)]),
   stability: z.enum(["documented", "semi_structured", "undocumented"]),
   scope: z.enum(["global", "account", "region", "workspace", "runtime"]).default("global"),
   exhaustive: z.boolean().default(false),
@@ -273,7 +274,7 @@ export type ProviderModel = z.infer<typeof providerModelSchema>;
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
 export type SourceAccess = z.infer<typeof sourceAccessSchema>;
 export type SourceFormat = z.infer<typeof sourceFormatSchema>;
-export type SourceType = z.infer<typeof sourceTypeSchema>;
+export type SourceKind = z.infer<typeof sourceKindSchema>;
 
 export function unknownCapabilities(): ProviderModel["capabilities"] {
   return {
