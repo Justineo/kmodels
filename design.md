@@ -1,7 +1,7 @@
 # Kmodels design
 
-Status: implemented baseline  
-Last decision update: 2026-07-21
+Status: implemented compact revision
+Last decision update: 2026-07-22
 
 ## Product boundary
 
@@ -33,11 +33,11 @@ The repository ships two things from one TypeScript project:
 
 ## Website decisions
 
-Visual thesis: a precise paper ledger—warm neutral canvas, black typography, hairline rules and one signal-green status color.
+Visual thesis: a compact monochrome index—white canvas, near-black text, cool-gray rules and green reserved for source freshness.
 
-Content plan: catalog status and freshness, search/filter controls, the model ledger, then methodology/source disclosure. This is an operational surface, so there is no marketing hero, card grid, decorative illustration or fabricated proof point.
+Content plan: one narrow status bar, one filter row and the model index. There is no hero, methodology section, footer narrative, marketing copy, card grid or decorative imagery. Provenance remains available through model details and the raw JSON link.
 
-Interaction thesis: the ledger enters once after validation, filter changes cross-fade the count and rows, and model details open in a quiet native dialog. Sticky controls and table headings maintain orientation. All motion is removed under `prefers-reduced-motion`.
+Interaction thesis: filter feedback is immediate, rows use a quiet hover state, and model details open in a compact native dialog. The app header, controls and table heading remain sticky; all motion is removed under `prefers-reduced-motion`.
 
 The CSS begins with a modern reset, uses system fonts, and remains usable without JavaScript through an explanatory HTML shell. JavaScript writes external values with `textContent`, not HTML interpolation.
 
