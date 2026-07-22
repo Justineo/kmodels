@@ -144,6 +144,22 @@ async function xaiCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+function huggingFaceRouterSource(value: ProviderManifest): SourceManifest {
+  const configured = value.sources.find((source) => source.id === "huggingface-router");
+  if (configured === undefined || configured.extractor.kind !== "huggingface-router")
+    throw new Error("Missing Hugging Face router source");
+  return {
+    ...configured,
+    extractor: { kind: "huggingface-router", minModels: 1, maxModels: 10 },
+  };
+}
+
+async function huggingFaceRouter(path: string): Promise<ProviderModel[]> {
+  const value = manifest("huggingface");
+  const source = huggingFaceRouterSource(value);
+  return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
+}
+
 async function azureCatalog(): Promise<ProviderModel[]> {
   const value = manifest("azure");
   const configured = value.sources[0];
@@ -1848,16 +1864,28 @@ describe("Cerebras adapter", () => {
 });
 
 describe("Hugging Face adapter", () => {
-  it("keeps model-level fields only when route facts agree", async () => {
-    const model = (await parsed("huggingface", "huggingface/normal.json"))[0];
-    expect(model?.limits.context_tokens).toBe(65536);
-    expect(model?.capabilities.tool_call).toBe(true);
-    expect(model?.types).toEqual(["generate"]);
-    expect(model?.modalities.input).toEqual(["text", "image"]);
+  it("parses every concrete mapping and unions non-exclusive tasks", async () => {
+    const models = await parsed("huggingface", "huggingface/normal.json");
+    const multi = models.find((model) => model.model_id === "org/multi-model");
+    const embedding = models.find((model) => model.model_id === "org/embed-model");
+    expect(models.map((model) => model.model_id)).toEqual([
+      "org/embed-model",
+      "org/model-1",
+      "org/multi-model",
+    ]);
+    expect(multi?.types).toEqual(["image", "video"]);
+    expect(multi?.modalities).toEqual({
+      input: ["text", "image"],
+      output: ["image", "video"],
+    });
+    expect(embedding?.types).toEqual(["embeddings"]);
+    expect(embedding?.modalities.output).toEqual(["embedding"]);
   });
 
-  it("keeps every route price separate", async () => {
-    const model = (await parsed("huggingface", "huggingface/pricing.json"))[0];
+  it("keeps every router price and route-derived fact", async () => {
+    const models = await huggingFaceRouter("huggingface/pricing.json");
+    const model = models.find((item) => item.model_id === "org/model-1");
+    const free = models.find((item) => item.model_id === "org/free-model");
     expect({
       id: model?.model_id,
       input_rates: model?.pricing.filter((rate) => rate.meter === "input_text").length,
@@ -1867,10 +1895,55 @@ describe("Hugging Face adapter", () => {
       ].sort(),
       pricing_status: model?.pricing_status,
     }).toEqual(await expected("huggingface/expected.json"));
+    expect(model?.limits.context_tokens).toBe(131072);
+    expect(model?.capabilities.tool_call).toBe(true);
+    expect(model?.capabilities.structured_output).toBe(true);
+    expect(model?.modalities.input).toEqual(["text", "image"]);
+    expect(model?.release_date).toBeUndefined();
+    expect(
+      free?.pricing.map((rate) => [rate.meter, rate.price, rate.conditions.promotion]),
+    ).toEqual([
+      ["input_text", "0", true],
+      ["output_text", "0", true],
+    ]);
   });
 
-  it("rejects models without a live route record", async () => {
-    await expect(parsed("huggingface", "huggingface/broken.json")).rejects.toThrow("schema drift");
+  it("retains every catalog and router source that matches a model", async () => {
+    const value = manifest("huggingface");
+    const first = value.sources.find((source) => source.id === "huggingface-cerebras");
+    const second = value.sources.find((source) => source.id === "huggingface-cohere");
+    const router = huggingFaceRouterSource(value);
+    if (first === undefined || second === undefined)
+      throw new Error("Missing Hugging Face sources");
+    const body = await fixture("huggingface/normal.json");
+    const routeBody = await fixture("huggingface/pricing.json");
+    const groups = [first, second].map((source) => ({
+      source,
+      models: parseSource({ provider: provider(value), source, body, observedAt }),
+    }));
+    const overlay = parseSource({
+      provider: provider(value),
+      source: router,
+      body: routeBody,
+      observedAt,
+    });
+    const models = applyGroups(
+      applyGroups([], groups, true),
+      [{ source: router, models: overlay }],
+      false,
+    );
+    expect(models.find((model) => model.model_id === "org/model-1")?.source_refs).toEqual([
+      "huggingface-cerebras",
+      "huggingface-cohere",
+      "huggingface-router",
+    ]);
+  });
+
+  it("rejects malformed mappings and non-live router routes", async () => {
+    await expect(parsed("huggingface", "huggingface/broken.json")).rejects.toThrow(
+      "Expected a Hugging Face repository ID",
+    );
+    await expect(huggingFaceRouter("huggingface/broken-router.json")).rejects.toThrow();
   });
 });
 

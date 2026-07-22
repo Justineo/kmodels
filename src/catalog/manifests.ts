@@ -16,7 +16,8 @@ export type Extractor =
   | { kind: "anthropic-api" }
   | { kind: "vercel-catalog"; minModels: number; maxModels: number }
   | { kind: "cerebras" }
-  | { kind: "huggingface" }
+  | { kind: "huggingface-mapping"; minModels: number; maxModels: number }
+  | { kind: "huggingface-router"; minModels: number; maxModels: number }
   | { kind: "ollama" }
   | { kind: "vllm" }
   | { kind: "bedrock-catalog" }
@@ -180,6 +181,48 @@ const xaiApiSource = (
   optional: true,
   auth: { scheme: "bearer", env: "XAI_API_KEY" },
   snapshotPolicy: "none",
+});
+
+const huggingFaceProviders = [
+  "cerebras",
+  "cohere",
+  "deepinfra",
+  "fal-ai",
+  "featherless-ai",
+  "fireworks-ai",
+  "groq",
+  "hf-inference",
+  "novita",
+  "nscale",
+  "ovhcloud",
+  "publicai",
+  "replicate",
+  "scaleway",
+  "together",
+  "wavespeed",
+  "zai-org",
+  "baseten",
+] as const;
+
+const huggingFaceSource = (provider: (typeof huggingFaceProviders)[number]): SourceManifest => ({
+  id: `huggingface-${provider}`,
+  url: `https://huggingface.co/api/partners/${provider}/models?status=live`,
+  type: "api",
+  access: "public",
+  format: "json",
+  stability: "documented",
+  extractor: {
+    kind: "huggingface-mapping",
+    minModels: provider === "baseten" ? 0 : 1,
+    maxModels: 30_000,
+  },
+  extractorVersion: "huggingface-mapping-v1",
+  fields: ["model_id", "types", "modalities", "status"],
+  allowedHosts: ["huggingface.co"],
+  maxResponseBytes: mebibytes(8),
+  scope: "global",
+  exhaustive: true,
+  role: "catalog",
 });
 
 export const manifests = [
@@ -1497,20 +1540,29 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
+      ...huggingFaceProviders.map(huggingFaceSource),
       {
-        id: "huggingface-models",
+        id: "huggingface-router",
         url: "https://router.huggingface.co/v1/models",
         type: "api",
         access: "public",
         format: "json",
         stability: "documented",
-        extractor: { kind: "huggingface" },
-        extractorVersion: "huggingface-v1",
-        fields: ["model_id", "modalities", "capabilities", "limits", "pricing"],
+        extractor: { kind: "huggingface-router", minModels: 50, maxModels: 500 },
+        extractorVersion: "huggingface-router-v1",
+        fields: ["types", "modalities", "capabilities", "limits", "pricing", "status"],
         allowedHosts: ["router.huggingface.co"],
         maxResponseBytes: mebibytes(16),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
       },
     ],
+    warnOnMissing: {
+      sourceId: "huggingface-router",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {

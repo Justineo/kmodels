@@ -6,6 +6,7 @@ import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
+import { parseHuggingFaceMapping, parseHuggingFaceRouter } from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
 import { parseMistralApi, parseMistralCatalog } from "./mistral.ts";
 import { linkedBundleSchema } from "./bundle.ts";
@@ -61,27 +62,6 @@ const cerebrasItemSchema = z.object({
     .optional(),
 });
 
-const huggingFaceRouteSchema = z.object({
-  provider: z.string().min(1),
-  context_length: z.number().int().nonnegative().optional(),
-  supports_tools: z.boolean().optional(),
-  supports_structured_output: z.boolean().optional(),
-  pricing: z.object({ input: decimalValue.optional(), output: decimalValue.optional() }).optional(),
-});
-
-const huggingFaceItemSchema = z.object({
-  id: z.string().min(1),
-  owned_by: z.string().optional(),
-  created: z.number().int().nonnegative().optional(),
-  architecture: z
-    .object({
-      input_modalities: z.array(z.string()).optional(),
-      output_modalities: z.array(z.string()).optional(),
-    })
-    .optional(),
-  providers: z.array(huggingFaceRouteSchema).min(1),
-});
-
 const ollamaItemSchema = z.object({
   name: z.string().min(1),
   model: z.string().min(1).optional(),
@@ -117,16 +97,6 @@ function unixDate(seconds: number | undefined): string | undefined {
 
 function unique<T>(items: T[]): T[] {
   return [...new Set(items)];
-}
-
-function modalities(values: string[] | undefined): Modality[] {
-  if (values === undefined) return [];
-  return unique(
-    values.flatMap((value) => {
-      const parsed = modalitySchema.safeParse(value);
-      return parsed.success ? [parsed.data] : [];
-    }),
-  );
 }
 
 function tokenRate(
@@ -764,90 +734,6 @@ function parseCerebras(input: ParseInput): ProviderModel[] {
   });
 }
 
-function consensus(values: (boolean | undefined)[]): boolean | "unknown" {
-  const known = values.filter((value) => value !== undefined);
-  if (known.length === 0) return "unknown";
-  if (known.every((value) => value)) return true;
-  if (known.every((value) => !value)) return false;
-  return "unknown";
-}
-
-function parseHuggingFace(input: ParseInput): ProviderModel[] {
-  const list = listSchema.parse(parseJson(input.body));
-  const results = list.data.map((item) => huggingFaceItemSchema.safeParse(item));
-  const invalid = results.filter((result) => !result.success).length;
-  if (list.data.length === 0 || invalid / list.data.length > 0.05)
-    throw new Error("Hugging Face model schema drift");
-
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
-    const prices: PriceRate[] = [];
-    for (const route of item.providers) {
-      if (route.pricing?.input !== undefined)
-        prices.push(
-          tokenRate(
-            "input_text",
-            route.pricing.input,
-            input.source.id,
-            "million_tokens",
-            { route_provider: route.provider },
-            false,
-          ),
-        );
-      if (route.pricing?.output !== undefined)
-        prices.push(
-          tokenRate(
-            "output_text",
-            route.pricing.output,
-            input.source.id,
-            "million_tokens",
-            { route_provider: route.provider },
-            false,
-          ),
-        );
-    }
-    const inputModalities = modalities(item.architecture?.input_modalities);
-    const outputModalities = modalities(item.architecture?.output_modalities);
-    const contexts = unique(
-      item.providers.flatMap((route) =>
-        route.context_length === undefined ? [] : [route.context_length],
-      ),
-    );
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.id,
-          name: item.id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        types: classifyModelTypes({
-          modelId: item.id,
-          name: item.id,
-          rawType: undefined,
-          modalities: { input: inputModalities, output: outputModalities },
-          fallback: "generate",
-        }),
-        modalities: { input: inputModalities, output: outputModalities },
-        capabilities: {
-          ...unknownCapabilities(),
-          tool_call: consensus(item.providers.map((route) => route.supports_tools)),
-          structured_output: consensus(
-            item.providers.map((route) => route.supports_structured_output),
-          ),
-        },
-        limits: { context_tokens: contexts.length === 1 ? contexts[0] : undefined },
-        release_date: unixDate(item.created),
-        status: "active",
-        pricing_status: prices.length > 0 ? "published" : "unknown",
-        pricing: prices,
-      },
-    ];
-  });
-}
-
 function documentFragments(body: string, source: SourceManifest): string[] {
   const fragments: string[] = [];
   const $ = load(body);
@@ -1000,8 +886,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseVercelCatalog(input);
     case "cerebras":
       return parseCerebras(input);
-    case "huggingface":
-      return parseHuggingFace(input);
+    case "huggingface-mapping":
+      return parseHuggingFaceMapping(input);
+    case "huggingface-router":
+      return parseHuggingFaceRouter(input);
     case "ollama":
       return parseOllama(input);
     case "vllm":

@@ -2,10 +2,36 @@
   "data": [
     {
       "id": "org/model-1",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "org",
+      "architecture": { "input_modalities": ["text", "image"], "output_modalities": ["text"] },
       "providers": [
-        { "provider": "route-a", "pricing": { "input": 0.25, "output": 1.5 } },
-        { "provider": "route-b", "pricing": { "input": 0.3, "output": 1.7 } }
+        {
+          "provider": "route-a",
+          "status": "live",
+          "context_length": 65536,
+          "supports_tools": true,
+          "supports_structured_output": false,
+          "pricing": { "input": 0.25, "output": 1.5 }
+        },
+        {
+          "provider": "route-b",
+          "status": "live",
+          "context_length": 131072,
+          "supports_tools": false,
+          "supports_structured_output": true,
+          "pricing": { "input": 0.3, "output": 1.7 }
+        }
       ]
+    },
+    {
+      "id": "org/free-model",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "org",
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "providers": [{ "provider": "free-route", "status": "live", "is_free": true }]
     }
   ]
 }
