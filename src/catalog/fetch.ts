@@ -3,6 +3,7 @@ import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
+import { fetchBedrockInventory } from "./bedrock.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { readSnapshot, rootDirectory, sha256, writeSnapshot } from "./io.ts";
 
@@ -120,6 +121,8 @@ async function curlRequest(
       : "Accept: text/html, text/markdown;q=0.9",
   ];
   if (source.auth !== undefined) {
+    if (source.auth.scheme === "aws")
+      throw new Error("AWS sources require their reviewed signed transport");
     const credential = process.env[source.auth.env];
     if (credential === undefined || credential.trim() === "")
       throw new Error(`Missing credential ${source.auth.env}`);
@@ -137,11 +140,15 @@ async function curlRequest(
   if (previous?.snapshotUri !== undefined && previous.lastModified !== undefined)
     args.push("--header", `If-Modified-Since: ${previous.lastModified}`);
   args.push(url.href);
-  const result = await execute("curl", args, {
-    encoding: "utf8",
-    maxBuffer: source.maxResponseBytes + 64 * 1024,
-  });
-  return curlResponse(result.stdout);
+  try {
+    const result = await execute("curl", args, {
+      encoding: "utf8",
+      maxBuffer: source.maxResponseBytes + 64 * 1024,
+    });
+    return curlResponse(result.stdout);
+  } catch {
+    throw new TransientFetchError("Transient transport failure");
+  }
 }
 
 async function request(
@@ -288,14 +295,19 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
   return values;
 }
 
-function linkedSource(source: SourceManifest, key: string, url: URL): SourceManifest {
+function linkedSource(
+  source: SourceManifest,
+  key: string,
+  url: URL,
+  maxResponseBytes = source.linkedDocuments?.maxDocumentBytes ?? source.maxResponseBytes,
+): SourceManifest {
   const { linkedDocuments: _linkedDocuments, ...base } = source;
   void _linkedDocuments;
   return {
     ...base,
     id: key,
     url: url.href,
-    maxResponseBytes: source.linkedDocuments?.maxDocumentBytes ?? source.maxResponseBytes,
+    maxResponseBytes,
   };
 }
 
@@ -315,6 +327,19 @@ export async function fetchSource(
   source: SourceManifest,
   states: Record<string, SourceState>,
 ): Promise<FetchResult> {
+  if (source.transport?.kind === "aws-bedrock") {
+    const body = await fetchBedrockInventory(source.transport.region, source.maxResponseBytes);
+    return {
+      body,
+      contentHash: sha256(body),
+      snapshotUri: undefined,
+      etag: undefined,
+      lastModified: undefined,
+      notModified: false,
+      dependencies: [],
+    };
+  }
+
   const crawl = source.linkedDocuments;
   if (crawl === undefined) {
     const payload = await fetchPayload(providerId, source, states[source.id]);
@@ -325,13 +350,42 @@ export async function fetchSource(
   const indexSource = linkedSource(source, indexKey, new URL(source.url));
   const index = await fetchPayload(providerId, indexSource, states[indexKey] ?? states[source.id]);
   const urls = linkedDocumentUrls(index.body, source);
-  const documents = await batches(urls, crawl.concurrency, async (url) => {
+  const discovered = urls.map((url) => {
     const filename = url.pathname.split("/").at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
     const stem = filename.endsWith(".md") ? filename.slice(0, -3) : filename;
-    const key = `${source.id}/${stem}`;
-    const payload = await fetchPayload(providerId, linkedSource(source, key, url), states[key]);
-    return { key, url: url.href, payload };
+    return {
+      key: `${source.id}/${stem}`,
+      url,
+      maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
+    };
+  });
+  const configured = (crawl.documents ?? []).map((document) => {
+    const url = checkedUrl(document.url, source);
+    if (
+      url.port !== "" ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.search !== "" ||
+      url.hash !== ""
+    )
+      throw new Error("Reviewed companion URL contained unsupported URL components");
+    return {
+      key: `${source.id}/${document.id}`,
+      url,
+      maxResponseBytes: document.maxResponseBytes,
+    };
+  });
+  const entries = [...discovered, ...configured];
+  if (new Set(entries.map((entry) => entry.key)).size !== entries.length)
+    throw new Error("Linked document keys must be unique");
+  const documents = await batches(entries, crawl.concurrency, async (entry) => {
+    const payload = await fetchPayload(
+      providerId,
+      linkedSource(source, entry.key, entry.url, entry.maxResponseBytes),
+      states[entry.key],
+    );
+    return { key: entry.key, url: entry.url.href, payload };
   });
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },

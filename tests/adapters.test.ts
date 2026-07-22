@@ -198,6 +198,7 @@ describe("OpenAI adapters", () => {
         code_execution: "unknown",
         context_management: "unknown",
         effort_control: "unknown",
+        computer_use: "unknown",
       },
       status: "active",
       embedding_type: ["embedding"],
@@ -361,8 +362,56 @@ describe("document adapter", () => {
       },
       { model_id: "cohere.command-r-v1:0", id_kind: "api_id", name: "Command R" },
     ]);
+    const runtime = models.find(
+      (model) => model.model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
+    );
     expect(models[0]?.types).toEqual(["text_generation"]);
     expect(models[0]?.modalities.input).toEqual(["text", "image"]);
+    expect(runtime?.aliases).toEqual([
+      "global.anthropic.claude-haiku-4-5-20251001-v1:0",
+      "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    ]);
+    expect(models[0]?.limits).toEqual({ context_tokens: 200_000, max_output_tokens: 64_000 });
+    expect(models[0]?.release_date).toBe("2025-10-15");
+    expect(models[0]?.capabilities.reasoning).toBe(true);
+    expect(models[0]?.capabilities.prompt_cache).toBe(true);
+    expect(runtime?.pricing).toEqual([
+      expect.objectContaining({
+        meter: "input_text",
+        price: "0.8",
+        unit: "million_tokens",
+        conditions: expect.objectContaining({
+          region: "us-east-1",
+          endpoint: "bedrock-runtime",
+          service_tier: "standard",
+        }),
+      }),
+    ]);
+    expect(models[2]?.status).toBe("deprecated");
+    expect(models[2]?.aliases).toEqual(["us.cohere.command-r-v1:0"]);
+  });
+
+  it("parses the signed regional inventory as a scoped structured overlay", async () => {
+    const model = (
+      await parsed("amazon-bedrock", "document/bedrock-api.json", "bedrock-api-us-east-1")
+    )[0];
+    expect({
+      id: model?.model_id,
+      name: model?.name,
+      release: model?.release_date,
+      modalities: model?.modalities,
+      streaming: model?.capabilities.streaming,
+      fineTuning: model?.capabilities.fine_tuning,
+      status: model?.status,
+    }).toEqual({
+      id: "anthropic.claude-haiku-4-5-20251001-v1:0",
+      name: "Claude Haiku 4.5",
+      release: "2025-10-15",
+      modalities: { input: ["text", "image"], output: ["text"] },
+      streaming: true,
+      fineTuning: true,
+      status: "active",
+    });
   });
 });
 
