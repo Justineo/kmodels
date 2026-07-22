@@ -4,8 +4,14 @@ export function scaleDecimal(value: string, places: number): string {
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);
   const [whole = "", fraction = ""] = value.split(".");
   const digits = `${whole}${fraction}`;
-  const point = whole.length + places;
-  const padded = point >= digits.length ? `${digits}${"0".repeat(point - digits.length)}` : digits;
+  let point = whole.length + places;
+  const padded =
+    point <= 0
+      ? `${"0".repeat(1 - point)}${digits}`
+      : point >= digits.length
+        ? `${digits}${"0".repeat(point - digits.length)}`
+        : digits;
+  if (point <= 0) point = 1;
   const integer = padded.slice(0, point).replace(/^0+(?=\d)/, "") || "0";
   const decimals = padded.slice(point).replace(/0+$/, "");
   return decimals ? `${integer}.${decimals}` : integer;

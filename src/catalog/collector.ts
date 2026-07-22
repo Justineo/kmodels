@@ -80,7 +80,10 @@ function sourceState(
   };
 }
 
-type SourceGroup = { source: SourceManifest; models: ProviderModel[] };
+export interface SourceGroup {
+  source: SourceManifest;
+  models: ProviderModel[];
+}
 
 function known<T extends boolean | "unknown">(current: T, incoming: T): T {
   return incoming === "unknown" ? current : incoming;
@@ -200,7 +203,7 @@ function applyFields(
   };
 }
 
-function applyGroups(
+export function applyGroups(
   models: ProviderModel[],
   groups: SourceGroup[],
   create: boolean,
@@ -224,7 +227,16 @@ function applyGroups(
         aliasUid === undefined || aliasUid === null ? undefined : byUid.get(aliasUid);
       const idUid = incoming.version === undefined ? modelIds.get(incoming.model_id) : undefined;
       const idModel = idUid === undefined || idUid === null ? undefined : byUid.get(idUid);
-      const current = byUid.get(incoming.uid) ?? (create ? undefined : (idModel ?? aliasModel));
+      const reverseMatches = new Set(
+        incoming.aliases.flatMap((alias) => {
+          const uid = modelIds.get(alias) ?? aliases.get(alias);
+          return uid === undefined || uid === null ? [] : [uid];
+        }),
+      );
+      const reverseUid = reverseMatches.size === 1 ? [...reverseMatches][0] : undefined;
+      const reverseModel = reverseUid === undefined ? undefined : byUid.get(reverseUid);
+      const current =
+        byUid.get(incoming.uid) ?? (create ? undefined : (idModel ?? aliasModel ?? reverseModel));
       if (current === undefined) {
         if (create) {
           byUid.set(incoming.uid, incoming);

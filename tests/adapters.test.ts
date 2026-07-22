@@ -7,6 +7,7 @@ import {
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
 import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
+import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { sourceKindSchema, type Provider, type ProviderModel } from "../src/catalog/schema.ts";
 import { baseModel } from "../src/catalog/model.ts";
@@ -125,6 +126,22 @@ async function vercelCatalog(path: string): Promise<ProviderModel[]> {
     extractor: { kind: "vercel-catalog", minModels: 1, maxModels: 20 },
   };
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
+}
+
+async function xaiCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("xai");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "xai-catalog")
+    throw new Error("Missing xAI source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "xai-catalog", minModels: 4, maxModels: 10 },
+  };
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("xai/models.txt") },
+    documents: [{ url: "https://docs.x.ai/llms.txt", body: await fixture("xai/llms.txt") }],
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
 async function azureCatalog(): Promise<ProviderModel[]> {
@@ -325,6 +342,7 @@ describe("decimal normalization", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
     expect(scaleDecimal("0.000002", 6)).toBe("2");
     expect(scaleDecimal("1.25", 6)).toBe("1250000");
+    expect(scaleDecimal("200000000", -10)).toBe("0.02");
     expect(multiplyDecimal("2.50", "1.25")).toBe("3.125");
   });
 });
@@ -1475,14 +1493,131 @@ describe("Databricks adapters", () => {
   });
 });
 
-describe("document adapter", () => {
-  it("uses a matching link target when its display label is not an API ID", async () => {
-    const models = await parsed("xai", "document/xai.md");
-    expect(models.map(({ model_id, types }) => ({ model_id, types }))).toEqual([
-      { model_id: "grok-4.5", types: ["generate"] },
+describe("xAI adapter", () => {
+  it("joins the structured public catalog to lifecycle, voice, pricing, and release facts", async () => {
+    const models = await xaiCatalog();
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "grok-3",
+      "grok-4.20-multi-agent-0309",
+      "grok-4.5",
+      "grok-imagine-image-pro",
+      "grok-imagine-image-quality",
+      "grok-imagine-video-1.5",
+      "grok-voice-fast-1.0",
+      "grok-voice-think-fast-1.0",
     ]);
+    expect(models.find(({ model_id }) => model_id === "grok-4.5")).toMatchObject({
+      name: "Grok 4.5",
+      release_date: "2026-07",
+      limits: { context_tokens: 500_000 },
+      capabilities: {
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        streaming: true,
+        batch: true,
+        prompt_cache: true,
+        effort_control: true,
+      },
+    });
+    expect(models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309")).toMatchObject({
+      types: ["generate", "agentic"],
+      release_date: "2026-03",
+      status: "preview",
+      capabilities: { citations: true, code_execution: true },
+    });
+    expect(models.find(({ model_id }) => model_id === "grok-imagine-image-quality")).toMatchObject({
+      name: "Grok Imagine API",
+      updated_date: "2026-04-03",
+      pricing: expect.arrayContaining([
+        expect.objectContaining({
+          meter: "image_generation",
+          price: "0.07",
+          unit: "image",
+          conditions: { resolution: "2K" },
+        }),
+      ]),
+    });
+    expect(models.find(({ model_id }) => model_id === "grok-imagine-video-1.5")).toMatchObject({
+      updated_date: "2026-05-30",
+    });
+    expect(models.find(({ model_id }) => model_id === "grok-voice-think-fast-1.0")).toMatchObject({
+      aliases: ["grok-voice-latest"],
+      types: ["agentic", "realtime"],
+      release_date: "2026-04",
+      pricing: expect.arrayContaining([
+        expect.objectContaining({ meter: "input_audio", price: "0.05", unit: "minute" }),
+        expect.objectContaining({ meter: "input_text", price: "0.004", unit: "request" }),
+      ]),
+    });
+    expect(models.find(({ model_id }) => model_id === "grok-3")).toMatchObject({
+      status: "retired",
+      is_deprecated: true,
+      retired_at: "2026-05-15",
+      replacement_model_ids: ["grok-4.3"],
+    });
   });
 
+  it("keeps standard, long-context, batch, priority, media, and tool rates distinct", async () => {
+    const models = await xaiCatalog();
+    const multiAgent = models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309");
+    expect(
+      multiAgent?.pricing.find(
+        ({ meter, conditions }) => meter === "input_text" && conditions.service_tier === "batch",
+      ),
+    ).toMatchObject({ price: "1", derived: true });
+    expect(
+      multiAgent?.pricing.find(
+        ({ meter, conditions }) =>
+          meter === "output_text" &&
+          conditions.service_tier === "priority" &&
+          conditions.context_min_tokens === 200_000,
+      ),
+    ).toMatchObject({ price: "10", derived: true });
+    expect(
+      multiAgent?.pricing.find(
+        ({ meter, conditions }) =>
+          meter === "tool_call" && conditions.operation === "collections_search",
+      ),
+    ).toMatchObject({ price: "2.5", unit: "thousand_requests", derived: false });
+  });
+
+  it("parses every authenticated inventory without treating it as global presence", async () => {
+    const language = await parsed("xai", "xai/language-api.json", "xai-language-api");
+    const image = await parsed("xai", "xai/image-api.json", "xai-image-api");
+    const video = await parsed("xai", "xai/video-api.json", "xai-video-api");
+    expect(language[0]).toMatchObject({
+      model_id: "grok-4.5",
+      types: ["generate"],
+      modalities: { input: ["text", "image"], output: ["text"] },
+      scope: "runtime_observation",
+      source_refs: ["xai-language-api"],
+    });
+    expect(image[0]).toMatchObject({ types: ["image"], scope: "runtime_observation" });
+    expect(video[0]).toMatchObject({ types: ["video"], scope: "runtime_observation" });
+  });
+
+  it("retains a source when its canonical API ID matches a public alias", async () => {
+    const value = manifest("xai");
+    const catalogSource = value.sources[0];
+    const apiSource = value.sources.find(({ id }) => id === "xai-api");
+    if (catalogSource === undefined || apiSource === undefined)
+      throw new Error("Missing xAI source");
+    const catalog = await xaiCatalog();
+    const inventory = await parsed("xai", "xai/api.json", "xai-api");
+    const merged = applyGroups(
+      applyGroups([], [{ source: catalogSource, models: catalog }], true),
+      [{ source: apiSource, models: inventory }],
+      false,
+    );
+    expect(merged.find(({ model_id }) => model_id === "grok-4.5")?.source_refs).toEqual([
+      "xai-models",
+      "xai-api",
+    ]);
+  });
+});
+
+describe("document adapter", () => {
   it("pairs Bedrock display names with official endpoint model IDs", async () => {
     const models = await parsed("amazon-bedrock", "document/bedrock.json");
     expect(models.map(({ model_id, id_kind, name }) => ({ model_id, id_kind, name }))).toEqual([
