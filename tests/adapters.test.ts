@@ -1882,6 +1882,22 @@ describe("Hugging Face adapter", () => {
     expect(embedding?.modalities.output).toEqual(["embedding"]);
   });
 
+  it("does not publish credential-like repository identifiers", async () => {
+    const credentialLikeId = `org/${["hf_", "a".repeat(40)].join("")}`;
+    const body = (await fixture("huggingface/normal.json")).replace(
+      '"org/model-1"',
+      JSON.stringify(credentialLikeId),
+    );
+    const value = manifest("huggingface");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Hugging Face source");
+    expect(
+      parseSource({ provider: provider(value), source, body, observedAt }).some(
+        (model) => model.model_id === credentialLikeId,
+      ),
+    ).toBe(false);
+  });
+
   it("keeps every router price and route-derived fact", async () => {
     const models = await huggingFaceRouter("huggingface/pricing.json");
     const model = models.find((item) => item.model_id === "org/model-1");

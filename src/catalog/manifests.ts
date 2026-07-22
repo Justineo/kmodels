@@ -223,6 +223,7 @@ const huggingFaceSource = (provider: (typeof huggingFaceProviders)[number]): Sou
   scope: "global",
   exhaustive: true,
   role: "catalog",
+  snapshotPolicy: "none",
 });
 
 export const manifests = [
@@ -1556,6 +1557,7 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "overlay",
+        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {

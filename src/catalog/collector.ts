@@ -9,6 +9,7 @@ import {
   type SourceManifest,
 } from "./manifests.ts";
 import { readJson, rootDirectory, sha256, stableJson, writeJson } from "./io.ts";
+import { isCredentialLikeIdentifier } from "./identity.ts";
 import {
   catalogSchema,
   type Catalog,
@@ -49,8 +50,11 @@ function message(error: unknown): string {
 
 function previousModels(catalog: Catalog | undefined, providerId: string): ProviderModel[] {
   return (
-    catalog?.models.filter((model) => model.provider_id === providerId).map(normalizeModelTypes) ??
-    []
+    catalog?.models
+      .filter(
+        (model) => model.provider_id === providerId && !isCredentialLikeIdentifier(model.model_id),
+      )
+      .map(normalizeModelTypes) ?? []
   );
 }
 
