@@ -1,4 +1,4 @@
-import type { Provider, ProviderModel } from "./schema.ts";
+import type { ModelType, Provider, ProviderModel } from "./schema.ts";
 
 export type Extractor =
   | { kind: "vercel" }
@@ -11,6 +11,7 @@ export type Extractor =
       kind: "document-identifiers";
       patterns: RegExp[];
       idKind: "api_id" | "alias" | "display_name" | "source_generated";
+      defaultType: ModelType;
       linkTarget?: RegExp;
     };
 
@@ -46,6 +47,7 @@ export interface ProviderManifest {
   sources: SourceManifest[];
   notConfiguredReason?: string;
   supersededIdKinds?: ProviderModel["id_kind"][];
+  supersededModelIds?: string[];
 }
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
@@ -66,10 +68,11 @@ const documentSource = (
     kind: "document-identifiers",
     patterns,
     idKind,
+    defaultType: "text_generation",
     ...(linkTarget === undefined ? {} : { linkTarget }),
   },
   extractorVersion: "document-identifiers-v1",
-  fields: ["model_id", "name"],
+  fields: ["model_id", "name", "types"],
   allowedHosts: [new URL(url).hostname, ...additionalHosts],
   maxResponseBytes: mebibytes(8),
 });
@@ -87,8 +90,10 @@ export const manifests = [
     sources: [
       documentSource(
         "openai-models",
-        "https://developers.openai.com/api/docs/models/compare",
-        [/^(?:gpt|o[1345]|text-embedding|omni-moderation|dall-e|tts|whisper)[a-z0-9._:-]*$/i],
+        "https://developers.openai.com/api/docs/models/all",
+        [
+          /^(?:gpt|chat|chatgpt|o[1345]|text-embedding|omni-moderation|dall-e|tts|whisper|computer-use|codex|sora|babbage|davinci)[a-z0-9._:-]*$/i,
+        ],
         "api_id",
         /\/api\/docs\/models\//,
       ),
@@ -128,7 +133,7 @@ export const manifests = [
         stability: "semi_structured",
         extractor: { kind: "bedrock-model-cards" },
         extractorVersion: "bedrock-model-cards-v1",
-        fields: ["model_id", "name"],
+        fields: ["model_id", "name", "types", "modalities"],
         allowedHosts: ["docs.aws.amazon.com"],
         maxResponseBytes: mebibytes(8),
         linkedDocuments: {
@@ -300,8 +305,15 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource("xai-models", "https://docs.x.ai/developers/models", [/^grok-[a-z0-9._-]+$/i]),
+      documentSource(
+        "xai-models",
+        "https://docs.x.ai/developers/models",
+        [/^grok-[a-z0-9._-]+$/i],
+        "api_id",
+        /\/developers\/models\/grok-[a-z0-9._-]+$/i,
+      ),
     ],
+    supersededModelIds: ["grok-4.20"],
   },
   {
     provider: {

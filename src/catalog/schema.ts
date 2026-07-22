@@ -4,9 +4,7 @@ const dateTime = z.iso.datetime({ offset: true });
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
 export const modelTypeSchema = z.enum([
-  "language",
-  "reasoning",
-  "code",
+  "text_generation",
   "embedding",
   "rerank",
   "moderation",
@@ -14,12 +12,28 @@ export const modelTypeSchema = z.enum([
   "video_generation",
   "speech_to_text",
   "text_to_speech",
-  "realtime",
-  "multimodal",
+  "speech_to_speech",
+  "computer_use",
   "classifier",
   "ocr",
   "other",
 ]);
+
+const storedModelTypeSchema = z
+  .enum([...modelTypeSchema.options, "language", "reasoning", "code", "realtime", "multimodal"])
+  .transform((value): z.infer<typeof modelTypeSchema> => {
+    switch (value) {
+      case "language":
+      case "reasoning":
+      case "code":
+      case "multimodal":
+        return "text_generation";
+      case "realtime":
+        return "speech_to_speech";
+      default:
+        return value;
+    }
+  });
 
 export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
@@ -90,7 +104,10 @@ export const providerModelSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   aliases: z.array(z.string().min(1)),
-  types: z.array(modelTypeSchema).min(1),
+  types: z
+    .array(storedModelTypeSchema)
+    .min(1)
+    .transform((types) => [...new Set(types)]),
   raw_type: z.string().optional(),
   modalities: z.object({ input: z.array(modalitySchema), output: z.array(modalitySchema) }),
   capabilities: z.object({

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
-import { parseSource } from "./adapters.ts";
+import { normalizeModelTask, parseSource } from "./adapters.ts";
 import { fetchSource, fetchStateSchema, type FetchState, type SourceState } from "./fetch.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
 import { readJson, rootDirectory, sha256, stableJson, writeJson } from "./io.ts";
@@ -37,7 +37,10 @@ function message(error: unknown): string {
 }
 
 function previousModels(catalog: Catalog | undefined, providerId: string): ProviderModel[] {
-  return catalog?.models.filter((model) => model.provider_id === providerId) ?? [];
+  return (
+    catalog?.models.filter((model) => model.provider_id === providerId).map(normalizeModelTask) ??
+    []
+  );
 }
 
 function previousSources(catalog: Catalog | undefined, providerId: string): SourceRecord[] {
@@ -106,7 +109,9 @@ async function collectProvider(
 ): Promise<ProviderResult> {
   const oldModels = previousModels(previous, manifest.provider.id);
   const comparableOldModels = oldModels.filter(
-    (model) => !manifest.supersededIdKinds?.includes(model.id_kind),
+    (model) =>
+      !manifest.supersededIdKinds?.includes(model.id_kind) &&
+      !manifest.supersededModelIds?.includes(model.model_id),
   );
   const oldSources = previousSources(previous, manifest.provider.id);
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
