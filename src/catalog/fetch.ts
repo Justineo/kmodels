@@ -24,13 +24,19 @@ export const fetchStateSchema = z.object({
 export type FetchState = z.infer<typeof fetchStateSchema>;
 export type SourceState = z.infer<typeof sourceStateSchema>;
 
-export interface FetchResult {
+interface FetchPayload {
   body: string;
   contentHash: string;
   snapshotUri: string;
   etag: string | undefined;
   lastModified: string | undefined;
   notModified: boolean;
+}
+
+export type FetchObservation = Omit<FetchPayload, "body"> & { key: string };
+
+export interface FetchResult extends FetchPayload {
+  dependencies: FetchObservation[];
 }
 
 class TransientFetchError extends Error {
@@ -164,7 +170,7 @@ async function attemptFetch(
   providerId: string,
   source: SourceManifest,
   previous: SourceState | undefined,
-): Promise<FetchResult> {
+): Promise<FetchPayload> {
   const response = await request(source, previous);
   if (response.status === 304) {
     if (previous === undefined) throw new Error("Received 304 without a previous snapshot");
@@ -195,11 +201,11 @@ async function attemptFetch(
   };
 }
 
-export async function fetchSource(
+async function fetchPayload(
   providerId: string,
   source: SourceManifest,
   previous: SourceState | undefined,
-): Promise<FetchResult> {
+): Promise<FetchPayload> {
   let lastError: Error = new Error("Source fetch failed");
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -211,4 +217,114 @@ export async function fetchSource(
     }
   }
   throw lastError;
+}
+
+function observation(key: string, payload: FetchPayload): FetchObservation {
+  return {
+    key,
+    contentHash: payload.contentHash,
+    snapshotUri: payload.snapshotUri,
+    etag: payload.etag,
+    lastModified: payload.lastModified,
+    notModified: payload.notModified,
+  };
+}
+
+export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] {
+  const crawl = source.linkedDocuments;
+  if (crawl === undefined) return [];
+  const urls = new Map<string, URL>();
+  for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) {
+    const target = match[1];
+    if (target === undefined) continue;
+    try {
+      const url = new URL(target, source.url);
+      if (
+        url.protocol === "https:" &&
+        source.allowedHosts.includes(url.hostname) &&
+        url.port === "" &&
+        url.username === "" &&
+        url.password === "" &&
+        url.search === "" &&
+        url.hash === "" &&
+        crawl.path.test(url.pathname)
+      )
+        urls.set(url.href, url);
+    } catch {
+      continue;
+    }
+  }
+  const values = [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
+  if (values.length < crawl.minDocuments || values.length > crawl.maxDocuments)
+    throw new Error("Linked document count outside reviewed bounds");
+  return values;
+}
+
+function linkedSource(source: SourceManifest, key: string, url: URL): SourceManifest {
+  return {
+    id: key,
+    url: url.href,
+    type: source.type,
+    stability: source.stability,
+    extractor: source.extractor,
+    extractorVersion: source.extractorVersion,
+    fields: source.fields,
+    allowedHosts: source.allowedHosts,
+    maxResponseBytes: source.maxResponseBytes,
+  };
+}
+
+async function batches<T, R>(
+  values: T[],
+  concurrency: number,
+  task: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let index = 0; index < values.length; index += concurrency)
+    results.push(...(await Promise.all(values.slice(index, index + concurrency).map(task))));
+  return results;
+}
+
+export async function fetchSource(
+  providerId: string,
+  source: SourceManifest,
+  states: Record<string, SourceState>,
+): Promise<FetchResult> {
+  const crawl = source.linkedDocuments;
+  if (crawl === undefined) {
+    const payload = await fetchPayload(providerId, source, states[source.id]);
+    return { ...payload, dependencies: [] };
+  }
+
+  const indexKey = `${source.id}/index`;
+  const indexSource = linkedSource(source, indexKey, new URL(source.url));
+  const index = await fetchPayload(providerId, indexSource, states[indexKey] ?? states[source.id]);
+  const urls = linkedDocumentUrls(index.body, source);
+  const documents = await batches(urls, crawl.concurrency, async (url) => {
+    const filename = url.pathname.split("/").at(-1);
+    if (filename === undefined) throw new Error("Linked document URL omitted a filename");
+    const key = `${source.id}/${filename.slice(0, -3)}`;
+    const payload = await fetchPayload(providerId, linkedSource(source, key, url), states[key]);
+    return { key, url: url.href, payload };
+  });
+  const body = JSON.stringify({
+    documents: documents.map((document) => ({ url: document.url, body: document.payload.body })),
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Linked documents exceeded aggregate byte limit");
+  const contentHash = sha256(body);
+  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
+  await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
+  return {
+    body,
+    contentHash,
+    snapshotUri,
+    etag: index.etag,
+    lastModified: index.lastModified,
+    notModified: index.notModified && documents.every((document) => document.payload.notModified),
+    dependencies: [
+      observation(indexKey, index),
+      ...documents.map((document) => observation(document.key, document.payload)),
+    ],
+  };
 }

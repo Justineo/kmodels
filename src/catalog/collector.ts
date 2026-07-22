@@ -49,7 +49,10 @@ function previousCoverage(catalog: Catalog | undefined, providerId: string): Cov
 }
 
 function sourceState(
-  result: Awaited<ReturnType<typeof fetchSource>>,
+  result: Pick<
+    Awaited<ReturnType<typeof fetchSource>>,
+    "etag" | "lastModified" | "contentHash" | "snapshotUri"
+  >,
   observedAt: string,
 ): SourceState {
   return {
@@ -102,6 +105,9 @@ async function collectProvider(
   observedAt: string,
 ): Promise<ProviderResult> {
   const oldModels = previousModels(previous, manifest.provider.id);
+  const comparableOldModels = oldModels.filter(
+    (model) => !manifest.supersededIdKinds?.includes(model.id_kind),
+  );
   const oldSources = previousSources(previous, manifest.provider.id);
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
 
@@ -127,7 +133,7 @@ async function collectProvider(
     const sources: SourceRecord[] = [];
     for (const source of manifest.sources) {
       try {
-        const result = await fetchSource(manifest.provider.id, source, state.sources[source.id]);
+        const result = await fetchSource(manifest.provider.id, source, state.sources);
         groups.push(
           parseSource({
             provider: providerRecord(manifest, [], undefined),
@@ -151,6 +157,12 @@ async function collectProvider(
           snapshot_uri: result.snapshotUri,
         });
         state.sources[source.id] = sourceState(result, observedAt);
+        const dependencyKeys = new Set(result.dependencies.map((dependency) => dependency.key));
+        for (const dependency of result.dependencies)
+          state.sources[dependency.key] = sourceState(dependency, observedAt);
+        for (const key of Object.keys(state.sources))
+          if (key.startsWith(`${source.id}/`) && !dependencyKeys.has(key))
+            delete state.sources[key];
       } catch (error) {
         const oldState = state.sources[source.id];
         if (oldState !== undefined) {
@@ -165,9 +177,9 @@ async function collectProvider(
     }
 
     const candidate = mergeFacts(groups);
-    const validation = validateProvider(candidate, oldModels);
+    const validation = validateProvider(candidate, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
-    const models = preserveMissing(candidate, oldModels);
+    const models = preserveMissing(candidate, comparableOldModels);
     return {
       provider: providerRecord(manifest, models, observedAt),
       models,

@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { parseSource, scaleDecimal } from "../src/catalog/adapters.ts";
-import { curlResponse } from "../src/catalog/fetch.ts";
+import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import type { Provider, ProviderModel } from "../src/catalog/schema.ts";
 import { validateProvider } from "../src/catalog/validation.ts";
@@ -49,6 +49,26 @@ describe("HTTP transport boundary", () => {
     expect(response.status).toBe(304);
     expect(response.headers.get("etag")).toBe('"fixture"');
   });
+
+  it("follows only reviewed same-host model-card links", () => {
+    const source = manifest("amazon-bedrock").sources[0];
+    if (source?.linkedDocuments === undefined) throw new Error("Missing Bedrock link policy");
+    const urls = linkedDocumentUrls(
+      [
+        "[Command R](model-card-cohere-command-r.md)",
+        "[External](https://example.test/bedrock/latest/userguide/model-card-external.md)",
+        "[Wrong port](https://docs.aws.amazon.com:444/bedrock/latest/userguide/model-card-port.md)",
+        "[Unrelated](models-supported.md)",
+      ].join("\n"),
+      {
+        ...source,
+        linkedDocuments: { ...source.linkedDocuments, minDocuments: 1 },
+      },
+    );
+    expect(urls.map((url) => url.href)).toEqual([
+      "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-command-r.md",
+    ]);
+  });
 });
 
 describe("document adapter", () => {
@@ -63,6 +83,23 @@ describe("document adapter", () => {
 
   it("fails closed when identifiers disappear", async () => {
     await expect(parsed("openai", "document/broken.html")).rejects.toThrow("No model identifiers");
+  });
+
+  it("pairs Bedrock display names with official endpoint model IDs", async () => {
+    const models = await parsed("amazon-bedrock", "document/bedrock.json");
+    expect(models.map(({ model_id, id_kind, name }) => ({ model_id, id_kind, name }))).toEqual([
+      {
+        model_id: "anthropic.claude-haiku-4-5",
+        id_kind: "api_id",
+        name: "Claude Haiku 4.5",
+      },
+      {
+        model_id: "anthropic.claude-haiku-4-5-20251001-v1:0",
+        id_kind: "api_id",
+        name: "Claude Haiku 4.5",
+      },
+      { model_id: "cohere.command-r-v1:0", id_kind: "api_id", name: "Command R" },
+    ]);
   });
 });
 
