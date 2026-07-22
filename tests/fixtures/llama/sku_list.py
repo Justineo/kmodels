@@ -1,0 +1,56 @@
+def fixture_models():
+    return [
+        Model(
+            core_model_id=CoreModelId.llama2_7b,
+            description="Llama 2 7b model",
+            huggingface_repo="meta-llama/Llama-2-7b",
+            arch_args={},
+            pth_file_count=1,
+        ),
+        Model(
+            core_model_id=CoreModelId.llama3_1_8b_instruct,
+            description="Llama 3.1 8b instruct model",
+            huggingface_repo="meta-llama/Llama-3.1-8B-Instruct",
+            arch_args={},
+            pth_file_count=1,
+        ),
+        Model(
+            core_model_id=CoreModelId.llama3_2_1b_instruct,
+            variant="int4-qlora-eo8",
+            quantization_format=CheckpointQuantizationFormat.int4,
+            description="Llama 3.2 1b INT4 quantized LoRA",
+            huggingface_repo="meta-llama/Llama-3.2-1B-Instruct-QLORA_INT4_EO8",
+            arch_args={},
+            pth_file_count=1,
+        ),
+        Model(
+            core_model_id=CoreModelId.llama3_3_70b_instruct,
+            description="Llama 3.3 70b instruct",
+            huggingface_repo="meta-llama/Llama-3.3-70B-Instruct",
+            arch_args={},
+            pth_file_count=8,
+        ),
+        Model(
+            core_model_id=CoreModelId.llama4_maverick_17b_128e,
+            description="Llama 4 Maverick base model",
+            huggingface_repo="meta-llama/Llama-4-Maverick-17B-128E",
+            arch_args={},
+            pth_file_count=8,
+        ),
+        Model(
+            core_model_id=CoreModelId.llama4_maverick_17b_128e_instruct,
+            variant="fp8",
+            quantization_format=CheckpointQuantizationFormat.fp8_mixed,
+            description="Llama 4 Maverick (FP8 quantized)",
+            huggingface_repo="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+            arch_args={},
+            pth_file_count=8,
+        ),
+        Model(
+            core_model_id=CoreModelId.llama_guard_3_11b_vision,
+            description="Llama Guard v3 11b vision system safety model",
+            huggingface_repo="meta-llama/Llama-Guard-3-11B-Vision",
+            arch_args={},
+            pth_file_count=1,
+        ),
+    ]

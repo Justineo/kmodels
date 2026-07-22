@@ -33,6 +33,8 @@ export type Extractor =
   | { kind: "cohere-api" }
   | { kind: "mistral-catalog"; minModels: number; maxModels: number }
   | { kind: "mistral-api" }
+  | { kind: "llama-catalog"; minModels: number; maxModels: number }
+  | { kind: "llama-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -1271,13 +1273,108 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource(
-        "llama-models",
-        "https://raw.githubusercontent.com/meta-llama/llama-models/main/README.md",
-        [/^(?:llama|Llama)[ -]?[0-9][a-z0-9 ._-]{0,80}$/],
-        "display_name",
-      ),
+      {
+        id: "llama-models",
+        url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/sku_list.py",
+        type: "repository",
+        access: "public",
+        format: "mixed",
+        stability: "documented",
+        extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
+        extractorVersion: "llama-catalog-v1",
+        fields: [
+          "model_id",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+        ],
+        allowedHosts: ["raw.githubusercontent.com"],
+        maxResponseBytes: mebibytes(12),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 6,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "sku-types",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/sku_types.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "prompt-guard-models",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/cli/safety_models.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "readme",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/README.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            ...[
+              "llama2/MODEL_CARD.md",
+              "llama3/MODEL_CARD.md",
+              "llama3_1/MODEL_CARD.md",
+              "llama3_2/MODEL_CARD.md",
+              "llama3_2/MODEL_CARD_VISION.md",
+              "llama3_3/MODEL_CARD.md",
+              "llama4/MODEL_CARD.md",
+            ].map((path) => ({
+              id: path.replaceAll("/", "-").toLowerCase(),
+              url: `https://raw.githubusercontent.com/meta-llama/llama-models/main/models/${path}`,
+              maxResponseBytes: mebibytes(2),
+            })),
+            {
+              id: "llama-api-chat-example",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/chat.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-tool-example",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/tool_call.py",
+              maxResponseBytes: mebibytes(1),
+            },
+          ],
+        },
+      },
+      {
+        id: "llama-api",
+        url: "https://api.llama.com/v1/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "llama-api" },
+        extractorVersion: "llama-api-v1",
+        fields: ["model_id", "status", "is_deprecated"],
+        allowedHosts: ["api.llama.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "LLAMA_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    supersededIdKinds: ["display_name", "source_generated"],
+    supersededModelIds: ["llama3", "llama4"],
+    warnOnMissing: {
+      sourceId: "llama-models",
+      fields: ["release_date", "updated_date"],
+      statuses: ["active"],
+    },
   },
   {
     provider: {
