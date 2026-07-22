@@ -44,6 +44,7 @@ The CSS begins with a modern reset, uses system fonts, and remains usable withou
 ## Automation and ownership
 
 - GitHub Actions checks the project on pushes and pull requests.
+- pnpm is the sole package manager. Its version is pinned in `package.json`, `pnpm-lock.yaml` is authoritative, and CI uses a frozen lockfile. Only the reviewed native tooling dependencies in `pnpm-workspace.yaml` may run install scripts.
 - A scheduled workflow checks sources every 30 minutes, applies jitter, commits only validated generated changes, and never requires a collection secret.
 - The deploy workflow uses the repository’s pinned `void` dependency and GitHub OIDC; `void.json` declares a plain static `dist` deployment. `VOID_PROJECT` is the only repository variable.
 - Renovate follows the repository’s Shanghai timezone, seven-day minimum release age, grouped automerge for non-major updates, and isolated manual major updates.

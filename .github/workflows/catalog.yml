@@ -22,6 +22,9 @@ jobs:
         with:
           ref: main
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
       - name: Set up Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
@@ -29,15 +32,15 @@ jobs:
           cache: true
 
       - name: Install dependencies
-        run: vp install
+        run: vp install --frozen-lockfile
 
       - name: Collect official sources
-        run: npm run collect
+        run: pnpm collect
         env:
           KMODELS_JITTER_MS: "30000"
 
       - name: Verify generated catalog
-        run: npm test
+        run: pnpm test
 
       - name: Commit validated changes
         run: |
