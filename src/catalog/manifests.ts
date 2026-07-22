@@ -17,7 +17,6 @@ export type Extractor =
   | { kind: "huggingface-router"; minModels: number; maxModels: number }
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
-  | { kind: "vllm" }
   | { kind: "bedrock-catalog" }
   | { kind: "bedrock-api" }
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
@@ -1922,11 +1921,11 @@ export const manifests = [
       name: "vLLM runtime",
       kind: "local_runtime",
       homepage: "https://vllm.ai/",
-      docs_url: "https://docs.vllm.ai/en/latest/serving/openai_compatible_server/",
+      docs_url: "https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/",
       catalog_scope: "runtime",
     },
     sources: [],
-    notConfiguredReason: "No reviewed, unauthenticated runtime endpoint is configured.",
+    notConfiguredReason: "No explicitly allowlisted runtime endpoint is configured.",
   },
   {
     provider: {

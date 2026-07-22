@@ -168,7 +168,8 @@ The repository ships two things from one TypeScript project:
 
 ### vLLM runtime integration
 
-- vLLM has no meaningful global model catalog because its OpenAI-compatible server exposes whatever an operator deploys under an operator-selected model name. It remains `not_configured` until a reviewed runtime endpoint is explicitly allowlisted; a runtime inventory may validate scoped IDs but must not create global rows or expose a private endpoint.
+- vLLM has no global model catalog. Its supported-model pages enumerate architectures and non-exhaustive example artifacts, including models supplied by the Transformers backend and plugins; those examples do not prove a deployed API identifier. The server accepts the operator's `--served-model-name` values, and `/v1/models` lists only that runtime's base names and loaded adapters. The returned `root` can be a private repository or local path, while `created` is response-time metadata rather than a model release date.
+- vLLM remains `not_configured` until a runtime origin is explicitly allowlisted in code. An API key alone is insufficient because CI has no reviewed endpoint to contact. A future runtime inventory may retain exact IDs, aliases, `max_model_len`, adapter parents, and API provenance as scoped validation facts, but it must not create global rows; operation types require separate runtime configuration or endpoint evidence and cannot be guessed from an ID. The unused generic list adapter and fixtures are removed so the code cannot accidentally publish every deployed name as a generative model.
 
 ## Public data semantics
 

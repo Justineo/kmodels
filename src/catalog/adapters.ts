@@ -642,31 +642,6 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function parseVllm(input: ParseInput): ProviderModel[] {
-  const list = listSchema.parse(parseJson(input.body));
-  const ids = list.data.map((item) => z.object({ id: z.string().min(1) }).parse(item).id);
-  if (ids.length === 0) throw new Error("vLLM returned an empty model list");
-  return unique(ids).map((id) => ({
-    ...baseModel({
-      providerId: input.provider.id,
-      id,
-      name: id,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    }),
-    types: classifyModelTypes({
-      modelId: id,
-      name: id,
-      rawType: undefined,
-      modalities: { input: [], output: [] },
-      fallback: "generate",
-    }),
-    pricing_status: "not_applicable",
-    scope: "runtime_observation",
-    status: "active",
-  }));
-}
-
 export function parseSource(input: ParseInput): ProviderModel[] {
   switch (input.source.extractor.kind) {
     case "openai-catalog":
@@ -701,8 +676,6 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseOllamaLibrary(input);
     case "ollama-cloud":
       return parseOllamaCloud(input);
-    case "vllm":
-      return parseVllm(input);
     case "bedrock-catalog":
       return parseBedrockCatalog(input);
     case "bedrock-api":

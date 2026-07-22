@@ -459,6 +459,10 @@ describe("source taxonomy", () => {
       { id: "ollama-library", type: "website" },
       { id: "ollama-cloud-models", source: ["api", "website"] },
     ]);
+    expect(manifest("vllm")).toMatchObject({
+      sources: [],
+      notConfiguredReason: "No explicitly allowlisted runtime endpoint is configured.",
+    });
     expect(sourceKindSchema.safeParse("runtime").success).toBe(false);
   });
 });
@@ -2680,47 +2684,6 @@ describe("Ollama adapters", () => {
     expect(() => parse(body.replace('"status":200', '"status":404'))).toThrow(
       "listed model was unavailable",
     );
-  });
-});
-
-describe("runtime adapters", () => {
-  it("parses an explicitly configured vLLM observation", async () => {
-    const runtimeProvider: Provider = {
-      id: "vllm",
-      name: "vLLM runtime",
-      kind: "local_runtime",
-      homepage: "https://vllm.ai/",
-      catalog_scope: "runtime",
-      source_ids: ["vllm-fixture"],
-    };
-    const source: SourceManifest = {
-      id: "vllm-fixture",
-      url: "https://runtime.example.test/v1/models",
-      type: "api",
-      access: "configured",
-      format: "json",
-      stability: "documented",
-      extractor: { kind: "vllm" },
-      extractorVersion: "vllm-v1",
-      fields: ["model_id"],
-      allowedHosts: ["runtime.example.test"],
-      maxResponseBytes: 1024,
-    };
-    const parseRuntime = async (name: string): Promise<ProviderModel[]> =>
-      parseSource({
-        provider: runtimeProvider,
-        source,
-        body: await fixture(`vllm/${name}.json`),
-        observedAt,
-      });
-    const model = (await parseRuntime("normal"))[0];
-    expect({
-      id: model?.model_id,
-      pricing_status: model?.pricing_status,
-      scope: model?.scope,
-    }).toEqual(await expected("vllm/expected.json"));
-    expect((await parseRuntime("pricing"))[0]?.pricing.length).toBe(0);
-    await expect(parseRuntime("broken")).rejects.toThrow("empty model list");
   });
 });
 
