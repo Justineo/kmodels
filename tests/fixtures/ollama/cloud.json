@@ -1,0 +1,95 @@
+{
+  "list": {
+    "models": [
+      {
+        "name": "gpt-oss:120b",
+        "model": "gpt-oss:120b",
+        "modified_at": "2025-08-05T00:00:00Z",
+        "size": 65290180781,
+        "digest": "d98fe6ba01e6",
+        "details": {
+          "parent_model": "",
+          "format": "",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": ""
+        }
+      },
+      {
+        "name": "kimi-k2.5",
+        "model": "kimi-k2.5",
+        "modified_at": "2026-01-26T00:00:00Z",
+        "size": 1118481408000,
+        "digest": "89c148d8ace8",
+        "details": {
+          "parent_model": "",
+          "format": "",
+          "family": "",
+          "families": null,
+          "parameter_size": "",
+          "quantization_level": ""
+        }
+      }
+    ]
+  },
+  "documents": [
+    {
+      "model": "gpt-oss:120b",
+      "status": 200,
+      "body": {
+        "capabilities": ["completion", "tools", "thinking"],
+        "details": {
+          "parent_model": "gpt-oss:120b",
+          "format": "",
+          "family": "gptoss",
+          "families": null,
+          "parameter_size": "116829156672",
+          "quantization_level": "MXFP4"
+        },
+        "model_info": {
+          "general.architecture": "gptoss",
+          "general.parameter_count": 116829156672,
+          "gptoss.context_length": 131072,
+          "gptoss.embedding_length": 2880
+        },
+        "modified_at": "2025-08-05T00:00:00Z"
+      }
+    },
+    {
+      "model": "kimi-k2.5",
+      "status": 200,
+      "body": {
+        "capabilities": ["vision", "thinking", "completion", "tools"],
+        "details": {
+          "parent_model": "kimi-k2.5",
+          "format": "",
+          "family": "kimi-k2",
+          "families": null,
+          "parameter_size": "1042000000000",
+          "quantization_level": "INT4"
+        },
+        "model_info": {
+          "general.architecture": "kimi-k2",
+          "general.parameter_count": 1042000000000,
+          "kimi-k2.context_length": 262144,
+          "kimi-k2.embedding_length": 7168
+        },
+        "modified_at": "2026-01-26T00:00:00Z",
+        "retirement_on": "2026-07-31T00:00:00-07:00"
+      }
+    },
+    {
+      "model": "gpt-oss",
+      "status": 404,
+      "body": { "error": "model not found" }
+    },
+    {
+      "model": "gemini-3-flash-preview",
+      "status": 410,
+      "body": {
+        "error": "gemini-3-flash-preview was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 4276b407-3c87-4cb0-8d79-f8198cdd8e75)"
+      }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
+import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { readSnapshot, rootDirectory, sha256, writeSnapshot } from "./io.ts";
 
@@ -43,6 +44,9 @@ const googleModelsPageSchema = z.object({
   publisherModels: z.array(z.unknown()),
   nextPageToken: z.string().min(1).optional(),
 });
+const ollamaListSchema = z.object({
+  models: z.array(z.object({ model: modelIdSchema })),
+});
 
 export const sourceStateSchema = z.object({
   etag: z.string().optional(),
@@ -68,6 +72,10 @@ interface FetchPayload {
   etag: string | undefined;
   lastModified: string | undefined;
   notModified: boolean;
+}
+
+interface StatusPayload extends FetchPayload {
+  status: 200 | 404 | 410;
 }
 
 export type FetchObservation = Omit<FetchPayload, "body"> & { key: string };
@@ -154,6 +162,7 @@ async function curlRequest(
   url: URL,
   source: SourceManifest,
   previous: SourceState | undefined,
+  json?: string,
 ): Promise<Response> {
   const args = [
     "--silent",
@@ -198,9 +207,22 @@ async function curlRequest(
   }
   for (const header of source.headers ?? [])
     args.push("--header", `${header.name}: ${header.value}`);
-  if (previous?.snapshotUri !== undefined && previous.etag !== undefined)
+  if (json !== undefined)
+    args.push(
+      "--request",
+      "POST",
+      "--header",
+      "Content-Type: application/json",
+      "--data-binary",
+      json,
+    );
+  if (json === undefined && previous?.snapshotUri !== undefined && previous.etag !== undefined)
     args.push("--header", `If-None-Match: ${previous.etag}`);
-  if (previous?.snapshotUri !== undefined && previous.lastModified !== undefined)
+  if (
+    json === undefined &&
+    previous?.snapshotUri !== undefined &&
+    previous.lastModified !== undefined
+  )
     args.push("--header", `If-Modified-Since: ${previous.lastModified}`);
   args.push(url.href);
   try {
@@ -503,10 +525,11 @@ function unique<T>(values: T[]): T[] {
 async function request(
   source: SourceManifest,
   previous: SourceState | undefined,
+  json?: string,
 ): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
-    const response = await curlRequest(url, source, previous);
+    const response = await curlRequest(url, source, previous, json);
     if (response.status >= 300 && response.status < 400 && response.status !== 304) {
       const location = response.headers.get("location");
       if (location === null) throw new Error("Redirect response omitted Location");
@@ -577,6 +600,49 @@ async function attemptFetch(
     lastModified: response.headers.get("last-modified") ?? undefined,
     notModified: false,
   };
+}
+
+async function attemptPost(
+  providerId: string,
+  source: SourceManifest,
+  body: string,
+): Promise<StatusPayload> {
+  const response = await request(source, undefined, body);
+  if (response.status === 429 || response.status >= 500)
+    throw new TransientFetchError(`Transient HTTP ${response.status}`, retryDelay(response));
+  if (![200, 404, 410].includes(response.status)) throw new Error(`HTTP ${response.status}`);
+  const responseBody = await readLimited(response, source.maxResponseBytes);
+  if (responseBody.trim() === "") throw new Error("Source returned an empty body");
+  const contentHash = sha256(responseBody);
+  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
+  await writeSnapshot(`${rootDirectory}${snapshotUri}`, responseBody);
+  return {
+    body: responseBody,
+    contentHash,
+    snapshotUri,
+    etag: undefined,
+    lastModified: undefined,
+    notModified: false,
+    status: response.status === 200 ? 200 : response.status === 404 ? 404 : 410,
+  };
+}
+
+async function fetchPost(
+  providerId: string,
+  source: SourceManifest,
+  body: string,
+): Promise<StatusPayload> {
+  let lastError: Error = new Error("Source fetch failed");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await attemptPost(providerId, source, body);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Unknown collection failure");
+      if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
+      await wait(lastError.retryAfter || 500 * 2 ** attempt + Math.floor(Math.random() * 250));
+    }
+  }
+  throw lastError;
 }
 
 async function fetchPayload(
@@ -658,20 +724,33 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
   return values;
 }
 
+function requestSource(
+  source: SourceManifest,
+  key: string,
+  url: URL,
+  format: SourceManifest["format"],
+  maxResponseBytes: number,
+): SourceManifest {
+  const { linkedDocuments: _linkedDocuments, ...base } = source;
+  const { transport: _transport, ...plain } = base;
+  void _linkedDocuments;
+  void _transport;
+  return {
+    ...plain,
+    id: key,
+    url: url.href,
+    format,
+    maxResponseBytes,
+  };
+}
+
 function linkedSource(
   source: SourceManifest,
   key: string,
   url: URL,
   maxResponseBytes = source.linkedDocuments?.maxDocumentBytes ?? source.maxResponseBytes,
 ): SourceManifest {
-  const { linkedDocuments: _linkedDocuments, ...base } = source;
-  void _linkedDocuments;
-  return {
-    ...base,
-    id: key,
-    url: url.href,
-    maxResponseBytes,
-  };
+  return requestSource(source, key, url, source.format, maxResponseBytes);
 }
 
 async function batches<T, R>(
@@ -683,6 +762,114 @@ async function batches<T, R>(
   for (let index = 0; index < values.length; index += concurrency)
     results.push(...(await Promise.all(values.slice(index, index + concurrency).map(task))));
   return results;
+}
+
+function ollamaCloudIds(body: string): string[] {
+  const $ = load(body);
+  const ids = new Set<string>();
+  $('a[href^="/library/"]').each((_index, element) => {
+    const anchor = $(element);
+    if (
+      !anchor
+        .find('span[class*="bg-cyan"]')
+        .toArray()
+        .some((badge) => $(badge).text().trim() === "cloud")
+    )
+      return;
+    const match = anchor.attr("href")?.match(/^\/library\/([a-z0-9][a-z0-9._-]*)$/i);
+    if (match?.[1] === undefined) throw new Error("Ollama cloud catalog link changed shape");
+    ids.add(modelIdSchema.parse(match[1]));
+  });
+  return [...ids].sort();
+}
+
+function json(body: string): unknown {
+  return JSON.parse(body);
+}
+
+async function fetchOllamaCloud(
+  providerId: string,
+  source: SourceManifest,
+  states: Record<string, SourceState>,
+): Promise<FetchResult> {
+  const transport = source.transport;
+  if (transport?.kind !== "ollama-cloud") throw new Error("Invalid Ollama cloud transport");
+  const indexKey = `${source.id}/index`;
+  const catalogKey = `${source.id}/catalog`;
+  const indexSource = requestSource(
+    source,
+    indexKey,
+    checkedUrl(source.url, source),
+    "json",
+    source.maxResponseBytes,
+  );
+  const catalogUrl = checkedUrl(transport.catalogUrl, source);
+  if (catalogUrl.href !== "https://ollama.com/search?c=cloud")
+    throw new Error("Ollama cloud catalog URL is not reviewed");
+  const catalogSource = requestSource(
+    source,
+    catalogKey,
+    catalogUrl,
+    "html",
+    source.maxResponseBytes,
+  );
+  const [index, catalog] = await Promise.all([
+    fetchPayload(providerId, indexSource, states[indexKey] ?? states[source.id]),
+    fetchPayload(providerId, catalogSource, states[catalogKey]),
+  ]);
+  const list = ollamaListSchema.parse(json(index.body));
+  const listed = new Set(list.models.map((item) => item.model));
+  if (
+    listed.size !== list.models.length ||
+    listed.size < transport.minModels ||
+    listed.size > transport.maxModels
+  )
+    throw new Error("Ollama cloud list count or identity drift");
+  const catalogIds = ollamaCloudIds(catalog.body);
+  if (catalogIds.length < transport.minModels || catalogIds.length > transport.maxModels)
+    throw new Error("Ollama cloud catalog count outside reviewed bounds");
+  const modelIds = [...new Set([...listed, ...catalogIds])].sort();
+  const documents = await batches(modelIds, transport.concurrency, async (model) => {
+    const key = `${source.id}/show/${sha256(model)}`;
+    const showSource = requestSource(
+      source,
+      key,
+      new URL("https://ollama.com/api/show"),
+      "json",
+      256 * 1024,
+    );
+    const payload = await fetchPost(providerId, showSource, JSON.stringify({ model }));
+    if (listed.has(model) && payload.status !== 200)
+      throw new Error("Ollama cloud listed model details were unavailable");
+    return { key, model, payload };
+  });
+  const body = JSON.stringify({
+    list: json(index.body),
+    catalog: { url: catalogUrl.href, body: catalog.body },
+    documents: documents.map(({ model, payload }) => ({
+      model,
+      status: payload.status,
+      body: json(payload.body),
+    })),
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Ollama cloud bundle exceeded byte limit");
+  const contentHash = sha256(body);
+  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
+  await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
+  return {
+    body,
+    contentHash,
+    snapshotUri,
+    etag: index.etag,
+    lastModified: index.lastModified,
+    notModified: false,
+    dependencies: [
+      observation(indexKey, index),
+      observation(catalogKey, catalog),
+      ...documents.map(({ key, payload }) => observation(key, payload)),
+    ],
+  };
 }
 
 export async function fetchSource(
@@ -735,6 +922,8 @@ export async function fetchSource(
       dependencies: [],
     };
   }
+  if (source.transport?.kind === "ollama-cloud")
+    return fetchOllamaCloud(providerId, source, states);
 
   const crawl = source.linkedDocuments;
   if (crawl === undefined) {

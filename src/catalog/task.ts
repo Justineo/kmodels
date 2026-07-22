@@ -31,12 +31,14 @@ export function classifyModelTypes(input: {
   if (/(?:^|[./:_ -])ocr(?:$|[./:_ -])/.test(identity)) types.push("ocr");
   const speech = /(?:^|[./:_ -])tts(?:$|[./:_ -])|text-to-speech|cosyvoice/.test(identity);
   if (speech) types.push("audio_speech");
-  if (
+  const transcription =
     !speech &&
-    /(?:transcrib|whisper|paraformer|(?:^|[./:_ -])stt(?:$|[./:_ -])|chirp|voxtral)/.test(identity)
+    /(?:transcrib|whisper|paraformer|(?:^|[./:_ -])stt(?:$|[./:_ -])|chirp|voxtral)/.test(identity);
+  if (transcription) types.push("audio_transcription");
+  if (
+    /(?:^|[./:_ -])translat(?:e|ion)(?:$|[./:_ -])/.test(identity) &&
+    (speech || transcription || input.modalities.input.includes("audio"))
   )
-    types.push("audio_transcription");
-  if (/(?:^|[./:_ -])translat(?:e|ion)(?:$|[./:_ -])/.test(identity))
     types.push("audio_translation");
   if (/(?:realtime|sonic|(?:^|[./:_ -])voice(?:$|[./:_ -]))/.test(identity)) types.push("realtime");
   const image = /(?:image|dall-e|imagen|flux|canvas)/.test(identity);

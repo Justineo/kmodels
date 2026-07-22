@@ -354,6 +354,50 @@ async function llamaCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+function ollamaSource(kind: "ollama-cloud" | "ollama-library"): SourceManifest {
+  const value = manifest("ollama");
+  const configured = value.sources.find((source) => source.extractor.kind === kind);
+  if (configured === undefined) throw new Error(`Missing ${kind} source`);
+  return {
+    ...configured,
+    extractor: { kind, minModels: 1, maxModels: 10 },
+  };
+}
+
+async function ollamaLibrary(): Promise<ProviderModel[]> {
+  const value = manifest("ollama");
+  const source = ollamaSource("ollama-library");
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: await fixture("ollama/library.html"),
+    observedAt,
+  });
+}
+
+async function ollamaCloudBody(): Promise<string> {
+  const raw: unknown = JSON.parse(await fixture("ollama/cloud.json"));
+  const bundle = z.object({ list: z.unknown(), documents: z.array(z.unknown()) }).parse(raw);
+  return JSON.stringify({
+    ...bundle,
+    catalog: {
+      url: "https://ollama.com/search?c=cloud",
+      body: await fixture("ollama/cloud-catalog.html"),
+    },
+  });
+}
+
+async function ollamaCloud(): Promise<ProviderModel[]> {
+  const value = manifest("ollama");
+  const source = ollamaSource("ollama-cloud");
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: await ollamaCloudBody(),
+    observedAt,
+  });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -385,6 +429,7 @@ describe("model task taxonomy", () => {
       types("amazon.titan-embed-image-v1"),
       types("wan2.7-image-pro"),
       types("claude-sonnet-5"),
+      types("translate-gemma"),
     ]).toEqual([
       ["embeddings"],
       ["rerank"],
@@ -395,6 +440,7 @@ describe("model task taxonomy", () => {
       ["audio_speech"],
       ["embeddings"],
       ["image"],
+      ["generate"],
       ["generate"],
     ]);
   });
@@ -409,7 +455,10 @@ describe("source taxonomy", () => {
       type: "website",
       source: ["website", "api"],
     });
-    expect(manifest("ollama").sources[0]?.type).toBe("api");
+    expect(manifest("ollama").sources).toMatchObject([
+      { id: "ollama-library", type: "website" },
+      { id: "ollama-cloud-models", source: ["api", "website"] },
+    ]);
     expect(sourceKindSchema.safeParse("runtime").success).toBe(false);
   });
 });
@@ -2545,19 +2594,96 @@ describe("Kimi adapters", () => {
   });
 });
 
-describe("runtime adapters", () => {
-  it("marks Ollama pricing as not applicable", async () => {
-    const model = (await parsed("ollama", "ollama/normal.json"))[0];
-    expect({
-      id: model?.model_id,
-      pricing_status: model?.pricing_status,
-      scope: model?.scope,
-      updated: model?.updated_date,
-    }).toEqual(await expected("ollama/expected.json"));
-    expect((await parsed("ollama", "ollama/pricing.json"))[0]?.pricing.length).toBe(0);
-    await expect(parsed("ollama", "ollama/broken.json")).rejects.toThrow("schema drift");
+describe("Ollama adapters", () => {
+  it("parses exact curated library IDs and family metadata", async () => {
+    const models = await ollamaLibrary();
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "gemma4",
+      "glm-ocr",
+      "kimi-k2.5",
+      "nomic-embed-text",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "gemma4")).toMatchObject({
+      types: ["generate"],
+      modalities: { input: ["text", "image", "audio"], output: ["text"] },
+      capabilities: { reasoning: true, tool_call: true },
+      updated_date: "2026-06-30",
+      pricing_status: "not_applicable",
+    });
+    expect(models.find(({ model_id }) => model_id === "nomic-embed-text")).toMatchObject({
+      types: ["embeddings"],
+      modalities: { input: ["text"], output: ["embedding"] },
+    });
+    expect(models.find(({ model_id }) => model_id === "glm-ocr")?.types).toEqual([
+      "generate",
+      "ocr",
+    ]);
   });
 
+  it("combines the cloud list with structured details and retirement state", async () => {
+    const models = await ollamaCloud();
+    expect(models.find(({ model_id }) => model_id === "gpt-oss:120b")).toMatchObject({
+      modalities: { input: ["text"], output: ["text"] },
+      capabilities: { reasoning: true, tool_call: true, streaming: true },
+      limits: { context_tokens: 131072 },
+      updated_date: "2025-08-05",
+      pricing_status: "not_published",
+      source_refs: ["ollama-cloud-models"],
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
+      status: "deprecated",
+      is_deprecated: true,
+      retired_at: "2026-07-31",
+      modalities: { input: ["text", "image"], output: ["text"] },
+    });
+    expect(models.find(({ model_id }) => model_id === "gemini-3-flash-preview")).toMatchObject({
+      status: "retired",
+      retired_at: "2026-07-15",
+      description: "A fast multimodal model.",
+    });
+  });
+
+  it("retains every catalog that finds the same exact model", async () => {
+    const value = manifest("ollama");
+    const library = ollamaSource("ollama-library");
+    const cloud = ollamaSource("ollama-cloud");
+    const models = applyGroups(
+      [],
+      [
+        { source: library, models: await ollamaLibrary() },
+        { source: cloud, models: await ollamaCloud() },
+      ],
+      true,
+    );
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")?.source_refs).toEqual([
+      "ollama-library",
+      "ollama-cloud-models",
+    ]);
+    expect(provider(value).source_ids).toEqual(["ollama-library", "ollama-cloud-models"]);
+  });
+
+  it("rejects list/detail and catalog drift atomically", async () => {
+    const value = manifest("ollama");
+    const source = ollamaSource("ollama-cloud");
+    const body = await ollamaCloudBody();
+    const parse = (candidate: string): ProviderModel[] =>
+      parseSource({ provider: provider(value), source, body: candidate, observedAt });
+    expect(() =>
+      parse(
+        body.replace(
+          '"modified_at":"2025-08-05T00:00:00Z"',
+          '"modified_at":"2025-08-06T00:00:00Z"',
+        ),
+      ),
+    ).toThrow("update time mismatch");
+    expect(() => parse(body.replace('"completion"', '"unknown-capability"'))).toThrow();
+    expect(() => parse(body.replace('"status":200', '"status":404'))).toThrow(
+      "listed model was unavailable",
+    );
+  });
+});
+
+describe("runtime adapters", () => {
   it("parses an explicitly configured vLLM observation", async () => {
     const runtimeProvider: Provider = {
       id: "vllm",
