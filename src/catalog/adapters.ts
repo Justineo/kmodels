@@ -150,6 +150,85 @@ function modalities(values: string[] | undefined): Modality[] {
   );
 }
 
+export function classifyModelTask(input: {
+  modelId: string;
+  name: string;
+  rawType: string | undefined;
+  modalities: ProviderModel["modalities"];
+  fallback: ModelType;
+}): ModelType {
+  const identity = `${input.modelId} ${input.name}`.toLowerCase();
+  if (
+    /(?:^|[./:_ -])(?:embed(?:ding|dings)?|text-embedding|multimodal-embedding|gte)(?:$|[./:_ -])/.test(
+      identity,
+    )
+  )
+    return "embedding";
+  if (/(?:^|[./:_ -])rerank(?:$|[./:_ -])/.test(identity)) return "rerank";
+  if (/(?:moderation|safeguard|(?:^|[./:_ -])guard(?:$|[./:_ -]))/.test(identity))
+    return "moderation";
+  if (/(?:^|[./:_ -])ocr(?:$|[./:_ -])/.test(identity)) return "ocr";
+  if (/(?:^|[./:_ -])tts(?:$|[./:_ -])|text-to-speech|cosyvoice/.test(identity))
+    return "text_to_speech";
+  if (
+    /(?:transcrib|whisper|paraformer|(?:^|[./:_ -])stt(?:$|[./:_ -])|chirp|voxtral)/.test(identity)
+  )
+    return "speech_to_text";
+  if (
+    /(?:realtime|(?:^|[./:_ -])audio(?:$|[./:_ -])|sonic|(?:^|[./:_ -])voice(?:$|[./:_ -]))/.test(
+      identity,
+    )
+  )
+    return "speech_to_speech";
+  if (/(?:video|sora|veo|reel|(?:^|[./:_ -])wan\d)/.test(identity)) return "video_generation";
+  if (/(?:image|dall-e|imagen|flux|canvas)/.test(identity)) return "image_generation";
+  if (/computer-use/.test(identity)) return "computer_use";
+  if (/(?:^|[./:_ -])classif(?:ier|ication)?(?:$|[./:_ -])/.test(identity)) return "classifier";
+
+  switch (input.rawType) {
+    case "language":
+      return "text_generation";
+    case "embedding":
+      return "embedding";
+    case "reranking":
+      return "rerank";
+    case "image":
+    case "image-generation":
+      return "image_generation";
+    case "video":
+      return "video_generation";
+    case "transcription":
+      return "speech_to_text";
+    case "speech":
+      return "text_to_speech";
+    case "realtime":
+      return "speech_to_speech";
+  }
+
+  if (input.modalities.output.includes("embedding")) return "embedding";
+  if (input.modalities.output.includes("video")) return "video_generation";
+  if (input.modalities.output.includes("image")) return "image_generation";
+  if (input.modalities.output.includes("audio"))
+    return input.modalities.input.includes("audio") ? "speech_to_speech" : "text_to_speech";
+  return input.fallback;
+}
+
+export function normalizeModelTask(model: ProviderModel): ProviderModel {
+  const fallback = model.types.find((type) => type !== "other") ?? "text_generation";
+  return {
+    ...model,
+    types: [
+      classifyModelTask({
+        modelId: model.model_id,
+        name: model.name,
+        rawType: model.raw_type,
+        modalities: model.modalities,
+        fallback,
+      }),
+    ],
+  };
+}
+
 function baseModel(input: BaseModelInput): ProviderModel {
   return {
     provider_id: input.providerId,
@@ -230,30 +309,6 @@ function addTieredRates(
   if (value !== undefined) rates.push(tokenRate(meter, value, sourceId, "token"));
 }
 
-function typesFromVercel(rawType: string | undefined, tags: string[]): ModelType[] {
-  const types: ModelType[] = [];
-  switch (rawType) {
-    case "language":
-      types.push("language");
-      break;
-    case "embedding":
-      types.push("embedding");
-      break;
-    case "image":
-    case "image-generation":
-      types.push("image_generation");
-      break;
-    case "video":
-      types.push("video_generation");
-      break;
-    default:
-      types.push("other");
-  }
-  if (tags.includes("reasoning")) types.push("reasoning");
-  if (tags.includes("vision") || tags.includes("file-input")) types.push("multimodal");
-  return unique(types);
-}
-
 function parseVercel(input: ParseInput): ProviderModel[] {
   const list = listSchema.parse(parseJson(input.body));
   const results = list.data.map((item) => vercelItemSchema.safeParse(item));
@@ -266,6 +321,10 @@ function parseVercel(input: ParseInput): ProviderModel[] {
     const item = result.data;
     const tags = item.tags ?? [];
     const parameters = item.supported_parameters ?? [];
+    const modelModalities = {
+      input: modalities(item.modalities?.input),
+      output: modalities(item.modalities?.output),
+    };
     const prices: PriceRate[] = [];
     const pricing = item.pricing;
     if (pricing !== undefined) {
@@ -296,12 +355,17 @@ function parseVercel(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         description: item.description || undefined,
-        types: typesFromVercel(item.type, tags),
+        types: [
+          classifyModelTask({
+            modelId: item.id,
+            name: item.name ?? item.id,
+            rawType: item.type,
+            modalities: modelModalities,
+            fallback: "other",
+          }),
+        ],
         raw_type: item.type,
-        modalities: {
-          input: modalities(item.modalities?.input),
-          output: modalities(item.modalities?.output),
-        },
+        modalities: modelModalities,
         capabilities: {
           reasoning: tags.includes("reasoning") ? true : "unknown",
           tool_call: tags.includes("tool-use") || parameters.includes("tools") ? true : "unknown",
@@ -341,10 +405,6 @@ function parseCerebras(input: ParseInput): ProviderModel[] {
     if (item.pricing?.completion !== undefined)
       prices.push(tokenRate("output_text", item.pricing.completion, input.source.id, "token"));
     const vision = item.capabilities?.vision === true;
-    const reasoning = item.capabilities?.reasoning === true;
-    const types: ModelType[] = ["language"];
-    if (reasoning) types.push("reasoning");
-    if (vision) types.push("multimodal");
     return [
       {
         ...baseModel({
@@ -355,7 +415,7 @@ function parseCerebras(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         description: item.description,
-        types,
+        types: ["text_generation"],
         modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
         capabilities: {
           reasoning: item.capabilities?.reasoning ?? "unknown",
@@ -438,9 +498,15 @@ function parseHuggingFace(input: ParseInput): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        types: inputModalities.some((value) => value !== "text")
-          ? ["language", "multimodal"]
-          : ["language"],
+        types: [
+          classifyModelTask({
+            modelId: item.id,
+            name: item.id,
+            rawType: undefined,
+            modalities: { input: inputModalities, output: outputModalities },
+            fallback: "text_generation",
+          }),
+        ],
         modalities: { input: inputModalities, output: outputModalities },
         capabilities: {
           ...unknownCapabilities(),
@@ -470,12 +536,17 @@ function documentFragments(body: string, source: SourceManifest): string[] {
     for (const match of body.matchAll(/(?<!!)\[([^\]]+)\]\(([^)]+)\)/g)) {
       const label = match[1]?.replace(/\\\+/g, "+").trim();
       const target = match[2]?.trim();
-      if (label !== undefined && target !== undefined && linkTarget.test(target))
+      if (label !== undefined && target !== undefined && linkTarget.test(target)) {
         fragments.push(label);
+        const lastSegment = target.split("/").filter(Boolean).at(-1)?.split(/[?#]/)[0];
+        if (lastSegment !== undefined) fragments.push(decodeURIComponent(lastSegment));
+      }
     }
     $("a[href]").each((_index, element) => {
       const target = $(element).attr("href");
       if (target === undefined || !linkTarget.test(target)) return;
+      const label = $(element).text().trim();
+      if (label !== "") fragments.push(label);
       const lastSegment = target.split("/").filter(Boolean).at(-1)?.split(/[?#]/)[0];
       if (lastSegment !== undefined) fragments.push(decodeURIComponent(lastSegment));
     });
@@ -519,6 +590,15 @@ function parseDocument(input: ParseInput): ProviderModel[] {
       observedAt: input.observedAt,
     }),
     id_kind: extractor.idKind,
+    types: [
+      classifyModelTask({
+        modelId: id,
+        name: id,
+        rawType: undefined,
+        modalities: { input: [], output: [] },
+        fallback: extractor.defaultType,
+      }),
+    ],
     pricing_status: input.provider.kind === "model_publisher" ? "not_applicable" : "unknown",
   }));
 }
@@ -531,7 +611,52 @@ function markdownCells(line: string): string[] {
     .map((cell) => cell.replaceAll("**", "").replaceAll("`", "").trim());
 }
 
-function bedrockCard(body: string): { name: string; ids: string[] } {
+function bedrockModality(cell: string): Modality | undefined {
+  if (!cell.includes("icon-yes.png")) return undefined;
+  const label = cell.match(/\)\s*(Audio|Embedding|Image|Speech|Text|Video)\s*$/)?.[1];
+  switch (label) {
+    case "Audio":
+    case "Speech":
+      return "audio";
+    case "Embedding":
+      return "embedding";
+    case "Image":
+      return "image";
+    case "Text":
+      return "text";
+    case "Video":
+      return "video";
+  }
+}
+
+function bedrockModalities(body: string): ProviderModel["modalities"] {
+  const lines = body.split("\n");
+  const headerIndex = lines.findIndex((line) => {
+    const cells = markdownCells(line);
+    return cells.includes("Input Modalities") && cells.includes("Output Modalities");
+  });
+  if (headerIndex < 0) throw new Error("Bedrock model card omitted its modality table");
+  const header = markdownCells(lines[headerIndex] ?? "");
+  const inputIndex = header.indexOf("Input Modalities");
+  const outputIndex = header.indexOf("Output Modalities");
+  const inputModalities: Modality[] = [];
+  const outputModalities: Modality[] = [];
+  for (const line of lines.slice(headerIndex + 2)) {
+    if (!line.trim().startsWith("|")) break;
+    const cells = markdownCells(line);
+    const inputModality = bedrockModality(cells[inputIndex] ?? "");
+    const outputModality = bedrockModality(cells[outputIndex] ?? "");
+    if (inputModality !== undefined) inputModalities.push(inputModality);
+    if (outputModality !== undefined) outputModalities.push(outputModality);
+  }
+  return { input: unique(inputModalities), output: unique(outputModalities) };
+}
+
+function bedrockCard(body: string): {
+  name: string;
+  ids: string[];
+  modalities: ProviderModel["modalities"];
+} {
   const name = body.match(/^# ([^\n]+)$/m)?.[1]?.trim();
   if (name === undefined || name === "") throw new Error("Bedrock model card omitted its name");
   const programmaticAccess = body.split("## Programmatic Access")[1]?.split(/\n## /)[0];
@@ -557,32 +682,42 @@ function bedrockCard(body: string): { name: string; ids: string[] } {
   );
   if (ids.length === 0)
     throw new Error(`Bedrock model card omitted official model IDs for ${name}`);
-  return { name, ids };
+  return { name, ids, modalities: bedrockModalities(body) };
 }
 
 function parseBedrock(input: ParseInput): ProviderModel[] {
   const bundle = bedrockBundleSchema.parse(parseJson(input.body));
-  const identities = new Map<string, string>();
+  const identities = new Map<string, { name: string; modalities: ProviderModel["modalities"] }>();
   for (const document of bundle.documents) {
     const card = bedrockCard(document.body);
     for (const id of card.ids) {
       const existing = identities.get(id);
-      if (existing !== undefined && existing !== card.name)
+      if (existing !== undefined && existing.name !== card.name)
         throw new Error(`Bedrock model ID ${id} has conflicting display names`);
-      identities.set(id, card.name);
+      identities.set(id, { name: card.name, modalities: card.modalities });
     }
   }
   return [...identities]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([id, name]) => ({
+    .map(([id, model]) => ({
       ...baseModel({
         providerId: input.provider.id,
         id,
-        name,
+        name: model.name,
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
       id_kind: "api_id",
+      types: [
+        classifyModelTask({
+          modelId: id,
+          name: model.name,
+          rawType: undefined,
+          modalities: model.modalities,
+          fallback: "text_generation",
+        }),
+      ],
+      modalities: model.modalities,
       scope: "regional_catalog",
     }));
 }
@@ -595,6 +730,7 @@ function parseOllama(input: ParseInput): ProviderModel[] {
   return results.flatMap((result) => {
     if (!result.success) return [];
     const id = result.data.model ?? result.data.name;
+    const modelModalities = { input: [], output: [] };
     return [
       {
         ...baseModel({
@@ -604,6 +740,15 @@ function parseOllama(input: ParseInput): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
+        types: [
+          classifyModelTask({
+            modelId: id,
+            name: result.data.name,
+            rawType: undefined,
+            modalities: modelModalities,
+            fallback: "text_generation",
+          }),
+        ],
         pricing_status: "not_applicable",
         status: "active",
       },
@@ -623,6 +768,15 @@ function parseVllm(input: ParseInput): ProviderModel[] {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
+    types: [
+      classifyModelTask({
+        modelId: id,
+        name: id,
+        rawType: undefined,
+        modalities: { input: [], output: [] },
+        fallback: "text_generation",
+      }),
+    ],
     pricing_status: "not_applicable",
     scope: "runtime_observation",
     status: "active",

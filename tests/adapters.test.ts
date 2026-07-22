@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
-import { parseSource, scaleDecimal } from "../src/catalog/adapters.ts";
+import { classifyModelTask, parseSource, scaleDecimal } from "../src/catalog/adapters.ts";
 import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import type { Provider, ProviderModel } from "../src/catalog/schema.ts";
@@ -38,6 +38,38 @@ describe("decimal normalization", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
     expect(scaleDecimal("0.000002", 6)).toBe("2");
     expect(scaleDecimal("1.25", 6)).toBe("1250000");
+  });
+});
+
+describe("model task taxonomy", () => {
+  it("normalizes explicit task markers into one task dimension", () => {
+    const task = (modelId: string): ReturnType<typeof classifyModelTask> =>
+      classifyModelTask({
+        modelId,
+        name: modelId,
+        rawType: undefined,
+        modalities: { input: [], output: [] },
+        fallback: "text_generation",
+      });
+    expect([
+      task("text-embedding-3-large"),
+      task("cohere/rerank-v4-fast"),
+      task("gpt-4o-transcribe"),
+      task("gpt-image-2"),
+      task("gpt-realtime-2"),
+      task("computer-use-preview"),
+      task("voxtral-tts-26-03"),
+      task("claude-sonnet-5"),
+    ]).toEqual([
+      "embedding",
+      "rerank",
+      "speech_to_text",
+      "image_generation",
+      "speech_to_speech",
+      "computer_use",
+      "text_to_speech",
+      "text_generation",
+    ]);
   });
 });
 
@@ -85,6 +117,13 @@ describe("document adapter", () => {
     await expect(parsed("openai", "document/broken.html")).rejects.toThrow("No model identifiers");
   });
 
+  it("uses a matching link target when its display label is not an API ID", async () => {
+    const models = await parsed("xai", "document/xai.md");
+    expect(models.map(({ model_id, types }) => ({ model_id, types }))).toEqual([
+      { model_id: "grok-4.5", types: ["text_generation"] },
+    ]);
+  });
+
   it("pairs Bedrock display names with official endpoint model IDs", async () => {
     const models = await parsed("amazon-bedrock", "document/bedrock.json");
     expect(models.map(({ model_id, id_kind, name }) => ({ model_id, id_kind, name }))).toEqual([
@@ -100,6 +139,8 @@ describe("document adapter", () => {
       },
       { model_id: "cohere.command-r-v1:0", id_kind: "api_id", name: "Command R" },
     ]);
+    expect(models[0]?.types).toEqual(["text_generation"]);
+    expect(models[0]?.modalities.input).toEqual(["text", "image"]);
   });
 });
 
@@ -129,6 +170,7 @@ describe("Cerebras adapter", () => {
   it("retains explicit capabilities and preview status", async () => {
     const model = (await parsed("cerebras", "cerebras/normal.json"))[0];
     expect(model?.capabilities.reasoning).toBe(true);
+    expect(model?.types).toEqual(["text_generation"]);
     expect(model?.capabilities.structured_output).toBe(false);
     expect(model?.status).toBe("preview");
   });
@@ -153,7 +195,8 @@ describe("Hugging Face adapter", () => {
     const model = (await parsed("huggingface", "huggingface/normal.json"))[0];
     expect(model?.limits.context_tokens).toBe(65536);
     expect(model?.capabilities.tool_call).toBe(true);
-    expect(model?.types).toEqual(["language", "multimodal"]);
+    expect(model?.types).toEqual(["text_generation"]);
+    expect(model?.modalities.input).toEqual(["text", "image"]);
   });
 
   it("keeps every route price separate", async () => {
