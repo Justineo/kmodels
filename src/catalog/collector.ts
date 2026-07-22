@@ -79,48 +79,131 @@ function sourceState(
   };
 }
 
-function mergeFacts(groups: ProviderModel[][]): ProviderModel[] {
-  const models = new Map<string, ProviderModel>();
-  for (const group of groups) {
-    for (const model of group) {
-      const current = models.get(model.uid);
-      if (current === undefined) {
-        models.set(model.uid, model);
-        continue;
-      }
-      models.set(model.uid, {
-        ...current,
-        source_refs: [...new Set([...current.source_refs, ...model.source_refs])],
-        pricing: [...current.pricing, ...model.pricing],
-      });
-    }
-  }
-  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+type SourceGroup = { source: SourceManifest; models: ProviderModel[] };
+
+function known<T extends boolean | "unknown">(current: T, incoming: T): T {
+  return incoming === "unknown" ? current : incoming;
 }
 
-function applyOverlays(
+function applyFields(
+  current: ProviderModel,
+  incoming: ProviderModel,
+  source: SourceManifest,
+): ProviderModel {
+  const fields = new Set(source.fields);
+  const incomingModalities =
+    incoming.modalities.input.length + incoming.modalities.output.length > 0;
+  const incomingType = incoming.types.some((type) => type !== "other");
+  const incomingPricing = incoming.pricing.length > 0 || incoming.pricing_status !== "unknown";
+  return {
+    ...current,
+    name:
+      fields.has("name") &&
+      (incoming.name !== incoming.model_id || current.name === current.model_id)
+        ? incoming.name
+        : current.name,
+    description:
+      fields.has("description") && incoming.description !== undefined
+        ? incoming.description
+        : current.description,
+    aliases: fields.has("aliases")
+      ? [...new Set([...current.aliases, ...incoming.aliases])]
+      : current.aliases,
+    types: fields.has("types") && incomingType ? incoming.types : current.types,
+    raw_type:
+      fields.has("types") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
+    modalities:
+      fields.has("modalities") && incomingModalities ? incoming.modalities : current.modalities,
+    capabilities: fields.has("capabilities")
+      ? {
+          reasoning: known(current.capabilities.reasoning, incoming.capabilities.reasoning),
+          tool_call: known(current.capabilities.tool_call, incoming.capabilities.tool_call),
+          structured_output: known(
+            current.capabilities.structured_output,
+            incoming.capabilities.structured_output,
+          ),
+          streaming: known(current.capabilities.streaming, incoming.capabilities.streaming),
+          batch: known(current.capabilities.batch, incoming.capabilities.batch),
+          prompt_cache: known(
+            current.capabilities.prompt_cache,
+            incoming.capabilities.prompt_cache,
+          ),
+          fine_tuning: known(current.capabilities.fine_tuning, incoming.capabilities.fine_tuning),
+          citations: known(current.capabilities.citations, incoming.capabilities.citations),
+          code_execution: known(
+            current.capabilities.code_execution,
+            incoming.capabilities.code_execution,
+          ),
+          context_management: known(
+            current.capabilities.context_management,
+            incoming.capabilities.context_management,
+          ),
+          effort_control: known(
+            current.capabilities.effort_control,
+            incoming.capabilities.effort_control,
+          ),
+        }
+      : current.capabilities,
+    limits: fields.has("limits") ? { ...current.limits, ...incoming.limits } : current.limits,
+    release_date:
+      fields.has("release_date") && incoming.release_date !== undefined
+        ? incoming.release_date
+        : current.release_date,
+    deprecated_at:
+      fields.has("deprecated_at") && incoming.deprecated_at !== undefined
+        ? incoming.deprecated_at
+        : current.deprecated_at,
+    retired_at:
+      fields.has("retired_at") && incoming.retired_at !== undefined
+        ? incoming.retired_at
+        : current.retired_at,
+    status:
+      fields.has("status") && incoming.status !== "unknown" ? incoming.status : current.status,
+    is_deprecated: fields.has("is_deprecated")
+      ? known(current.is_deprecated, incoming.is_deprecated)
+      : current.is_deprecated,
+    replacement_model_ids: fields.has("replacement_model_ids")
+      ? [...new Set([...current.replacement_model_ids, ...incoming.replacement_model_ids])]
+      : current.replacement_model_ids,
+    pricing_status:
+      fields.has("pricing") && incomingPricing ? incoming.pricing_status : current.pricing_status,
+    pricing: fields.has("pricing") && incomingPricing ? incoming.pricing : current.pricing,
+    source_refs: [...new Set([...current.source_refs, ...incoming.source_refs])],
+    observed_at: incoming.observed_at,
+    last_seen_at: incoming.last_seen_at,
+  };
+}
+
+function applyGroups(
   models: ProviderModel[],
-  overlays: { source: SourceManifest; models: ProviderModel[] }[],
+  groups: SourceGroup[],
+  create: boolean,
 ): ProviderModel[] {
   const byUid = new Map(models.map((model) => [model.uid, model]));
-  for (const group of overlays) {
-    for (const overlay of group.models) {
-      const current = byUid.get(overlay.uid);
-      if (current === undefined) continue;
-      const fields = new Set(group.source.fields);
-      byUid.set(overlay.uid, {
-        ...current,
-        aliases: fields.has("aliases")
-          ? [...new Set([...current.aliases, ...overlay.aliases])]
-          : current.aliases,
-        status: fields.has("status") ? overlay.status : current.status,
-        is_deprecated: fields.has("is_deprecated") ? overlay.is_deprecated : current.is_deprecated,
-        retired_at: fields.has("retired_at") ? overlay.retired_at : current.retired_at,
-        replacement_model_ids: fields.has("replacement_model_ids")
-          ? [...new Set([...current.replacement_model_ids, ...overlay.replacement_model_ids])]
-          : current.replacement_model_ids,
-        source_refs: [...new Set([...current.source_refs, ...overlay.source_refs])],
-      });
+  const aliases = new Map<string, string | null>();
+  const index = (model: ProviderModel): void => {
+    for (const alias of model.aliases) {
+      const current = aliases.get(alias);
+      aliases.set(alias, current === undefined || current === model.uid ? model.uid : null);
+    }
+  };
+  for (const model of models) index(model);
+  for (const group of groups) {
+    for (const incoming of group.models) {
+      const aliasUid = aliases.get(incoming.model_id);
+      const aliasModel =
+        aliasUid === undefined || aliasUid === null ? undefined : byUid.get(aliasUid);
+      const current = byUid.get(incoming.uid) ?? aliasModel;
+      if (current === undefined) {
+        if (create) {
+          byUid.set(incoming.uid, incoming);
+          index(incoming);
+        }
+        continue;
+      }
+      const next = applyFields(current, incoming, group.source);
+      byUid.set(current.uid, next);
+      index(next);
     }
   }
   return [...byUid.values()].sort((left, right) => left.uid.localeCompare(right.uid));
@@ -214,9 +297,9 @@ async function collectProvider(
   }
 
   try {
-    const groups: ProviderModel[][] = [];
-    const overlays: { source: SourceManifest; models: ProviderModel[] }[] = [];
-    const inventories: { source: SourceManifest; models: ProviderModel[] }[] = [];
+    const groups: SourceGroup[] = [];
+    const overlays: SourceGroup[] = [];
+    const inventories: SourceGroup[] = [];
     const sources: SourceRecord[] = [];
     for (const source of manifest.sources) {
       if (missingCredential(source)) {
@@ -276,7 +359,7 @@ async function collectProvider(
       }
 
       const role = source.role ?? "catalog";
-      if (role === "catalog") groups.push(parsed);
+      if (role === "catalog") groups.push({ source, models: parsed });
       if (role === "overlay") overlays.push({ source, models: parsed });
       if (role === "inventory") inventories.push({ source, models: parsed });
       sources.push({
@@ -305,7 +388,7 @@ async function collectProvider(
     }
 
     if (groups.length === 0) throw new Error("No global catalog source succeeded");
-    const candidate = applyOverlays(mergeFacts(groups), overlays);
+    let candidate = applyGroups(applyGroups([], groups, true), overlays, false);
     const catalogIdentities = new Set(
       candidate.flatMap((model) => [model.model_id, ...model.aliases]),
     );
@@ -330,6 +413,7 @@ async function collectProvider(
             `${missing} catalog identifiers were absent from the scoped inventory; ${extra} inventory identifiers were absent from the public catalog.`,
           ),
         );
+      candidate = applyGroups(candidate, [inventory], false);
     }
     const warnOnMissing = manifest.warnOnMissing;
     if (warnOnMissing !== undefined)
@@ -337,7 +421,9 @@ async function collectProvider(
         ...warnOnMissing.fields.flatMap((field) => {
           const warning = missingFieldWarning(
             field,
-            candidate,
+            warnOnMissing.statuses === undefined
+              ? candidate
+              : candidate.filter((model) => warnOnMissing.statuses?.includes(model.status)),
             manifest.provider.id,
             warnOnMissing.sourceId,
           );

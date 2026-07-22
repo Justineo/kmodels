@@ -45,6 +45,33 @@ async function parsed(
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
+async function anthropicCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("anthropic");
+  const source = value.sources[0];
+  if (source === undefined) throw new Error("Missing Anthropic source");
+  const body = JSON.stringify({
+    index: {
+      url: source.url,
+      body: await fixture("anthropic/overview.md"),
+    },
+    documents: [
+      {
+        url: "https://platform.claude.com/docs/en/about-claude/pricing.md",
+        body: await fixture("anthropic/pricing.md"),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/about-claude/model-deprecations.md",
+        body: await fixture("anthropic/lifecycle.md"),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
+        body: await fixture("anthropic/launch.md"),
+      },
+    ],
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -124,6 +151,17 @@ describe("HTTP transport boundary", () => {
     );
     expect(urls.map((url) => url.pathname)).toEqual(["/api/docs/models/gpt-5.4"]);
   });
+
+  it("upgrades reviewed Anthropic companion links to Markdown", async () => {
+    const source = manifest("anthropic").sources[0];
+    if (source?.linkedDocuments === undefined) throw new Error("Missing Anthropic link policy");
+    const urls = linkedDocumentUrls(await fixture("anthropic/overview.md"), source);
+    expect(urls.map((url) => url.pathname)).toEqual([
+      "/docs/en/about-claude/model-deprecations.md",
+      "/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
+      "/docs/en/about-claude/pricing.md",
+    ]);
+  });
 });
 
 describe("OpenAI adapters", () => {
@@ -156,6 +194,10 @@ describe("OpenAI adapters", () => {
         batch: "unknown",
         prompt_cache: true,
         fine_tuning: false,
+        citations: "unknown",
+        code_execution: "unknown",
+        context_management: "unknown",
+        effort_control: "unknown",
       },
       status: "active",
       embedding_type: ["embedding"],
@@ -229,6 +271,70 @@ describe("OpenAI adapters", () => {
     await expect(parsed("openai", "openai/broken-catalog.json")).rejects.toThrow(
       "index and model pages disagree",
     );
+  });
+});
+
+describe("Anthropic adapters", () => {
+  it("joins official model, lifecycle, and pricing tables by observed identity", async () => {
+    const models = await anthropicCatalog();
+    const fable = models.find((model) => model.model_id === "claude-fable-5");
+    const sonnet = models.find((model) => model.model_id === "claude-sonnet-5");
+    const preview = models.find((model) => model.model_id === "claude-mythos-preview");
+    expect({
+      count: models.length,
+      name: fable?.name,
+      release: fable?.release_date,
+      limits: fable?.limits,
+      input: fable?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === undefined,
+      )?.price,
+      usInput: fable?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === "us",
+      )?.price,
+      batchCache: fable?.pricing.find(
+        (rate) =>
+          rate.meter === "cache_read_text" &&
+          rate.conditions.service_tier === "batch" &&
+          rate.conditions.inference_geo === undefined,
+      )?.price,
+      sonnetRates: sonnet?.pricing.length,
+      previewStatus: preview?.status,
+      previewReplacement: preview?.replacement_model_ids,
+    }).toEqual({
+      count: 7,
+      name: "Claude Fable 5",
+      release: "2026-06-09",
+      limits: { context_tokens: 1_000_000, max_output_tokens: 128_000 },
+      input: "10",
+      usInput: "11",
+      batchCache: "0.5",
+      sonnetRates: 40,
+      previewStatus: "retired",
+      previewReplacement: ["claude-mythos-5"],
+    });
+  });
+
+  it("parses the authenticated capability inventory as structured facts", async () => {
+    const model = (await parsed("anthropic", "anthropic/api.json", "anthropic-api"))[0];
+    expect({
+      id: model?.model_id,
+      release: model?.release_date,
+      modalities: model?.modalities,
+      limits: model?.limits,
+      citations: model?.capabilities.citations,
+      structured: model?.capabilities.structured_output,
+    }).toEqual({
+      id: "claude-opus-4-8",
+      release: "2026-05-28",
+      modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+      limits: {
+        context_tokens: 1_000_000,
+        max_input_tokens: 1_000_000,
+        max_output_tokens: 128_000,
+      },
+      citations: true,
+      structured: true,
+    });
   });
 });
 

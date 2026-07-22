@@ -123,8 +123,15 @@ async function curlRequest(
     const credential = process.env[source.auth.env];
     if (credential === undefined || credential.trim() === "")
       throw new Error(`Missing credential ${source.auth.env}`);
-    args.push("--header", `Authorization: Bearer ${credential}`);
+    args.push(
+      "--header",
+      source.auth.scheme === "bearer"
+        ? `Authorization: Bearer ${credential}`
+        : `${source.auth.header}: ${credential}`,
+    );
   }
+  for (const header of source.headers ?? [])
+    args.push("--header", `${header.name}: ${header.value}`);
   if (previous?.snapshotUri !== undefined && previous.etag !== undefined)
     args.push("--header", `If-None-Match: ${previous.etag}`);
   if (previous?.snapshotUri !== undefined && previous.lastModified !== undefined)
@@ -261,8 +268,10 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
         url.search === "" &&
         url.hash === "" &&
         crawl.path.test(url.pathname)
-      )
+      ) {
+        if (crawl.markdownSuffix) url.pathname += ".md";
         urls.set(url.href, url);
+      }
     } catch {
       return;
     }

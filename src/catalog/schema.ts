@@ -84,6 +84,7 @@ export const priceRateSchema = z.object({
     region: z.string().optional(),
     deployment_scope: z.string().optional(),
     service_tier: z.string().optional(),
+    inference_geo: z.string().optional(),
     route_provider: z.string().optional(),
     context_min_tokens: z.number().int().nonnegative().optional(),
     context_max_tokens: z.number().int().nonnegative().optional(),
@@ -124,6 +125,10 @@ export const providerModelSchema = z.object({
     batch: triStateSchema,
     prompt_cache: triStateSchema,
     fine_tuning: triStateSchema,
+    citations: triStateSchema.default("unknown"),
+    code_execution: triStateSchema.default("unknown"),
+    context_management: triStateSchema.default("unknown"),
+    effort_control: triStateSchema.default("unknown"),
   }),
   limits: z.object({
     context_tokens: z.number().int().nonnegative().optional(),
@@ -256,5 +261,9 @@ export function unknownCapabilities(): ProviderModel["capabilities"] {
     batch: "unknown",
     prompt_cache: "unknown",
     fine_tuning: "unknown",
+    citations: "unknown",
+    code_execution: "unknown",
+    context_management: "unknown",
+    effort_control: "unknown",
   };
 }

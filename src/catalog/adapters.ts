@@ -1,6 +1,11 @@
 import { load } from "cheerio";
 import { z } from "zod";
+import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
+import { linkedBundleSchema } from "./bundle.ts";
+import { modelIdSchema } from "./identity.ts";
+import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
@@ -10,6 +15,8 @@ import {
   type Provider,
   unknownCapabilities,
 } from "./schema.ts";
+
+export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 
 const decimalValue = z
   .union([z.string(), z.number().finite().nonnegative()])
@@ -103,25 +110,15 @@ const ollamaItemSchema = z.object({
 });
 
 const openAiItemSchema = z.object({
-  id: z.string().min(1),
+  id: modelIdSchema,
   object: z.literal("model"),
   created: z.number().int().nonnegative(),
   owned_by: z.string().min(1),
 });
 
-const openAiModelIdSchema = z
-  .string()
-  .regex(
-    /^(?:gpt|chat|chatgpt|o\d|text-|code-|computer-use|babbage|davinci|ada|curie|dall-e|tts|whisper|omni-moderation|sora|codex)[a-z0-9._:-]*$/i,
-  );
-
 const listSchema = z.object({ data: z.array(z.unknown()) });
 const ollamaListSchema = z.object({ models: z.array(z.unknown()) });
 const bedrockBundleSchema = z.object({
-  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
-});
-const openAiBundleSchema = z.object({
-  index: z.object({ url: z.url(), body: z.string().min(1) }),
   documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
 });
 const bedrockModelIdSchema = z
@@ -132,14 +129,6 @@ interface ParseInput {
   provider: Provider;
   source: SourceManifest;
   body: string;
-  observedAt: string;
-}
-
-interface BaseModelInput {
-  providerId: string;
-  id: string;
-  name: string;
-  sourceId: string;
   observedAt: string;
 }
 
@@ -248,45 +237,6 @@ export function normalizeModelTask(model: ProviderModel): ProviderModel {
   };
 }
 
-function baseModel(input: BaseModelInput): ProviderModel {
-  return {
-    provider_id: input.providerId,
-    model_id: input.id,
-    uid: `${input.providerId}/${input.id}`,
-    id_kind: "api_id",
-    name: input.name,
-    aliases: [],
-    types: ["other"],
-    modalities: { input: [], output: [] },
-    capabilities: unknownCapabilities(),
-    limits: {},
-    status: "unknown",
-    is_deprecated: "unknown",
-    replacement_model_ids: [],
-    pricing_status: "unknown",
-    pricing: [],
-    scope: "global_catalog",
-    account_availability: "unknown",
-    first_seen_at: input.observedAt,
-    last_seen_at: input.observedAt,
-    observed_at: input.observedAt,
-    source_refs: [input.sourceId],
-  };
-}
-
-export function scaleDecimal(value: string, places: number): string {
-  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) {
-    throw new Error(`Invalid decimal: ${value}`);
-  }
-  const [whole = "", fraction = ""] = value.split(".");
-  const digits = `${whole}${fraction}`;
-  const point = whole.length + places;
-  const padded = point >= digits.length ? `${digits}${"0".repeat(point - digits.length)}` : digits;
-  const integer = padded.slice(0, point).replace(/^0+(?=\d)/, "") || "0";
-  const decimals = padded.slice(point).replace(/0+$/, "");
-  return decimals ? `${integer}.${decimals}` : integer;
-}
-
 function tokenRate(
   meter: PriceRate["meter"],
   value: string,
@@ -328,43 +278,6 @@ function addTieredRates(
     return;
   }
   if (value !== undefined) rates.push(tokenRate(meter, value, sourceId, "token"));
-}
-
-function publishedRate(
-  meter: PriceRate["meter"],
-  price: string,
-  unit: PriceRate["unit"],
-  sourceId: string,
-  rawUnit: string,
-  conditions: PriceRate["conditions"] = {},
-): PriceRate {
-  return {
-    meter,
-    price,
-    currency: "USD",
-    unit,
-    conditions,
-    source_ref: sourceId,
-    derived: false,
-    raw_price: price,
-    raw_unit: rawUnit,
-  };
-}
-
-export function multiplyDecimal(left: string, right: string): string {
-  const parts = (value: string): [bigint, number] => {
-    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);
-    const [whole = "", fraction = ""] = value.split(".");
-    return [BigInt(`${whole}${fraction}`), fraction.length];
-  };
-  const [leftInteger, leftScale] = parts(left);
-  const [rightInteger, rightScale] = parts(right);
-  const scale = leftScale + rightScale;
-  const digits = (leftInteger * rightInteger).toString().padStart(scale + 1, "0");
-  if (scale === 0) return digits;
-  const whole = digits.slice(0, -scale).replace(/^0+(?=\d)/, "") || "0";
-  const fraction = digits.slice(-scale).replace(/0+$/, "");
-  return fraction === "" ? whole : `${whole}.${fraction}`;
 }
 
 function normalizedText(value: string): string {
@@ -426,6 +339,7 @@ function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
     });
   const value = (label: string): boolean | "unknown" => values.get(label) ?? "unknown";
   return {
+    ...unknownCapabilities(),
     reasoning: "unknown",
     tool_call: value("Function calling"),
     structured_output: value("Structured outputs"),
@@ -645,7 +559,7 @@ function openAiTokenLimit(
 }
 
 function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
-  const bundle = openAiBundleSchema.parse(parseJson(input.body));
+  const bundle = linkedBundleSchema.parse(parseJson(input.body));
   const index = load(bundle.index.body);
   const statuses = new Map<string, ProviderModel["status"]>();
   index("a[href]").each((_index, element) => {
@@ -668,7 +582,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
 
   return bundle.documents
     .map((document) => {
-      const id = openAiModelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1));
+      const id = modelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1));
       const status = statuses.get(id);
       if (status === undefined) throw new Error(`OpenAI catalog omitted index entry for ${id}`);
       const $ = load(document.body);
@@ -699,7 +613,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
           .filter((_index, element) => $(element).children().length === 0)
           .map((_index, element) => normalizedText($(element).text()))
           .get()
-          .filter((value) => value !== id && openAiModelIdSchema.safeParse(value).success),
+          .filter((value) => value !== id && modelIdSchema.safeParse(value).success),
       ).sort();
       return {
         ...baseModel({
@@ -753,7 +667,7 @@ function parseOpenAiOverview(input: ParseInput): ProviderModel[] {
     .each((_index, element) => {
       const row = $(element).parent();
       const id = normalizedText(row.children().last().text());
-      if (!openAiModelIdSchema.safeParse(id).success) return;
+      if (!modelIdSchema.safeParse(id).success) return;
       const aliasLabel = row
         .parent()
         .children()
@@ -765,7 +679,7 @@ function parseOpenAiOverview(input: ParseInput): ProviderModel[] {
         .first();
       if (aliasLabel.length === 0) return;
       const alias = normalizedText(aliasLabel.parent().children().last().text());
-      if (alias === id || !openAiModelIdSchema.safeParse(alias).success) return;
+      if (alias === id || !modelIdSchema.safeParse(alias).success) return;
       models.set(id, {
         ...baseModel({
           providerId: input.provider.id,
@@ -834,7 +748,7 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
                   .find("code")
                   .map((_index, code) => normalizedText($(code).text()))
                   .get()
-                  .filter((id) => openAiModelIdSchema.safeParse(id).success),
+                  .filter((id) => modelIdSchema.safeParse(id).success),
               );
         const ids = unique(
           cells
@@ -842,7 +756,7 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
             .find("code")
             .map((_index, code) => normalizedText($(code).text()))
             .get()
-            .filter((id) => openAiModelIdSchema.safeParse(id).success),
+            .filter((id) => modelIdSchema.safeParse(id).success),
         );
         for (const id of ids) {
           const status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
@@ -936,6 +850,7 @@ function parseVercel(input: ParseInput): ProviderModel[] {
         raw_type: item.type,
         modalities: modelModalities,
         capabilities: {
+          ...unknownCapabilities(),
           reasoning: tags.includes("reasoning") ? true : "unknown",
           tool_call: tags.includes("tool-use") || parameters.includes("tools") ? true : "unknown",
           structured_output: parameters.includes("response_format") ? true : "unknown",
@@ -987,6 +902,7 @@ function parseCerebras(input: ParseInput): ProviderModel[] {
         types: ["text_generation"],
         modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
         capabilities: {
+          ...unknownCapabilities(),
           reasoning: item.capabilities?.reasoning ?? "unknown",
           tool_call: item.capabilities?.function_calling ?? "unknown",
           structured_output: item.capabilities?.structured_outputs ?? "unknown",
@@ -1362,6 +1278,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseOpenAiApi(input);
     case "openai-deprecations":
       return parseOpenAiDeprecations(input);
+    case "anthropic-catalog":
+      return parseAnthropicCatalog(input);
+    case "anthropic-api":
+      return parseAnthropicApi(input);
     case "vercel":
       return parseVercel(input);
     case "cerebras":
