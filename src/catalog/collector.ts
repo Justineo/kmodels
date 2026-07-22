@@ -120,7 +120,12 @@ function applyFields(
     raw_type:
       fields.has("types") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
     modalities:
-      fields.has("modalities") && incomingModalities ? incoming.modalities : current.modalities,
+      fields.has("modalities") && incomingModalities
+        ? {
+            input: [...new Set([...current.modalities.input, ...incoming.modalities.input])],
+            output: [...new Set([...current.modalities.output, ...incoming.modalities.output])],
+          }
+        : current.modalities,
     capabilities: fields.has("capabilities")
       ? {
           reasoning: known(current.capabilities.reasoning, incoming.capabilities.reasoning),
