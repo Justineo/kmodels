@@ -79,10 +79,33 @@ const imageModelSchema = z.object({
     .min(1),
   pricePerInputImage: integerString.optional(),
 });
-const audioModelSchema = z.object({
+const voiceEndpointSchema = z.discriminatedUnion("endpoint", [
+  z.object({
+    endpoint: z.literal("TTS"),
+    basis: z.literal("REQUEST_RATE"),
+    pricing: z.object({ perCharacter: integerString }),
+  }),
+  z.object({
+    endpoint: z.literal("STT"),
+    basis: z.literal("REQUEST_RATE"),
+    pricing: z.object({
+      perAudioSecond: integerString,
+      perAudioSecondStreaming: integerString,
+    }),
+  }),
+  z.object({
+    endpoint: z.literal("REALTIME"),
+    basis: z.literal("CONCURRENCY"),
+    pricing: z.object({
+      realtimeAudioTokenPrice: integerString,
+      realtimeTextInputPrice: integerString,
+      pstnMinutePrice: integerString,
+    }),
+  }),
+]);
+const voiceServiceSchema = z.object({
   ...commonModelShape,
-  promptTokenPrice: integerString,
-  completionTokenPrice: integerString,
+  endpoints: z.array(voiceEndpointSchema).length(1),
 });
 const videoModelSchema = z.object({
   ...commonModelShape,
@@ -106,7 +129,7 @@ const clusterSchema = z.object({
   languageModels: z.array(languageModelSchema).default([]),
   embeddingModels: z.array(embeddingModelSchema).default([]),
   imageGenerationModels: z.array(imageModelSchema).default([]),
-  audioModels: z.array(audioModelSchema).default([]),
+  audioModels: z.array(voiceServiceSchema).default([]),
   videoGenerationModels: z.array(videoModelSchema).default([]),
 });
 const publicModelsSchema = z.object({ clusterConfigs: z.array(clusterSchema).min(1) });
@@ -532,18 +555,78 @@ function toolRates(pricing: string, sourceId: string): PriceRate[] {
   return rates;
 }
 
-function voiceRates(pricing: string, sourceId: string): PriceRate[] {
+interface VoicePrices {
+  realtime: string;
+  text: string;
+  speech: string;
+  transcription: string;
+  streamingTranscription: string;
+}
+
+function voicePrices(pricing: string): VoicePrices {
   const realtime = pricing.match(/^\| Realtime \| \$([\d.]+) \/ min/m)?.[1];
   const text = pricing.match(/^\| Realtime Text Input \| \$([\d.]+) \/ message/m)?.[1];
-  if (realtime === undefined || text === undefined)
+  const speech = pricing.match(/^\| Text to Speech \| \$([\d.]+) \/ 1M chars/m)?.[1];
+  const transcription = pricing
+    .match(/^\| Speech to Text \| \$([\d.]+) \/ hr \(REST\), \$([\d.]+) \/ hr \(Streaming\)/m)
+    ?.slice(1);
+  if (
+    realtime === undefined ||
+    text === undefined ||
+    speech === undefined ||
+    transcription?.[0] === undefined ||
+    transcription[1] === undefined
+  )
     throw new Error("xAI voice pricing table was incomplete");
+  return {
+    realtime: scaleDecimal(realtime, 0),
+    text: scaleDecimal(text, 0),
+    speech: scaleDecimal(speech, 0),
+    transcription: scaleDecimal(transcription[0], 0),
+    streamingTranscription: scaleDecimal(transcription[1], 0),
+  };
+}
+
+function voiceRates(pricing: string, sourceId: string): PriceRate[] {
+  const { realtime, text } = voicePrices(pricing);
   return [
-    publishedRate("input_audio", scaleDecimal(realtime, 0), "minute", sourceId, "USD / min"),
-    publishedRate("output_audio", scaleDecimal(realtime, 0), "minute", sourceId, "USD / min"),
-    publishedRate("input_text", scaleDecimal(text, 0), "request", sourceId, "USD / message", {
+    publishedRate("input_audio", realtime, "minute", sourceId, "USD / min"),
+    publishedRate("output_audio", realtime, "minute", sourceId, "USD / min"),
+    publishedRate("input_text", text, "request", sourceId, "USD / message", {
       operation: "conversation.item.create",
     }),
   ];
+}
+
+function assertVoiceServices(
+  pricing: string,
+  services: z.infer<typeof voiceServiceSchema>[],
+): void {
+  const prices = voicePrices(pricing);
+  const endpoints = new Map(
+    services.map((service) => [service.endpoints[0]?.endpoint, service.endpoints[0]]),
+  );
+  const tts = endpoints.get("TTS");
+  const stt = endpoints.get("STT");
+  const realtime = endpoints.get("REALTIME");
+  if (
+    services.length !== 3 ||
+    endpoints.size !== 3 ||
+    tts?.endpoint !== "TTS" ||
+    stt?.endpoint !== "STT" ||
+    realtime?.endpoint !== "REALTIME"
+  )
+    throw new Error("xAI voice service catalog was incomplete");
+  const centsPerHour = (ticksPerSecond: string): string =>
+    ((BigInt(ticksPerSecond) * 3_600n + 50_000_000n) / 100_000_000n).toString();
+  if (
+    scaleDecimal(tts.pricing.perCharacter, -4) !== prices.speech ||
+    centsPerHour(stt.pricing.perAudioSecond) !== scaleDecimal(prices.transcription, 2) ||
+    centsPerHour(stt.pricing.perAudioSecondStreaming) !==
+      scaleDecimal(prices.streamingTranscription, 2) ||
+    scaleDecimal(realtime.pricing.realtimeTextInputPrice, -10) !== prices.text
+  )
+    throw new Error("xAI structured and published voice pricing differ");
 }
 
 function preview(id: string, aliases: string[], llms: string, releases: ReleaseSection[]): boolean {
@@ -574,21 +657,22 @@ function currentModels(
     catalog.clusterConfigs.flatMap(({ imageGenerationModels }) => imageGenerationModels),
     "image",
   );
-  const audio = distinct(
+  const voice = distinct(
     catalog.clusterConfigs.flatMap(({ audioModels }) => audioModels),
-    "audio",
+    "voice service",
   );
   const videos = distinct(
     catalog.clusterConfigs.flatMap(({ videoGenerationModels }) => videoGenerationModels),
     "video",
   );
-  const count = language.length + embeddings.length + images.length + audio.length + videos.length;
+  const count = language.length + embeddings.length + images.length + voice.length + videos.length;
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-catalog") throw new Error("Invalid xAI catalog extractor");
   if (count < extractor.minModels || count > extractor.maxModels)
     throw new Error("xAI structured model count outside reviewed bounds");
   const pricing = section(llms, "/developers/pricing");
   assertPublicPricing(pricing, language, images, videos);
+  if (voice.length > 0) assertVoiceServices(pricing, voice);
   const tools = toolRates(pricing, input.source.id);
   const names = displayNames(html);
   const releases = releaseSections(section(llms, "/developers/release-notes"));
@@ -689,40 +773,6 @@ function currentModels(
       pricing: rates,
     });
   });
-  const audioModels = audio.map((value) => {
-    const rates = [
-      exactRate(
-        "input_audio",
-        value.promptTokenPrice,
-        4,
-        "million_tokens",
-        input.source.id,
-        "USD cents / 100M tokens",
-      ),
-      exactRate(
-        "output_audio",
-        value.completionTokenPrice,
-        4,
-        "million_tokens",
-        input.source.id,
-        "USD cents / 100M tokens",
-      ),
-    ].filter(({ price }) => price !== "0");
-    return model(input, value.name, {
-      ...details(value.name, value.aliases),
-      aliases: value.aliases,
-      types: ["realtime"],
-      modalities: {
-        input: upperModalities(value.inputModalities),
-        output: upperModalities(value.outputModalities),
-      },
-      capabilities: { ...unknownCapabilities(), streaming: true },
-      status: "active",
-      is_deprecated: false,
-      pricing_status: rates.length > 0 ? "published" : "unknown",
-      pricing: rates,
-    });
-  });
   const videoModels = videos.map((value) => {
     const rates = value.resolutionPricing.map(({ resolution, pricePerSecond }) =>
       mediaRate("video_generation", pricePerSecond, "second", input.source.id, {
@@ -750,7 +800,7 @@ function currentModels(
       pricing: rates,
     });
   });
-  return [...languageModels, ...embeddingModels, ...imageModels, ...audioModels, ...videoModels];
+  return [...languageModels, ...embeddingModels, ...imageModels, ...videoModels];
 }
 
 function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
