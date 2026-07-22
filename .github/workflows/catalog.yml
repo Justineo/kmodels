@@ -38,6 +38,7 @@ jobs:
         run: pnpm collect
         env:
           KMODELS_JITTER_MS: "30000"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
       - name: Verify generated catalog
         run: pnpm test

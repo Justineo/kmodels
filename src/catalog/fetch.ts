@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { setTimeout as wait } from "node:timers/promises";
 import { promisify } from "node:util";
+import { load } from "cheerio";
 import { z } from "zod";
 import type { SourceManifest } from "./manifests.ts";
 import { readSnapshot, rootDirectory, sha256, writeSnapshot } from "./io.ts";
@@ -11,7 +12,7 @@ export const sourceStateSchema = z.object({
   etag: z.string().optional(),
   lastModified: z.string().optional(),
   contentHash: z.string().length(64),
-  snapshotUri: z.string().min(1),
+  snapshotUri: z.string().min(1).optional(),
   lastSuccessAt: z.iso.datetime({ offset: true }),
   checkedAt: z.iso.datetime({ offset: true }),
   consecutiveFailures: z.number().int().nonnegative(),
@@ -27,7 +28,7 @@ export type SourceState = z.infer<typeof sourceStateSchema>;
 interface FetchPayload {
   body: string;
   contentHash: string;
-  snapshotUri: string;
+  snapshotUri: string | undefined;
   etag: string | undefined;
   lastModified: string | undefined;
   notModified: boolean;
@@ -112,12 +113,21 @@ async function curlRequest(
     "--user-agent",
     "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
     "--header",
-    source.type === "official_public_api" || source.type === "runtime_api"
+    source.type === "official_public_api" ||
+    source.type === "official_authenticated_api" ||
+    source.type === "runtime_api"
       ? "Accept: application/json"
       : "Accept: text/html, text/markdown;q=0.9",
   ];
-  if (previous?.etag !== undefined) args.push("--header", `If-None-Match: ${previous.etag}`);
-  if (previous?.lastModified !== undefined)
+  if (source.auth !== undefined) {
+    const credential = process.env[source.auth.env];
+    if (credential === undefined || credential.trim() === "")
+      throw new Error(`Missing credential ${source.auth.env}`);
+    args.push("--header", `Authorization: Bearer ${credential}`);
+  }
+  if (previous?.snapshotUri !== undefined && previous.etag !== undefined)
+    args.push("--header", `If-None-Match: ${previous.etag}`);
+  if (previous?.snapshotUri !== undefined && previous.lastModified !== undefined)
     args.push("--header", `If-Modified-Since: ${previous.lastModified}`);
   args.push(url.href);
   const result = await execute("curl", args, {
@@ -173,7 +183,8 @@ async function attemptFetch(
 ): Promise<FetchPayload> {
   const response = await request(source, previous);
   if (response.status === 304) {
-    if (previous === undefined) throw new Error("Received 304 without a previous snapshot");
+    if (previous?.snapshotUri === undefined)
+      throw new Error("Received 304 without a previous snapshot");
     return {
       body: await readSnapshot(`${rootDirectory}${previous.snapshotUri}`),
       contentHash: previous.contentHash,
@@ -189,8 +200,11 @@ async function attemptFetch(
   const body = await readLimited(response, source.maxResponseBytes);
   if (body.trim() === "") throw new Error("Source returned an empty body");
   const contentHash = sha256(body);
-  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
-  await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
+  const snapshotUri =
+    source.snapshotPolicy === "none"
+      ? undefined
+      : `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
+  if (snapshotUri !== undefined) await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
   return {
     body,
     contentHash,
@@ -234,9 +248,8 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
   const crawl = source.linkedDocuments;
   if (crawl === undefined) return [];
   const urls = new Map<string, URL>();
-  for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) {
-    const target = match[1];
-    if (target === undefined) continue;
+  const add = (target: string | undefined): void => {
+    if (target === undefined) return;
     try {
       const url = new URL(target, source.url);
       if (
@@ -251,8 +264,14 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
       )
         urls.set(url.href, url);
     } catch {
-      continue;
+      return;
     }
+  };
+  if (source.type === "official_markdown" || source.type === "official_github")
+    for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) add(match[1]);
+  if (source.type === "official_html") {
+    const $ = load(body);
+    $("a[href]").each((_index, element) => add($(element).attr("href")));
   }
   const values = [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
   if (values.length < crawl.minDocuments || values.length > crawl.maxDocuments)
@@ -261,16 +280,13 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
 }
 
 function linkedSource(source: SourceManifest, key: string, url: URL): SourceManifest {
+  const { linkedDocuments: _linkedDocuments, ...base } = source;
+  void _linkedDocuments;
   return {
+    ...base,
     id: key,
     url: url.href,
-    type: source.type,
-    stability: source.stability,
-    extractor: source.extractor,
-    extractorVersion: source.extractorVersion,
-    fields: source.fields,
-    allowedHosts: source.allowedHosts,
-    maxResponseBytes: source.maxResponseBytes,
+    maxResponseBytes: source.linkedDocuments?.maxDocumentBytes ?? source.maxResponseBytes,
   };
 }
 
@@ -303,11 +319,13 @@ export async function fetchSource(
   const documents = await batches(urls, crawl.concurrency, async (url) => {
     const filename = url.pathname.split("/").at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
-    const key = `${source.id}/${filename.slice(0, -3)}`;
+    const stem = filename.endsWith(".md") ? filename.slice(0, -3) : filename;
+    const key = `${source.id}/${stem}`;
     const payload = await fetchPayload(providerId, linkedSource(source, key, url), states[key]);
     return { key, url: url.href, payload };
   });
   const body = JSON.stringify({
+    index: { url: source.url, body: index.body },
     documents: documents.map((document) => ({ url: document.url, body: document.payload.body })),
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)

@@ -1,6 +1,10 @@
 import type { ModelType, Provider, ProviderModel } from "./schema.ts";
 
 export type Extractor =
+  | { kind: "openai-catalog" }
+  | { kind: "openai-overview" }
+  | { kind: "openai-api" }
+  | { kind: "openai-deprecations" }
   | { kind: "vercel" }
   | { kind: "cerebras" }
   | { kind: "huggingface" }
@@ -20,13 +24,32 @@ export interface LinkedDocuments {
   minDocuments: number;
   maxDocuments: number;
   concurrency: number;
+  maxDocumentBytes?: number;
 }
+
+export type SourceField =
+  | "model_id"
+  | "name"
+  | "description"
+  | "aliases"
+  | "types"
+  | "modalities"
+  | "capabilities"
+  | "limits"
+  | "pricing"
+  | "status"
+  | "is_deprecated"
+  | "retired_at"
+  | "replacement_model_ids";
+
+export type CoverageField = "limits.context_tokens" | "pricing";
 
 export interface SourceManifest {
   id: string;
   url: string;
   type:
     | "official_public_api"
+    | "official_authenticated_api"
     | "official_bulk_pricing"
     | "official_openapi"
     | "official_markdown"
@@ -36,9 +59,15 @@ export interface SourceManifest {
   stability: "documented" | "semi_structured" | "undocumented";
   extractor: Extractor;
   extractorVersion: string;
-  fields: string[];
+  fields: SourceField[];
   allowedHosts: string[];
   maxResponseBytes: number;
+  scope?: "global" | "account" | "region" | "workspace" | "runtime";
+  exhaustive?: boolean;
+  role?: "catalog" | "overlay" | "inventory";
+  optional?: boolean;
+  auth?: { scheme: "bearer"; env: string };
+  snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
 
@@ -48,6 +77,7 @@ export interface ProviderManifest {
   notConfiguredReason?: string;
   supersededIdKinds?: ProviderModel["id_kind"][];
   supersededModelIds?: string[];
+  warnOnMissing?: { sourceId: string; fields: CoverageField[] };
 }
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
@@ -88,16 +118,91 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource(
-        "openai-models",
-        "https://developers.openai.com/api/docs/models/all",
-        [
-          /^(?:gpt|chat|chatgpt|o[1345]|text-embedding|omni-moderation|dall-e|tts|whisper|computer-use|codex|sora|babbage|davinci)[a-z0-9._:-]*$/i,
+      {
+        id: "openai-models",
+        url: "https://developers.openai.com/api/docs/models/all",
+        type: "official_html",
+        stability: "semi_structured",
+        extractor: { kind: "openai-catalog" },
+        extractorVersion: "openai-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "pricing",
+          "status",
+          "is_deprecated",
         ],
-        "api_id",
-        /\/api\/docs\/models\//,
-      ),
+        allowedHosts: ["developers.openai.com"],
+        maxResponseBytes: mebibytes(64),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^\/api\/docs\/models\/[a-z0-9._-]+$/,
+          minDocuments: 80,
+          maxDocuments: 140,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(2),
+        },
+      },
+      {
+        id: "openai-overview",
+        url: "https://developers.openai.com/api/docs/models",
+        type: "official_html",
+        stability: "semi_structured",
+        extractor: { kind: "openai-overview" },
+        extractorVersion: "openai-overview-v1",
+        fields: ["aliases"],
+        allowedHosts: ["developers.openai.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+      },
+      {
+        id: "openai-deprecations",
+        url: "https://developers.openai.com/api/docs/deprecations",
+        type: "official_html",
+        stability: "semi_structured",
+        extractor: { kind: "openai-deprecations" },
+        extractorVersion: "openai-deprecations-v1",
+        fields: ["status", "is_deprecated", "retired_at", "replacement_model_ids"],
+        allowedHosts: ["developers.openai.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: true,
+        role: "overlay",
+        optional: true,
+      },
+      {
+        id: "openai-api",
+        url: "https://api.openai.com/v1/models",
+        type: "official_authenticated_api",
+        stability: "documented",
+        extractor: { kind: "openai-api" },
+        extractorVersion: "openai-api-v1",
+        fields: ["model_id"],
+        allowedHosts: ["api.openai.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "OPENAI_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    warnOnMissing: {
+      sourceId: "openai-models",
+      fields: ["limits.context_tokens", "pricing"],
+    },
   },
   {
     provider: {

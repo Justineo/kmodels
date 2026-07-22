@@ -102,9 +102,26 @@ const ollamaItemSchema = z.object({
   modified_at: z.string().optional(),
 });
 
+const openAiItemSchema = z.object({
+  id: z.string().min(1),
+  object: z.literal("model"),
+  created: z.number().int().nonnegative(),
+  owned_by: z.string().min(1),
+});
+
+const openAiModelIdSchema = z
+  .string()
+  .regex(
+    /^(?:gpt|chat|chatgpt|o\d|text-|code-|computer-use|babbage|davinci|ada|curie|dall-e|tts|whisper|omni-moderation|sora|codex)[a-z0-9._:-]*$/i,
+  );
+
 const listSchema = z.object({ data: z.array(z.unknown()) });
 const ollamaListSchema = z.object({ models: z.array(z.unknown()) });
 const bedrockBundleSchema = z.object({
+  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
+});
+const openAiBundleSchema = z.object({
+  index: z.object({ url: z.url(), body: z.string().min(1) }),
   documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
 });
 const bedrockModelIdSchema = z
@@ -127,6 +144,8 @@ interface BaseModelInput {
 }
 
 type Tier = z.infer<typeof tierSchema>;
+type LoadedDocument = ReturnType<typeof load>;
+type Selection = ReturnType<LoadedDocument>;
 
 function parseJson(body: string): unknown {
   return JSON.parse(body);
@@ -242,6 +261,8 @@ function baseModel(input: BaseModelInput): ProviderModel {
     capabilities: unknownCapabilities(),
     limits: {},
     status: "unknown",
+    is_deprecated: "unknown",
+    replacement_model_ids: [],
     pricing_status: "unknown",
     pricing: [],
     scope: "global_catalog",
@@ -307,6 +328,554 @@ function addTieredRates(
     return;
   }
   if (value !== undefined) rates.push(tokenRate(meter, value, sourceId, "token"));
+}
+
+function publishedRate(
+  meter: PriceRate["meter"],
+  price: string,
+  unit: PriceRate["unit"],
+  sourceId: string,
+  rawUnit: string,
+  conditions: PriceRate["conditions"] = {},
+): PriceRate {
+  return {
+    meter,
+    price,
+    currency: "USD",
+    unit,
+    conditions,
+    source_ref: sourceId,
+    derived: false,
+    raw_price: price,
+    raw_unit: rawUnit,
+  };
+}
+
+export function multiplyDecimal(left: string, right: string): string {
+  const parts = (value: string): [bigint, number] => {
+    if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);
+    const [whole = "", fraction = ""] = value.split(".");
+    return [BigInt(`${whole}${fraction}`), fraction.length];
+  };
+  const [leftInteger, leftScale] = parts(left);
+  const [rightInteger, rightScale] = parts(right);
+  const scale = leftScale + rightScale;
+  const digits = (leftInteger * rightInteger).toString().padStart(scale + 1, "0");
+  if (scale === 0) return digits;
+  const whole = digits.slice(0, -scale).replace(/^0+(?=\d)/, "") || "0";
+  const fraction = digits.slice(-scale).replace(/0+$/, "");
+  return fraction === "" ? whole : `${whole}.${fraction}`;
+}
+
+function normalizedText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function sectionContent($: LoadedDocument, label: string): Selection {
+  const heading = $("main div")
+    .filter(
+      (_index, element) =>
+        $(element).children().length === 0 && normalizedText($(element).text()) === label,
+    )
+    .first();
+  return heading.parent().children().eq(1);
+}
+
+function openAiModalities($: LoadedDocument): ProviderModel["modalities"] {
+  const content = sectionContent($, "Modalities");
+  if (content.length === 0) throw new Error("OpenAI model page omitted Modalities");
+  const input: Modality[] = [];
+  const output: Modality[] = [];
+  content
+    .find("div")
+    .filter(
+      (_index, element) =>
+        $(element).children().length === 0 &&
+        ["Text", "Image", "Audio", "Video"].includes(normalizedText($(element).text())),
+    )
+    .each((_index, element) => {
+      const label = normalizedText($(element).text()).toLowerCase();
+      const support = normalizedText($(element).parent().children().eq(1).text());
+      const parsed = modalitySchema.safeParse(label);
+      if (!parsed.success) return;
+      if (support === "Input only" || support === "Input and output") input.push(parsed.data);
+      if (support === "Output only" || support === "Input and output") output.push(parsed.data);
+    });
+  if (input.length === 0 && output.length === 0)
+    throw new Error("OpenAI model page contained no supported modalities");
+  return { input: unique(input), output: unique(output) };
+}
+
+function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
+  const values = new Map<string, boolean>();
+  const content = sectionContent($, "Features");
+  content
+    .find("div")
+    .filter(
+      (_index, element) =>
+        $(element).children().length === 0 &&
+        ["Streaming", "Function calling", "Structured outputs", "Fine-tuning"].includes(
+          normalizedText($(element).text()),
+        ),
+    )
+    .each((_index, element) => {
+      const label = normalizedText($(element).text());
+      const support = normalizedText($(element).parent().children().eq(1).text());
+      if (support === "Supported") values.set(label, true);
+      if (support === "Not supported") values.set(label, false);
+    });
+  const value = (label: string): boolean | "unknown" => values.get(label) ?? "unknown";
+  return {
+    reasoning: "unknown",
+    tool_call: value("Function calling"),
+    structured_output: value("Structured outputs"),
+    streaming: value("Streaming"),
+    batch: "unknown",
+    prompt_cache: "unknown",
+    fine_tuning: value("Fine-tuning"),
+  };
+}
+
+function openAiMeter(
+  group: string,
+  label: string,
+  task: ModelType,
+): PriceRate["meter"] | undefined {
+  if (group === "Text tokens") {
+    if (label === "Input") return "input_text";
+    if (label === "Cached input") return "cache_read_text";
+    if (label === "Output") return "output_text";
+  }
+  if (group === "Audio tokens") {
+    if (label === "Input") return "input_audio";
+    if (label === "Cached input") return "cache_read_audio";
+    if (label === "Output") return "output_audio";
+  }
+  if (group === "Image tokens") {
+    if (label === "Input") return "input_image";
+    if (label === "Cached input") return "cache_read_image";
+    if (label === "Output") return "output_image";
+  }
+  if (group === "Embeddings" && (label === "Cost" || label === "Price")) return "embedding";
+  if (group === "Image generation") return "image_generation";
+  if (group === "Video generation") return "video_generation";
+  if (group === "Realtime audio duration" && label === "Price") {
+    if (task === "speech_to_text" || task === "speech_to_speech") return "input_audio";
+    if (task === "text_to_speech") return "output_audio";
+  }
+}
+
+function openAiPricing($: LoadedDocument, sourceId: string, task: ModelType): PriceRate[] {
+  const content = sectionContent($, "Pricing");
+  if (content.length === 0) return [];
+  const rates: PriceRate[] = [];
+  const groups = new Set([
+    "Text tokens",
+    "Audio tokens",
+    "Image tokens",
+    "Embeddings",
+    "Image generation",
+    "Video generation",
+    "Realtime audio duration",
+  ]);
+  content
+    .find("div")
+    .filter(
+      (_index, element) =>
+        $(element).children().length === 0 && normalizedText($(element).text()).startsWith("Per "),
+    )
+    .each((_index, element) => {
+      const unitNode = $(element);
+      const header = unitNode
+        .parents()
+        .filter((_parentIndex, parent) => {
+          const children = $(parent).children();
+          return children.length >= 2 && groups.has(normalizedText(children.first().text()));
+        })
+        .first();
+      const group = normalizedText(header.children().first().text());
+      const rawUnit = normalizedText(unitNode.text());
+      const serviceTier = normalizedText(unitNode.parent().text()).includes("Batch API price")
+        ? "batch"
+        : undefined;
+      const unit: PriceRate["unit"] =
+        rawUnit === "Per 1M tokens"
+          ? "million_tokens"
+          : rawUnit === "Per image"
+            ? "image"
+            : rawUnit === "Per second"
+              ? "second"
+              : rawUnit === "Per minute"
+                ? "minute"
+                : (() => {
+                    throw new Error(`Unsupported OpenAI pricing unit: ${rawUnit}`);
+                  })();
+      const cards = header.next().children();
+      let quality: string | undefined;
+      cards.each((_cardIndex, card) => {
+        const label = normalizedText($(card).children().first().text());
+        const value = normalizedText($(card).children().last().text());
+        if (label === "Quality" && !value.startsWith("$")) quality = value;
+      });
+      cards.each((_cardIndex, card) => {
+        const label = normalizedText($(card).children().first().text());
+        const rawPrice = normalizedText($(card).children().last().text());
+        const match = rawPrice.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/);
+        if (match?.[1] === undefined) return;
+        const meter = openAiMeter(group, label, task);
+        if (meter === undefined)
+          throw new Error(`Unsupported OpenAI pricing field: ${group}/${label}`);
+        const conditions: PriceRate["conditions"] = {};
+        if (serviceTier !== undefined) conditions.service_tier = serviceTier;
+        if (quality !== undefined) conditions.quality = quality;
+        if (group === "Image generation" || group === "Video generation")
+          conditions.resolution = label;
+        rates.push(publishedRate(meter, match[1], unit, sourceId, rawUnit, conditions));
+      });
+    });
+
+  content
+    .find("div")
+    .filter(
+      (_index, element) =>
+        normalizedText($(element).children().first().text()) === "Pricing" &&
+        $(element).children().length === 2,
+    )
+    .each((_index, element) => {
+      const cards = $(element).next().children();
+      let useCase: string | undefined;
+      let rawPrice: string | undefined;
+      let rawUnit: string | undefined;
+      cards.each((_cardIndex, card) => {
+        const label = normalizedText($(card).children().first().text());
+        const value = normalizedText($(card).children().last().text());
+        if (label.startsWith("Use case / ")) useCase = value;
+        if (label.startsWith("Cost / ")) {
+          rawPrice = value.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+          rawUnit = label.slice("Cost / ".length);
+        }
+      });
+      if (useCase === undefined || rawPrice === undefined || rawUnit === undefined) return;
+      const meter: PriceRate["meter"] | undefined =
+        useCase === "Speech generation"
+          ? "output_audio"
+          : useCase === "Transcription"
+            ? "input_audio"
+            : undefined;
+      const unit: PriceRate["unit"] | undefined =
+        rawUnit === "1M characters"
+          ? "million_characters"
+          : rawUnit === "minute"
+            ? "minute"
+            : undefined;
+      if (meter === undefined || unit === undefined)
+        throw new Error(`Unsupported OpenAI pricing use case: ${useCase}/${rawUnit}`);
+      rates.push(publishedRate(meter, rawPrice, unit, sourceId, `per ${rawUnit}`));
+    });
+  if (rates.length === 0) throw new Error("OpenAI Pricing section contained no rates");
+
+  const pageText = normalizedText($("main").text());
+  const longContext = pageText.match(
+    /Prompts with >([\d,]+)(K)? input tokens are priced at ([\d.]+)x input and ([\d.]+)x output/,
+  );
+  if (
+    longContext?.[1] !== undefined &&
+    longContext[3] !== undefined &&
+    longContext[4] !== undefined
+  ) {
+    const threshold =
+      Number(longContext[1].replaceAll(",", "")) * (longContext[2] === "K" ? 1_000 : 1);
+    const additions = rates.flatMap((rate): PriceRate[] => {
+      const multiplier =
+        rate.meter === "input_text"
+          ? longContext[3]
+          : rate.meter === "output_text"
+            ? longContext[4]
+            : undefined;
+      if (multiplier === undefined || rate.conditions.context_min_tokens !== undefined) return [];
+      return [
+        {
+          ...rate,
+          price: multiplyDecimal(rate.price, multiplier),
+          conditions: { ...rate.conditions, context_min_tokens: threshold + 1 },
+          derived: true,
+          derivation: `${multiplier} × published ${rate.meter} rate above ${threshold} input tokens`,
+          raw_price: undefined,
+          raw_unit: "published long-context multiplier",
+        },
+      ];
+    });
+    rates.push(...additions);
+  }
+
+  const cacheWrite = pageText.match(/Cache writes are billed at ([\d.]+)x the uncached input/);
+  if (cacheWrite?.[1] !== undefined) {
+    const multiplier = cacheWrite[1];
+    rates.push(
+      ...rates.flatMap((rate): PriceRate[] =>
+        rate.meter !== "input_text"
+          ? []
+          : [
+              {
+                ...rate,
+                meter: "cache_write_text",
+                price: multiplyDecimal(rate.price, multiplier),
+                derived: true,
+                derivation: `${multiplier} × published uncached input rate`,
+                raw_price: undefined,
+                raw_unit: "published cache-write multiplier",
+              },
+            ],
+      ),
+    );
+  }
+  return rates;
+}
+
+function openAiTokenLimit(
+  $: LoadedDocument,
+  label: "context window" | "max output tokens",
+): number | undefined {
+  const match = $("main *")
+    .filter((_index, element) => $(element).children().length === 0)
+    .map((_index, element) => normalizedText($(element).text()).match(`^([\\d,]+) ${label}$`)?.[1])
+    .get()
+    .find((value) => value !== undefined);
+  return match === undefined ? undefined : Number(match.replaceAll(",", ""));
+}
+
+function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
+  const bundle = openAiBundleSchema.parse(parseJson(input.body));
+  const index = load(bundle.index.body);
+  const statuses = new Map<string, ProviderModel["status"]>();
+  index("a[href]").each((_index, element) => {
+    const target = index(element).attr("href");
+    const match = target?.match(/^\/api\/docs\/models\/([a-z0-9._-]+)$/);
+    if (match?.[1] === undefined) return;
+    const id = match[1];
+    const deprecated =
+      index(element)
+        .find("*")
+        .filter(
+          (_childIndex, child) =>
+            index(child).children().length === 0 &&
+            normalizedText(index(child).text()) === "Deprecated",
+        ).length > 0;
+    statuses.set(id, deprecated ? "deprecated" : id.includes("preview") ? "preview" : "active");
+  });
+  if (statuses.size !== bundle.documents.length)
+    throw new Error("OpenAI catalog index and model pages disagree");
+
+  return bundle.documents
+    .map((document) => {
+      const id = openAiModelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1));
+      const status = statuses.get(id);
+      if (status === undefined) throw new Error(`OpenAI catalog omitted index entry for ${id}`);
+      const $ = load(document.body);
+      const name = normalizedText(
+        $("main .text-2xl.font-semibold.whitespace-nowrap").first().text(),
+      );
+      if (name === "") throw new Error(`OpenAI model page omitted display name for ${id}`);
+      const description = normalizedText($("main .hidden.text-secondary.sm\\:flex").first().text());
+      const observedModalities = openAiModalities($);
+      const task = classifyModelTask({
+        modelId: id,
+        name,
+        rawType: undefined,
+        modalities: observedModalities,
+        fallback: "text_generation",
+      });
+      const embeddingOutput: Modality[] = ["embedding"];
+      const modelModalities: ProviderModel["modalities"] =
+        task === "embedding"
+          ? { input: observedModalities.input, output: embeddingOutput }
+          : observedModalities;
+      const pricing = openAiPricing($, input.source.id, task);
+      const features = openAiFeatures($);
+      const pageText = normalizedText($("main").text());
+      const aliases = unique(
+        sectionContent($, "Snapshots")
+          .find("*")
+          .filter((_index, element) => $(element).children().length === 0)
+          .map((_index, element) => normalizedText($(element).text()))
+          .get()
+          .filter((value) => value !== id && openAiModelIdSchema.safeParse(value).success),
+      ).sort();
+      return {
+        ...baseModel({
+          providerId: input.provider.id,
+          id,
+          name,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        description: description || undefined,
+        aliases,
+        types: [task],
+        modalities: modelModalities,
+        capabilities: {
+          ...features,
+          reasoning: pageText.includes("Reasoning token support") ? true : features.reasoning,
+          prompt_cache: pricing.some((rate) => rate.meter.startsWith("cache_"))
+            ? true
+            : features.prompt_cache,
+          batch: pricing.some((rate) => rate.conditions.service_tier === "batch")
+            ? true
+            : features.batch,
+        },
+        limits: {
+          context_tokens: openAiTokenLimit($, "context window"),
+          max_output_tokens: openAiTokenLimit($, "max output tokens"),
+        },
+        status,
+        is_deprecated: status === "deprecated",
+        pricing_status:
+          pricing.length > 0
+            ? "published"
+            : pageText.includes("free models designed to detect harmful content") ||
+                pageText.includes("open-weight model")
+              ? "not_applicable"
+              : "unknown",
+        pricing,
+      } satisfies ProviderModel;
+    })
+    .sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+function parseOpenAiOverview(input: ParseInput): ProviderModel[] {
+  const $ = load(input.body);
+  const models = new Map<string, ProviderModel>();
+  $("main div")
+    .filter(
+      (_index, element) =>
+        $(element).children().length === 0 && normalizedText($(element).text()) === "Model ID",
+    )
+    .each((_index, element) => {
+      const row = $(element).parent();
+      const id = normalizedText(row.children().last().text());
+      if (!openAiModelIdSchema.safeParse(id).success) return;
+      const aliasLabel = row
+        .parent()
+        .children()
+        .find("div")
+        .filter(
+          (_aliasIndex, candidate) =>
+            $(candidate).children().length === 0 && normalizedText($(candidate).text()) === "Alias",
+        )
+        .first();
+      if (aliasLabel.length === 0) return;
+      const alias = normalizedText(aliasLabel.parent().children().last().text());
+      if (alias === id || !openAiModelIdSchema.safeParse(alias).success) return;
+      models.set(id, {
+        ...baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        aliases: [alias],
+      });
+    });
+  if (models.size === 0) throw new Error("OpenAI overview contained no model aliases");
+  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+function parseOpenAiApi(input: ParseInput): ProviderModel[] {
+  const list = listSchema.parse(parseJson(input.body));
+  const results = list.data.map((item) => openAiItemSchema.safeParse(item));
+  if (list.data.length === 0 || results.some((result) => !result.success))
+    throw new Error("OpenAI model API schema drift");
+  return results.flatMap((result) =>
+    result.success
+      ? [
+          baseModel({
+            providerId: input.provider.id,
+            id: result.data.id,
+            name: result.data.id,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          }),
+        ]
+      : [],
+  );
+}
+
+function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
+  const $ = load(input.body);
+  const models = new Map<string, ProviderModel>();
+  $("table").each((_tableIndex, table) => {
+    const headers = $(table)
+      .find("thead th")
+      .map((_index, cell) => normalizedText($(cell).text()).toLowerCase())
+      .get();
+    const dateIndex = headers.findIndex((header) => header === "shutdown date");
+    const modelIndex = headers.findIndex(
+      (header) =>
+        header === "model / system" ||
+        header === "deprecated model" ||
+        header === "legacy model" ||
+        header === "model",
+    );
+    const replacementIndex = headers.findIndex((header) => header === "recommended replacement");
+    if (dateIndex < 0 || modelIndex < 0) return;
+    $(table)
+      .find("tbody tr")
+      .each((_rowIndex, row) => {
+        const cells = $(row).children("td");
+        const retiredAt = normalizedText(cells.eq(dateIndex).text()).replace(/[‐‑‒–—−]/g, "-");
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(retiredAt)) return;
+        const replacements =
+          replacementIndex < 0
+            ? []
+            : unique(
+                cells
+                  .eq(replacementIndex)
+                  .find("code")
+                  .map((_index, code) => normalizedText($(code).text()))
+                  .get()
+                  .filter((id) => openAiModelIdSchema.safeParse(id).success),
+              );
+        const ids = unique(
+          cells
+            .eq(modelIndex)
+            .find("code")
+            .map((_index, code) => normalizedText($(code).text()))
+            .get()
+            .filter((id) => openAiModelIdSchema.safeParse(id).success),
+        );
+        for (const id of ids) {
+          const status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
+          const model: ProviderModel = {
+            ...baseModel({
+              providerId: input.provider.id,
+              id,
+              name: id,
+              sourceId: input.source.id,
+              observedAt: input.observedAt,
+            }),
+            types: [
+              classifyModelTask({
+                modelId: id,
+                name: id,
+                rawType: undefined,
+                modalities: { input: [], output: [] },
+                fallback: "text_generation",
+              }),
+            ],
+            status,
+            is_deprecated: true,
+            retired_at: retiredAt,
+            replacement_model_ids: replacements,
+          };
+          const previous = models.get(id);
+          if (previous === undefined || (previous.retired_at ?? "") <= retiredAt)
+            models.set(id, model);
+        }
+      });
+  });
+  if (models.size === 0) throw new Error("OpenAI deprecations page contained no model rows");
+  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 function parseVercel(input: ParseInput): ProviderModel[] {
@@ -785,6 +1354,14 @@ function parseVllm(input: ParseInput): ProviderModel[] {
 
 export function parseSource(input: ParseInput): ProviderModel[] {
   switch (input.source.extractor.kind) {
+    case "openai-catalog":
+      return parseOpenAiCatalog(input);
+    case "openai-overview":
+      return parseOpenAiOverview(input);
+    case "openai-api":
+      return parseOpenAiApi(input);
+    case "openai-deprecations":
+      return parseOpenAiDeprecations(input);
     case "vercel":
       return parseVercel(input);
     case "cerebras":
