@@ -3,6 +3,13 @@ import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
 import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
+import {
+  parseCerebrasApi,
+  parseCerebrasCatalog,
+  parseCerebrasLifecycle,
+  parseCerebrasPublic,
+  parseCerebrasReleases,
+} from "./cerebras.ts";
 import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { parseDeepseekApi, parseDeepseekCatalog, parseDeepseekUpdates } from "./deepseek.ts";
@@ -27,7 +34,7 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import { classifyModelTypes } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
@@ -44,37 +51,6 @@ import {
 
 export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 export { classifyModelTypes, normalizeModelTypes } from "./task.ts";
-
-const decimalValue = z
-  .union([z.string(), z.number().finite().nonnegative()])
-  .transform((value) => String(value));
-
-const cerebrasItemSchema = z.object({
-  id: z.string().min(1),
-  name: z.string().min(1).optional(),
-  description: z.string().optional(),
-  created: z.number().int().nonnegative().optional(),
-  preview: z.boolean().optional(),
-  deprecated: z.boolean().optional(),
-  pricing: z
-    .object({ prompt: decimalValue.optional(), completion: decimalValue.optional() })
-    .optional(),
-  capabilities: z
-    .object({
-      streaming: z.boolean().optional(),
-      function_calling: z.boolean().optional(),
-      structured_outputs: z.boolean().optional(),
-      vision: z.boolean().optional(),
-      reasoning: z.boolean().optional(),
-    })
-    .optional(),
-  limits: z
-    .object({
-      max_context_length: z.number().int().nonnegative().nullable().optional(),
-      max_completion_tokens: z.number().int().nonnegative().nullable().optional(),
-    })
-    .optional(),
-});
 
 const ollamaItemSchema = z.object({
   name: z.string().min(1),
@@ -105,34 +81,8 @@ function parseJson(body: string): unknown {
   return JSON.parse(body);
 }
 
-function unixDate(seconds: number | undefined): string | undefined {
-  return seconds === undefined ? undefined : new Date(seconds * 1000).toISOString().slice(0, 10);
-}
-
 function unique<T>(items: T[]): T[] {
   return [...new Set(items)];
-}
-
-function tokenRate(
-  meter: PriceRate["meter"],
-  value: string,
-  sourceId: string,
-  rawUnit: string,
-  conditions: PriceRate["conditions"] = {},
-  scale = true,
-): PriceRate {
-  return {
-    meter,
-    price: scale ? scaleDecimal(value, 6) : value,
-    currency: "USD",
-    unit: "million_tokens",
-    conditions,
-    source_ref: sourceId,
-    derived: scale,
-    derivation: scale ? "source price per token × 1,000,000" : undefined,
-    raw_price: value,
-    raw_unit: rawUnit,
-  };
 }
 
 function normalizedText(value: string): string {
@@ -698,56 +648,6 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function parseCerebras(input: ParseInput): ProviderModel[] {
-  const list = listSchema.parse(parseJson(input.body));
-  const results = list.data.map((item) => cerebrasItemSchema.safeParse(item));
-  const invalid = results.filter((result) => !result.success).length;
-  if (list.data.length === 0 || invalid > 0) throw new Error("Cerebras model schema drift");
-
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
-    const prices: PriceRate[] = [];
-    if (item.pricing?.prompt !== undefined)
-      prices.push(tokenRate("input_text", item.pricing.prompt, input.source.id, "token"));
-    if (item.pricing?.completion !== undefined)
-      prices.push(tokenRate("output_text", item.pricing.completion, input.source.id, "token"));
-    const vision = item.capabilities?.vision === true;
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.id,
-          name: item.name ?? item.id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        description: item.description,
-        types: ["generate"],
-        modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
-        capabilities: {
-          ...unknownCapabilities(),
-          reasoning: item.capabilities?.reasoning ?? "unknown",
-          tool_call: item.capabilities?.function_calling ?? "unknown",
-          structured_output: item.capabilities?.structured_outputs ?? "unknown",
-          streaming: item.capabilities?.streaming ?? "unknown",
-          batch: "unknown",
-          prompt_cache: "unknown",
-          fine_tuning: "unknown",
-        },
-        limits: {
-          context_tokens: item.limits?.max_context_length ?? undefined,
-          max_output_tokens: item.limits?.max_completion_tokens ?? undefined,
-        },
-        release_date: unixDate(item.created),
-        status: item.deprecated ? "deprecated" : item.preview ? "preview" : "active",
-        pricing_status: prices.length > 0 ? "derived" : "unknown",
-        pricing: prices,
-      },
-    ];
-  });
-}
-
 function parseOllama(input: ParseInput): ProviderModel[] {
   const list = ollamaListSchema.parse(parseJson(input.body));
   const results = list.models.map((item) => ollamaItemSchema.safeParse(item));
@@ -822,8 +722,16 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseAnthropicApi(input);
     case "vercel-catalog":
       return parseVercelCatalog(input);
-    case "cerebras":
-      return parseCerebras(input);
+    case "cerebras-public":
+      return parseCerebrasPublic(input);
+    case "cerebras-catalog":
+      return parseCerebrasCatalog(input);
+    case "cerebras-lifecycle":
+      return parseCerebrasLifecycle(input);
+    case "cerebras-releases":
+      return parseCerebrasReleases(input);
+    case "cerebras-api":
+      return parseCerebrasApi(input);
     case "huggingface-mapping":
       return parseHuggingFaceMapping(input);
     case "huggingface-router":

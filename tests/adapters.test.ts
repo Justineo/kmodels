@@ -1841,16 +1841,67 @@ describe("Vercel adapter", () => {
 });
 
 describe("Cerebras adapter", () => {
-  it("retains explicit capabilities and preview status", async () => {
-    const model = (await parsed("cerebras", "cerebras/normal.json"))[0];
+  function source(id: string): SourceManifest {
+    const configured = manifest("cerebras").sources.find((candidate) => candidate.id === id);
+    if (configured === undefined) throw new Error(`Missing Cerebras source ${id}`);
+    const extractor = configured.extractor;
+    switch (extractor.kind) {
+      case "cerebras-public":
+      case "cerebras-catalog":
+      case "cerebras-lifecycle":
+      case "cerebras-releases":
+      case "cerebras-api":
+        return { ...configured, extractor: { ...extractor, minModels: 1, maxModels: 20 } };
+      default:
+        throw new Error(`Wrong Cerebras source ${id}`);
+    }
+  }
+
+  async function parse(id: string, path: string): Promise<ProviderModel[]> {
+    const value = manifest("cerebras");
+    return parseSource({
+      provider: provider(value),
+      source: source(id),
+      body: await fixture(path),
+      observedAt,
+    });
+  }
+
+  async function catalog(): Promise<ProviderModel[]> {
+    const value = manifest("cerebras");
+    const configured = source("cerebras-catalog");
+    const body = JSON.stringify({
+      index: { url: configured.url, body: await fixture("cerebras/catalog.md") },
+      documents: [
+        {
+          url: "https://inference-docs.cerebras.ai/models/openai-oss.md",
+          body: await fixture("cerebras/gpt.md"),
+        },
+        {
+          url: "https://inference-docs.cerebras.ai/models/zai-glm-47.md",
+          body: await fixture("cerebras/glm.md"),
+        },
+        {
+          url: "https://inference-docs.cerebras.ai/capabilities/prompt-caching.md",
+          body: await fixture("cerebras/cache.md"),
+        },
+      ],
+    });
+    return parseSource({ provider: provider(value), source: configured, body, observedAt });
+  }
+
+  it("retains structured capabilities without treating created=0 as a release", async () => {
+    const model = (await parse("cerebras-models", "cerebras/normal.json"))[0];
     expect(model?.capabilities.reasoning).toBe(true);
     expect(model?.types).toEqual(["generate"]);
     expect(model?.capabilities.structured_output).toBe(false);
     expect(model?.status).toBe("preview");
+    expect(model?.release_date).toBeUndefined();
   });
 
   it("normalizes published per-token rates", async () => {
-    const model = (await parsed("cerebras", "cerebras/pricing.json"))[0];
+    const model = (await parse("cerebras-models", "cerebras/pricing.json"))[0];
+    expect(model?.release_date).toBeUndefined();
     expect({
       id: model?.model_id,
       input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
@@ -1859,8 +1910,82 @@ describe("Cerebras adapter", () => {
     }).toEqual(await expected("cerebras/expected.json"));
   });
 
+  it("parses model cards, scheduled lifecycle, and cached-input pricing", async () => {
+    const models = await catalog();
+    const glm = models.find(({ model_id }) => model_id === "zai-glm-4.7");
+    const gpt = models.find(({ model_id }) => model_id === "gpt-oss-120b");
+    expect(glm).toMatchObject({
+      name: "Z.ai GLM 4.7",
+      status: "preview",
+      is_deprecated: false,
+      deprecated_at: "2026-08-17",
+      limits: { context_tokens: 131000, max_output_tokens: 40000 },
+    });
+    expect(gpt?.pricing.find(({ meter }) => meter === "cache_read_text")).toMatchObject({
+      price: "0.35",
+      derived: true,
+    });
+  });
+
+  it("parses model deprecations but ignores parameter deprecations", async () => {
+    const models = await parse("cerebras-lifecycle", "cerebras/lifecycle.md");
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "llama-3.3-70b",
+      "llama3.1-70b",
+      "qwen-3-32b",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "llama3.1-70b")).toMatchObject({
+      deprecated_at: "2025-01-17",
+      replacement_model_ids: ["llama-3.3-70b"],
+    });
+  });
+
+  it("uses the first exact availability entry as release date", async () => {
+    const models = await parse("cerebras-releases", "cerebras/releases.md");
+    expect(models.find(({ model_id }) => model_id === "gpt-oss-120b")?.release_date).toBe(
+      "2025-08-05",
+    );
+    expect(models.find(({ model_id }) => model_id === "llama-3.3-70b")?.release_date).toBe(
+      "2024-12-10",
+    );
+  });
+
+  it("retains every source that finds an exact model", async () => {
+    const publicModels = await parse("cerebras-models", "cerebras/public.json");
+    const releaseModels = await parse("cerebras-releases", "cerebras/releases.md");
+    const apiModels = await parse("cerebras-api", "cerebras/api.json");
+    const catalogs = [
+      { source: source("cerebras-catalog"), models: await catalog() },
+      { source: source("cerebras-models"), models: publicModels },
+    ];
+    const merged = applyGroups(
+      applyGroups(
+        applyGroups([], catalogs, true),
+        [{ source: source("cerebras-releases"), models: releaseModels }],
+        false,
+      ),
+      [{ source: source("cerebras-api"), models: apiModels }],
+      false,
+    );
+    expect(merged.find(({ model_id }) => model_id === "gpt-oss-120b")?.source_refs).toEqual([
+      "cerebras-catalog",
+      "cerebras-models",
+      "cerebras-releases",
+      "cerebras-api",
+    ]);
+    expect(
+      merged
+        .find(({ model_id }) => model_id === "gpt-oss-120b")
+        ?.pricing.map(({ meter, source_ref }) => [meter, source_ref]),
+    ).toEqual([
+      ["cache_read_text", "cerebras-catalog"],
+      ["input_text", "cerebras-models"],
+      ["output_text", "cerebras-models"],
+    ]);
+  });
+
   it("rejects an empty catalog", async () => {
-    await expect(parsed("cerebras", "cerebras/broken.json")).rejects.toThrow("schema drift");
+    await expect(parse("cerebras-models", "cerebras/broken.json")).rejects.toThrow("schema drift");
   });
 });
 
