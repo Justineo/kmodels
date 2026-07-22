@@ -9,7 +9,8 @@ import {
 import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { sourceKindSchema, type Provider, type ProviderModel } from "../src/catalog/schema.ts";
-import { validateProvider } from "../src/catalog/validation.ts";
+import { baseModel } from "../src/catalog/model.ts";
+import { preserveMissing, validateProvider } from "../src/catalog/validation.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 
@@ -1228,6 +1229,27 @@ describe("runtime adapters", () => {
 });
 
 describe("provider drift validation", () => {
+  it("retains every source that observed a matching model", () => {
+    const previous = baseModel({
+      providerId: "example",
+      id: "model",
+      name: "Model",
+      sourceId: "official-api",
+      observedAt: "2026-07-20T00:00:00.000Z",
+    });
+    const current = baseModel({
+      providerId: "example",
+      id: "model",
+      name: "Model",
+      sourceId: "official-website",
+      observedAt,
+    });
+    expect(preserveMissing([current], [previous])[0]?.source_refs).toEqual([
+      "official-api",
+      "official-website",
+    ]);
+  });
+
   it("quarantines large deletions and price jumps", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     if (model === undefined) throw new Error("Missing fixture model");
