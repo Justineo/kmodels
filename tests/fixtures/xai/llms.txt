@@ -1,0 +1,104 @@
+===/developers/model-capabilities/text/multi-agent===
+# Multi Agent
+
+> This feature is currently in **beta**.
+
+### Supported Models
+
+* `grok-4.20-multi-agent`
+
+
+===/developers/model-capabilities/audio/voice-agent===
+# Voice Agent API
+
+| Model | Description | |
+|---|---|---|
+| `grok-voice-think-fast-1.0` | Flagship voice model | |
+| `grok-voice-fast-1.0` | Legacy voice model | deprecated |
+
+> `grok-voice-latest` always points to the newest model (currently `grok-voice-think-fast-1.0`).
+
+
+===/developers/pricing===
+# Pricing
+
+### Text API Pricing
+
+| Model | Context | Input / 1M tokens | Cached input / 1M tokens | Output / 1M tokens |
+|---|---|---|---|---|
+| grok-4.5 (< 200k prompt tokens) | 500k | $2.00 | $0.30 | $6.00 |
+| grok-4.5 (≥ 200k prompt tokens) | 500k | $4.00 | $0.60 | $12.00 |
+| grok-4.20-multi-agent-0309 (< 200k prompt tokens) | 1M | $1.25 | $0.20 | $2.50 |
+| grok-4.20-multi-agent-0309 (≥ 200k prompt tokens) | 1M | $2.50 | $0.40 | $5.00 |
+
+### Imagine Pricing
+
+| Model | Cost |
+|---|---|
+| grok-imagine-image-quality | $0.05 / image |
+| grok-imagine-video-1.5 | $0.080 / sec |
+
+### Voice Pricing
+
+| Mode | Cost |
+|---|---|
+| Realtime | $0.05 / min ($3.00 / hr) |
+| Realtime Text Input | $0.004 / message (every conversation.item.create) |
+| Text to Speech | $15.00 / 1M chars |
+| Speech to Text | $0.10 / hr (REST), $0.20 / hr (Streaming) |
+
+## Tools Pricing
+
+| Tool | Tool Name | Description | Cost / 1k Calls |
+|---|---|---|---|
+| Web Search | `web_search` | Search the web | $5 |
+| X Search | `x_search` | Search X | $5 |
+| Code Execution | `code_execution`, `code_interpreter` | Run code | $5 |
+| File Attachments | `attachment_search` | Search attachments | $10 |
+| Collections Search | `collections_search`, `file_search` | Search collections | $2.50 |
+
+
+===/developers/migration/may-15-retirement===
+# Grok Model Retirement on May 15, 2026
+
+Effective May 15, 2026 at 12:00 PM PT, the following models will be retired:
+
+* `grok-3`
+* `grok-imagine-image-pro`
+
+### How the redirects work
+
+## Recommended Replacements
+
+| Model being retired | Redirect target after May 15 |
+|---|---|
+| `grok-3` | `grok-4.3` with `none` reasoning effort |
+| `grok-imagine-image-pro` | `grok-imagine-image-quality` |
+
+
+===/developers/release-notes===
+# Release Notes
+
+## July
+
+### Grok 4.5
+
+Grok 4.5 is now available.
+
+## April
+
+### Grok Voice Think Fast 1.0 is available
+
+You can now use `grok-voice-think-fast-1.0`.
+
+## March
+
+### Grok 4.20 Multi-agent is live
+
+Use `grok-4.20-multi-agent` for multi-agent research.
+
+## December 2025
+
+### Grok Voice Agent API is released
+
+The Voice Agent API is generally available.

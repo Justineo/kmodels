@@ -16,6 +16,7 @@ import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import { classifyModelTypes } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
+import { parseXaiApi, parseXaiCatalog } from "./xai.ts";
 import {
   modalitySchema,
   type Modality,
@@ -1037,6 +1038,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseLlamaCatalog(input);
     case "llama-api":
       return parseLlamaApi(input);
+    case "xai-catalog":
+      return parseXaiCatalog(input);
+    case "xai-api":
+      return parseXaiApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }

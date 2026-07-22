@@ -35,6 +35,8 @@ export type Extractor =
   | { kind: "mistral-api" }
   | { kind: "llama-catalog"; minModels: number; maxModels: number }
   | { kind: "llama-api" }
+  | { kind: "xai-catalog"; minModels: number; maxModels: number }
+  | { kind: "xai-api"; category: "all" | "language" | "image" | "video" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -153,6 +155,31 @@ const documentSource = (
   fields: ["model_id", "name", "types"],
   allowedHosts: [new URL(url).hostname, ...additionalHosts],
   maxResponseBytes: mebibytes(8),
+});
+
+const xaiApiSource = (
+  id: string,
+  path: string,
+  category: "all" | "language" | "image" | "video",
+  fields: SourceField[],
+): SourceManifest => ({
+  id,
+  url: `https://api.x.ai/v1/${path}`,
+  type: "api",
+  access: "authenticated",
+  format: "json",
+  stability: "documented",
+  extractor: { kind: "xai-api", category },
+  extractorVersion: "xai-api-v1",
+  fields,
+  allowedHosts: ["api.x.ai"],
+  maxResponseBytes: mebibytes(4),
+  scope: "account",
+  exhaustive: false,
+  role: "inventory",
+  optional: true,
+  auth: { scheme: "bearer", env: "XAI_API_KEY" },
+  snapshotPolicy: "none",
 });
 
 export const manifests = [
@@ -1386,15 +1413,79 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource(
-        "xai-models",
-        "https://docs.x.ai/developers/models",
-        [/^grok-[a-z0-9._-]+$/i],
-        "api_id",
-        /\/developers\/models\/grok-[a-z0-9._-]+$/i,
-      ),
+      {
+        id: "xai-models",
+        url: "https://docs.x.ai/developers/models",
+        type: "website",
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
+        extractorVersion: "xai-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "updated_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["docs.x.ai"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: [
+            {
+              id: "llms",
+              url: "https://docs.x.ai/llms.txt",
+              maxResponseBytes: mebibytes(3),
+            },
+          ],
+        },
+      },
+      xaiApiSource("xai-api", "models", "all", ["model_id", "aliases", "limits"]),
+      xaiApiSource("xai-language-api", "language-models", "language", [
+        "model_id",
+        "aliases",
+        "types",
+        "modalities",
+      ]),
+      xaiApiSource("xai-image-api", "image-generation-models", "image", [
+        "model_id",
+        "aliases",
+        "types",
+        "modalities",
+      ]),
+      xaiApiSource("xai-video-api", "video-generation-models", "video", [
+        "model_id",
+        "aliases",
+        "types",
+        "modalities",
+      ]),
     ],
+    supersededIdKinds: ["display_name", "source_generated"],
     supersededModelIds: ["grok-4.20"],
+    warnOnMissing: {
+      sourceId: "xai-models",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
