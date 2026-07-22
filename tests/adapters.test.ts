@@ -288,6 +288,38 @@ async function mistralCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function llamaCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("llama");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "llama-catalog")
+    throw new Error("Missing Llama source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "llama-catalog", minModels: 8, maxModels: 8 },
+  };
+  const files = [
+    ["models/sku_types.py", "sku_types.py"],
+    ["models/cli/safety_models.py", "safety_models.py"],
+    ["README.md", "README.md"],
+    ["models/llama3_1/MODEL_CARD.md", "llama3_1.md"],
+    ["models/llama3_2/MODEL_CARD.md", "llama3_2.md"],
+    ["models/llama3_3/MODEL_CARD.md", "llama3_3.md"],
+    ["models/llama4/MODEL_CARD.md", "llama4.md"],
+    ["examples/chat.py", "chat.py", "llama-api-python"],
+    ["examples/tool_call.py", "tool_call.py", "llama-api-python"],
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("llama/sku_list.py") },
+    documents: await Promise.all(
+      files.map(async ([path, fixturePath, repository = "llama-models"]) => ({
+        url: `https://raw.githubusercontent.com/meta-llama/${repository}/main/${path}`,
+        body: await fixture(`llama/${fixturePath}`),
+      })),
+    ),
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -695,6 +727,99 @@ describe("Mistral adapters", () => {
       },
       {
         extractor: { kind: "mistral-api" },
+        type: "api",
+        scope: "account",
+        role: "inventory",
+        snapshotPolicy: "none",
+      },
+    ]);
+  });
+});
+
+describe("Meta Llama adapters", () => {
+  it("parses exact CLI descriptors, artifact variants, operations, dates, and API aliases", async () => {
+    const models = await llamaCatalog();
+    const quantized = models.find(
+      ({ model_id }) => model_id === "Llama3.2-1B-Instruct:int4-qlora-eo8",
+    );
+    const hosted = models.find(
+      ({ model_id }) => model_id === "Llama-4-Maverick-17B-128E-Instruct:fp8",
+    );
+    const guard = models.find(({ model_id }) => model_id === "Llama-Guard-3-11B-Vision");
+    const promptGuard = models.find(({ model_id }) => model_id === "Prompt-Guard-86M");
+    expect({
+      count: models.length,
+      quantized: {
+        aliases: quantized?.aliases,
+        context: quantized?.limits.context_tokens,
+        release: quantized?.release_date,
+        tool_call: quantized?.capabilities.tool_call,
+      },
+      hosted: {
+        aliases: hosted?.aliases,
+        modalities: hosted?.modalities,
+        context: hosted?.limits.context_tokens,
+        release: hosted?.release_date,
+        tool_call: hosted?.capabilities.tool_call,
+      },
+      guard: {
+        types: guard?.types,
+        modalities: guard?.modalities,
+        context: guard?.limits.context_tokens,
+      },
+      promptGuard: {
+        types: promptGuard?.types,
+        context: promptGuard?.limits.context_tokens,
+      },
+    }).toEqual({
+      count: 8,
+      quantized: {
+        aliases: ["meta-llama/Llama-3.2-1B-Instruct-QLORA_INT4_EO8"],
+        context: 8_192,
+        release: "2024-10-24",
+        tool_call: true,
+      },
+      hosted: {
+        aliases: [
+          "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8",
+        ],
+        modalities: { input: ["text", "image"], output: ["text"] },
+        context: 1_048_576,
+        release: "2025-04-05",
+        tool_call: true,
+      },
+      guard: {
+        types: ["moderation"],
+        modalities: { input: ["text", "image"], output: ["text"] },
+        context: 131_072,
+      },
+      promptGuard: { types: ["classification"], context: 512 },
+    });
+  });
+
+  it("validates the authenticated model-list schema", async () => {
+    const models = await parsed("llama", "llama/api.json", "llama-api");
+    expect(
+      models.map(({ model_id, status, source_refs }) => ({ model_id, status, source_refs })),
+    ).toEqual([
+      {
+        model_id: "Llama-4-Maverick-17B-128E-Instruct-FP8",
+        status: "active",
+        source_refs: ["llama-api"],
+      },
+    ]);
+  });
+
+  it("declares an exhaustive registry catalog and non-persistent API inventory", () => {
+    expect(manifest("llama").sources).toMatchObject([
+      {
+        extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
+        type: "repository",
+        exhaustive: true,
+      },
+      {
+        extractor: { kind: "llama-api" },
         type: "api",
         scope: "account",
         role: "inventory",
