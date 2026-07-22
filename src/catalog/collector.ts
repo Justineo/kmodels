@@ -207,7 +207,10 @@ function applyGroups(
 ): ProviderModel[] {
   const byUid = new Map(models.map((model) => [model.uid, model]));
   const aliases = new Map<string, string | null>();
+  const modelIds = new Map<string, string | null>();
   const index = (model: ProviderModel): void => {
+    const idUid = modelIds.get(model.model_id);
+    modelIds.set(model.model_id, idUid === undefined || idUid === model.uid ? model.uid : null);
     for (const alias of model.aliases) {
       const current = aliases.get(alias);
       aliases.set(alias, current === undefined || current === model.uid ? model.uid : null);
@@ -219,7 +222,9 @@ function applyGroups(
       const aliasUid = aliases.get(incoming.model_id);
       const aliasModel =
         aliasUid === undefined || aliasUid === null ? undefined : byUid.get(aliasUid);
-      const current = byUid.get(incoming.uid) ?? (create ? undefined : aliasModel);
+      const idUid = incoming.version === undefined ? modelIds.get(incoming.model_id) : undefined;
+      const idModel = idUid === undefined || idUid === null ? undefined : byUid.get(idUid);
+      const current = byUid.get(incoming.uid) ?? (create ? undefined : (idModel ?? aliasModel));
       if (current === undefined) {
         if (create) {
           byUid.set(incoming.uid, incoming);
@@ -233,12 +238,12 @@ function applyGroups(
     }
   }
   const values = [...byUid.values()];
-  const modelIds = new Set(values.map((model) => model.model_id));
+  const canonicalIds = new Set(values.map((model) => model.model_id));
   return (
     create
       ? values.map((model) => ({
           ...model,
-          aliases: model.aliases.filter((alias) => !modelIds.has(alias)),
+          aliases: model.aliases.filter((alias) => !canonicalIds.has(alias)),
         }))
       : values
   ).sort((left, right) => left.uid.localeCompare(right.uid));

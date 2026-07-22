@@ -250,6 +250,44 @@ async function cohereCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function mistralCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("mistral");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "mistral-catalog")
+    throw new Error("Missing Mistral source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "mistral-catalog", minModels: 5, maxModels: 5 },
+  };
+  const slugs = [
+    "mistral-medium-3-5-26-04",
+    "ocr-4-0",
+    "voxtral-tts-26-03",
+    "mistral-large-2-0-24-07",
+    "mistral-large-3-25-12",
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("mistral/index.ts") },
+    documents: [
+      ...(await Promise.all(
+        slugs.map(async (slug) => ({
+          url: `https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/models/${slug}.ts`,
+          body: await fixture(`mistral/${slug}.ts`),
+        })),
+      )),
+      {
+        url: "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching",
+        body: await fixture("mistral/prompt-caching.html"),
+      },
+      {
+        url: "https://docs.mistral.ai/studio-api/batch-processing",
+        body: await fixture("mistral/batch-processing.html"),
+      },
+    ],
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -466,6 +504,206 @@ describe("Cohere adapters", () => {
   });
 });
 
+describe("Mistral adapters", () => {
+  it("parses exact API names, non-exclusive operations, lifecycle, and native prices", async () => {
+    const models = await mistralCatalog();
+    const medium = models.find((model) => model.model_id === "mistral-medium-3-5");
+    const ocr = models.find((model) => model.model_id === "mistral-ocr-4-0");
+    const speech = models.find((model) => model.model_id === "voxtral-mini-tts-2603");
+    const retired = models.find((model) => model.model_id === "mistral-large-2407");
+    expect({
+      count: models.length,
+      medium: {
+        name: medium?.name,
+        version: medium?.version,
+        aliases: medium?.aliases,
+        types: medium?.types,
+        modalities: medium?.modalities,
+        limits: medium?.limits,
+        release_date: medium?.release_date,
+        pricing: medium?.pricing.map(({ meter, price, unit, conditions, derived }) => ({
+          meter,
+          price,
+          unit,
+          conditions,
+          derived,
+        })),
+      },
+      ocr: {
+        types: ocr?.types,
+        modalities: ocr?.modalities,
+        pricing: ocr?.pricing.map(({ meter, price, unit, conditions }) => ({
+          meter,
+          price,
+          unit,
+          conditions,
+        })),
+      },
+      speech: {
+        types: speech?.types,
+        modalities: speech?.modalities,
+        pricing: speech?.pricing.map(({ meter, price, unit }) => ({ meter, price, unit })),
+      },
+      retired: {
+        types: retired?.types,
+        status: retired?.status,
+        deprecated_at: retired?.deprecated_at,
+        retired_at: retired?.retired_at,
+        replacements: retired?.replacement_model_ids,
+      },
+    }).toEqual({
+      count: 5,
+      medium: {
+        name: "Mistral Medium 3.5",
+        version: "26.04",
+        aliases: ["mistral-medium-3", "mistral-medium-latest"],
+        types: ["generate", "agentic"],
+        modalities: { input: ["text", "image"], output: ["text"] },
+        limits: { context_tokens: 256_000, max_output_tokens: 32_000 },
+        release_date: "2026-04-28",
+        pricing: [
+          {
+            meter: "input_text",
+            price: "1.5",
+            unit: "million_tokens",
+            conditions: {},
+            derived: false,
+          },
+          {
+            meter: "output_text",
+            price: "7.5",
+            unit: "million_tokens",
+            conditions: {},
+            derived: false,
+          },
+          {
+            meter: "input_text",
+            price: "0.75",
+            unit: "million_tokens",
+            conditions: { service_tier: "batch" },
+            derived: true,
+          },
+          {
+            meter: "output_text",
+            price: "3.75",
+            unit: "million_tokens",
+            conditions: { service_tier: "batch" },
+            derived: true,
+          },
+          {
+            meter: "cache_read_text",
+            price: "0.15",
+            unit: "million_tokens",
+            conditions: {},
+            derived: true,
+          },
+        ],
+      },
+      ocr: {
+        types: ["ocr"],
+        modalities: { input: ["image", "pdf"], output: ["text", "image"] },
+        pricing: [
+          {
+            meter: "input_image",
+            price: "4",
+            unit: "thousand_pages",
+            conditions: { operation: "ocr" },
+          },
+          {
+            meter: "input_image",
+            price: "5",
+            unit: "thousand_pages",
+            conditions: { operation: "document_annotation" },
+          },
+          {
+            meter: "input_image",
+            price: "2",
+            unit: "thousand_pages",
+            conditions: { operation: "ocr", service_tier: "batch" },
+          },
+          {
+            meter: "input_image",
+            price: "2.5",
+            unit: "thousand_pages",
+            conditions: { operation: "document_annotation", service_tier: "batch" },
+          },
+        ],
+      },
+      speech: {
+        types: ["audio_speech"],
+        modalities: { input: ["text", "audio"], output: ["audio"] },
+        pricing: [
+          { meter: "input_text", price: "0", unit: "million_characters" },
+          { meter: "output_audio", price: "16", unit: "million_characters" },
+        ],
+      },
+      retired: {
+        types: ["generate"],
+        status: "retired",
+        deprecated_at: "2024-11-30",
+        retired_at: "2025-03-30",
+        replacements: ["mistral-large-2512"],
+      },
+    });
+  });
+
+  it("validates structured base models and ignores private fine-tunes", async () => {
+    const models = await parsed("mistral", "mistral/api.json", "mistral-api");
+    expect(
+      models.map(({ model_id, name, aliases, types, modalities, limits, status, source_refs }) => ({
+        model_id,
+        name,
+        aliases,
+        types,
+        modalities,
+        limits,
+        status,
+        source_refs,
+      })),
+    ).toEqual([
+      {
+        model_id: "mistral-medium-3-5",
+        name: "Mistral Medium 3.5 API",
+        aliases: ["mistral-medium-latest"],
+        types: ["generate"],
+        modalities: { input: ["text", "image"], output: ["text"] },
+        limits: { context_tokens: 262_144 },
+        status: "active",
+        source_refs: ["mistral-api"],
+      },
+      {
+        model_id: "mistral-ocr-4-0",
+        name: "OCR 4",
+        aliases: ["mistral-ocr-latest"],
+        types: ["ocr"],
+        modalities: { input: ["image", "pdf"], output: ["text"] },
+        limits: {},
+        status: "unknown",
+        source_refs: ["mistral-api"],
+      },
+    ]);
+  });
+
+  it("declares a structured official catalog and non-persistent account inventory", () => {
+    const value = manifest("mistral");
+    expect(value.sources).toMatchObject([
+      {
+        extractor: { kind: "mistral-catalog", minModels: 50, maxModels: 90 },
+        type: "repository",
+        source: ["repository", "website"],
+        linkedDocuments: { indexFormat: "typescript", minDocuments: 55, maxDocuments: 90 },
+      },
+      {
+        extractor: { kind: "mistral-api" },
+        type: "api",
+        scope: "account",
+        role: "inventory",
+        snapshotPolicy: "none",
+      },
+    ]);
+  });
+});
+
 describe("HTTP transport boundary", () => {
   it("uses the final response behind a CONNECT proxy and preserves 304", () => {
     const response = curlResponse(
@@ -513,6 +751,22 @@ describe("HTTP transport boundary", () => {
       "/docs/en/about-claude/model-deprecations.md",
       "/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
       "/docs/en/about-claude/pricing.md",
+    ]);
+  });
+
+  it("discovers reviewed TypeScript model imports", async () => {
+    const source = manifest("mistral").sources[0];
+    if (source?.linkedDocuments === undefined) throw new Error("Missing Mistral link policy");
+    const urls = linkedDocumentUrls(await fixture("mistral/index.ts"), {
+      ...source,
+      linkedDocuments: { ...source.linkedDocuments, minDocuments: 5, maxDocuments: 5 },
+    });
+    expect(urls.map((url) => url.pathname)).toEqual([
+      "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-large-2-0-24-07.ts",
+      "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-large-3-25-12.ts",
+      "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-medium-3-5-26-04.ts",
+      "/mistralai/platform-docs-public/main/src/schema/models/models/ocr-4-0.ts",
+      "/mistralai/platform-docs-public/main/src/schema/models/models/voxtral-tts-26-03.ts",
     ]);
   });
 });

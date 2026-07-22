@@ -1,0 +1,41 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "mistral-medium-3-5",
+      "object": "model",
+      "type": "base",
+      "name": "Mistral Medium 3.5 API",
+      "description": "Structured account inventory description.",
+      "max_context_length": 262144,
+      "aliases": ["mistral-medium-3-5", "mistral-medium-latest"],
+      "deprecation": null,
+      "deprecation_replacement_model": null,
+      "capabilities": {
+        "completion_chat": true,
+        "function_calling": true,
+        "reasoning": true,
+        "fine_tuning": false,
+        "vision": true
+      }
+    },
+    {
+      "id": "mistral-ocr-4-0",
+      "object": "model",
+      "type": "base",
+      "name": "OCR 4",
+      "aliases": ["mistral-ocr-latest"],
+      "deprecation": "2026-12-01T00:00:00Z",
+      "deprecation_replacement_model": "mistral-ocr-5",
+      "capabilities": { "ocr": true }
+    },
+    {
+      "id": "ft:private-model",
+      "type": "fine-tuned",
+      "job": "job-1",
+      "root": "mistral-medium-3-5",
+      "archived": false,
+      "capabilities": { "completion_chat": true }
+    }
+  ]
+}

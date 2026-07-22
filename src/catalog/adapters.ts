@@ -6,6 +6,7 @@ import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
+import { parseMistralApi, parseMistralCatalog } from "./mistral.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
@@ -1027,6 +1028,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseCohereCatalog(input);
     case "cohere-api":
       return parseCohereApi(input);
+    case "mistral-catalog":
+      return parseMistralCatalog(input);
+    case "mistral-api":
+      return parseMistralApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }
