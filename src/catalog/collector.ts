@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
-import { normalizeModelTask, parseSource } from "./adapters.ts";
+import { parseSource } from "./adapters.ts";
 import { fetchSource, fetchStateSchema, type FetchState, type SourceState } from "./fetch.ts";
 import {
   manifests,
@@ -19,6 +19,7 @@ import {
   type SourceRecord,
 } from "./schema.ts";
 import { preserveMissing, validateProvider } from "./validation.ts";
+import { normalizeModelTask } from "./task.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -142,6 +143,10 @@ function applyFields(
             current.capabilities.effort_control,
             incoming.capabilities.effort_control,
           ),
+          computer_use: known(
+            current.capabilities.computer_use,
+            incoming.capabilities.computer_use,
+          ),
         }
       : current.capabilities,
     limits: fields.has("limits") ? { ...current.limits, ...incoming.limits } : current.limits,
@@ -193,7 +198,7 @@ function applyGroups(
       const aliasUid = aliases.get(incoming.model_id);
       const aliasModel =
         aliasUid === undefined || aliasUid === null ? undefined : byUid.get(aliasUid);
-      const current = byUid.get(incoming.uid) ?? aliasModel;
+      const current = byUid.get(incoming.uid) ?? (create ? undefined : aliasModel);
       if (current === undefined) {
         if (create) {
           byUid.set(incoming.uid, incoming);
@@ -206,13 +211,30 @@ function applyGroups(
       index(next);
     }
   }
-  return [...byUid.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  const values = [...byUid.values()];
+  const modelIds = new Set(values.map((model) => model.model_id));
+  return (
+    create
+      ? values.map((model) => ({
+          ...model,
+          aliases: model.aliases.filter((alias) => !modelIds.has(alias)),
+        }))
+      : values
+  ).sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 function missingCredential(source: SourceManifest): boolean {
   if (source.auth === undefined) return false;
-  const value = process.env[source.auth.env];
-  return value === undefined || value.trim() === "";
+  const envs = source.auth.scheme === "aws" ? source.auth.envs : [source.auth.env];
+  return envs.some((env) => {
+    const value = process.env[env];
+    return value === undefined || value.trim() === "";
+  });
+}
+
+function credentialLabel(source: SourceManifest): string {
+  if (source.auth === undefined) return "Credential";
+  return source.auth.scheme === "aws" ? source.auth.envs.join(" and ") : source.auth.env;
 }
 
 function sourceWarning(
@@ -239,7 +261,7 @@ function missingFieldWarning(
   const fact =
     field === "limits.context_tokens"
       ? "a token context limit"
-      : "machine-readable pricing on their model page";
+      : "machine-readable pricing in the configured official sources";
   return {
     code: "missing_field",
     provider_id: providerId,
@@ -308,7 +330,7 @@ async function collectProvider(
             "authentication_not_configured",
             manifest.provider.id,
             source.id,
-            `${source.auth?.env ?? "Credential"} is not configured; the scoped inventory was skipped.`,
+            `Required credential(s) ${credentialLabel(source)} are not configured; the scoped inventory was skipped.`,
           ),
         );
         if (source.optional) continue;

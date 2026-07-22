@@ -12,7 +12,8 @@ export type Extractor =
   | { kind: "huggingface" }
   | { kind: "ollama" }
   | { kind: "vllm" }
-  | { kind: "bedrock-model-cards" }
+  | { kind: "bedrock-catalog" }
+  | { kind: "bedrock-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -28,6 +29,11 @@ export interface LinkedDocuments {
   concurrency: number;
   maxDocumentBytes?: number;
   markdownSuffix?: boolean;
+  documents?: {
+    id: string;
+    url: string;
+    maxResponseBytes: number;
+  }[];
 }
 
 export type SourceField =
@@ -71,8 +77,12 @@ export interface SourceManifest {
   exhaustive?: boolean;
   role?: "catalog" | "overlay" | "inventory";
   optional?: boolean;
-  auth?: { scheme: "bearer"; env: string } | { scheme: "header"; env: string; header: string };
+  auth?:
+    | { scheme: "bearer"; env: string }
+    | { scheme: "header"; env: string; header: string }
+    | { scheme: "aws"; envs: [string, string] };
   headers?: { name: string; value: string }[];
+  transport?: { kind: "aws-bedrock"; region: string };
   snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
@@ -302,20 +312,91 @@ export const manifests = [
         url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
         type: "official_markdown",
         stability: "semi_structured",
-        extractor: { kind: "bedrock-model-cards" },
-        extractorVersion: "bedrock-model-cards-v1",
-        fields: ["model_id", "name", "types", "modalities"],
-        allowedHosts: ["docs.aws.amazon.com"],
-        maxResponseBytes: mebibytes(8),
+        extractor: { kind: "bedrock-catalog" },
+        extractorVersion: "bedrock-catalog-v2",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+        ],
+        allowedHosts: ["docs.aws.amazon.com", "pricing.us-east-1.amazonaws.com"],
+        maxResponseBytes: mebibytes(32),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
         linkedDocuments: {
           path: /^\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/,
           minDocuments: 100,
           maxDocuments: 200,
           concurrency: 8,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "pricing-bedrock",
+              url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/index.json",
+              maxResponseBytes: mebibytes(20),
+            },
+            {
+              id: "pricing-foundation-models",
+              url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
+              maxResponseBytes: mebibytes(8),
+            },
+            {
+              id: "pricing-service",
+              url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
+              maxResponseBytes: mebibytes(2),
+            },
+          ],
         },
+      },
+      {
+        id: "bedrock-api-us-east-1",
+        url: "https://bedrock.us-east-1.amazonaws.com/foundation-models",
+        type: "official_authenticated_api",
+        stability: "documented",
+        extractor: { kind: "bedrock-api" },
+        extractorVersion: "bedrock-api-v1",
+        fields: [
+          "name",
+          "modalities",
+          "capabilities",
+          "release_date",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+        ],
+        allowedHosts: ["bedrock.us-east-1.amazonaws.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "region",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: {
+          scheme: "aws",
+          envs: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
+        },
+        transport: { kind: "aws-bedrock", region: "us-east-1" },
+        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["display_name"],
+    warnOnMissing: {
+      sourceId: "bedrock-models",
+      fields: ["limits.context_tokens", "pricing"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {

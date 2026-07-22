@@ -1,11 +1,13 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
+import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import { classifyModelTask } from "./task.ts";
 import {
   modalitySchema,
   type Modality,
@@ -17,6 +19,7 @@ import {
 } from "./schema.ts";
 
 export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
+export { classifyModelTask, normalizeModelTask } from "./task.ts";
 
 const decimalValue = z
   .union([z.string(), z.number().finite().nonnegative()])
@@ -118,13 +121,6 @@ const openAiItemSchema = z.object({
 
 const listSchema = z.object({ data: z.array(z.unknown()) });
 const ollamaListSchema = z.object({ models: z.array(z.unknown()) });
-const bedrockBundleSchema = z.object({
-  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
-});
-const bedrockModelIdSchema = z
-  .string()
-  .regex(/^[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,3}(?::[a-z0-9-]{1,63}){0,2}$/);
-
 interface ParseInput {
   provider: Provider;
   source: SourceManifest;
@@ -156,85 +152,6 @@ function modalities(values: string[] | undefined): Modality[] {
       return parsed.success ? [parsed.data] : [];
     }),
   );
-}
-
-export function classifyModelTask(input: {
-  modelId: string;
-  name: string;
-  rawType: string | undefined;
-  modalities: ProviderModel["modalities"];
-  fallback: ModelType;
-}): ModelType {
-  const identity = `${input.modelId} ${input.name}`.toLowerCase();
-  if (
-    /(?:^|[./:_ -])(?:embed(?:ding|dings)?|text-embedding|multimodal-embedding|gte)(?:$|[./:_ -])/.test(
-      identity,
-    )
-  )
-    return "embedding";
-  if (/(?:^|[./:_ -])rerank(?:$|[./:_ -])/.test(identity)) return "rerank";
-  if (/(?:moderation|safeguard|(?:^|[./:_ -])guard(?:$|[./:_ -]))/.test(identity))
-    return "moderation";
-  if (/(?:^|[./:_ -])ocr(?:$|[./:_ -])/.test(identity)) return "ocr";
-  if (/(?:^|[./:_ -])tts(?:$|[./:_ -])|text-to-speech|cosyvoice/.test(identity))
-    return "text_to_speech";
-  if (
-    /(?:transcrib|whisper|paraformer|(?:^|[./:_ -])stt(?:$|[./:_ -])|chirp|voxtral)/.test(identity)
-  )
-    return "speech_to_text";
-  if (
-    /(?:realtime|(?:^|[./:_ -])audio(?:$|[./:_ -])|sonic|(?:^|[./:_ -])voice(?:$|[./:_ -]))/.test(
-      identity,
-    )
-  )
-    return "speech_to_speech";
-  if (/(?:video|sora|veo|reel|(?:^|[./:_ -])wan\d)/.test(identity)) return "video_generation";
-  if (/(?:image|dall-e|imagen|flux|canvas)/.test(identity)) return "image_generation";
-  if (/computer-use/.test(identity)) return "computer_use";
-  if (/(?:^|[./:_ -])classif(?:ier|ication)?(?:$|[./:_ -])/.test(identity)) return "classifier";
-
-  switch (input.rawType) {
-    case "language":
-      return "text_generation";
-    case "embedding":
-      return "embedding";
-    case "reranking":
-      return "rerank";
-    case "image":
-    case "image-generation":
-      return "image_generation";
-    case "video":
-      return "video_generation";
-    case "transcription":
-      return "speech_to_text";
-    case "speech":
-      return "text_to_speech";
-    case "realtime":
-      return "speech_to_speech";
-  }
-
-  if (input.modalities.output.includes("embedding")) return "embedding";
-  if (input.modalities.output.includes("video")) return "video_generation";
-  if (input.modalities.output.includes("image")) return "image_generation";
-  if (input.modalities.output.includes("audio"))
-    return input.modalities.input.includes("audio") ? "speech_to_speech" : "text_to_speech";
-  return input.fallback;
-}
-
-export function normalizeModelTask(model: ProviderModel): ProviderModel {
-  const fallback = model.types.find((type) => type !== "other") ?? "text_generation";
-  return {
-    ...model,
-    types: [
-      classifyModelTask({
-        modelId: model.model_id,
-        name: model.name,
-        rawType: model.raw_type,
-        modalities: model.modalities,
-        fallback,
-      }),
-    ],
-  };
 }
 
 function tokenRate(
@@ -613,7 +530,12 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
           .filter((_index, element) => $(element).children().length === 0)
           .map((_index, element) => normalizedText($(element).text()))
           .get()
-          .filter((value) => value !== id && modelIdSchema.safeParse(value).success),
+          .filter(
+            (value) =>
+              value !== id &&
+              value === value.toLowerCase() &&
+              modelIdSchema.safeParse(value).success,
+          ),
       ).sort();
       return {
         ...baseModel({
@@ -1088,125 +1010,6 @@ function parseDocument(input: ParseInput): ProviderModel[] {
   }));
 }
 
-function markdownCells(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\||\|$/g, "")
-    .split("|")
-    .map((cell) => cell.replaceAll("**", "").replaceAll("`", "").trim());
-}
-
-function bedrockModality(cell: string): Modality | undefined {
-  if (!cell.includes("icon-yes.png")) return undefined;
-  const label = cell.match(/\)\s*(Audio|Embedding|Image|Speech|Text|Video)\s*$/)?.[1];
-  switch (label) {
-    case "Audio":
-    case "Speech":
-      return "audio";
-    case "Embedding":
-      return "embedding";
-    case "Image":
-      return "image";
-    case "Text":
-      return "text";
-    case "Video":
-      return "video";
-  }
-}
-
-function bedrockModalities(body: string): ProviderModel["modalities"] {
-  const lines = body.split("\n");
-  const headerIndex = lines.findIndex((line) => {
-    const cells = markdownCells(line);
-    return cells.includes("Input Modalities") && cells.includes("Output Modalities");
-  });
-  if (headerIndex < 0) throw new Error("Bedrock model card omitted its modality table");
-  const header = markdownCells(lines[headerIndex] ?? "");
-  const inputIndex = header.indexOf("Input Modalities");
-  const outputIndex = header.indexOf("Output Modalities");
-  const inputModalities: Modality[] = [];
-  const outputModalities: Modality[] = [];
-  for (const line of lines.slice(headerIndex + 2)) {
-    if (!line.trim().startsWith("|")) break;
-    const cells = markdownCells(line);
-    const inputModality = bedrockModality(cells[inputIndex] ?? "");
-    const outputModality = bedrockModality(cells[outputIndex] ?? "");
-    if (inputModality !== undefined) inputModalities.push(inputModality);
-    if (outputModality !== undefined) outputModalities.push(outputModality);
-  }
-  return { input: unique(inputModalities), output: unique(outputModalities) };
-}
-
-function bedrockCard(body: string): {
-  name: string;
-  ids: string[];
-  modalities: ProviderModel["modalities"];
-} {
-  const name = body.match(/^# ([^\n]+)$/m)?.[1]?.trim();
-  if (name === undefined || name === "") throw new Error("Bedrock model card omitted its name");
-  const programmaticAccess = body.split("## Programmatic Access")[1]?.split(/\n## /)[0];
-  if (programmaticAccess === undefined)
-    throw new Error(`Bedrock model card omitted Programmatic Access for ${name}`);
-  const lines = programmaticAccess.split("\n");
-  const headerIndex = lines.findIndex((line) => {
-    const cells = markdownCells(line);
-    return cells.includes("Endpoint") && cells.includes("Model ID");
-  });
-  if (headerIndex < 0) throw new Error(`Bedrock model card omitted its ID table for ${name}`);
-  const header = markdownCells(lines[headerIndex] ?? "");
-  const endpointIndex = header.indexOf("Endpoint");
-  const modelIdIndex = header.indexOf("Model ID");
-  const ids = unique(
-    lines.slice(headerIndex + 2).flatMap((line) => {
-      if (!line.trim().startsWith("|")) return [];
-      const cells = markdownCells(line);
-      const endpoint = cells[endpointIndex];
-      const result = bedrockModelIdSchema.safeParse(cells[modelIdIndex]);
-      return endpoint?.startsWith("bedrock-") && result.success ? [result.data] : [];
-    }),
-  );
-  if (ids.length === 0)
-    throw new Error(`Bedrock model card omitted official model IDs for ${name}`);
-  return { name, ids, modalities: bedrockModalities(body) };
-}
-
-function parseBedrock(input: ParseInput): ProviderModel[] {
-  const bundle = bedrockBundleSchema.parse(parseJson(input.body));
-  const identities = new Map<string, { name: string; modalities: ProviderModel["modalities"] }>();
-  for (const document of bundle.documents) {
-    const card = bedrockCard(document.body);
-    for (const id of card.ids) {
-      const existing = identities.get(id);
-      if (existing !== undefined && existing.name !== card.name)
-        throw new Error(`Bedrock model ID ${id} has conflicting display names`);
-      identities.set(id, { name: card.name, modalities: card.modalities });
-    }
-  }
-  return [...identities]
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([id, model]) => ({
-      ...baseModel({
-        providerId: input.provider.id,
-        id,
-        name: model.name,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      id_kind: "api_id",
-      types: [
-        classifyModelTask({
-          modelId: id,
-          name: model.name,
-          rawType: undefined,
-          modalities: model.modalities,
-          fallback: "text_generation",
-        }),
-      ],
-      modalities: model.modalities,
-      scope: "regional_catalog",
-    }));
-}
-
 function parseOllama(input: ParseInput): ProviderModel[] {
   const list = ollamaListSchema.parse(parseJson(input.body));
   const results = list.models.map((item) => ollamaItemSchema.safeParse(item));
@@ -1292,8 +1095,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseOllama(input);
     case "vllm":
       return parseVllm(input);
-    case "bedrock-model-cards":
-      return parseBedrock(input);
+    case "bedrock-catalog":
+      return parseBedrockCatalog(input);
+    case "bedrock-api":
+      return parseBedrockApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }

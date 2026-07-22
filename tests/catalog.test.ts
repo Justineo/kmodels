@@ -41,4 +41,20 @@ describe("generated static catalog", () => {
     expect(envelope.data.models).toHaveLength(catalog.models.length);
     expect(envelope.data.providers).toEqual(catalog.providers);
   });
+
+  it("does not collapse an exact catalog ID through another model's alias", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const o1 = catalog.models.find((model) => model.uid === "openai/o1");
+    const preview = catalog.models.find((model) => model.uid === "openai/o1-preview");
+    expect({
+      name: o1?.name,
+      description: o1?.description,
+      context: o1?.limits.context_tokens,
+    }).toEqual({
+      name: "o1",
+      description: "Previous full o-series reasoning model",
+      context: 200_000,
+    });
+    expect(preview?.name).toBe("o1 Preview");
+  });
 });

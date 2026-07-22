@@ -6,7 +6,7 @@ export interface ValidationResult {
 }
 
 function priceKey(rate: PriceRate): string {
-  return `${rate.meter}:${JSON.stringify(rate.conditions)}`;
+  return `${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`;
 }
 
 function decimalParts(value: string): [bigint, number] {
