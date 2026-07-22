@@ -38,7 +38,7 @@ The repository ships two things from one TypeScript project:
 
 Visual thesis: a compact monochrome index—white canvas, near-black text, cool-gray rules and green reserved for source freshness.
 
-Content plan: one narrow status bar, one filter row and the model index. Model identifiers and separately observed display names have distinct columns; the display-name cell is blank when `name` is only the required `model_id` fallback. There is no hero, methodology section, footer narrative, marketing copy, card grid or decorative imagery. Provenance remains available through model details and the raw JSON link.
+Content plan: one narrow status bar, one filter row and the model index. Model identifiers and separately observed display names have distinct columns; the display-name cell is blank when `name` is only the required `model_id` fallback. Text-token pricing is split into input, output and cached-input columns, preferring an unconditional published rate and otherwise showing the first source tier; every tier and cache-write rate remains explicit in model details. There is no hero, methodology section, footer narrative, marketing copy, card grid or decorative imagery. Provenance remains available through model details and the raw JSON link.
 
 Interaction thesis: filter feedback is immediate, rows use a quiet hover state, and model details open in a compact native dialog. The app header, controls and table heading remain sticky; all motion is removed under `prefers-reduced-motion`.
 

@@ -28,7 +28,7 @@ app.innerHTML = `
       <output id="result-count" aria-live="polite">—</output>
     </div>
     <div class="ledger-head" aria-hidden="true">
-      <span>Model</span><span>Display name</span><span>Provider</span><span>Type</span><span>Context</span><span>Input / output</span>
+      <span>Model</span><span>Display name</span><span>Provider</span><span>Type</span><span>Context</span><span>Input cost</span><span>Output cost</span><span>Cached cost</span>
     </div>
     <div class="ledger" id="ledger" aria-live="polite"><p class="loading">Loading…</p></div>
   </main>
@@ -85,11 +85,10 @@ function rate(model: ProviderModel, meter: PriceRate["meter"]): PriceRate | unde
   );
 }
 
-function price(model: ProviderModel): string {
-  const input = rate(model, "input_text")?.price;
-  const output = rate(model, "output_text")?.price;
-  if (input === undefined && output === undefined) return "—";
-  return `$${input ?? "—"} / $${output ?? "—"}`;
+function price(model: ProviderModel, meter: PriceRate["meter"]): string {
+  const item = rate(model, meter);
+  if (item === undefined) return "—";
+  return item.currency === "USD" ? `$${item.price}` : `${item.currency} ${item.price}`;
 }
 
 function showDetails(model: ProviderModel): void {
@@ -166,7 +165,9 @@ function modelRow(model: ProviderModel): HTMLButtonElement {
   appendText(row, "span", model.provider_id, "provider-name");
   appendText(row, "span", model.types.join(" · "), "model-type");
   appendText(row, "span", formatNumber(model.limits.context_tokens), "numeric");
-  appendText(row, "span", price(model), "numeric price");
+  appendText(row, "span", price(model, "input_text"), "numeric price");
+  appendText(row, "span", price(model, "output_text"), "numeric price");
+  appendText(row, "span", price(model, "cache_read_text"), "numeric price");
   row.addEventListener("click", () => showDetails(model));
   return row;
 }
