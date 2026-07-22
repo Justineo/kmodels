@@ -1,39 +1,29 @@
 import { z } from "zod";
 
 const dateTime = z.iso.datetime({ offset: true });
+const modelDate = z.union([
+  z.iso.date(),
+  z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
+  z.string().regex(/^\d{4}$/),
+]);
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
 export const modelTypeSchema = z.enum([
-  "text_generation",
-  "embedding",
+  "generate",
+  "agentic",
+  "embeddings",
+  "audio_speech",
+  "audio_transcription",
+  "audio_translation",
+  "image",
+  "video",
+  "realtime",
   "rerank",
   "moderation",
-  "image_generation",
-  "video_generation",
-  "speech_to_text",
-  "text_to_speech",
-  "speech_to_speech",
-  "computer_use",
-  "classifier",
+  "classification",
   "ocr",
   "other",
 ]);
-
-const storedModelTypeSchema = z
-  .enum([...modelTypeSchema.options, "language", "reasoning", "code", "realtime", "multimodal"])
-  .transform((value): z.infer<typeof modelTypeSchema> => {
-    switch (value) {
-      case "language":
-      case "reasoning":
-      case "code":
-      case "multimodal":
-        return "text_generation";
-      case "realtime":
-        return "speech_to_speech";
-      default:
-        return value;
-    }
-  });
 
 export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
@@ -62,6 +52,7 @@ export const priceRateSchema = z.object({
     "tool_call",
     "gpu_hour",
     "provisioned_throughput",
+    "batch_inference",
   ]),
   price: decimal,
   currency: z.string().min(1),
@@ -94,6 +85,7 @@ export const priceRateSchema = z.object({
     route_provider: z.string().optional(),
     context_min_tokens: z.number().int().nonnegative().optional(),
     context_max_tokens: z.number().int().nonnegative().optional(),
+    context_tier: z.string().optional(),
     cache_ttl_seconds: z.number().int().nonnegative().optional(),
     capacity: z.string().optional(),
     modality: z.string().optional(),
@@ -120,7 +112,7 @@ export const providerModelSchema = z.object({
   description: z.string().optional(),
   aliases: z.array(z.string().min(1)),
   types: z
-    .array(storedModelTypeSchema)
+    .array(modelTypeSchema)
     .min(1)
     .transform((types) => [...new Set(types)]),
   raw_type: z.string().optional(),
@@ -145,7 +137,8 @@ export const providerModelSchema = z.object({
     max_output_tokens: z.number().int().nonnegative().optional(),
     embedding_dimensions: z.array(z.number().int().positive()).optional(),
   }),
-  release_date: z.string().optional(),
+  release_date: modelDate.optional(),
+  updated_date: modelDate.optional(),
   deprecated_at: z.string().optional(),
   retired_at: z.string().optional(),
   status: z.enum(["active", "preview", "deprecated", "retired", "unknown"]),

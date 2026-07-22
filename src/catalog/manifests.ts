@@ -14,6 +14,8 @@ export type Extractor =
   | { kind: "vllm" }
   | { kind: "bedrock-catalog" }
   | { kind: "bedrock-api" }
+  | { kind: "databricks-catalog"; minModels: number; maxModels: number }
+  | { kind: "databricks-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -46,6 +48,7 @@ export type SourceField =
   | "capabilities"
   | "limits"
   | "release_date"
+  | "updated_date"
   | "pricing"
   | "status"
   | "is_deprecated"
@@ -53,7 +56,7 @@ export type SourceField =
   | "retired_at"
   | "replacement_model_ids";
 
-export type CoverageField = "limits.context_tokens" | "pricing";
+export type CoverageField = "limits.context_tokens" | "pricing" | "release_date" | "updated_date";
 
 export interface SourceManifest {
   id: string;
@@ -82,7 +85,7 @@ export interface SourceManifest {
     | { scheme: "header"; env: string; header: string }
     | { scheme: "aws"; envs: [string, string] };
   headers?: { name: string; value: string }[];
-  transport?: { kind: "aws-bedrock"; region: string };
+  transport?: { kind: "aws-bedrock"; region: string } | { kind: "databricks"; hostEnv: string };
   snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
@@ -118,7 +121,7 @@ const documentSource = (
     kind: "document-identifiers",
     patterns,
     idKind,
-    defaultType: "text_generation",
+    defaultType: "generate",
     ...(linkTarget === undefined ? {} : { linkTarget }),
   },
   extractorVersion: "document-identifiers-v1",
@@ -409,12 +412,103 @@ export const manifests = [
       catalog_scope: "regional",
     },
     sources: [
-      documentSource(
-        "databricks-models",
-        "https://docs.databricks.com/aws/en/machine-learning/model-serving/foundation-model-overview",
-        [/^databricks-[a-z0-9._-]+$/i],
-      ),
+      {
+        id: "databricks-models",
+        url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models",
+        type: "official_html",
+        stability: "semi_structured",
+        extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
+        extractorVersion: "databricks-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["docs.databricks.com", "www.databricks.com"],
+        maxResponseBytes: mebibytes(16),
+        scope: "region",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 4,
+          documents: [
+            {
+              id: "overview",
+              url: "https://docs.databricks.com/aws/en/machine-learning/model-serving/foundation-model-overview",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "lifecycle",
+              url: "https://docs.databricks.com/aws/en/machine-learning/retired-models-policy",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "pricing-open",
+              url: "https://www.databricks.com/product/pricing/foundation-model-serving",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "pricing-partner",
+              url: "https://www.databricks.com/product/pricing/proprietary-foundation-model-serving",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "limits",
+              url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-reference",
+              url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "release-feed",
+              url: "https://docs.databricks.com/aws/en/feed.xml",
+              maxResponseBytes: mebibytes(2),
+            },
+          ],
+        },
+      },
+      {
+        id: "databricks-api",
+        url: "https://workspace.cloud.databricks.com/api/2.0/serving-endpoints",
+        type: "official_authenticated_api",
+        stability: "documented",
+        extractor: { kind: "databricks-api" },
+        extractorVersion: "databricks-api-v1",
+        fields: ["types", "modalities"],
+        allowedHosts: ["workspace.cloud.databricks.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "workspace",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "DATABRICKS_TOKEN" },
+        transport: { kind: "databricks", hostEnv: "DATABRICKS_HOST" },
+        snapshotPolicy: "none",
+      },
     ],
+    supersededIdKinds: ["display_name"],
+    warnOnMissing: {
+      sourceId: "databricks-models",
+      fields: ["limits.context_tokens", "pricing", "release_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
@@ -649,7 +743,7 @@ export const manifests = [
         stability: "undocumented",
         extractor: { kind: "ollama" },
         extractorVersion: "ollama-v1",
-        fields: ["model_id", "name"],
+        fields: ["model_id", "name", "updated_date"],
         allowedHosts: ["ollama.com"],
         maxResponseBytes: mebibytes(4),
       },

@@ -2,12 +2,13 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
+import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
-import { classifyModelTask } from "./task.ts";
+import { classifyModelTypes } from "./task.ts";
 import {
   modalitySchema,
   type Modality,
@@ -19,7 +20,7 @@ import {
 } from "./schema.ts";
 
 export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
-export { classifyModelTask, normalizeModelTask } from "./task.ts";
+export { classifyModelTypes, normalizeModelTypes } from "./task.ts";
 
 const decimalValue = z
   .union([z.string(), z.number().finite().nonnegative()])
@@ -267,10 +268,70 @@ function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
   };
 }
 
+function openAiTypes($: LoadedDocument, fallback: ModelType[]): ModelType[] {
+  const labels = new Map<string, ModelType[]>([
+    ["Chat Completions", ["generate"]],
+    ["Responses", ["generate"]],
+    ["Completions (legacy)", ["generate"]],
+    ["Assistants", ["agentic"]],
+    ["Embeddings", ["embeddings"]],
+    ["Speech generation", ["audio_speech"]],
+    ["Transcription", ["audio_transcription"]],
+    ["Translation", ["audio_translation"]],
+    ["Image generation", ["image"]],
+    ["Image edit", ["image"]],
+    ["Videos", ["video"]],
+    ["Realtime", ["realtime"]],
+    ["Realtime translation", ["realtime", "audio_translation"]],
+    ["Realtime transcription", ["realtime", "audio_transcription"]],
+    ["Moderation", ["moderation"]],
+  ]);
+  const observed: ModelType[] = [];
+  sectionContent($, "Endpoints")
+    .find("div")
+    .filter((_index, element) => $(element).children().length === 0)
+    .each((_index, element) => {
+      if ($(element).hasClass("text-gray-400")) return;
+      observed.push(...(labels.get(normalizedText($(element).text())) ?? []));
+    });
+  return observed.length > 0 ? unique(observed) : fallback;
+}
+
+function openAiAliases($: LoadedDocument, id: string): string[] {
+  const content = sectionContent($, "Snapshots");
+  const label = content
+    .find("div")
+    .filter(
+      (_index, element) =>
+        $(element).children().length === 0 && normalizedText($(element).text()) === id,
+    )
+    .first();
+  const card = label
+    .parents()
+    .filter((_index, element) => {
+      const parent = $(element).parent();
+      return parent.hasClass("font-mono") && parent.hasClass("gap-8");
+    })
+    .first();
+  const scope = card.length > 0 ? card : label.parent();
+  if (scope.length === 0) throw new Error(`OpenAI model page omitted snapshot card for ${id}`);
+  return unique(
+    scope
+      .find("*")
+      .filter((_index, element) => $(element).children().length === 0)
+      .map((_index, element) => normalizedText($(element).text()))
+      .get()
+      .filter(
+        (value) =>
+          value !== id && value === value.toLowerCase() && modelIdSchema.safeParse(value).success,
+      ),
+  ).sort();
+}
+
 function openAiMeter(
   group: string,
   label: string,
-  task: ModelType,
+  types: ModelType[],
 ): PriceRate["meter"] | undefined {
   if (group === "Text tokens") {
     if (label === "Input") return "input_text";
@@ -291,12 +352,12 @@ function openAiMeter(
   if (group === "Image generation") return "image_generation";
   if (group === "Video generation") return "video_generation";
   if (group === "Realtime audio duration" && label === "Price") {
-    if (task === "speech_to_text" || task === "speech_to_speech") return "input_audio";
-    if (task === "text_to_speech") return "output_audio";
+    if (types.includes("audio_transcription") || types.includes("realtime")) return "input_audio";
+    if (types.includes("audio_speech")) return "output_audio";
   }
 }
 
-function openAiPricing($: LoadedDocument, sourceId: string, task: ModelType): PriceRate[] {
+function openAiPricing($: LoadedDocument, sourceId: string, types: ModelType[]): PriceRate[] {
   const content = sectionContent($, "Pricing");
   if (content.length === 0) return [];
   const rates: PriceRate[] = [];
@@ -353,7 +414,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, task: ModelType): Pr
         const rawPrice = normalizedText($(card).children().last().text());
         const match = rawPrice.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/);
         if (match?.[1] === undefined) return;
-        const meter = openAiMeter(group, label, task);
+        const meter = openAiMeter(group, label, types);
         if (meter === undefined)
           throw new Error(`Unsupported OpenAI pricing field: ${group}/${label}`);
         const conditions: PriceRate["conditions"] = {};
@@ -509,34 +570,22 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
       if (name === "") throw new Error(`OpenAI model page omitted display name for ${id}`);
       const description = normalizedText($("main .hidden.text-secondary.sm\\:flex").first().text());
       const observedModalities = openAiModalities($);
-      const task = classifyModelTask({
+      const classifiedTypes = classifyModelTypes({
         modelId: id,
         name,
         rawType: undefined,
         modalities: observedModalities,
-        fallback: "text_generation",
+        fallback: "generate",
       });
+      const types = openAiTypes($, classifiedTypes);
       const embeddingOutput: Modality[] = ["embedding"];
-      const modelModalities: ProviderModel["modalities"] =
-        task === "embedding"
-          ? { input: observedModalities.input, output: embeddingOutput }
-          : observedModalities;
-      const pricing = openAiPricing($, input.source.id, task);
+      const modelModalities: ProviderModel["modalities"] = types.includes("embeddings")
+        ? { input: observedModalities.input, output: embeddingOutput }
+        : observedModalities;
+      const pricing = openAiPricing($, input.source.id, types);
       const features = openAiFeatures($);
       const pageText = normalizedText($("main").text());
-      const aliases = unique(
-        sectionContent($, "Snapshots")
-          .find("*")
-          .filter((_index, element) => $(element).children().length === 0)
-          .map((_index, element) => normalizedText($(element).text()))
-          .get()
-          .filter(
-            (value) =>
-              value !== id &&
-              value === value.toLowerCase() &&
-              modelIdSchema.safeParse(value).success,
-          ),
-      ).sort();
+      const aliases = openAiAliases($, id);
       return {
         ...baseModel({
           providerId: input.provider.id,
@@ -547,7 +596,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         }),
         description: description || undefined,
         aliases,
-        types: [task],
+        types,
         modalities: modelModalities,
         capabilities: {
           ...features,
@@ -690,15 +739,13 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
               sourceId: input.source.id,
               observedAt: input.observedAt,
             }),
-            types: [
-              classifyModelTask({
-                modelId: id,
-                name: id,
-                rawType: undefined,
-                modalities: { input: [], output: [] },
-                fallback: "text_generation",
-              }),
-            ],
+            types: classifyModelTypes({
+              modelId: id,
+              name: id,
+              rawType: undefined,
+              modalities: { input: [], output: [] },
+              fallback: "generate",
+            }),
             status,
             is_deprecated: true,
             retired_at: retiredAt,
@@ -760,15 +807,13 @@ function parseVercel(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         description: item.description || undefined,
-        types: [
-          classifyModelTask({
-            modelId: item.id,
-            name: item.name ?? item.id,
-            rawType: item.type,
-            modalities: modelModalities,
-            fallback: "other",
-          }),
-        ],
+        types: classifyModelTypes({
+          modelId: item.id,
+          name: item.name ?? item.id,
+          rawType: item.type,
+          modalities: modelModalities,
+          fallback: "other",
+        }),
         raw_type: item.type,
         modalities: modelModalities,
         capabilities: {
@@ -821,7 +866,7 @@ function parseCerebras(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         description: item.description,
-        types: ["text_generation"],
+        types: ["generate"],
         modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
         capabilities: {
           ...unknownCapabilities(),
@@ -905,15 +950,13 @@ function parseHuggingFace(input: ParseInput): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        types: [
-          classifyModelTask({
-            modelId: item.id,
-            name: item.id,
-            rawType: undefined,
-            modalities: { input: inputModalities, output: outputModalities },
-            fallback: "text_generation",
-          }),
-        ],
+        types: classifyModelTypes({
+          modelId: item.id,
+          name: item.id,
+          rawType: undefined,
+          modalities: { input: inputModalities, output: outputModalities },
+          fallback: "generate",
+        }),
         modalities: { input: inputModalities, output: outputModalities },
         capabilities: {
           ...unknownCapabilities(),
@@ -997,15 +1040,13 @@ function parseDocument(input: ParseInput): ProviderModel[] {
       observedAt: input.observedAt,
     }),
     id_kind: extractor.idKind,
-    types: [
-      classifyModelTask({
-        modelId: id,
-        name: id,
-        rawType: undefined,
-        modalities: { input: [], output: [] },
-        fallback: extractor.defaultType,
-      }),
-    ],
+    types: classifyModelTypes({
+      modelId: id,
+      name: id,
+      rawType: undefined,
+      modalities: { input: [], output: [] },
+      fallback: extractor.defaultType,
+    }),
     pricing_status: input.provider.kind === "model_publisher" ? "not_applicable" : "unknown",
   }));
 }
@@ -1028,15 +1069,14 @@ function parseOllama(input: ParseInput): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        types: [
-          classifyModelTask({
-            modelId: id,
-            name: result.data.name,
-            rawType: undefined,
-            modalities: modelModalities,
-            fallback: "text_generation",
-          }),
-        ],
+        types: classifyModelTypes({
+          modelId: id,
+          name: result.data.name,
+          rawType: undefined,
+          modalities: modelModalities,
+          fallback: "generate",
+        }),
+        updated_date: result.data.modified_at?.slice(0, 10),
         pricing_status: "not_applicable",
         status: "active",
       },
@@ -1056,15 +1096,13 @@ function parseVllm(input: ParseInput): ProviderModel[] {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: [
-      classifyModelTask({
-        modelId: id,
-        name: id,
-        rawType: undefined,
-        modalities: { input: [], output: [] },
-        fallback: "text_generation",
-      }),
-    ],
+    types: classifyModelTypes({
+      modelId: id,
+      name: id,
+      rawType: undefined,
+      modalities: { input: [], output: [] },
+      fallback: "generate",
+    }),
     pricing_status: "not_applicable",
     scope: "runtime_observation",
     status: "active",
@@ -1099,6 +1137,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseBedrockCatalog(input);
     case "bedrock-api":
       return parseBedrockApi(input);
+    case "databricks-catalog":
+      return parseDatabricksCatalog(input);
+    case "databricks-api":
+      return parseDatabricksApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }

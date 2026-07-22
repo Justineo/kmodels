@@ -28,7 +28,7 @@ app.innerHTML = `
       <output id="result-count" aria-live="polite">—</output>
     </div>
     <div class="ledger-head" aria-hidden="true">
-      <span>Model</span><span>Display name</span><span>Provider</span><span>Type</span><span>Context</span><span>Input cost</span><span>Output cost</span><span>Cached cost</span>
+      <span>Model</span><span>Display name</span><span>Provider</span><span>Types</span><span>Released · updated</span><span>Context</span><span>Input cost</span><span>Output cost</span><span>Cached cost</span>
     </div>
     <div class="ledger" id="ledger" aria-live="polite"><p class="loading">Loading…</p></div>
   </main>
@@ -77,6 +77,25 @@ function formatNumber(value: number | undefined): string {
     : new Intl.NumberFormat("en", { notation: "compact" }).format(value);
 }
 
+function typeLabel(value: ProviderModel["types"][number]): string {
+  switch (value) {
+    case "audio_speech":
+      return "audio/speech";
+    case "audio_transcription":
+      return "audio/transcription";
+    case "audio_translation":
+      return "audio/translation";
+    default:
+      return value;
+  }
+}
+
+function modelDates(model: ProviderModel): string {
+  if (model.release_date !== undefined && model.updated_date !== undefined)
+    return `${model.release_date} · ${model.updated_date}`;
+  return model.release_date ?? model.updated_date ?? "—";
+}
+
 function rate(model: ProviderModel, meter: PriceRate["meter"]): PriceRate | undefined {
   return (
     model.pricing.find(
@@ -103,7 +122,9 @@ function showDetails(model: ProviderModel): void {
 
   const definition = document.createElement("dl");
   const entries = [
-    ["Type", model.types.join(", ")],
+    ["Types", model.types.map(typeLabel).join(", ")],
+    ["Released", model.release_date ?? "unknown"],
+    ["Updated", model.updated_date ?? "unknown"],
     ["Input", model.modalities.input.join(", ") || "unknown"],
     ["Output", model.modalities.output.join(", ") || "unknown"],
     ["Context", formatNumber(model.limits.context_tokens)],
@@ -163,7 +184,8 @@ function modelRow(model: ProviderModel): HTMLButtonElement {
   row.append(identity);
   appendText(row, "span", model.name === model.model_id ? "" : model.name, "display-name");
   appendText(row, "span", model.provider_id, "provider-name");
-  appendText(row, "span", model.types.join(" · "), "model-type");
+  appendText(row, "span", model.types.map(typeLabel).join(" · "), "model-type");
+  appendText(row, "span", modelDates(model), "model-dates");
   appendText(row, "span", formatNumber(model.limits.context_tokens), "numeric");
   appendText(row, "span", price(model, "input_text"), "numeric price");
   appendText(row, "span", price(model, "output_text"), "numeric price");
@@ -179,7 +201,7 @@ function render(): void {
   const visible = models.filter(
     (model) =>
       (query === "" ||
-        `${model.name} ${model.model_id} ${model.provider_id}`
+        `${model.name} ${model.model_id} ${model.provider_id} ${model.types.join(" ")}`
           .toLocaleLowerCase()
           .includes(query)) &&
       (provider === "" || model.provider_id === provider) &&
@@ -212,7 +234,7 @@ async function loadCatalog(): Promise<void> {
     const providerIds = [...new Set(models.map((model) => model.provider_id))].sort();
     providerFilter.append(...providerIds.map((id) => option(id, id)));
     const types = [...new Set(models.flatMap((model) => model.types))].sort();
-    typeFilter.append(...types.map((type) => option(type, type.replaceAll("_", " "))));
+    typeFilter.append(...types.map((type) => option(type, typeLabel(type))));
     modelCount.textContent = new Intl.NumberFormat("en").format(models.length);
     catalogVersion.textContent = catalog.catalog_version.slice(0, 8);
     const fresh = catalog.data.coverage.filter((item) => item.status === "fresh").length;

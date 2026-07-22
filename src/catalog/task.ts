@@ -1,80 +1,105 @@
-import type { ModelType, ProviderModel } from "./schema.ts";
+import { modelTypeSchema, type ModelType, type ProviderModel } from "./schema.ts";
 
-export function classifyModelTask(input: {
+const order = new Map(modelTypeSchema.options.map((type, index) => [type, index]));
+
+function unique(types: ModelType[]): ModelType[] {
+  const observed = [...new Set(types)];
+  const known = observed.filter((type) => type !== "other");
+  return (known.length > 0 ? known : observed).sort(
+    (left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0),
+  );
+}
+
+export function classifyModelTypes(input: {
   modelId: string;
   name: string;
   rawType: string | undefined;
   modalities: ProviderModel["modalities"];
   fallback: ModelType;
-}): ModelType {
+}): ModelType[] {
   const identity = `${input.modelId} ${input.name}`.toLowerCase();
-  if (
-    /(?:^|[./:_ -])(?:embed(?:ding|dings)?|text-embedding|multimodal-embedding|gte)(?:$|[./:_ -])/.test(
+  const types: ModelType[] = [];
+  const embedding =
+    /(?:^|[./:_ -])(?:embed(?:ding|dings)?|text-embedding|multimodal-embedding|bge|gte)(?:$|[./:_ -])/.test(
       identity,
-    )
-  )
-    return "embedding";
-  if (/(?:^|[./:_ -])rerank(?:$|[./:_ -])/.test(identity)) return "rerank";
+    );
+  if (embedding) types.push("embeddings");
+  if (/(?:^|[./:_ -])rerank(?:$|[./:_ -])/.test(identity)) types.push("rerank");
   if (/(?:moderation|safeguard|(?:^|[./:_ -])guard(?:$|[./:_ -]))/.test(identity))
-    return "moderation";
-  if (/(?:^|[./:_ -])ocr(?:$|[./:_ -])/.test(identity)) return "ocr";
-  if (/(?:^|[./:_ -])tts(?:$|[./:_ -])|text-to-speech|cosyvoice/.test(identity))
-    return "text_to_speech";
+    types.push("moderation");
+  if (/(?:^|[./:_ -])ocr(?:$|[./:_ -])/.test(identity)) types.push("ocr");
+  const speech = /(?:^|[./:_ -])tts(?:$|[./:_ -])|text-to-speech|cosyvoice/.test(identity);
+  if (speech) types.push("audio_speech");
   if (
+    !speech &&
     /(?:transcrib|whisper|paraformer|(?:^|[./:_ -])stt(?:$|[./:_ -])|chirp|voxtral)/.test(identity)
   )
-    return "speech_to_text";
+    types.push("audio_transcription");
+  if (/(?:^|[./:_ -])translat(?:e|ion)(?:$|[./:_ -])/.test(identity))
+    types.push("audio_translation");
+  if (/(?:realtime|sonic|(?:^|[./:_ -])voice(?:$|[./:_ -]))/.test(identity)) types.push("realtime");
+  const image = /(?:image|dall-e|imagen|flux|canvas)/.test(identity);
   if (
-    /(?:realtime|(?:^|[./:_ -])audio(?:$|[./:_ -])|sonic|(?:^|[./:_ -])voice(?:$|[./:_ -]))/.test(
-      identity,
-    )
+    !embedding &&
+    (/(?:video|sora|veo|reel)/.test(identity) || (!image && /(?:^|[./:_ -])wan\d/.test(identity)))
   )
-    return "speech_to_speech";
-  if (/(?:video|sora|veo|reel|(?:^|[./:_ -])wan\d)/.test(identity)) return "video_generation";
-  if (/(?:image|dall-e|imagen|flux|canvas)/.test(identity)) return "image_generation";
-  if (/computer-use/.test(identity)) return "computer_use";
-  if (/(?:^|[./:_ -])classif(?:ier|ication)?(?:$|[./:_ -])/.test(identity)) return "classifier";
+    types.push("video");
+  if (!embedding && image) types.push("image");
+  if (/computer-use/.test(identity)) types.push("agentic");
+  if (/(?:^|[./:_ -])classif(?:ier|ication)?(?:$|[./:_ -])/.test(identity))
+    types.push("classification");
 
   switch (input.rawType) {
     case "language":
-      return "text_generation";
+      types.push("generate");
+      break;
     case "embedding":
-      return "embedding";
+      types.push("embeddings");
+      break;
     case "reranking":
-      return "rerank";
+      types.push("rerank");
+      break;
     case "image":
     case "image-generation":
-      return "image_generation";
+      types.push("image");
+      break;
     case "video":
-      return "video_generation";
+      types.push("video");
+      break;
     case "transcription":
-      return "speech_to_text";
+      types.push("audio_transcription");
+      break;
     case "speech":
-      return "text_to_speech";
+      types.push("audio_speech");
+      break;
     case "realtime":
-      return "speech_to_speech";
+      types.push("realtime");
   }
 
-  if (input.modalities.output.includes("embedding")) return "embedding";
-  if (input.modalities.output.includes("video")) return "video_generation";
-  if (input.modalities.output.includes("image")) return "image_generation";
-  if (input.modalities.output.includes("audio"))
-    return input.modalities.input.includes("audio") ? "speech_to_speech" : "text_to_speech";
-  return input.fallback;
+  if (types.length === 0) {
+    if (input.modalities.output.includes("embedding")) types.push("embeddings");
+    else if (input.modalities.output.includes("video")) types.push("video");
+    else if (input.modalities.output.includes("image")) types.push("image");
+    else if (input.modalities.output.includes("audio"))
+      types.push(input.modalities.input.includes("audio") ? "realtime" : "audio_speech");
+    else types.push(input.fallback);
+  }
+  return unique(types);
 }
 
-export function normalizeModelTask(model: ProviderModel): ProviderModel {
-  const fallback = model.types.find((type) => type !== "other") ?? "text_generation";
+export function normalizeModelTypes(model: ProviderModel): ProviderModel {
+  const fallback = model.types.find((type) => type !== "other") ?? "generate";
   return {
     ...model,
-    types: [
-      classifyModelTask({
+    types: unique([
+      ...model.types,
+      ...classifyModelTypes({
         modelId: model.model_id,
         name: model.name,
         rawType: model.raw_type,
         modalities: model.modalities,
         fallback,
       }),
-    ],
+    ]),
   };
 }
