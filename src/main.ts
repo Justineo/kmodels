@@ -122,6 +122,7 @@ function showDetails(model: ProviderModel): void {
 
   const definition = document.createElement("dl");
   const entries = [
+    ["Version", model.version ?? "default / unspecified"],
     ["Types", model.types.map(typeLabel).join(", ")],
     ["Released", model.release_date ?? "unknown"],
     ["Updated", model.updated_date ?? "unknown"],
@@ -129,7 +130,13 @@ function showDetails(model: ProviderModel): void {
     ["Output", model.modalities.output.join(", ") || "unknown"],
     ["Context", formatNumber(model.limits.context_tokens)],
     ["Status", model.status],
-    ["Availability", model.account_availability],
+    [
+      "Deployments",
+      model.availability === undefined
+        ? "unknown"
+        : `${model.availability.length} region / deployment-type pairs`,
+    ],
+    ["Account availability", model.account_availability],
   ];
   for (const [term, value] of entries) {
     appendText(definition, "dt", term ?? "");
@@ -180,7 +187,11 @@ function modelRow(model: ProviderModel): HTMLButtonElement {
     `View ${model.name === model.model_id ? model.model_id : model.name} details`,
   );
   const identity = document.createElement("span");
-  appendText(identity, "code", model.model_id);
+  appendText(
+    identity,
+    "code",
+    `${model.model_id}${model.version === undefined ? "" : ` @ ${model.version}`}`,
+  );
   row.append(identity);
   appendText(row, "span", model.name === model.model_id ? "" : model.name, "display-name");
   appendText(row, "span", model.provider_id, "provider-name");
@@ -201,7 +212,7 @@ function render(): void {
   const visible = models.filter(
     (model) =>
       (query === "" ||
-        `${model.name} ${model.model_id} ${model.provider_id} ${model.types.join(" ")}`
+        `${model.name} ${model.model_id} ${model.version ?? ""} ${model.provider_id} ${model.types.join(" ")}`
           .toLocaleLowerCase()
           .includes(query)) &&
       (provider === "" || model.provider_id === provider) &&
