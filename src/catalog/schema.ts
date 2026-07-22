@@ -12,6 +12,7 @@ export const modelTypeSchema = z.enum([
   "generate",
   "agentic",
   "embeddings",
+  "audio_generation",
   "audio_speech",
   "audio_transcription",
   "audio_translation",
@@ -27,6 +28,9 @@ export const modelTypeSchema = z.enum([
 
 export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
+export const sourceTypeSchema = z.enum(["api", "website", "repository", "runtime"]);
+export const sourceAccessSchema = z.enum(["public", "authenticated", "configured"]);
+export const sourceFormatSchema = z.enum(["json", "html", "markdown", "mixed"]);
 
 export const priceRateSchema = z.object({
   meter: z.enum([
@@ -38,6 +42,8 @@ export const priceRateSchema = z.object({
     "cache_write_audio",
     "cache_read_image",
     "cache_write_image",
+    "cache_read_video",
+    "cache_write_video",
     "cache_storage",
     "input_audio",
     "output_audio",
@@ -74,6 +80,8 @@ export const priceRateSchema = z.object({
     "video",
     "gpu_hour",
     "unit_hour",
+    "million_tokens_per_hour",
+    "frame",
     "thousand_tokens_per_minute_hour",
   ]),
   conditions: z.object({
@@ -141,6 +149,10 @@ export const providerModelSchema = z.object({
     max_input_tokens: z.number().int().nonnegative().optional(),
     max_output_tokens: z.number().int().nonnegative().optional(),
     embedding_dimensions: z.array(z.number().int().positive()).optional(),
+    embedding_dimension_range: z
+      .object({ min: z.number().int().positive(), max: z.number().int().positive() })
+      .optional(),
+    recommended_embedding_dimensions: z.array(z.number().int().positive()).optional(),
   }),
   release_date: modelDate.optional(),
   updated_date: modelDate.optional(),
@@ -191,16 +203,9 @@ export const sourceRecordSchema = z.object({
   id: z.string().min(1),
   provider_id: z.string().min(1),
   url: z.url(),
-  source_type: z.enum([
-    "official_public_api",
-    "official_authenticated_api",
-    "official_bulk_pricing",
-    "official_openapi",
-    "official_markdown",
-    "official_html",
-    "official_github",
-    "runtime_api",
-  ]),
+  source_type: sourceTypeSchema,
+  access: sourceAccessSchema,
+  format: sourceFormatSchema,
   stability: z.enum(["documented", "semi_structured", "undocumented"]),
   scope: z.enum(["global", "account", "region", "workspace", "runtime"]).default("global"),
   exhaustive: z.boolean().default(false),
@@ -266,6 +271,9 @@ export type PriceRate = z.infer<typeof priceRateSchema>;
 export type Provider = z.infer<typeof providerSchema>;
 export type ProviderModel = z.infer<typeof providerModelSchema>;
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;
+export type SourceAccess = z.infer<typeof sourceAccessSchema>;
+export type SourceFormat = z.infer<typeof sourceFormatSchema>;
+export type SourceType = z.infer<typeof sourceTypeSchema>;
 
 export function unknownCapabilities(): ProviderModel["capabilities"] {
   return {

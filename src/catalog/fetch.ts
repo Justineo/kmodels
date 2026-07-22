@@ -157,11 +157,13 @@ async function curlRequest(
     "--user-agent",
     "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
     "--header",
-    source.type === "official_public_api" ||
-    source.type === "official_authenticated_api" ||
-    source.type === "runtime_api"
+    source.format === "json"
       ? "Accept: application/json"
-      : "Accept: text/html, text/markdown;q=0.9",
+      : source.format === "markdown"
+        ? "Accept: text/markdown, text/plain;q=0.9"
+        : source.format === "html"
+          ? "Accept: text/html"
+          : "Accept: */*",
   ];
   if (source.auth !== undefined) {
     if (source.auth.scheme === "aws" || source.auth.scheme === "azure")
@@ -510,9 +512,10 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
       return;
     }
   };
-  if (source.type === "official_markdown" || source.type === "official_github")
+  const indexFormat = crawl.indexFormat ?? source.format;
+  if (indexFormat === "markdown")
     for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) add(match[1]);
-  if (source.type === "official_html") {
+  if (indexFormat === "html") {
     const $ = load(body);
     $("a[href]").each((_index, element) => add($(element).attr("href")));
   }

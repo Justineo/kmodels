@@ -4,6 +4,7 @@ import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
 import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
+import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
@@ -1012,6 +1013,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseAzureCatalog(input);
     case "azure-api":
       return parseAzureApi(input);
+    case "gemini-catalog":
+      return parseGeminiCatalog(input);
+    case "gemini-api":
+      return parseGeminiApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }

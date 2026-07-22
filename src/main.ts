@@ -79,6 +79,8 @@ function formatNumber(value: number | undefined): string {
 
 function typeLabel(value: ProviderModel["types"][number]): string {
   switch (value) {
+    case "audio_generation":
+      return "audio/generation";
     case "audio_speech":
       return "audio/speech";
     case "audio_transcription":
@@ -170,7 +172,7 @@ function showDetails(model: ProviderModel): void {
     link.href = source.url;
     link.target = "_blank";
     link.rel = "noreferrer";
-    link.textContent = `${source.id} ↗`;
+    link.textContent = `${source.id} · ${source.source_type} · ${source.access} · ${source.format} ↗`;
     item.append(link);
     sourceList.append(item);
   }
