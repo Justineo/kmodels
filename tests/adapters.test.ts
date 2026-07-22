@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
-import { classifyModelTask, parseSource, scaleDecimal } from "../src/catalog/adapters.ts";
+import {
+  classifyModelTask,
+  multiplyDecimal,
+  parseSource,
+  scaleDecimal,
+} from "../src/catalog/adapters.ts";
 import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import type { Provider, ProviderModel } from "../src/catalog/schema.ts";
@@ -26,9 +31,16 @@ function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
 
-async function parsed(providerId: string, path: string): Promise<ProviderModel[]> {
+async function parsed(
+  providerId: string,
+  path: string,
+  sourceId?: string,
+): Promise<ProviderModel[]> {
   const value = manifest(providerId);
-  const source = value.sources[0];
+  const source =
+    sourceId === undefined
+      ? value.sources[0]
+      : value.sources.find((candidate) => candidate.id === sourceId);
   if (source === undefined) throw new Error(`Missing source for ${providerId}`);
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
@@ -38,6 +50,7 @@ describe("decimal normalization", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
     expect(scaleDecimal("0.000002", 6)).toBe("2");
     expect(scaleDecimal("1.25", 6)).toBe("1250000");
+    expect(multiplyDecimal("2.50", "1.25")).toBe("3.125");
   });
 });
 
@@ -101,22 +114,125 @@ describe("HTTP transport boundary", () => {
       "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-command-r.md",
     ]);
   });
+
+  it("discovers reviewed HTML catalog links", () => {
+    const source = manifest("openai").sources[0];
+    if (source?.linkedDocuments === undefined) throw new Error("Missing OpenAI crawl policy");
+    const urls = linkedDocumentUrls(
+      "<a href='/api/docs/models/gpt-5.4'>GPT-5.4</a><a href='/api/docs/pricing'>Pricing</a>",
+      { ...source, linkedDocuments: { ...source.linkedDocuments, minDocuments: 1 } },
+    );
+    expect(urls.map((url) => url.pathname)).toEqual(["/api/docs/models/gpt-5.4"]);
+  });
+});
+
+describe("OpenAI adapters", () => {
+  it("combines the complete model index with rich model pages", async () => {
+    const models = await parsed("openai", "openai/catalog.json");
+    const model = models.find((candidate) => candidate.model_id === "gpt-5.4");
+    const embedding = models.find((candidate) => candidate.model_id === "text-embedding-3-large");
+    expect({
+      name: model?.name,
+      aliases: model?.aliases,
+      context: model?.limits.context_tokens,
+      output: model?.limits.max_output_tokens,
+      modalities: model?.modalities,
+      capabilities: model?.capabilities,
+      status: model?.status,
+      embedding_type: embedding?.types,
+      embedding_output: embedding?.modalities.output,
+      embedding_deprecated: embedding?.is_deprecated,
+    }).toEqual({
+      name: "GPT-5.4",
+      aliases: ["gpt-5.4-2026-03-05"],
+      context: 1_050_000,
+      output: 128_000,
+      modalities: { input: ["text", "image"], output: ["text"] },
+      capabilities: {
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        streaming: true,
+        batch: "unknown",
+        prompt_cache: true,
+        fine_tuning: false,
+      },
+      status: "active",
+      embedding_type: ["embedding"],
+      embedding_output: ["embedding"],
+      embedding_deprecated: true,
+    });
+    expect(
+      model?.pricing.find(
+        (rate) =>
+          rate.meter === "cache_write_text" && rate.conditions.context_min_tokens === undefined,
+      )?.price,
+    ).toBe("3.125");
+    expect(
+      model?.pricing.find(
+        (rate) => rate.meter === "input_text" && rate.conditions.context_min_tokens === 272_001,
+      )?.price,
+    ).toBe("5");
+  });
+
+  it("keeps batch and standard token prices as separate tiers", async () => {
+    const model = (await parsed("openai", "openai/batch-catalog.json"))[0];
+    expect(
+      model?.pricing.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
+    ).toEqual([
+      { meter: "input_text", price: "2.00", conditions: { service_tier: "batch" } },
+      { meter: "output_text", price: "8.00", conditions: { service_tier: "batch" } },
+      { meter: "input_text", price: "1.00", conditions: {} },
+      { meter: "output_text", price: "4.00", conditions: {} },
+    ]);
+    expect(model?.capabilities.batch).toBe(true);
+  });
+
+  it("parses scoped API inventory without treating it as the global catalog", async () => {
+    const models = await parsed("openai", "openai/api.json", "openai-api");
+    expect(models.map((model) => model.model_id)).toEqual(["gpt-5.4", "ft:gpt-5.4:example"]);
+  });
+
+  it("keeps an overview alias inside its own model card", async () => {
+    const models = await parsed("openai", "openai/overview.html", "openai-overview");
+    expect(models.map(({ model_id, aliases }) => ({ model_id, aliases }))).toEqual([
+      { model_id: "gpt-5.6-sol", aliases: ["gpt-5.6"] },
+    ]);
+  });
+
+  it("parses lifecycle dates and replacements from deprecation tables", async () => {
+    const models = await parsed("openai", "openai/deprecations.html", "openai-deprecations");
+    expect(
+      models.map(({ model_id, status, retired_at, replacement_model_ids }) => ({
+        model_id,
+        status,
+        retired_at,
+        replacement_model_ids,
+      })),
+    ).toEqual([
+      {
+        model_id: "gpt-5.4",
+        status: "deprecated",
+        retired_at: "2026-09-28",
+        replacement_model_ids: ["gpt-5.6-sol"],
+      },
+      {
+        model_id: "text-embedding-3-large",
+        status: "retired",
+        retired_at: "2026-02-17",
+        replacement_model_ids: ["text-embedding-3-small"],
+      },
+    ]);
+  });
+
+  it("fails closed when the index and model pages disagree", async () => {
+    await expect(parsed("openai", "openai/broken-catalog.json")).rejects.toThrow(
+      "index and model pages disagree",
+    );
+  });
 });
 
 describe("document adapter", () => {
-  it("publishes only code-formatted identifiers accepted by the provider pattern", async () => {
-    const models = await parsed("openai", "document/normal.html");
-    expect({
-      ids: models.map((model) => model.model_id),
-      pricing_status: models[0]?.pricing_status,
-    }).toEqual(await expected("document/expected.json"));
-    expect((await parsed("openai", "document/pricing.html"))[0]?.pricing.length).toBe(0);
-  });
-
-  it("fails closed when identifiers disappear", async () => {
-    await expect(parsed("openai", "document/broken.html")).rejects.toThrow("No model identifiers");
-  });
-
   it("uses a matching link target when its display label is not an API ID", async () => {
     const models = await parsed("xai", "document/xai.md");
     expect(models.map(({ model_id, types }) => ({ model_id, types }))).toEqual([

@@ -5,7 +5,7 @@ Last decision update: 2026-07-22
 
 ## Product boundary
 
-Kmodels is a credential-free, best-effort catalog of model offerings published by 19 providers. Its two public resources are `Provider` and `ProviderModel`; identical names across providers remain distinct. Presence means “observed in an official public source”, never account availability. Missing price means unknown, never free.
+Kmodels is a best-effort catalog of model offerings published by 19 providers. Its two public resources are `Provider` and `ProviderModel`; identical names across providers remain distinct. Global presence means “observed in an official global catalog”, never account availability; `exhaustive` separately records whether the source claims completeness. Missing price means unknown, never free.
 
 The repository ships two things from one TypeScript project:
 
@@ -15,13 +15,23 @@ The repository ships two things from one TypeScript project:
 ## Collection decisions
 
 - `src/catalog/manifests.ts` is the reviewed source allowlist and provider registry. Root URLs never arrive from a request; linked documents are resolved only from an allowlisted source under an exact same-host path policy.
-- Prefer documented JSON catalogs. Vercel, Cerebras, Hugging Face and Ollama have dedicated structural adapters. Other providers use a conservative document adapter that only accepts identifiers matching a provider-specific exact pattern; OpenAI uses its complete public model index, while xAI identifiers come from reviewed model-page link targets. Bedrock follows only same-host model-card links whose paths match a reviewed allowlist, then publishes the `Model ID` values and modalities in each card's Programmatic Access and Supported input and output modalities tables. vLLM is reported as not configured unless an explicitly allowlisted runtime is added in code.
+- Sources declare `scope`, `exhaustive`, and `role`. Catalog sources create rows; overlays may replace only their declared fields on an existing row; account, region, workspace, and runtime inventories validate scoped availability but cannot delete or create global rows. Only a global catalog marked exhaustive supports a completeness claim.
+- Prefer documented structured sources, then parse allowlisted official catalogs for missing fields. Vercel, Cerebras, Hugging Face and Ollama have dedicated structural adapters. Other providers use a conservative document adapter that only accepts identifiers matching a provider-specific exact pattern; xAI identifiers come from reviewed model-page link targets. Bedrock follows only same-host model-card links whose paths match a reviewed allowlist, then publishes the `Model ID` values and modalities in each card's Programmatic Access and Supported input and output modalities tables. vLLM is reported as not configured unless an explicitly allowlisted runtime is added in code.
+- Optional authenticated sources read named environment variables. Their raw responses are never snapshotted or published because account inventories can contain private fine-tuned model IDs. Missing authentication and source failures produce structured warnings without weakening a successful global catalog refresh.
 - Every response is size-limited, time-limited, conditionally fetched with ETag/Last-Modified, and redirected only to a host listed for that source. The TypeScript collector invokes `curl` without a shell so CI and proxied developer environments use a mature TLS/proxy transport while URL policy remains in code. Retries apply only to transient failures.
 - Raw bodies are content-addressed, gzip-compressed snapshots. A source record binds URL, observation time, hash, extractor version and snapshot path.
 - Candidate catalogs are validated per provider. Empty successful responses, duplicate IDs, invalid prices, model drops over 10%, price-rate drops over 20%, and non-promotional price changes over 50% are quarantined.
 - Publication is failure-closed and provider-atomic. A rejected provider keeps its last validated models; providers do not block one another. One missing observation never deletes a model.
 - Money is stored as source decimal strings. Scaling uses decimal-string arithmetic; binary floating-point is never used for price calculations.
 - Generated files are `data/catalog.json` (durable previous state) and static endpoints under `public/v1/`. The website consumes `/v1/catalog/index.json`.
+
+### OpenAI integration
+
+- `GET /v1/models` is an authenticated, account-scoped inventory. Its documented object has only `id`, `object`, `created`, and `owned_by`; Kmodels validates that structure and compares identifier sets, but does not publish its private rows or interpret absence as deprecation.
+- `/api/docs/models/all` is the exhaustive global catalog. The collector follows only 80–140 exact same-host `/api/docs/models/{id}` links and parses each model page for the official request ID, display name, description, aliases and snapshots, normalized task and modalities, token limits, capabilities, lifecycle badge, and every published price card.
+- Direct text, audio, image, embedding, per-image, per-second, and per-minute rates retain their native units. Batch prices use an explicit service-tier condition. Published long-context and cache-write multipliers become exact decimal derived rates with their conditions; no binary floating-point is used. Explicitly open-weight models and free moderation models use `not_applicable`; an unparseable or absent hosted price remains `unknown` and emits an aggregate warning.
+- `/api/docs/models` is a narrow alias overlay: aliases are accepted only from the same model card as their Model ID, so one card cannot leak an alias into its siblings.
+- `/api/docs/deprecations` is an optional lifecycle overlay for current catalog IDs. It supplies deprecation/retirement state, shutdown date, and exact replacement model IDs. OpenAI's documented “legacy” label is not treated as deprecated until a deprecation is announced.
 
 ## Public data semantics
 
@@ -30,9 +40,11 @@ The repository ships two things from one TypeScript project:
 - `types` contains exactly one normalized primary task: `text_generation`, `embedding`, `rerank`, `moderation`, `image_generation`, `video_generation`, `speech_to_text`, `text_to_speech`, `speech_to_speech`, `computer_use`, `classifier`, `ocr`, or `other`. Reasoning stays a capability, multimodality stays in `modalities`, and code generation is text generation rather than a separate task.
 - Task evidence is applied in order: an exact reviewed task marker in the official identifier or display name, a structured source type, an output modality, then the source's reviewed default. Legacy mixed-dimension types are normalized when read. `other` is reserved for a future observed task that cannot be represented without guessing; classification never uses an LLM or facts inherited from another provider.
 - Capability flags are tri-state. Absence from a source stays `unknown`.
+- `is_deprecated` is tri-state and consistent with observed lifecycle evidence; `replacement_model_ids` contains only exact same-provider IDs observed in an official lifecycle source.
 - `source_refs` resolve into catalog source records.
 - Pricing rates retain meter, currency, unit and applicable context/route conditions. Hugging Face routes are separate rates; no minimum or average is invented.
 - A provider coverage entry says `fresh`, `stale`, `unavailable`, or `not_configured` and carries a machine-readable reason without exposing private runtime URLs.
+- Catalog warnings are structured by `code` with optional provider, source, and field context. Missing authentication, failed fetches/parses, scoped set mismatches, and aggregated missing-field coverage remain visible without warning per model row.
 
 ## Website decisions
 
@@ -48,7 +60,7 @@ The CSS begins with a modern reset, uses system fonts, and remains usable withou
 
 - GitHub Actions checks the project on pushes and pull requests.
 - pnpm is the sole package manager. Its version is pinned in `package.json`, `pnpm-lock.yaml` is authoritative, and CI uses a frozen lockfile. Only the reviewed native tooling dependencies in `pnpm-workspace.yaml` may run install scripts.
-- A scheduled workflow checks sources every 30 minutes, applies jitter, commits only validated generated changes, and never requires a collection secret.
+- A scheduled workflow checks sources every 30 minutes, applies jitter, and commits only validated generated changes. Provider secrets are optional; absent secrets skip only their scoped inventories.
 - The deploy workflow uses the repository’s pinned `void` dependency and GitHub OIDC; `void.json` declares a plain static `dist` deployment. `VOID_PROJECT` is the only repository variable.
 - Renovate follows the repository’s Shanghai timezone, seven-day minimum release age, grouped automerge for non-major updates, and isolated manual major updates.
 

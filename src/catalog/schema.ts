@@ -44,6 +44,10 @@ export const priceRateSchema = z.object({
     "output_text",
     "cache_read_text",
     "cache_write_text",
+    "cache_read_audio",
+    "cache_write_audio",
+    "cache_read_image",
+    "cache_write_image",
     "cache_storage",
     "input_audio",
     "output_audio",
@@ -70,6 +74,7 @@ export const priceRateSchema = z.object({
     "minute",
     "character",
     "thousand_characters",
+    "million_characters",
     "page",
     "thousand_pages",
     "gpu_hour",
@@ -85,6 +90,7 @@ export const priceRateSchema = z.object({
     cache_ttl_seconds: z.number().int().nonnegative().optional(),
     modality: z.string().optional(),
     resolution: z.string().optional(),
+    quality: z.string().optional(),
     effective_from: z.string().optional(),
     effective_until: z.string().optional(),
     promotion: z.boolean().optional(),
@@ -129,6 +135,8 @@ export const providerModelSchema = z.object({
   deprecated_at: z.string().optional(),
   retired_at: z.string().optional(),
   status: z.enum(["active", "preview", "deprecated", "retired", "unknown"]),
+  is_deprecated: triStateSchema.default("unknown"),
+  replacement_model_ids: z.array(z.string().min(1)).default([]),
   pricing_status: z.enum([
     "published",
     "derived",
@@ -165,6 +173,7 @@ export const sourceRecordSchema = z.object({
   url: z.url(),
   source_type: z.enum([
     "official_public_api",
+    "official_authenticated_api",
     "official_bulk_pricing",
     "official_openapi",
     "official_markdown",
@@ -173,14 +182,28 @@ export const sourceRecordSchema = z.object({
     "runtime_api",
   ]),
   stability: z.enum(["documented", "semi_structured", "undocumented"]),
+  scope: z.enum(["global", "account", "region", "workspace", "runtime"]).default("global"),
+  exhaustive: z.boolean().default(false),
+  role: z.enum(["catalog", "overlay", "inventory"]).default("catalog"),
   field_paths: z.array(z.string()),
   observed_at: dateTime,
   etag: z.string().optional(),
   last_modified: z.string().optional(),
   content_hash: z.string().length(64),
   extractor_version: z.string().min(1),
-  snapshot_uri: z.string().min(1),
+  snapshot_uri: z.string().min(1).optional(),
 });
+
+export const catalogWarningSchema = z.union([
+  z.string().transform((message) => ({ code: "legacy_notice", message })),
+  z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+    provider_id: z.string().min(1).optional(),
+    source_id: z.string().min(1).optional(),
+    field: z.string().min(1).optional(),
+  }),
+]);
 
 export const coverageSchema = z.object({
   provider_id: z.string().min(1),
@@ -199,7 +222,7 @@ export const catalogSchema = z.object({
   models: z.array(providerModelSchema),
   sources: z.array(sourceRecordSchema),
   coverage: z.array(coverageSchema),
-  warnings: z.array(z.string()),
+  warnings: z.array(catalogWarningSchema),
 });
 
 export const catalogEnvelopeSchema = z.object({
@@ -211,10 +234,11 @@ export const catalogEnvelopeSchema = z.object({
     sources: z.array(sourceRecordSchema),
     coverage: z.array(coverageSchema),
   }),
-  warnings: z.array(z.string()),
+  warnings: z.array(catalogWarningSchema),
 });
 
 export type Catalog = z.infer<typeof catalogSchema>;
+export type CatalogWarning = z.infer<typeof catalogWarningSchema>;
 export type Coverage = z.infer<typeof coverageSchema>;
 export type ModelType = z.infer<typeof modelTypeSchema>;
 export type Modality = z.infer<typeof modalitySchema>;
