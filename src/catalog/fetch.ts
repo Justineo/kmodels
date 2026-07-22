@@ -623,9 +623,16 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
         url.password === "" &&
         url.search === "" &&
         url.hash === "" &&
-        crawl.path.test(url.pathname)
+        (() => {
+          const path =
+            crawl.pathSuffix !== undefined && url.pathname.endsWith(crawl.pathSuffix)
+              ? url.pathname.slice(0, -crawl.pathSuffix.length)
+              : url.pathname;
+          if (!crawl.path.test(path)) return false;
+          if (crawl.pathSuffix !== undefined) url.pathname = `${path}${crawl.pathSuffix}`;
+          return true;
+        })()
       ) {
-        if (crawl.markdownSuffix) url.pathname += ".md";
         urls.set(url.href, url);
       }
     } catch {
@@ -635,6 +642,11 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
   const indexFormat = crawl.indexFormat ?? source.format;
   if (indexFormat === "markdown")
     for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) add(match[1]);
+  if (indexFormat === "typescript")
+    for (const match of body.matchAll(
+      /^\s*import\s+(?:[^'"\n]+\s+from\s+)?['"]([^'"]+)['"];?\s*$/gm,
+    ))
+      add(match[1]);
   if (indexFormat === "html") {
     const $ = load(body);
     $("a[href]").each((_index, element) => add($(element).attr("href")));
@@ -736,7 +748,7 @@ export async function fetchSource(
   const discovered = urls.map((url) => {
     const filename = url.pathname.split("/").at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
-    const stem = filename.endsWith(".md") ? filename.slice(0, -3) : filename;
+    const stem = filename.replace(/\.(?:md|ts)$/, "");
     return {
       key: `${source.id}/${stem}`,
       url,

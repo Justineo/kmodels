@@ -31,6 +31,8 @@ export type Extractor =
   | { kind: "vertex-api" }
   | { kind: "cohere-catalog" }
   | { kind: "cohere-api" }
+  | { kind: "mistral-catalog"; minModels: number; maxModels: number }
+  | { kind: "mistral-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -41,12 +43,12 @@ export type Extractor =
 
 export interface LinkedDocuments {
   path: RegExp;
-  indexFormat?: "html" | "markdown";
+  indexFormat?: "html" | "markdown" | "typescript";
   minDocuments: number;
   maxDocuments: number;
   concurrency: number;
   maxDocumentBytes?: number;
-  markdownSuffix?: boolean;
+  pathSuffix?: ".md" | ".ts";
   documents?: {
     id: string;
     url: string;
@@ -303,7 +305,7 @@ export const manifests = [
           maxDocuments: 3,
           concurrency: 3,
           maxDocumentBytes: mebibytes(2),
-          markdownSuffix: true,
+          pathSuffix: ".md",
         },
       },
       {
@@ -1161,18 +1163,103 @@ export const manifests = [
       name: "Mistral AI",
       kind: "hosted",
       homepage: "https://mistral.ai/",
-      docs_url: "https://docs.mistral.ai/getting-started/models/models_overview/",
+      docs_url: "https://docs.mistral.ai/models/overview",
       catalog_scope: "global",
     },
     sources: [
-      documentSource(
-        "mistral-models",
-        "https://docs.mistral.ai/getting-started/models/models_overview/",
-        [/^(?:mistral|ministral|magistral|codestral|pixtral|voxtral|devstral|ocr)-[a-z0-9-]+$/i],
-        "source_generated",
-        /\/models\/model-cards\//,
-      ),
+      {
+        id: "mistral-models",
+        url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/models/index.ts",
+        type: "repository",
+        source: ["repository", "website"],
+        access: "public",
+        format: "mixed",
+        stability: "documented",
+        extractor: { kind: "mistral-catalog", minModels: 50, maxModels: 90 },
+        extractorVersion: "mistral-catalog-v1",
+        fields: [
+          "model_id",
+          "version",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["raw.githubusercontent.com", "docs.mistral.ai"],
+        maxResponseBytes: mebibytes(16),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/[a-z0-9-]+$/,
+          indexFormat: "typescript",
+          pathSuffix: ".ts",
+          minDocuments: 55,
+          maxDocuments: 90,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(1),
+          documents: [
+            {
+              id: "prompt-caching",
+              url: "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "batch-processing",
+              url: "https://docs.mistral.ai/studio-api/batch-processing",
+              maxResponseBytes: mebibytes(4),
+            },
+          ],
+        },
+      },
+      {
+        id: "mistral-api",
+        url: "https://api.mistral.ai/v1/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "mistral-api" },
+        extractorVersion: "mistral-api-v1",
+        fields: [
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["api.mistral.ai"],
+        maxResponseBytes: mebibytes(8),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "MISTRAL_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    supersededIdKinds: ["source_generated"],
+    warnOnMissing: {
+      sourceId: "mistral-models",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
