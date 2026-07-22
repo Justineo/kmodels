@@ -5,6 +5,7 @@ import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
+import { parseDeepseekApi, parseDeepseekCatalog, parseDeepseekUpdates } from "./deepseek.ts";
 import {
   parseDashscopeApi,
   parseDashscopeCatalog,
@@ -944,6 +945,12 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseDashscopeLifecycle(input);
     case "dashscope-api":
       return parseDashscopeApi(input);
+    case "deepseek-catalog":
+      return parseDeepseekCatalog(input);
+    case "deepseek-updates":
+      return parseDeepseekUpdates(input);
+    case "deepseek-api":
+      return parseDeepseekApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }
