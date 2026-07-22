@@ -89,7 +89,13 @@ export function preserveMissing(
   const previousByUid = new Map(previous.map((model) => [model.uid, model]));
   const observed = candidate.map((model) => {
     const old = previousByUid.get(model.uid);
-    return old === undefined ? model : { ...model, first_seen_at: old.first_seen_at };
+    return old === undefined
+      ? model
+      : {
+          ...model,
+          first_seen_at: old.first_seen_at,
+          source_refs: [...new Set([...old.source_refs, ...model.source_refs])],
+        };
   });
   const missing = previous.filter((model) => !candidateByUid.has(model.uid));
   return [...observed, ...missing].sort((left, right) => left.uid.localeCompare(right.uid));

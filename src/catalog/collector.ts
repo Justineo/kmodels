@@ -332,12 +332,14 @@ async function collectProvider(
 ): Promise<ProviderResult> {
   const oldModels = previousModels(previous, manifest.provider.id);
   const currentSourceIds = new Set(manifest.sources.map((source) => source.id));
-  const comparableOldModels = oldModels.filter(
-    (model) =>
-      model.source_refs.some((sourceId) => currentSourceIds.has(sourceId)) &&
+  const comparableOldModels = oldModels.flatMap((model) => {
+    const sourceRefs = model.source_refs.filter((sourceId) => currentSourceIds.has(sourceId));
+    return sourceRefs.length > 0 &&
       !manifest.supersededIdKinds?.includes(model.id_kind) &&
-      !manifest.supersededModelIds?.includes(model.model_id),
-  );
+      !manifest.supersededModelIds?.includes(model.model_id)
+      ? [{ ...model, source_refs: sourceRefs }]
+      : [];
+  });
   const oldSources = previousSources(previous, manifest.provider.id);
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
   const warnings: CatalogWarning[] = [];
@@ -500,10 +502,22 @@ async function collectProvider(
     const validation = validateProvider(candidate, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
     const models = preserveMissing(candidate, comparableOldModels);
+    const referencedSourceIds = new Set(models.flatMap((model) => model.source_refs));
+    const sourceById = new Map(
+      [...oldSources.filter((source) => currentSourceIds.has(source.id)), ...sources].map(
+        (source) => [source.id, source],
+      ),
+    );
+    const retainedSources = [...referencedSourceIds].flatMap((sourceId) => {
+      const source = sourceById.get(sourceId);
+      return source === undefined ? [] : [source];
+    });
+    if (retainedSources.length !== referencedSourceIds.size)
+      throw new Error("Model provenance source is missing");
     return {
       provider: providerRecord(manifest, models, observedAt),
       models,
-      sources,
+      sources: retainedSources,
       coverage: {
         provider_id: manifest.provider.id,
         status: "fresh",
