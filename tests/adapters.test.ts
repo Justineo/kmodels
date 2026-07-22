@@ -1964,6 +1964,96 @@ describe("Hugging Face adapter", () => {
   });
 });
 
+describe("DeepSeek adapters", () => {
+  function source(id: string): SourceManifest {
+    const configured = manifest("deepseek").sources.find((item) => item.id === id);
+    if (configured === undefined) throw new Error(`Missing DeepSeek source ${id}`);
+    return configured;
+  }
+
+  it("reads the current callable catalog without a product-name allowlist", async () => {
+    const models = await parsed("deepseek", "deepseek/catalog.html", "deepseek-catalog");
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "deepseek-chat",
+      "deepseek-reasoner",
+      "deepseek-v4-flash",
+      "deepseek-v4-pro",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")).toMatchObject({
+      name: "DeepSeek-V4-Pro",
+      types: ["generate"],
+      modalities: { input: ["text"], output: ["text"] },
+      capabilities: {
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        prompt_cache: true,
+      },
+      limits: { context_tokens: 1_000_000, max_output_tokens: 384_000 },
+      pricing_status: "published",
+      pricing: [
+        expect.objectContaining({ meter: "cache_read_text", price: "0.003625" }),
+        expect.objectContaining({ meter: "input_text", price: "0.435" }),
+        expect.objectContaining({ meter: "output_text", price: "0.87" }),
+      ],
+    });
+    expect(models.find(({ model_id }) => model_id === "deepseek-chat")).toMatchObject({
+      capabilities: { reasoning: false },
+      deprecated_at: "2026-07-24T15:59:00Z",
+      retired_at: "2026-07-24T15:59:00Z",
+      status: "active",
+      is_deprecated: false,
+      replacement_model_ids: ["deepseek-v4-flash"],
+      pricing: [
+        expect.objectContaining({ meter: "cache_read_text", price: "0.0028" }),
+        expect.objectContaining({ meter: "input_text", price: "0.14" }),
+        expect.objectContaining({ meter: "output_text", price: "0.28" }),
+      ],
+    });
+  });
+
+  it("uses exact change-log evidence for release and update dates", async () => {
+    const models = await parsed("deepseek", "deepseek/updates.html", "deepseek-updates");
+    const flash = models.find(({ model_id }) => model_id === "deepseek-v4-flash");
+    expect(flash).toMatchObject({ release_date: "2026-04-24" });
+    expect(flash).not.toHaveProperty("updated_date");
+    expect(models.find(({ model_id }) => model_id === "deepseek-reasoner")).toMatchObject({
+      release_date: "2025-01-20",
+      updated_date: "2026-04-24",
+    });
+    expect(models.find(({ model_id }) => model_id === "deepseek-chat")).toMatchObject({
+      updated_date: "2026-04-24",
+    });
+  });
+
+  it("retains catalog, change-log, and authenticated API observations", async () => {
+    const catalogSource = source("deepseek-catalog");
+    const updateSource = source("deepseek-updates");
+    const apiSource = source("deepseek-api");
+    const catalog = await parsed("deepseek", "deepseek/catalog.html", catalogSource.id);
+    const updates = await parsed("deepseek", "deepseek/updates.html", updateSource.id);
+    const inventory = await parsed("deepseek", "deepseek/api.json", apiSource.id);
+    const models = applyGroups(
+      applyGroups(
+        applyGroups([], [{ source: catalogSource, models: catalog }], true),
+        [{ source: updateSource, models: updates }],
+        false,
+      ),
+      [{ source: apiSource, models: inventory }],
+      false,
+    );
+    expect(models.find(({ model_id }) => model_id === "deepseek-v4-flash")?.source_refs).toEqual([
+      "deepseek-catalog",
+      "deepseek-updates",
+      "deepseek-api",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "deepseek-chat")?.source_refs).toEqual([
+      "deepseek-catalog",
+      "deepseek-updates",
+    ]);
+  });
+});
+
 describe("DashScope adapters", () => {
   function source(id: string, minModels = 1, maxModels = 20): SourceManifest {
     const configured = manifest("dashscope").sources.find((item) => item.id === id);

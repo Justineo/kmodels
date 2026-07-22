@@ -56,6 +56,9 @@ export type Extractor =
   | { kind: "dashscope-pricing"; minModels: number; maxModels: number }
   | { kind: "dashscope-lifecycle"; minModels: number; maxModels: number }
   | { kind: "dashscope-api"; minModels: number; maxModels: number }
+  | { kind: "deepseek-catalog"; minModels: number; maxModels: number }
+  | { kind: "deepseek-updates"; minModels: number; maxModels: number }
+  | { kind: "deepseek-api"; minModels: number; maxModels: number }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -1785,10 +1788,76 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource("deepseek-models", "https://api-docs.deepseek.com/api/list-models", [
-        /^deepseek-[a-z0-9._-]+$/i,
-      ]),
+      {
+        id: "deepseek-catalog",
+        url: "https://api-docs.deepseek.com/quick_start/pricing",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "deepseek-catalog", minModels: 4, maxModels: 10 },
+        extractorVersion: "deepseek-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["api-docs.deepseek.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+      },
+      {
+        id: "deepseek-updates",
+        url: "https://api-docs.deepseek.com/updates",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "deepseek-updates", minModels: 4, maxModels: 10 },
+        extractorVersion: "deepseek-updates-v1",
+        fields: ["release_date", "updated_date"],
+        allowedHosts: ["api-docs.deepseek.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+      },
+      {
+        id: "deepseek-api",
+        url: "https://api.deepseek.com/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "deepseek-api", minModels: 1, maxModels: 20 },
+        extractorVersion: "deepseek-api-v1",
+        fields: ["model_id"],
+        allowedHosts: ["api.deepseek.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "DEEPSEEK_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    warnOnMissing: {
+      sourceId: "deepseek-catalog",
+      fields: ["release_date", "updated_date"],
+      statuses: ["active", "deprecated"],
+    },
   },
   {
     provider: {

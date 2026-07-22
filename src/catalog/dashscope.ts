@@ -1,6 +1,14 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import {
+  htmlColumn as column,
+  type HtmlCell as Cell,
+  type HtmlTable as Table,
+  htmlTables as tables,
+  htmlText as text,
+  htmlValue as value,
+} from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -20,26 +28,6 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
-}
-
-type Document = ReturnType<typeof load>;
-type Selection = ReturnType<Document>;
-
-interface Cell {
-  text: string;
-  ids: string[];
-  equivalentIds: string[];
-}
-
-interface Span {
-  cell: Cell;
-  remaining: number;
-}
-
-interface Table {
-  headers: string[];
-  rows: Cell[][];
-  headings: string[];
 }
 
 const deploymentPageSchema = z.object({
@@ -62,10 +50,6 @@ const deploymentPageSchema = z.object({
   }),
 });
 
-function text(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
-}
-
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
@@ -75,109 +59,22 @@ function exactId(value: string): string | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-function cell($: Document, selection: Selection): Cell {
-  const paragraphs = selection
-    .find("code, p")
-    .map((_index, element) => text($(element).text()))
-    .get();
-  const own = text(selection.text());
-  const ids = unique([...paragraphs, own].flatMap((value) => exactId(value) ?? []));
-  const equivalentIds = unique(
-    selection
-      .find("blockquote")
-      .map(
-        (_index, element) =>
-          text($(element).text()).match(/^Currently equivalent to ([a-z0-9][a-z0-9._:/-]*)$/i)?.[1],
-      )
-      .get()
-      .flatMap((value) => exactId(value) ?? []),
+function cellIds(cell: Cell | undefined): string[] {
+  if (cell === undefined) return [];
+  return unique([...cell.parts, cell.text].flatMap((item) => exactId(item) ?? []));
+}
+
+function equivalentIds(cell: Cell | undefined): string[] {
+  return unique(
+    (cell?.quotes ?? [])
+      .map((quote) => quote.match(/^Currently equivalent to ([a-z0-9][a-z0-9._:/-]*)$/i)?.[1])
+      .flatMap((item) => (item === undefined ? [] : (exactId(item) ?? []))),
   );
-  return { text: own, ids, equivalentIds };
-}
-
-function expandedRows($: Document, table: Selection): Cell[][] {
-  const spans: (Span | undefined)[] = [];
-  const result: Cell[][] = [];
-  table.find("tr").each((_rowIndex, rowElement) => {
-    const row: Cell[] = [];
-    for (const [column, span] of spans.entries()) {
-      if (span === undefined) continue;
-      row[column] = span.cell;
-      span.remaining -= 1;
-      if (span.remaining === 0) spans[column] = undefined;
-    }
-    let column = 0;
-    $(rowElement)
-      .children("th,td")
-      .each((_cellIndex, cellElement) => {
-        while (row[column] !== undefined) column += 1;
-        const selection = $(cellElement);
-        const value = cell($, selection);
-        const colspan = Number(selection.attr("colspan") ?? "1");
-        const rowspan = Number(selection.attr("rowspan") ?? "1");
-        for (let offset = 0; offset < colspan; offset += 1) {
-          row[column + offset] = value;
-          if (rowspan > 1) spans[column + offset] = { cell: value, remaining: rowspan - 1 };
-        }
-        column += colspan;
-      });
-    result.push(row);
-  });
-  return result;
-}
-
-function sectionHeadings($: Document, table: Selection): string[] {
-  const values: string[] = [];
-  table.parents("section").each((_index, section) => {
-    const heading = text($(section).children("h1,h2,h3,h4,h5,h6").first().text());
-    if (heading !== "") values.push(heading);
-  });
-  return values;
-}
-
-function tables(body: string): Table[] {
-  const $ = load(body);
-  return $("main table, table")
-    .toArray()
-    .map((element) => {
-      const selection = $(element);
-      const rows = expandedRows($, selection);
-      const first = selection.find("tr").first().children("th,td");
-      const headerDepth = Math.max(
-        1,
-        ...first.map((_index, item) => Number($(item).attr("rowspan") ?? "1")).get(),
-      );
-      const width = Math.max(...rows.slice(0, headerDepth).map((row) => row.length));
-      const headers = Array.from({ length: width }, (_value, column) =>
-        unique(
-          rows
-            .slice(0, headerDepth)
-            .flatMap((row) => row[column]?.text ?? [])
-            .filter(Boolean),
-        ).join(" / "),
-      );
-      return {
-        headers,
-        rows: rows.slice(headerDepth),
-        headings: sectionHeadings($, selection),
-      };
-    });
-}
-
-function column(headers: string[], pattern: RegExp): number | undefined {
-  const index = headers.findIndex((header) => pattern.test(header));
-  return index < 0 ? undefined : index;
-}
-
-function value(table: Table, row: Cell[], pattern: RegExp): string | undefined {
-  const index = column(table.headers, pattern);
-  const result = index === undefined ? undefined : row[index]?.text;
-  return result === "" ? undefined : result;
 }
 
 function ids(table: Table, row: Cell[]): string[] {
   const index = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
-  return index === undefined ? [] : (row[index]?.ids ?? []);
+  return index === undefined ? [] : cellIds(row[index]);
 }
 
 function tokenCount(raw: string | undefined): number | undefined {
@@ -729,7 +626,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     if (idIndex === undefined) continue;
     for (const row of table.rows) {
       const idCell = row[idIndex];
-      const id = idCell?.ids[0];
+      const id = cellIds(idCell)[0];
       if (id === undefined) continue;
       const types = priceTypes(id, table.headings);
       const modelRates = rates(table, row, types, input.source.id);
@@ -743,7 +640,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       const region = modelRates[0]?.conditions.region;
       add(models, {
         ...model,
-        aliases: idCell?.equivalentIds ?? [],
+        aliases: equivalentIds(idCell),
         types,
         modalities: priceModalities(types, modelRates),
         status: /preview/i.test(id) ? "preview" : "active",
@@ -846,7 +743,7 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
     for (const row of table.rows) {
       const category = value(table, row, /^Category$/i) ?? "";
       const retiredAt = modelDate(value(table, row, /^Deprecation time$/i));
-      for (const id of row[modelColumn]?.ids ?? []) {
+      for (const id of cellIds(row[modelColumn])) {
         const model = baseModel({
           providerId: input.provider.id,
           id,
@@ -864,7 +761,7 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
           is_deprecated: true,
           retired_at: retiredAt,
           replacement_model_ids:
-            replacementColumn === undefined ? [] : (row[replacementColumn]?.ids ?? []),
+            replacementColumn === undefined ? [] : cellIds(row[replacementColumn]),
           pricing_status: "unknown",
           scope: "regional_catalog",
         });
