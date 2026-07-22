@@ -1484,7 +1484,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v1",
+        extractorVersion: "xai-catalog-v2",
         fields: [
           "model_id",
           "name",

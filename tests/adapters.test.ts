@@ -129,7 +129,10 @@ async function vercelCatalog(path: string): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
-async function xaiCatalog(): Promise<ProviderModel[]> {
+async function xaiCatalog(
+  index = "xai/models.txt",
+  edit: (body: string) => string = (body) => body,
+): Promise<ProviderModel[]> {
   const value = manifest("xai");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "xai-catalog")
@@ -139,7 +142,7 @@ async function xaiCatalog(): Promise<ProviderModel[]> {
     extractor: { kind: "xai-catalog", minModels: 4, maxModels: 10 },
   };
   const body = JSON.stringify({
-    index: { url: source.url, body: await fixture("xai/models.txt") },
+    index: { url: source.url, body: edit(await fixture(index)) },
     documents: [{ url: "https://docs.x.ai/llms.txt", body: await fixture("xai/llms.txt") }],
   });
   return parseSource({ provider: provider(value), source, body, observedAt });
@@ -1564,6 +1567,28 @@ describe("Databricks adapters", () => {
 });
 
 describe("xAI adapter", () => {
+  it("validates voice service configuration without publishing internal service names", async () => {
+    const models = await xaiCatalog("xai/models-voice-services.txt");
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "grok-3",
+      "grok-4.20-multi-agent-0309",
+      "grok-4.5",
+      "grok-imagine-image-pro",
+      "grok-imagine-image-quality",
+      "grok-imagine-video-1.5",
+      "grok-voice-fast-1.0",
+      "grok-voice-think-fast-1.0",
+    ]);
+    expect(
+      models.some(({ model_id }) => ["grok-tts", "grok-stt", "grok-realtime"].includes(model_id)),
+    ).toBe(false);
+    await expect(
+      xaiCatalog("xai/models-voice-services.txt", (body) =>
+        body.replaceAll('"perCharacter":"150000"', '"perCharacter":"160000"'),
+      ),
+    ).rejects.toThrow("structured and published voice pricing differ");
+  });
+
   it("joins the structured public catalog to lifecycle, voice, pricing, and release facts", async () => {
     const models = await xaiCatalog();
     expect(models.map(({ model_id }) => model_id)).toEqual([
