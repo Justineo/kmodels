@@ -15,6 +15,13 @@ import {
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
 import { parseHuggingFaceMapping, parseHuggingFaceRouter } from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
+import {
+  parseKimiApi,
+  parseKimiCatalog,
+  parseKimiOpenApi,
+  parseKimiPricing,
+  parseKimiReleases,
+} from "./kimi.ts";
 import { parseMistralApi, parseMistralCatalog } from "./mistral.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -741,82 +748,6 @@ function parseCerebras(input: ParseInput): ProviderModel[] {
   });
 }
 
-function documentFragments(body: string, source: SourceManifest): string[] {
-  const fragments: string[] = [];
-  const $ = load(body);
-  if (
-    source.extractor.kind === "document-identifiers" &&
-    source.extractor.linkTarget !== undefined
-  ) {
-    const linkTarget = source.extractor.linkTarget;
-    for (const match of body.matchAll(/(?<!!)\[([^\]]+)\]\(([^)]+)\)/g)) {
-      const label = match[1]?.replace(/\\\+/g, "+").trim();
-      const target = match[2]?.trim();
-      if (label !== undefined && target !== undefined && linkTarget.test(target)) {
-        fragments.push(label);
-        const lastSegment = target.split("/").filter(Boolean).at(-1)?.split(/[?#]/)[0];
-        if (lastSegment !== undefined) fragments.push(decodeURIComponent(lastSegment));
-      }
-    }
-    $("a[href]").each((_index, element) => {
-      const target = $(element).attr("href");
-      if (target === undefined || !linkTarget.test(target)) return;
-      const label = $(element).text().trim();
-      if (label !== "") fragments.push(label);
-      const lastSegment = target.split("/").filter(Boolean).at(-1)?.split(/[?#]/)[0];
-      if (lastSegment !== undefined) fragments.push(decodeURIComponent(lastSegment));
-    });
-    return unique(fragments);
-  }
-  $("code").each((_index, element) => {
-    const text = $(element).text().trim();
-    if (text) fragments.push(text);
-  });
-  for (const match of body.matchAll(/`([^`\n]+)`/g)) {
-    const value = match[1]?.trim();
-    if (value) fragments.push(value);
-  }
-  return unique(fragments);
-}
-
-function identifierCandidates(fragment: string): string[] {
-  const clean = fragment.replace(/^["']|["'.,;:]$/g, "").trim();
-  const tokens = clean.split(/[\s,;()[\]{}<>"']+/).filter(Boolean);
-  return unique([clean, ...tokens]).filter((value) => value.length <= 128 && !value.includes("//"));
-}
-
-function parseDocument(input: ParseInput): ProviderModel[] {
-  const extractor = input.source.extractor;
-  if (extractor.kind !== "document-identifiers") throw new Error("Wrong document extractor");
-  const ids = unique(
-    documentFragments(input.body, input.source).flatMap((fragment) =>
-      (extractor.linkTarget !== undefined
-        ? [fragment.trim()]
-        : identifierCandidates(fragment)
-      ).filter((candidate) => extractor.patterns.some((pattern) => pattern.test(candidate))),
-    ),
-  ).sort();
-  if (ids.length === 0) throw new Error("No model identifiers found in document");
-  return ids.map((id) => ({
-    ...baseModel({
-      providerId: input.provider.id,
-      id,
-      name: id,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    }),
-    id_kind: extractor.idKind,
-    types: classifyModelTypes({
-      modelId: id,
-      name: id,
-      rawType: undefined,
-      modalities: { input: [], output: [] },
-      fallback: extractor.defaultType,
-    }),
-    pricing_status: input.provider.kind === "model_publisher" ? "not_applicable" : "unknown",
-  }));
-}
-
 function parseOllama(input: ParseInput): ProviderModel[] {
   const list = ollamaListSchema.parse(parseJson(input.body));
   const results = list.models.map((item) => ollamaItemSchema.safeParse(item));
@@ -951,7 +882,15 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseDeepseekUpdates(input);
     case "deepseek-api":
       return parseDeepseekApi(input);
-    case "document-identifiers":
-      return parseDocument(input);
+    case "kimi-openapi":
+      return parseKimiOpenApi(input);
+    case "kimi-catalog":
+      return parseKimiCatalog(input);
+    case "kimi-pricing":
+      return parseKimiPricing(input);
+    case "kimi-releases":
+      return parseKimiReleases(input);
+    case "kimi-api":
+      return parseKimiApi(input);
   }
 }

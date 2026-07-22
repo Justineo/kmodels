@@ -2240,6 +2240,186 @@ describe("DashScope adapters", () => {
   });
 });
 
+describe("Kimi adapters", () => {
+  const value = manifest("kimi");
+  const source = (id: string): SourceManifest => {
+    const result = value.sources.find((candidate) => candidate.id === id);
+    if (result === undefined) throw new Error(`Missing Kimi source ${id}`);
+    return result;
+  };
+  const parse = (configured: SourceManifest, body: string): ProviderModel[] =>
+    parseSource({ provider: provider(value), source: configured, body, observedAt });
+
+  async function pricing(): Promise<ProviderModel[]> {
+    const configured = source("kimi-pricing");
+    const documents = [
+      ["https://platform.kimi.com/docs/pricing/chat-k27-code", "pricing-k27.md"],
+      ["https://platform.kimi.com/docs/pricing/chat-k26", "pricing-k26.md"],
+      ["https://platform.kimi.com/docs/pricing/chat-k25", "pricing-k25.md"],
+      ["https://platform.kimi.com/docs/pricing/chat-v1", "pricing-v1.md"],
+      ["https://platform.kimi.com/docs/pricing/batch", "pricing-batch.md"],
+      ["https://platform.kimi.com/docs/guide/use-context-caching-feature-of-kimi-api", "cache.md"],
+    ];
+    return parse(
+      configured,
+      JSON.stringify({
+        index: { url: configured.url, body: await fixture("kimi/pricing-k3.md") },
+        documents: await Promise.all(
+          documents.map(async ([url, path]) => ({
+            url,
+            body: await fixture(`kimi/${path}`),
+          })),
+        ),
+      }),
+    );
+  }
+
+  async function releases(): Promise<ProviderModel[]> {
+    const configured = source("kimi-releases");
+    return parse(
+      configured,
+      JSON.stringify({
+        index: { url: configured.url, body: await fixture("kimi/changelog.html") },
+        documents: [
+          { url: "https://www.kimi.com/blog/", body: await fixture("kimi/blog.html") },
+          {
+            url: "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html",
+            body: await fixture("kimi/code.html"),
+          },
+        ],
+      }),
+    );
+  }
+
+  it("uses exact OpenAPI model enums without a product-prefix rule", async () => {
+    const body = await fixture("kimi/openapi.json");
+    const models = parse(source("kimi-openapi"), body);
+    expect(models).toHaveLength(12);
+    expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")).toMatchObject({
+      types: ["generate"],
+      modalities: { input: ["text"], output: ["text"] },
+      capabilities: {
+        tool_call: true,
+        structured_output: true,
+        streaming: true,
+        prompt_cache: true,
+      },
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k3")?.capabilities).toMatchObject({
+      reasoning: true,
+      effort_control: true,
+    });
+    expect(() =>
+      parse(source("kimi-openapi"), body.replace('"kimi-k3"]', '"kimi-k3", "ghost-model"]')),
+    ).toThrow("mapping disagrees");
+  });
+
+  it("retains callable and retired IDs only from labeled catalog fields", async () => {
+    const models = await parsed("kimi", "kimi/models.md", "kimi-catalog");
+    expect(models).toHaveLength(18);
+    expect(models.find(({ model_id }) => model_id === "kimi-k3")).toMatchObject({
+      limits: { context_tokens: 1_000_000 },
+      modalities: { input: ["text", "image"], output: ["text"] },
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
+      status: "deprecated",
+      is_deprecated: true,
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-thinking-preview")).toMatchObject({
+      status: "retired",
+      retired_at: "2025-11-11",
+      replacement_model_ids: ["kimi-k3"],
+    });
+  });
+
+  it("keeps CNY standard, cached-input, and Batch rates", async () => {
+    const models = await pricing();
+    expect(models).toHaveLength(11);
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")).toMatchObject({
+      name: "Kimi K2.7 Code HighSpeed",
+      modalities: { input: ["text", "image", "video"], output: ["text"] },
+      limits: { context_tokens: 262_144 },
+    });
+    const k26 = models.find(({ model_id }) => model_id === "kimi-k2.6");
+    expect(k26?.capabilities).toMatchObject({ reasoning: true, batch: true, prompt_cache: true });
+    expect(k26?.pricing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "1.10",
+          currency: "CNY",
+          conditions: {},
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "3.90",
+          currency: "CNY",
+          conditions: { service_tier: "batch" },
+        }),
+      ]),
+    );
+  });
+
+  it("joins only reviewed official display identities to release dates", async () => {
+    const models = await releases();
+    expect(models.find(({ model_id }) => model_id === "kimi-k3")?.release_date).toBe("2026-07-16");
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.7-code")?.release_date).toBe(
+      "2026-06-12",
+    );
+    expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")?.release_date).toBe(
+      "2024-08-28",
+    );
+  });
+
+  it("retains every successful source that finds the same model", async () => {
+    const catalogSources = [source("kimi-openapi"), source("kimi-catalog"), source("kimi-pricing")];
+    const catalogs = [
+      parse(catalogSources[0] ?? source("kimi-openapi"), await fixture("kimi/openapi.json")),
+      await parsed("kimi", "kimi/models.md", "kimi-catalog"),
+      await pricing(),
+    ];
+    const publicModels = applyGroups(
+      [],
+      catalogSources.map((configured, index) => ({
+        source: configured,
+        models: catalogs[index] ?? [],
+      })),
+      true,
+    );
+    const models = applyGroups(
+      applyGroups(
+        publicModels,
+        [{ source: source("kimi-releases"), models: await releases() }],
+        false,
+      ),
+      [
+        {
+          source: source("kimi-api"),
+          models: await parsed("kimi", "kimi/api.json", "kimi-api"),
+        },
+      ],
+      false,
+    );
+    expect(models.find(({ model_id }) => model_id === "kimi-k3")?.source_refs).toEqual([
+      "kimi-openapi",
+      "kimi-catalog",
+      "kimi-pricing",
+      "kimi-releases",
+      "kimi-api",
+    ]);
+  });
+
+  it("fails malformed authenticated capability data atomically", async () => {
+    const body = await fixture("kimi/api.json");
+    expect(() =>
+      parse(
+        source("kimi-api"),
+        body.replace('"context_length": 1048576', '"context_length": "1048576"'),
+      ),
+    ).toThrow();
+  });
+});
+
 describe("runtime adapters", () => {
   it("marks Ollama pricing as not applicable", async () => {
     const model = (await parsed("ollama", "ollama/normal.json"))[0];

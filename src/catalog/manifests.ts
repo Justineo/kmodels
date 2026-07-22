@@ -1,11 +1,4 @@
-import type {
-  ModelType,
-  Provider,
-  ProviderModel,
-  SourceAccess,
-  SourceFormat,
-  SourceKind,
-} from "./schema.ts";
+import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
   | { kind: "openai-catalog" }
@@ -59,13 +52,11 @@ export type Extractor =
   | { kind: "deepseek-catalog"; minModels: number; maxModels: number }
   | { kind: "deepseek-updates"; minModels: number; maxModels: number }
   | { kind: "deepseek-api"; minModels: number; maxModels: number }
-  | {
-      kind: "document-identifiers";
-      patterns: RegExp[];
-      idKind: "api_id" | "alias" | "display_name" | "source_generated";
-      defaultType: ModelType;
-      linkTarget?: RegExp;
-    };
+  | { kind: "kimi-openapi"; minModels: number; maxModels: number }
+  | { kind: "kimi-catalog"; minModels: number; maxModels: number }
+  | { kind: "kimi-pricing"; minModels: number; maxModels: number }
+  | { kind: "kimi-releases"; minModels: number; maxModels: number }
+  | { kind: "kimi-api"; minModels: number; maxModels: number };
 
 export interface LinkedDocuments {
   path: RegExp;
@@ -151,33 +142,6 @@ export interface ProviderManifest {
 }
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
-
-const documentSource = (
-  id: string,
-  url: string,
-  patterns: RegExp[],
-  idKind: "api_id" | "alias" | "display_name" | "source_generated" = "api_id",
-  linkTarget?: RegExp,
-  additionalHosts: string[] = [],
-): SourceManifest => ({
-  id,
-  url,
-  type: url.includes("githubusercontent.com") ? "repository" : "website",
-  access: "public",
-  format: url.includes("githubusercontent.com") ? "markdown" : "html",
-  stability: "semi_structured",
-  extractor: {
-    kind: "document-identifiers",
-    patterns,
-    idKind,
-    defaultType: "generate",
-    ...(linkTarget === undefined ? {} : { linkTarget }),
-  },
-  extractorVersion: "document-identifiers-v1",
-  fields: ["model_id", "name", "types"],
-  allowedHosts: [new URL(url).hostname, ...additionalHosts],
-  maxResponseBytes: mebibytes(8),
-});
 
 const xaiApiSource = (
   id: string,
@@ -1865,13 +1829,169 @@ export const manifests = [
       name: "Kimi",
       kind: "hosted",
       homepage: "https://www.kimi.com/",
-      docs_url: "https://platform.kimi.com/docs/guide/start-using-kimi-api",
+      docs_url: "https://platform.kimi.com/docs/models",
       catalog_scope: "global",
     },
     sources: [
-      documentSource("kimi-models", "https://platform.kimi.com/docs/guide/start-using-kimi-api", [
-        /^(?:kimi|moonshot)-[a-z0-9._-]+$/i,
-      ]),
+      {
+        id: "kimi-openapi",
+        url: "https://platform.kimi.com/docs/openapi.json",
+        type: "website",
+        access: "public",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "kimi-openapi", minModels: 8, maxModels: 30 },
+        extractorVersion: "kimi-openapi-v1",
+        fields: ["model_id", "types", "modalities", "capabilities"],
+        allowedHosts: ["platform.kimi.com"],
+        maxResponseBytes: mebibytes(2),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "kimi-catalog",
+        url: "https://platform.kimi.com/docs/models",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
+        extractorVersion: "kimi-catalog-v1",
+        fields: [
+          "model_id",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "status",
+          "is_deprecated",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["platform.kimi.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "kimi-pricing",
+        url: "https://platform.kimi.com/docs/pricing/chat-k3",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "kimi-pricing", minModels: 8, maxModels: 20 },
+        extractorVersion: "kimi-pricing-v1",
+        fields: ["model_id", "name", "types", "modalities", "capabilities", "limits", "pricing"],
+        allowedHosts: ["platform.kimi.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          indexFormat: "markdown",
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 6,
+          maxDocumentBytes: mebibytes(1),
+          documents: [
+            {
+              id: "k27",
+              url: "https://platform.kimi.com/docs/pricing/chat-k27-code",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "k26",
+              url: "https://platform.kimi.com/docs/pricing/chat-k26",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "k25",
+              url: "https://platform.kimi.com/docs/pricing/chat-k25",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "v1",
+              url: "https://platform.kimi.com/docs/pricing/chat-v1",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "batch",
+              url: "https://platform.kimi.com/docs/pricing/batch",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "cache",
+              url: "https://platform.kimi.com/docs/guide/use-context-caching-feature-of-kimi-api",
+              maxResponseBytes: mebibytes(1),
+            },
+          ],
+        },
+      },
+      {
+        id: "kimi-releases",
+        url: "https://platform.kimi.com/blog/posts/changelog",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "kimi-releases", minModels: 8, maxModels: 25 },
+        extractorVersion: "kimi-releases-v1",
+        fields: ["release_date"],
+        allowedHosts: ["platform.kimi.com", "www.kimi.com"],
+        maxResponseBytes: mebibytes(6),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        linkedDocuments: {
+          indexFormat: "html",
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "research",
+              url: "https://www.kimi.com/blog/",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "code",
+              url: "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html",
+              maxResponseBytes: mebibytes(2),
+            },
+          ],
+        },
+      },
+      {
+        id: "kimi-api",
+        url: "https://api.moonshot.cn/v1/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "kimi-api", minModels: 1, maxModels: 50 },
+        extractorVersion: "kimi-api-v1",
+        fields: ["model_id", "modalities", "capabilities", "limits"],
+        allowedHosts: ["api.moonshot.cn"],
+        maxResponseBytes: mebibytes(1),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "MOONSHOT_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    warnOnMissing: {
+      sourceId: "kimi-catalog",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated", "unknown"],
+    },
   },
 ] satisfies ProviderManifest[];

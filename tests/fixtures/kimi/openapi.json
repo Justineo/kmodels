@@ -1,0 +1,95 @@
+{
+  "paths": {
+    "/v1/chat/completions": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "discriminator": {
+                  "propertyName": "model",
+                  "mapping": {
+                    "kimi-k3": "#/components/schemas/K3",
+                    "kimi-k2.7-code": "#/components/schemas/K27",
+                    "kimi-k2.7-code-highspeed": "#/components/schemas/K27",
+                    "kimi-k2.6": "#/components/schemas/K26",
+                    "kimi-k2.5": "#/components/schemas/K25",
+                    "moonshot-v1-8k": "#/components/schemas/V1",
+                    "moonshot-v1-32k": "#/components/schemas/V1",
+                    "moonshot-v1-128k": "#/components/schemas/V1",
+                    "moonshot-v1-auto": "#/components/schemas/V1",
+                    "moonshot-v1-8k-vision-preview": "#/components/schemas/V1",
+                    "moonshot-v1-32k-vision-preview": "#/components/schemas/V1",
+                    "moonshot-v1-128k-vision-preview": "#/components/schemas/V1"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Common": {
+        "properties": {
+          "response_format": {},
+          "stream": {},
+          "tools": {},
+          "tool_choice": {},
+          "prompt_cache_key": {}
+        }
+      },
+      "K3": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Common" },
+          { "properties": { "model": { "enum": ["kimi-k3"] }, "reasoning_effort": {} } }
+        ]
+      },
+      "K27": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Common" },
+          {
+            "properties": {
+              "model": { "enum": ["kimi-k2.7-code", "kimi-k2.7-code-highspeed"] },
+              "thinking": {}
+            }
+          }
+        ]
+      },
+      "K26": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Common" },
+          { "properties": { "model": { "enum": ["kimi-k2.6"] }, "thinking": {} } }
+        ]
+      },
+      "K25": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Common" },
+          { "properties": { "model": { "enum": ["kimi-k2.5"] }, "thinking": {} } }
+        ]
+      },
+      "V1": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Common" },
+          {
+            "properties": {
+              "model": {
+                "enum": [
+                  "moonshot-v1-8k",
+                  "moonshot-v1-32k",
+                  "moonshot-v1-128k",
+                  "moonshot-v1-auto",
+                  "moonshot-v1-8k-vision-preview",
+                  "moonshot-v1-32k-vision-preview",
+                  "moonshot-v1-128k-vision-preview"
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
