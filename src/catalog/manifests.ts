@@ -29,6 +29,8 @@ export type Extractor =
   | { kind: "gemini-api" }
   | { kind: "vertex-catalog"; minModels: number; maxModels: number }
   | { kind: "vertex-api" }
+  | { kind: "cohere-catalog" }
+  | { kind: "cohere-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -1055,10 +1057,103 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource("cohere-models", "https://docs.cohere.com/docs/models", [
-        /^(?:command|embed|rerank|aya)-[a-z0-9._-]+$/i,
-      ]),
+      {
+        id: "cohere-models",
+        url: "https://docs.cohere.com/docs/models",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "cohere-catalog" },
+        extractorVersion: "cohere-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "deprecated_at",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["docs.cohere.com", "cohere.com"],
+        maxResponseBytes: mebibytes(48),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^\/docs\/(?:aya|aya-expanse|aya-vision|cohere-embed|command-(?:a(?:-plus|-reasoning|-translate|-vision)?|r|r-plus|r7b)|deprecations|rerank|tiny-aya|transcribe|transcribe-arabic)$/,
+          minDocuments: 17,
+          maxDocuments: 24,
+          concurrency: 6,
+          maxDocumentBytes: mebibytes(2),
+          documents: [
+            {
+              id: "pricing",
+              url: "https://cohere.com/pricing",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "changelog",
+              url: "https://docs.cohere.com/v2/changelog",
+              maxResponseBytes: mebibytes(3),
+            },
+            {
+              id: "release-command-a",
+              url: "https://docs.cohere.com/changelog/command-a",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "release-command-r7b",
+              url: "https://docs.cohere.com/changelog/command-r-7b/",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "release-command-r",
+              url: "https://docs.cohere.com/v1/changelog/command-gets-refreshed",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "release-rerank-v3-5",
+              url: "https://docs.cohere.com/changelog/rerank-v3.5",
+              maxResponseBytes: mebibytes(2),
+            },
+          ],
+        },
+      },
+      {
+        id: "cohere-api",
+        url: "https://api.cohere.com/v1/models?page_size=1000",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "cohere-api" },
+        extractorVersion: "cohere-api-v1",
+        fields: ["model_id", "types", "limits", "status", "is_deprecated"],
+        allowedHosts: ["api.cohere.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "COHERE_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    supersededIdKinds: ["source_generated"],
+    warnOnMissing: {
+      sourceId: "cohere-models",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
