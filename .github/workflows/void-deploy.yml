@@ -1,0 +1,38 @@
+name: Deploy to Void
+
+permissions:
+  contents: read
+  id-token: write
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: void-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      VOID_PROJECT: ${{ vars.VOID_PROJECT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 24.18.0
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Build static site
+        run: npm run build
+
+      - name: Deploy
+        run: npm run deploy

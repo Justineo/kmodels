@@ -1,0 +1,51 @@
+name: Refresh catalog
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: catalog-refresh
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: 24.18.0
+          cache: true
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Collect official sources
+        run: npm run collect
+        env:
+          KMODELS_JITTER_MS: "30000"
+
+      - name: Verify generated catalog
+        run: npm test
+
+      - name: Commit validated changes
+        run: |
+          git add data public/data public/v1
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(data): refresh provider catalog"
+          git push
