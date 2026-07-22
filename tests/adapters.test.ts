@@ -1,0 +1,212 @@
+import { readFile } from "node:fs/promises";
+import { describe, expect, it } from "vite-plus/test";
+import { parseSource, scaleDecimal } from "../src/catalog/adapters.ts";
+import { curlResponse } from "../src/catalog/fetch.ts";
+import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
+import type { Provider, ProviderModel } from "../src/catalog/schema.ts";
+import { validateProvider } from "../src/catalog/validation.ts";
+
+const observedAt = "2026-07-21T00:00:00.000Z";
+
+async function fixture(path: string): Promise<string> {
+  return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
+}
+
+async function expected(path: string): Promise<unknown> {
+  return JSON.parse(await fixture(path));
+}
+
+function manifest(providerId: string): ProviderManifest {
+  const value = manifests.find((item) => item.provider.id === providerId);
+  if (value === undefined) throw new Error(`Missing manifest ${providerId}`);
+  return value;
+}
+
+function provider(value: ProviderManifest): Provider {
+  return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
+}
+
+async function parsed(providerId: string, path: string): Promise<ProviderModel[]> {
+  const value = manifest(providerId);
+  const source = value.sources[0];
+  if (source === undefined) throw new Error(`Missing source for ${providerId}`);
+  return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
+}
+
+describe("decimal normalization", () => {
+  it("scales source token prices without floating-point arithmetic", () => {
+    expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
+    expect(scaleDecimal("0.000002", 6)).toBe("2");
+    expect(scaleDecimal("1.25", 6)).toBe("1250000");
+  });
+});
+
+describe("HTTP transport boundary", () => {
+  it("uses the final response behind a CONNECT proxy and preserves 304", () => {
+    const response = curlResponse(
+      'HTTP/1.1 200 Connection Established\r\n\r\nHTTP/2 304\r\netag: "fixture"\r\n\r\n',
+    );
+    expect(response.status).toBe(304);
+    expect(response.headers.get("etag")).toBe('"fixture"');
+  });
+});
+
+describe("document adapter", () => {
+  it("publishes only code-formatted identifiers accepted by the provider pattern", async () => {
+    const models = await parsed("openai", "document/normal.html");
+    expect({
+      ids: models.map((model) => model.model_id),
+      pricing_status: models[0]?.pricing_status,
+    }).toEqual(await expected("document/expected.json"));
+    expect((await parsed("openai", "document/pricing.html"))[0]?.pricing.length).toBe(0);
+  });
+
+  it("fails closed when identifiers disappear", async () => {
+    await expect(parsed("openai", "document/broken.html")).rejects.toThrow("No model identifiers");
+  });
+});
+
+describe("Vercel adapter", () => {
+  it("parses the normal catalog shape", async () => {
+    const model = (await parsed("vercel", "vercel/normal.json"))[0];
+    expect(model?.limits).toEqual({ context_tokens: 32768, max_output_tokens: 4096 });
+  });
+
+  it("preserves pricing tiers and normalizes token units", async () => {
+    const model = (await parsed("vercel", "vercel/pricing.json"))[0];
+    expect({
+      id: model?.model_id,
+      input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
+      output: model?.pricing.find((rate) => rate.meter === "output_text")?.price,
+      cache_rates: model?.pricing.filter((rate) => rate.meter === "cache_read_text").length,
+      pricing_status: model?.pricing_status,
+    }).toEqual(await expected("vercel/expected.json"));
+  });
+
+  it("detects item schema drift", async () => {
+    await expect(parsed("vercel", "vercel/broken.json")).rejects.toThrow("schema drift");
+  });
+});
+
+describe("Cerebras adapter", () => {
+  it("retains explicit capabilities and preview status", async () => {
+    const model = (await parsed("cerebras", "cerebras/normal.json"))[0];
+    expect(model?.capabilities.reasoning).toBe(true);
+    expect(model?.capabilities.structured_output).toBe(false);
+    expect(model?.status).toBe("preview");
+  });
+
+  it("normalizes published per-token rates", async () => {
+    const model = (await parsed("cerebras", "cerebras/pricing.json"))[0];
+    expect({
+      id: model?.model_id,
+      input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
+      output: model?.pricing.find((rate) => rate.meter === "output_text")?.price,
+      pricing_status: model?.pricing_status,
+    }).toEqual(await expected("cerebras/expected.json"));
+  });
+
+  it("rejects an empty catalog", async () => {
+    await expect(parsed("cerebras", "cerebras/broken.json")).rejects.toThrow("schema drift");
+  });
+});
+
+describe("Hugging Face adapter", () => {
+  it("keeps model-level fields only when route facts agree", async () => {
+    const model = (await parsed("huggingface", "huggingface/normal.json"))[0];
+    expect(model?.limits.context_tokens).toBe(65536);
+    expect(model?.capabilities.tool_call).toBe(true);
+    expect(model?.types).toEqual(["language", "multimodal"]);
+  });
+
+  it("keeps every route price separate", async () => {
+    const model = (await parsed("huggingface", "huggingface/pricing.json"))[0];
+    expect({
+      id: model?.model_id,
+      input_rates: model?.pricing.filter((rate) => rate.meter === "input_text").length,
+      output_rates: model?.pricing.filter((rate) => rate.meter === "output_text").length,
+      routes: [
+        ...new Set(model?.pricing.flatMap((rate) => rate.conditions.route_provider ?? []) ?? []),
+      ].sort(),
+      pricing_status: model?.pricing_status,
+    }).toEqual(await expected("huggingface/expected.json"));
+  });
+
+  it("rejects models without a live route record", async () => {
+    await expect(parsed("huggingface", "huggingface/broken.json")).rejects.toThrow("schema drift");
+  });
+});
+
+describe("runtime adapters", () => {
+  it("marks Ollama pricing as not applicable", async () => {
+    const model = (await parsed("ollama", "ollama/normal.json"))[0];
+    expect({
+      id: model?.model_id,
+      pricing_status: model?.pricing_status,
+      scope: model?.scope,
+    }).toEqual(await expected("ollama/expected.json"));
+    expect((await parsed("ollama", "ollama/pricing.json"))[0]?.pricing.length).toBe(0);
+    await expect(parsed("ollama", "ollama/broken.json")).rejects.toThrow("schema drift");
+  });
+
+  it("parses an explicitly configured vLLM observation", async () => {
+    const runtimeProvider: Provider = {
+      id: "vllm",
+      name: "vLLM runtime",
+      kind: "local_runtime",
+      homepage: "https://vllm.ai/",
+      catalog_scope: "runtime",
+      source_ids: ["vllm-fixture"],
+    };
+    const source: SourceManifest = {
+      id: "vllm-fixture",
+      url: "https://runtime.example.test/v1/models",
+      type: "runtime_api",
+      stability: "documented",
+      extractor: { kind: "vllm" },
+      extractorVersion: "vllm-v1",
+      fields: ["model_id"],
+      allowedHosts: ["runtime.example.test"],
+      maxResponseBytes: 1024,
+    };
+    const parseRuntime = async (name: string): Promise<ProviderModel[]> =>
+      parseSource({
+        provider: runtimeProvider,
+        source,
+        body: await fixture(`vllm/${name}.json`),
+        observedAt,
+      });
+    const model = (await parseRuntime("normal"))[0];
+    expect({
+      id: model?.model_id,
+      pricing_status: model?.pricing_status,
+      scope: model?.scope,
+    }).toEqual(await expected("vllm/expected.json"));
+    expect((await parseRuntime("pricing"))[0]?.pricing.length).toBe(0);
+    await expect(parseRuntime("broken")).rejects.toThrow("empty model list");
+  });
+});
+
+describe("provider drift validation", () => {
+  it("quarantines large deletions and price jumps", async () => {
+    const model = (await parsed("vercel", "vercel/pricing.json"))[0];
+    if (model === undefined) throw new Error("Missing fixture model");
+    const second = {
+      ...model,
+      model_id: "acme/text-2",
+      uid: "vercel/acme/text-2",
+      name: "Text Two",
+    };
+    expect(validateProvider([model], [model, second])).toEqual({
+      ok: false,
+      reason: "model count dropped by more than 10%",
+    });
+    const changed = {
+      ...model,
+      pricing: model.pricing.map((rate) =>
+        rate.meter === "input_text" ? { ...rate, price: "0.19" } : rate,
+      ),
+    };
+    expect(validateProvider([changed], [model]).reason).toContain("price changed over 50%");
+  });
+});
