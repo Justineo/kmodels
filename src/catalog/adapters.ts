@@ -30,6 +30,7 @@ import {
   parseKimiReleases,
 } from "./kimi.ts";
 import { parseMistralApi, parseMistralCatalog } from "./mistral.ts";
+import { parseOllamaCloud, parseOllamaLibrary } from "./ollama.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
@@ -52,12 +53,6 @@ import {
 export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 export { classifyModelTypes, normalizeModelTypes } from "./task.ts";
 
-const ollamaItemSchema = z.object({
-  name: z.string().min(1),
-  model: z.string().min(1).optional(),
-  modified_at: z.string().optional(),
-});
-
 const openAiItemSchema = z.object({
   id: modelIdSchema,
   object: z.literal("model"),
@@ -66,7 +61,6 @@ const openAiItemSchema = z.object({
 });
 
 const listSchema = z.object({ data: z.array(z.unknown()) });
-const ollamaListSchema = z.object({ models: z.array(z.unknown()) });
 interface ParseInput {
   provider: Provider;
   source: SourceManifest;
@@ -648,39 +642,6 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function parseOllama(input: ParseInput): ProviderModel[] {
-  const list = ollamaListSchema.parse(parseJson(input.body));
-  const results = list.models.map((item) => ollamaItemSchema.safeParse(item));
-  if (list.models.length === 0 || results.some((result) => !result.success))
-    throw new Error("Ollama model schema drift");
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const id = result.data.model ?? result.data.name;
-    const modelModalities = { input: [], output: [] };
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id,
-          name: result.data.name,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        types: classifyModelTypes({
-          modelId: id,
-          name: result.data.name,
-          rawType: undefined,
-          modalities: modelModalities,
-          fallback: "generate",
-        }),
-        updated_date: result.data.modified_at?.slice(0, 10),
-        pricing_status: "not_applicable",
-        status: "active",
-      },
-    ];
-  });
-}
-
 function parseVllm(input: ParseInput): ProviderModel[] {
   const list = listSchema.parse(parseJson(input.body));
   const ids = list.data.map((item) => z.object({ id: z.string().min(1) }).parse(item).id);
@@ -736,8 +697,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseHuggingFaceMapping(input);
     case "huggingface-router":
       return parseHuggingFaceRouter(input);
-    case "ollama":
-      return parseOllama(input);
+    case "ollama-library":
+      return parseOllamaLibrary(input);
+    case "ollama-cloud":
+      return parseOllamaCloud(input);
     case "vllm":
       return parseVllm(input);
     case "bedrock-catalog":

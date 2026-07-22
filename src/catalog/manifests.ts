@@ -15,7 +15,8 @@ export type Extractor =
   | { kind: "cerebras-api"; minModels: number; maxModels: number }
   | { kind: "huggingface-mapping"; minModels: number; maxModels: number }
   | { kind: "huggingface-router"; minModels: number; maxModels: number }
-  | { kind: "ollama" }
+  | { kind: "ollama-library"; minModels: number; maxModels: number }
+  | { kind: "ollama-cloud"; minModels: number; maxModels: number }
   | { kind: "vllm" }
   | { kind: "bedrock-catalog" }
   | { kind: "bedrock-api" }
@@ -127,7 +128,14 @@ export interface SourceManifest {
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
     | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string }
-    | { kind: "google-model-garden"; publishers: string[] };
+    | { kind: "google-model-garden"; publishers: string[] }
+    | {
+        kind: "ollama-cloud";
+        catalogUrl: string;
+        minModels: number;
+        maxModels: number;
+        concurrency: number;
+      };
   snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
@@ -1835,24 +1843,78 @@ export const manifests = [
       name: "Ollama",
       kind: "local_runtime",
       homepage: "https://ollama.com/",
-      docs_url: "https://docs.ollama.com/api/tags",
+      docs_url: "https://docs.ollama.com/cloud",
       catalog_scope: "mixed",
     },
     sources: [
       {
+        id: "ollama-library",
+        url: "https://ollama.com/library",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "ollama-library", minModels: 200, maxModels: 350 },
+        extractorVersion: "ollama-library-v1",
+        fields: [
+          "model_id",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "updated_date",
+          "pricing",
+          "status",
+        ],
+        allowedHosts: ["ollama.com"],
+        maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
         id: "ollama-cloud-models",
         url: "https://ollama.com/api/tags",
         type: "api",
-        access: "configured",
-        format: "json",
-        stability: "undocumented",
-        extractor: { kind: "ollama" },
-        extractorVersion: "ollama-v1",
-        fields: ["model_id", "name", "updated_date"],
+        source: ["api", "website"],
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
+        extractorVersion: "ollama-cloud-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "updated_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "retired_at",
+        ],
         allowedHosts: ["ollama.com"],
         maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        transport: {
+          kind: "ollama-cloud",
+          catalogUrl: "https://ollama.com/search?c=cloud",
+          minModels: 15,
+          maxModels: 30,
+          concurrency: 6,
+        },
       },
     ],
+    warnOnMissing: {
+      sourceId: "ollama-library",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
