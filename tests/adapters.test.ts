@@ -222,6 +222,34 @@ async function vertexCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function cohereCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("cohere");
+  const source = value.sources[0];
+  if (source === undefined || source.extractor.kind !== "cohere-catalog")
+    throw new Error("Missing Cohere source");
+  const documents = [
+    ["https://docs.cohere.com/docs/command-a-plus", "command-a-plus.html"],
+    ["https://docs.cohere.com/docs/command-a", "command-a-broken.html"],
+    ["https://docs.cohere.com/docs/transcribe", "transcribe.html"],
+    ["https://docs.cohere.com/docs/transcribe-arabic", "transcribe-arabic.html"],
+    ["https://docs.cohere.com/docs/deprecations", "lifecycle.html"],
+    ["https://cohere.com/pricing", "pricing.html"],
+    ["https://docs.cohere.com/v2/changelog", "changelog.html"],
+    ["https://docs.cohere.com/changelog/command-a", "command-a-release.html"],
+    ["https://docs.cohere.com/changelog/command-r-7b/", "command-r7b-release.html"],
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("cohere/index.html") },
+    documents: await Promise.all(
+      documents.map(async ([url, path]) => ({
+        url,
+        body: await fixture(`cohere/${path}`),
+      })),
+    ),
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -278,6 +306,163 @@ describe("source taxonomy", () => {
     });
     expect(manifest("ollama").sources[0]?.type).toBe("api");
     expect(sourceKindSchema.safeParse("runtime").success).toBe(false);
+  });
+});
+
+describe("Cohere adapters", () => {
+  it("combines callable IDs with model cards, lifecycle, releases, and native prices", async () => {
+    const models = await cohereCatalog();
+    const commandA = models.find((model) => model.model_id === "command-a-03-2025");
+    const commandAPlus = models.find((model) => model.model_id === "command-a-plus-05-2026");
+    const embedding = models.find((model) => model.model_id === "embed-v4.0");
+    const rerank = models.find((model) => model.model_id === "rerank-v4.0-pro");
+    const retired = models.find((model) => model.model_id === "rerank-english-v2.0");
+    const arabic = models.find((model) => model.model_id === "cohere-transcribe-arabic-07-2026");
+    expect({
+      count: models.length,
+      command_a_name: commandA?.name,
+      command_a_release: commandA?.release_date,
+      command_a_price_count: commandA?.pricing.length,
+      plus_name: commandAPlus?.name,
+      plus_modalities: commandAPlus?.modalities,
+      plus_reasoning: commandAPlus?.capabilities.reasoning,
+      plus_pricing_status: commandAPlus?.pricing_status,
+      embedding_limits: embedding?.limits,
+      embedding_prices: embedding?.pricing.map(({ meter, price, unit, conditions }) => ({
+        meter,
+        price,
+        unit,
+        conditions,
+      })),
+      rerank_prices: rerank?.pricing.map(({ price, unit, conditions }) => ({
+        price,
+        unit,
+        conditions,
+      })),
+      retired: {
+        status: retired?.status,
+        retired_at: retired?.retired_at,
+        replacements: retired?.replacement_model_ids,
+      },
+      arabic: {
+        name: arabic?.name,
+        types: arabic?.types,
+        modalities: arabic?.modalities,
+        release: arabic?.release_date,
+        pricing_status: arabic?.pricing_status,
+      },
+    }).toEqual({
+      count: 42,
+      command_a_name: "Command A",
+      command_a_release: "2025-03-13",
+      command_a_price_count: 0,
+      plus_name: "Command A+",
+      plus_modalities: { input: ["text", "image"], output: ["text"] },
+      plus_reasoning: true,
+      plus_pricing_status: "custom_quote",
+      embedding_limits: {
+        context_tokens: 128_000,
+        embedding_dimensions: [256, 512, 1024, 1536],
+        recommended_embedding_dimensions: [1536],
+      },
+      embedding_prices: [
+        {
+          meter: "embedding",
+          price: "0.12",
+          unit: "million_tokens",
+          conditions: { modality: "text" },
+        },
+        {
+          meter: "embedding",
+          price: "0.47",
+          unit: "million_tokens",
+          conditions: { modality: "image" },
+        },
+        {
+          meter: "provisioned_throughput",
+          price: "4.00",
+          unit: "unit_hour",
+          conditions: { endpoint: "Model Vault", capacity: "Small" },
+        },
+        {
+          meter: "provisioned_throughput",
+          price: "2500",
+          unit: "unit_month",
+          conditions: { endpoint: "Model Vault", capacity: "Small" },
+        },
+      ],
+      rerank_prices: [
+        { price: "2.5", unit: "thousand_search_units", conditions: {} },
+        {
+          price: "10.00",
+          unit: "unit_hour",
+          conditions: { endpoint: "Model Vault", capacity: "Large" },
+        },
+        {
+          price: "6500",
+          unit: "unit_month",
+          conditions: { endpoint: "Model Vault", capacity: "Large" },
+        },
+      ],
+      retired: {
+        status: "retired",
+        retired_at: "2025-04-30",
+        replacements: ["rerank-v3.5"],
+      },
+      arabic: {
+        name: "Cohere Transcribe Arabic",
+        types: ["audio_transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        release: "2026-07-07",
+        pricing_status: "custom_quote",
+      },
+    });
+  });
+
+  it("treats the authenticated API as a complete scoped page", async () => {
+    const models = await parsed("cohere", "cohere/api.json", "cohere-api");
+    expect(
+      models.map(({ model_id, types, limits, is_deprecated }) => ({
+        model_id,
+        types,
+        limits,
+        is_deprecated,
+      })),
+    ).toEqual([
+      {
+        model_id: "command-r-08-2024",
+        types: ["generate"],
+        limits: { context_tokens: 128_000 },
+        is_deprecated: false,
+      },
+      {
+        model_id: "embed-v4.0",
+        types: ["embeddings", "classification"],
+        limits: { context_tokens: 128_000 },
+        is_deprecated: false,
+      },
+    ]);
+    await expect(parsed("cohere", "cohere/truncated-api.json", "cohere-api")).rejects.toThrow(
+      "truncated",
+    );
+  });
+
+  it("declares reviewed catalog companions and a non-persistent account inventory", () => {
+    const value = manifest("cohere");
+    expect(value.sources).toMatchObject([
+      {
+        extractor: { kind: "cohere-catalog" },
+        type: "website",
+        linkedDocuments: { minDocuments: 17, maxDocuments: 24 },
+      },
+      {
+        extractor: { kind: "cohere-api" },
+        type: "api",
+        scope: "account",
+        role: "inventory",
+        snapshotPolicy: "none",
+      },
+    ]);
   });
 });
 

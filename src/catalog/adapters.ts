@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
 import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
+import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
 import { linkedBundleSchema } from "./bundle.ts";
@@ -1022,6 +1023,10 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseVertexCatalog(input);
     case "vertex-api":
       return parseVertexApi(input);
+    case "cohere-catalog":
+      return parseCohereCatalog(input);
+    case "cohere-api":
+      return parseCohereApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }
