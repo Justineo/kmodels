@@ -20,7 +20,7 @@ The collector reads only the official hosts reviewed in `src/catalog/manifests.t
 
 ## Automation
 
-GitHub Actions checks sources every 30 minutes and commits only validated output. Collection needs no secret. Void deployment uses GitHub OIDC: set the repository variable `VOID_PROJECT`, then connect the repository once from an authenticated workstation:
+GitHub Actions checks sources every 30 minutes and commits only validated output. Public catalogs need no secret; optional scoped inventories use the named provider credentials documented in `design.md`. Void deployment uses GitHub OIDC: set the repository variable `VOID_PROJECT`, then connect the repository once from an authenticated workstation:
 
 ```sh
 void github connect "$VOID_PROJECT" \
