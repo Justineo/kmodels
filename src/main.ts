@@ -11,44 +11,27 @@ if (!(app instanceof HTMLDivElement)) throw new Error("Missing app root");
 
 app.innerHTML = `
   <header class="site-header">
-    <a class="brand" href="/" aria-label="Kmodels home">KMODELS<span aria-hidden="true">/</span></a>
+    <a class="brand" href="/" aria-label="Kmodels home">Kmodels</a>
+    <span class="dataset-size"><span id="model-count">—</span> models</span>
     <div class="sync-state" id="sync-state"><span class="status-dot"></span><span>Loading catalog</span></div>
-    <a class="method-link" href="#method">Method</a>
+    <span class="catalog-version" id="catalog-version">—</span>
+    <a class="json-link" href="/v1/catalog/index.json">JSON</a>
   </header>
-  <main>
-    <section class="overview" aria-labelledby="catalog-title">
-      <div>
-        <p class="eyebrow">Public provider catalog</p>
-        <h1 id="catalog-title"><span id="model-count">—</span><small>observed models</small></h1>
-      </div>
-      <p class="scope">Official public sources. No credentials. No account-level availability claims.</p>
-    </section>
-    <section class="workspace" aria-label="Model catalog">
-      <div class="controls">
-        <label class="search-label" for="search">Search</label>
-        <input id="search" type="search" placeholder="Model or provider" autocomplete="off" />
-        <label class="visually-hidden" for="provider-filter">Provider</label>
-        <select id="provider-filter"><option value="">All providers</option></select>
-        <label class="visually-hidden" for="type-filter">Type</label>
-        <select id="type-filter"><option value="">All types</option></select>
-        <output id="result-count" aria-live="polite">—</output>
-      </div>
-      <div class="ledger-head" aria-hidden="true">
-        <span>Model</span><span>Provider</span><span>Type</span><span>Context</span><span>Input / output</span>
-      </div>
-      <div class="ledger" id="ledger" aria-live="polite"><p class="loading">Validating catalog…</p></div>
-    </section>
-    <section class="method" id="method" aria-labelledby="method-title">
-      <p class="eyebrow">Method</p>
-      <h2 id="method-title">Observed, not inferred.</h2>
-      <div class="method-copy">
-        <p>Every published field points to an allowlisted official source. A failed or suspicious refresh keeps the last validated provider catalog.</p>
-        <p>Prices preserve their original conditions. Missing prices are unknown—not zero. Model names are never merged across providers.</p>
-      </div>
-      <a href="/v1/catalog/index.json">Raw catalog JSON <span aria-hidden="true">↗</span></a>
-    </section>
+  <main class="workspace" aria-label="Model catalog">
+    <div class="controls">
+      <label class="visually-hidden" for="search">Search</label>
+      <input id="search" type="search" placeholder="Search models" autocomplete="off" />
+      <label class="visually-hidden" for="provider-filter">Provider</label>
+      <select id="provider-filter"><option value="">All providers</option></select>
+      <label class="visually-hidden" for="type-filter">Type</label>
+      <select id="type-filter"><option value="">All types</option></select>
+      <output id="result-count" aria-live="polite">—</output>
+    </div>
+    <div class="ledger-head" aria-hidden="true">
+      <span>Model</span><span>Provider</span><span>Type</span><span>Context</span><span>Input / output</span>
+    </div>
+    <div class="ledger" id="ledger" aria-live="polite"><p class="loading">Loading…</p></div>
   </main>
-  <footer><span>Kmodels</span><span id="catalog-version">Catalog —</span></footer>
   <dialog id="model-dialog" aria-labelledby="dialog-title">
     <form method="dialog"><button class="dialog-close" aria-label="Close model details">Close</button></form>
     <div id="dialog-content"></div>
@@ -111,7 +94,7 @@ function price(model: ProviderModel): string {
 
 function showDetails(model: ProviderModel): void {
   dialogContent.replaceChildren();
-  const heading = appendText(dialogContent, "p", model.provider_id, "eyebrow");
+  const heading = appendText(dialogContent, "p", model.provider_id, "overline");
   heading.id = "dialog-title";
   appendText(dialogContent, "h2", model.name);
   appendText(dialogContent, "code", model.model_id, "model-id");
@@ -200,7 +183,7 @@ function render(): void {
   ledger.replaceChildren(...visible.map(modelRow));
   if (visible.length === 0)
     appendText(ledger, "p", "No observed model matches these filters.", "empty");
-  resultCount.textContent = `${visible.length} result${visible.length === 1 ? "" : "s"}`;
+  resultCount.textContent = `${visible.length} / ${models.length}`;
   resultCount.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 180, easing: "ease-out" });
 }
 
@@ -226,7 +209,7 @@ async function loadCatalog(): Promise<void> {
     const types = [...new Set(models.flatMap((model) => model.types))].sort();
     typeFilter.append(...types.map((type) => option(type, type.replaceAll("_", " "))));
     modelCount.textContent = new Intl.NumberFormat("en").format(models.length);
-    catalogVersion.textContent = `Catalog ${catalog.catalog_version.slice(0, 12)}`;
+    catalogVersion.textContent = catalog.catalog_version.slice(0, 8);
     const fresh = catalog.data.coverage.filter((item) => item.status === "fresh").length;
     const time = new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(
       new Date(catalog.generated_at),
