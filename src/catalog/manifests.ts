@@ -39,6 +39,24 @@ export type Extractor =
   | { kind: "xai-catalog"; minModels: number; maxModels: number }
   | { kind: "xai-api"; category: "all" | "language" | "image" | "video" }
   | {
+      kind: "dashscope-catalog";
+      category:
+        | "text"
+        | "vision"
+        | "image"
+        | "video"
+        | "asr"
+        | "tts"
+        | "s2s"
+        | "omni"
+        | "embedding";
+      minModels: number;
+      maxModels: number;
+    }
+  | { kind: "dashscope-pricing"; minModels: number; maxModels: number }
+  | { kind: "dashscope-lifecycle"; minModels: number; maxModels: number }
+  | { kind: "dashscope-api"; minModels: number; maxModels: number }
+  | {
       kind: "document-identifiers";
       patterns: RegExp[];
       idKind: "api_id" | "alias" | "display_name" | "source_generated";
@@ -224,6 +242,29 @@ const huggingFaceSource = (provider: (typeof huggingFaceProviders)[number]): Sou
   exhaustive: true,
   role: "catalog",
   snapshotPolicy: "none",
+});
+
+const dashscopeCatalogSource = (
+  id: string,
+  path: string,
+  category: Extract<Extractor, { kind: "dashscope-catalog" }>["category"],
+  minModels: number,
+  maxModels: number,
+): SourceManifest => ({
+  id,
+  url: `https://www.alibabacloud.com/help/en/model-studio/${path}`,
+  type: "website",
+  access: "public",
+  format: "html",
+  stability: "semi_structured",
+  extractor: { kind: "dashscope-catalog", category, minModels, maxModels },
+  extractorVersion: "dashscope-catalog-v1",
+  fields: ["model_id", "description", "types", "modalities", "capabilities", "limits", "status"],
+  allowedHosts: ["www.alibabacloud.com"],
+  maxResponseBytes: mebibytes(2),
+  scope: "region",
+  exhaustive: false,
+  role: "catalog",
 });
 
 export const manifests = [
@@ -1576,14 +1617,101 @@ export const manifests = [
       catalog_scope: "regional",
     },
     sources: [
-      documentSource(
-        "dashscope-models",
-        "https://www.alibabacloud.com/help/en/model-studio/models",
-        [
-          /^(?:qwen|wan|wanx|paraformer|cosyvoice|gte|text-embedding|multimodal-embedding)[a-z0-9._-]*$/i,
+      dashscopeCatalogSource("dashscope-text", "text-generation-model/", "text", 70, 180),
+      dashscopeCatalogSource("dashscope-vision", "vision-model/", "vision", 12, 50),
+      dashscopeCatalogSource("dashscope-image", "image-model", "image", 20, 70),
+      dashscopeCatalogSource("dashscope-video", "video-generate-edit-model", "video", 25, 80),
+      dashscopeCatalogSource("dashscope-asr", "asr-model/", "asr", 25, 90),
+      dashscopeCatalogSource("dashscope-tts", "tts-model/", "tts", 20, 70),
+      dashscopeCatalogSource("dashscope-s2s", "s2s-model", "s2s", 15, 80),
+      dashscopeCatalogSource("dashscope-omni", "omni/", "omni", 20, 80),
+      dashscopeCatalogSource("dashscope-embedding", "embedding-rerank-model/", "embedding", 5, 25),
+      {
+        id: "dashscope-pricing",
+        url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
+        extractorVersion: "dashscope-pricing-v1",
+        fields: [
+          "model_id",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "pricing",
+          "availability",
+          "status",
         ],
-      ),
+        allowedHosts: ["www.alibabacloud.com"],
+        maxResponseBytes: mebibytes(2),
+        scope: "region",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          path: /$a/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: [
+            {
+              id: "context-cache",
+              url: "https://www.alibabacloud.com/help/en/model-studio/context-cache",
+              maxResponseBytes: mebibytes(2),
+            },
+          ],
+        },
+      },
+      {
+        id: "dashscope-lifecycle",
+        url: "https://www.alibabacloud.com/help/en/model-studio/model-depreciation",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "dashscope-lifecycle", minModels: 15, maxModels: 150 },
+        extractorVersion: "dashscope-lifecycle-v1",
+        fields: [
+          "model_id",
+          "types",
+          "status",
+          "is_deprecated",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["www.alibabacloud.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "region",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "dashscope-deployable-api",
+        url: "https://dashscope-intl.aliyuncs.com/api/v1/deployments/models?page_no=1&page_size=100&version=v1.0&model_source=base",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "dashscope-api", minModels: 1, maxModels: 100 },
+        extractorVersion: "dashscope-api-v1",
+        fields: ["availability"],
+        allowedHosts: ["dashscope-intl.aliyuncs.com"],
+        maxResponseBytes: mebibytes(2),
+        scope: "region",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "DASHSCOPE_API_KEY" },
+        snapshotPolicy: "none",
+      },
     ],
+    warnOnMissing: {
+      sourceId: "dashscope-pricing",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {

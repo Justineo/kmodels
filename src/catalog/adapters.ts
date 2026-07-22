@@ -5,6 +5,12 @@ import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
+import {
+  parseDashscopeApi,
+  parseDashscopeCatalog,
+  parseDashscopeLifecycle,
+  parseDashscopePricing,
+} from "./dashscope.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
 import { parseHuggingFaceMapping, parseHuggingFaceRouter } from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
@@ -930,6 +936,14 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseXaiCatalog(input);
     case "xai-api":
       return parseXaiApi(input);
+    case "dashscope-catalog":
+      return parseDashscopeCatalog(input);
+    case "dashscope-pricing":
+      return parseDashscopePricing(input);
+    case "dashscope-lifecycle":
+      return parseDashscopeLifecycle(input);
+    case "dashscope-api":
+      return parseDashscopeApi(input);
     case "document-identifiers":
       return parseDocument(input);
   }

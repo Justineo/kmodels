@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
+import { z } from "zod";
 import {
   classifyModelTypes,
   multiplyDecimal,
@@ -1960,6 +1961,192 @@ describe("Hugging Face adapter", () => {
       "Expected a Hugging Face repository ID",
     );
     await expect(huggingFaceRouter("huggingface/broken-router.json")).rejects.toThrow();
+  });
+});
+
+describe("DashScope adapters", () => {
+  function source(id: string, minModels = 1, maxModels = 20): SourceManifest {
+    const configured = manifest("dashscope").sources.find((item) => item.id === id);
+    if (configured === undefined) throw new Error(`Missing DashScope source ${id}`);
+    if (
+      configured.extractor.kind === "dashscope-catalog" ||
+      configured.extractor.kind === "dashscope-pricing" ||
+      configured.extractor.kind === "dashscope-lifecycle" ||
+      configured.extractor.kind === "dashscope-api"
+    )
+      return {
+        ...configured,
+        extractor: { ...configured.extractor, minModels, maxModels },
+      };
+    throw new Error(`Wrong DashScope source ${id}`);
+  }
+
+  function parse(sourceManifest: SourceManifest, body: string): ProviderModel[] {
+    const value = manifest("dashscope");
+    return parseSource({
+      provider: provider(value),
+      source: sourceManifest,
+      body,
+      observedAt,
+    });
+  }
+
+  it("reads exact labeled IDs without a product-prefix allowlist", async () => {
+    const models = parse(source("dashscope-text"), await fixture("dashscope/catalog.html"));
+    expect(models.map(({ model_id, types, limits }) => ({ model_id, types, limits }))).toEqual([
+      {
+        model_id: "MiniMax-M2.5",
+        types: ["generate"],
+        limits: { context_tokens: 204_000 },
+      },
+      {
+        model_id: "qwen3.7-plus",
+        types: ["generate"],
+        limits: { context_tokens: 1_000_000 },
+      },
+      {
+        model_id: "qwen3.7-plus-2026-05-26",
+        types: ["generate"],
+        limits: { context_tokens: 1_000_000 },
+      },
+    ]);
+
+    const embedding = parse(
+      source("dashscope-embedding"),
+      await fixture("dashscope/embedding.html"),
+    );
+    expect(embedding.map(({ model_id, types, limits }) => ({ model_id, types, limits }))).toEqual([
+      {
+        model_id: "qwen3-vl-rerank",
+        types: ["rerank"],
+        limits: { max_input_tokens: 8_000 },
+      },
+      {
+        model_id: "text-embedding-v4",
+        types: ["embeddings"],
+        limits: {
+          embedding_dimension_range: { min: 64, max: 2048 },
+          max_input_tokens: 8_192,
+          recommended_embedding_dimensions: [1024],
+        },
+      },
+    ]);
+  });
+
+  it("retains tier, promotion, batch, and explicit and implicit cache prices", async () => {
+    const pricingSource = source("dashscope-pricing");
+    const models = parse(
+      pricingSource,
+      JSON.stringify({
+        index: {
+          url: pricingSource.url,
+          body: await fixture("dashscope/pricing.html"),
+        },
+        documents: [
+          {
+            url: "https://www.alibabacloud.com/help/en/model-studio/context-cache",
+            body: await fixture("dashscope/cache.html"),
+          },
+        ],
+      }),
+    );
+    const model = models.find(({ model_id }) => model_id === "qwen3.7-plus");
+    expect(model?.aliases).toEqual(["qwen3.7-plus-2026-05-26"]);
+    expect(
+      model?.pricing.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ meter: "input_text", price: "0.4" }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.32",
+          conditions: expect.objectContaining({ promotion: true }),
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.2",
+          conditions: expect.objectContaining({ service_tier: "batch" }),
+        }),
+        expect.objectContaining({ meter: "cache_write_text", price: "0.5" }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.04",
+          conditions: expect.objectContaining({ operation: "explicit_cache" }),
+        }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.08",
+          conditions: expect.objectContaining({ operation: "implicit_cache" }),
+        }),
+      ]),
+    );
+  });
+
+  it("keeps every source that observes the same exact model", async () => {
+    const catalogSource = source("dashscope-text");
+    const pricingSource = source("dashscope-pricing");
+    const lifecycleSource = source("dashscope-lifecycle");
+    const apiSource = source("dashscope-deployable-api");
+    const catalog = parse(catalogSource, await fixture("dashscope/catalog.html"));
+    const pricing = parse(
+      pricingSource,
+      JSON.stringify({
+        index: {
+          url: pricingSource.url,
+          body: await fixture("dashscope/pricing.html"),
+        },
+        documents: [
+          {
+            url: "https://www.alibabacloud.com/help/en/model-studio/context-cache",
+            body: await fixture("dashscope/cache.html"),
+          },
+        ],
+      }),
+    );
+    const lifecycle = parse(lifecycleSource, await fixture("dashscope/lifecycle.html"));
+    const inventory = parse(apiSource, await fixture("dashscope/api.json"));
+    const models = applyGroups(
+      applyGroups(
+        [],
+        [
+          { source: catalogSource, models: catalog },
+          { source: pricingSource, models: pricing },
+          { source: lifecycleSource, models: lifecycle },
+        ],
+        true,
+      ),
+      [{ source: apiSource, models: inventory }],
+      false,
+    );
+    expect(models.find(({ model_id }) => model_id === "qwen3.7-plus")).toMatchObject({
+      status: "deprecated",
+      is_deprecated: true,
+      retired_at: "2026-10-10",
+      replacement_model_ids: ["qwen3.8-plus"],
+      source_refs: [
+        "dashscope-text",
+        "dashscope-pricing",
+        "dashscope-lifecycle",
+        "dashscope-deployable-api",
+      ],
+      availability: [
+        { region: "Singapore", deployment_type: "model_api" },
+        { region: "Singapore", deployment_type: "mu" },
+        { region: "Singapore", deployment_type: "ptu" },
+      ],
+    });
+  });
+
+  it("fails a truncated authenticated deployment page", async () => {
+    const body: unknown = JSON.parse(await fixture("dashscope/api.json"));
+    const parsed = z
+      .object({ output: z.object({ total: z.number() }).passthrough() })
+      .passthrough()
+      .parse(body);
+    parsed.output.total = 101;
+    expect(() => parse(source("dashscope-deployable-api"), JSON.stringify(parsed))).toThrow(
+      "pagination is incomplete",
+    );
   });
 });
 
