@@ -1,4 +1,11 @@
-import type { ModelType, Provider, ProviderModel } from "./schema.ts";
+import type {
+  ModelType,
+  Provider,
+  ProviderModel,
+  SourceAccess,
+  SourceFormat,
+  SourceType,
+} from "./schema.ts";
 
 export type Extractor =
   | { kind: "openai-catalog" }
@@ -18,6 +25,8 @@ export type Extractor =
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
   | { kind: "azure-api" }
+  | { kind: "gemini-catalog"; minModels: number; maxModels: number }
+  | { kind: "gemini-api" }
   | {
       kind: "document-identifiers";
       patterns: RegExp[];
@@ -28,6 +37,7 @@ export type Extractor =
 
 export interface LinkedDocuments {
   path: RegExp;
+  indexFormat?: "html" | "markdown";
   minDocuments: number;
   maxDocuments: number;
   concurrency: number;
@@ -65,15 +75,9 @@ export type CoverageField = "limits.context_tokens" | "pricing" | "release_date"
 export interface SourceManifest {
   id: string;
   url: string;
-  type:
-    | "official_public_api"
-    | "official_authenticated_api"
-    | "official_bulk_pricing"
-    | "official_openapi"
-    | "official_markdown"
-    | "official_html"
-    | "official_github"
-    | "runtime_api";
+  type: SourceType;
+  access: SourceAccess;
+  format: SourceFormat;
   stability: "documented" | "semi_structured" | "undocumented";
   extractor: Extractor;
   extractorVersion: string;
@@ -123,7 +127,9 @@ const documentSource = (
 ): SourceManifest => ({
   id,
   url,
-  type: url.includes("githubusercontent.com") ? "official_github" : "official_html",
+  type: url.includes("githubusercontent.com") ? "repository" : "website",
+  access: "public",
+  format: url.includes("githubusercontent.com") ? "markdown" : "html",
   stability: "semi_structured",
   extractor: {
     kind: "document-identifiers",
@@ -152,7 +158,9 @@ export const manifests = [
       {
         id: "openai-models",
         url: "https://developers.openai.com/api/docs/models/all",
-        type: "official_html",
+        type: "website",
+        access: "public",
+        format: "html",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
         extractorVersion: "openai-catalog-v1",
@@ -185,7 +193,9 @@ export const manifests = [
       {
         id: "openai-overview",
         url: "https://developers.openai.com/api/docs/models",
-        type: "official_html",
+        type: "website",
+        access: "public",
+        format: "html",
         stability: "semi_structured",
         extractor: { kind: "openai-overview" },
         extractorVersion: "openai-overview-v1",
@@ -200,7 +210,9 @@ export const manifests = [
       {
         id: "openai-deprecations",
         url: "https://developers.openai.com/api/docs/deprecations",
-        type: "official_html",
+        type: "website",
+        access: "public",
+        format: "html",
         stability: "semi_structured",
         extractor: { kind: "openai-deprecations" },
         extractorVersion: "openai-deprecations-v1",
@@ -215,7 +227,9 @@ export const manifests = [
       {
         id: "openai-api",
         url: "https://api.openai.com/v1/models",
-        type: "official_authenticated_api",
+        type: "api",
+        access: "authenticated",
+        format: "json",
         stability: "documented",
         extractor: { kind: "openai-api" },
         extractorVersion: "openai-api-v1",
@@ -248,7 +262,9 @@ export const manifests = [
       {
         id: "anthropic-models",
         url: "https://platform.claude.com/docs/en/about-claude/models/overview.md",
-        type: "official_markdown",
+        type: "website",
+        access: "public",
+        format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
         extractorVersion: "anthropic-catalog-v1",
@@ -286,7 +302,9 @@ export const manifests = [
       {
         id: "anthropic-api",
         url: "https://api.anthropic.com/v1/models?limit=1000",
-        type: "official_authenticated_api",
+        type: "api",
+        access: "authenticated",
+        format: "json",
         stability: "documented",
         extractor: { kind: "anthropic-api" },
         extractorVersion: "anthropic-api-v1",
@@ -321,7 +339,9 @@ export const manifests = [
       {
         id: "bedrock-models",
         url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
-        type: "official_markdown",
+        type: "website",
+        access: "public",
+        format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
         extractorVersion: "bedrock-catalog-v2",
@@ -348,6 +368,7 @@ export const manifests = [
         role: "catalog",
         linkedDocuments: {
           path: /^\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/,
+          indexFormat: "markdown",
           minDocuments: 100,
           maxDocuments: 200,
           concurrency: 8,
@@ -374,7 +395,9 @@ export const manifests = [
       {
         id: "bedrock-api-us-east-1",
         url: "https://bedrock.us-east-1.amazonaws.com/foundation-models",
-        type: "official_authenticated_api",
+        type: "api",
+        access: "authenticated",
+        format: "json",
         stability: "documented",
         extractor: { kind: "bedrock-api" },
         extractorVersion: "bedrock-api-v1",
@@ -423,7 +446,9 @@ export const manifests = [
       {
         id: "databricks-models",
         url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/supported-models",
-        type: "official_html",
+        type: "website",
+        access: "public",
+        format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
         extractorVersion: "databricks-catalog-v1",
@@ -450,6 +475,7 @@ export const manifests = [
         role: "catalog",
         linkedDocuments: {
           path: /^$/,
+          indexFormat: "html",
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
@@ -495,7 +521,9 @@ export const manifests = [
       {
         id: "databricks-api",
         url: "https://workspace.cloud.databricks.com/api/2.0/serving-endpoints",
-        type: "official_authenticated_api",
+        type: "api",
+        access: "authenticated",
+        format: "json",
         stability: "documented",
         extractor: { kind: "databricks-api" },
         extractorVersion: "databricks-api-v1",
@@ -531,7 +559,9 @@ export const manifests = [
       {
         id: "vercel-models",
         url: "https://ai-gateway.vercel.sh/v1/models",
-        type: "official_public_api",
+        type: "api",
+        access: "public",
+        format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
         extractorVersion: "vercel-catalog-v2",
@@ -576,7 +606,9 @@ export const manifests = [
       {
         id: "azure-models",
         url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/models-azure-direct-openai.md",
-        type: "official_github",
+        type: "repository",
+        access: "public",
+        format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
         extractorVersion: "azure-catalog-v1",
@@ -640,7 +672,9 @@ export const manifests = [
       {
         id: "azure-api",
         url: "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/location/models?api-version=2025-06-01",
-        type: "official_authenticated_api",
+        type: "api",
+        access: "authenticated",
+        format: "json",
         stability: "documented",
         extractor: { kind: "azure-api" },
         extractorVersion: "azure-api-v1",
@@ -700,10 +734,98 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      documentSource("gemini-models", "https://ai.google.dev/gemini-api/docs/models", [
-        /^(?:models\/)?gemini-[a-z0-9._-]+$/i,
-      ]),
+      {
+        id: "gemini-models",
+        url: "https://ai.google.dev/gemini-api/docs/models",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
+        extractorVersion: "gemini-catalog-v1",
+        fields: [
+          "model_id",
+          "name",
+          "description",
+          "aliases",
+          "types",
+          "modalities",
+          "capabilities",
+          "limits",
+          "release_date",
+          "updated_date",
+          "pricing",
+          "status",
+          "is_deprecated",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["ai.google.dev"],
+        maxResponseBytes: mebibytes(32),
+        scope: "global",
+        exhaustive: true,
+        role: "catalog",
+        linkedDocuments: {
+          path: /^\/gemini-api\/docs\/models\/[a-z0-9.-]+$/,
+          minDocuments: 30,
+          maxDocuments: 60,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(1),
+          documents: [
+            {
+              id: "pricing",
+              url: "https://ai.google.dev/gemini-api/docs/pricing",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "deprecations",
+              url: "https://ai.google.dev/gemini-api/docs/deprecations",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "changelog",
+              url: "https://ai.google.dev/gemini-api/docs/changelog",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "gemma-api",
+              url: "https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "gemma-card",
+              url: "https://ai.google.dev/gemma/docs/core/model_card_4",
+              maxResponseBytes: mebibytes(2),
+            },
+          ],
+        },
+      },
+      {
+        id: "gemini-api",
+        url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "gemini-api" },
+        extractorVersion: "gemini-api-v1",
+        fields: ["name", "description", "aliases", "types", "capabilities", "limits"],
+        allowedHosts: ["generativelanguage.googleapis.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "header", env: "GEMINI_API_KEY", header: "x-goog-api-key" },
+        snapshotPolicy: "none",
+      },
     ],
+    supersededModelIds: ["gemini-2.5-flash-preview-09-2025", "gemini-flash-latest"],
+    warnOnMissing: {
+      sourceId: "gemini-models",
+      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      statuses: ["active", "preview", "deprecated"],
+    },
   },
   {
     provider: {
@@ -810,7 +932,9 @@ export const manifests = [
       {
         id: "huggingface-models",
         url: "https://router.huggingface.co/v1/models",
-        type: "official_public_api",
+        type: "api",
+        access: "public",
+        format: "json",
         stability: "documented",
         extractor: { kind: "huggingface" },
         extractorVersion: "huggingface-v1",
@@ -852,7 +976,9 @@ export const manifests = [
       {
         id: "cerebras-models",
         url: "https://api.cerebras.ai/public/v1/models",
-        type: "official_public_api",
+        type: "api",
+        access: "public",
+        format: "json",
         stability: "documented",
         extractor: { kind: "cerebras" },
         extractorVersion: "cerebras-v1",
@@ -875,7 +1001,9 @@ export const manifests = [
       {
         id: "ollama-cloud-models",
         url: "https://ollama.com/api/tags",
-        type: "runtime_api",
+        type: "runtime",
+        access: "configured",
+        format: "json",
         stability: "undocumented",
         extractor: { kind: "ollama" },
         extractorVersion: "ollama-v1",

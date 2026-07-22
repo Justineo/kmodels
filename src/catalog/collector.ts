@@ -429,6 +429,8 @@ async function collectProvider(
         provider_id: manifest.provider.id,
         url: source.url,
         source_type: source.type,
+        access: source.access,
+        format: source.format,
         stability: source.stability,
         scope: source.scope ?? "global",
         exhaustive: source.exhaustive ?? false,

@@ -155,6 +155,37 @@ async function azureCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
+async function geminiCatalog(): Promise<ProviderModel[]> {
+  const value = manifest("gemini");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "gemini-catalog")
+    throw new Error("Missing Gemini source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "gemini-catalog", minModels: 5, maxModels: 10 },
+  };
+  const documents = [
+    ["https://ai.google.dev/gemini-api/docs/models/gemini-test-preview", "model.html"],
+    ["https://ai.google.dev/gemini-api/docs/models/lyria-test", "lyria.html"],
+    ["https://ai.google.dev/gemini-api/docs/models/embedding-test", "embedding.html"],
+    ["https://ai.google.dev/gemini-api/docs/pricing", "pricing.html"],
+    ["https://ai.google.dev/gemini-api/docs/deprecations", "deprecations.html"],
+    ["https://ai.google.dev/gemini-api/docs/changelog", "changelog.html"],
+    ["https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api", "gemma-api.html"],
+    ["https://ai.google.dev/gemma/docs/core/model_card_4", "gemma-card.html"],
+  ];
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("gemini/index.html") },
+    documents: await Promise.all(
+      documents.map(async ([url, path]) => ({
+        url,
+        body: await fixture(`gemini/${path}`),
+      })),
+    ),
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 describe("decimal normalization", () => {
   it("scales source token prices without floating-point arithmetic", () => {
     expect(scaleDecimal("0.00000012", 6)).toBe("0.12");
@@ -197,6 +228,26 @@ describe("model task taxonomy", () => {
       ["image"],
       ["generate"],
     ]);
+  });
+});
+
+describe("source taxonomy", () => {
+  it("keeps origin, access, and representation orthogonal", () => {
+    expect(
+      manifests.flatMap((item) =>
+        item.sources.map((source) => [source.type, source.access, source.format]),
+      ),
+    ).toContainEqual(["api", "authenticated", "json"]);
+    expect(manifest("azure").sources[0]).toMatchObject({
+      type: "repository",
+      access: "public",
+      format: "markdown",
+    });
+    expect(manifest("amazon-bedrock").sources[0]).toMatchObject({
+      type: "website",
+      access: "public",
+      format: "mixed",
+    });
   });
 });
 
@@ -453,6 +504,141 @@ describe("Azure adapters", () => {
     });
     await expect(parsed("azure", "azure/broken-api.json", "azure-api")).rejects.toThrow(
       "schema drift",
+    );
+  });
+});
+
+describe("Gemini adapters", () => {
+  it("joins labeled model pages, lifecycle, changelog, and pricing", async () => {
+    const models = await geminiCatalog();
+    const model = models.find((item) => item.model_id === "gemini-test-preview");
+    expect({
+      name: model?.name,
+      aliases: model?.aliases,
+      types: model?.types,
+      modalities: model?.modalities,
+      capabilities: model?.capabilities,
+      limits: model?.limits,
+      release: model?.release_date,
+      updated: model?.updated_date,
+      status: model?.status,
+      input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
+      cached: model?.pricing.find((rate) => rate.meter === "cache_read_text")?.price,
+      storage: model?.pricing.find((rate) => rate.meter === "cache_storage")?.unit,
+    }).toEqual({
+      name: "Gemini Test",
+      aliases: ["gemini-test-latest"],
+      types: ["generate", "agentic"],
+      modalities: { input: ["text", "image", "pdf"], output: ["text"] },
+      capabilities: {
+        reasoning: true,
+        tool_call: true,
+        structured_output: true,
+        streaming: "unknown",
+        batch: true,
+        prompt_cache: true,
+        fine_tuning: "unknown",
+        citations: "unknown",
+        code_execution: "unknown",
+        context_management: "unknown",
+        effort_control: "unknown",
+        computer_use: true,
+      },
+      limits: {
+        context_tokens: 1_048_576,
+        max_input_tokens: 1_048_576,
+        max_output_tokens: 65_536,
+      },
+      release: "2026-07-01",
+      updated: "2026-07",
+      status: "preview",
+      input: "1.50",
+      cached: "0.15",
+      storage: "million_tokens_per_hour",
+    });
+  });
+
+  it("keeps music generation distinct and embedding dimensions structured", async () => {
+    const models = await geminiCatalog();
+    const music = models.find((item) => item.model_id === "lyria-test");
+    const embedding = models.find((item) => item.model_id === "embedding-test");
+    const gemma = models.find((item) => item.model_id === "gemma-4-31b-it");
+    expect({
+      music: {
+        types: music?.types,
+        modalities: music?.modalities,
+        rate: music?.pricing[0],
+      },
+      embedding: {
+        types: embedding?.types,
+        limits: embedding?.limits,
+        units: embedding?.pricing.map((rate) => rate.unit),
+      },
+      gemma: {
+        context: gemma?.limits.context_tokens,
+        pricing: gemma?.pricing_status,
+        rates: gemma?.pricing.length,
+        prices: [...new Set(gemma?.pricing.map((rate) => rate.price))],
+      },
+    }).toEqual({
+      music: {
+        types: ["audio_generation"],
+        modalities: { input: ["text", "image"], output: ["text", "audio"] },
+        rate: expect.objectContaining({
+          meter: "output_audio",
+          price: "0.50",
+          unit: "request",
+          conditions: { operation: "music_generation" },
+        }),
+      },
+      embedding: {
+        types: ["embeddings"],
+        limits: {
+          context_tokens: 8192,
+          max_input_tokens: 8192,
+          embedding_dimension_range: { min: 128, max: 3072 },
+          recommended_embedding_dimensions: [768, 1536],
+        },
+        units: ["image", "million_tokens", "million_tokens"],
+      },
+      gemma: {
+        context: 256_000,
+        pricing: "published",
+        rates: 7,
+        prices: ["0"],
+      },
+    });
+  });
+
+  it("parses the authenticated inventory without making it a global catalog", async () => {
+    const model = (await parsed("gemini", "gemini/api.json", "gemini-api"))[0];
+    expect({
+      id: model?.model_id,
+      name: model?.name,
+      aliases: model?.aliases,
+      types: model?.types,
+      reasoning: model?.capabilities.reasoning,
+      streaming: model?.capabilities.streaming,
+      batch: model?.capabilities.batch,
+      limits: model?.limits,
+      scope: model?.scope,
+    }).toEqual({
+      id: "gemini-test-preview",
+      name: "Gemini Test API",
+      aliases: ["gemini-test"],
+      types: ["generate"],
+      reasoning: true,
+      streaming: true,
+      batch: true,
+      limits: {
+        context_tokens: 1_048_576,
+        max_input_tokens: 1_048_576,
+        max_output_tokens: 65_536,
+      },
+      scope: "runtime_observation",
+    });
+    await expect(parsed("gemini", "gemini/truncated-api.json", "gemini-api")).rejects.toThrow(
+      "truncated",
     );
   });
 });
@@ -902,7 +1088,9 @@ describe("runtime adapters", () => {
     const source: SourceManifest = {
       id: "vllm-fixture",
       url: "https://runtime.example.test/v1/models",
-      type: "runtime_api",
+      type: "runtime",
+      access: "configured",
+      format: "json",
       stability: "documented",
       extractor: { kind: "vllm" },
       extractorVersion: "vllm-v1",

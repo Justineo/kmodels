@@ -19,6 +19,7 @@ export function classifyModelTypes(input: {
 }): ModelType[] {
   const identity = `${input.modelId} ${input.name}`.toLowerCase();
   const types: ModelType[] = [];
+  if (/(?:lyria|music-generation|audio-generation)/.test(identity)) types.push("audio_generation");
   const embedding =
     /(?:^|[./:_ -])(?:embed(?:ding|dings)?|text-embedding|multimodal-embedding|bge|gte)(?:$|[./:_ -])/.test(
       identity,
@@ -88,18 +89,16 @@ export function classifyModelTypes(input: {
 }
 
 export function normalizeModelTypes(model: ProviderModel): ProviderModel {
-  const fallback = model.types.find((type) => type !== "other") ?? "generate";
+  const observed = model.types.filter((type) => type !== "other");
+  if (observed.length > 0) return { ...model, types: unique(observed) };
   return {
     ...model,
-    types: unique([
-      ...model.types,
-      ...classifyModelTypes({
-        modelId: model.model_id,
-        name: model.name,
-        rawType: model.raw_type,
-        modalities: model.modalities,
-        fallback,
-      }),
-    ]),
+    types: classifyModelTypes({
+      modelId: model.model_id,
+      name: model.name,
+      rawType: model.raw_type,
+      modalities: model.modalities,
+      fallback: "other",
+    }),
   };
 }
