@@ -544,16 +544,17 @@ async function attemptFetch(
   source: SourceManifest,
   previous: SourceState | undefined,
 ): Promise<FetchPayload> {
-  const response = await request(source, previous);
+  const reusable = source.snapshotPolicy === "none" ? undefined : previous;
+  const response = await request(source, reusable);
   if (response.status === 304) {
-    if (previous?.snapshotUri === undefined)
+    if (reusable?.snapshotUri === undefined)
       throw new Error("Received 304 without a previous snapshot");
     return {
-      body: await readSnapshot(`${rootDirectory}${previous.snapshotUri}`),
-      contentHash: previous.contentHash,
-      snapshotUri: previous.snapshotUri,
-      etag: response.headers.get("etag") ?? previous.etag,
-      lastModified: response.headers.get("last-modified") ?? previous.lastModified,
+      body: await readSnapshot(`${rootDirectory}${reusable.snapshotUri}`),
+      contentHash: reusable.contentHash,
+      snapshotUri: reusable.snapshotUri,
+      etag: response.headers.get("etag") ?? reusable.etag,
+      lastModified: response.headers.get("last-modified") ?? reusable.lastModified,
       notModified: true,
     };
   }

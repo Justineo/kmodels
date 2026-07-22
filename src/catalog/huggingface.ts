@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { modelIdSchema } from "./identity.ts";
+import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { publishedRate } from "./pricing.ts";
@@ -138,6 +138,7 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
   for (const [task, entries] of Object.entries(groups)) {
     const observed = facts(task);
     for (const [rawId, entry] of Object.entries(entries)) {
+      if (isCredentialLikeIdentifier(rawId)) continue;
       if (rawId.startsWith("tag-filter=")) {
         if (entry.tags === undefined || entry.adapterType === undefined)
           throw new Error("Hugging Face tag filter omitted its adapter contract");
