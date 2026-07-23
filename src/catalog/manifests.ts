@@ -1819,7 +1819,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v1",
+        extractorVersion: "dashscope-pricing-v2",
         fields: [
           "model_id",
           "aliases",
