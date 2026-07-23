@@ -19,6 +19,9 @@ interface Input {
 }
 
 const chatPath = "/v1/chat/completions";
+const batchPath = "/v1/batches";
+const batchApiDocument = "/docs/api/batch-create";
+const cacheDocument = "/docs/guide/use-context-caching-feature-of-kimi-api";
 const refSchema = z.string().regex(/^#\/components\/schemas\/[A-Za-z0-9]+$/);
 const openApiSchema = z.object({
   paths: z.object({
@@ -460,6 +463,7 @@ function pricingModel(input: Input, body: string, row: string[], batch: boolean)
     }),
     types: ["generate"],
     modalities: { input: ["text", ...image, ...video], output: ["text"] },
+    api_endpoints: batch ? [{ name: "Batch", path: batchPath }] : undefined,
     capabilities: {
       ...unknownCapabilities(),
       reasoning: /思考|推理/.test(body) ? true : "unknown",
@@ -504,6 +508,7 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
       input: [...new Set([...current.modalities.input, ...incoming.modalities.input])],
       output: [...new Set([...current.modalities.output, ...incoming.modalities.output])],
     },
+    api_endpoints: current.api_endpoints ?? incoming.api_endpoints,
     capabilities: {
       ...current.capabilities,
       reasoning: mergeTruth(current.capabilities.reasoning, incoming.capabilities.reasoning),
@@ -521,15 +526,20 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
 export function parseKimiPricing(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const documents = [bundle.index, ...bundle.documents];
-  const cache = documents.find(
-    ({ url }) => new URL(url).pathname === "/docs/guide/use-context-caching-feature-of-kimi-api",
-  );
+  const cache = documents.find(({ url }) => new URL(url).pathname === cacheDocument);
   if (cache === undefined || !/对所有模型请求自动启用/.test(cache.body))
     throw new Error("Kimi automatic cache documentation changed");
+  const batchApi = documents.find(({ url }) => new URL(url).pathname === batchApiDocument);
+  if (
+    batchApi === undefined ||
+    !/^`{3,4}yaml POST \/v1\/batches$/m.test(batchApi.body) ||
+    !batchApi.body.includes("目前仅支持 /v1/chat/completions")
+  )
+    throw new Error("Kimi Batch API reference changed");
   const models = new Map<string, ProviderModel>();
   for (const document of documents) {
     const path = new URL(document.url).pathname;
-    if (path === "/docs/guide/use-context-caching-feature-of-kimi-api") continue;
+    if (path === cacheDocument || path === batchApiDocument) continue;
     if (!path.startsWith("/docs/pricing/"))
       throw new Error(`Unexpected Kimi pricing page: ${path}`);
     const rows = priceRowsSchema.parse(jsonArrayAfter(document.body, "rows={"));

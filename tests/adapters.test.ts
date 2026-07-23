@@ -3641,7 +3641,7 @@ describe("Kimi adapters", () => {
     });
   });
 
-  async function pricing(): Promise<ProviderModel[]> {
+  async function pricing(batchApi?: string): Promise<ProviderModel[]> {
     const configured = source("kimi-pricing");
     const documents = [
       ["https://platform.kimi.com/docs/pricing/chat-k27-code", "pricing-k27.md"],
@@ -3649,6 +3649,7 @@ describe("Kimi adapters", () => {
       ["https://platform.kimi.com/docs/pricing/chat-k25", "pricing-k25.md"],
       ["https://platform.kimi.com/docs/pricing/chat-v1", "pricing-v1.md"],
       ["https://platform.kimi.com/docs/pricing/batch", "pricing-batch.md"],
+      ["https://platform.kimi.com/docs/api/batch-create", "batch-api.md"],
       ["https://platform.kimi.com/docs/guide/use-context-caching-feature-of-kimi-api", "cache.md"],
     ];
     return parse(
@@ -3658,7 +3659,10 @@ describe("Kimi adapters", () => {
         documents: await Promise.all(
           documents.map(async ([url, path]) => ({
             url,
-            body: await fixture(`kimi/${path}`),
+            body:
+              path === "batch-api.md" && batchApi !== undefined
+                ? batchApi
+                : await fixture(`kimi/${path}`),
           })),
         ),
       }),
@@ -3737,6 +3741,7 @@ describe("Kimi adapters", () => {
     });
     const k26 = models.find(({ model_id }) => model_id === "kimi-k2.6");
     expect(k26?.capabilities).toMatchObject({ reasoning: true, batch: true, prompt_cache: true });
+    expect(k26?.api_endpoints).toEqual([{ name: "Batch", path: "/v1/batches" }]);
     expect(k26?.pricing).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -3752,6 +3757,16 @@ describe("Kimi adapters", () => {
           conditions: { service_tier: "batch" },
         }),
       ]),
+    );
+    expect(
+      models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.api_endpoints,
+    ).toBeUndefined();
+  });
+
+  it("rejects changed Batch API route evidence", async () => {
+    const body = await fixture("kimi/batch-api.md");
+    await expect(pricing(body.replace("POST /v1/batches", "POST /v1/jobs"))).rejects.toThrow(
+      "Batch API reference changed",
     );
   });
 

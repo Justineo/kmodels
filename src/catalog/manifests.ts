@@ -2303,8 +2303,17 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-pricing", minModels: 8, maxModels: 20 },
-        extractorVersion: "kimi-pricing-v1",
-        fields: ["model_id", "name", "types", "modalities", "capabilities", "limits", "pricing"],
+        extractorVersion: "kimi-pricing-v2",
+        fields: [
+          "model_id",
+          "name",
+          "types",
+          "modalities",
+          "api_endpoints",
+          "capabilities",
+          "limits",
+          "pricing",
+        ],
         allowedHosts: ["platform.kimi.com"],
         maxResponseBytes: mebibytes(8),
         scope: "global",
@@ -2341,6 +2350,11 @@ export const manifests = [
             {
               id: "batch",
               url: "https://platform.kimi.com/docs/pricing/batch",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "batch-api",
+              url: "https://platform.kimi.com/docs/api/batch-create",
               maxResponseBytes: mebibytes(1),
             },
             {
