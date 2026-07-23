@@ -319,17 +319,16 @@ function largestTokenCount(block: string): number {
   return Math.max(...counts);
 }
 
-function price(value: string): string {
-  const match = value.match(/^\$(0|[1-9]\d*)(?:\.(\d+))?(?:\s*\/.*)?$/);
-  if (match?.[1] === undefined) throw new Error(`Invalid Cerebras price: ${value}`);
-  return match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
-}
-
 function cardPrice(body: string, field: "inputPrice" | "outputPrice"): string {
   const values = stringField(objectBlock(body, "pricing"), field);
-  if (values.length !== 1 || values[0] === undefined)
-    throw new Error(`Cerebras model card omitted ${field}`);
-  return price(values[0]);
+  const value = values.length === 1 ? values[0] : undefined;
+  const match = value?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)(?: \/ M tokens)?$/);
+  if (
+    match?.[1] === undefined ||
+    (value?.endsWith(" / M tokens") !== true && !/>per million tokens<\/span>/.test(body))
+  )
+    throw new Error(`Invalid Cerebras model card ${field}`);
+  return match[1];
 }
 
 function cardModalities(body: string, field: "inputFormats" | "outputFormats"): Modality[] {
@@ -468,7 +467,9 @@ function validateApiReferences(bundle: z.infer<typeof linkedBundleSchema>): void
   const completions = document(bundle, "/api-reference/completions.md");
   if (
     !/^# Completions$/m.test(completions) ||
-    !completions.includes("https://api.cerebras.ai/v1/completions")
+    !/^\s*curl -X POST https:\/\/api\.cerebras\.ai\/v1\/completions(?:\s+\\)?\s*$/m.test(
+      completions,
+    )
   )
     throw new Error("Cerebras Completions API reference drift");
 }

@@ -2,6 +2,8 @@
 
 > A multimodal reasoning model.
 
+<span>per million tokens</span>
+
 <ModelInfo
 modelId="gemma-4-31b"
 contextLength={{
@@ -13,8 +15,8 @@ maxOutput={{
     paidTiers: "40k tokens"
   }}
 pricing={{
-    inputPrice: "$0.99 / M tokens",
-    outputPrice: "$1.49 / M tokens"
+    inputPrice: "$0.99",
+    outputPrice: "$1.49"
   }}
 endpoints={[
 "Chat Completions",

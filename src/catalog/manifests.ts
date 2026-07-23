@@ -1916,7 +1916,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-catalog-v2",
+        extractorVersion: "cerebras-catalog-v3",
         fields: [
           "model_id",
           "name",
