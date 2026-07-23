@@ -1,26 +1,27 @@
 # xAI refinement
 
-Status: stale snapshot reviewed against Kong AI Gateway 2.0; collector repair required
+Status: implemented and revalidated against live official sources on 2026-07-23
 
 ## Catalog assessment
 
-The retained snapshot has 20 rows: nine active, two preview, one deprecated, and eight retired. It covers generation, agentic, image, video, and realtime models, with 12 rows carrying published prices and eight historical rows remaining unknown.
+The live replay has 20 rows: nine active, two preview, one deprecated, and eight retired. It covers generation, agentic, image, video, and realtime models, with 12 rows carrying published prices and eight historical rows remaining unknown.
 
-The current refresh is stale because xAI removed token-price fields from audio-model entries and the strict structured adapter rejected the changed payload. Failure-closed retention worked as designed, but no current compatibility claim should be generated until the schema change is reviewed and a fresh atomic refresh succeeds.
+The failed refresh was caused by two reviewed source changes: Realtime audio pricing moved from a token field to `realtimeAudioSecondPrice`, and the Voice Agent documentation became Speech to Speech. The adapter now validates only the operation-specific structured fields it consumes and cross-checks TTS characters, STT batch/streaming seconds, Realtime audio seconds, and Realtime text messages against the public pricing table. A changed amount still rejects the provider atomically.
 
-The overall count is plausible for a lifecycle catalog. The public structured model payload plus exact official pricing/lifecycle text is the right source design; the problem is a narrow schema assumption for operation-specific pricing, not a reason to weaken validation globally.
+Seven rows publish nine exact API endpoint facts. Each fact requires an allowlisted capability section to retain its exact example ID or alias and request URL, and that identity must resolve to exactly one current structured row. Grok 4.5 has Chat Completions and Responses; the Multi-agent model has Responses; the quality image model has generations and edits; both directly documented video models have generations; and both Speech to Speech rows have Realtime. No endpoint is inherited from a broad type.
 
 ## Kong AI Gateway 2.0
 
 The Kong source of truth is `app/ai-gateway/ai-providers/xai.md` and the xAI entry in `app/_data/ai-gateway/v2/providers.yaml`.
 
-Kong supports non-streaming chat generation, image generation, and agentic Responses. It does not support the xAI video or realtime voice operations recorded by Kmodels.
+Kong supports non-streaming Chat Completions, Function Calling, Responses, and Image Generations. The exact current intersection is Grok 4.5 for Chat Completions and Responses, Grok 4.20 Multi-agent for Responses, and Grok Imagine Image Quality for Image Generations. Function Calling additionally requires the model's positive tool-call capability.
 
-The Kong examples have drifted: `grok-3` is retired, and `grok-2-image` is absent from the retained catalog. Current image rows use `grok-imagine-*` IDs, but no alias should be invented between those names. Because the provider snapshot is stale, this mismatch is a warning rather than a final lifecycle judgment.
+Kong does not list Image Edits, Video Generations, or Realtime for xAI, so those valid provider facts stay outside the Kong matrix. Its examples have drifted: `grok-3` is retired, while `grok-4` and `grok-2-image` are not current IDs or aliases. Kmodels does not invent replacements for those names.
 
 ## Refinement decision
 
-1. Repair the audio schema using operation-specific optional pricing fields while preserving strict validation of the fields that are present.
-2. Require a fresh provider refresh before publishing a Kong compatibility projection.
-3. Limit the Kong intersection to generate, image, and agentic endpoint evidence.
-4. Keep video and realtime facts in Kmodels but outside Kong's xAI matrix.
+1. Keep the public structured catalog plus fixed `llms.txt` companion as one atomic source; the fresh replay confirms that retained-source design.
+2. Model each audio operation with only its current required pricing fields and validate every consumed amount against the public pricing table; do not make changed fields broadly optional.
+3. Publish API paths only from exact model/example bindings that resolve once. Missing evidence means unknown support, not a negative assertion or family-wide inheritance.
+4. Derive Kong candidates only from active or preview rows whose exact route intersects Kong's documented surface.
+5. Keep Image Edits, Video Generations, and Realtime in Kmodels but outside Kong's current xAI matrix; keep optional authenticated inventories scoped to account validation.
