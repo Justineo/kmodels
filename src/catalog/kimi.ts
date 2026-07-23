@@ -18,10 +18,11 @@ interface Input {
   observedAt: string;
 }
 
+const chatPath = "/v1/chat/completions";
 const refSchema = z.string().regex(/^#\/components\/schemas\/[A-Za-z0-9]+$/);
 const openApiSchema = z.object({
   paths: z.object({
-    "/v1/chat/completions": z.object({
+    [chatPath]: z.object({
       post: z.object({
         requestBody: z.object({
           content: z.object({
@@ -122,8 +123,7 @@ function requestFacts(
 export function parseKimiOpenApi(input: Input): ProviderModel[] {
   const spec = openApiSchema.parse(JSON.parse(input.body));
   const mapping =
-    spec.paths["/v1/chat/completions"].post.requestBody.content["application/json"].schema
-      .discriminator.mapping;
+    spec.paths[chatPath].post.requestBody.content["application/json"].schema.discriminator.mapping;
   const entries = Object.entries(mapping);
   const facts = new Map<string, ReturnType<typeof requestFacts>>();
   for (const ref of new Set(Object.values(mapping)))
@@ -149,6 +149,7 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
       }),
       types: ["generate"],
       modalities: { input: ["text"], output: ["text"] },
+      api_endpoints: [{ name: "Chat Completions", path: chatPath }],
       capabilities: {
         ...unknownCapabilities(),
         reasoning: observed.reasoning ? true : "unknown",
