@@ -71,6 +71,8 @@ const pricingSchema = z
   .object({
     input: decimal.optional(),
     output: decimal.optional(),
+    audio_input_token_cost: decimal.optional(),
+    audio_output_token_cost: decimal.optional(),
     input_cache_read: decimal.optional(),
     input_cache_write: decimal.optional(),
     input_tiers: z.array(tierSchema).optional(),
@@ -91,6 +93,8 @@ const pricingSchema = z
       .optional(),
     speech_input_character_cost: decimal.optional(),
     transcription_duration_cost_per_second: decimal.optional(),
+    realtime_client_message_cost: decimal.optional(),
+    realtime_session_duration_cost_per_second: decimal.optional(),
     web_search: decimal.optional(),
     maps_search: decimal.optional(),
   })
@@ -263,6 +267,10 @@ function pricing(item: Item, sourceId: string): PriceRate[] {
   const outputMeter: PriceRate["meter"] = item.type === "image" ? "output_image" : "output_text";
   if (!specializedInput) addTokenRates(rates, inputMeter, sourceId, value.input, value.input_tiers);
   addTokenRates(rates, outputMeter, sourceId, value.output, value.output_tiers);
+  if (value.audio_input_token_cost !== undefined)
+    rates.push(tokenRate("input_audio", value.audio_input_token_cost, sourceId));
+  if (value.audio_output_token_cost !== undefined)
+    rates.push(tokenRate("output_audio", value.audio_output_token_cost, sourceId));
   addTokenRates(
     rates,
     "cache_read_text",
@@ -347,6 +355,26 @@ function pricing(item: Item, sourceId: string): PriceRate[] {
       publishedRate(
         "input_audio",
         value.transcription_duration_cost_per_second,
+        "second",
+        sourceId,
+        "second",
+      ),
+    );
+  if (value.realtime_client_message_cost !== undefined)
+    rates.push(
+      publishedRate(
+        "realtime_client_message",
+        value.realtime_client_message_cost,
+        "request",
+        sourceId,
+        "message",
+      ),
+    );
+  if (value.realtime_session_duration_cost_per_second !== undefined)
+    rates.push(
+      publishedRate(
+        "realtime_session_duration",
+        value.realtime_session_duration_cost_per_second,
         "second",
         sourceId,
         "second",

@@ -126,6 +126,11 @@ function showDetails(model: ProviderModel): void {
   const entries = [
     ["Version", model.version ?? "default / unspecified"],
     ["Types", model.types.map(typeLabel).join(", ")],
+    [
+      "API endpoints",
+      model.api_endpoints?.map(({ name, path }) => `${name} (${path})`).join(", ") ??
+        "not published",
+    ],
     ["Released", model.release_date ?? "unknown"],
     ["Updated", model.updated_date ?? "unknown"],
     ["Input", model.modalities.input.join(", ") || "unknown"],
@@ -214,7 +219,7 @@ function render(): void {
   const visible = models.filter(
     (model) =>
       (query === "" ||
-        `${model.name} ${model.model_id} ${model.version ?? ""} ${model.provider_id} ${model.types.join(" ")}`
+        `${model.name} ${model.model_id} ${model.version ?? ""} ${model.provider_id} ${model.types.join(" ")} ${(model.api_endpoints ?? []).flatMap(({ name, path }) => [name, path]).join(" ")}`
           .toLocaleLowerCase()
           .includes(query)) &&
       (provider === "" || model.provider_id === provider) &&
