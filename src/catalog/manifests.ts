@@ -1465,12 +1465,13 @@ export const manifests = [
         format: "mixed",
         stability: "documented",
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
-        extractorVersion: "llama-catalog-v1",
+        extractorVersion: "llama-catalog-v2",
         fields: [
           "model_id",
           "description",
           "aliases",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -1527,6 +1528,21 @@ export const manifests = [
             {
               id: "llama-api-tool-example",
               url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/tool_call.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-structured-example",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/structured.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-client",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/_client.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-chat-completions",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/resources/chat/completions.py",
               maxResponseBytes: mebibytes(1),
             },
           ],

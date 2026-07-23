@@ -21,6 +21,45 @@ interface RegisteredModel {
   quantization: string;
 }
 
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+
+interface HostedEvidence {
+  aliases: string[];
+  capabilities: Set<HostedCapability>;
+}
+
+type HostedCapability = "streaming" | "structured_output" | "tool_call";
+
+interface HostedExamples {
+  chat: string;
+  structured: string;
+  tool: string;
+}
+
+const hostedSpecs: {
+  key: keyof HostedExamples;
+  valid: (body: string) => boolean;
+  capabilities: HostedCapability[];
+}[] = [
+  {
+    key: "chat",
+    valid: (body) => /\bstream\s*=\s*True\b/.test(body),
+    capabilities: ["streaming"],
+  },
+  {
+    key: "structured",
+    valid: (body) => /\bresponse_format\s*=/.test(body) && /["']json_schema["']/.test(body),
+    capabilities: ["structured_output"],
+  },
+  {
+    key: "tool",
+    valid: (body) => /\btools\s*=/.test(body),
+    capabilities: ["tool_call"],
+  },
+];
+
+const llama3Key = /^llama3_(?:8b|70b)(?:_|$)/;
+
 const llamaApiItemSchema = z.object({
   id: modelIdSchema,
   created: z.number().int().nonnegative(),
@@ -213,7 +252,7 @@ function family(key: string): string | undefined {
   if (key.startsWith("llama3_2_") && key.includes("vision")) return "Llama 3.2-Vision";
   if (key.startsWith("llama3_2_")) return "Llama 3.2";
   if (key.startsWith("llama3_3_")) return "Llama 3.3";
-  if (key.startsWith("llama3_")) return "Llama 3";
+  if (llama3Key.test(key)) return "Llama 3";
   if (key.startsWith("llama4_")) return "Llama 4";
   return undefined;
 }
@@ -222,7 +261,7 @@ function contextTokens(model: RegisteredModel): number {
   const key = model.key;
   if (key === "prompt_guard") return 512;
   if (key.startsWith("llama2_") || key === "llama_guard_2_8b") return 4_096;
-  if (key.startsWith("llama3_") && !/^llama3_[123]_/.test(key)) return 8_192;
+  if (llama3Key.test(key)) return 8_192;
   if (key.startsWith("llama3_1_") || key.startsWith("llama3_3_")) return 131_072;
   if (key.startsWith("llama3_2_")) return model.quantization === "int4" ? 8_192 : 131_072;
   if (key === "llama4_scout_17b_16e" || key === "llama4_maverick_17b_128e") return 262_144;
@@ -239,6 +278,72 @@ function apiModelIds(body: string): string[] {
       modelIdSchema.parse(pythonString(required(match[1], "API model ID"))),
     ),
   );
+}
+
+function exampleModelId(body: string, label: string): string {
+  const ids = apiModelIds(body);
+  const id = ids[0];
+  if (ids.length !== 1 || id === undefined)
+    throw new Error(`Llama ${label} example did not name exactly one model`);
+  return id;
+}
+
+function resolveHostedModel(models: RegisteredModel[], id: string, label: string): RegisteredModel {
+  const matches = models.filter((model) =>
+    [model.id, model.huggingFaceRepo, model.huggingFaceRepo.split("/").at(-1)].includes(id),
+  );
+  const model = matches[0];
+  if (matches.length !== 1 || model === undefined)
+    throw new Error(`Llama ${label} example model ${id} did not resolve uniquely`);
+  return model;
+}
+
+function hostedChatEndpoint(client: string, completions: string): ApiEndpoint {
+  const baseUrls = unique(
+    [...client.matchAll(/\bbase_url\s*=\s*f?("(?:[^"\\]|\\.)*")/g)].map((match) =>
+      pythonString(required(match[1], "API base URL")),
+    ),
+  );
+  if (baseUrls.length !== 1) throw new Error("Llama API client did not publish one base URL");
+  const paths = unique(
+    [...completions.matchAll(/\bself\._post\(\s*("(?:[^"\\]|\\.)*")/g)].map((match) =>
+      pythonString(required(match[1], "API chat path")),
+    ),
+  );
+  if (paths.length !== 1) throw new Error("Llama API client did not publish one chat path");
+  const resource = required(paths[0], "API chat path");
+  if (!/^\/(?!\/)[^?#\s]+$/.test(resource)) throw new Error("Llama API chat path was not relative");
+  const base = new URL(required(baseUrls[0], "API base URL"));
+  if (
+    base.protocol !== "https:" ||
+    base.username !== "" ||
+    base.password !== "" ||
+    base.search !== "" ||
+    base.hash !== ""
+  )
+    throw new Error("Llama API base URL was invalid");
+  const path = `${base.pathname.replace(/\/+$/, "")}${resource}`;
+  if (!/^\/(?!\/)[^?#\s]+$/.test(path)) throw new Error("Llama API chat path was invalid");
+  return { name: "Chat Completions", path };
+}
+
+function hostedEvidence(
+  models: RegisteredModel[],
+  examples: HostedExamples,
+): Map<string, HostedEvidence> {
+  const result = new Map<string, HostedEvidence>();
+  for (const spec of hostedSpecs) {
+    const body = examples[spec.key];
+    if (!spec.valid(body)) throw new Error(`Llama ${spec.key} example changed shape`);
+    const id = exampleModelId(body, spec.key);
+    const model = resolveHostedModel(models, id, spec.key);
+    const current = result.get(model.id);
+    result.set(model.id, {
+      aliases: unique([...(current?.aliases ?? []), id]),
+      capabilities: new Set([...(current?.capabilities ?? []), ...spec.capabilities]),
+    });
+  }
+  return result;
 }
 
 function releaseDate(
@@ -261,9 +366,9 @@ function toolCall(
   text32Card: string,
   llama31Card: string,
   llama33Card: string,
-  toolApiIds: Set<string>,
-  aliases: string[],
+  hosted: boolean,
 ): true | "unknown" {
+  if (hosted) return true;
   if (!model.id.toLowerCase().includes("instruct")) return "unknown";
   const evidence = model.key.startsWith("llama3_1_")
     ? llama31Card
@@ -273,7 +378,7 @@ function toolCall(
         ? llama33Card
         : undefined;
   if (evidence !== undefined && /Tool Use|Tool-use/i.test(evidence)) return true;
-  return aliases.some((alias) => toolApiIds.has(alias)) ? true : "unknown";
+  return "unknown";
 }
 
 export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
@@ -287,6 +392,9 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const llama4Card = document(bundle, "/models/llama4/MODEL_CARD.md");
   const chatExample = document(bundle, "/examples/chat.py");
   const toolExample = document(bundle, "/examples/tool_call.py");
+  const structuredExample = document(bundle, "/examples/structured.py");
+  const apiClient = document(bundle, "/src/llama_api_client/_client.py");
+  const chatCompletions = document(bundle, "/src/llama_api_client/resources/chat/completions.py");
   const models = [
     ...registeredModels(bundle.index.body, coreIds(skuTypes)),
     ...promptGuardModels(safety),
@@ -303,13 +411,17 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const llama33Date = cardDate(llama33Card);
   if (cardDate(llama4Card) !== dates.get("Llama 4"))
     throw new Error("Llama 4 release sources disagree");
-  const documentedApiIds = apiModelIds(chatExample);
-  const toolApiIds = new Set(apiModelIds(toolExample));
+  const endpoint = hostedChatEndpoint(apiClient, chatCompletions);
+  const hosted = hostedEvidence(models, {
+    chat: chatExample,
+    structured: structuredExample,
+    tool: toolExample,
+  });
   return models.map((model) => {
-    const apiAliases = documentedApiIds.filter(
-      (id) => model.huggingFaceRepo.split("/").at(-1) === id,
-    );
-    const aliases = unique([model.huggingFaceRepo, ...apiAliases]).filter(
+    const evidence = hosted.get(model.id);
+    const capability = (name: HostedCapability): true | "unknown" =>
+      evidence?.capabilities.has(name) === true ? true : "unknown";
+    const aliases = unique([model.huggingFaceRepo, ...(evidence?.aliases ?? [])]).filter(
       (alias) => alias !== model.id,
     );
     const vision = model.key.includes("vision") || model.key.startsWith("llama4_");
@@ -326,10 +438,19 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       description: model.description,
       aliases,
       types: guard ? ["moderation"] : promptGuard ? ["classification"] : ["generate"],
+      ...(evidence === undefined ? {} : { api_endpoints: [endpoint] }),
       modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
       capabilities: {
         ...unknownCapabilities(),
-        tool_call: toolCall(model, text32Card, llama31Card, llama33Card, toolApiIds, aliases),
+        tool_call: toolCall(
+          model,
+          text32Card,
+          llama31Card,
+          llama33Card,
+          capability("tool_call") === true,
+        ),
+        structured_output: capability("structured_output"),
+        streaming: capability("streaming"),
       },
       limits: { context_tokens: contextTokens(model) },
       release_date: releaseDate(model, dates, quantizedDate, llama33Date),

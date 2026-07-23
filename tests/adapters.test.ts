@@ -376,7 +376,7 @@ async function mistralCatalog(
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function llamaCatalog(): Promise<ProviderModel[]> {
+async function llamaCatalog(overrides: Record<string, string> = {}): Promise<ProviderModel[]> {
   const value = manifest("llama");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "llama-catalog")
@@ -385,7 +385,7 @@ async function llamaCatalog(): Promise<ProviderModel[]> {
     ...configured,
     extractor: { kind: "llama-catalog", minModels: 8, maxModels: 8 },
   };
-  const files = [
+  const files: [path: string, fixturePath: string, repository?: string][] = [
     ["models/sku_types.py", "sku_types.py"],
     ["models/cli/safety_models.py", "safety_models.py"],
     ["README.md", "README.md"],
@@ -395,13 +395,19 @@ async function llamaCatalog(): Promise<ProviderModel[]> {
     ["models/llama4/MODEL_CARD.md", "llama4.md"],
     ["examples/chat.py", "chat.py", "llama-api-python"],
     ["examples/tool_call.py", "tool_call.py", "llama-api-python"],
+    ["examples/structured.py", "structured.py", "llama-api-python"],
+    ["src/llama_api_client/_client.py", "client.py", "llama-api-python"],
+    ["src/llama_api_client/resources/chat/completions.py", "completions.py", "llama-api-python"],
   ];
   const body = JSON.stringify({
-    index: { url: source.url, body: await fixture("llama/sku_list.py") },
+    index: {
+      url: source.url,
+      body: overrides["sku_list.py"] ?? (await fixture("llama/sku_list.py")),
+    },
     documents: await Promise.all(
       files.map(async ([path, fixturePath, repository = "llama-models"]) => ({
         url: `https://raw.githubusercontent.com/meta-llama/${repository}/main/${path}`,
-        body: await fixture(`llama/${fixturePath}`),
+        body: overrides[fixturePath] ?? (await fixture(`llama/${fixturePath}`)),
       })),
     ),
   });
@@ -1011,7 +1017,12 @@ describe("Meta Llama adapters", () => {
         modalities: hosted?.modalities,
         context: hosted?.limits.context_tokens,
         release: hosted?.release_date,
-        tool_call: hosted?.capabilities.tool_call,
+        capabilities: {
+          streaming: hosted?.capabilities.streaming,
+          structured_output: hosted?.capabilities.structured_output,
+          tool_call: hosted?.capabilities.tool_call,
+        },
+        api_endpoints: hosted?.api_endpoints,
       },
       guard: {
         types: guard?.types,
@@ -1038,7 +1049,12 @@ describe("Meta Llama adapters", () => {
         modalities: { input: ["text", "image"], output: ["text"] },
         context: 1_048_576,
         release: "2025-04-05",
-        tool_call: true,
+        capabilities: {
+          streaming: true,
+          structured_output: true,
+          tool_call: true,
+        },
+        api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
       },
       guard: {
         types: ["moderation"],
@@ -1047,6 +1063,50 @@ describe("Meta Llama adapters", () => {
       },
       promptGuard: { types: ["classification"], context: 512 },
     });
+  });
+
+  it("fails closed on hosted identity, route, and family drift", async () => {
+    const chat = await fixture("llama/chat.py");
+    await expect(
+      llamaCatalog({
+        "chat.py": chat.replace("Llama-4-Maverick-17B-128E-Instruct-FP8", "unpublished-model"),
+      }),
+    ).rejects.toThrow("Llama chat example model unpublished-model did not resolve uniquely");
+
+    const skuList = await fixture("llama/sku_list.py");
+    await expect(
+      llamaCatalog({
+        "sku_list.py": skuList.replace(
+          'huggingface_repo="meta-llama/Llama-4-Maverick-17B-128E",',
+          'huggingface_repo="meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",',
+        ),
+      }),
+    ).rejects.toThrow(
+      "Llama chat example model Llama-4-Maverick-17B-128E-Instruct-FP8 did not resolve uniquely",
+    );
+
+    const completions = await fixture("llama/completions.py");
+    await expect(
+      llamaCatalog({
+        "completions.py": completions.replace(
+          '"/chat/completions"',
+          '"https://api.llama.com/v1/chat/completions"',
+        ),
+      }),
+    ).rejects.toThrow("Llama API chat path was not relative");
+
+    const skuTypes = await fixture("llama/sku_types.py");
+    await expect(
+      llamaCatalog({
+        "sku_types.py": skuTypes.replace(
+          'llama2_7b = "Llama-2-7b"',
+          'llama3_4_8b = "Llama-3.4-8B"',
+        ),
+        "sku_list.py": skuList
+          .replace("CoreModelId.llama2_7b", "CoreModelId.llama3_4_8b")
+          .replace("meta-llama/Llama-2-7b", "meta-llama/Llama-3.4-8B"),
+      }),
+    ).rejects.toThrow("No reviewed context rule for llama3_4_8b");
   });
 
   it("validates the authenticated model-list schema", async () => {
@@ -1068,6 +1128,14 @@ describe("Meta Llama adapters", () => {
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
         type: "repository",
         exhaustive: true,
+        fields: expect.arrayContaining(["api_endpoints"]),
+        linkedDocuments: {
+          documents: expect.arrayContaining([
+            expect.objectContaining({ id: "llama-api-structured-example" }),
+            expect.objectContaining({ id: "llama-api-client" }),
+            expect.objectContaining({ id: "llama-api-chat-completions" }),
+          ]),
+        },
       },
       {
         extractor: { kind: "llama-api" },
