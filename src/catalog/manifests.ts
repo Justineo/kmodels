@@ -51,6 +51,7 @@ export type Extractor =
       maxModels: number;
     }
   | { kind: "dashscope-pricing"; minModels: number; maxModels: number }
+  | { kind: "dashscope-recommended"; minModels: number; maxModels: number }
   | { kind: "dashscope-lifecycle"; minModels: number; maxModels: number }
   | { kind: "dashscope-api"; minModels: number; maxModels: number }
   | { kind: "deepseek-catalog"; minModels: number; maxModels: number }
@@ -1706,6 +1707,22 @@ export const manifests = [
       catalog_scope: "regional",
     },
     sources: [
+      {
+        id: "dashscope-recommended",
+        url: "https://www.alibabacloud.com/help/en/model-studio/models",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "dashscope-recommended", minModels: 15, maxModels: 60 },
+        extractorVersion: "dashscope-recommended-v1",
+        fields: ["api_endpoints", "availability"],
+        allowedHosts: ["www.alibabacloud.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "region",
+        exhaustive: false,
+        role: "overlay",
+      },
       dashscopeCatalogSource("dashscope-text", "text-generation-model/", "text", 70, 180),
       dashscopeCatalogSource("dashscope-vision", "vision-model/", "vision", 12, 50),
       dashscopeCatalogSource("dashscope-image", "image-model", "image", 20, 70),

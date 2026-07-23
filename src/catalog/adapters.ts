@@ -18,6 +18,7 @@ import {
   parseDashscopeCatalog,
   parseDashscopeLifecycle,
   parseDashscopePricing,
+  parseDashscopeRecommended,
 } from "./dashscope.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
 import { parseHuggingFaceMapping, parseHuggingFaceRouter } from "./huggingface.ts";
@@ -758,6 +759,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseDashscopeCatalog(input);
     case "dashscope-pricing":
       return parseDashscopePricing(input);
+    case "dashscope-recommended":
+      return parseDashscopeRecommended(input);
     case "dashscope-lifecycle":
       return parseDashscopeLifecycle(input);
     case "dashscope-api":

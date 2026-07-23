@@ -2834,6 +2834,7 @@ describe("DashScope adapters", () => {
     if (
       configured.extractor.kind === "dashscope-catalog" ||
       configured.extractor.kind === "dashscope-pricing" ||
+      configured.extractor.kind === "dashscope-recommended" ||
       configured.extractor.kind === "dashscope-lifecycle" ||
       configured.extractor.kind === "dashscope-api"
     )
@@ -2896,6 +2897,54 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("overlays only exact recommended-model regions and request URLs", async () => {
+    const models = parse(
+      source("dashscope-recommended"),
+      await fixture("dashscope/recommended.html"),
+    );
+    expect(
+      models.map(({ model_id, api_endpoints, availability }) => ({
+        model_id,
+        api_endpoints,
+        availability,
+      })),
+    ).toEqual([
+      {
+        model_id: "qwen-image-2.0-pro",
+        api_endpoints: [
+          {
+            name: "Multimodal Generation",
+            path: "/api/v1/services/aigc/multimodal-generation/generation",
+          },
+        ],
+        availability: [{ region: "International", deployment_type: "model_api" }],
+      },
+      {
+        model_id: "qwen3.7-plus",
+        api_endpoints: undefined,
+        availability: [
+          { region: "China (Beijing)", deployment_type: "model_api" },
+          { region: "Singapore", deployment_type: "model_api" },
+        ],
+      },
+      {
+        model_id: "text-embedding-v4",
+        api_endpoints: [{ name: "Embeddings", path: "/compatible-mode/v1/embeddings" }],
+        availability: [{ region: "International", deployment_type: "model_api" }],
+      },
+    ]);
+  });
+
+  it("rejects an unreviewed recommended-model endpoint", async () => {
+    const body = (await fixture("dashscope/recommended.html")).replace(
+      "/compatible-mode/v1/embeddings",
+      "/compatible-mode/v1/unknown",
+    );
+    expect(() => parse(source("dashscope-recommended"), body)).toThrow(
+      "Unsupported DashScope recommended-model endpoint",
+    );
+  });
+
   it("retains tier, promotion, batch, and explicit and implicit cache prices", async () => {
     const pricingSource = source("dashscope-pricing");
     const models = parse(
@@ -2948,6 +2997,7 @@ describe("DashScope adapters", () => {
   it("keeps every source that observes the same exact model", async () => {
     const catalogSource = source("dashscope-text");
     const pricingSource = source("dashscope-pricing");
+    const recommendedSource = source("dashscope-recommended");
     const lifecycleSource = source("dashscope-lifecycle");
     const apiSource = source("dashscope-deployable-api");
     const catalog = parse(catalogSource, await fixture("dashscope/catalog.html"));
@@ -2966,17 +3016,22 @@ describe("DashScope adapters", () => {
         ],
       }),
     );
+    const recommended = parse(recommendedSource, await fixture("dashscope/recommended.html"));
     const lifecycle = parse(lifecycleSource, await fixture("dashscope/lifecycle.html"));
     const inventory = parse(apiSource, await fixture("dashscope/api.json"));
     const models = applyGroups(
       applyGroups(
-        [],
-        [
-          { source: catalogSource, models: catalog },
-          { source: pricingSource, models: pricing },
-          { source: lifecycleSource, models: lifecycle },
-        ],
-        true,
+        applyGroups(
+          [],
+          [
+            { source: catalogSource, models: catalog },
+            { source: pricingSource, models: pricing },
+            { source: lifecycleSource, models: lifecycle },
+          ],
+          true,
+        ),
+        [{ source: recommendedSource, models: recommended }],
+        false,
       ),
       [{ source: apiSource, models: inventory }],
       false,
@@ -2990,9 +3045,11 @@ describe("DashScope adapters", () => {
         "dashscope-text",
         "dashscope-pricing",
         "dashscope-lifecycle",
+        "dashscope-recommended",
         "dashscope-deployable-api",
       ],
       availability: [
+        { region: "China (Beijing)", deployment_type: "model_api" },
         { region: "Singapore", deployment_type: "model_api" },
         { region: "Singapore", deployment_type: "mu" },
         { region: "Singapore", deployment_type: "ptu" },

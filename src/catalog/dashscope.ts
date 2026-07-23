@@ -10,7 +10,7 @@ import {
   htmlValue as value,
 } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import {
@@ -22,6 +22,7 @@ import {
 } from "./schema.ts";
 
 type TriState = ProviderModel["capabilities"]["reasoning"];
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 
 interface ParseInput {
   provider: Provider;
@@ -189,6 +190,12 @@ function rateKey(rate: PriceRate): string {
 function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
   const pricing = new Map(left.pricing.map((item) => [rateKey(item), item]));
   for (const item of right.pricing) pricing.set(rateKey(item), item);
+  const endpoints = new Map(
+    [...(left.api_endpoints ?? []), ...(right.api_endpoints ?? [])].map((item) => [
+      apiEndpointKey(item),
+      item,
+    ]),
+  );
   const availability = new Map(
     [...(left.availability ?? []), ...(right.availability ?? [])].map((item) => [
       `${item.region}\0${item.deployment_type}`,
@@ -201,6 +208,12 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
     aliases: unique([...left.aliases, ...right.aliases]),
     types: unique([...left.types.filter((item) => item !== "other"), ...right.types]),
     raw_type: left.raw_type ?? right.raw_type,
+    api_endpoints:
+      endpoints.size === 0
+        ? undefined
+        : [...endpoints.values()].sort((left, right) =>
+            apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+          ),
     modalities: {
       input: unique([...left.modalities.input, ...right.modalities.input]),
       output: unique([...left.modalities.output, ...right.modalities.output]),
@@ -323,6 +336,127 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
     extractor.maxModels,
     `DashScope ${extractor.category}`,
   );
+}
+
+const recommendedEndpoints = new Map<string, { name: string; protocol: "https:" | "wss:" }>([
+  [
+    "/api/v1/services/aigc/image-generation/generation",
+    { name: "Image Generation", protocol: "https:" },
+  ],
+  [
+    "/api/v1/services/aigc/multimodal-generation/generation",
+    { name: "Multimodal Generation", protocol: "https:" },
+  ],
+  [
+    "/api/v1/services/aigc/video-generation/video-synthesis",
+    { name: "Video Synthesis", protocol: "https:" },
+  ],
+  ["/api-ws/v1/inference", { name: "Realtime Inference", protocol: "wss:" }],
+  ["/api/v1/services/audio/asr/transcription", { name: "Speech Recognition", protocol: "https:" }],
+  ["/api-ws/v1/realtime", { name: "Realtime", protocol: "wss:" }],
+  ["/compatible-mode/v1/embeddings", { name: "Embeddings", protocol: "https:" }],
+  [
+    "/api/v1/services/embeddings/multimodal-embedding/multimodal-embedding",
+    { name: "Multimodal Embeddings", protocol: "https:" },
+  ],
+  ["/api/v1/services/rerank/text-rerank/text-rerank", { name: "Rerank", protocol: "https:" }],
+]);
+
+const recommendedRegions = new Map([
+  ["Beijing", "China (Beijing)"],
+  ["Hong Kong", "Hong Kong (China)"],
+  ["Singapore", "Singapore"],
+  ["Tokyo", "Japan (Tokyo)"],
+  ["Frankfurt", "Germany (Frankfurt)"],
+  ["US (Virginia)", "US (Virginia)"],
+  ["International", "International"],
+]);
+
+function recommendedEndpoint(raw: string): ApiEndpoint {
+  const url = new URL(raw);
+  const fact = recommendedEndpoints.get(url.pathname);
+  if (
+    fact === undefined ||
+    url.protocol !== fact.protocol ||
+    url.hostname !== "dashscope-intl.aliyuncs.com" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.port !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  )
+    throw new Error(`Unsupported DashScope recommended-model endpoint: ${raw}`);
+  return { name: fact.name, path: url.pathname };
+}
+
+export function parseDashscopeRecommended(input: ParseInput): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "dashscope-recommended")
+    throw new Error("Wrong DashScope recommended-model extractor");
+  const $ = load(input.body);
+  const models = new Map<string, ProviderModel>();
+  $(".bl-cardwrap").each((_index, element) => {
+    const card = $(element);
+    const names = unique(
+      card
+        .find(".bl-card-name")
+        .map((_nameIndex, name) => text($(name).text()))
+        .get()
+        .filter(Boolean),
+    );
+    const id = names.length === 1 ? exactId(names[0] ?? "") : undefined;
+    const publishedIds = unique(
+      card
+        .find(".bl-pop-row")
+        .filter((_rowIndex, row) => text($(row).find(".bl-pop-k").first().text()) === "Model ID")
+        .map((_rowIndex, row) => exactId(text($(row).find("code").first().text())) ?? "")
+        .get()
+        .filter(Boolean),
+    );
+    if (id === undefined || publishedIds.length !== 1 || publishedIds[0] !== id)
+      throw new Error("DashScope recommended-model card ID drifted");
+    const availability = unique(
+      card
+        .find(".bl-pop > .bl-tabs > label")
+        .map((_regionIndex, label) => text($(label).text()))
+        .get()
+        .filter(Boolean),
+    ).map((raw) => {
+      const region = recommendedRegions.get(raw);
+      if (region === undefined)
+        throw new Error(`Unsupported DashScope recommended-model region: ${raw}`);
+      return { region, deployment_type: "model_api" };
+    });
+    if (availability.length === 0)
+      throw new Error(`DashScope recommended-model card omitted regions for ${id}`);
+    const endpoints = new Map(
+      card
+        .find(".bl-pop-row")
+        .filter((_rowIndex, row) => text($(row).find(".bl-pop-k").first().text()) === "Request URL")
+        .map((_rowIndex, row) => recommendedEndpoint(text($(row).find("code").first().text())))
+        .get()
+        .map((endpoint) => [apiEndpointKey(endpoint), endpoint]),
+    );
+    const model = baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    });
+    add(models, {
+      ...model,
+      api_endpoints:
+        endpoints.size === 0
+          ? undefined
+          : [...endpoints.values()].sort((left, right) =>
+              apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+            ),
+      availability,
+      scope: "regional_catalog",
+    });
+  });
+  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope recommended-model");
 }
 
 function decimal(raw: string): string | undefined {
