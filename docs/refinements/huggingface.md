@@ -8,7 +8,7 @@ The previous 19,326-model result was too broad. It did not crawl every Hub repos
 
 Kmodels now uses only two Hugging Face-operated listings for presence: the public OpenAI-compatible router catalog and concrete `live` mappings served by HF Inference itself. It does not fetch third-party partner mapping inventories. This retains models directly offered through Hugging Face-operated services without turning the catalog into a copy of every community repository accepted by a partner.
 
-The resulting live catalog is roughly 1.5K rows, split between HF Inference and the router. Neither count depends on a Hugging Face token.
+The 2026-07-23 synchronized responses contain 1,409 concrete HF Inference mappings and 128 router models, with no overlap: 1,537 rows in total. These are volatile service inventories rather than a fixed model registry, and neither depends on a Hugging Face token.
 
 ## Official source semantics
 
@@ -22,7 +22,7 @@ The Model Mapping API records a relationship between:
 
 Hugging Face describes `live` mappings as publicly available mappings registered by an inference provider. It separately exposes whether a model is currently warm, so `live` must not be interpreted as preloaded or latency-guaranteed. See the [Model Mapping API](https://huggingface.co/docs/inference-providers/en/register-as-a-provider) and [Hub API](https://huggingface.co/docs/inference-providers/en/hub-api).
 
-The public `GET /v1/models` endpoint lists OpenAI-compatible chat models and their live routes, with optional pricing, context, capability, latency, and throughput facts. HF Inference's mapping supplies the complementary task-specific models served by Hugging Face's own serverless service.
+The public `GET /v1/models` endpoint lists OpenAI-compatible chat models and routes whose documented state is `live` or `error`, with optional pricing, context, capability, latency, and throughput facts. Only a live route establishes current presence. An error route is still a valid response shape, so Kmodels ignores it instead of rejecting the whole refresh or publishing stale route facts. HF Inference's mapping supplies the complementary task-specific models served by Hugging Face's own serverless service.
 
 ## Kmodels representation
 
@@ -31,7 +31,7 @@ A Hugging Face `ProviderModel` exists when the exact repository ID appears in ei
 The list excludes:
 
 - repositories that are merely downloadable from the Hub;
-- staging, private, or account-scoped mappings;
+- staging, private, or account-scoped mappings and router models with no live route;
 - parameterized `tag-filter` contracts without a concrete model ID;
 - model IDs inferred from names, owners, tags, popularity, or repository metadata;
 - provider-internal IDs promoted to canonical Hugging Face IDs;
@@ -60,7 +60,7 @@ For example:
 }
 ```
 
-The router is an independent row-creating chat catalog. It contributes OpenAI-compatible presence, route-conditioned pricing, the maximum advertised context, and conservative capability aggregates. It does not publish a provider model ID, so Kmodels does not invent one or reconstruct a join to the removed partner inventories. Volatile latency and throughput probes remain outside the stable catalog.
+The router is an independent row-creating chat catalog. Only live backends contribute OpenAI-compatible presence, route-conditioned pricing, the maximum advertised context, and conservative capability aggregates. A route cannot be both explicitly free and nonzero-priced. The router does not publish a provider model ID, so Kmodels does not invent one or reconstruct a join to the removed partner inventories. Volatile latency and throughput probes remain outside the stable catalog.
 
 ## Kong AI Gateway compatibility
 
@@ -115,9 +115,11 @@ The catalog uses an operated-service boundary rather than popularity or publishe
 
 1. Let `/v1/models` create the OpenAI-compatible chat catalog.
 2. Let only the `hf-inference` concrete `live` mapping create task-specific rows.
-3. Do not fetch or publish third-party partners' bulk mapping inventories.
-4. Preserve the exact HF Inference provider model ID and raw task.
-5. Require Kong compatibility to match its version, capability, upstream endpoint, provider route, and raw task.
-6. Do not infer support for an operation merely because another Kong provider supports that operation family.
+3. Validate documented `error` routes but publish facts only from live routes.
+4. Validate dynamic tag filters as exact LoRA contracts without turning them into rows.
+5. Do not fetch or publish third-party partners' bulk mapping inventories.
+6. Preserve the exact HF Inference provider model ID and raw task.
+7. Require Kong compatibility to match its version, capability, upstream endpoint, provider route, and raw task.
+8. Do not infer support for an operation merely because another Kong provider supports that operation family.
 
 The pricing representation is unchanged in this provider turn. Router backend rates remain separate, route-conditioned observations in the current flat schema; `docs/pricing.md` remains a repo-wide migration proposal until coherent offers are implemented across all providers.

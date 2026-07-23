@@ -22,6 +22,14 @@
           "supports_tools": false,
           "supports_structured_output": true,
           "pricing": { "input": 0.3, "output": 1.7 }
+        },
+        {
+          "provider": "unavailable-route",
+          "status": "error",
+          "context_length": 999999,
+          "supports_tools": true,
+          "supports_structured_output": true,
+          "pricing": { "input": 9, "output": 9 }
         }
       ]
     },
@@ -31,7 +39,22 @@
       "created": 1700000000,
       "owned_by": "org",
       "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
-      "providers": [{ "provider": "free-route", "status": "live", "is_free": true }]
+      "providers": [
+        {
+          "provider": "free-route",
+          "status": "live",
+          "is_free": true,
+          "pricing": { "input": 0, "output": "0.0" }
+        }
+      ]
+    },
+    {
+      "id": "org/unavailable-model",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "org",
+      "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
+      "providers": [{ "provider": "unavailable-route", "status": "error" }]
     }
   ]
 }
