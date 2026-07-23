@@ -1,5 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
+import { linkedBundleSchema } from "./bundle.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -26,6 +27,8 @@ const listSchema = z.object({
     )
     .min(1),
 });
+
+const chatEndpoint = { name: "Chat Completions", path: "/chat/completions" };
 
 function exactId(value: string): string | undefined {
   const parsed = modelIdSchema.safeParse(value.trim());
@@ -74,6 +77,47 @@ function support(table: HtmlTable, label: string, columns: number[]): boolean[] 
   });
 }
 
+function chatModelIds(body: string): Set<string> {
+  const $ = load(body);
+  const article = $("article");
+  const operation = article.find("pre.openapi__method-endpoint").first();
+  if (
+    htmlText(article.find("h1.openapi__heading").first().text()) !== "Create Chat Completion" ||
+    htmlText(operation.find(".badge").first().text()) !== "POST" ||
+    htmlText(operation.find("h2.openapi__method-endpoint-path").first().text()) !==
+      chatEndpoint.path
+  )
+    throw new Error("DeepSeek Chat Completions reference changed operation");
+  const properties = article
+    .find(".openapi-schema__list-item")
+    .toArray()
+    .filter(
+      (element) =>
+        htmlText($(element).find("strong.openapi-schema__property").first().text()) === "model" &&
+        $(element).find("code").length > 0,
+    );
+  if (properties.length !== 1)
+    throw new Error("DeepSeek Chat Completions reference changed model schema");
+  const values = $(properties[0])
+    .find("code")
+    .map((_index, element) => htmlText($(element).text()))
+    .get();
+  const ids = z.array(modelIdSchema).min(1).safeParse(values);
+  if (!ids.success || new Set(ids.data).size !== ids.data.length)
+    throw new Error("DeepSeek Chat Completions reference returned invalid model IDs");
+  const streaming = article
+    .find(".openapi-schema__list-item")
+    .toArray()
+    .filter(
+      (element) =>
+        htmlText($(element).find("strong.openapi-schema__property").first().text()) === "stream" &&
+        /partial message deltas will be sent/.test(htmlText($(element).text())),
+    );
+  if (streaming.length !== 1)
+    throw new Error("DeepSeek Chat Completions reference changed streaming schema");
+  return new Set(ids.data);
+}
+
 function retirement(body: string): {
   aliases: [string, string];
   replacement: string;
@@ -109,6 +153,7 @@ function model(
   column: number,
   id: string,
   name: string,
+  hasChatEndpoint: boolean,
 ): ProviderModel {
   const context = tokenCount(cells(table, "CONTEXT LENGTH", [column])[0] ?? "");
   const output = tokenCount(cells(table, "MAX OUTPUT", [column])[0] ?? "");
@@ -132,12 +177,14 @@ function model(
       observedAt: input.observedAt,
     }),
     types: ["generate"],
+    ...(hasChatEndpoint ? { api_endpoints: [chatEndpoint] } : {}),
     modalities: { input: ["text"], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
       reasoning: true,
       tool_call: tools,
       structured_output: structured,
+      ...(hasChatEndpoint ? { streaming: true } : {}),
       prompt_cache: true,
     },
     limits: { context_tokens: context, max_output_tokens: output },
@@ -166,7 +213,15 @@ function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
 }
 
 export function parseDeepseekCatalog(input: Input): ProviderModel[] {
-  const table = htmlTables(input.body).find(
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const chatDocuments = bundle.documents.filter(
+    ({ url }) => new URL(url).pathname === "/api/create-chat-completion",
+  );
+  const [chatDocument] = chatDocuments;
+  if (chatDocuments.length !== 1 || chatDocument === undefined)
+    throw new Error("DeepSeek catalog omitted the Chat Completions reference");
+  const chatIds = chatModelIds(chatDocument.body);
+  const table = htmlTables(bundle.index.body).find(
     (item) => item.headers[0] === "MODEL" && item.headers.slice(2).some(catalogId),
   );
   if (table === undefined) throw new Error("DeepSeek model table not found");
@@ -182,9 +237,12 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     columns.map(({ column }) => column),
   );
   const models = columns.map(({ column, id }, index) =>
-    model(input, table, column, id, names[index] ?? id),
+    model(input, table, column, id, names[index] ?? id, chatIds.has(id)),
   );
-  const lifecycle = retirement(input.body);
+  for (const id of chatIds)
+    if (!models.some(({ model_id }) => model_id === id))
+      throw new Error(`DeepSeek Chat Completions reference named unknown catalog model ${id}`);
+  const lifecycle = retirement(bundle.index.body);
   const replacement = models.find(({ model_id }) => model_id === lifecycle.replacement);
   if (replacement === undefined)
     throw new Error("DeepSeek replacement model is not in the catalog");
