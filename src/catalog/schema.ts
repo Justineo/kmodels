@@ -56,6 +56,8 @@ export const priceRateSchema = z.object({
     "embedding",
     "rerank_request",
     "tool_call",
+    "realtime_client_message",
+    "realtime_session_duration",
     "gpu_hour",
     "provisioned_throughput",
     "batch_inference",
@@ -131,6 +133,14 @@ export const providerModelSchema = z.object({
     .min(1)
     .transform((types) => [...new Set(types)]),
   raw_type: z.string().optional(),
+  api_endpoints: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        path: z.string().min(1),
+      }),
+    )
+    .optional(),
   modalities: z.object({ input: z.array(modalitySchema), output: z.array(modalitySchema) }),
   capabilities: z.object({
     reasoning: triStateSchema,

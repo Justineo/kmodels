@@ -149,33 +149,68 @@ function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
   };
 }
 
-function openAiTypes($: LoadedDocument, fallback: ModelType[]): ModelType[] {
-  const labels = new Map<string, ModelType[]>([
-    ["Chat Completions", ["generate"]],
-    ["Responses", ["generate"]],
-    ["Completions (legacy)", ["generate"]],
-    ["Assistants", ["agentic"]],
-    ["Embeddings", ["embeddings"]],
-    ["Speech generation", ["audio_speech"]],
-    ["Transcription", ["audio_transcription"]],
-    ["Translation", ["audio_translation"]],
-    ["Image generation", ["image"]],
-    ["Image edit", ["image"]],
-    ["Videos", ["video"]],
-    ["Realtime", ["realtime"]],
-    ["Realtime translation", ["realtime", "audio_translation"]],
-    ["Realtime transcription", ["realtime", "audio_transcription"]],
-    ["Moderation", ["moderation"]],
-  ]);
-  const observed: ModelType[] = [];
-  sectionContent($, "Endpoints")
+const openAiEndpointDefinitions = new Map<string, { name: string; types: ModelType[] }>([
+  ["v1/chat/completions", { name: "Chat Completions", types: ["generate"] }],
+  ["v1/responses", { name: "Responses", types: ["generate"] }],
+  ["v1/realtime", { name: "Realtime", types: ["realtime"] }],
+  [
+    "v1/realtime/translations",
+    { name: "Realtime translation", types: ["realtime", "audio_translation"] },
+  ],
+  [
+    "v1/realtime/transcription_sessions",
+    { name: "Realtime transcription", types: ["realtime", "audio_transcription"] },
+  ],
+  ["v1/assistants", { name: "Assistants", types: ["agentic"] }],
+  ["v1/batch", { name: "Batch", types: [] }],
+  ["v1/fine-tuning", { name: "Fine-tuning", types: [] }],
+  ["v1/embeddings", { name: "Embeddings", types: ["embeddings"] }],
+  ["v1/images/generations", { name: "Image generation", types: ["image"] }],
+  ["v1/videos", { name: "Videos", types: ["video"] }],
+  ["v1/images/edits", { name: "Image edit", types: ["image"] }],
+  ["v1/audio/speech", { name: "Speech generation", types: ["audio_speech"] }],
+  ["v1/audio/transcriptions", { name: "Transcription", types: ["audio_transcription"] }],
+  ["v1/audio/translations", { name: "Translation", types: ["audio_translation"] }],
+  ["v1/moderations", { name: "Moderation", types: ["moderation"] }],
+  ["v1/completions", { name: "Completions (legacy)", types: ["generate"] }],
+]);
+
+interface OpenAiEndpointEvidence {
+  endpoints: NonNullable<ProviderModel["api_endpoints"]>;
+  types: ModelType[];
+}
+
+function openAiEndpointEvidence($: LoadedDocument, fallback: ModelType[]): OpenAiEndpointEvidence {
+  const content = sectionContent($, "Endpoints");
+  if (content.length === 0) throw new Error("OpenAI model page omitted Endpoints");
+  const endpoints: NonNullable<ProviderModel["api_endpoints"]> = [];
+  const types: ModelType[] = [];
+  const observedPaths = new Set<string>();
+  content
     .find("div")
-    .filter((_index, element) => $(element).children().length === 0)
+    .filter((_index, element) => {
+      const children = $(element).children("div");
+      return (
+        children.length === 2 && /^v\d+\/[a-z0-9_./-]+$/.test(normalizedText(children.eq(1).text()))
+      );
+    })
     .each((_index, element) => {
-      if ($(element).hasClass("text-gray-400")) return;
-      observed.push(...(labels.get(normalizedText($(element).text())) ?? []));
+      const children = $(element).children("div");
+      const nameNode = children.eq(0);
+      const name = normalizedText(nameNode.text());
+      const path = normalizedText(children.eq(1).text());
+      const definition = openAiEndpointDefinitions.get(path);
+      if (definition === undefined || definition.name !== name)
+        throw new Error(`Unsupported OpenAI endpoint card: ${name}/${path}`);
+      if (observedPaths.has(path)) throw new Error(`Duplicate OpenAI endpoint card: ${path}`);
+      observedPaths.add(path);
+      if (nameNode.hasClass("text-gray-400")) return;
+      endpoints.push({ name, path });
+      types.push(...definition.types);
     });
-  return observed.length > 0 ? unique(observed) : fallback;
+  if (observedPaths.size === 0)
+    throw new Error("OpenAI Endpoints section contained no endpoint cards");
+  return { endpoints, types: types.length > 0 ? unique(types) : fallback };
 }
 
 function openAiAliases($: LoadedDocument, id: string): string[] {
@@ -458,7 +493,8 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         modalities: observedModalities,
         fallback: "generate",
       });
-      const types = openAiTypes($, classifiedTypes);
+      const endpointEvidence = openAiEndpointEvidence($, classifiedTypes);
+      const types = endpointEvidence.types;
       const embeddingOutput: Modality[] = ["embedding"];
       const modelModalities: ProviderModel["modalities"] = types.includes("embeddings")
         ? { input: observedModalities.input, output: embeddingOutput }
@@ -478,6 +514,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         description: description || undefined,
         aliases,
         types,
+        api_endpoints: endpointEvidence.endpoints,
         modalities: modelModalities,
         capabilities: {
           ...features,
@@ -485,9 +522,14 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
           prompt_cache: pricing.some((rate) => rate.meter.startsWith("cache_"))
             ? true
             : features.prompt_cache,
-          batch: pricing.some((rate) => rate.conditions.service_tier === "batch")
+          batch:
+            endpointEvidence.endpoints.some(({ path }) => path === "v1/batch") ||
+            pricing.some((rate) => rate.conditions.service_tier === "batch")
+              ? true
+              : features.batch,
+          fine_tuning: endpointEvidence.endpoints.some(({ path }) => path === "v1/fine-tuning")
             ? true
-            : features.batch,
+            : features.fine_tuning,
         },
         limits: {
           context_tokens: openAiTokenLimit($, "context window"),

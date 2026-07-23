@@ -70,6 +70,9 @@ describe("generated static catalog", () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
     const models = catalog.models.filter((model) => model.provider_id === "vercel");
     const rates = models.flatMap((model) => model.pricing);
+    const missingPrices = models.filter(
+      (model) => model.pricing_status === "unknown" || model.pricing_status === "not_published",
+    );
     const embedding = models.find((model) => model.model_id === "alibaba/qwen3-embedding-0.6b");
     const realtime = models.find((model) => model.model_id === "openai/gpt-5.6-luna");
     expect(models.length).toBeGreaterThan(250);
@@ -77,14 +80,13 @@ describe("generated static catalog", () => {
     expect(models.every((model) => model.release_date !== undefined)).toBe(true);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
     expect(realtime?.types).toEqual(["generate", "realtime"]);
-    expect(
-      catalog.warnings.some(
-        (warning) =>
-          warning.code === "missing_field" &&
-          "provider_id" in warning &&
-          warning.provider_id === "vercel" &&
-          warning.field === "pricing",
-      ),
-    ).toBe(true);
+    const hasMissingPricingWarning = catalog.warnings.some(
+      (warning) =>
+        warning.code === "missing_field" &&
+        "provider_id" in warning &&
+        warning.provider_id === "vercel" &&
+        warning.field === "pricing",
+    );
+    expect(hasMissingPricingWarning).toBe(missingPrices.length > 0);
   });
 });

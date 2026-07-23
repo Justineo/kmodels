@@ -84,6 +84,7 @@ export type SourceField =
   | "description"
   | "aliases"
   | "types"
+  | "api_endpoints"
   | "modalities"
   | "capabilities"
   | "limits"
@@ -264,13 +265,14 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v1",
+        extractorVersion: "openai-catalog-v2",
         fields: [
           "model_id",
           "name",
           "description",
           "aliases",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -666,7 +668,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v2",
+        extractorVersion: "vercel-catalog-v3",
         fields: [
           "model_id",
           "name",
