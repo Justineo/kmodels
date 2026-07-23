@@ -3019,6 +3019,22 @@ describe("Hugging Face adapter", () => {
     ]);
   });
 
+  it("validates dynamic LoRA filters without publishing them", async () => {
+    const value = manifest("huggingface");
+    const source = huggingFaceMappingSource(value);
+    const body = await fixture("huggingface/normal.json");
+    for (const invalid of [
+      body.replace('"adapterType": "lora"', '"adapterType": "future"'),
+      body.replace(
+        '"tags": ["base_model:adapter:org/base", "lora"]',
+        '"tags": ["base_model:adapter:org/other", "lora"]',
+      ),
+    ])
+      expect(() =>
+        parseSource({ provider: provider(value), source, body: invalid, observedAt }),
+      ).toThrow();
+  });
+
   it("does not publish credential-like route identifiers", async () => {
     const credentialLikeId = `org/${["hf_", "a".repeat(40)].join("")}`;
     const value = manifest("huggingface");
@@ -3054,6 +3070,10 @@ describe("Hugging Face adapter", () => {
     expect(model?.capabilities.structured_output).toBe(true);
     expect(model?.modalities.input).toEqual(["text", "image"]);
     expect(model?.release_date).toBeUndefined();
+    expect(
+      model?.pricing.some((rate) => rate.conditions.route_provider === "unavailable-route"),
+    ).toBe(false);
+    expect(models.some((item) => item.model_id === "org/unavailable-model")).toBe(false);
     expect(
       free?.pricing.map((rate) => [rate.meter, rate.price, rate.conditions.promotion]),
     ).toEqual([
@@ -3103,11 +3123,20 @@ describe("Hugging Face adapter", () => {
     ]);
   });
 
-  it("rejects malformed mappings and non-live router routes", async () => {
+  it("rejects malformed mappings, undocumented route states, and contradictory free prices", async () => {
     await expect(huggingFaceMapping("huggingface/broken.json")).rejects.toThrow(
       "Expected a Hugging Face repository ID",
     );
     await expect(huggingFaceRouter("huggingface/broken-router.json")).rejects.toThrow();
+    const value = manifest("huggingface");
+    const source = huggingFaceRouterSource(value);
+    const body = (await fixture("huggingface/pricing.json")).replace(
+      '"pricing": { "input": 0, "output": "0.0" }',
+      '"pricing": { "input": 1, "output": "0.0" }',
+    );
+    expect(() => parseSource({ provider: provider(value), source, body, observedAt })).toThrow(
+      "both free and priced",
+    );
   });
 });
 

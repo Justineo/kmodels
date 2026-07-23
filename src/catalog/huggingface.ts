@@ -38,13 +38,13 @@ const mappingEntrySchema = z.object({
   _id: z.string().min(1),
   providerId: z.string().min(1),
   status: z.literal("live"),
-  adapterType: z.string().min(1).optional(),
+  adapterType: z.literal("lora").optional(),
   tags: z.array(z.string().min(1)).min(1).optional(),
 });
 const mappingSchema = z.record(z.string().min(1), z.record(z.string().min(1), mappingEntrySchema));
 const routeSchema = z.object({
   provider: z.string().min(1),
-  status: z.literal("live"),
+  status: z.enum(["live", "error"]),
   context_length: z.number().int().positive().optional(),
   pricing: z.object({ input: decimal.optional(), output: decimal.optional() }).optional(),
   is_free: z.boolean().optional(),
@@ -126,6 +126,19 @@ function facts(task: string): TaskFacts {
   }
 }
 
+function validateTagFilter(rawId: string, entry: z.infer<typeof mappingEntrySchema>): void {
+  const filterTags = rawId.slice("tag-filter=".length).split(",");
+  const entryTags = entry.tags ?? [];
+  if (
+    entry.adapterType !== "lora" ||
+    filterTags.some((tag) => tag.length === 0) ||
+    new Set(filterTags).size !== filterTags.length ||
+    new Set(entryTags).size !== entryTags.length ||
+    [...filterTags].sort().join("\0") !== [...entryTags].sort().join("\0")
+  )
+    throw new Error("Invalid Hugging Face tag filter contract");
+}
+
 export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
   const config = input.source.extractor;
   if (config.kind !== "huggingface-mapping")
@@ -136,8 +149,7 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
     const observed = facts(task);
     for (const [rawId, entry] of Object.entries(entries)) {
       if (rawId.startsWith("tag-filter=")) {
-        if (entry.tags === undefined || entry.adapterType === undefined)
-          throw new Error("Hugging Face tag filter omitted its adapter contract");
+        validateTagFilter(rawId, entry);
         continue;
       }
       if (isCredentialLikeIdentifier(rawId) || isCredentialLikeIdentifier(entry.providerId))
@@ -190,7 +202,13 @@ function availability(values: (boolean | undefined)[]): boolean | "unknown" {
 
 function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): PriceRate[] {
   const conditions = { route_provider: route.provider };
-  if (route.is_free === true)
+  if (route.is_free === true) {
+    if (
+      [route.pricing?.input, route.pricing?.output].some(
+        (price) => price !== undefined && !/^0(?:\.0+)?$/.test(price),
+      )
+    )
+      throw new Error(`Hugging Face route ${route.provider} is both free and priced`);
     return ["input_text", "output_text"].map((meter) =>
       publishedRate(
         meter === "input_text" ? "input_text" : "output_text",
@@ -201,6 +219,7 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Price
         { ...conditions, promotion: true },
       ),
     );
+  }
   const rates: PriceRate[] = [];
   if (route.pricing?.input !== undefined)
     rates.push(
@@ -232,10 +251,9 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   if (config.kind !== "huggingface-router")
     throw new Error("Invalid Hugging Face router extractor");
   const items = routerSchema.parse(JSON.parse(input.body)).data;
-  if (items.length < config.minModels || items.length > config.maxModels)
-    throw new Error("Hugging Face router count outside reviewed bounds");
   const ids = new Set<string>();
-  return items.map((item) => {
+  const models: ProviderModel[] = [];
+  for (const item of items) {
     if (ids.has(item.id)) throw new Error(`Duplicate Hugging Face router model ${item.id}`);
     ids.add(item.id);
     const providers = new Set<string>();
@@ -244,11 +262,13 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
         throw new Error(`Duplicate Hugging Face route ${item.id}:${route.provider}`);
       providers.add(route.provider);
     }
-    const pricing = item.providers.flatMap((route) => routeRates(route, input.source.id));
-    const contexts = item.providers.flatMap((route) =>
+    const routes = item.providers.filter((route) => route.status === "live");
+    if (routes.length === 0) continue;
+    const pricing = routes.flatMap((route) => routeRates(route, input.source.id));
+    const contexts = routes.flatMap((route) =>
       route.context_length === undefined ? [] : [route.context_length],
     );
-    return {
+    models.push({
       ...baseModel({
         providerId: input.provider.id,
         id: item.id,
@@ -263,16 +283,17 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       },
       capabilities: {
         ...unknownCapabilities(),
-        tool_call: availability(item.providers.map((route) => route.supports_tools)),
-        structured_output: availability(
-          item.providers.map((route) => route.supports_structured_output),
-        ),
+        tool_call: availability(routes.map((route) => route.supports_tools)),
+        structured_output: availability(routes.map((route) => route.supports_structured_output)),
       },
       limits: {
         context_tokens: contexts.length === 0 ? undefined : Math.max(...contexts),
       },
       pricing_status: pricing.length === 0 ? "unknown" : "published",
       pricing,
-    } satisfies ProviderModel;
-  });
+    });
+  }
+  if (models.length < config.minModels || models.length > config.maxModels)
+    throw new Error("Hugging Face router count outside reviewed bounds");
+  return models;
 }
