@@ -255,9 +255,12 @@ function addServiceRates(
 function pricing(item: Item, sourceId: string): PriceRate[] {
   const rates: PriceRate[] = [];
   const value = item.pricing;
+  const transcriptionAudioPrice =
+    item.type === "transcription" ? value.audio_input_token_cost : undefined;
   const specializedInput =
     value.speech_input_character_cost !== undefined ||
-    value.transcription_duration_cost_per_second !== undefined;
+    value.transcription_duration_cost_per_second !== undefined ||
+    transcriptionAudioPrice !== undefined;
   const inputMeter: PriceRate["meter"] =
     item.type === "embedding"
       ? "embedding"
@@ -265,9 +268,11 @@ function pricing(item: Item, sourceId: string): PriceRate[] {
         ? "input_audio"
         : "input_text";
   const outputMeter: PriceRate["meter"] = item.type === "image" ? "output_image" : "output_text";
+  if (transcriptionAudioPrice !== undefined)
+    rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId));
   if (!specializedInput) addTokenRates(rates, inputMeter, sourceId, value.input, value.input_tiers);
   addTokenRates(rates, outputMeter, sourceId, value.output, value.output_tiers);
-  if (value.audio_input_token_cost !== undefined)
+  if (value.audio_input_token_cost !== undefined && transcriptionAudioPrice === undefined)
     rates.push(tokenRate("input_audio", value.audio_input_token_cost, sourceId));
   if (value.audio_output_token_cost !== undefined)
     rates.push(tokenRate("output_audio", value.audio_output_token_cost, sourceId));

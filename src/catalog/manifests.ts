@@ -692,7 +692,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v3",
+        extractorVersion: "vercel-catalog-v4",
         fields: [
           "model_id",
           "name",
