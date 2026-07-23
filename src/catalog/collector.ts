@@ -419,6 +419,23 @@ async function collectProvider(
   state: FetchState,
   observedAt: string,
 ): Promise<ProviderResult> {
+  if (manifest.notConfiguredReason !== undefined) {
+    return {
+      provider: providerRecord(manifest, [], undefined),
+      models: [],
+      sources: [],
+      coverage: {
+        provider_id: manifest.provider.id,
+        status: "not_configured",
+        model_count: 0,
+        price_rate_count: 0,
+        checked_at: observedAt,
+        reason: manifest.notConfiguredReason,
+      },
+      warnings: [],
+    };
+  }
+
   const oldModels = previousModels(previous, manifest.provider.id);
   const currentSourceIds = new Set(manifest.sources.map((source) => source.id));
   const comparableOldModels = oldModels.flatMap((model) => {
@@ -438,24 +455,6 @@ async function collectProvider(
   const oldSources = previousSources(previous, manifest.provider.id);
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
   const warnings: CatalogWarning[] = [];
-
-  if (manifest.sources.length === 0) {
-    return {
-      provider: providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),
-      models: oldModels,
-      sources: oldSources,
-      coverage: {
-        provider_id: manifest.provider.id,
-        status: "not_configured",
-        model_count: oldModels.length,
-        price_rate_count: oldModels.reduce((count, model) => count + model.pricing.length, 0),
-        checked_at: observedAt,
-        last_successful_sync_at: oldCoverage?.last_successful_sync_at,
-        reason: manifest.notConfiguredReason,
-      },
-      warnings,
-    };
-  }
 
   try {
     const groups: SourceGroup[] = [];
