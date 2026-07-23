@@ -68,6 +68,7 @@ interface EndpointDefinition {
   documentPath: string;
   title: string;
   marker: string;
+  type: ModelType;
   endpoint: ApiEndpoint;
   href?: string;
   labels: string[];
@@ -75,6 +76,7 @@ interface EndpointDefinition {
 }
 
 interface EndpointReference {
+  type: ModelType;
   endpoint: ApiEndpoint;
   labels: string[];
   modelIds?: Set<string>;
@@ -95,6 +97,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/reference/chat.md",
     title: "Chat",
     marker: "POST https://api.cohere.com/v2/chat",
+    type: "generate",
     endpoint: { name: "Chat V2", path: "v2/chat" },
     href: "/reference/chat",
     labels: ["Chat", "Chat V2"],
@@ -103,6 +106,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/reference/chat-v1.md",
     title: "Chat (V1)",
     marker: "POST https://api.cohere.com/v1/chat",
+    type: "generate",
     endpoint: { name: "Chat V1", path: "v1/chat" },
     labels: ["Chat V1"],
   },
@@ -110,6 +114,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/reference/embed.md",
     title: "Embed API (v2)",
     marker: "POST https://api.cohere.com/v2/embed",
+    type: "embeddings",
     endpoint: { name: "Embed", path: "v2/embed" },
     href: "/reference/embed",
     labels: ["Embed"],
@@ -118,6 +123,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/reference/create-embed-job.md",
     title: "Create an Embed Job",
     marker: "POST https://api.cohere.com/v1/embed-jobs",
+    type: "embeddings",
     endpoint: { name: "Embed Jobs", path: "v1/embed-jobs" },
     href: "/reference/embed-jobs",
     labels: ["Embed Jobs"],
@@ -127,6 +133,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/reference/rerank.md",
     title: "Rerank API (v2)",
     marker: "POST https://api.cohere.com/v2/rerank",
+    type: "rerank",
     endpoint: { name: "Rerank", path: "v2/rerank" },
     href: "/reference/rerank",
     labels: ["Rerank"],
@@ -135,6 +142,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/reference/create-audio-transcription.md",
     title: "Create a transcription",
     marker: "POST https://api.cohere.com/v2/audio/transcriptions",
+    type: "audio_transcription",
     endpoint: { name: "Audio Transcriptions", path: "v2/audio/transcriptions" },
     href: "/reference/create-audio-transcription",
     labels: ["Audio Transcriptions"],
@@ -143,6 +151,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/docs/compatibility-api.md",
     title: "Using Cohere models via the OpenAI SDK",
     marker: "https://api.cohere.ai/compatibility/v1/chat/completions",
+    type: "generate",
     endpoint: { name: "Chat Completions", path: "compatibility/v1/chat/completions" },
     labels: ["Chat Completions"],
   },
@@ -150,6 +159,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     documentPath: "/v1/reference/generate.md",
     title: "Generate",
     marker: "POST https://api.cohere.com/v1/generate",
+    type: "generate",
     endpoint: { name: "Generate", path: "v1/generate" },
     labels: ["Generate"],
     modelList: "generate",
@@ -168,16 +178,12 @@ const apiEndpointFacts = new Map<z.infer<typeof endpointSchema>, ApiEndpointFact
   ["transcriptions", { type: "audio_transcription" }],
 ]);
 
-const typeByEndpointLabel = new Map<string, ModelType>([
-  ["Chat", "generate"],
-  ["Chat V1", "generate"],
-  ["Chat V2", "generate"],
-  ["Chat Completions", "generate"],
-  ["Generate", "generate"],
-  ["Embed", "embeddings"],
-  ["Embed Jobs", "embeddings"],
-  ["Rerank", "rerank"],
-  ["Audio Transcriptions", "audio_transcription"],
+const typeBySection = new Map<string, ModelType[]>([
+  ["Command", ["generate"]],
+  ["Embed", ["embeddings"]],
+  ["Rerank", ["rerank"]],
+  ["Audio", ["audio_transcription"]],
+  ["Aya", ["generate"]],
 ]);
 
 const months = new Map(
@@ -219,21 +225,14 @@ function tokens(value: string): number | undefined {
   return Number.isSafeInteger(number * multiplier) ? number * multiplier : undefined;
 }
 
-function typesFromEndpointLabels(labels: string[]): ModelType[] {
+function typesFromEndpointLabels(labels: string[], references: EndpointReferences): ModelType[] {
   return unique(
     labels.map((label) => {
-      const type = typeByEndpointLabel.get(label);
-      if (type === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
-      return type;
+      const reference = references.byLabel.get(label);
+      if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
+      return reference.type;
     }),
   );
-}
-
-function typeFromId(id: string): ModelType[] {
-  if (id.startsWith("embed-")) return ["embeddings"];
-  if (id.startsWith("rerank-")) return ["rerank"];
-  if (id.startsWith("cohere-transcribe-")) return ["audio_transcription"];
-  return ["generate"];
 }
 
 function listedModelIds(
@@ -275,8 +274,13 @@ function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
         : listedModelIds(document.body, definition.modelList);
     const reference: EndpointReference =
       modelIds === undefined
-        ? { endpoint: definition.endpoint, labels: definition.labels }
-        : { endpoint: definition.endpoint, labels: definition.labels, modelIds };
+        ? { type: definition.type, endpoint: definition.endpoint, labels: definition.labels }
+        : {
+            type: definition.type,
+            endpoint: definition.endpoint,
+            labels: definition.labels,
+            modelIds,
+          };
     if (definition.href !== undefined) byHref.set(definition.href, reference);
     for (const label of definition.labels) byLabel.set(label, reference);
   }
@@ -316,7 +320,12 @@ function linkedEndpoints(
   });
 }
 
-function model(models: Map<string, ProviderModel>, input: Input, id: string): ProviderModel {
+function model(
+  models: Map<string, ProviderModel>,
+  input: Input,
+  id: string,
+  types: ModelType[],
+): ProviderModel {
   const current = models.get(id);
   if (current !== undefined) return current;
   const created = {
@@ -327,7 +336,7 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: typeFromId(id),
+    types,
   };
   models.set(id, created);
   return created;
@@ -335,11 +344,12 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
 
 function update(
   models: Map<string, ProviderModel>,
-  input: Input,
   id: string,
   change: (current: ProviderModel) => ProviderModel,
 ): void {
-  models.set(id, change(model(models, input, id)));
+  const current = models.get(id);
+  if (current === undefined) throw new Error(`Cohere model was not observed: ${id}`);
+  models.set(id, change(current));
 }
 
 function rootTables(
@@ -349,7 +359,12 @@ function rootTables(
   references: EndpointReferences,
 ): void {
   const $ = load(body);
-  $("table").each((_tableIndex, table) => {
+  let sectionTypes: ModelType[] | undefined;
+  $("h2,table").each((_tableIndex, table) => {
+    if ($(table).is("h2")) {
+      sectionTypes = typeBySection.get(text($(table).text()));
+      return;
+    }
     const headers = $(table)
       .find("tr")
       .first()
@@ -357,6 +372,8 @@ function rootTables(
       .map((_index, cell) => text($(cell).text()))
       .get();
     if (headers[0] !== "Model Name") return;
+    const defaultTypes = sectionTypes;
+    if (defaultTypes === undefined) throw new Error("Unsupported Cohere model catalog section");
     const column = (name: string): number => headers.indexOf(name);
     $(table)
       .find("tr")
@@ -367,7 +384,7 @@ function rootTables(
         const parsedId = modelIdSchema.safeParse(cells[0]);
         if (!parsedId.success) return;
         const id = parsedId.data;
-        model(models, input, id);
+        model(models, input, id, defaultTypes);
         if (!headers.includes("Description") && !headers.includes("Status")) return;
         const value = (name: string): string | undefined => {
           const index = column(name);
@@ -402,8 +419,10 @@ function rootTables(
             .map((match) => Number(match[0]?.replace(/,/g, "")))
             .filter((item) => Number.isSafeInteger(item) && item > 0),
         );
-        const modelTypes =
-          endpointLabels.length === 0 ? typeFromId(id) : typesFromEndpointLabels(endpointLabels);
+        const modelTypes = unique([
+          ...defaultTypes,
+          ...typesFromEndpointLabels(endpointLabels, references),
+        ]);
         const isEmbedding = modelTypes.includes("embeddings");
         const isTranscription = modelTypes.includes("audio_transcription");
         const inputModalities: Modality[] = [];
@@ -417,7 +436,7 @@ function rootTables(
         const deprecated = statusText?.startsWith("Deprecated") ?? false;
         const retired = statusText?.startsWith("Retired") ?? false;
         const active = statusText === "Live";
-        update(models, input, id, (current) =>
+        update(models, id, (current) =>
           withEndpoints(
             {
               ...current,
@@ -542,15 +561,15 @@ function commandCard(
     .map((_index, element) => text($(element).text()))
     .get();
   if (endpointLabels.length === 0) throw new Error(`Cohere endpoint card drifted for ${id}`);
-  const types = typesFromEndpointLabels(endpointLabels);
+  const types = typesFromEndpointLabels(endpointLabels, references);
   const apiEndpoints = endpointLabels.map((label) => {
     const reference = references.byLabel.get(label);
     if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
     return reference.endpoint;
   });
-  const inputModalities = [...model(models, input, id).modalities.input];
+  const inputModalities = [...model(models, input, id, types).modalities.input];
   if (capability.get("Image Inputs") === true) inputModalities.push("image");
-  update(models, input, id, (current) =>
+  update(models, id, (current) =>
     withEndpoints(
       {
         ...current,
@@ -581,7 +600,7 @@ function commandCard(
   if (direct?.[1] !== undefined && direct[2] !== undefined) {
     const inputPrice = direct[1];
     const outputPrice = direct[2];
-    update(models, input, id, (current) =>
+    update(models, id, (current) =>
       addRate(
         addRate(
           current,
@@ -591,7 +610,7 @@ function commandCard(
       ),
     );
   } else if (/free until rate limits|contact (?:our )?sales|Model Vault/i.test(pricing)) {
-    update(models, input, id, (current) => ({ ...current, pricing_status: "custom_quote" }));
+    update(models, id, (current) => ({ ...current, pricing_status: "custom_quote" }));
   }
 }
 
@@ -634,7 +653,8 @@ function transcribePage(
   if (endpoint?.endpoint.name !== "Audio Transcriptions")
     throw new Error("Cohere transcription endpoint link drifted");
   const customQuote = /via our API for free[\s\S]*Model Vault/i.test(text($(".fern-prose").text()));
-  update(models, input, parsed.data, (current) =>
+  model(models, input, parsed.data, ["audio_transcription"]);
+  update(models, parsed.data, (current) =>
     withEndpoints(
       {
         ...current,
@@ -666,14 +686,18 @@ function lifecycle(input: Input, models: Map<string, ProviderModel>, body: strin
       .filter((value) => modelIdSchema.safeParse(value).success);
     if (ids.length === 0)
       throw new Error(`Cohere lifecycle section ${heading} contained no model IDs`);
-    for (const id of ids)
-      update(models, input, id, (current) => ({
+    for (const id of ids) {
+      const types: ModelType[] =
+        heading === "2026-04-04:" && id.startsWith("embed-") ? ["embeddings"] : ["generate"];
+      model(models, input, id, types);
+      update(models, id, (current) => ({
         ...current,
         status,
         is_deprecated: true,
         deprecated_at: status === "deprecated" ? at : current.deprecated_at,
         retired_at: status === "retired" ? at : current.retired_at,
       }));
+    }
   };
   applyList("2026-04-04:", "retired", "2026-04-04");
   applyList("2025-09-15:", "deprecated", "2025-09-15");
@@ -691,7 +715,8 @@ function lifecycle(input: Input, models: Map<string, ProviderModel>, body: strin
       const id = modelIdSchema.safeParse(cells[1]);
       const replacement = modelIdSchema.safeParse(cells[3]);
       if (!id.success || !replacement.success || cells[0] === undefined) return;
-      update(models, input, id.data, (current) => ({
+      model(models, input, id.data, ["rerank"]);
+      update(models, id.data, (current) => ({
         ...current,
         types: ["rerank"],
         status: "retired",
@@ -701,7 +726,7 @@ function lifecycle(input: Input, models: Map<string, ProviderModel>, body: strin
       }));
       const price = cells[2]?.match(/\$([\d.]+)\s*\/\s*1K searches/i)?.[1];
       if (price !== undefined)
-        update(models, input, id.data, (current) =>
+        update(models, id.data, (current) =>
           addRate(
             current,
             publishedRate(
@@ -769,7 +794,14 @@ function pricingModels($: Document): z.infer<typeof pricingModelSchema>[] {
       return;
     }
   });
-  return [...new Map(result.map((item) => [item.modelName, item])).values()];
+  const products = new Map<string, z.infer<typeof pricingModelSchema>>();
+  for (const item of result) {
+    const existing = products.get(item.modelName);
+    if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(item))
+      throw new Error(`Cohere pricing payloads disagree for ${item.modelName}`);
+    products.set(item.modelName, item);
+  }
+  return [...products.values()];
 }
 
 function nestedText(value: unknown): string {
@@ -797,7 +829,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
     const current = matchProduct(models, product.modelName);
     if (current === undefined) continue;
     if (product.per === "Free") {
-      update(models, input, current.model_id, (item) => ({
+      update(models, current.model_id, (item) => ({
         ...item,
         pricing_status: "custom_quote",
       }));
@@ -827,7 +859,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
                   input.source.id,
                   unit,
                 );
-        update(models, input, current.model_id, (modelValue) => addRate(modelValue, rate));
+        update(models, current.model_id, (modelValue) => addRate(modelValue, rate));
       };
       if (item.inputPrice !== undefined && item.inputPrice !== null)
         add(item.inputLabel, item.inputPrice);
@@ -843,7 +875,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
         /\$+([\d.]+)\s*\/\s*hour\s*\/\s*instance/i,
       )?.[1];
       if (value !== undefined)
-        update(models, input, current.model_id, (item) =>
+        update(models, current.model_id, (item) =>
           addRate(
             item,
             publishedRate(
@@ -866,7 +898,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
     if (current === undefined || match?.[2] === undefined || match[3] === undefined) return;
     const inputPrice = match[2];
     const outputPrice = match[3];
-    update(models, input, current.model_id, (item) =>
+    update(models, current.model_id, (item) =>
       addRate(
         addRate(
           item,
@@ -882,7 +914,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
   if (aya?.[1] !== undefined && aya[2] !== undefined)
     for (const id of ["c4ai-aya-expanse-8b", "c4ai-aya-expanse-32b"])
       if (models.has(id))
-        update(models, input, id, (item) =>
+        update(models, id, (item) =>
           addRate(
             addRate(
               item,
@@ -921,7 +953,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
       )
         return;
       const conditions = { endpoint: "Model Vault", capacity: cells[1] };
-      update(models, input, current.model_id, (item) =>
+      update(models, current.model_id, (item) =>
         addRate(
           addRate(
             item,
@@ -954,7 +986,6 @@ function includesId(value: string, id: string): boolean {
 }
 
 function applyRelease(
-  input: Input,
   models: Map<string, ProviderModel>,
   value: string,
   released: string | undefined,
@@ -965,7 +996,7 @@ function applyRelease(
     (current) => /[-._/:]/.test(current.model_id) && includesId(value, current.model_id),
   );
   for (const current of matches)
-    update(models, input, current.model_id, (item) => ({
+    update(models, current.model_id, (item) => ({
       ...item,
       name:
         matches.length === 1 && display !== undefined && item.name === item.model_id
@@ -975,12 +1006,7 @@ function applyRelease(
     }));
 }
 
-function releases(
-  input: Input,
-  models: Map<string, ProviderModel>,
-  body: string,
-  root: boolean,
-): void {
+function releases(models: Map<string, ProviderModel>, body: string, root: boolean): void {
   const $ = load(body);
   if (!root) {
     const value = text($(".fern-prose").text());
@@ -991,7 +1017,6 @@ function releases(
       .replace(/^Cohere(?:'s|’s)\s+/i, "")
       .replace(/\s+Model(?: is Here!)?$/i, "");
     applyRelease(
-      input,
       models,
       value,
       date(text($(".fern-docs-badge").first().text())),
@@ -1013,12 +1038,11 @@ function releases(
   [...entries].forEach(([path, value], index) => {
     if (/(?:retirement|deprecat)/i.test(path)) return;
     const content = prose[index];
-    if (content !== undefined) applyRelease(input, models, content, date(value));
+    if (content !== undefined) applyRelease(models, content, date(value));
   });
 }
 
 function applyGenerateEndpoint(
-  input: Input,
   models: Map<string, ProviderModel>,
   references: EndpointReferences,
 ): void {
@@ -1027,7 +1051,7 @@ function applyGenerateEndpoint(
     throw new Error("Cohere Generate API reference is missing");
   for (const id of reference.modelIds) {
     if (!models.has(id)) throw new Error(`Cohere Generate model did not match the catalog: ${id}`);
-    update(models, input, id, (current) => withEndpoints(current, [reference.endpoint]));
+    update(models, id, (current) => withEndpoints(current, [reference.endpoint]));
   }
 }
 
@@ -1046,11 +1070,11 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
     if (url.hostname === "cohere.com" && url.pathname === "/pricing")
       applyPricing(input, models, document.body);
   }
-  applyGenerateEndpoint(input, models, references);
+  applyGenerateEndpoint(models, references);
   for (const document of bundle.documents) {
     const url = new URL(document.url);
     if (url.pathname.includes("/changelog"))
-      releases(input, models, document.body, url.pathname === "/v2/changelog");
+      releases(models, document.body, url.pathname === "/v2/changelog");
   }
   if (models.size < 35 || models.size > 60)
     throw new Error("Cohere model count outside reviewed bounds");

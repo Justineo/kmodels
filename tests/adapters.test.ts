@@ -373,7 +373,7 @@ async function vertexCatalog(
 }
 
 async function cohereCatalog(
-  overrides: { chat?: string; commandAPlus?: string } = {},
+  overrides: { chat?: string; commandAPlus?: string; index?: string; pricing?: string } = {},
 ): Promise<ProviderModel[]> {
   const value = manifest("cohere");
   const source = value.sources[0];
@@ -399,7 +399,10 @@ async function cohereCatalog(
     ["https://docs.cohere.com/v1/reference/generate.md", "generate.md"],
   ];
   const body = JSON.stringify({
-    index: { url: source.url, body: await fixture("cohere/index.html") },
+    index: {
+      url: source.url,
+      body: overrides.index ?? (await fixture("cohere/index.html")),
+    },
     documents: await Promise.all(
       documents.map(async ([url, path]) => ({
         url,
@@ -409,7 +412,9 @@ async function cohereCatalog(
             : url === "https://docs.cohere.com/docs/command-a-plus" &&
                 overrides.commandAPlus !== undefined
               ? overrides.commandAPlus
-              : await fixture(`cohere/${path}`),
+              : url === "https://cohere.com/pricing" && overrides.pricing !== undefined
+                ? overrides.pricing
+                : await fixture(`cohere/${path}`),
       })),
     ),
   });
@@ -808,6 +813,36 @@ describe("Cohere adapters", () => {
     await expect(cohereCatalog({ commandAPlus })).rejects.toThrow(
       "Unsupported Cohere model endpoint: Responses",
     );
+  });
+
+  it("takes operation families from reviewed catalog sections, not identifier prefixes", async () => {
+    const index = (await fixture("cohere/index.html")).replace(
+      "<td>command-nightly</td>\n      <td>Cohere API</td>\n    </tr>",
+      "<td>command-nightly</td>\n      <td>Cohere API</td>\n    </tr>\n    <tr>\n      <td>research-nightly</td>\n      <td>Cohere API</td>\n    </tr>",
+    );
+    const models = await cohereCatalog({ index });
+    expect(models.find(({ model_id }) => model_id === "research-nightly")?.types).toEqual([
+      "generate",
+    ]);
+    await expect(
+      cohereCatalog({
+        index: index.replace(
+          "</main>",
+          "<h2>Safety</h2><table><tr><th>Model Name</th></tr><tr><td>safety-1</td></tr></table></main>",
+        ),
+      }),
+    ).rejects.toThrow("Unsupported Cohere model catalog section");
+  });
+
+  it("rejects conflicting responsive pricing payloads", async () => {
+    const pricing = await fixture("cohere/pricing.html");
+    const frame = pricing.match(/<script[\s\S]*?<\/script>/)?.[0];
+    if (frame === undefined) throw new Error("Missing Cohere pricing fixture frame");
+    await expect(
+      cohereCatalog({
+        pricing: pricing.replace("</main>", `${frame.replace("0.15", "0.16")}</main>`),
+      }),
+    ).rejects.toThrow("Cohere pricing payloads disagree for Command R");
   });
 
   it("declares reviewed catalog companions and a non-persistent account inventory", () => {
