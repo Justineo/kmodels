@@ -2511,6 +2511,20 @@ describe("document adapter", () => {
         path: "v1/chat/completions",
       });
 
+    const sharedId = withChat.replace(
+      "`bedrock-mantle` | `anthropic.claude-haiku-4-5`",
+      "`bedrock-mantle` | `anthropic.claude-haiku-4-5-20251001-v1:0`",
+    );
+    const sharedModel = parseSource({
+      provider: provider(value),
+      source,
+      body: sharedId,
+      observedAt,
+    }).find(({ model_id }) => model_id === "anthropic.claude-haiku-4-5-20251001-v1:0");
+    expect(sharedModel?.api_endpoints?.filter(({ name }) => name === "Chat Completions")).toEqual([
+      { name: "Chat Completions", path: "v1/chat/completions" },
+    ]);
+
     const body = (await fixture("document/bedrock.json")).replace(
       "![Yes](icon-yes.png) Invoke",
       "![Yes](icon-yes.png) Transform",

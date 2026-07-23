@@ -90,6 +90,19 @@ describe("generated static catalog", () => {
     expect([...sources].sort()).toEqual(["huggingface-hf-inference", "huggingface-router"]);
   });
 
+  it("publishes Bedrock route evidence without duplicating shared endpoint facts", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const models = catalog.models.filter(({ provider_id }) => provider_id === "amazon-bedrock");
+    const coverage = catalog.coverage.find(({ provider_id }) => provider_id === "amazon-bedrock");
+    const deepseek = models.find(({ model_id }) => model_id === "deepseek.v3.2");
+    expect(coverage?.status).toBe("fresh");
+    expect(models.flatMap(({ api_endpoints }) => api_endpoints ?? []).length).toBeGreaterThan(200);
+    expect(models.flatMap(({ availability }) => availability).length).toBeGreaterThan(1_500);
+    expect(deepseek?.api_endpoints?.filter(({ name }) => name === "Chat Completions")).toEqual([
+      { name: "Chat Completions", path: "v1/chat/completions" },
+    ]);
+  });
+
   it("publishes the repaired authenticated inventories without transport or schema failures", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
     const repairedSources = new Set([
