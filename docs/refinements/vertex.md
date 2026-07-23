@@ -8,6 +8,8 @@ The 100 rows are plausible for the union of regional Google, partner, and manage
 
 This is a non-exhaustive regional Vertex catalog. It intentionally includes Gemini, Imagen, Veo, Claude, Grok, Mistral, Llama, and other managed models. The optional Model Garden API inventory was skipped, so publisher-resource lifecycle and account availability remain unvalidated for the configured project.
 
+The public catalogs now pin English, retain exact publisher families, and validate their family-specific inference guides before publishing positive endpoints. Google cards retain `generateContent`, `embedContent`, `predict`, or `predictLongRunning` only from the corresponding reviewed family relation. Claude retains `rawPredict` and `streamRawPredict`; Grok and Llama retain their exact OpenAI-compatible route and API version. A managed open model receives Chat Completions only from a sample that contains its exact publisher-qualified ID and route together. Mistral partner cards, unlisted managed open models, and Live/Realtime Google cards remain without endpoint evidence rather than inheriting one from `generate`.
+
 ## Kong AI Gateway 2.0
 
 The Kong source of truth is `app/ai-gateway/ai-providers/vertex.md` and the Gemini Vertex entry in `app/_data/ai-gateway/v2/providers.yaml`.
@@ -16,11 +18,11 @@ Kong's provider is Gemini Vertex, not a generic adapter for every model sold thr
 
 Partner and open-model rows do not become compatible merely because they are `generate`. Compatibility requires the publisher/API family and the exact Vertex method used by that model. Region remains part of the relation.
 
-The Kong examples `gemini-2.5-flash`, `text-embedding-004`, and `veo-3.1-generate-001` are active in the reviewed Vertex catalog. Its image example is absent, so that exact ID requires documentation follow-up rather than alias inference.
+The Kong examples `gemini-2.5-flash`, `text-embedding-004`, and `veo-3.1-generate-001` are active in the reviewed Vertex catalog. The current Google cards directly retain `generateContent` for `gemini-2.5-flash` and `predictLongRunning` for Veo. `text-embedding-004` is lifecycle-only in the current card set, so it does not inherit the newer embedding card's `embedContent` route. Kong's image example is absent, so that exact ID requires documentation follow-up rather than alias inference.
 
 ## Refinement decision
 
 1. Keep all regional Google, partner, and open-model rows.
-2. Retain publisher, API family, exact method, and region as compatibility evidence.
+2. Retain publisher, API family, exact method, and region as compatibility evidence; absence remains unknown.
 3. Project only the Gemini Vertex-compatible subset; do not label all 100 rows as Kong-supported.
 4. Treat files, batches, and ranking configurations as service-level/native operations where no model row is selected.

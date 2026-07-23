@@ -280,39 +280,72 @@ async function geminiCatalog(
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function vertexCatalog(): Promise<ProviderModel[]> {
+async function vertexModels(
+  sourceIndex: number,
+  documents: readonly (readonly [string, string])[],
+  overrides: Readonly<Record<string, string>> = {},
+): Promise<ProviderModel[]> {
   const value = manifest("vertex");
-  const configured = value.sources[0];
+  const configured = value.sources[sourceIndex];
   if (configured === undefined || configured.extractor.kind !== "vertex-catalog")
     throw new Error("Missing Vertex source");
   const source: SourceManifest = {
     ...configured,
-    extractor: { kind: "vertex-catalog", minModels: 2, maxModels: 5 },
+    extractor: { kind: "vertex-catalog", minModels: 1, maxModels: 5 },
   };
-  const documents = [
-    [
-      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/gemini-test",
-      "model.html",
-    ],
-    [
-      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
-      "lifecycle.html",
-    ],
-    [
-      "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
-      "pricing.html",
-    ],
-  ];
   const body = JSON.stringify({
     index: { url: source.url, body: "<main></main>" },
     documents: await Promise.all(
       documents.map(async ([url, path]) => ({
         url,
-        body: await fixture(`vertex/${path}`),
+        body: overrides[path] ?? (await fixture(`vertex/${path}`)),
       })),
     ),
   });
   return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
+async function vertexCatalog(
+  overrides: Readonly<Record<string, string>> = {},
+): Promise<ProviderModel[]> {
+  return vertexModels(
+    0,
+    [
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/gemini-test",
+        "model.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+        "lifecycle.html",
+      ],
+      [
+        "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "pricing.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start",
+        "routes.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-multimodal-embeddings",
+        "routes.html",
+      ],
+      [
+        "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/generate-images",
+        "routes.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/video/generate-videos-from-text",
+        "routes.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music",
+        "routes.html",
+      ],
+    ],
+    overrides,
+  );
 }
 
 async function cohereCatalog(
@@ -1748,6 +1781,8 @@ describe("Vertex AI adapters", () => {
       release: current?.release_date,
       status: current?.status,
       retiredAt: current?.retired_at,
+      families: current?.service_families,
+      endpoints: endpoints(current),
       meters: current?.pricing.map((rate) => rate.meter),
       storageUnit: current?.pricing.find((rate) => rate.meter === "cache_storage")?.unit,
       retired: {
@@ -1782,6 +1817,10 @@ describe("Vertex AI adapters", () => {
       release: "2026-07-21",
       status: "active",
       retiredAt: undefined,
+      families: ["publishers/google"],
+      endpoints: [
+        "generateContent /v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent",
+      ],
       meters: [
         "cache_read_image",
         "cache_read_text",
@@ -1806,11 +1845,99 @@ describe("Vertex AI adapters", () => {
     });
   });
 
+  it("retains exact publisher and API-family evidence for partner and managed open models", async () => {
+    const routes = "routes.html";
+    const partner = await vertexModels(1, [
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/test",
+        "partner.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
+        routes,
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+        routes,
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
+        routes,
+      ],
+    ]);
+    const open = await vertexModels(2, [
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/zaiorg/glm-test",
+        "open.html",
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
+        routes,
+      ],
+      [
+        "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/capabilities/thinking",
+        routes,
+      ],
+    ]);
+    expect({
+      partner: [partner[0]?.service_families, endpoints(partner[0])],
+      open: [
+        open.find((model) => model.model_id === "glm-test-maas")?.service_families,
+        endpoints(open.find((model) => model.model_id === "glm-test-maas")),
+      ],
+      unlisted: endpoints(open.find((model) => model.model_id === "embedding-test-maas")),
+    }).toEqual({
+      partner: [
+        ["publishers/anthropic"],
+        [
+          "rawPredict /v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:rawPredict",
+          "streamRawPredict /v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:streamRawPredict",
+        ],
+      ],
+      open: [
+        ["endpoints/openapi/zai-org"],
+        [
+          "Chat Completions /v1/projects/{project}/locations/{location}/endpoints/openapi/chat/completions",
+        ],
+      ],
+      unlisted: undefined,
+    });
+  });
+
+  it("uses an embedding card's direct guide link instead of navigation labels", async () => {
+    const card = (await fixture("vertex/model.html")).replace(
+      "</table>",
+      '</table><a href="/gemini-enterprise-agent-platform/models/embeddings/get-multimodal-embeddings">Get multimodal embeddings</a>',
+    );
+    const model = (await vertexCatalog({ "model.html": card })).find(
+      (item) => item.model_id === "gemini-test",
+    );
+    expect(endpoints(model)).toEqual([
+      "embedContent /v1/projects/{project}/locations/{location}/publishers/google/models/{model}:embedContent",
+    ]);
+  });
+
+  it("rejects drift in reviewed Vertex method references", async () => {
+    const routes = (await fixture("vertex/routes.html")).replace(
+      'GENERATE_CONTENT_API="generateContent"',
+      'GENERATE_CONTENT_API="generateContentV2"',
+    );
+    await expect(vertexCatalog({ "routes.html": routes })).rejects.toThrow(
+      "Vertex generateContent reference drifted",
+    );
+  });
+
   it("parses authenticated Model Garden inventory as scoped validation", async () => {
     const model = (await parsed("vertex", "vertex/api.json", "vertex-model-garden-api"))[0];
-    expect({ id: model?.model_id, status: model?.status, scope: model?.scope }).toEqual({
+    expect({
+      id: model?.model_id,
+      status: model?.status,
+      families: model?.service_families,
+      scope: model?.scope,
+    }).toEqual({
       id: "gemini-test",
       status: "active",
+      families: ["publishers/google"],
       scope: "runtime_observation",
     });
   });
