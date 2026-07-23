@@ -2,7 +2,7 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
@@ -82,6 +82,13 @@ type CerebrasExtractor =
   | "cerebras-lifecycle"
   | "cerebras-releases"
   | "cerebras-api";
+
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+
+const apiEndpoints = new Map<string, ApiEndpoint>([
+  ["Chat Completions", { name: "Chat Completions", path: "v1/chat/completions" }],
+  ["Completions", { name: "Completions", path: "v1/completions" }],
+]);
 
 function bounded(input: Input, kind: CerebrasExtractor, models: ProviderModel[]): ProviderModel[] {
   const extractor = input.source.extractor;
@@ -268,6 +275,16 @@ function arrayBlock(body: string, name: string): string[] {
   );
 }
 
+function modelEndpoints(body: string): ApiEndpoint[] {
+  return arrayBlock(body, "endpoints")
+    .map((name) => {
+      const endpoint = apiEndpoints.get(name);
+      if (endpoint === undefined) throw new Error(`Unsupported Cerebras model endpoint: ${name}`);
+      return endpoint;
+    })
+    .sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+}
+
 function stringField(block: string, field: string): string[] {
   return [...block.matchAll(new RegExp(`\\b${field}:\\s*"([^"\\n]+)"`, "g"))].flatMap((match) =>
     match[1] === undefined ? [] : [match[1]],
@@ -363,8 +380,8 @@ function catalogCard(
     throw new Error(`Cerebras model card schema drift for ${row.id}`);
   if (modelIdSchema.parse(id) !== row.id || text(title) !== row.name)
     throw new Error(`Cerebras model card disagrees with the catalog for ${row.id}`);
-  const endpoints = arrayBlock(body, "endpoints");
-  if (!endpoints.some((endpoint) => endpoint === "Chat Completions" || endpoint === "Completions"))
+  const endpoints = modelEndpoints(body);
+  if (endpoints.length === 0)
     throw new Error(`Cerebras model card omitted a generation endpoint for ${row.id}`);
   const features = new Set(arrayBlock(body, "features"));
   const inputPrice = cardPrice(body, "inputPrice");
@@ -409,6 +426,7 @@ function catalogCard(
     }),
     description: text(description),
     types: ["generate"],
+    api_endpoints: endpoints,
     modalities: {
       input: cardModalities(body, "inputFormats"),
       output: cardModalities(body, "outputFormats"),
@@ -433,31 +451,50 @@ function catalogCard(
   };
 }
 
+function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): string {
+  const item = bundle.documents.find(({ url }) => new URL(url).pathname.endsWith(suffix));
+  if (item === undefined) throw new Error(`Cerebras catalog omitted ${suffix}`);
+  return item.body;
+}
+
+function validateApiReferences(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const chat = document(bundle, "/api-reference/chat-completions.md");
+  if (
+    !/^# Chat Completions$/m.test(chat) ||
+    !/^\s*\/v1\/chat\/completions:\s*$/m.test(chat) ||
+    !/^\s*operationId: createChatCompletion\s*$/m.test(chat)
+  )
+    throw new Error("Cerebras Chat Completions API reference drift");
+  const completions = document(bundle, "/api-reference/completions.md");
+  if (
+    !/^# Completions$/m.test(completions) ||
+    !completions.includes("https://api.cerebras.ai/v1/completions")
+  )
+    throw new Error("Cerebras Completions API reference drift");
+}
+
 export function parseCerebrasCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  validateApiReferences(bundle);
   const rows = catalogRows(bundle.index.body);
-  const cards = new Map(
-    bundle.documents.flatMap((document) => {
-      const pathname = new URL(document.url).pathname.replace(/\.md$/, "");
-      if (!pathname.startsWith("/models/")) return [];
-      const id = document.body.match(/\bmodelId="([^"]+)"/)?.[1];
-      if (id === undefined) throw new Error(`Cerebras model page ${pathname} omitted its Model ID`);
-      return [[modelIdSchema.parse(id), document.body]];
-    }),
-  );
+  const cardEntries = bundle.documents.flatMap((item) => {
+    const pathname = new URL(item.url).pathname.replace(/\.md$/, "");
+    if (!pathname.startsWith("/models/")) return [];
+    const id = item.body.match(/\bmodelId="([^"]+)"/)?.[1];
+    if (id === undefined) throw new Error(`Cerebras model page ${pathname} omitted its Model ID`);
+    return [[modelIdSchema.parse(id), item.body] as const];
+  });
+  const cards = new Map(cardEntries);
+  if (cards.size !== cardEntries.length)
+    throw new Error("Cerebras model pages returned duplicate model IDs");
   if (cards.size !== rows.length)
     throw new Error("Cerebras model-page count disagrees with catalog");
-  const cache = bundle.documents.find(
-    ({ url }) => new URL(url).pathname.replace(/\.md$/, "") === "/capabilities/prompt-caching",
-  );
-  if (cache === undefined) throw new Error("Cerebras catalog omitted the cache policy");
-  const scheduled = scheduledDates(
-    [bundle.index.body, ...bundle.documents.map(({ body }) => body)].join("\n"),
-  );
+  const cachePolicy = document(bundle, "/capabilities/prompt-caching.md");
+  const scheduled = scheduledDates([bundle.index.body, ...cards.values()].join("\n"));
   const models = rows.map((row) => {
     const card = cards.get(row.id);
     if (card === undefined) throw new Error(`Cerebras catalog omitted model page for ${row.id}`);
-    return catalogCard(input, row, card, cache.body, scheduled);
+    return catalogCard(input, row, card, cachePolicy, scheduled);
   });
   return bounded(input, "cerebras-catalog", models);
 }

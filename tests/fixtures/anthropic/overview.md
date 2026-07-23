@@ -14,14 +14,14 @@ Claude Fable 5 (`claude-fable-5`) is generally available. Claude Mythos 5 (`clau
 | **Context window**    | 1M tokens           | 1M tokens       | 1M tokens              |
 | **Max output**        | 128k tokens         | 128k tokens     | 128k tokens            |
 
-| Feature               | Claude Opus 4.7 |
-| --------------------- | --------------- |
-| **Claude API ID**     | claude-opus-4-7 |
-| **Claude API alias**  | claude-opus-4-7 |
-| **Extended thinking** | No              |
-| **Adaptive thinking** | Yes             |
-| **Context window**    | 1M tokens       |
-| **Max output**        | 128k tokens     |
+| Feature               | Claude Opus 4.7    |
+| --------------------- | ------------------ |
+| **Claude API ID**     | claude-opus-4-7    |
+| **Claude API alias**  | claude-opus-legacy |
+| **Extended thinking** | No                 |
+| **Adaptive thinking** | Yes                |
+| **Context window**    | 1M tokens          |
+| **Max output**        | 128k tokens        |
 
 [Pricing](/docs/en/about-claude/pricing)
 [Model deprecations](/docs/en/about-claude/model-deprecations)

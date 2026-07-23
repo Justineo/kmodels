@@ -2,7 +2,7 @@ import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedr
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { scaleDecimal } from "./pricing.ts";
 import {
@@ -25,7 +25,8 @@ interface ParseInput {
 
 interface CardId {
   aliases: Set<string>;
-  endpoints: Set<string>;
+  endpoints: Set<BedrockModelEndpoint>;
+  deploymentTypes: Set<DeploymentType>;
 }
 
 interface Card {
@@ -34,6 +35,8 @@ interface Card {
   description: string | undefined;
   ids: Map<string, CardId>;
   modalities: ProviderModel["modalities"];
+  apiEndpoints: BedrockApiEndpoint[];
+  availability: BedrockAvailability[];
   capabilities: ProviderModel["capabilities"];
   limits: ProviderModel["limits"];
   releaseDate: string | undefined;
@@ -44,6 +47,64 @@ interface Card {
   types: ModelType[];
   identityKeys: Set<string>;
 }
+
+type BedrockModelEndpoint = "bedrock-runtime" | "bedrock-mantle";
+type DeploymentType = "in-region" | "geo" | "global";
+
+interface BedrockApiEndpoint {
+  name: string;
+  path: string;
+  programmaticEndpoint: BedrockModelEndpoint;
+}
+
+interface BedrockAvailability {
+  region: string;
+  deploymentType: DeploymentType;
+}
+
+const rerankApi: BedrockApiEndpoint = {
+  name: "Rerank",
+  path: "rerank",
+  programmaticEndpoint: "bedrock-runtime",
+};
+const bedrockApiDefinitions = new Map<string, Omit<BedrockApiEndpoint, "name">[]>([
+  ["Invoke", [{ path: "model/{modelId}/invoke", programmaticEndpoint: "bedrock-runtime" }]],
+  ["Converse", [{ path: "model/{modelId}/converse", programmaticEndpoint: "bedrock-runtime" }]],
+  ["Responses", [{ path: "v1/responses", programmaticEndpoint: "bedrock-mantle" }]],
+  [
+    "Chat Completions",
+    [
+      { path: "v1/chat/completions", programmaticEndpoint: "bedrock-runtime" },
+      { path: "v1/chat/completions", programmaticEndpoint: "bedrock-mantle" },
+    ],
+  ],
+  [
+    "Messages",
+    [
+      { path: "model/{modelId}/invoke", programmaticEndpoint: "bedrock-runtime" },
+      { path: "anthropic/v1/messages", programmaticEndpoint: "bedrock-mantle" },
+    ],
+  ],
+  ["StartAsyncInvoke", [{ path: "async-invoke", programmaticEndpoint: "bedrock-runtime" }]],
+  [
+    "InvokeModelWithBidirectionalStream",
+    [
+      {
+        path: "model/{modelId}/invoke-with-bidirectional-stream",
+        programmaticEndpoint: "bedrock-runtime",
+      },
+    ],
+  ],
+]);
+const inferenceIdColumns = new Map<DeploymentType, string>([
+  ["geo", "Geo inference ID"],
+  ["global", "Global inference ID"],
+]);
+const availabilityColumns = new Map<DeploymentType, string>([
+  ["in-region", "In-Region"],
+  ["geo", "Geo"],
+  ["global", "Global"],
+]);
 
 const decimalSchema = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
@@ -191,35 +252,94 @@ function markdownCells(line: string): string[] {
     .map((cell) => cell.replaceAll("**", "").replaceAll("`", "").trim());
 }
 
-function supportedModality(cell: string): Modality | undefined {
-  if (!cell.includes("icon-yes.png")) return undefined;
-  const label = cell.match(/\)\s*(Audio|Embedding|Image|Speech|Text|Video)\s*$/)?.[1];
-  const value = label === "Speech" ? "audio" : label?.toLowerCase();
-  const parsed = modalitySchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-}
-
-function cardModalities(body: string): ProviderModel["modalities"] {
+function markdownTable(
+  body: string,
+  requiredHeaders: string[],
+): { header: string[]; rows: string[][] } | undefined {
   const lines = body.split("\n");
   const headerIndex = lines.findIndex((line) => {
     const cells = markdownCells(line);
-    return cells.includes("Input Modalities") && cells.includes("Output Modalities");
+    return requiredHeaders.every((header) => cells.includes(header));
   });
-  if (headerIndex < 0) throw new Error("Bedrock model card omitted its modality table");
-  const header = markdownCells(lines[headerIndex] ?? "");
-  const inputIndex = header.indexOf("Input Modalities");
-  const outputIndex = header.indexOf("Output Modalities");
-  const input: Modality[] = [];
-  const output: Modality[] = [];
+  if (headerIndex < 0) return undefined;
+  const rows: string[][] = [];
   for (const line of lines.slice(headerIndex + 2)) {
     if (!line.trim().startsWith("|")) break;
-    const cells = markdownCells(line);
+    rows.push(markdownCells(line));
+  }
+  return { header: markdownCells(lines[headerIndex] ?? ""), rows };
+}
+
+function tableLabel(cell: string): string | undefined {
+  const value = cell.match(/\)\s*([^)]*?)\s*$/)?.[1]?.trim();
+  return value === "" ? undefined : value;
+}
+
+function supported(cell: string): boolean {
+  return cell.includes("icon-yes.png");
+}
+
+function supportedModality(cell: string): Modality | undefined {
+  const label = tableLabel(cell);
+  if (label === undefined) return undefined;
+  const value = label === "Speech" ? "audio" : label.toLowerCase();
+  const parsed = modalitySchema.safeParse(value);
+  if (!parsed.success) throw new Error(`Unsupported Bedrock modality label: ${label}`);
+  return supported(cell) ? parsed.data : undefined;
+}
+
+function cardTable(body: string): {
+  modalities: ProviderModel["modalities"];
+  apiEndpoints: BedrockApiEndpoint[];
+  modelEndpoints: Set<BedrockModelEndpoint>;
+} {
+  const table = markdownTable(body, ["Input Modalities", "Output Modalities"]);
+  if (table === undefined) throw new Error("Bedrock model card omitted its modality table");
+  const { header } = table;
+  const inputIndex = header.indexOf("Input Modalities");
+  const outputIndex = header.indexOf("Output Modalities");
+  const apiIndex = header.findIndex((cell) => cell.includes("APIs supported"));
+  const endpointIndex = header.findIndex((cell) => cell.includes("Endpoints supported"));
+  if (apiIndex < 0 || endpointIndex < 0)
+    throw new Error("Bedrock model card omitted API or endpoint support");
+  const input: Modality[] = [];
+  const output: Modality[] = [];
+  const apiEndpoints = new Map<string, BedrockApiEndpoint>();
+  const modelEndpoints = new Set<BedrockModelEndpoint>();
+  for (const cells of table.rows) {
     const inputValue = supportedModality(cells[inputIndex] ?? "");
     const outputValue = supportedModality(cells[outputIndex] ?? "");
     if (inputValue !== undefined) input.push(inputValue);
     if (outputValue !== undefined) output.push(outputValue);
+    const apiLabel = tableLabel(cells[apiIndex] ?? "");
+    if (apiLabel !== undefined) {
+      const definitions = bedrockApiDefinitions.get(apiLabel);
+      if (definitions === undefined) throw new Error(`Unsupported Bedrock API label: ${apiLabel}`);
+      if (supported(cells[apiIndex] ?? ""))
+        for (const definition of definitions) {
+          const endpoint = { name: apiLabel, ...definition };
+          apiEndpoints.set(
+            `${apiEndpointKey(endpoint)}\0${endpoint.programmaticEndpoint}`,
+            endpoint,
+          );
+        }
+    }
+    const endpointLabel = tableLabel(cells[endpointIndex] ?? "");
+    if (endpointLabel !== undefined) {
+      if (endpointLabel !== "bedrock-runtime" && endpointLabel !== "bedrock-mantle")
+        throw new Error(`Unsupported Bedrock endpoint label: ${endpointLabel}`);
+      if (supported(cells[endpointIndex] ?? "")) modelEndpoints.add(endpointLabel);
+    }
   }
-  return { input: unique(input), output: unique(output) };
+  if (modelEndpoints.size === 0)
+    throw new Error("Bedrock model card contained no supported endpoint");
+  if (/^#### \[\s*Rerank API\s*]$/m.test(body))
+    apiEndpoints.set(apiEndpointKey(rerankApi), rerankApi);
+  return {
+    modalities: { input: unique(input), output: unique(output) },
+    apiEndpoints: [...apiEndpoints.values()],
+    modelEndpoints,
+  };
 }
 
 function ids(cell: string): string[] {
@@ -241,40 +361,87 @@ function programmaticAccess(body: string, name: string): Map<string, CardId> {
   const content = section(body, "Programmatic Access");
   if (content === undefined)
     throw new Error(`Bedrock model card omitted Programmatic Access for ${name}`);
-  const lines = content.split("\n");
-  const headerIndex = lines.findIndex((line) => {
-    const cells = markdownCells(line);
-    return cells.includes("Endpoint") && cells.includes("Model ID");
-  });
-  if (headerIndex < 0) throw new Error(`Bedrock model card omitted its ID table for ${name}`);
-  const header = markdownCells(lines[headerIndex] ?? "");
+  const table = markdownTable(content, ["Endpoint", "Model ID"]);
+  if (table === undefined) throw new Error(`Bedrock model card omitted its ID table for ${name}`);
+  const { header } = table;
   const endpointIndex = header.indexOf("Endpoint");
   const idIndex = header.indexOf("Model ID");
-  const aliasIndexes = [
-    header.indexOf("Geo inference ID"),
-    header.indexOf("Global inference ID"),
-  ].filter((index) => index >= 0);
   const result = new Map<string, CardId>();
-  for (const line of lines.slice(headerIndex + 2)) {
-    if (!line.trim().startsWith("|")) break;
-    const cells = markdownCells(line);
+  for (const cells of table.rows) {
     const endpoint = cells[endpointIndex];
     if (endpoint !== "bedrock-runtime" && endpoint !== "bedrock-mantle") continue;
     const modelId = cells[idIndex];
     if (modelId === undefined || !modelIdSchema.safeParse(modelId).success) continue;
     const current = result.get(modelId) ?? {
       aliases: new Set<string>(),
-      endpoints: new Set<string>(),
+      endpoints: new Set<BedrockModelEndpoint>(),
+      deploymentTypes: new Set<DeploymentType>(["in-region"]),
     };
     current.endpoints.add(endpoint);
-    for (const index of aliasIndexes)
-      for (const alias of ids(cells[index] ?? ""))
-        if (alias !== modelId) current.aliases.add(alias);
+    for (const [deploymentType, heading] of inferenceIdColumns) {
+      const index = header.indexOf(heading);
+      if (index < 0) continue;
+      const observedAliases = ids(cells[index] ?? "");
+      if (observedAliases.length > 0) current.deploymentTypes.add(deploymentType);
+      for (const alias of observedAliases) if (alias !== modelId) current.aliases.add(alias);
+    }
     result.set(modelId, current);
   }
   if (result.size === 0)
     throw new Error(`Bedrock model card omitted official model IDs for ${name}`);
   return result;
+}
+
+function cardAvailability(body: string): BedrockAvailability[] {
+  const content = section(body, "Regional Availability");
+  if (content === undefined) throw new Error("Bedrock model card omitted Regional Availability");
+  const table = markdownTable(content, ["Region", "In-Region", "Geo", "Global"]);
+  if (table === undefined)
+    throw new Error("Bedrock model card omitted its regional availability table");
+  const { header } = table;
+  const regionIndex = header.indexOf("Region");
+  const availability: BedrockAvailability[] = [];
+  for (const cells of table.rows) {
+    const region = plain(cells[regionIndex] ?? "").match(/^([a-z]{2}(?:-[a-z0-9]+)+-\d)\b/)?.[1];
+    if (region === undefined) throw new Error("Bedrock regional availability omitted a region");
+    for (const [deploymentType, heading] of availabilityColumns)
+      if (supported(cells[header.indexOf(heading)] ?? ""))
+        availability.push({ region, deploymentType });
+  }
+  if (availability.length === 0)
+    throw new Error("Bedrock model card contained no regional availability");
+  return availability;
+}
+
+function mantleRegions(documents: z.infer<typeof linkedBundleSchema>["documents"]): Set<string> {
+  const document = documents.find((item) => {
+    const url = new URL(item.url);
+    return (
+      url.hostname === "docs.aws.amazon.com" &&
+      url.pathname === "/bedrock/latest/userguide/bedrock-mantle.md"
+    );
+  });
+  if (document === undefined) throw new Error("Bedrock catalog omitted Mantle regions");
+  const content = section(document.body, "Supported Regions and Endpoints");
+  if (content === undefined) throw new Error("Bedrock Mantle guide omitted supported regions");
+  const table = markdownTable(content, ["Region", "Endpoint"]);
+  if (table === undefined) throw new Error("Bedrock Mantle guide omitted its region table");
+  const { header } = table;
+  const regionIndex = header.indexOf("Region");
+  const endpointIndex = header.indexOf("Endpoint");
+  const regions = new Set<string>();
+  for (const cells of table.rows) {
+    const region = cells[regionIndex];
+    if (
+      region === undefined ||
+      !/^[a-z]{2}(?:-[a-z0-9]+)+-\d$/.test(region) ||
+      cells[endpointIndex] !== `bedrock-mantle.${region}.api.aws`
+    )
+      throw new Error("Invalid Bedrock Mantle region row");
+    regions.add(region);
+  }
+  if (regions.size === 0) throw new Error("Bedrock Mantle guide contained no regions");
+  return regions;
 }
 
 function identityKey(value: string, publisher = ""): string {
@@ -346,8 +513,16 @@ function parseCard(body: string): Card {
     ?.split("\n")
     .map((line) => line.trim())
     .find((line) => line !== "" && !line.startsWith("<a ") && !line.startsWith("+ "));
-  const modalities = cardModalities(body);
+  const cardSupport = cardTable(body);
   const cardIds = programmaticAccess(body, name);
+  const programmaticEndpoints = new Set(
+    [...cardIds.values()].flatMap(({ endpoints }) => [...endpoints]),
+  );
+  if (
+    programmaticEndpoints.size !== cardSupport.modelEndpoints.size ||
+    [...programmaticEndpoints].some((endpoint) => !cardSupport.modelEndpoints.has(endpoint))
+  )
+    throw new Error(`Bedrock endpoint support disagreed with Programmatic Access for ${name}`);
   const lifecycle = fact(body, "Model lifecycle")?.toLowerCase();
   const status: ProviderModel["status"] = lifecycle?.startsWith("active")
     ? "active"
@@ -394,7 +569,7 @@ function parseCard(body: string): Card {
     modelId: cardIds.keys().next().value ?? name,
     name,
     rawType: undefined,
-    modalities,
+    modalities: cardSupport.modalities,
     fallback: "generate",
   });
   return {
@@ -402,7 +577,9 @@ function parseCard(body: string): Card {
     publisher,
     description: description === undefined ? undefined : plain(description),
     ids: cardIds,
-    modalities,
+    modalities: cardSupport.modalities,
+    apiEndpoints: cardSupport.apiEndpoints,
+    availability: cardAvailability(body),
     capabilities,
     limits,
     releaseDate: humanDate(fact(body, "Model launch date")),
@@ -697,8 +874,15 @@ function parsePrices(
 
 export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const supportedMantleRegions = mantleRegions(bundle.documents);
   const cards = bundle.documents
-    .filter((document) => new URL(document.url).hostname === "docs.aws.amazon.com")
+    .filter((document) => {
+      const url = new URL(document.url);
+      return (
+        url.hostname === "docs.aws.amazon.com" &&
+        /^\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/.test(url.pathname)
+      );
+    })
     .map((document) => parseCard(document.body));
   if (cards.length === 0) throw new Error("Bedrock catalog contained no model cards");
   const prices = parsePrices(bundle.documents, cards, input.source.id);
@@ -709,6 +893,25 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
       if (current !== undefined && current.name !== card.name)
         throw new Error(`Bedrock model ID ${id} has conflicting display names`);
       const pricing = prices.get(id) ?? [];
+      const apiEndpoints = card.apiEndpoints
+        .filter(({ programmaticEndpoint }) => access.endpoints.has(programmaticEndpoint))
+        .map(({ name, path }) => ({ name, path }))
+        .sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+      const availability = card.availability
+        .filter(({ deploymentType }) => access.deploymentTypes.has(deploymentType))
+        .flatMap(({ region, deploymentType }) =>
+          [...access.endpoints].flatMap((endpoint) =>
+            endpoint === "bedrock-mantle" &&
+            (deploymentType !== "in-region" || !supportedMantleRegions.has(region))
+              ? []
+              : [{ region, deployment_type: `${endpoint}/${deploymentType}` }],
+          ),
+        )
+        .sort((left, right) =>
+          `${left.deployment_type}\0${left.region}`.localeCompare(
+            `${right.deployment_type}\0${right.region}`,
+          ),
+        );
       models.set(id, {
         ...baseModel({
           providerId: input.provider.id,
@@ -720,6 +923,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         description: card.description,
         aliases: [...access.aliases].sort(),
         types: card.types,
+        api_endpoints: apiEndpoints.length > 0 ? apiEndpoints : undefined,
         modalities: card.modalities,
         capabilities: {
           ...card.capabilities,
@@ -735,6 +939,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         is_deprecated: card.isDeprecated,
         pricing_status: pricing.length > 0 ? "published" : "unknown",
         pricing,
+        availability,
         scope: "regional_catalog",
       });
     }

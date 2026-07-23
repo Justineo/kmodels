@@ -24,6 +24,12 @@ describe("generated static catalog", () => {
       expect(model.uid).toBe(modelUid(model.provider_id, model.model_id, model.version));
       expect(model.source_refs.every((source) => sourceIds.has(source))).toBe(true);
       expect(model.pricing.every((rate) => sourceIds.has(rate.source_ref))).toBe(true);
+      expect(
+        model.routes?.every(
+          (route) =>
+            sourceIds.has(route.source_ref) && model.source_refs.includes(route.source_ref),
+        ) ?? true,
+      ).toBe(true);
       expect(model.account_availability).toBe("unknown");
     }
 

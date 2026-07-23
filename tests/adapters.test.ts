@@ -48,7 +48,7 @@ async function parsed(
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
-async function anthropicCatalog(): Promise<ProviderModel[]> {
+async function anthropicCatalog(messagesBody?: string): Promise<ProviderModel[]> {
   const value = manifest("anthropic");
   const source = value.sources[0];
   if (source === undefined) throw new Error("Missing Anthropic source");
@@ -69,6 +69,18 @@ async function anthropicCatalog(): Promise<ProviderModel[]> {
       {
         url: "https://platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
         body: await fixture("anthropic/launch.md"),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/api/messages/create.md",
+        body: messagesBody ?? (await fixture("anthropic/messages.md")),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/api/completions/create.md",
+        body: await fixture("anthropic/completions.md"),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
+        body: await fixture("anthropic/batches.md"),
       },
     ],
   });
@@ -164,7 +176,7 @@ async function huggingFaceRouter(path: string): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
-async function azureCatalog(): Promise<ProviderModel[]> {
+async function azureCatalog(stableApiSpec?: string): Promise<ProviderModel[]> {
   const value = manifest("azure");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "azure-catalog")
@@ -180,13 +192,22 @@ async function azureCatalog(): Promise<ProviderModel[]> {
     ["deployments-standard.md", "standard.md"],
     ["deployments-provisioned.md", "provisioned.md"],
     ["deployments-batch.md", "batch.md"],
-  ];
+    ["azure-v1-v1-generated.yaml", "openai-v1.yaml"],
+    ["azure-v1-preview-generated.yaml", "openai-v1-preview.yaml"],
+  ] as const;
   const body = JSON.stringify({
     index: { url: source.url, body: await fixture("azure/openai.md") },
     documents: await Promise.all(
       documents.map(async ([name, path]) => ({
-        url: `https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/${name}`,
-        body: await fixture(`azure/${path}`),
+        url: `https://raw.githubusercontent.com/${
+          name.startsWith("azure-v1-")
+            ? "Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1"
+            : "MicrosoftDocs/azure-ai-docs/main"
+        }/${name}`,
+        body:
+          name === "azure-v1-v1-generated.yaml" && stableApiSpec !== undefined
+            ? stableApiSpec
+            : await fixture(`azure/${path}`),
       })),
     ),
   });
@@ -259,7 +280,9 @@ async function vertexCatalog(): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function cohereCatalog(): Promise<ProviderModel[]> {
+async function cohereCatalog(
+  overrides: { chat?: string; commandAPlus?: string } = {},
+): Promise<ProviderModel[]> {
   const value = manifest("cohere");
   const source = value.sources[0];
   if (source === undefined || source.extractor.kind !== "cohere-catalog")
@@ -274,13 +297,27 @@ async function cohereCatalog(): Promise<ProviderModel[]> {
     ["https://docs.cohere.com/v2/changelog", "changelog.html"],
     ["https://docs.cohere.com/changelog/command-a", "command-a-release.html"],
     ["https://docs.cohere.com/changelog/command-r-7b/", "command-r7b-release.html"],
+    ["https://docs.cohere.com/reference/chat.md", "chat.md"],
+    ["https://docs.cohere.com/reference/chat-v1.md", "chat-v1.md"],
+    ["https://docs.cohere.com/reference/embed.md", "embed.md"],
+    ["https://docs.cohere.com/reference/create-embed-job.md", "create-embed-job.md"],
+    ["https://docs.cohere.com/reference/rerank.md", "rerank.md"],
+    ["https://docs.cohere.com/reference/create-audio-transcription.md", "transcription.md"],
+    ["https://docs.cohere.com/docs/compatibility-api.md", "compatibility.md"],
+    ["https://docs.cohere.com/v1/reference/generate.md", "generate.md"],
   ];
   const body = JSON.stringify({
     index: { url: source.url, body: await fixture("cohere/index.html") },
     documents: await Promise.all(
       documents.map(async ([url, path]) => ({
         url,
-        body: await fixture(`cohere/${path}`),
+        body:
+          url === "https://docs.cohere.com/reference/chat.md" && overrides.chat !== undefined
+            ? overrides.chat
+            : url === "https://docs.cohere.com/docs/command-a-plus" &&
+                overrides.commandAPlus !== undefined
+              ? overrides.commandAPlus
+              : await fixture(`cohere/${path}`),
       })),
     ),
   });
@@ -488,7 +525,10 @@ describe("Cohere adapters", () => {
       plus_modalities: commandAPlus?.modalities,
       plus_reasoning: commandAPlus?.capabilities.reasoning,
       plus_pricing_status: commandAPlus?.pricing_status,
+      plus_endpoints: commandAPlus?.api_endpoints,
+      command_a_endpoints: commandA?.api_endpoints,
       embedding_limits: embedding?.limits,
+      embedding_endpoints: embedding?.api_endpoints,
       embedding_prices: embedding?.pricing.map(({ meter, price, unit, conditions }) => ({
         meter,
         price,
@@ -511,6 +551,7 @@ describe("Cohere adapters", () => {
         modalities: arabic?.modalities,
         release: arabic?.release_date,
         pricing_status: arabic?.pricing_status,
+        endpoints: arabic?.api_endpoints,
       },
     }).toEqual({
       count: 42,
@@ -521,6 +562,11 @@ describe("Cohere adapters", () => {
       plus_modalities: { input: ["text", "image"], output: ["text"] },
       plus_reasoning: true,
       plus_pricing_status: "custom_quote",
+      plus_endpoints: [
+        { name: "Chat Completions", path: "compatibility/v1/chat/completions" },
+        { name: "Chat V2", path: "v2/chat" },
+      ],
+      command_a_endpoints: [{ name: "Chat V2", path: "v2/chat" }],
       embedding_limits: {
         context_tokens: 128_000,
         embedding_dimensions: [256, 512, 1024, 1536],
@@ -552,6 +598,7 @@ describe("Cohere adapters", () => {
           conditions: { endpoint: "Model Vault", capacity: "Small" },
         },
       ],
+      embedding_endpoints: [{ name: "Embed", path: "v2/embed" }],
       rerank_prices: [
         { price: "2.5", unit: "thousand_search_units", conditions: {} },
         {
@@ -576,16 +623,31 @@ describe("Cohere adapters", () => {
         modalities: { input: ["audio"], output: ["text"] },
         release: "2026-07-07",
         pricing_status: "custom_quote",
+        endpoints: [{ name: "Audio Transcriptions", path: "v2/audio/transcriptions" }],
       },
     });
+    expect(models.find(({ model_id }) => model_id === "embed-english-v3.0")?.api_endpoints).toEqual(
+      [
+        { name: "Embed Jobs", path: "v1/embed-jobs" },
+        { name: "Embed", path: "v2/embed" },
+      ],
+    );
+    expect(models.find(({ model_id }) => model_id === "rerank-v4.0-pro")?.api_endpoints).toEqual([
+      { name: "Rerank", path: "v2/rerank" },
+    ]);
+    expect(models.find(({ model_id }) => model_id === "command")?.api_endpoints).toEqual([
+      { name: "Generate", path: "v1/generate" },
+      { name: "Chat V2", path: "v2/chat" },
+    ]);
   });
 
   it("treats the authenticated API as a complete scoped page", async () => {
     const models = await parsed("cohere", "cohere/api.json", "cohere-api");
     expect(
-      models.map(({ model_id, types, limits, is_deprecated }) => ({
+      models.map(({ model_id, types, api_endpoints, limits, is_deprecated }) => ({
         model_id,
         types,
+        api_endpoints,
         limits,
         is_deprecated,
       })),
@@ -593,12 +655,14 @@ describe("Cohere adapters", () => {
       {
         model_id: "command-r-08-2024",
         types: ["generate"],
+        api_endpoints: [{ name: "Generate", path: "v1/generate" }],
         limits: { context_tokens: 128_000 },
         is_deprecated: false,
       },
       {
         model_id: "embed-v4.0",
         types: ["embeddings", "classification"],
+        api_endpoints: [{ name: "Classify", path: "v1/classify" }],
         limits: { context_tokens: 128_000 },
         is_deprecated: false,
       },
@@ -608,12 +672,25 @@ describe("Cohere adapters", () => {
     );
   });
 
+  it("rejects model endpoint and API-reference drift", async () => {
+    const chat = (await fixture("cohere/chat.md")).replace("/v2/chat", "/v2/renamed");
+    await expect(cohereCatalog({ chat })).rejects.toThrow("Cohere API reference drifted: Chat V2");
+    const commandAPlus = (await fixture("cohere/command-a-plus.html")).replace(
+      "Chat Completions",
+      "Responses",
+    );
+    await expect(cohereCatalog({ commandAPlus })).rejects.toThrow(
+      "Unsupported Cohere model endpoint: Responses",
+    );
+  });
+
   it("declares reviewed catalog companions and a non-persistent account inventory", () => {
     const value = manifest("cohere");
     expect(value.sources).toMatchObject([
       {
         extractor: { kind: "cohere-catalog" },
         type: "website",
+        fields: expect.arrayContaining(["api_endpoints"]),
         linkedDocuments: { minDocuments: 17, maxDocuments: 24 },
       },
       {
@@ -621,6 +698,7 @@ describe("Cohere adapters", () => {
         type: "api",
         scope: "account",
         role: "inventory",
+        fields: expect.arrayContaining(["api_endpoints"]),
         snapshotPolicy: "none",
       },
     ]);
@@ -1128,32 +1206,76 @@ describe("Azure adapters", () => {
     const models = await azureCatalog();
     const model = models.find((candidate) => candidate.uid === "azure/gpt-multi@2026-01-01");
     const whisper = models.find((candidate) => candidate.uid === "azure/whisper@001");
+    const realtime = models.find((candidate) => candidate.uid === "azure/gpt-realtime@2025-08-28");
     const rerank = models.find((candidate) => candidate.uid === "azure/cohere-rerank-v4.0-fast@1");
     const embedding = models.find(
       (candidate) => candidate.uid === "azure/Cohere-embed-v3-english@1",
     );
     const retired = models.find((candidate) => candidate.uid === "azure/gpt-old@1");
+    const newer = models.find((candidate) => candidate.uid === "azure/gpt-multi@2026-02-01");
+    const family = models.find((candidate) => candidate.uid === "azure/gpt-family");
     expect({
       types: model?.types,
+      serviceFamilies: model?.service_families,
+      endpoints: model?.api_endpoints,
       modalities: model?.modalities,
       context: model?.limits.context_tokens,
       output: model?.limits.max_output_tokens,
       availability: model?.availability?.length,
       whisper: whisper?.types,
+      whisperEndpoints: whisper?.api_endpoints,
+      realtimeEndpoints: realtime?.api_endpoints,
       rerank: rerank?.types,
-      embedding: [embedding?.types, embedding?.modalities.output],
+      embedding: [embedding?.types, embedding?.modalities.output, embedding?.service_families],
       retired: [retired?.status, retired?.replacement_model_ids],
+      newer: [newer?.limits, newer?.api_endpoints],
+      versionless: [family?.version, family?.service_families, family?.api_endpoints],
     }).toEqual({
       types: ["generate", "agentic"],
+      serviceFamilies: ["Azure OpenAI"],
+      endpoints: expect.arrayContaining([
+        { name: "createBatch", path: "openai/v1/batches" },
+        { name: "createChatCompletion", path: "openai/v1/chat/completions" },
+        { name: "createResponse", path: "openai/v1/responses" },
+      ]),
       modalities: { input: ["text", "image"], output: ["text"] },
       context: 128_000,
       output: 16_384,
       availability: 5,
       whisper: ["audio_transcription", "audio_translation"],
+      whisperEndpoints: expect.arrayContaining([
+        { name: "createTranscription", path: "openai/v1/audio/transcriptions" },
+        { name: "createTranslation", path: "openai/v1/audio/translations" },
+      ]),
+      realtimeEndpoints: [{ name: "createRealtimeSession", path: "openai/v1/realtime/sessions" }],
       rerank: ["rerank", "classification"],
-      embedding: [["embeddings"], ["embedding"]],
+      embedding: [["embeddings"], ["embedding"], ["Foundry Models from partners and community"]],
       retired: ["retired", ["gpt-multi"]],
+      newer: [{}, undefined],
+      versionless: [
+        undefined,
+        ["Azure OpenAI"],
+        [{ name: "createChatCompletion", path: "openai/v1/chat/completions" }],
+      ],
     });
+    expect(model?.api_endpoints).toHaveLength(3);
+    expect(whisper?.api_endpoints).toHaveLength(2);
+    expect(models.find((candidate) => candidate.uid === "azure/gpt-family@1")?.api_endpoints).toBe(
+      undefined,
+    );
+    expect(models.find((candidate) => candidate.uid === "azure/gpt-family@2")?.api_endpoints).toBe(
+      undefined,
+    );
+  });
+
+  it("rejects drift in the reviewed Azure OpenAI API surface", async () => {
+    const spec = (await fixture("azure/openai-v1.yaml")).replace(
+      "operationId: createResponse",
+      "operationId: renamedResponse",
+    );
+    await expect(azureCatalog(spec)).rejects.toThrow(
+      "Azure OpenAI API specification drifted for openai/v1/responses",
+    );
   });
 
   it("parses the scoped ARM inventory and exact billing-meter price join", async () => {
@@ -1495,6 +1617,53 @@ describe("Anthropic adapters", () => {
       structured: true,
     });
   });
+
+  it("retains only endpoint support listed for each exact official model identity", async () => {
+    const models = await anthropicCatalog();
+    const endpoints = (id: string) => models.find((model) => model.model_id === id)?.api_endpoints;
+    expect(endpoints("claude-fable-5")).toHaveLength(2);
+    expect(endpoints("claude-fable-5")).toEqual(
+      expect.arrayContaining([
+        { name: "Create a Message", path: "v1/messages" },
+        { name: "Create a Message Batch", path: "v1/messages/batches" },
+      ]),
+    );
+    expect(endpoints("claude-opus-4-7")).toHaveLength(2);
+    expect(endpoints("claude-opus-4-7")).toEqual(
+      expect.arrayContaining([
+        { name: "Create a Text Completion", path: "v1/complete" },
+        { name: "Create a Message", path: "v1/messages" },
+      ]),
+    );
+    expect(endpoints("claude-mythos-preview")).toHaveLength(2);
+    expect(endpoints("claude-mythos-preview")).toEqual(
+      expect.arrayContaining([
+        { name: "Create a Text Completion", path: "v1/complete" },
+        { name: "Create a Message", path: "v1/messages" },
+      ]),
+    );
+    expect(endpoints("claude-opus-4-1-20250805")).toBeUndefined();
+  });
+
+  it("rejects endpoint model identities absent from the public catalog", async () => {
+    const body = (await fixture("anthropic/messages.md")).replaceAll(
+      "claude-fable-5",
+      "claude-unknown",
+    );
+    await expect(anthropicCatalog(body)).rejects.toThrow(
+      "Anthropic endpoint model did not match one official ID: claude-unknown",
+    );
+  });
+
+  it("rejects an incomplete endpoint model enumeration", async () => {
+    const body = (await fixture("anthropic/messages.md")).replace(
+      '\n    - `"claude-opus-4-7"`\n',
+      "",
+    );
+    await expect(anthropicCatalog(body)).rejects.toThrow(
+      "Anthropic endpoint model list drifted: v1/messages",
+    );
+  });
 });
 
 describe("Databricks adapters", () => {
@@ -1750,15 +1919,39 @@ describe("document adapter", () => {
         name: "Claude Haiku 4.5",
       },
       { model_id: "cohere.command-r-v1:0", id_kind: "api_id", name: "Command R" },
+      { model_id: "cohere.rerank-v3-5:0", id_kind: "api_id", name: "Rerank 3.5" },
     ]);
     const runtime = models.find(
       (model) => model.model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
     );
+    const mantle = models.find((model) => model.model_id === "anthropic.claude-haiku-4-5");
+    const rerank = models.find((model) => model.model_id === "cohere.rerank-v3-5:0");
     expect(models[0]?.types).toEqual(["generate"]);
     expect(models[0]?.modalities.input).toEqual(["text", "image"]);
     expect(runtime?.aliases).toEqual([
       "global.anthropic.claude-haiku-4-5-20251001-v1:0",
       "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+    ]);
+    expect(runtime?.api_endpoints).toEqual([
+      { name: "Converse", path: "model/{modelId}/converse" },
+      { name: "Invoke", path: "model/{modelId}/invoke" },
+      { name: "Messages", path: "model/{modelId}/invoke" },
+    ]);
+    expect(mantle?.api_endpoints).toEqual([{ name: "Messages", path: "anthropic/v1/messages" }]);
+    expect(rerank?.api_endpoints).toEqual([
+      { name: "Invoke", path: "model/{modelId}/invoke" },
+      { name: "Rerank", path: "rerank" },
+    ]);
+    expect(runtime?.availability).toEqual([
+      { region: "ap-southeast-4", deployment_type: "bedrock-runtime/geo" },
+      { region: "us-east-1", deployment_type: "bedrock-runtime/geo" },
+      { region: "ap-southeast-4", deployment_type: "bedrock-runtime/global" },
+      { region: "us-east-1", deployment_type: "bedrock-runtime/global" },
+      { region: "ap-southeast-4", deployment_type: "bedrock-runtime/in-region" },
+      { region: "us-east-1", deployment_type: "bedrock-runtime/in-region" },
+    ]);
+    expect(mantle?.availability).toEqual([
+      { region: "us-east-1", deployment_type: "bedrock-mantle/in-region" },
     ]);
     expect(models[0]?.limits).toEqual({ context_tokens: 200_000, max_output_tokens: 64_000 });
     expect(models[0]?.release_date).toBe("2025-10-15");
@@ -1778,6 +1971,47 @@ describe("document adapter", () => {
     ]);
     expect(models[2]?.status).toBe("deprecated");
     expect(models[2]?.aliases).toEqual(["us.cohere.command-r-v1:0"]);
+  });
+
+  it("keeps API evidence positive and fails closed on unknown labels", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock catalog source");
+    const withoutInvoke = (await fixture("document/bedrock.json")).replace(
+      "![Yes](icon-yes.png) Invoke",
+      "![No](icon-no.png) Invoke",
+    );
+    const command = parseSource({
+      provider: provider(value),
+      source,
+      body: withoutInvoke,
+      observedAt,
+    }).find(({ model_id }) => model_id === "cohere.command-r-v1:0");
+    expect(command?.api_endpoints).toBeUndefined();
+
+    const withChat = (await fixture("document/bedrock.json")).replace(
+      "![Yes](icon-yes.png) Messages",
+      "![Yes](icon-yes.png) Chat Completions",
+    );
+    const chatModels = parseSource({
+      provider: provider(value),
+      source,
+      body: withChat,
+      observedAt,
+    });
+    for (const id of ["anthropic.claude-haiku-4-5", "anthropic.claude-haiku-4-5-20251001-v1:0"])
+      expect(chatModels.find(({ model_id }) => model_id === id)?.api_endpoints).toContainEqual({
+        name: "Chat Completions",
+        path: "v1/chat/completions",
+      });
+
+    const body = (await fixture("document/bedrock.json")).replace(
+      "![Yes](icon-yes.png) Invoke",
+      "![Yes](icon-yes.png) Transform",
+    );
+    expect(() => parseSource({ provider: provider(value), source, body, observedAt })).toThrow(
+      "Unsupported Bedrock API label",
+    );
   });
 
   it("parses the signed regional inventory as a scoped structured overlay", async () => {
@@ -2020,7 +2254,9 @@ describe("Cerebras adapter", () => {
     });
   }
 
-  async function catalog(): Promise<ProviderModel[]> {
+  async function catalog(
+    overrides: { chat?: string; completions?: string; gpt?: string } = {},
+  ): Promise<ProviderModel[]> {
     const value = manifest("cerebras");
     const configured = source("cerebras-catalog");
     const body = JSON.stringify({
@@ -2028,7 +2264,11 @@ describe("Cerebras adapter", () => {
       documents: [
         {
           url: "https://inference-docs.cerebras.ai/models/openai-oss.md",
-          body: await fixture("cerebras/gpt.md"),
+          body: overrides.gpt ?? (await fixture("cerebras/gpt.md")),
+        },
+        {
+          url: "https://inference-docs.cerebras.ai/models/gemma-4-31b.md",
+          body: await fixture("cerebras/gemma.md"),
         },
         {
           url: "https://inference-docs.cerebras.ai/models/zai-glm-47.md",
@@ -2037,6 +2277,14 @@ describe("Cerebras adapter", () => {
         {
           url: "https://inference-docs.cerebras.ai/capabilities/prompt-caching.md",
           body: await fixture("cerebras/cache.md"),
+        },
+        {
+          url: "https://inference-docs.cerebras.ai/api-reference/chat-completions.md",
+          body: overrides.chat ?? (await fixture("cerebras/chat-completions.md")),
+        },
+        {
+          url: "https://inference-docs.cerebras.ai/api-reference/completions.md",
+          body: overrides.completions ?? (await fixture("cerebras/completions.md")),
         },
       ],
     });
@@ -2067,6 +2315,7 @@ describe("Cerebras adapter", () => {
     const models = await catalog();
     const glm = models.find(({ model_id }) => model_id === "zai-glm-4.7");
     const gpt = models.find(({ model_id }) => model_id === "gpt-oss-120b");
+    const gemma = models.find(({ model_id }) => model_id === "gemma-4-31b");
     expect(glm).toMatchObject({
       name: "Z.ai GLM 4.7",
       status: "preview",
@@ -2078,6 +2327,32 @@ describe("Cerebras adapter", () => {
       price: "0.35",
       derived: true,
     });
+    expect(gpt?.api_endpoints).toEqual([{ name: "Chat Completions", path: "v1/chat/completions" }]);
+    expect(gemma?.api_endpoints).toEqual([
+      { name: "Chat Completions", path: "v1/chat/completions" },
+      { name: "Completions", path: "v1/completions" },
+    ]);
+  });
+
+  it("rejects endpoint and API-reference drift", async () => {
+    const chat = (await fixture("cerebras/chat-completions.md")).replace(
+      "operationId: createChatCompletion",
+      "operationId: renamedChatCompletion",
+    );
+    await expect(catalog({ chat })).rejects.toThrow(
+      "Cerebras Chat Completions API reference drift",
+    );
+    const completions = (await fixture("cerebras/completions.md")).replace(
+      "v1/completions",
+      "v1/renamed",
+    );
+    await expect(catalog({ completions })).rejects.toThrow(
+      "Cerebras Completions API reference drift",
+    );
+    const gpt = (await fixture("cerebras/gpt.md")).replace('"Chat Completions"', '"Responses"');
+    await expect(catalog({ gpt })).rejects.toThrow(
+      "Unsupported Cerebras model endpoint: Responses",
+    );
   });
 
   it("parses model deprecations but ignores parameter deprecations", async () => {
@@ -2091,6 +2366,7 @@ describe("Cerebras adapter", () => {
       deprecated_at: "2025-01-17",
       replacement_model_ids: ["llama-3.3-70b"],
     });
+    expect(models.every(({ api_endpoints }) => api_endpoints === undefined)).toBe(true);
   });
 
   it("uses the first exact availability entry as release date", async () => {
@@ -2159,22 +2435,47 @@ describe("Hugging Face adapter", () => {
     });
     expect(embedding?.types).toEqual(["embeddings"]);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
+    expect(multi?.routes).toEqual([
+      {
+        source_ref: "huggingface-cerebras",
+        provider: "cerebras",
+        provider_model_id: "upstream/future",
+        task: "future-task",
+        status: "live",
+      },
+      {
+        source_ref: "huggingface-cerebras",
+        provider: "cerebras",
+        provider_model_id: "upstream/video",
+        task: "image-to-video",
+        status: "live",
+      },
+      {
+        source_ref: "huggingface-cerebras",
+        provider: "cerebras",
+        provider_model_id: "upstream/image",
+        task: "text-to-image",
+        status: "live",
+      },
+    ]);
   });
 
-  it("does not publish credential-like repository identifiers", async () => {
+  it("does not publish credential-like route identifiers", async () => {
     const credentialLikeId = `org/${["hf_", "a".repeat(40)].join("")}`;
-    const body = (await fixture("huggingface/normal.json")).replace(
-      '"org/model-1"',
-      JSON.stringify(credentialLikeId),
-    );
     const value = manifest("huggingface");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Hugging Face source");
-    expect(
-      parseSource({ provider: provider(value), source, body, observedAt }).some(
-        (model) => model.model_id === credentialLikeId,
-      ),
-    ).toBe(false);
+    for (const { from, hidden } of [
+      { from: '"org/model-1"', hidden: credentialLikeId },
+      { from: '"upstream/model-1"', hidden: credentialLikeId },
+    ]) {
+      const body = (await fixture("huggingface/normal.json")).replace(from, JSON.stringify(hidden));
+      expect(
+        parseSource({ provider: provider(value), source, body, observedAt }).some(
+          (model) => model.model_id === "org/model-1" || model.model_id === credentialLikeId,
+        ),
+      ).toBe(false);
+    }
   });
 
   it("keeps every router price and route-derived fact", async () => {
@@ -2231,6 +2532,22 @@ describe("Hugging Face adapter", () => {
       "huggingface-cerebras",
       "huggingface-cohere",
       "huggingface-router",
+    ]);
+    expect(models.find((model) => model.model_id === "org/model-1")?.routes).toEqual([
+      {
+        source_ref: "huggingface-cerebras",
+        provider: "cerebras",
+        provider_model_id: "upstream/model-1",
+        task: "conversational",
+        status: "live",
+      },
+      {
+        source_ref: "huggingface-cohere",
+        provider: "cohere",
+        provider_model_id: "upstream/model-1",
+        task: "conversational",
+        status: "live",
+      },
     ]);
   });
 
@@ -2829,5 +3146,58 @@ describe("provider drift validation", () => {
       ),
     };
     expect(validateProvider([changed], [model]).reason).toContain("price changed over 50%");
+  });
+
+  it("rejects duplicate or abruptly missing structured evidence", async () => {
+    const model = (await parsed("huggingface", "huggingface/normal.json")).find(
+      ({ model_id }) => model_id === "org/model-1",
+    );
+    const route = model?.routes?.[0];
+    if (model === undefined || route === undefined) throw new Error("Missing routed fixture model");
+    expect(validateProvider([{ ...model, routes: [route, route] }], []).reason).toContain(
+      "duplicate route",
+    );
+    expect(
+      validateProvider(
+        [{ ...model, routes: [{ ...route, source_ref: "unreferenced-source" }] }],
+        [],
+      ).reason,
+    ).toContain("route source is missing");
+    expect(validateProvider([{ ...model, routes: [] }], [model]).reason).toContain(
+      "route count dropped by more than 20%",
+    );
+
+    const bedrock = (await parsed("amazon-bedrock", "document/bedrock.json")).find(
+      ({ model_id }) => model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
+    );
+    const endpoint = bedrock?.api_endpoints?.[0];
+    const availability = bedrock?.availability?.[0];
+    if (bedrock === undefined || endpoint === undefined || availability === undefined)
+      throw new Error("Missing Bedrock route evidence");
+    expect(
+      validateProvider([{ ...bedrock, api_endpoints: [endpoint, endpoint] }], []).reason,
+    ).toContain("duplicate API endpoint");
+    expect(
+      validateProvider([{ ...bedrock, availability: [availability, availability] }], []).reason,
+    ).toContain("duplicate availability");
+    expect(validateProvider([{ ...bedrock, api_endpoints: [] }], [bedrock]).reason).toContain(
+      "API endpoint count dropped by more than 20%",
+    );
+    expect(validateProvider([{ ...bedrock, availability: [] }], [bedrock]).reason).toContain(
+      "availability count dropped by more than 20%",
+    );
+
+    const azure = (await azureCatalog()).find(
+      ({ model_id }) => model_id === "Cohere-embed-v3-english",
+    );
+    const family = azure?.service_families?.[0];
+    if (azure === undefined || family === undefined)
+      throw new Error("Missing Azure service-family evidence");
+    expect(
+      validateProvider([{ ...azure, service_families: [family, family] }], []).reason,
+    ).toContain("duplicate service family");
+    expect(validateProvider([{ ...azure, service_families: undefined }], [azure]).reason).toContain(
+      "service-family count dropped by more than 20%",
+    );
   });
 });

@@ -2,7 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   type Modality,
@@ -55,6 +55,126 @@ const pricingModelSchema = z.object({
 });
 
 type Document = ReturnType<typeof load>;
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+
+interface LinkedDocument {
+  url: string;
+  body: string;
+}
+
+interface EndpointDefinition {
+  documentPath: string;
+  title: string;
+  marker: string;
+  endpoint: ApiEndpoint;
+  href?: string;
+  labels: string[];
+  modelList?: "embed_jobs" | "generate";
+}
+
+interface EndpointReference {
+  endpoint: ApiEndpoint;
+  labels: string[];
+  modelIds?: Set<string>;
+}
+
+interface EndpointReferences {
+  byHref: Map<string, EndpointReference>;
+  byLabel: Map<string, EndpointReference>;
+}
+
+interface ApiEndpointFact {
+  type: ModelType;
+  endpoint?: ApiEndpoint;
+}
+
+const endpointDefinitions: EndpointDefinition[] = [
+  {
+    documentPath: "/reference/chat.md",
+    title: "Chat",
+    marker: "POST https://api.cohere.com/v2/chat",
+    endpoint: { name: "Chat V2", path: "v2/chat" },
+    href: "/reference/chat",
+    labels: ["Chat", "Chat V2"],
+  },
+  {
+    documentPath: "/reference/chat-v1.md",
+    title: "Chat (V1)",
+    marker: "POST https://api.cohere.com/v1/chat",
+    endpoint: { name: "Chat V1", path: "v1/chat" },
+    labels: ["Chat V1"],
+  },
+  {
+    documentPath: "/reference/embed.md",
+    title: "Embed API (v2)",
+    marker: "POST https://api.cohere.com/v2/embed",
+    endpoint: { name: "Embed", path: "v2/embed" },
+    href: "/reference/embed",
+    labels: ["Embed"],
+  },
+  {
+    documentPath: "/reference/create-embed-job.md",
+    title: "Create an Embed Job",
+    marker: "POST https://api.cohere.com/v1/embed-jobs",
+    endpoint: { name: "Embed Jobs", path: "v1/embed-jobs" },
+    href: "/reference/embed-jobs",
+    labels: ["Embed Jobs"],
+    modelList: "embed_jobs",
+  },
+  {
+    documentPath: "/reference/rerank.md",
+    title: "Rerank API (v2)",
+    marker: "POST https://api.cohere.com/v2/rerank",
+    endpoint: { name: "Rerank", path: "v2/rerank" },
+    href: "/reference/rerank",
+    labels: ["Rerank"],
+  },
+  {
+    documentPath: "/reference/create-audio-transcription.md",
+    title: "Create a transcription",
+    marker: "POST https://api.cohere.com/v2/audio/transcriptions",
+    endpoint: { name: "Audio Transcriptions", path: "v2/audio/transcriptions" },
+    href: "/reference/create-audio-transcription",
+    labels: ["Audio Transcriptions"],
+  },
+  {
+    documentPath: "/docs/compatibility-api.md",
+    title: "Using Cohere models via the OpenAI SDK",
+    marker: "https://api.cohere.ai/compatibility/v1/chat/completions",
+    endpoint: { name: "Chat Completions", path: "compatibility/v1/chat/completions" },
+    labels: ["Chat Completions"],
+  },
+  {
+    documentPath: "/v1/reference/generate.md",
+    title: "Generate",
+    marker: "POST https://api.cohere.com/v1/generate",
+    endpoint: { name: "Generate", path: "v1/generate" },
+    labels: ["Generate"],
+    modelList: "generate",
+  },
+];
+
+const apiEndpointFacts = new Map<z.infer<typeof endpointSchema>, ApiEndpointFact>([
+  ["chat", { type: "generate" }],
+  ["embed", { type: "embeddings" }],
+  ["classify", { type: "classification", endpoint: { name: "Classify", path: "v1/classify" } }],
+  ["summarize", { type: "generate", endpoint: { name: "Summarize", path: "v1/summarize" } }],
+  ["rerank", { type: "rerank" }],
+  ["rate", { type: "other" }],
+  ["generate", { type: "generate", endpoint: { name: "Generate", path: "v1/generate" } }],
+]);
+
+const typeByEndpointLabel = new Map<string, ModelType>([
+  ["Chat", "generate"],
+  ["Chat V1", "generate"],
+  ["Chat V2", "generate"],
+  ["Chat Completions", "generate"],
+  ["Generate", "generate"],
+  ["Embed", "embeddings"],
+  ["Embed Jobs", "embeddings"],
+  ["Rerank", "rerank"],
+  ["Audio Transcriptions", "audio_transcription"],
+]);
 
 const months = new Map(
   ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].map(
@@ -64,6 +184,10 @@ const months = new Map(
 
 function text(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function dimmed(style: string | undefined): boolean {
+  return /opacity\s*:\s*0\.5/.test(style ?? "");
 }
 
 function unique<T>(values: T[]): T[] {
@@ -91,21 +215,101 @@ function tokens(value: string): number | undefined {
   return Number.isSafeInteger(number * multiplier) ? number * multiplier : undefined;
 }
 
-function typeFromEndpoints(value: string, id: string): ModelType[] {
-  const types = value.split(",").flatMap((endpoint): ModelType[] => {
-    const normalized = text(endpoint).toLowerCase();
-    if (normalized === "chat" || normalized === "chat v1" || normalized === "chat v2")
-      return ["generate"];
-    if (normalized === "embed" || normalized === "embed jobs") return ["embeddings"];
-    if (normalized === "rerank") return ["rerank"];
-    if (normalized === "audio transcriptions") return ["audio_transcription"];
-    return [];
-  });
-  if (types.length > 0) return unique(types);
+function typesFromEndpointLabels(labels: string[]): ModelType[] {
+  return unique(
+    labels.map((label) => {
+      const type = typeByEndpointLabel.get(label);
+      if (type === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
+      return type;
+    }),
+  );
+}
+
+function typeFromId(id: string): ModelType[] {
   if (id.startsWith("embed-")) return ["embeddings"];
   if (id.startsWith("rerank-")) return ["rerank"];
   if (id.startsWith("cohere-transcribe-")) return ["audio_transcription"];
   return ["generate"];
+}
+
+function listedModelIds(
+  body: string,
+  kind: NonNullable<EndpointDefinition["modelList"]>,
+): Set<string> {
+  const section =
+    kind === "embed_jobs"
+      ? body.match(
+          /Available models and corresponding embedding dimensions:\s*((?:\s*-\s+`[^`]+`[^\n]*(?:\n|$))+)/,
+        )?.[1]
+      : text(body).match(/Currently available models are (.*?)(?: Smaller,|$)/)?.[1];
+  if (section === undefined) throw new Error(`Cohere ${kind} model list drifted`);
+  const values = [...section.matchAll(/`([^`]+)`/g)].map((match) => modelIdSchema.parse(match[1]));
+  const ids = new Set(values);
+  if (ids.size === 0 || ids.size !== values.length)
+    throw new Error(`Cohere ${kind} model list drifted`);
+  return ids;
+}
+
+function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
+  const byHref = new Map<string, EndpointReference>();
+  const byLabel = new Map<string, EndpointReference>();
+  for (const definition of endpointDefinitions) {
+    const matches = documents.filter(
+      (document) => new URL(document.url).pathname === definition.documentPath,
+    );
+    const document = matches[0];
+    if (
+      matches.length !== 1 ||
+      document === undefined ||
+      document.body.match(/^# ([^\n]+)$/m)?.[1] !== definition.title ||
+      !document.body.includes(definition.marker)
+    )
+      throw new Error(`Cohere API reference drifted: ${definition.endpoint.name}`);
+    const modelIds =
+      definition.modelList === undefined
+        ? undefined
+        : listedModelIds(document.body, definition.modelList);
+    const reference: EndpointReference =
+      modelIds === undefined
+        ? { endpoint: definition.endpoint, labels: definition.labels }
+        : { endpoint: definition.endpoint, labels: definition.labels, modelIds };
+    if (definition.href !== undefined) byHref.set(definition.href, reference);
+    for (const label of definition.labels) byLabel.set(label, reference);
+  }
+  return { byHref, byLabel };
+}
+
+function withEndpoints(current: ProviderModel, values: ApiEndpoint[]): ProviderModel {
+  if (values.length === 0) return current;
+  const merged = new Map(
+    [...(current.api_endpoints ?? []), ...values].map((value) => [apiEndpointKey(value), value]),
+  );
+  return {
+    ...current,
+    api_endpoints: [...merged.values()].sort((left, right) =>
+      apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+    ),
+  };
+}
+
+function linkedEndpoints(
+  labels: string[],
+  links: { label: string; href: string | undefined }[],
+  id: string,
+  references: EndpointReferences,
+): ApiEndpoint[] {
+  if (labels.join("\0") !== links.map(({ label }) => label).join("\0"))
+    throw new Error(`Cohere endpoint links drifted for ${id}`);
+  return links.flatMap(({ label, href }) => {
+    const url = href === undefined ? undefined : new URL(href, "https://docs.cohere.com");
+    const reference =
+      url?.origin === "https://docs.cohere.com" ? references.byHref.get(url.pathname) : undefined;
+    if (reference === undefined || !reference.labels.includes(label))
+      throw new Error(`Unsupported Cohere model endpoint: ${label}`);
+    return reference.modelIds !== undefined && !reference.modelIds.has(id)
+      ? []
+      : [reference.endpoint];
+  });
 }
 
 function model(models: Map<string, ProviderModel>, input: Input, id: string): ProviderModel {
@@ -119,7 +323,7 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: typeFromEndpoints("", id),
+    types: typeFromId(id),
   };
   models.set(id, created);
   return created;
@@ -134,7 +338,12 @@ function update(
   models.set(id, change(model(models, input, id)));
 }
 
-function rootTables(input: Input, models: Map<string, ProviderModel>, body: string): void {
+function rootTables(
+  input: Input,
+  models: Map<string, ProviderModel>,
+  body: string,
+  references: EndpointReferences,
+): void {
   const $ = load(body);
   $("table").each((_tableIndex, table) => {
     const headers = $(table)
@@ -149,10 +358,8 @@ function rootTables(input: Input, models: Map<string, ProviderModel>, body: stri
       .find("tr")
       .slice(1)
       .each((_rowIndex, row) => {
-        const cells = $(row)
-          .find("td")
-          .map((_index, cell) => text($(cell).text()))
-          .get();
+        const elements = $(row).find("td");
+        const cells = elements.map((_index, cell) => text($(cell).text())).get();
         const parsedId = modelIdSchema.safeParse(cells[0]);
         if (!parsedId.success) return;
         const id = parsedId.data;
@@ -166,6 +373,24 @@ function rootTables(input: Input, models: Map<string, ProviderModel>, body: stri
         const description = value("Description");
         const modality = value("Modality") ?? value("Modalities") ?? "";
         const endpoint = value("Endpoints") ?? "";
+        const endpointIndex = column("Endpoints");
+        const endpointCell = endpointIndex < 0 ? undefined : elements.eq(endpointIndex);
+        const endpointLabels = endpoint.split(",").map(text).filter(Boolean);
+        const apiEndpoints =
+          endpointCell === undefined
+            ? []
+            : linkedEndpoints(
+                endpointLabels,
+                endpointCell
+                  .find("a[href]")
+                  .map((_index, element) => ({
+                    label: text($(element).text()),
+                    href: $(element).attr("href"),
+                  }))
+                  .get(),
+                id,
+                references,
+              );
         const context = tokens(value("Context Length") ?? "");
         const output = tokens(value("Maximum Output Tokens") ?? "");
         const dimensions = unique(
@@ -173,7 +398,8 @@ function rootTables(input: Input, models: Map<string, ProviderModel>, body: stri
             .map((match) => Number(match[0]?.replace(/,/g, "")))
             .filter((item) => Number.isSafeInteger(item) && item > 0),
         );
-        const modelTypes = typeFromEndpoints(endpoint, id);
+        const modelTypes =
+          endpointLabels.length === 0 ? typeFromId(id) : typesFromEndpointLabels(endpointLabels);
         const isEmbedding = modelTypes.includes("embeddings");
         const isTranscription = modelTypes.includes("audio_transcription");
         const inputModalities: Modality[] = [];
@@ -187,38 +413,43 @@ function rootTables(input: Input, models: Map<string, ProviderModel>, body: stri
         const deprecated = statusText?.startsWith("Deprecated") ?? false;
         const retired = statusText?.startsWith("Retired") ?? false;
         const active = statusText === "Live";
-        update(models, input, id, (current) => ({
-          ...current,
-          description: description || current.description,
-          types: modelTypes,
-          modalities:
-            inputModalities.length + outputModalities.length > 0
-              ? { input: [...inputModalities], output: [...outputModalities] }
-              : current.modalities,
-          limits: {
-            ...current.limits,
-            ...(context === undefined ? {} : { context_tokens: context }),
-            ...(output === undefined ? {} : { max_output_tokens: output }),
-            ...(dimensions.length === 0 ? {} : { embedding_dimensions: dimensions }),
-            ...(dimensions.length <= 1
-              ? {}
-              : {
-                  recommended_embedding_dimensions: [dimensions.at(-1) ?? 0].filter(
-                    (item) => item > 0,
-                  ),
-                }),
-          },
-          status: retired
-            ? "retired"
-            : deprecated
-              ? "deprecated"
-              : active
-                ? "active"
-                : current.status,
-          is_deprecated: retired || deprecated ? true : active ? false : current.is_deprecated,
-          deprecated_at: deprecated ? date(statusText ?? "") : current.deprecated_at,
-          retired_at: retired ? date(statusText ?? "") : current.retired_at,
-        }));
+        update(models, input, id, (current) =>
+          withEndpoints(
+            {
+              ...current,
+              description: description || current.description,
+              types: modelTypes,
+              modalities:
+                inputModalities.length + outputModalities.length > 0
+                  ? { input: [...inputModalities], output: [...outputModalities] }
+                  : current.modalities,
+              limits: {
+                ...current.limits,
+                ...(context === undefined ? {} : { context_tokens: context }),
+                ...(output === undefined ? {} : { max_output_tokens: output }),
+                ...(dimensions.length === 0 ? {} : { embedding_dimensions: dimensions }),
+                ...(dimensions.length <= 1
+                  ? {}
+                  : {
+                      recommended_embedding_dimensions: [dimensions.at(-1) ?? 0].filter(
+                        (item) => item > 0,
+                      ),
+                    }),
+              },
+              status: retired
+                ? "retired"
+                : deprecated
+                  ? "deprecated"
+                  : active
+                    ? "active"
+                    : current.status,
+              is_deprecated: retired || deprecated ? true : active ? false : current.is_deprecated,
+              deprecated_at: deprecated ? date(statusText ?? "") : current.deprecated_at,
+              retired_at: retired ? date(statusText ?? "") : current.retired_at,
+            },
+            apiEndpoints,
+          ),
+        );
       });
   });
 }
@@ -268,6 +499,7 @@ function commandCard(
   models: Map<string, ProviderModel>,
   url: URL,
   body: string,
+  references: EndpointReferences,
 ): void {
   const $ = load(body);
   const id = cardId($);
@@ -284,7 +516,7 @@ function commandCard(
       !["Citations", "Tool Use", "Structured Outputs", "Reasoning", "Image Inputs"].includes(label)
     )
       return;
-    capability.set(label, !($(element).attr("style") ?? "").includes("opacity:0.5"));
+    capability.set(label, !dimmed($(element).attr("style")));
   });
   capabilities.citations = capability.get("Citations") ?? "unknown";
   capabilities.tool_call = capability.get("Tool Use") ?? "unknown";
@@ -300,30 +532,40 @@ function commandCard(
   const endpointCard = $(".fern-card").filter((_index, card) =>
     text($(card).text()).startsWith("API Endpoints"),
   );
-  const endpointText = endpointCard
+  const endpointLabels = endpointCard
     .find("span")
-    .filter((_index, element) => !($(element).attr("style") ?? "").includes("opacity:0.5"))
+    .filter((_index, element) => !dimmed($(element).attr("style")))
     .map((_index, element) => text($(element).text()))
-    .get()
-    .join(",");
-  const types = typeFromEndpoints(endpointText, id);
+    .get();
+  if (endpointLabels.length === 0) throw new Error(`Cohere endpoint card drifted for ${id}`);
+  const types = typesFromEndpointLabels(endpointLabels);
+  const apiEndpoints = endpointLabels.map((label) => {
+    const reference = references.byLabel.get(label);
+    if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
+    return reference.endpoint;
+  });
   const inputModalities = [...model(models, input, id).modalities.input];
   if (capability.get("Image Inputs") === true) inputModalities.push("image");
-  update(models, input, id, (current) => ({
-    ...current,
-    name: title ?? current.name,
-    types,
-    modalities: {
-      input: unique(inputModalities),
-      output: current.modalities.output,
-    },
-    capabilities: { ...current.capabilities, ...capabilities },
-    limits: {
-      ...current.limits,
-      ...(context === undefined ? {} : { context_tokens: context }),
-      ...(output === undefined ? {} : { max_output_tokens: output }),
-    },
-  }));
+  update(models, input, id, (current) =>
+    withEndpoints(
+      {
+        ...current,
+        name: title ?? current.name,
+        types,
+        modalities: {
+          input: unique(inputModalities),
+          output: current.modalities.output,
+        },
+        capabilities: { ...current.capabilities, ...capabilities },
+        limits: {
+          ...current.limits,
+          ...(context === undefined ? {} : { context_tokens: context }),
+          ...(output === undefined ? {} : { max_output_tokens: output }),
+        },
+      },
+      apiEndpoints,
+    ),
+  );
   const pricing = text(
     $(".fern-card")
       .filter((_index, card) => text($(card).text()).startsWith("Pricing"))
@@ -354,6 +596,7 @@ function transcribePage(
   models: Map<string, ProviderModel>,
   url: URL,
   body: string,
+  references: EndpointReferences,
 ): void {
   const $ = load(body);
   const label = $("strong")
@@ -371,17 +614,37 @@ function transcribePage(
     .map((_index, element) => text($(element).text()))
     .get()
     .find((value) => value.length >= 40);
+  const endpointHref = $("a")
+    .filter(
+      (_index, element) =>
+        text($(element).text()) === "Audio Transcriptions API reference documentation",
+    )
+    .first()
+    .attr("href");
+  const endpointUrl =
+    endpointHref === undefined ? undefined : new URL(endpointHref, "https://docs.cohere.com");
+  const endpoint =
+    endpointUrl?.origin === "https://docs.cohere.com"
+      ? references.byHref.get(endpointUrl.pathname)
+      : undefined;
+  if (endpoint?.endpoint.name !== "Audio Transcriptions")
+    throw new Error("Cohere transcription endpoint link drifted");
   const customQuote = /via our API for free[\s\S]*Model Vault/i.test(text($(".fern-prose").text()));
-  update(models, input, parsed.data, (current) => ({
-    ...current,
-    name: text($("h1").first().text()) || current.name,
-    description: current.description ?? description,
-    types: ["audio_transcription"],
-    modalities: { input: ["audio"], output: ["text"] },
-    status: "active",
-    is_deprecated: false,
-    pricing_status: customQuote ? "custom_quote" : current.pricing_status,
-  }));
+  update(models, input, parsed.data, (current) =>
+    withEndpoints(
+      {
+        ...current,
+        name: text($("h1").first().text()) || current.name,
+        description: current.description ?? description,
+        types: ["audio_transcription"],
+        modalities: { input: ["audio"], output: ["text"] },
+        status: "active",
+        is_deprecated: false,
+        pricing_status: customQuote ? "custom_quote" : current.pricing_status,
+      },
+      [endpoint.endpoint],
+    ),
+  );
 }
 
 function lifecycle(input: Input, models: Map<string, ProviderModel>, body: string): void {
@@ -750,19 +1013,36 @@ function releases(
   });
 }
 
+function applyGenerateEndpoint(
+  input: Input,
+  models: Map<string, ProviderModel>,
+  references: EndpointReferences,
+): void {
+  const reference = references.byLabel.get("Generate");
+  if (reference?.modelIds === undefined)
+    throw new Error("Cohere Generate API reference is missing");
+  for (const id of reference.modelIds) {
+    if (!models.has(id)) throw new Error(`Cohere Generate model did not match the catalog: ${id}`);
+    update(models, input, id, (current) => withEndpoints(current, [reference.endpoint]));
+  }
+}
+
 export function parseCohereCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
-  rootTables(input, models, bundle.index.body);
+  const references = endpointReferences(bundle.documents);
+  rootTables(input, models, bundle.index.body, references);
   for (const document of bundle.documents) {
     const url = new URL(document.url);
-    if (url.pathname.startsWith("/docs/command-")) commandCard(input, models, url, document.body);
+    if (url.pathname.startsWith("/docs/command-"))
+      commandCard(input, models, url, document.body, references);
     if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
-      transcribePage(input, models, url, document.body);
+      transcribePage(input, models, url, document.body, references);
     if (url.pathname === "/docs/deprecations") lifecycle(input, models, document.body);
     if (url.hostname === "cohere.com" && url.pathname === "/pricing")
       applyPricing(input, models, document.body);
   }
+  applyGenerateEndpoint(input, models, references);
   for (const document of bundle.documents) {
     const url = new URL(document.url);
     if (url.pathname.includes("/changelog"))
@@ -782,17 +1062,16 @@ export function parseCohereApi(input: Input): ProviderModel[] {
   return items.flatMap((result) => {
     if (!result.success) return [];
     const item = result.data;
-    const types = unique(
-      (item.endpoints ?? []).flatMap((endpoint): ModelType[] => {
-        if (endpoint === "chat" || endpoint === "generate" || endpoint === "summarize")
-          return ["generate"];
-        if (endpoint === "embed") return ["embeddings"];
-        if (endpoint === "classify") return ["classification"];
-        if (endpoint === "rerank") return ["rerank"];
-        return ["other"];
-      }),
-    );
+    const facts = (item.endpoints ?? []).map((endpoint) => {
+      const fact = apiEndpointFacts.get(endpoint);
+      if (fact === undefined) throw new Error(`Unsupported Cohere API endpoint: ${endpoint}`);
+      return fact;
+    });
+    const types = unique(facts.map((fact) => fact.type));
     const modelTypes: ModelType[] = types.length > 0 ? types : ["other"];
+    const apiEndpoints = unique(
+      facts.flatMap(({ endpoint }) => (endpoint === undefined ? [] : [endpoint])),
+    ).sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
     return [
       {
         ...baseModel({
@@ -803,6 +1082,7 @@ export function parseCohereApi(input: Input): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         types: modelTypes,
+        api_endpoints: apiEndpoints.length === 0 ? undefined : apiEndpoints,
         limits: item.context_length === undefined ? {} : { context_tokens: item.context_length },
         status: item.is_deprecated === true ? "deprecated" : "unknown",
         is_deprecated: item.is_deprecated ?? "unknown",

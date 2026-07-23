@@ -13,7 +13,7 @@ export type Extractor =
   | { kind: "cerebras-lifecycle"; minModels: number; maxModels: number }
   | { kind: "cerebras-releases"; minModels: number; maxModels: number }
   | { kind: "cerebras-api"; minModels: number; maxModels: number }
-  | { kind: "huggingface-mapping"; minModels: number; maxModels: number }
+  | { kind: "huggingface-mapping"; provider: string; minModels: number; maxModels: number }
   | { kind: "huggingface-router"; minModels: number; maxModels: number }
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
@@ -84,7 +84,9 @@ export type SourceField =
   | "description"
   | "aliases"
   | "types"
+  | "service_families"
   | "api_endpoints"
+  | "routes"
   | "modalities"
   | "capabilities"
   | "limits"
@@ -210,11 +212,12 @@ const huggingFaceSource = (provider: (typeof huggingFaceProviders)[number]): Sou
   stability: "documented",
   extractor: {
     kind: "huggingface-mapping",
+    provider,
     minModels: provider === "baseten" ? 0 : 1,
     maxModels: 30_000,
   },
   extractorVersion: "huggingface-mapping-v1",
-  fields: ["model_id", "types", "modalities", "status"],
+  fields: ["model_id", "routes", "types", "modalities", "status"],
   allowedHosts: ["huggingface.co"],
   maxResponseBytes: mebibytes(8),
   scope: "global",
@@ -370,13 +373,14 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v1",
+        extractorVersion: "anthropic-catalog-v2",
         fields: [
           "model_id",
           "name",
           "description",
           "aliases",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -400,6 +404,23 @@ export const manifests = [
           concurrency: 3,
           maxDocumentBytes: mebibytes(2),
           pathSuffix: ".md",
+          documents: [
+            {
+              id: "messages-create",
+              url: "https://platform.claude.com/docs/en/api/messages/create.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "completions-create",
+              url: "https://platform.claude.com/docs/en/api/completions/create.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "message-batches-create",
+              url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
+              maxResponseBytes: mebibytes(1),
+            },
+          ],
         },
       },
       {
@@ -448,18 +469,20 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v2",
+        extractorVersion: "bedrock-catalog-v3",
         fields: [
           "model_id",
           "name",
           "description",
           "aliases",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
           "release_date",
           "pricing",
+          "availability",
           "status",
           "is_deprecated",
           "deprecated_at",
@@ -478,6 +501,11 @@ export const manifests = [
           concurrency: 8,
           maxDocumentBytes: mebibytes(2),
           documents: [
+            {
+              id: "bedrock-mantle",
+              url: "https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.md",
+              maxResponseBytes: mebibytes(1),
+            },
             {
               id: "pricing-bedrock",
               url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/index.json",
@@ -715,11 +743,13 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
-        extractorVersion: "azure-catalog-v1",
+        extractorVersion: "azure-catalog-v2",
         fields: [
           "model_id",
           "version",
           "types",
+          "service_families",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -730,7 +760,7 @@ export const manifests = [
           "replacement_model_ids",
         ],
         allowedHosts: ["raw.githubusercontent.com"],
-        maxResponseBytes: mebibytes(4),
+        maxResponseBytes: mebibytes(8),
         scope: "global",
         exhaustive: false,
         role: "catalog",
@@ -769,6 +799,16 @@ export const manifests = [
               id: "batch",
               url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-batch.md",
               maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "openai-v1",
+              url: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-v1-generated.yaml",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "openai-v1-preview",
+              url: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-preview-generated.yaml",
+              maxResponseBytes: mebibytes(2),
             },
           ],
         },
@@ -1161,13 +1201,14 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "cohere-catalog" },
-        extractorVersion: "cohere-catalog-v1",
+        extractorVersion: "cohere-catalog-v2",
         fields: [
           "model_id",
           "name",
           "description",
           "aliases",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -1221,6 +1262,46 @@ export const manifests = [
               url: "https://docs.cohere.com/changelog/rerank-v3.5",
               maxResponseBytes: mebibytes(2),
             },
+            {
+              id: "api-chat-v2",
+              url: "https://docs.cohere.com/reference/chat.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-chat-v1",
+              url: "https://docs.cohere.com/reference/chat-v1.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-embed-v2",
+              url: "https://docs.cohere.com/reference/embed.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-embed-jobs",
+              url: "https://docs.cohere.com/reference/create-embed-job.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-rerank-v2",
+              url: "https://docs.cohere.com/reference/rerank.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-transcription-v2",
+              url: "https://docs.cohere.com/reference/create-audio-transcription.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-openai-compatibility",
+              url: "https://docs.cohere.com/docs/compatibility-api.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "api-generate-v1",
+              url: "https://docs.cohere.com/v1/reference/generate.md",
+              maxResponseBytes: mebibytes(1),
+            },
           ],
         },
       },
@@ -1232,8 +1313,8 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "cohere-api" },
-        extractorVersion: "cohere-api-v1",
-        fields: ["model_id", "types", "limits", "status", "is_deprecated"],
+        extractorVersion: "cohere-api-v2",
+        fields: ["model_id", "types", "api_endpoints", "limits", "status", "is_deprecated"],
         allowedHosts: ["api.cohere.com"],
         maxResponseBytes: mebibytes(8),
         scope: "account",
@@ -1572,7 +1653,7 @@ export const manifests = [
         stability: "documented",
         extractor: { kind: "huggingface-router", minModels: 50, maxModels: 500 },
         extractorVersion: "huggingface-router-v1",
-        fields: ["types", "modalities", "capabilities", "limits", "pricing", "status"],
+        fields: ["types", "modalities", "capabilities", "limits", "pricing"],
         allowedHosts: ["router.huggingface.co"],
         maxResponseBytes: mebibytes(16),
         scope: "global",
@@ -1711,12 +1792,13 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-catalog-v1",
+        extractorVersion: "cerebras-catalog-v2",
         fields: [
           "model_id",
           "name",
           "description",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -1742,6 +1824,16 @@ export const manifests = [
             {
               id: "prompt-caching",
               url: "https://inference-docs.cerebras.ai/capabilities/prompt-caching.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "chat-completions",
+              url: "https://inference-docs.cerebras.ai/api-reference/chat-completions.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "completions",
+              url: "https://inference-docs.cerebras.ai/api-reference/completions.md",
               maxResponseBytes: mebibytes(1),
             },
           ],

@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
-import { baseModel } from "./model.ts";
+import { baseModel, modelRouteKey } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
+  type ModelRoute,
   type ModelType,
   type PriceRate,
   type Provider,
@@ -125,45 +126,50 @@ function facts(task: string): TaskFacts {
   }
 }
 
-function extractor(input: Input, kind: "huggingface-mapping" | "huggingface-router") {
-  if (input.source.extractor.kind !== kind)
-    throw new Error(`Invalid Hugging Face ${kind} extractor`);
-  return input.source.extractor;
-}
-
 export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
-  const config = extractor(input, "huggingface-mapping");
+  const config = input.source.extractor;
+  if (config.kind !== "huggingface-mapping")
+    throw new Error("Invalid Hugging Face mapping extractor");
   const groups = mappingSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
   for (const [task, entries] of Object.entries(groups)) {
     const observed = facts(task);
     for (const [rawId, entry] of Object.entries(entries)) {
-      if (isCredentialLikeIdentifier(rawId)) continue;
       if (rawId.startsWith("tag-filter=")) {
         if (entry.tags === undefined || entry.adapterType === undefined)
           throw new Error("Hugging Face tag filter omitted its adapter contract");
         continue;
       }
-      const id = hubIdSchema.parse(rawId);
-      const current = models.get(id);
-      if (current === undefined) {
-        models.set(id, {
-          ...baseModel({
-            providerId: input.provider.id,
-            id,
-            name: id,
-            sourceId: input.source.id,
-            observedAt: input.observedAt,
-          }),
-          types: observed.types,
-          modalities: { input: observed.input, output: observed.output },
-          status: "active",
-        });
+      if (isCredentialLikeIdentifier(rawId) || isCredentialLikeIdentifier(entry.providerId))
         continue;
-      }
+      const id = hubIdSchema.parse(rawId);
+      const current = models.get(id) ?? {
+        ...baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        status: "active",
+      };
+      const route: ModelRoute = {
+        source_ref: input.source.id,
+        provider: config.provider,
+        provider_model_id: entry.providerId,
+        task,
+        status: "live",
+      };
+      const routes = [...(current.routes ?? []), route].sort((left, right) =>
+        modelRouteKey(left).localeCompare(modelRouteKey(right)),
+      );
+      const types = unique([...current.types, ...observed.types]);
       models.set(id, {
         ...current,
-        types: unique([...current.types, ...observed.types]),
+        types: types.some((type) => type !== "other")
+          ? types.filter((type) => type !== "other")
+          : types,
+        routes,
         modalities: {
           input: unique([...current.modalities.input, ...observed.input]),
           output: unique([...current.modalities.output, ...observed.output]),
@@ -222,7 +228,9 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Price
 }
 
 export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
-  const config = extractor(input, "huggingface-router");
+  const config = input.source.extractor;
+  if (config.kind !== "huggingface-router")
+    throw new Error("Invalid Hugging Face router extractor");
   const items = routerSchema.parse(JSON.parse(input.body)).data;
   if (items.length < config.minModels || items.length > config.maxModels)
     throw new Error("Hugging Face router count outside reviewed bounds");
@@ -263,7 +271,6 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       limits: {
         context_tokens: contexts.length === 0 ? undefined : Math.max(...contexts),
       },
-      status: "active",
       pricing_status: pricing.length === 0 ? "unknown" : "published",
       pricing,
     } satisfies ProviderModel;

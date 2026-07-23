@@ -1,4 +1,4 @@
-import { type ProviderModel, unknownCapabilities } from "./schema.ts";
+import { type ModelRoute, type ProviderModel, unknownCapabilities } from "./schema.ts";
 
 export interface BaseModelInput {
   providerId: string;
@@ -11,6 +11,16 @@ export interface BaseModelInput {
 
 export function modelUid(providerId: string, id: string, version?: string): string {
   return `${providerId}/${id}${version === undefined ? "" : `@${version}`}`;
+}
+
+export function apiEndpointKey(
+  endpoint: NonNullable<ProviderModel["api_endpoints"]>[number],
+): string {
+  return `${endpoint.path}\0${endpoint.name}`;
+}
+
+export function modelRouteKey(route: ModelRoute): string {
+  return `${route.provider}\0${route.task}\0${route.provider_model_id}\0${route.source_ref}`;
 }
 
 export function baseModel(input: BaseModelInput): ProviderModel {
