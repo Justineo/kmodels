@@ -2613,6 +2613,7 @@ describe("Vercel adapter", () => {
     const videoToken = byId.get("acme/video-token-1");
     const speech = byId.get("acme/speech-1");
     const transcription = byId.get("acme/transcribe-preview");
+    const tokenTranscription = byId.get("acme/transcribe-token");
     const realtime = byId.get("acme/realtime-1");
     expect({
       embedding: {
@@ -2633,6 +2634,11 @@ describe("Vercel adapter", () => {
         deprecatedAt: transcription?.deprecated_at,
         pricing: transcription?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
       },
+      tokenTranscription: tokenTranscription?.pricing.map((rate) => ({
+        meter: rate.meter,
+        price: rate.price,
+        unit: rate.unit,
+      })),
       realtime: realtime?.pricing.map((rate) => ({
         meter: rate.meter,
         price: rate.price,
@@ -2681,6 +2687,10 @@ describe("Vercel adapter", () => {
         deprecatedAt: "2025-07-01",
         pricing: [{ meter: "input_audio", unit: "second" }],
       },
+      tokenTranscription: [
+        { meter: "input_audio", price: "1.25", unit: "million_tokens" },
+        { meter: "output_text", price: "5", unit: "million_tokens" },
+      ],
       realtime: [
         {
           meter: "input_text",
