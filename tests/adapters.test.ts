@@ -48,6 +48,22 @@ async function parsed(
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
+async function deepseekCatalog(chat?: string): Promise<ProviderModel[]> {
+  const value = manifest("deepseek");
+  const source = value.sources.find(({ id }) => id === "deepseek-catalog");
+  if (source === undefined) throw new Error("Missing DeepSeek catalog source");
+  const body = JSON.stringify({
+    index: { url: source.url, body: await fixture("deepseek/catalog.html") },
+    documents: [
+      {
+        url: "https://api-docs.deepseek.com/api/create-chat-completion",
+        body: chat ?? (await fixture("deepseek/chat.html")),
+      },
+    ],
+  });
+  return parseSource({ provider: provider(value), source, body, observedAt });
+}
+
 async function anthropicCatalog(messagesBody?: string): Promise<ProviderModel[]> {
   const value = manifest("anthropic");
   const source = value.sources[0];
@@ -2745,7 +2761,20 @@ describe("DeepSeek adapters", () => {
   }
 
   it("reads the current callable catalog without a product-name allowlist", async () => {
-    const models = await parsed("deepseek", "deepseek/catalog.html", "deepseek-catalog");
+    expect(source("deepseek-catalog")).toMatchObject({
+      fields: expect.arrayContaining(["api_endpoints"]),
+      linkedDocuments: {
+        minDocuments: 0,
+        maxDocuments: 0,
+        documents: [
+          {
+            id: "chat-completions",
+            url: "https://api-docs.deepseek.com/api/create-chat-completion",
+          },
+        ],
+      },
+    });
+    const models = await deepseekCatalog();
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "deepseek-chat",
       "deepseek-reasoner",
@@ -2755,11 +2784,13 @@ describe("DeepSeek adapters", () => {
     expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")).toMatchObject({
       name: "DeepSeek-V4-Pro",
       types: ["generate"],
+      api_endpoints: [{ name: "Chat Completions", path: "/chat/completions" }],
       modalities: { input: ["text"], output: ["text"] },
       capabilities: {
         reasoning: true,
         tool_call: true,
         structured_output: true,
+        streaming: true,
         prompt_cache: true,
       },
       limits: { context_tokens: 1_000_000, max_output_tokens: 384_000 },
@@ -2771,7 +2802,8 @@ describe("DeepSeek adapters", () => {
       ],
     });
     expect(models.find(({ model_id }) => model_id === "deepseek-chat")).toMatchObject({
-      capabilities: { reasoning: false },
+      api_endpoints: [{ name: "Chat Completions", path: "/chat/completions" }],
+      capabilities: { reasoning: false, streaming: true },
       deprecated_at: "2026-07-24T15:59:00Z",
       retired_at: "2026-07-24T15:59:00Z",
       status: "active",
@@ -2783,6 +2815,21 @@ describe("DeepSeek adapters", () => {
         expect.objectContaining({ meter: "output_text", price: "0.28" }),
       ],
     });
+  });
+
+  it("rejects changed Chat Completions operation and model evidence", async () => {
+    const chat = await fixture("deepseek/chat.html");
+    await expect(deepseekCatalog(chat.replace("/chat/completions", "/responses"))).rejects.toThrow(
+      "changed operation",
+    );
+    await expect(
+      deepseekCatalog(chat.replace("deepseek-v4-flash", "deepseek-v4-unknown")),
+    ).rejects.toThrow("named unknown catalog model");
+    await expect(
+      deepseekCatalog(
+        chat.replace("partial message deltas will be sent", "streaming is supported"),
+      ),
+    ).rejects.toThrow("changed streaming schema");
   });
 
   it("uses exact change-log evidence for release and update dates", async () => {
@@ -2803,7 +2850,7 @@ describe("DeepSeek adapters", () => {
     const catalogSource = source("deepseek-catalog");
     const updateSource = source("deepseek-updates");
     const apiSource = source("deepseek-api");
-    const catalog = await parsed("deepseek", "deepseek/catalog.html", catalogSource.id);
+    const catalog = await deepseekCatalog();
     const updates = await parsed("deepseek", "deepseek/updates.html", updateSource.id);
     const inventory = await parsed("deepseek", "deepseek/api.json", apiSource.id);
     const models = applyGroups(

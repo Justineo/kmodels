@@ -2084,11 +2084,12 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 4, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v1",
+        extractorVersion: "deepseek-catalog-v2",
         fields: [
           "model_id",
           "name",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -2104,6 +2105,19 @@ export const manifests = [
         scope: "global",
         exhaustive: true,
         role: "catalog",
+        linkedDocuments: {
+          path: /$a/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: [
+            {
+              id: "chat-completions",
+              url: "https://api-docs.deepseek.com/api/create-chat-completion",
+              maxResponseBytes: mebibytes(1),
+            },
+          ],
+        },
       },
       {
         id: "deepseek-updates",
