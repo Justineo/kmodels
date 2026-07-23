@@ -22,7 +22,7 @@ const listSchema = z.object({
       z.object({
         id: modelIdSchema,
         object: z.literal("model"),
-        owned_by: z.literal("deepseek"),
+        owned_by: z.string().min(1),
       }),
     )
     .min(1),
@@ -77,6 +77,13 @@ function support(table: HtmlTable, label: string, columns: number[]): boolean[] 
   });
 }
 
+function thinking(table: HtmlTable, column: number): boolean {
+  const value = cells(table, "THINKING MODE", [column])[0] ?? "";
+  if (/^Supports both non-thinking and thinking\b/i.test(value)) return true;
+  if (/^Non-thinking mode only$/i.test(value)) return false;
+  throw new Error(`Unknown DeepSeek thinking mode: ${value}`);
+}
+
 function chatModelIds(body: string): Set<string> {
   const $ = load(body);
   const article = $("article");
@@ -88,31 +95,42 @@ function chatModelIds(body: string): Set<string> {
       chatEndpoint.path
   )
     throw new Error("DeepSeek Chat Completions reference changed operation");
-  const properties = article
-    .find(".openapi-schema__list-item")
-    .toArray()
-    .filter(
-      (element) =>
-        htmlText($(element).find("strong.openapi-schema__property").first().text()) === "model" &&
-        $(element).find("code").length > 0,
-    );
-  if (properties.length !== 1)
+  const schemaItems = article.find(".openapi-schema__list-item").toArray();
+  const propertyValues = (name: string): string[] | undefined => {
+    const values = schemaItems
+      .filter(
+        (element) =>
+          htmlText($(element).find("strong.openapi-schema__property").first().text()) === name,
+      )
+      .map((element) =>
+        $(element)
+          .find("code")
+          .map((_index, code) => htmlText($(code).text()))
+          .get(),
+      )
+      .filter((items) => items.length > 0);
+    return values.length === 1 ? values[0] : undefined;
+  };
+  const modelValues = propertyValues("model");
+  if (modelValues === undefined)
     throw new Error("DeepSeek Chat Completions reference changed model schema");
-  const values = $(properties[0])
-    .find("code")
-    .map((_index, element) => htmlText($(element).text()))
-    .get();
-  const ids = z.array(modelIdSchema).min(1).safeParse(values);
+  const ids = z.array(modelIdSchema).min(1).safeParse(modelValues);
   if (!ids.success || new Set(ids.data).size !== ids.data.length)
     throw new Error("DeepSeek Chat Completions reference returned invalid model IDs");
-  const streaming = article
-    .find(".openapi-schema__list-item")
-    .toArray()
-    .filter(
-      (element) =>
-        htmlText($(element).find("strong.openapi-schema__property").first().text()) === "stream" &&
-        /partial message deltas will be sent/.test(htmlText($(element).text())),
-    );
+  const thinkingValues = propertyValues("thinking");
+  const effortValues = propertyValues("reasoning_effort");
+  if (
+    thinkingValues === undefined ||
+    !["enabled", "disabled"].every((value) => thinkingValues.includes(value)) ||
+    effortValues === undefined ||
+    !["high", "max"].every((value) => effortValues.includes(value))
+  )
+    throw new Error("DeepSeek Chat Completions reference changed reasoning controls");
+  const streaming = schemaItems.filter(
+    (element) =>
+      htmlText($(element).find("strong.openapi-schema__property").first().text()) === "stream" &&
+      /partial message deltas will be sent/.test(htmlText($(element).text())),
+  );
   if (streaming.length !== 1)
     throw new Error("DeepSeek Chat Completions reference changed streaming schema");
   return new Set(ids.data);
@@ -159,9 +177,7 @@ function model(
   const output = tokenCount(cells(table, "MAX OUTPUT", [column])[0] ?? "");
   const [structured] = support(table, "Json Output", [column]);
   const [tools] = support(table, "Tool Calls", [column]);
-  const [prefix] = support(table, "Chat Prefix Completion（Beta）", [column]);
-  const [fim] = support(table, "FIM Completion（Beta）", [column]);
-  if (structured === undefined || tools === undefined || prefix === undefined || fim === undefined)
+  if (structured === undefined || tools === undefined)
     throw new Error("DeepSeek feature table schema drift");
   const prices = [
     ["cache_read_text", "1M INPUT TOKENS (CACHE HIT)"],
@@ -181,10 +197,10 @@ function model(
     modalities: { input: ["text"], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
-      reasoning: true,
+      reasoning: thinking(table, column),
       tool_call: tools,
       structured_output: structured,
-      ...(hasChatEndpoint ? { streaming: true } : {}),
+      ...(hasChatEndpoint ? { streaming: true, effort_control: true } : {}),
       prompt_cache: true,
     },
     limits: { context_tokens: context, max_output_tokens: output },
@@ -254,7 +270,11 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
       uid: `${input.provider.id}/${id}`,
       name: id,
       aliases: [],
-      capabilities: { ...replacement.capabilities, reasoning: index === 1 },
+      capabilities: {
+        ...replacement.capabilities,
+        reasoning: index === 1,
+        effort_control: "unknown",
+      },
       deprecated_at: lifecycle.at,
       retired_at: lifecycle.at,
       status: retired ? "retired" : "active",

@@ -2165,7 +2165,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 4, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v2",
+        extractorVersion: "deepseek-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -2224,7 +2224,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "deepseek-api", minModels: 1, maxModels: 20 },
-        extractorVersion: "deepseek-api-v1",
+        extractorVersion: "deepseek-api-v2",
         fields: ["model_id"],
         allowedHosts: ["api.deepseek.com"],
         maxResponseBytes: mebibytes(1),

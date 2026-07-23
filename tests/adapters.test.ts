@@ -57,12 +57,12 @@ async function parsed(
   return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
 }
 
-async function deepseekCatalog(chat?: string): Promise<ProviderModel[]> {
+async function deepseekCatalog(chat?: string, catalog?: string): Promise<ProviderModel[]> {
   const value = manifest("deepseek");
   const source = value.sources.find(({ id }) => id === "deepseek-catalog");
   if (source === undefined) throw new Error("Missing DeepSeek catalog source");
   const body = JSON.stringify({
-    index: { url: source.url, body: await fixture("deepseek/catalog.html") },
+    index: { url: source.url, body: catalog ?? (await fixture("deepseek/catalog.html")) },
     documents: [
       {
         url: "https://api-docs.deepseek.com/api/create-chat-completion",
@@ -3190,6 +3190,7 @@ describe("DeepSeek adapters", () => {
       modalities: { input: ["text"], output: ["text"] },
       capabilities: {
         reasoning: true,
+        effort_control: true,
         tool_call: true,
         structured_output: true,
         streaming: true,
@@ -3205,7 +3206,7 @@ describe("DeepSeek adapters", () => {
     });
     expect(models.find(({ model_id }) => model_id === "deepseek-chat")).toMatchObject({
       api_endpoints: [{ name: "Chat Completions", path: "/chat/completions" }],
-      capabilities: { reasoning: false, streaming: true },
+      capabilities: { reasoning: false, effort_control: "unknown", streaming: true },
       deprecated_at: "2026-07-24T15:59:00Z",
       retired_at: "2026-07-24T15:59:00Z",
       status: "active",
@@ -3232,6 +3233,33 @@ describe("DeepSeek adapters", () => {
         chat.replace("partial message deltas will be sent", "streaming is supported"),
       ),
     ).rejects.toThrow("changed streaming schema");
+    await expect(
+      deepseekCatalog(chat.replace("reasoning_effort", "reasoning_level")),
+    ).rejects.toThrow("changed reasoning controls");
+    const catalog = await fixture("deepseek/catalog.html");
+    await expect(
+      deepseekCatalog(
+        undefined,
+        catalog.replace("Supports both non-thinking and thinking modes", "Unknown mode"),
+      ),
+    ).rejects.toThrow("Unknown DeepSeek thinking mode");
+  });
+
+  it("treats the documented inventory owner as opaque metadata", async () => {
+    const value = manifest("deepseek");
+    const configured = source("deepseek-api");
+    const body = (await fixture("deepseek/api.json")).replace(
+      '"owned_by": "deepseek"',
+      '"owned_by": "deepseek-platform"',
+    );
+    expect(
+      parseSource({
+        provider: provider(value),
+        source: configured,
+        body,
+        observedAt,
+      }),
+    ).toHaveLength(2);
   });
 
   it("uses exact change-log evidence for release and update dates", async () => {
