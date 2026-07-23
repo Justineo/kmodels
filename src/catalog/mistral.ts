@@ -4,7 +4,7 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import {
   type Modality,
@@ -241,39 +241,48 @@ function description(object: ts.ObjectLiteralExpression): string | undefined {
 function sourcePrices(object: ts.ObjectLiteralExpression): SourcePrice[] {
   const pricing = objectValue(property(object, "pricing"), "pricing");
   const type = requiredString(pricing, "type");
-  booleanValue(property(pricing, "free"), "pricing.free");
+  const free = booleanValue(property(pricing, "free"), "pricing.free");
+  const checked = (prices: SourcePrice[]): SourcePrice[] => {
+    if (free && prices.some(({ price }) => price !== "0"))
+      throw new Error("Mistral marked non-zero model pricing as free");
+    return prices;
+  };
   if (type === "flat")
-    return [
+    return checked([
       {
         direction: "input",
         price: numberText(property(pricing, "price"), "pricing.price"),
         denominator: requiredString(pricing, "denominator"),
       },
-    ];
+    ]);
   if (type === "range")
-    return (["input", "output"] as const).map((direction) => ({
-      direction,
-      price: numberText(property(pricing, direction), `pricing.${direction}`),
-      denominator: requiredString(pricing, "denominator"),
-    }));
-  if (type !== "custom") throw new Error(`Mistral published an unknown pricing type: ${type}`);
-  return (["input", "output"] as const).flatMap((direction) => {
-    const expression = property(pricing, direction);
-    const value = expression === undefined ? undefined : unwrap(expression);
-    if (!value || !ts.isArrayLiteralExpression(value))
-      throw new Error(`Mistral pricing.${direction} was not an array`);
-    return value.elements.map((item) => {
-      const rate = objectValue(item, `pricing.${direction} rate`);
-      const rateType = requiredString(rate, "type");
-      if (rateType !== "flat" && rateType !== "range")
-        throw new Error(`Mistral published an unknown price rate type: ${rateType}`);
-      return {
+    return checked(
+      (["input", "output"] as const).map((direction) => ({
         direction,
-        price: numberText(property(rate, "price"), "pricing rate price"),
-        denominator: requiredString(rate, "denominator"),
-      };
-    });
-  });
+        price: numberText(property(pricing, direction), `pricing.${direction}`),
+        denominator: requiredString(pricing, "denominator"),
+      })),
+    );
+  if (type !== "custom") throw new Error(`Mistral published an unknown pricing type: ${type}`);
+  return checked(
+    (["input", "output"] as const).flatMap((direction) => {
+      const expression = property(pricing, direction);
+      const value = expression === undefined ? undefined : unwrap(expression);
+      if (!value || !ts.isArrayLiteralExpression(value))
+        throw new Error(`Mistral pricing.${direction} was not an array`);
+      return value.elements.map((item) => {
+        const rate = objectValue(item, `pricing.${direction} rate`);
+        const rateType = requiredString(rate, "type");
+        if (rateType !== "flat" && rateType !== "range")
+          throw new Error(`Mistral published an unknown price rate type: ${rateType}`);
+        return {
+          direction,
+          price: numberText(property(rate, "price"), "pricing rate price"),
+          denominator: requiredString(rate, "denominator"),
+        };
+      });
+    }),
+  );
 }
 
 function parseDraft(sourceSlug: string, body: string): Draft {
@@ -372,6 +381,77 @@ function indexSlugs(body: string): Set<string> {
   return new Set(slugs);
 }
 
+function exportedObject(body: string, file: string, name: string): ts.ObjectLiteralExpression {
+  const source = ts.createSourceFile(file, body, ts.ScriptTarget.Latest, false);
+  let result: ts.ObjectLiteralExpression | undefined;
+  source.forEachChild((node) => {
+    if (!ts.isVariableStatement(node)) return;
+    for (const declaration of node.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== name) continue;
+      const value =
+        declaration.initializer === undefined ? undefined : unwrap(declaration.initializer);
+      if (!value || !ts.isObjectLiteralExpression(value))
+        throw new Error(`Mistral ${name} was not a static object`);
+      if (result !== undefined) throw new Error(`Mistral declared ${name} more than once`);
+      result = value;
+    }
+  });
+  if (result === undefined) throw new Error(`Mistral omitted ${name}`);
+  return result;
+}
+
+function objectEntries(
+  object: ts.ObjectLiteralExpression,
+  label: string,
+): [string, ts.ObjectLiteralExpression][] {
+  const seen = new Set<string>();
+  return object.properties.map((item) => {
+    if (!ts.isPropertyAssignment(item))
+      throw new Error(`Mistral ${label} contained an unreviewed property`);
+    const key = propertyName(item.name);
+    if (key === undefined) throw new Error(`Mistral ${label} contained an unreviewed property`);
+    if (seen.has(key)) throw new Error(`Mistral ${label} duplicated ${key}`);
+    seen.add(key);
+    return [key, objectValue(item.initializer, `${label}.${key}`)];
+  });
+}
+
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+
+function featureEndpoints(schemaBody: string, endpointsBody: string): Map<string, ApiEndpoint[]> {
+  const endpoints = new Map(
+    objectEntries(
+      exportedObject(endpointsBody, "endpoints.ts", "AVAILABLE_ENDPOINTS"),
+      "AVAILABLE_ENDPOINTS",
+    ).map(([key, value]): [string, ApiEndpoint] => {
+      const name = requiredString(value, "name");
+      const path = requiredString(value, "path");
+      if (!/^\/(?!\/)[^?#\s]+$/.test(path))
+        throw new Error(`Mistral endpoint ${key} had an invalid relative path`);
+      return [key, { name, path }];
+    }),
+  );
+  return new Map(
+    objectEntries(
+      exportedObject(schemaBody, "schema.ts", "AVAILABLE_FEATURES"),
+      "AVAILABLE_FEATURES",
+    ).map(([feature, value]) => {
+      const keys = stringArray(property(value, "endpoints"), `${feature}.endpoints`);
+      if (keys.length === 0 || unique(keys).length !== keys.length)
+        throw new Error(`Mistral feature ${feature} had invalid endpoint references`);
+      return [
+        feature,
+        keys.map((key) => {
+          const endpoint = endpoints.get(key);
+          if (endpoint === undefined)
+            throw new Error(`Mistral feature ${feature} referenced unknown endpoint ${key}`);
+          return endpoint;
+        }),
+      ];
+    }),
+  );
+}
+
 function modalities(draft: Draft): ProviderModel["modalities"] {
   const map = (value: string): Modality[] => {
     if (value === "text") return ["text"];
@@ -406,18 +486,34 @@ const typeOrder: ModelType[] = [
   "other",
 ];
 
+const featureTypes = new Map<string, ModelType[]>([
+  ["chat-completions", ["generate"]],
+  ["function-calling", []],
+  ["agents-conversations", ["agentic"]],
+  ["connectors", ["agentic"]],
+  ["structured-outputs", []],
+  ["predicted-outputs", []],
+  ["prefix", []],
+  ["ocr", ["ocr"]],
+  ["annotations-structured-ocr", ["ocr"]],
+  ["bbox-extraction", ["ocr"]],
+  ["document-qna", ["generate"]],
+  ["fim", ["generate"]],
+  ["embeddings", ["embeddings"]],
+  ["moderations", ["moderation"]],
+  ["chat-moderations", ["moderation"]],
+  ["transcriptions", ["audio_transcription"]],
+  ["tts", ["audio_speech"]],
+  ["timestamps", ["audio_transcription"]],
+  ["batching", []],
+]);
+
 function types(draft: Draft, observedModalities: ProviderModel["modalities"]): ModelType[] {
   const result: ModelType[] = [];
   for (const feature of draft.features) {
-    if (["chat-completions", "fim", "document-qna"].includes(feature)) result.push("generate");
-    if (["agents-conversations", "connectors"].includes(feature)) result.push("agentic");
-    if (feature === "embeddings") result.push("embeddings");
-    if (feature === "moderations" || feature === "chat-moderations") result.push("moderation");
-    if (["ocr", "annotations-structured-ocr", "bbox-extraction"].includes(feature))
-      result.push("ocr");
-    if (feature === "transcriptions" || feature === "timestamps")
-      result.push("audio_transcription");
-    if (feature === "tts") result.push("audio_speech");
+    const observed = featureTypes.get(feature);
+    if (observed === undefined) throw new Error(`Mistral published an unknown feature: ${feature}`);
+    result.push(...observed);
   }
   result.push(
     ...classifyModelTypes({
@@ -432,6 +528,21 @@ function types(draft: Draft, observedModalities: ProviderModel["modalities"]): M
   const known = normalized.filter((type) => type !== "other");
   return (known.length === 0 ? normalized : known).sort(
     (left, right) => typeOrder.indexOf(left) - typeOrder.indexOf(right),
+  );
+}
+
+function modelEndpoints(
+  draft: Draft,
+  endpointsByFeature: Map<string, ApiEndpoint[]>,
+): ApiEndpoint[] {
+  const endpoints = new Map<string, ApiEndpoint>();
+  for (const feature of draft.features) {
+    const observed = endpointsByFeature.get(feature);
+    if (observed === undefined) throw new Error(`Mistral feature was not declared: ${feature}`);
+    for (const endpoint of observed) endpoints.set(apiEndpointKey(endpoint), endpoint);
+  }
+  return [...endpoints.values()].sort((left, right) =>
+    apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
   );
 }
 
@@ -507,11 +618,13 @@ function sourceModel(
   input: Input,
   draft: Draft,
   replacementId: string | undefined,
+  endpointsByFeature: Map<string, ApiEndpoint[]>,
 ): ProviderModel | undefined {
   const id = draft.apiNames[0];
   if (id === undefined) return undefined;
   const observedModalities = modalities(draft);
   const modelTypes = types(draft, observedModalities);
+  const apiEndpoints = modelEndpoints(draft, endpointsByFeature);
   const rates = pricing(draft, modelTypes, input.source.id);
   const active = draft.status === "active" || draft.status === "preview";
   const feature = (name: string): boolean | "unknown" =>
@@ -529,6 +642,7 @@ function sourceModel(
     aliases: draft.apiNames.slice(1),
     types: modelTypes,
     raw_type: draft.catalogType,
+    ...(apiEndpoints.length === 0 ? {} : { api_endpoints: apiEndpoints }),
     modalities: observedModalities,
     capabilities: {
       ...unknownCapabilities(),
@@ -567,13 +681,19 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   const observed = new Set(drafts.map((draft) => draft.sourceSlug));
   if (drafts.length !== expected.size || [...expected].some((slug) => !observed.has(slug)))
     throw new Error("Mistral index and model documents disagree");
-  const companion = (suffix: string): string => {
+  const document = (path: string): string => {
     const body = bundle.documents.find(
-      (document) => new URL(document.url).pathname === suffix,
+      (candidate) => new URL(candidate.url).pathname === path,
     )?.body;
-    if (body === undefined) throw new Error(`Mistral bundle omitted ${suffix}`);
-    return load(body)("main").text().replace(/\s+/g, " ");
+    if (body === undefined) throw new Error(`Mistral bundle omitted ${path}`);
+    return body;
   };
+  const endpointsByFeature = featureEndpoints(
+    document("/mistralai/platform-docs-public/main/src/schema/models/schema.ts"),
+    document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
+  );
+  const companion = (path: string): string =>
+    load(document(path))("main").text().replace(/\s+/g, " ");
   if (
     !companion("/studio-api/conversations/advanced/prompt-caching").includes(
       "Cached prompt tokens are billed at 10% of the standard input token price",
@@ -595,7 +715,7 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
       draft.replacement === undefined ? undefined : currentByName.get(draft.replacement);
     if (replacement === null)
       throw new Error(`Mistral replacement was ambiguous: ${draft.replacement ?? "unknown"}`);
-    const model = sourceModel(input, draft, replacement);
+    const model = sourceModel(input, draft, replacement, endpointsByFeature);
     return model === undefined ? [] : [model];
   });
   if (
