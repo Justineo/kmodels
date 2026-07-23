@@ -324,17 +324,20 @@ async function cohereCatalog(
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function mistralCatalog(): Promise<ProviderModel[]> {
+async function mistralCatalog(
+  overrides: { medium?: string; schema?: string; endpoints?: string } = {},
+): Promise<ProviderModel[]> {
   const value = manifest("mistral");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "mistral-catalog")
     throw new Error("Missing Mistral source");
   const source: SourceManifest = {
     ...configured,
-    extractor: { kind: "mistral-catalog", minModels: 5, maxModels: 5 },
+    extractor: { kind: "mistral-catalog", minModels: 6, maxModels: 6 },
   };
   const slugs = [
     "mistral-medium-3-5-26-04",
+    "codestral-embed-25-05",
     "ocr-4-0",
     "voxtral-tts-26-03",
     "mistral-large-2-0-24-07",
@@ -343,10 +346,21 @@ async function mistralCatalog(): Promise<ProviderModel[]> {
   const body = JSON.stringify({
     index: { url: source.url, body: await fixture("mistral/index.ts") },
     documents: [
+      {
+        url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/schema.ts",
+        body: overrides.schema ?? (await fixture("mistral/schema.ts")),
+      },
+      {
+        url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts",
+        body: overrides.endpoints ?? (await fixture("mistral/endpoints.ts")),
+      },
       ...(await Promise.all(
         slugs.map(async (slug) => ({
           url: `https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/models/${slug}.ts`,
-          body: await fixture(`mistral/${slug}.ts`),
+          body:
+            slug === "mistral-medium-3-5-26-04" && overrides.medium !== undefined
+              ? overrides.medium
+              : await fixture(`mistral/${slug}.ts`),
         })),
       )),
       {
@@ -709,6 +723,7 @@ describe("Mistral adapters", () => {
   it("parses exact API names, non-exclusive operations, lifecycle, and native prices", async () => {
     const models = await mistralCatalog();
     const medium = models.find((model) => model.model_id === "mistral-medium-3-5");
+    const embed = models.find((model) => model.model_id === "codestral-embed-2505");
     const ocr = models.find((model) => model.model_id === "mistral-ocr-4-0");
     const speech = models.find((model) => model.model_id === "voxtral-mini-tts-2603");
     const retired = models.find((model) => model.model_id === "mistral-large-2407");
@@ -719,6 +734,7 @@ describe("Mistral adapters", () => {
         version: medium?.version,
         aliases: medium?.aliases,
         types: medium?.types,
+        api_endpoints: medium?.api_endpoints,
         modalities: medium?.modalities,
         limits: medium?.limits,
         release_date: medium?.release_date,
@@ -730,8 +746,13 @@ describe("Mistral adapters", () => {
           derived,
         })),
       },
+      embed: {
+        types: embed?.types,
+        api_endpoints: embed?.api_endpoints,
+      },
       ocr: {
         types: ocr?.types,
+        api_endpoints: ocr?.api_endpoints,
         modalities: ocr?.modalities,
         pricing: ocr?.pricing.map(({ meter, price, unit, conditions }) => ({
           meter,
@@ -742,6 +763,7 @@ describe("Mistral adapters", () => {
       },
       speech: {
         types: speech?.types,
+        api_endpoints: speech?.api_endpoints,
         modalities: speech?.modalities,
         pricing: speech?.pricing.map(({ meter, price, unit }) => ({ meter, price, unit })),
       },
@@ -751,14 +773,21 @@ describe("Mistral adapters", () => {
         deprecated_at: retired?.deprecated_at,
         retired_at: retired?.retired_at,
         replacements: retired?.replacement_model_ids,
+        api_endpoints: retired?.api_endpoints,
       },
     }).toEqual({
-      count: 5,
+      count: 6,
       medium: {
         name: "Mistral Medium 3.5",
         version: "26.04",
         aliases: ["mistral-medium-3", "mistral-medium-latest"],
         types: ["generate", "agentic"],
+        api_endpoints: [
+          { name: "Agents", path: "/v1/agents" },
+          { name: "Batch", path: "/v1/batch" },
+          { name: "Chat / Completions", path: "/v1/chat/completions" },
+          { name: "Conversations", path: "/v1/conversations" },
+        ],
         modalities: { input: ["text", "image"], output: ["text"] },
         limits: { context_tokens: 256_000, max_output_tokens: 32_000 },
         release_date: "2026-04-28",
@@ -800,8 +829,19 @@ describe("Mistral adapters", () => {
           },
         ],
       },
+      embed: {
+        types: ["embeddings"],
+        api_endpoints: [
+          { name: "Batch", path: "/v1/batch" },
+          { name: "Embeddings", path: "/v1/embeddings" },
+        ],
+      },
       ocr: {
         types: ["ocr"],
+        api_endpoints: [
+          { name: "Batch", path: "/v1/batch" },
+          { name: "OCR", path: "/v1/ocr" },
+        ],
         modalities: { input: ["image", "pdf"], output: ["text", "image"] },
         pricing: [
           {
@@ -832,6 +872,7 @@ describe("Mistral adapters", () => {
       },
       speech: {
         types: ["audio_speech"],
+        api_endpoints: [{ name: "Audio Speech", path: "/v1/audio/speech" }],
         modalities: { input: ["text", "audio"], output: ["audio"] },
         pricing: [
           { meter: "input_text", price: "0", unit: "million_characters" },
@@ -844,8 +885,40 @@ describe("Mistral adapters", () => {
         deprecated_at: "2024-11-30",
         retired_at: "2025-03-30",
         replacements: ["mistral-large-2512"],
+        api_endpoints: undefined,
       },
     });
+  });
+
+  it("fails closed on feature, endpoint, and pricing drift", async () => {
+    const medium = await fixture("mistral/mistral-medium-3-5-26-04.ts");
+    await expect(
+      mistralCatalog({ medium: medium.replace('"chat-completions"', '"responses"') }),
+    ).rejects.toThrow("Mistral published an unknown feature: responses");
+
+    const schema = await fixture("mistral/schema.ts");
+    await expect(
+      mistralCatalog({
+        schema: schema.replace(
+          '"chat-completions": { endpoints: ["chat-completions"] }',
+          '"chat-completions": { endpoints: ["responses"] }',
+        ),
+      }),
+    ).rejects.toThrow("Mistral feature chat-completions referenced unknown endpoint responses");
+
+    const endpoints = await fixture("mistral/endpoints.ts");
+    await expect(
+      mistralCatalog({
+        endpoints: endpoints.replace(
+          'path: "/v1/chat/completions"',
+          'path: "https://api.mistral.ai/v1/chat/completions"',
+        ),
+      }),
+    ).rejects.toThrow("Mistral endpoint chat-completions had an invalid relative path");
+
+    await expect(
+      mistralCatalog({ medium: medium.replace("free: false", "free: true") }),
+    ).rejects.toThrow("Mistral marked non-zero model pricing as free");
   });
 
   it("validates structured base models and ignores private fine-tunes", async () => {
@@ -892,7 +965,16 @@ describe("Mistral adapters", () => {
         extractor: { kind: "mistral-catalog", minModels: 50, maxModels: 90 },
         type: "repository",
         source: ["repository", "website"],
-        linkedDocuments: { indexFormat: "typescript", minDocuments: 55, maxDocuments: 90 },
+        fields: expect.arrayContaining(["api_endpoints"]),
+        linkedDocuments: {
+          indexFormat: "typescript",
+          minDocuments: 55,
+          maxDocuments: 90,
+          documents: expect.arrayContaining([
+            expect.objectContaining({ id: "model-schema" }),
+            expect.objectContaining({ id: "model-endpoints" }),
+          ]),
+        },
       },
       {
         extractor: { kind: "mistral-api" },
@@ -1053,9 +1135,10 @@ describe("HTTP transport boundary", () => {
     if (source?.linkedDocuments === undefined) throw new Error("Missing Mistral link policy");
     const urls = linkedDocumentUrls(await fixture("mistral/index.ts"), {
       ...source,
-      linkedDocuments: { ...source.linkedDocuments, minDocuments: 5, maxDocuments: 5 },
+      linkedDocuments: { ...source.linkedDocuments, minDocuments: 6, maxDocuments: 6 },
     });
     expect(urls.map((url) => url.pathname)).toEqual([
+      "/mistralai/platform-docs-public/main/src/schema/models/models/codestral-embed-25-05.ts",
       "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-large-2-0-24-07.ts",
       "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-large-3-25-12.ts",
       "/mistralai/platform-docs-public/main/src/schema/models/models/mistral-medium-3-5-26-04.ts",

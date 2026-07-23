@@ -1351,7 +1351,7 @@ export const manifests = [
         format: "mixed",
         stability: "documented",
         extractor: { kind: "mistral-catalog", minModels: 50, maxModels: 90 },
-        extractorVersion: "mistral-catalog-v1",
+        extractorVersion: "mistral-catalog-v2",
         fields: [
           "model_id",
           "version",
@@ -1359,6 +1359,7 @@ export const manifests = [
           "description",
           "aliases",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -1384,6 +1385,16 @@ export const manifests = [
           concurrency: 8,
           maxDocumentBytes: mebibytes(1),
           documents: [
+            {
+              id: "model-schema",
+              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/schema.ts",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "model-endpoints",
+              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts",
+              maxResponseBytes: mebibytes(1),
+            },
             {
               id: "prompt-caching",
               url: "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching",
