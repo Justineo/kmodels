@@ -41,6 +41,7 @@ interface CollectionOptions {
   now?: Date;
   jitterMs?: number;
   rebuild?: boolean;
+  rebuildProvider?: string;
 }
 
 function message(error: unknown): string {
@@ -689,7 +690,14 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       ...(await Promise.all(
         manifests
           .slice(index, index + 4)
-          .map((manifest) => collectProvider(manifest, previous, state, observedAt)),
+          .map((manifest) =>
+            collectProvider(
+              manifest,
+              options.rebuildProvider === manifest.provider.id ? undefined : previous,
+              state,
+              observedAt,
+            ),
+          ),
       )),
     );
   }

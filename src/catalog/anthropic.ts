@@ -2,7 +2,7 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { apiEndpointKey, baseModel } from "./model.ts";
+import { baseModel } from "./model.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import {
   type Modality,
@@ -52,20 +52,8 @@ const listSchema = z.object({
   has_more: z.boolean(),
 });
 const fivePricesSchema = z.tuple([z.string(), z.string(), z.string(), z.string(), z.string()]);
-const endpointDocuments = [
-  {
-    suffix: "/api/messages/create.md",
-    endpoint: { name: "Create a Message", path: "v1/messages" },
-  },
-  {
-    suffix: "/api/completions/create.md",
-    endpoint: { name: "Create a Text Completion", path: "v1/complete" },
-  },
-  {
-    suffix: "/api/messages/batches/create.md",
-    endpoint: { name: "Create a Message Batch", path: "v1/messages/batches" },
-  },
-] as const;
+const messagesEndpoint = { name: "Create a Message", path: "v1/messages" };
+const batchEndpoint = { name: "Create a Message Batch", path: "v1/messages/batches" };
 
 function json(body: string): unknown {
   return JSON.parse(body);
@@ -308,54 +296,26 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
   }
 }
 
-function applyEndpoint(
-  body: string,
-  expected: (typeof endpointDocuments)[number]["endpoint"],
-  models: Map<string, ProviderModel>,
-): void {
+function validateEndpoint(body: string, expected: { name: string; path: string }): void {
   const header = body.match(/^## (.+)\r?\n\r?\n\*\*post\*\* `\/([^`]+)`/);
   if (header?.[1] !== expected.name || header[2] !== expected.path)
     throw new Error(`Anthropic endpoint document drifted for ${expected.path}`);
-  const field = /^([ \t]*)- `model: Model`[ \t]*$/m.exec(body);
-  if (field?.[1] === undefined)
-    throw new Error(`Anthropic endpoint omitted its model field: ${expected.path}`);
-  const lines = body.slice(field.index + field[0].length).split(/\r?\n/);
-  const end = lines.findIndex((line) => line.startsWith(`${field[1]}- \``));
-  const section = lines.slice(0, end < 0 ? undefined : end).join("\n");
-  const summary = section.match(/^[ \t]+- `(.+)`[ \t]*$/m)?.[1];
-  const ids = [
-    ...new Set(
-      [...section.matchAll(/^[ \t]+- `"([^"]+)"`[ \t]*$/gm)].map((match) =>
-        modelIdSchema.parse(match[1]),
-      ),
-    ),
-  ];
-  const summaryIds = [...(summary?.matchAll(/"([^"]+)"/g) ?? [])].map((match) =>
-    modelIdSchema.parse(match[1]),
-  );
-  const more = Number(summary?.match(/ or (\d+) more$/)?.[1] ?? 0);
-  if (
-    ids.length === 0 ||
-    ids.length !== summaryIds.length + more ||
-    summaryIds.some((id) => !ids.includes(id))
-  )
-    throw new Error(`Anthropic endpoint model list drifted: ${expected.path}`);
+}
 
-  const supported = new Set<ProviderModel>();
-  for (const id of ids) {
-    const direct = models.get(id);
-    const candidates =
-      direct === undefined
-        ? [...models.values()].filter((item) => item.aliases.includes(id))
-        : [direct];
-    if (candidates.length !== 1 || candidates[0] === undefined)
-      throw new Error(`Anthropic endpoint model did not match one official ID: ${id}`);
-    supported.add(candidates[0]);
-  }
-  for (const item of supported) {
-    item.api_endpoints = [...(item.api_endpoints ?? []), expected].sort((left, right) =>
-      apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
-    );
+function applyEndpoints(
+  messagesBody: string,
+  batchesBody: string,
+  batchGuide: string,
+  models: Map<string, ProviderModel>,
+): void {
+  validateEndpoint(messagesBody, messagesEndpoint);
+  validateEndpoint(batchesBody, batchEndpoint);
+  if (!/^All \[active models]\([^)]*\) support the Message Batches API\.$/m.test(batchGuide))
+    throw new Error("Anthropic batch model coverage drifted");
+  for (const item of models.values()) {
+    if (item.status === "active" || item.status === "preview")
+      item.api_endpoints = [messagesEndpoint, batchEndpoint];
+    else if (item.status === "deprecated") item.api_endpoints = [messagesEndpoint];
   }
 }
 
@@ -576,8 +536,12 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   launch(document("introducing-claude-fable-5-and-claude-mythos-5.md"), input, models);
   lifecycle(document("model-deprecations.md"), input, models);
   pricing(document("pricing.md"), input, models);
-  for (const entry of endpointDocuments)
-    applyEndpoint(document(entry.suffix), entry.endpoint, models);
+  applyEndpoints(
+    document("/api/messages/create.md"),
+    document("/api/messages/batches/create.md"),
+    document("/build-with-claude/batch-processing.md"),
+    models,
+  );
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 

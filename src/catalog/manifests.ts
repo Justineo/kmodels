@@ -363,7 +363,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v2",
+        extractorVersion: "anthropic-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -401,13 +401,13 @@ export const manifests = [
               maxResponseBytes: mebibytes(1),
             },
             {
-              id: "completions-create",
-              url: "https://platform.claude.com/docs/en/api/completions/create.md",
+              id: "message-batches-create",
+              url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
               maxResponseBytes: mebibytes(1),
             },
             {
-              id: "message-batches-create",
-              url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
+              id: "batch-processing",
+              url: "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
               maxResponseBytes: mebibytes(1),
             },
           ],
