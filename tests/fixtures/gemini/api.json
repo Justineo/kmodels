@@ -11,9 +11,29 @@
       "supportedGenerationMethods": [
         "generateContent",
         "streamGenerateContent",
-        "batchGenerateContent"
+        "batchGenerateContent",
+        "countTokens",
+        "predictLongRunning"
       ],
       "thinking": true
+    },
+    {
+      "name": "models/embedding-test",
+      "baseModelId": "embedding-test",
+      "version": "test-001",
+      "supportedGenerationMethods": ["embedContent", "batchEmbedContents", "asyncBatchEmbedContent"]
+    },
+    {
+      "name": "models/live-test",
+      "baseModelId": "live-test",
+      "version": "test-001",
+      "supportedGenerationMethods": ["bidiGenerateContent"]
+    },
+    {
+      "name": "models/future-test",
+      "baseModelId": "future-test",
+      "version": "test-001",
+      "supportedGenerationMethods": ["futureMethod"]
     }
   ]
 }

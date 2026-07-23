@@ -32,6 +32,14 @@ interface Card {
 
 type LoadedDocument = ReturnType<typeof load>;
 type Selection = ReturnType<LoadedDocument>;
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+interface MethodFact {
+  pathField?: "model" | "batch.model";
+  path?: string;
+  types?: ModelType[];
+  streaming?: true;
+  batch?: true;
+}
 
 const months = new Map([
   ["January", "01"],
@@ -49,6 +57,21 @@ const months = new Map([
 ]);
 const typeOrder = new Map(modelTypeSchema.options.map((type, index) => [type, index]));
 const modalityOrder = new Map(modalitySchema.options.map((modality, index) => [modality, index]));
+const livePath =
+  "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
+const methodFacts = new Map<string, MethodFact>([
+  ["asyncBatchEmbedContent", { pathField: "batch.model", types: ["embeddings"], batch: true }],
+  ["batchEmbedContents", { pathField: "model", types: ["embeddings"], batch: true }],
+  ["batchGenerateContent", { pathField: "batch.model", types: ["generate"], batch: true }],
+  ["countTokens", { pathField: "model" }],
+  ["embedContent", { pathField: "model", types: ["embeddings"] }],
+  ["generateContent", { pathField: "model", types: ["generate"] }],
+  ["predict", { pathField: "model" }],
+  ["predictLongRunning", { pathField: "model" }],
+  ["streamGenerateContent", { pathField: "model", types: ["generate"], streaming: true }],
+  ["generateMessage", { types: ["generate"] }],
+  ["bidiGenerateContent", { path: livePath, types: ["realtime"], streaming: true }],
+]);
 
 const apiItemSchema = z.object({
   name: z.string().regex(/^models\/[a-z0-9][a-z0-9._:/-]*$/i),
@@ -90,6 +113,12 @@ function modalities(values: Modality[]): Modality[] {
 
 function text(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function exactHeading($: LoadedDocument, selector: "h2" | "h3", label: string): Selection {
+  return $(selector)
+    .filter((_index, element) => text($(element).text()) === label)
+    .first();
 }
 
 function modelDate(value: string): string | undefined {
@@ -903,6 +932,91 @@ function document(bundle: z.infer<typeof linkedBundleSchema>, pathname: string):
   return value;
 }
 
+function validateMethodDocumentation(body: string): void {
+  const $ = load(body);
+  const heading = exactHeading($, "h2", "REST Resource: v1beta.models");
+  if (heading.length === 0) throw new Error("Gemini model method table changed");
+  const observed = new Map<string, string>();
+  heading
+    .nextUntil("h2")
+    .find("table tbody tr")
+    .each((_index, row) => {
+      const cells = $(row).find("td");
+      if (cells.length < 2) return;
+      const name = text(cells.eq(0).find("code").first().text());
+      const route = text(cells.eq(1).find("code").first().text());
+      if (name !== "") observed.set(name, route);
+    });
+  for (const [name, fact] of methodFacts)
+    if (
+      fact.pathField !== undefined &&
+      observed.get(name) !== `POST /v1beta/{${fact.pathField}=models/*}:${name}`
+    )
+      throw new Error(`Gemini model method changed: ${name}`);
+}
+
+function validateLiveDocumentation(body: string): void {
+  const $ = load(body);
+  const heading = exactHeading($, "h3", "WebSocket connection");
+  const documented = text(heading.nextUntil("h3").find("code").first().text());
+  if (documented !== livePath) throw new Error("Gemini Live endpoint changed");
+}
+
+function interactionPath(body: string): string {
+  const $ = load(body);
+  const heading = exactHeading($, "h2", "Creating an interaction");
+  const section = heading.nextUntil("h2");
+  const method = text(section.find(".http-method").first().text()).toLowerCase();
+  const raw = text(section.find(".endpoint-url").first().text());
+  if (method !== "post" || raw !== "https://generativelanguage.googleapis.com/v1beta/interactions")
+    throw new Error("Gemini Interactions create endpoint changed");
+  return new URL(raw).pathname;
+}
+
+function applyInteractions(
+  models: Map<string, ProviderModel>,
+  overviewBody: string,
+  apiBody: string,
+): void {
+  const $ = load(overviewBody);
+  const heading = exactHeading($, "h2", "Supported models & agents");
+  const siblings = heading.nextUntil("h2");
+  const table = siblings.filter("table").add(siblings.find("table")).first();
+  const headers = table
+    .find("thead th")
+    .map((_index, element) => text($(element).text()))
+    .get();
+  if (headers.join("|") !== "Model Name|Type|Model ID")
+    throw new Error("Gemini Interactions supported-model table changed");
+  const supported = new Map<string, "Model" | "Agent">();
+  table.find("tbody tr").each((_index, row) => {
+    const cells = $(row).find("td");
+    const kind = text(cells.eq(1).text());
+    const id = text(cells.eq(2).find("code").first().text());
+    if (
+      cells.length !== 3 ||
+      (kind !== "Model" && kind !== "Agent") ||
+      !modelIdSchema.safeParse(id).success ||
+      supported.has(id)
+    )
+      throw new Error("Gemini Interactions supported-model row changed");
+    supported.set(id, kind);
+  });
+  if (supported.size < 5 || supported.size > 40)
+    throw new Error("Gemini Interactions supported-model count changed");
+  const endpoint = {
+    name: "interactions.create",
+    path: interactionPath(apiBody),
+  } satisfies ApiEndpoint;
+  for (const [id, kind] of supported) {
+    const model = models.get(id);
+    if (model === undefined) throw new Error(`Gemini Interactions references unknown model: ${id}`);
+    if (kind === "Agent" && !model.types.includes("agentic"))
+      throw new Error(`Gemini Interactions agent classification changed: ${id}`);
+    model.api_endpoints = [endpoint];
+  }
+}
+
 export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "gemini-catalog") throw new Error("Wrong Gemini catalog extractor");
@@ -936,6 +1050,13 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   }
   applyChangelog(models, document(bundle, "/gemini-api/docs/changelog"));
   applyPricing(models, input.source.id, document(bundle, "/gemini-api/docs/pricing"));
+  validateMethodDocumentation(document(bundle, "/api/all-methods"));
+  validateLiveDocumentation(document(bundle, "/api/live"));
+  applyInteractions(
+    models,
+    document(bundle, "/gemini-api/docs/interactions-overview"),
+    document(bundle, "/api/interactions-api"),
+  );
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );
@@ -952,19 +1073,21 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
   return parsed.flatMap((result) => {
     if (!result.success) return [];
     const item = result.data;
-    const id = item.name.slice("models/".length);
-    const methods = item.supportedGenerationMethods ?? [];
-    const normalized = methods.map((method) => method.toLowerCase());
-    const modelTypes: ModelType[] = [];
-    if (normalized.some((method) => method === "generatecontent" || method === "generatemessage"))
-      modelTypes.push("generate");
-    if (normalized.some((method) => method === "embedcontent" || method === "batchembedcontent"))
-      modelTypes.push("embeddings");
-    if (normalized.some((method) => method === "bidigeneratecontent")) modelTypes.push("realtime");
-    const aliases =
-      item.baseModelId === id || !modelIdSchema.safeParse(item.baseModelId).success
-        ? []
-        : [item.baseModelId];
+    const id = modelIdSchema.parse(item.name.slice("models/".length));
+    const methods = unique(item.supportedGenerationMethods ?? []);
+    const facts = methods.flatMap((method) => {
+      const fact = methodFacts.get(method);
+      return fact === undefined ? [] : [{ method, ...fact }];
+    });
+    const methodsReviewed =
+      item.supportedGenerationMethods !== undefined && facts.length === methods.length;
+    const modelTypes = facts.flatMap((fact): ModelType[] => fact.types ?? ["other"]);
+    const endpoints = facts.flatMap(({ method, path, pathField }): ApiEndpoint[] => {
+      if (pathField !== undefined)
+        return [{ name: method, path: `/v1beta/models/${id}:${method}` }];
+      if (path === undefined) return [];
+      return [{ name: method, path }];
+    });
     return [
       {
         ...baseModel({
@@ -975,15 +1098,14 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         description: item.description,
-        aliases,
+        aliases: item.baseModelId === id ? [] : [item.baseModelId],
         types: types(modelTypes.length === 0 ? ["other"] : modelTypes),
+        api_endpoints: endpoints.length === 0 ? undefined : endpoints,
         capabilities: {
           ...unknownCapabilities(),
           reasoning: item.thinking ?? "unknown",
-          streaming: normalized.some(
-            (method) => method === "streamgeneratecontent" || method === "bidigeneratecontent",
-          ),
-          batch: normalized.some((method) => method.startsWith("batch")),
+          streaming: methodsReviewed ? facts.some((fact) => fact.streaming === true) : "unknown",
+          batch: methodsReviewed ? facts.some((fact) => fact.batch === true) : "unknown",
         },
         limits: {
           context_tokens: item.inputTokenLimit,

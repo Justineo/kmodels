@@ -34,6 +34,10 @@ function provider(value: ProviderManifest): Provider {
   return { ...value.provider, source_ids: value.sources.map((source) => source.id) };
 }
 
+function endpoints(model: ProviderModel | undefined): string[] | undefined {
+  return model?.api_endpoints?.map(({ name, path }) => `${name} ${path}`);
+}
+
 async function parsed(
   providerId: string,
   path: string,
@@ -239,7 +243,9 @@ async function azureCatalog(stableApiSpec?: string): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function geminiCatalog(): Promise<ProviderModel[]> {
+async function geminiCatalog(
+  overrides: Readonly<Record<string, string>> = {},
+): Promise<ProviderModel[]> {
   const value = manifest("gemini");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "gemini-catalog")
@@ -257,13 +263,17 @@ async function geminiCatalog(): Promise<ProviderModel[]> {
     ["https://ai.google.dev/gemini-api/docs/changelog", "changelog.html"],
     ["https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api", "gemma-api.html"],
     ["https://ai.google.dev/gemma/docs/core/model_card_4", "gemma-card.html"],
-  ];
+    ["https://ai.google.dev/gemini-api/docs/interactions-overview", "interactions-overview.html"],
+    ["https://ai.google.dev/api/interactions-api", "interactions-api.html"],
+    ["https://ai.google.dev/api/all-methods", "all-methods.html"],
+    ["https://ai.google.dev/api/live", "live-api.html"],
+  ] as const;
   const body = JSON.stringify({
     index: { url: source.url, body: await fixture("gemini/index.html") },
     documents: await Promise.all(
       documents.map(async ([url, path]) => ({
         url,
-        body: await fixture(`gemini/${path}`),
+        body: overrides[path] ?? (await fixture(`gemini/${path}`)),
       })),
     ),
   });
@@ -1528,6 +1538,7 @@ describe("Gemini adapters", () => {
       release: model?.release_date,
       updated: model?.updated_date,
       status: model?.status,
+      endpoints: endpoints(model),
       input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
       cached: model?.pricing.find((rate) => rate.meter === "cache_read_text")?.price,
       storage: model?.pricing.find((rate) => rate.meter === "cache_storage")?.unit,
@@ -1558,6 +1569,7 @@ describe("Gemini adapters", () => {
       release: "2026-07-01",
       updated: "2026-07",
       status: "preview",
+      endpoints: ["interactions.create /v1beta/interactions"],
       input: "1.50",
       cached: "0.15",
       storage: "million_tokens_per_hour",
@@ -1617,7 +1629,11 @@ describe("Gemini adapters", () => {
   });
 
   it("parses the authenticated inventory without making it a global catalog", async () => {
-    const model = (await parsed("gemini", "gemini/api.json", "gemini-api"))[0];
+    const models = await parsed("gemini", "gemini/api.json", "gemini-api");
+    const model = models.find((item) => item.model_id === "gemini-test-preview");
+    const embedding = models.find((item) => item.model_id === "embedding-test");
+    const live = models.find((item) => item.model_id === "live-test");
+    const future = models.find((item) => item.model_id === "future-test");
     expect({
       id: model?.model_id,
       name: model?.name,
@@ -1627,6 +1643,7 @@ describe("Gemini adapters", () => {
       streaming: model?.capabilities.streaming,
       batch: model?.capabilities.batch,
       limits: model?.limits,
+      endpoints: endpoints(model),
       scope: model?.scope,
     }).toEqual({
       id: "gemini-test-preview",
@@ -1641,11 +1658,79 @@ describe("Gemini adapters", () => {
         max_input_tokens: 1_048_576,
         max_output_tokens: 65_536,
       },
+      endpoints: [
+        "generateContent /v1beta/models/gemini-test-preview:generateContent",
+        "streamGenerateContent /v1beta/models/gemini-test-preview:streamGenerateContent",
+        "batchGenerateContent /v1beta/models/gemini-test-preview:batchGenerateContent",
+        "countTokens /v1beta/models/gemini-test-preview:countTokens",
+        "predictLongRunning /v1beta/models/gemini-test-preview:predictLongRunning",
+      ],
       scope: "runtime_observation",
+    });
+    expect({
+      embeddingTypes: embedding?.types,
+      embeddingBatch: embedding?.capabilities.batch,
+      embeddingEndpoints: endpoints(embedding),
+      liveTypes: live?.types,
+      liveStreaming: live?.capabilities.streaming,
+      liveEndpoints: endpoints(live),
+      futureTypes: future?.types,
+      futureStreaming: future?.capabilities.streaming,
+      futureBatch: future?.capabilities.batch,
+      futureEndpoints: endpoints(future),
+    }).toEqual({
+      embeddingTypes: ["embeddings"],
+      embeddingBatch: true,
+      embeddingEndpoints: [
+        "embedContent /v1beta/models/embedding-test:embedContent",
+        "batchEmbedContents /v1beta/models/embedding-test:batchEmbedContents",
+        "asyncBatchEmbedContent /v1beta/models/embedding-test:asyncBatchEmbedContent",
+      ],
+      liveTypes: ["realtime"],
+      liveStreaming: true,
+      liveEndpoints: [
+        "bidiGenerateContent wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
+      ],
+      futureTypes: ["other"],
+      futureStreaming: "unknown",
+      futureBatch: "unknown",
+      futureEndpoints: undefined,
     });
     await expect(parsed("gemini", "gemini/truncated-api.json", "gemini-api")).rejects.toThrow(
       "truncated",
     );
+  });
+
+  it("rejects drift in fixed route evidence", async () => {
+    const overview = await fixture("gemini/interactions-overview.html");
+    const interactionsApi = await fixture("gemini/interactions-api.html");
+    const methods = await fixture("gemini/all-methods.html");
+    await expect(
+      geminiCatalog({
+        "interactions-overview.html": overview.replace("gemini-test-preview", "gemini-unpublished"),
+      }),
+    ).rejects.toThrow("unknown model");
+    await expect(
+      geminiCatalog({
+        "interactions-overview.html": overview.replace(
+          "<td>Lyria Test</td>\n        <td>Model</td>",
+          "<td>Lyria Test</td>\n        <td>Agent</td>",
+        ),
+      }),
+    ).rejects.toThrow("agent classification");
+    await expect(
+      geminiCatalog({
+        "interactions-api.html": interactionsApi.replace(
+          "/v1beta/interactions",
+          "/v1/interactions",
+        ),
+      }),
+    ).rejects.toThrow("create endpoint changed");
+    await expect(
+      geminiCatalog({
+        "all-methods.html": methods.replace(":generateContent", ":generateContentV2"),
+      }),
+    ).rejects.toThrow("model method changed");
   });
 });
 
