@@ -3,7 +3,7 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   modelTypeSchema,
@@ -29,6 +29,110 @@ interface Evidence {
 
 type LoadedDocument = ReturnType<typeof load>;
 type Selection = ReturnType<LoadedDocument>;
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+type LinkedDocument = { url: string; body: string };
+
+const endpoints = {
+  generate: {
+    name: "generateContent",
+    path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent",
+  },
+  embedding: {
+    name: "embedContent",
+    path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:embedContent",
+  },
+  predict: {
+    name: "predict",
+    path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predict",
+  },
+  video: {
+    name: "predictLongRunning",
+    path: "/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:predictLongRunning",
+  },
+  claude: {
+    name: "rawPredict",
+    path: "/v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:rawPredict",
+  },
+  claudeStream: {
+    name: "streamRawPredict",
+    path: "/v1/projects/{project}/locations/{location}/publishers/anthropic/models/{model}:streamRawPredict",
+  },
+  grok: {
+    name: "Responses",
+    path: "/v1/projects/{project}/locations/global/endpoints/openapi/responses",
+  },
+  llama: {
+    name: "Chat Completions",
+    path: "/v1beta1/projects/{project}/locations/{location}/endpoints/openapi/chat/completions",
+  },
+  open: {
+    name: "Chat Completions",
+    path: "/v1/projects/{project}/locations/{location}/endpoints/openapi/chat/completions",
+  },
+} as const satisfies Record<string, ApiEndpoint>;
+const endpointReferences: Readonly<
+  Record<string, readonly (readonly [string, readonly RegExp[], string])[]>
+> = {
+  "vertex-google-models": [
+    [
+      "/gemini-enterprise-agent-platform/models/start",
+      [
+        /GENERATE_CONTENT_API\s*=\s*"generateContent"/,
+        /publishers\/google\/models\/\$\{MODEL_ID\}:\$\{GENERATE_CONTENT_API\}/,
+      ],
+      "Vertex generateContent reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/embeddings/get-multimodal-embeddings",
+      [/publishers\/google\/models\/gemini-embedding-2:embedContent/],
+      "Vertex embedContent reference drifted",
+    ],
+    [
+      "/vertex-ai/generative-ai/docs/image/generate-images",
+      [/publishers\/google\/models\/MODEL_VERSION:predict/],
+      "Vertex image predict reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/video/generate-videos-from-text",
+      [/publishers\/google\/models\/MODEL_ID:predictLongRunning/],
+      "Vertex video prediction reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/music/generate-music",
+      [/publishers\/google\/models\/lyria-002:predict/],
+      "Vertex music prediction reference drifted",
+    ],
+  ],
+  "vertex-partner-models": [
+    [
+      "/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
+      [
+        /publishers\/anthropic\/models\/MODEL:rawPredict/,
+        /publishers\/anthropic\/models\/MODEL:streamRawPredict/,
+      ],
+      "Vertex Claude prediction reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+      [/\/v1\/projects\/PROJECT_ID\/locations\/global\/endpoints\/openapi\/responses/],
+      "Vertex Grok Responses reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
+      [
+        /\/v1beta1\/projects\/PROJECT_ID\/locations\/LOCATION\/endpoints\/openapi\/chat\/completions/,
+      ],
+      "Vertex Llama Chat Completions reference drifted",
+    ],
+  ],
+  "vertex-open-models": [
+    [
+      "/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
+      [/\/v1\/projects\/PROJECT_ID\/locations\/LOCATION\/endpoints\/openapi\/chat\/completions/],
+      "Vertex open-model Chat Completions reference drifted",
+    ],
+  ],
+};
 
 const months = new Map([
   ["January", "01"],
@@ -67,6 +171,23 @@ function text(value: string): string {
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
+}
+
+function reference(
+  documents: LinkedDocument[],
+  path: string,
+  patterns: readonly RegExp[],
+  message: string,
+): void {
+  const document = documents.find((item) => new URL(item.url).pathname === path);
+  const value = document === undefined ? "" : text(load(document.body)("main").text());
+  if (document === undefined || patterns.some((pattern) => !pattern.test(value)))
+    throw new Error(message);
+}
+
+function validateEndpointReferences(sourceId: string, documents: LinkedDocument[]): void {
+  for (const [path, patterns, message] of endpointReferences[sourceId] ?? [])
+    reference(documents, path, patterns, message);
 }
 
 function orderedTypes(values: ModelType[]): ModelType[] {
@@ -319,6 +440,50 @@ function description($: LoadedDocument, heading: Selection): string | undefined 
   return value || undefined;
 }
 
+function publisherFamily($: LoadedDocument, sourceId: string): ProviderModel["service_families"] {
+  if (sourceId === "vertex-google-models") return ["publishers/google"];
+  const publishers = unique(
+    $(".devsite-article-body a[href]")
+      .map(
+        (_index, element) =>
+          ($(element).attr("href") ?? "").match(
+            /^https:\/\/console\.cloud\.google\.com\/agent-platform\/publishers\/([a-z0-9-]+)\/model-garden\//,
+          )?.[1],
+      )
+      .get()
+      .filter((value): value is string => value !== undefined),
+  );
+  if (publishers.length > 1) throw new Error("Vertex model card publisher drifted");
+  return publishers[0] === undefined ? undefined : [`publishers/${publishers[0]}`];
+}
+
+function modelEndpoints(
+  sourceId: string,
+  path: string,
+  $: LoadedDocument,
+  model: ProviderModel,
+): ProviderModel["api_endpoints"] {
+  if (sourceId === "vertex-google-models") {
+    if (/\/models\/gemini\//.test(path)) {
+      if (
+        $(".devsite-article-body a[href]").is(
+          '[href="/gemini-enterprise-agent-platform/models/embeddings/get-multimodal-embeddings"]',
+        )
+      )
+        return [endpoints.embedding];
+      return model.types.includes("realtime") ? undefined : [endpoints.generate];
+    }
+    if (/\/models\/veo\//.test(path)) return [endpoints.video];
+    if (/\/models\/(?:lyria|imagen)\//.test(path)) return [endpoints.predict];
+  }
+  if (sourceId === "vertex-partner-models") {
+    if (/\/partner-models\/claude\//.test(path)) return [endpoints.claude, endpoints.claudeStream];
+    if (/\/partner-models\/grok\//.test(path)) return [endpoints.grok];
+    if (/\/partner-models\/llama\//.test(path)) return [endpoints.llama];
+  }
+  return undefined;
+}
+
 function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evidence {
   if (current === undefined) return incoming;
   const model = current.model;
@@ -367,6 +532,20 @@ function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evide
     ...model.replacement_model_ids,
     ...next.replacement_model_ids,
   ]);
+  const families = unique([
+    ...(model.service_families ?? []),
+    ...(next.service_families ?? []),
+  ]).sort();
+  model.service_families = families.length === 0 ? undefined : families;
+  const endpointValues = [
+    ...new Map(
+      [...(model.api_endpoints ?? []), ...(next.api_endpoints ?? [])].map((endpoint) => [
+        apiEndpointKey(endpoint),
+        endpoint,
+      ]),
+    ).values(),
+  ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+  model.api_endpoints = endpointValues.length === 0 ? undefined : endpointValues;
   model.availability = [
     ...new Map(
       [...(model.availability ?? []), ...(next.availability ?? [])].map((item) => [
@@ -382,7 +561,12 @@ function add(models: Map<string, Evidence>, evidence: Evidence): void {
   models.set(evidence.model.model_id, mergeEvidence(models.get(evidence.model.model_id), evidence));
 }
 
-function parseModelTables(models: Map<string, Evidence>, input: Input, body: string): void {
+function parseModelTables(
+  models: Map<string, Evidence>,
+  input: Input,
+  path: string,
+  body: string,
+): void {
   const $ = load(body);
   const tables = $(".devsite-article-body table").filter((_index, table) => {
     const cells = $(table).find("tr").first().find("th,td");
@@ -412,6 +596,7 @@ function parseModelTables(models: Map<string, Evidence>, input: Input, body: str
       }),
       description: description($, heading),
       types: modelTypes(id, name, observedModalities, observedCapabilities),
+      service_families: publisherFamily($, input.source.id),
       modalities: observedModalities,
       capabilities: observedCapabilities,
       limits: limits($, table),
@@ -426,6 +611,7 @@ function parseModelTables(models: Map<string, Evidence>, input: Input, body: str
       availability: regions($, table),
       scope: "regional_catalog",
     } satisfies ProviderModel;
+    model.api_endpoints = modelEndpoints(input.source.id, path, $, model);
     const section = text(heading.nextUntil("h2").text());
     const deprecated = section.match(/deprecated as of ([A-Z][a-z]+ \d{1,2}, \d{4})/i)?.[1];
     const shutdown = section.match(/(?:shut down|shutdown) on ([A-Z][a-z]+ \d{1,2}, \d{4})/i)?.[1];
@@ -467,6 +653,8 @@ function ensure(
       observedAt: input.observedAt,
     }),
     types,
+    service_families:
+      input.source.id === "vertex-google-models" ? ["publishers/google"] : undefined,
     scope: "regional_catalog",
   } satisfies ProviderModel;
   const evidence = { model, names: new Set([id]) };
@@ -926,17 +1114,42 @@ function applyPricing(models: Map<string, Evidence>, sourceId: string, body: str
   }
 }
 
+function applyOpenExamples(models: Map<string, Evidence>, documents: LinkedDocument[]): void {
+  for (const document of documents) {
+    const $ = load(document.body);
+    $("pre").each((_index, element) => {
+      const value = text($(element).text());
+      if (!/\/endpoints\/openapi\/chat\/completions/.test(value)) return;
+      for (const match of value.matchAll(
+        /\bmodel["']?\s*(?::|=)\s*["']([a-z0-9-]+)\/([a-z0-9][a-z0-9._@-]*)["']/gi,
+      )) {
+        const publisher = match[1];
+        const id = match[2];
+        const model = id === undefined ? undefined : models.get(id)?.model;
+        if (publisher === undefined || model === undefined) continue;
+        model.service_families = unique([
+          ...(model.service_families ?? []),
+          `endpoints/openapi/${publisher}`,
+        ]).sort();
+        model.api_endpoints = [endpoints.open];
+      }
+    });
+  }
+}
+
 export function parseVertexCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "vertex-catalog") throw new Error("Wrong Vertex catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  validateEndpointReferences(input.source.id, bundle.documents);
   const models = new Map<string, Evidence>();
   for (const document of bundle.documents) {
     const path = new URL(document.url).pathname;
     if (path.endsWith("/generative-ai/pricing")) continue;
-    parseModelTables(models, input, document.body);
+    parseModelTables(models, input, path, document.body);
     if (/model-versions|\/deprecations\//.test(path)) applyLifecycle(models, input, document.body);
   }
+  if (input.source.id === "vertex-open-models") applyOpenExamples(models, bundle.documents);
   const pricing = bundle.documents.find((document) =>
     new URL(document.url).pathname.endsWith("/generative-ai/pricing"),
   );
@@ -976,6 +1189,7 @@ export function parseVertexApi(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
+        service_families: [`publishers/${resourcePublisher}`],
         status: modelStatus,
         is_deprecated:
           modelStatus === "deprecated" || modelStatus === "retired"
