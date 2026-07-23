@@ -1,12 +1,14 @@
 # Hugging Face catalog refinement
 
-Status: reviewed against catalog snapshot `2026-07-22T17:04:19.221Z` and Kong AI Gateway 2.0
+Status: implemented against the live Hugging Face APIs and Kong AI Gateway 2.0 on 2026-07-23
 
 ## Catalog assessment
 
-The current Hugging Face provider contains 19,326 models. That count is not itself evidence of a collection bug: 17,771 rows come from Featherless AI, whose official Hugging Face integration intentionally exposes thousands of open-weight models. The remaining large source is HF Inference with 1,408 rows.
+The previous 19,326-model result was too broad. It did not crawl every Hub repository, but it allowed every third-party provider mapping to create rows; Featherless AI alone contributed 17,771 mostly community-published repositories. A provider registration is valid route metadata, but it is not a Hugging Face-curated global catalog boundary.
 
-The important distinction is what a row means. “Present on the Hugging Face Hub”, “registered with an Inference Provider”, “available through the OpenAI-compatible router”, and “supported by Kong AI Gateway” are different facts. Kmodels treats this provider as a gateway catalog: a row requires at least one concrete public `live` mapping, while each mapping remains separate route evidence.
+Kmodels now uses only two Hugging Face-operated listings for presence: the public OpenAI-compatible router catalog and concrete `live` mappings served by HF Inference itself. It does not fetch third-party partner mapping inventories. This retains models directly offered through Hugging Face-operated services without turning the catalog into a copy of every community repository accepted by a partner.
+
+The resulting live catalog contains 1,536 rows: 1,408 observed from HF Inference and 128 from the router. Neither count depends on a Hugging Face token.
 
 ## Official source semantics
 
@@ -20,11 +22,11 @@ The Model Mapping API records a relationship between:
 
 Hugging Face describes `live` mappings as publicly available mappings registered by an inference provider. It separately exposes whether a model is currently warm, so `live` must not be interpreted as preloaded or latency-guaranteed. See the [Model Mapping API](https://huggingface.co/docs/inference-providers/en/register-as-a-provider) and [Hub API](https://huggingface.co/docs/inference-providers/en/hub-api).
 
-The public `GET /v1/models` endpoint is narrower. It lists OpenAI-compatible chat models and their live routes, with optional pricing, context, capability, latency, and throughput facts. It is an overlay for chat routing, not a replacement for task-specific mappings.
+The public `GET /v1/models` endpoint lists OpenAI-compatible chat models and their live routes, with optional pricing, context, capability, latency, and throughput facts. HF Inference's mapping supplies the complementary task-specific models served by Hugging Face's own serverless service.
 
 ## Kmodels representation
 
-A Hugging Face `ProviderModel` exists when at least one official source contains a concrete `live` mapping for an exact Hugging Face repository ID. Its canonical `model_id` is the exact `namespace/repository` value accepted by Hugging Face clients and automatic routing.
+A Hugging Face `ProviderModel` exists when the exact repository ID appears in either the router catalog or the concrete HF Inference `live` mapping. Its canonical `model_id` is the exact `namespace/repository` value accepted by Hugging Face clients.
 
 The list excludes:
 
@@ -32,9 +34,10 @@ The list excludes:
 - staging, private, or account-scoped mappings;
 - parameterized `tag-filter` contracts without a concrete model ID;
 - model IDs inferred from names, owners, tags, popularity, or repository metadata;
-- provider-internal IDs promoted to canonical Hugging Face IDs.
+- provider-internal IDs promoted to canonical Hugging Face IDs;
+- models present only in a third-party provider's bulk mapping.
 
-Community fine-tunes must not be filtered merely for being obscure. If an official provider mapping marks one `live`, its presence is an observed fact. Every source that matches the model must remain in `source_refs`.
+A community repository may still appear when Hugging Face itself lists it in the router or HF Inference service. The boundary is the operated service, not publisher popularity or an inferred owner allowlist.
 
 ## Route evidence
 
@@ -44,27 +47,20 @@ For example:
 
 ```json
 {
-  "model_id": "google/gemma-3-27b-it",
+  "model_id": "sentence-transformers/all-MiniLM-L6-v2",
   "routes": [
     {
-      "source_ref": "huggingface-featherless-ai",
-      "provider": "featherless-ai",
-      "provider_model_id": "google/gemma-3-27b-it",
-      "task": "conversational",
-      "status": "live"
-    },
-    {
-      "source_ref": "huggingface-scaleway",
-      "provider": "scaleway",
-      "provider_model_id": "google/gemma-3-27b-it-fast",
-      "task": "conversational",
+      "source_ref": "huggingface-hf-inference",
+      "provider": "hf-inference",
+      "provider_model_id": "sentence-transformers/all-MiniLM-L6-v2",
+      "task": "sentence-similarity",
       "status": "live"
     }
   ]
 }
 ```
 
-The router remains an overlay and cannot create a model without a concrete mapping. It contributes model-level OpenAI-compatible chat presence, route-conditioned pricing, the maximum advertised context, and conservative capability aggregates. The router does not publish a provider model ID, so Kmodels does not overwrite the exact mapping identity or invent a provider-specific join. Volatile latency and throughput probes remain outside the stable catalog.
+The router is an independent row-creating chat catalog. It contributes OpenAI-compatible presence, route-conditioned pricing, the maximum advertised context, and conservative capability aggregates. It does not publish a provider model ID, so Kmodels does not invent one or reconstruct a join to the removed partner inventories. Volatile latency and throughput probes remain outside the stable catalog.
 
 ## Kong AI Gateway compatibility
 
@@ -107,19 +103,21 @@ Image generation and audio transcription appear in the 2.0 provider definition b
 
 ### Consequence for Kmodels
 
-In the reviewed catalog snapshot, 127 models are observed by `huggingface-router`; exact router membership is the strongest deterministic evidence for Kong's OpenAI-compatible chat capability. Task-specific and native compatibility instead uses the retained mapping route.
+Exact router membership is the strongest deterministic evidence for Kong's OpenAI-compatible chat capability. Task-specific and native compatibility instead uses the retained HF Inference mapping route.
 
-The full 19,326-model set must not be labeled Kong-compatible as a unit. `source_refs` alone is also insufficient: compatibility requires the retained route's provider, provider model ID, raw task, and source. For example, a `feature-extraction` mapping from a provider other than `hf-inference` does not prove that Kong's documented `hf-inference` upstream path accepts the model.
+The provider must not be labeled Kong-compatible as a unit. `source_refs` alone is also insufficient: compatibility requires router membership or a retained HF Inference route with its provider model ID and raw task.
 
 Any Kmodels compatibility projection must derive Kong support as a versioned capability relation, not a property of the Hugging Face provider or of the broad normalized model type. Unknown or mismatched task/endpoint combinations remain unclassified rather than guessed.
 
 ## Refinement decision
 
-The large count is plausible and is not reduced with popularity or publisher heuristics:
+The catalog uses an operated-service boundary rather than popularity or publisher heuristics:
 
-1. Keep every concrete official `live` model mapping.
-2. Preserve the exact provider route, provider model ID, and raw task.
-3. Treat `/v1/models` as a chat-route overlay.
-4. Require Kong compatibility to match its version, capability, upstream endpoint, provider route, and raw task.
-5. Do not infer support for an operation merely because another Kong provider supports that operation family.
-6. Present Hugging Face as a gateway catalog, not as one host offering 19,326 equivalent deployments.
+1. Let `/v1/models` create the OpenAI-compatible chat catalog.
+2. Let only the `hf-inference` concrete `live` mapping create task-specific rows.
+3. Do not fetch or publish third-party partners' bulk mapping inventories.
+4. Preserve the exact HF Inference provider model ID and raw task.
+5. Require Kong compatibility to match its version, capability, upstream endpoint, provider route, and raw task.
+6. Do not infer support for an operation merely because another Kong provider supports that operation family.
+
+The pricing representation is unchanged in this provider turn. Router backend rates remain separate, route-conditioned observations in the current flat schema; `docs/pricing.md` remains a repo-wide migration proposal until coherent offers are implemented across all providers.

@@ -81,6 +81,35 @@ describe("generated static catalog", () => {
     });
   });
 
+  it("keeps Hugging Face within its operated-service boundary", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const models = catalog.models.filter(({ provider_id }) => provider_id === "huggingface");
+    const sources = new Set(models.flatMap(({ source_refs }) => source_refs));
+    expect(models.length).toBeGreaterThan(500);
+    expect(models.length).toBeLessThan(3_000);
+    expect([...sources].sort()).toEqual(["huggingface-hf-inference", "huggingface-router"]);
+  });
+
+  it("publishes the repaired authenticated inventories without transport or schema failures", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const repairedSources = new Set([
+      "cohere-api",
+      "dashscope-deployable-api",
+      "gemini-api",
+      "kimi-api",
+      "vertex-model-garden-api",
+    ]);
+    expect(
+      catalog.warnings.filter(
+        (warning) =>
+          "source_id" in warning &&
+          warning.source_id !== undefined &&
+          repairedSources.has(warning.source_id) &&
+          ["source_fetch_failed", "source_parse_failed"].includes(warning.code),
+      ),
+    ).toEqual([]);
+  });
+
   it("does not collapse an exact catalog ID through another model's alias", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
     const o1 = catalog.models.find((model) => model.uid === "openai/o1");

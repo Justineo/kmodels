@@ -41,7 +41,7 @@ const googleServiceAccountSchema = z.object({
 });
 const googleTokenSchema = z.object({ access_token: z.string().min(1) });
 const googleModelsPageSchema = z.object({
-  publisherModels: z.array(z.unknown()),
+  publisherModels: z.array(z.unknown()).default([]),
   nextPageToken: z.string().min(1).optional(),
 });
 const ollamaListSchema = z
@@ -492,7 +492,7 @@ async function fetchGoogleModelGarden(
           `/v1beta1/publishers/${publisher}/models`,
           "https://aiplatform.googleapis.com",
         );
-        url.searchParams.set("pageSize", "1000");
+        url.searchParams.set("pageSize", "300");
         url.searchParams.set("view", "PUBLISHER_MODEL_VIEW_BASIC");
         if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
         const page = googleModelsPageSchema.parse(

@@ -75,7 +75,7 @@ const methodFacts = new Map<string, MethodFact>([
 
 const apiItemSchema = z.object({
   name: z.string().regex(/^models\/[a-z0-9][a-z0-9._:/-]*$/i),
-  baseModelId: modelIdSchema,
+  baseModelId: modelIdSchema.optional(),
   version: z.string().min(1),
   displayName: z.string().min(1).optional(),
   description: z.string().optional(),
@@ -1098,7 +1098,8 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         description: item.description,
-        aliases: item.baseModelId === id ? [] : [item.baseModelId],
+        aliases:
+          item.baseModelId === undefined || item.baseModelId === id ? [] : [item.baseModelId],
         types: types(modelTypes.length === 0 ? ["other"] : modelTypes),
         api_endpoints: endpoints.length === 0 ? undefined : endpoints,
         capabilities: {

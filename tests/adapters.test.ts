@@ -204,6 +204,22 @@ function huggingFaceRouterSource(value: ProviderManifest): SourceManifest {
   };
 }
 
+function huggingFaceMappingSource(value: ProviderManifest): SourceManifest {
+  const configured = value.sources.find((source) => source.id === "huggingface-hf-inference");
+  if (configured === undefined || configured.extractor.kind !== "huggingface-mapping")
+    throw new Error("Missing Hugging Face mapping source");
+  return {
+    ...configured,
+    extractor: { ...configured.extractor, minModels: 1, maxModels: 10 },
+  };
+}
+
+async function huggingFaceMapping(path: string): Promise<ProviderModel[]> {
+  const value = manifest("huggingface");
+  const source = huggingFaceMappingSource(value);
+  return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
+}
+
 async function huggingFaceRouter(path: string): Promise<ProviderModel[]> {
   const value = manifest("huggingface");
   const source = huggingFaceRouterSource(value);
@@ -758,6 +774,20 @@ describe("Cohere adapters", () => {
         api_endpoints: [{ name: "Classify", path: "v1/classify" }],
         limits: { context_tokens: 128_000 },
         is_deprecated: false,
+      },
+      {
+        model_id: "cohere-transcribe-07-2026",
+        types: ["audio_transcription"],
+        api_endpoints: undefined,
+        limits: { context_tokens: 10_000 },
+        is_deprecated: "unknown",
+      },
+      {
+        model_id: "embed-english-v3.0-image",
+        types: ["embeddings"],
+        api_endpoints: undefined,
+        limits: {},
+        is_deprecated: "unknown",
       },
     ]);
     await expect(parsed("cohere", "cohere/truncated-api.json", "cohere-api")).rejects.toThrow(
@@ -2895,8 +2925,16 @@ describe("Cerebras adapter", () => {
 });
 
 describe("Hugging Face adapter", () => {
+  it("uses only Hugging Face-operated listings as catalog sources", () => {
+    const sources = manifest("huggingface").sources;
+    expect(sources.map(({ id, role }) => ({ id, role }))).toEqual([
+      { id: "huggingface-hf-inference", role: "catalog" },
+      { id: "huggingface-router", role: "catalog" },
+    ]);
+  });
+
   it("parses every concrete mapping and unions non-exclusive tasks", async () => {
-    const models = await parsed("huggingface", "huggingface/normal.json");
+    const models = await huggingFaceMapping("huggingface/normal.json");
     const multi = models.find((model) => model.model_id === "org/multi-model");
     const embedding = models.find((model) => model.model_id === "org/embed-model");
     expect(models.map((model) => model.model_id)).toEqual([
@@ -2913,22 +2951,22 @@ describe("Hugging Face adapter", () => {
     expect(embedding?.modalities.output).toEqual(["embedding"]);
     expect(multi?.routes).toEqual([
       {
-        source_ref: "huggingface-cerebras",
-        provider: "cerebras",
+        source_ref: "huggingface-hf-inference",
+        provider: "hf-inference",
         provider_model_id: "upstream/future",
         task: "future-task",
         status: "live",
       },
       {
-        source_ref: "huggingface-cerebras",
-        provider: "cerebras",
+        source_ref: "huggingface-hf-inference",
+        provider: "hf-inference",
         provider_model_id: "upstream/video",
         task: "image-to-video",
         status: "live",
       },
       {
-        source_ref: "huggingface-cerebras",
-        provider: "cerebras",
+        source_ref: "huggingface-hf-inference",
+        provider: "hf-inference",
         provider_model_id: "upstream/image",
         task: "text-to-image",
         status: "live",
@@ -2939,8 +2977,7 @@ describe("Hugging Face adapter", () => {
   it("does not publish credential-like route identifiers", async () => {
     const credentialLikeId = `org/${["hf_", "a".repeat(40)].join("")}`;
     const value = manifest("huggingface");
-    const source = value.sources[0];
-    if (source === undefined) throw new Error("Missing Hugging Face source");
+    const source = huggingFaceMappingSource(value);
     for (const { from, hidden } of [
       { from: '"org/model-1"', hidden: credentialLikeId },
       { from: '"upstream/model-1"', hidden: credentialLikeId },
@@ -2980,46 +3017,40 @@ describe("Hugging Face adapter", () => {
     ]);
   });
 
-  it("retains every catalog and router source that matches a model", async () => {
+  it("combines the HF Inference and router catalogs", async () => {
     const value = manifest("huggingface");
-    const first = value.sources.find((source) => source.id === "huggingface-cerebras");
-    const second = value.sources.find((source) => source.id === "huggingface-cohere");
+    const inference = huggingFaceMappingSource(value);
     const router = huggingFaceRouterSource(value);
-    if (first === undefined || second === undefined)
-      throw new Error("Missing Hugging Face sources");
     const body = await fixture("huggingface/normal.json");
     const routeBody = await fixture("huggingface/pricing.json");
-    const groups = [first, second].map((source) => ({
-      source,
-      models: parseSource({ provider: provider(value), source, body, observedAt }),
-    }));
-    const overlay = parseSource({
+    const mappings = parseSource({
+      provider: provider(value),
+      source: inference,
+      body,
+      observedAt,
+    });
+    const routed = parseSource({
       provider: provider(value),
       source: router,
       body: routeBody,
       observedAt,
     });
     const models = applyGroups(
-      applyGroups([], groups, true),
-      [{ source: router, models: overlay }],
-      false,
+      [],
+      [
+        { source: inference, models: mappings },
+        { source: router, models: routed },
+      ],
+      true,
     );
     expect(models.find((model) => model.model_id === "org/model-1")?.source_refs).toEqual([
-      "huggingface-cerebras",
-      "huggingface-cohere",
+      "huggingface-hf-inference",
       "huggingface-router",
     ]);
     expect(models.find((model) => model.model_id === "org/model-1")?.routes).toEqual([
       {
-        source_ref: "huggingface-cerebras",
-        provider: "cerebras",
-        provider_model_id: "upstream/model-1",
-        task: "conversational",
-        status: "live",
-      },
-      {
-        source_ref: "huggingface-cohere",
-        provider: "cohere",
+        source_ref: "huggingface-hf-inference",
+        provider: "hf-inference",
         provider_model_id: "upstream/model-1",
         task: "conversational",
         status: "live",
@@ -3028,7 +3059,7 @@ describe("Hugging Face adapter", () => {
   });
 
   it("rejects malformed mappings and non-live router routes", async () => {
-    await expect(parsed("huggingface", "huggingface/broken.json")).rejects.toThrow(
+    await expect(huggingFaceMapping("huggingface/broken.json")).rejects.toThrow(
       "Expected a Hugging Face repository ID",
     );
     await expect(huggingFaceRouter("huggingface/broken-router.json")).rejects.toThrow();
@@ -3381,7 +3412,7 @@ describe("DashScope adapters", () => {
         { region: "China (Beijing)", deployment_type: "model_api" },
         { region: "Singapore", deployment_type: "model_api" },
         { region: "Singapore", deployment_type: "mu" },
-        { region: "Singapore", deployment_type: "ptu" },
+        { region: "Singapore", deployment_type: "ptu_v2" },
       ],
     });
   });
@@ -3408,6 +3439,21 @@ describe("Kimi adapters", () => {
   };
   const parse = (configured: SourceManifest, body: string): ProviderModel[] =>
     parseSource({ provider: provider(value), source: configured, body, observedAt });
+
+  it("uses the documented international API origin", () => {
+    expect(source("kimi-api")).toMatchObject({
+      url: "https://api.moonshot.ai/v1/models",
+      allowedHosts: ["api.moonshot.ai"],
+    });
+  });
+
+  it("keeps omitted inventory capabilities as unknown", async () => {
+    const models = await parsed("kimi", "kimi/api.json", "kimi-api");
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.6")).toMatchObject({
+      modalities: { input: ["text"], output: ["text"] },
+      capabilities: { reasoning: "unknown" },
+    });
+  });
 
   async function pricing(): Promise<ProviderModel[]> {
     const configured = source("kimi-pricing");
@@ -3767,7 +3813,7 @@ describe("provider drift validation", () => {
   });
 
   it("rejects duplicate or abruptly missing structured evidence", async () => {
-    const model = (await parsed("huggingface", "huggingface/normal.json")).find(
+    const model = (await huggingFaceMapping("huggingface/normal.json")).find(
       ({ model_id }) => model_id === "org/model-1",
     );
     const route = model?.routes?.[0];

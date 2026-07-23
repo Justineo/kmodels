@@ -24,17 +24,19 @@ interface Input {
 const endpointSchema = z.enum([
   "chat",
   "embed",
+  "embed_image",
   "classify",
   "summarize",
   "rerank",
   "rate",
   "generate",
+  "transcriptions",
 ]);
 const apiItemSchema = z.object({
   name: modelIdSchema,
   is_deprecated: z.boolean().optional(),
   endpoints: z.array(endpointSchema).optional(),
-  context_length: z.number().int().positive().optional(),
+  context_length: z.number().int().nonnegative().optional(),
 });
 const apiSchema = z.object({
   models: z.array(z.unknown()).min(1),
@@ -157,11 +159,13 @@ const endpointDefinitions: EndpointDefinition[] = [
 const apiEndpointFacts = new Map<z.infer<typeof endpointSchema>, ApiEndpointFact>([
   ["chat", { type: "generate" }],
   ["embed", { type: "embeddings" }],
+  ["embed_image", { type: "embeddings" }],
   ["classify", { type: "classification", endpoint: { name: "Classify", path: "v1/classify" } }],
   ["summarize", { type: "generate", endpoint: { name: "Summarize", path: "v1/summarize" } }],
   ["rerank", { type: "rerank" }],
   ["rate", { type: "other" }],
   ["generate", { type: "generate", endpoint: { name: "Generate", path: "v1/generate" } }],
+  ["transcriptions", { type: "audio_transcription" }],
 ]);
 
 const typeByEndpointLabel = new Map<string, ModelType>([
@@ -1083,7 +1087,10 @@ export function parseCohereApi(input: Input): ProviderModel[] {
         }),
         types: modelTypes,
         api_endpoints: apiEndpoints.length === 0 ? undefined : apiEndpoints,
-        limits: item.context_length === undefined ? {} : { context_tokens: item.context_length },
+        limits:
+          item.context_length === undefined || item.context_length === 0
+            ? {}
+            : { context_tokens: item.context_length },
         status: item.is_deprecated === true ? "deprecated" : "unknown",
         is_deprecated: item.is_deprecated ?? "unknown",
       },
