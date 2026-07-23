@@ -1761,7 +1761,7 @@ export const manifests = [
         stability: "documented",
         extractor: { kind: "huggingface-router", minModels: 50, maxModels: 500 },
         extractorVersion: "huggingface-router-v2",
-        fields: ["types", "modalities", "capabilities", "limits", "pricing"],
+        fields: ["types", "modalities", "api_endpoints", "capabilities", "limits", "pricing"],
         allowedHosts: ["router.huggingface.co"],
         maxResponseBytes: mebibytes(16),
         scope: "global",

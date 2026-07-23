@@ -209,15 +209,11 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Price
       )
     )
       throw new Error(`Hugging Face route ${route.provider} is both free and priced`);
-    return ["input_text", "output_text"].map((meter) =>
-      publishedRate(
-        meter === "input_text" ? "input_text" : "output_text",
-        "0",
-        "million_tokens",
-        sourceId,
-        "currently free route",
-        { ...conditions, promotion: true },
-      ),
+    return (["input_text", "output_text"] as const).map((meter) =>
+      publishedRate(meter, "0", "million_tokens", sourceId, "currently free route", {
+        ...conditions,
+        promotion: true,
+      }),
     );
   }
   const rates: PriceRate[] = [];
@@ -281,6 +277,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
         input: unique(item.architecture.input_modalities),
         output: unique(item.architecture.output_modalities),
       },
+      api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
       capabilities: {
         ...unknownCapabilities(),
         tool_call: availability(routes.map((route) => route.supports_tools)),
