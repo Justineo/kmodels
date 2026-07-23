@@ -73,7 +73,10 @@ async function deepseekCatalog(chat?: string): Promise<ProviderModel[]> {
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function anthropicCatalog(messagesBody?: string): Promise<ProviderModel[]> {
+async function anthropicCatalog(
+  messagesBody?: string,
+  batchGuideBody?: string,
+): Promise<ProviderModel[]> {
   const value = manifest("anthropic");
   const source = value.sources[0];
   if (source === undefined) throw new Error("Missing Anthropic source");
@@ -100,12 +103,12 @@ async function anthropicCatalog(messagesBody?: string): Promise<ProviderModel[]>
         body: messagesBody ?? (await fixture("anthropic/messages.md")),
       },
       {
-        url: "https://platform.claude.com/docs/en/api/completions/create.md",
-        body: await fixture("anthropic/completions.md"),
-      },
-      {
         url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
         body: await fixture("anthropic/batches.md"),
+      },
+      {
+        url: "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
+        body: batchGuideBody ?? (await fixture("anthropic/batch-processing.md")),
       },
     ],
   });
@@ -2041,50 +2044,33 @@ describe("Anthropic adapters", () => {
     });
   });
 
-  it("retains only endpoint support listed for each exact official model identity", async () => {
+  it("publishes current Messages and explicitly universal batch support", async () => {
     const models = await anthropicCatalog();
     const endpoints = (id: string) => models.find((model) => model.model_id === id)?.api_endpoints;
-    expect(endpoints("claude-fable-5")).toHaveLength(2);
-    expect(endpoints("claude-fable-5")).toEqual(
-      expect.arrayContaining([
-        { name: "Create a Message", path: "v1/messages" },
-        { name: "Create a Message Batch", path: "v1/messages/batches" },
-      ]),
-    );
-    expect(endpoints("claude-opus-4-7")).toHaveLength(2);
-    expect(endpoints("claude-opus-4-7")).toEqual(
-      expect.arrayContaining([
-        { name: "Create a Text Completion", path: "v1/complete" },
-        { name: "Create a Message", path: "v1/messages" },
-      ]),
-    );
-    expect(endpoints("claude-mythos-preview")).toHaveLength(2);
-    expect(endpoints("claude-mythos-preview")).toEqual(
-      expect.arrayContaining([
-        { name: "Create a Text Completion", path: "v1/complete" },
-        { name: "Create a Message", path: "v1/messages" },
-      ]),
-    );
-    expect(endpoints("claude-opus-4-1-20250805")).toBeUndefined();
+    expect(endpoints("claude-fable-5")).toEqual([
+      { name: "Create a Message", path: "v1/messages" },
+      { name: "Create a Message Batch", path: "v1/messages/batches" },
+    ]);
+    expect(endpoints("claude-opus-4-7")).toEqual([
+      { name: "Create a Message", path: "v1/messages" },
+      { name: "Create a Message Batch", path: "v1/messages/batches" },
+    ]);
+    expect(endpoints("claude-mythos-preview")).toBeUndefined();
+    expect(endpoints("claude-opus-4-1-20250805")).toEqual([
+      { name: "Create a Message", path: "v1/messages" },
+    ]);
   });
 
-  it("rejects endpoint model identities absent from the public catalog", async () => {
-    const body = (await fixture("anthropic/messages.md")).replaceAll(
-      "claude-fable-5",
-      "claude-unknown",
-    );
+  it("rejects a changed Messages operation contract", async () => {
+    const body = (await fixture("anthropic/messages.md")).replace("/v1/messages", "/v2/messages");
     await expect(anthropicCatalog(body)).rejects.toThrow(
-      "Anthropic endpoint model did not match one official ID: claude-unknown",
+      "Anthropic endpoint document drifted for v1/messages",
     );
   });
 
-  it("rejects an incomplete endpoint model enumeration", async () => {
-    const body = (await fixture("anthropic/messages.md")).replace(
-      '\n    - `"claude-opus-4-7"`\n',
-      "",
-    );
-    await expect(anthropicCatalog(body)).rejects.toThrow(
-      "Anthropic endpoint model list drifted: v1/messages",
+  it("rejects loss of universal active-model batch coverage", async () => {
+    await expect(anthropicCatalog(undefined, "# Message Batches API")).rejects.toThrow(
+      "Anthropic batch model coverage drifted",
     );
   });
 });

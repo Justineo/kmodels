@@ -7,7 +7,7 @@
     "dev": "vp dev",
     "build": "tsc && vp build",
     "check": "vp check",
-    "collect": "node scripts/collect.ts",
+    "collect": "node --env-file-if-exists=.env scripts/collect.ts",
     "collect:fixtures": "vp test --run tests/adapters.test.ts",
     "deploy": "void deploy --dir dist --skip-build",
     "preview": "vp preview",
