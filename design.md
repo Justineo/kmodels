@@ -1,7 +1,7 @@
 # Kmodels design
 
-Status: implemented compact revision
-Last decision update: 2026-07-23
+Status: implemented precision catalog workspace
+Last decision update: 2026-07-24
 
 ## Product boundary
 
@@ -10,7 +10,7 @@ Kmodels is a best-effort catalog of model offerings published by 19 providers. I
 The repository ships two things from one TypeScript project:
 
 1. `scripts/collect.ts` produces versioned static JSON without an LLM or inference call.
-2. A plain HTML/CSS website reads that JSON. Void deploys the built `dist/` directory as a static site; there is no production worker.
+2. A Vue 3.6 RC website compiled entirely in Vapor mode reads that JSON. The frontend follows the TypeScript create-vue application structure and is built with VitePlus. Void deploys the built `dist/` directory as a static site; there is no production worker.
 
 ## Kong AI Gateway consumer boundary
 
@@ -226,13 +226,19 @@ Kmodels is intended to supply model evidence to Kong AI Gateway 2.0, but it is n
 
 ## Website decisions
 
-Visual thesis: a compact monochrome index—white canvas, near-black text, cool-gray rules and green reserved for source freshness.
+Visual thesis: a precision utility workspace—neutral system surfaces, compact but legible type, mono identifiers, hairline structure, and violet reserved for focus and selection. Hierarchy comes from alignment, weight, and information order rather than oversized display type, decorative imagery, gradients, or floating card composition.
 
-Content plan: one narrow status bar, one filter row and the model index. Model identifiers and separately observed display names have distinct columns; the display-name cell is blank when `name` is only the required `model_id` fallback. An observed provider version appears beside the identifier and in details without changing `model_id`. Multi-valued types use the compact operation labels from the public schema, and exact API endpoint evidence appears in model details when published. Release and update dates share one compact column and remain individually labeled in model details. Text-token pricing is split into input, output and cached-input columns, preferring an unconditional published rate and otherwise showing the first source tier; every tier and cache-write rate remains explicit in model details. There is no hero, methodology section, footer narrative, marketing copy, card grid or decorative imagery. Provenance remains available through model details and the raw JSON link.
+Content plan: one compact application bar establishes product and catalog state; one page header reports model/provider count, freshness, generation time, and version without marketing copy; one toolbar owns search and filtering; and one semantic data table owns the working surface. The table keeps display name and exact request identifier together and exposes provider, operation, lifecycle, context, representative input/output rates, and update date in comparable columns. Every filtered result belongs to one continuous scroll surface; a fixed-row virtual window retains only the viewport plus eight overscan rows on each side in the DOM. Model details use a compact inspector with exact version, modalities, capability evidence, endpoint paths, every pricing tier, lifecycle, scope, availability, and source links. Missing values remain explicit unknowns.
 
-Interaction thesis: filter feedback is immediate, rows use a quiet hover state, and model details open in a compact native dialog. The app header, controls and table heading remain sticky; all motion is removed under `prefers-reduced-motion`.
+Interaction thesis: `/` focuses the primary search, filters update immediately, native selects progressively adopt the customizable-select picker, supported headings sort comparable columns, and rows reveal a right-side inspector with a restrained selection state. Filtering and sorting reset the continuous virtual scroll to its first result. The application bar, toolbar, and table heading remain sticky where space permits. Motion is limited to short state transitions and removed under `prefers-reduced-motion`.
 
-The CSS begins with a modern reset, uses system fonts, and remains usable without JavaScript through an explanatory HTML shell. JavaScript writes external values with `textContent`, not HTML interpolation.
+The visual system is grounded in three reviewed references: Apple HIG contributes system-font legibility, succinct table rows, visible search scope, disclosure feedback, and responsive column reduction; Vercel Geist contributes the 13–14px utility type scale, semantic table treatment, tabular numeric columns, layered gray tokens, and low-elevation menu surfaces; VoidZero and Vite+ contribute crisp white planes, thin structural borders, mono operational metadata, compact radii, and a restrained violet accent. These are principles, not copied branding.
+
+The frontend is scaffolded from the bare TypeScript create-vue template. The application pins `vue` to 3.6.0-rc.2 so its Vapor runtime and compiler dependencies resolve from the same release. Every SFC opts into Vapor explicitly, and the application mounts with `createVaporApp`; the standard Vue plugin needs no separate global renderer switch. VitePlus remains the only dev, check, test, preview, and build tool entrypoint, with `vue-tsc` providing SFC type checking before production builds.
+
+Virtual scrolling is implemented as a small framework-neutral range calculation plus Vapor-native table markup rather than a VDOM component dependency. The catalog's rows are deliberately fixed at 52px, so scroll offset, viewport height, and an eight-row overscan are sufficient to derive an exclusive render range and exact spacer heights. The semantic table publishes total and absolute row indexes for assistive technology. This keeps the entire application on the Vapor renderer while avoiding dynamic-row measurement complexity the product does not need.
+
+The CSS begins with a modern reset, uses system fonts, and remains usable without JavaScript through an explanatory HTML shell. Vue interpolates only schema-validated catalog values and binds source URLs to normal link attributes; no external catalog value is treated as HTML.
 
 ## Automation and ownership
 
