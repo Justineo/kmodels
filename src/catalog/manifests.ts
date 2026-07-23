@@ -143,10 +143,8 @@ export interface SourceManifest {
   linkedDocuments?: LinkedDocuments;
 }
 
-export interface ProviderManifest {
+interface ProviderManifestBase {
   provider: Omit<Provider, "source_ids" | "last_successful_sync_at" | "catalog_version">;
-  sources: SourceManifest[];
-  notConfiguredReason?: string;
   supersededIdKinds?: ProviderModel["id_kind"][];
   supersededModelIds?: string[];
   warnOnMissing?: {
@@ -155,6 +153,18 @@ export interface ProviderManifest {
     statuses?: ProviderModel["status"][];
   };
 }
+
+export type ProviderManifest = ProviderManifestBase &
+  (
+    | {
+        sources: [...SourceManifest[], SourceManifest];
+        notConfiguredReason?: undefined;
+      }
+    | {
+        sources: [];
+        notConfiguredReason: string;
+      }
+  );
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
 

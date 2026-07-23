@@ -55,6 +55,32 @@ describe("generated static catalog", () => {
     expect(envelope.data.providers).toEqual(catalog.providers);
   });
 
+  it("publishes vLLM as an explicitly empty runtime scope", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const provider = catalog.providers.find(({ id }) => id === "vllm");
+    const coverage = catalog.coverage.find(({ provider_id }) => provider_id === "vllm");
+    expect({
+      source_ids: provider?.source_ids,
+      catalog_version: provider?.catalog_version,
+      coverage,
+      models: catalog.models.filter(({ provider_id }) => provider_id === "vllm"),
+      sources: catalog.sources.filter(({ provider_id }) => provider_id === "vllm"),
+    }).toEqual({
+      source_ids: [],
+      catalog_version: undefined,
+      coverage: {
+        provider_id: "vllm",
+        status: "not_configured",
+        model_count: 0,
+        price_rate_count: 0,
+        checked_at: catalog.generated_at,
+        reason: "No explicitly allowlisted runtime endpoint is configured.",
+      },
+      models: [],
+      sources: [],
+    });
+  });
+
   it("does not collapse an exact catalog ID through another model's alias", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
     const o1 = catalog.models.find((model) => model.uid === "openai/o1");

@@ -1,6 +1,6 @@
 # vLLM refinement
 
-Status: reviewed against catalog snapshot `2026-07-22T17:48:46.016Z`, current vLLM documentation, and Kong AI Gateway 2.0 branch `80795a1`
+Status: reviewed against catalog snapshot `2026-07-22T18:03:01.176Z`, current vLLM documentation, and Kong AI Gateway 2.0 branch `80795a1`
 
 ## Catalog assessment
 
@@ -18,7 +18,11 @@ The documented [`GET /v1/models`](https://docs.vllm.ai/en/latest/api/vllm/entryp
 
 The response publishes no display name, operation matrix, price, release/update date, or deprecation state. Presence means loaded in that runtime at observation time; absence means only “not loaded now.” Multiple served names backed by one loaded model must not be collapsed through `root`, because that field is sensitive and is not a public alias contract.
 
+The current online-serving surface reinforces that boundary. One instance selects one `generate` or `pooling` runner, with optional classification or embedding conversion, while vLLM exposes completion, chat, response, embedding, transcription, translation, classification, scoring, and pooling APIs according to the loaded deployment. `/v1/models` exposes none of that operation configuration. The development-only `/server_info` endpoint is explicitly unsuitable as a durable production contract and may disclose far more configuration than Kmodels should collect.
+
 The current `ProviderModel` resource also lacks a durable runtime/deployment identity. Enabling `/v1/models` now would either create misleading global rows or produce scoped rows that cannot identify which runtime they belong to. A runtime binding resource is required first, keyed by a reviewed runtime identity and retaining the exact served name, origin reference, observation time, effective limit, and safe adapter parent relation.
+
+The manifest now represents configured and `not_configured` providers as mutually exclusive states. This makes an empty configured source list invalid at compile time. The collector branches on the explicit reason, emits zero models and sources, and discards observations from source identities that are no longer configured. That is an intentional configuration transition, not a failed refresh; last-validated retention still applies to failures and suspicious results from sources that remain configured.
 
 ## Kong AI Gateway 2.0
 
@@ -30,7 +34,7 @@ Every Kong target requires an operator-supplied `upstream_url`, and its target `
 
 `/v1/models` membership alone does not prove Kong compatibility. The loaded model must use a generative runner and have a usable chat template; vLLM documents that chat requests fail without one. Kmodels must not test this by issuing a chat-completions inference request. Positive compatibility therefore requires deployment configuration evidence for chat readiness in addition to the runtime ID and Kong target binding.
 
-vLLM's `--api-key` is optional and, when enabled, requires a bearer header. Kong's `basic` outbound-auth shape can carry `Authorization: Bearer …`; the minimal vLLM provider example omits that header and is valid only for an unauthenticated runtime. An API key without a reviewed runtime URL is not actionable for Kmodels.
+vLLM's `--api-key` is optional and, when enabled, requires the configured key in the request header. An API key without a reviewed runtime URL is not actionable for Kmodels, and neither the endpoint nor its secret belongs in public catalog output.
 
 vLLM publishes no provider usage price. Kong can attach operator-defined target input/output costs, but those are deployment policy, not facts that Kmodels should infer from model artifacts or GPU prices.
 
@@ -42,3 +46,4 @@ vLLM publishes no provider usage price. Kong can attach operator-defined target 
 4. A future explicitly allowlisted runtime collector may retain exact `/v1/models` IDs, effective context, safe adapter lineage, and API provenance, but must discard `created`, never publish `root`, and never persist the raw response.
 5. Derive Kong compatibility only for the bound target's exact served name with positive non-inference evidence for `/v1/chat/completions`; keep all other vLLM engine operations outside the Kong 2.0 intersection.
 6. Keep release, update, lifecycle, pricing, and availability outside the bound runtime unknown unless a separate authoritative source publishes those facts for the exact deployment.
+7. Treat `not_configured` as an explicit empty state; do not carry stale rows or sources across an intentional source-removal transition.
