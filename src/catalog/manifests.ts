@@ -584,12 +584,13 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v1",
+        extractorVersion: "databricks-catalog-v2",
         fields: [
           "model_id",
           "name",
           "description",
           "types",
+          "api_endpoints",
           "modalities",
           "capabilities",
           "limits",
@@ -642,6 +643,11 @@ export const manifests = [
               id: "api-reference",
               url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference",
               maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "model-types",
+              url: "https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models",
+              maxResponseBytes: mebibytes(1),
             },
             {
               id: "release-feed",

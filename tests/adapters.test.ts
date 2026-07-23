@@ -103,7 +103,9 @@ async function anthropicCatalog(messagesBody?: string): Promise<ProviderModel[]>
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
 
-async function databricksCatalog(): Promise<ProviderModel[]> {
+async function databricksCatalog(
+  overrides: Readonly<Record<string, string>> = {},
+): Promise<ProviderModel[]> {
   const value = manifest("databricks");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "databricks-catalog")
@@ -131,14 +133,18 @@ async function databricksCatalog(): Promise<ProviderModel[]> {
       "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference",
       "api-reference.html",
     ],
+    [
+      "https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models",
+      "model-types.html",
+    ],
     ["https://docs.databricks.com/aws/en/feed.xml", "release-feed.xml"],
-  ];
+  ] as const;
   const body = JSON.stringify({
     index: { url: source.url, body: await fixture("databricks/models.html") },
     documents: await Promise.all(
       documents.map(async ([url, path]) => ({
         url,
-        body: await fixture(`databricks/${path}`),
+        body: overrides[path] ?? (await fixture(`databricks/${path}`)),
       })),
     ),
   });
@@ -1843,6 +1849,8 @@ describe("Databricks adapters", () => {
     const retired = models.find((model) => model.model_id === "databricks-claude-sonnet-4");
     const replacement = models.find((model) => model.model_id === "databricks-claude-sonnet-4-6");
     const embedding = models.find((model) => model.model_id === "databricks-gte-large-en");
+    const image = models.find((model) => model.model_id === "databricks-gemini-3-pro-image");
+    const open = models.find((model) => model.model_id === "databricks-glm-5-2");
     expect({
       count: models.length,
       name: sol?.name,
@@ -1860,8 +1868,10 @@ describe("Databricks adapters", () => {
       embedding_type: embedding?.types,
       embedding_context: embedding?.limits.context_tokens,
       embedding_dimensions: embedding?.limits.embedding_dimensions,
+      image_types: image?.types,
+      endpoints: sol?.api_endpoints,
     }).toEqual({
-      count: 7,
+      count: 9,
       name: "OpenAI GPT-5.6 Sol",
       release: "2026-07-09",
       modalities: { input: ["text", "image"], output: ["text"] },
@@ -1877,7 +1887,28 @@ describe("Databricks adapters", () => {
       embedding_type: ["embeddings"],
       embedding_context: 8_192,
       embedding_dimensions: [1_024],
+      image_types: ["generate", "image"],
+      endpoints: [
+        {
+          name: "Invocations",
+          path: "/serving-endpoints/databricks-gpt-5-6-sol/invocations",
+        },
+      ],
     });
+    expect(open?.pricing.find((rate) => rate.meter === "cache_read_text")).toMatchObject({
+      price: "3.714",
+      unit: "million_tokens",
+    });
+    expect(open?.pricing.some((rate) => rate.meter === "provisioned_throughput")).toBe(false);
+    expect(
+      models
+        .find((model) => model.model_id === "databricks-qwen3-embedding-0-6b")
+        ?.pricing.filter((rate) => rate.meter === "provisioned_throughput")
+        .map((rate) => [rate.conditions.capacity, rate.price]),
+    ).toEqual([
+      ["entry", "25"],
+      ["scaling", "25"],
+    ]);
     expect(
       sol?.pricing.find(
         (rate) =>
@@ -1916,6 +1947,40 @@ describe("Databricks adapters", () => {
         (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
       )?.conditions.effective_until,
     ).toBe("2026-08-31");
+  });
+
+  it("rejects task and API-reference drift instead of inferring routes", async () => {
+    const tasks = await fixture("databricks/model-types.html");
+    await expect(
+      databricksCatalog({
+        "model-types.html": tasks.replace("databricks-gpt-5-6-sol", "databricks-unknown-model"),
+      }),
+    ).rejects.toThrow("unknown catalog model");
+    await expect(
+      databricksCatalog({
+        "model-types.html": tasks.replace("<code>databricks-gpt-5-6-sol</code>", ""),
+      }),
+    ).rejects.toThrow("omitted catalog models");
+    await expect(
+      databricksCatalog({
+        "model-types.html": tasks.replace(
+          "POST /serving-endpoints/{name}/invocations",
+          "POST /serving-endpoints/{name}",
+        ),
+      }),
+    ).rejects.toThrow("invocation route changed");
+    const reference = await fixture("databricks/api-reference.html");
+    await expect(
+      databricksCatalog({
+        "api-reference.html": reference.replace("Chat Completions API", "Chat API"),
+      }),
+    ).rejects.toThrow("API reference changed");
+    const pricing = await fixture("databricks/pricing-open.html");
+    await expect(
+      databricksCatalog({
+        "pricing-open.html": pricing.replace("cache read tokens", "cached tokens"),
+      }),
+    ).rejects.toThrow("open-model pricing table changed shape");
   });
 
   it("parses workspace endpoints only as a scoped inventory", async () => {
