@@ -6,7 +6,7 @@ Status: reviewed against catalog snapshot `2026-07-22T18:03:01.176Z`, current Ki
 
 Nineteen rows are reasonable as the union of current OpenAPI model discriminators, current and retired model tables, pricing tables, and exact changelog matches. The snapshot contains four active, seven deprecated, seven retired, and one unknown-state row. All are generation models. The twelve IDs in the OpenAPI discriminator receive the exact `/v1/chat/completions` route; rows observed only in historical or pricing sources do not inherit it.
 
-Eleven rows have 36 published CNY rates and eight historical or unmatched rows remain unknown. The pricing model correctly keeps cached input, uncached input, output, and Batch tiers separate. The catalog is not declared exhaustive, and the authenticated account inventory was skipped.
+Eleven rows have 36 published CNY rates and eight historical or unmatched rows remain unknown. The pricing model correctly keeps cached input, uncached input, output, and Batch tiers separate. The catalog is not declared exhaustive. The authenticated inventory currently returns 12 models from the documented international `api.moonshot.ai` origin; the same key receives `401` from the older `.cn` origin, so Kmodels no longer sends it there. Its support flags are sparse positive facts, so omitted image, video, or reasoning fields remain unknown rather than false.
 
 ## Kong AI Gateway 2.0
 

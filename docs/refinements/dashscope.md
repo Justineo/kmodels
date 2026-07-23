@@ -6,7 +6,7 @@ Status: reviewed against catalog snapshot `2026-07-22T17:04:19.221Z` and Kong AI
 
 The 379 rows are plausible because the regional catalog unions eleven independent official capability, pricing, and lifecycle pages across text, vision, image, video, speech, omni, embeddings, and reranking. Sixty-one rows expose multiple operation types. The snapshot contains 308 active, 47 deprecated, 17 retired, and seven preview rows, with 3,069 condition-preserving price rates.
 
-This is a regional, non-exhaustive catalog. Thirty-five rows lack pricing, 264 lack context limits, and model release/update dates are mostly unavailable. The optional Singapore deployment inventory was skipped, so deployability for a specific account remains unknown.
+This is a regional, non-exhaustive catalog. Thirty-five rows lack pricing, 264 lack context limits, and model release/update dates are mostly unavailable. The optional Singapore deployment inventory currently returns 16 account-visible base models. The live response omits the unused request ID and now reports `ptu_v2` alongside `mu`; both are valid contract changes rather than model-data corruption. Kmodels preserves the exact deployment plan and keeps it region- and account-scoped.
 
 The narrow “Recommended models” page remains unsuitable for presence, but its per-model cards are useful as an overlay. The current page names 21 exact IDs, 53 region/model-API availability pairs, and 12 complete request URLs across nine reviewed paths. Kmodels validates the card ID, region label, URL host, protocol, and path; it publishes only exact matching rows already established by the full catalogs. Base URLs and protocol tabs do not become inferred endpoints.
 
@@ -27,6 +27,6 @@ Region is part of compatibility. A model observed on one official regional page 
 1. Keep all 379 regional catalog facts and conditional prices.
 2. Derive Kong candidates only for generate, embeddings, and image with exact host/region and endpoint evidence. The current schema does not bind a host to an availability pair, so separately observed endpoint and region arrays must not be multiplied into route tuples.
 3. Treat `text-embedding-v1` as historical until a current official catalog or deployment inventory observes it; do not manufacture it from the Kong example.
-4. Keep the missing deployment API and sparse date coverage visible.
+4. Keep scoped deployability and sparse date coverage visible without treating either as global presence.
 
 Implementation outcome: the recommended page is now a bounded, non-creating overlay. Duplicate cards merge exact region and endpoint evidence; unknown card IDs, regions, hosts, protocols, and paths reject the provider refresh so the last validated catalog is retained. This adds route evidence without changing the 379-row catalog or using the landing page as a presence source.

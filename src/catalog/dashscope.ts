@@ -32,7 +32,6 @@ interface ParseInput {
 }
 
 const deploymentPageSchema = z.object({
-  request_id: z.string().min(1),
   output: z.object({
     page_no: z.literal(1),
     page_size: z.number().int().min(1).max(100),
@@ -42,7 +41,7 @@ const deploymentPageSchema = z.object({
         model_name: modelIdSchema,
         plans: z.array(
           z.object({
-            plan: z.enum(["mu", "cu", "ptu", "lora"]),
+            plan: z.enum(["mu", "cu", "ptu", "ptu_v2", "lora"]),
             templates: z.array(z.unknown()).optional(),
           }),
         ),

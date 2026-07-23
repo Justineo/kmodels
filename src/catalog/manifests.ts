@@ -193,39 +193,18 @@ const xaiApiSource = (
   snapshotPolicy: "none",
 });
 
-const huggingFaceProviders = [
-  "cerebras",
-  "cohere",
-  "deepinfra",
-  "fal-ai",
-  "featherless-ai",
-  "fireworks-ai",
-  "groq",
-  "hf-inference",
-  "novita",
-  "nscale",
-  "ovhcloud",
-  "publicai",
-  "replicate",
-  "scaleway",
-  "together",
-  "wavespeed",
-  "zai-org",
-  "baseten",
-] as const;
-
-const huggingFaceSource = (provider: (typeof huggingFaceProviders)[number]): SourceManifest => ({
-  id: `huggingface-${provider}`,
-  url: `https://huggingface.co/api/partners/${provider}/models?status=live`,
+const huggingFaceInferenceSource: SourceManifest = {
+  id: "huggingface-hf-inference",
+  url: "https://huggingface.co/api/partners/hf-inference/models?status=live",
   type: "api",
   access: "public",
   format: "json",
   stability: "documented",
   extractor: {
     kind: "huggingface-mapping",
-    provider,
-    minModels: provider === "baseten" ? 0 : 1,
-    maxModels: 30_000,
+    provider: "hf-inference",
+    minModels: 500,
+    maxModels: 3_000,
   },
   extractorVersion: "huggingface-mapping-v1",
   fields: ["model_id", "routes", "types", "modalities", "status"],
@@ -235,7 +214,7 @@ const huggingFaceSource = (provider: (typeof huggingFaceProviders)[number]): Sou
   exhaustive: true,
   role: "catalog",
   snapshotPolicy: "none",
-});
+};
 
 const dashscopeCatalogSource = (
   id: string,
@@ -1772,7 +1751,7 @@ export const manifests = [
       catalog_scope: "global",
     },
     sources: [
-      ...huggingFaceProviders.map(huggingFaceSource),
+      huggingFaceInferenceSource,
       {
         id: "huggingface-router",
         url: "https://router.huggingface.co/v1/models",
@@ -1787,7 +1766,7 @@ export const manifests = [
         maxResponseBytes: mebibytes(16),
         scope: "global",
         exhaustive: false,
-        role: "overlay",
+        role: "catalog",
         snapshotPolicy: "none",
       },
     ],
@@ -2410,7 +2389,7 @@ export const manifests = [
       },
       {
         id: "kimi-api",
-        url: "https://api.moonshot.cn/v1/models",
+        url: "https://api.moonshot.ai/v1/models",
         type: "api",
         access: "authenticated",
         format: "json",
@@ -2418,7 +2397,7 @@ export const manifests = [
         extractor: { kind: "kimi-api", minModels: 1, maxModels: 50 },
         extractorVersion: "kimi-api-v1",
         fields: ["model_id", "modalities", "capabilities", "limits"],
-        allowedHosts: ["api.moonshot.cn"],
+        allowedHosts: ["api.moonshot.ai"],
         maxResponseBytes: mebibytes(1),
         scope: "account",
         exhaustive: false,

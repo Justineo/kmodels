@@ -56,9 +56,9 @@ const apiSchema = z.object({
         created: z.number().int().nonnegative(),
         owned_by: z.string().min(1),
         context_length: z.number().int().positive(),
-        supports_image_in: z.boolean(),
-        supports_video_in: z.boolean(),
-        supports_reasoning: z.boolean(),
+        supports_image_in: z.boolean().optional(),
+        supports_video_in: z.boolean().optional(),
+        supports_reasoning: z.boolean().optional(),
       }),
     )
     .min(1),
@@ -686,12 +686,15 @@ export function parseKimiApi(input: Input): ProviderModel[] {
       modalities: {
         input: [
           "text",
-          ...(item.supports_image_in ? (["image"] as const) : []),
-          ...(item.supports_video_in ? (["video"] as const) : []),
+          ...(item.supports_image_in === true ? (["image"] as const) : []),
+          ...(item.supports_video_in === true ? (["video"] as const) : []),
         ],
         output: ["text"],
       },
-      capabilities: { ...unknownCapabilities(), reasoning: item.supports_reasoning },
+      capabilities: {
+        ...unknownCapabilities(),
+        reasoning: item.supports_reasoning ?? "unknown",
+      },
       limits: { context_tokens: item.context_length },
     }),
   );

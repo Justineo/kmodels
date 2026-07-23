@@ -8,7 +8,7 @@ The 73 rows are plausible because the exhaustive official catalog includes model
 
 Forty rows have published prices and 33 remain unknown. Sixty-eight rows have release dates and 39 have explicit update dates. The exact current Interactions support table supplies `/v1beta/interactions` route evidence for 19 rows. Requests pin English because the official site localizes the table labels used as structural boundaries.
 
-The optional authenticated model inventory was skipped, so method-specific REST and Live routes were not overlaid. When enabled, only exact `supportedGenerationMethods` values reviewed against the official method table and WebSocket reference produce endpoint, operation, streaming, or batch facts. An absent list or unknown method remains non-evidence and keeps method-derived negative capability claims unknown rather than being classified by spelling.
+The authenticated inventory currently returns 56 models. Its live response omits `baseModelId` even though the reference marks that field required; Kmodels therefore treats it as optional, keeps the exact `name` authoritative, and adds no alias when it is absent. Only exact `supportedGenerationMethods` values reviewed against the official method table and WebSocket reference produce endpoint, operation, streaming, or batch facts. An absent list or unknown method remains non-evidence and keeps method-derived negative capability claims unknown rather than being classified by spelling.
 
 ## Kong AI Gateway 2.0
 
