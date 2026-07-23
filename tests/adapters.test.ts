@@ -2806,7 +2806,7 @@ describe("Cerebras adapter", () => {
   }
 
   async function catalog(
-    overrides: { chat?: string; completions?: string; gpt?: string } = {},
+    overrides: { chat?: string; completions?: string; gemma?: string; gpt?: string } = {},
   ): Promise<ProviderModel[]> {
     const value = manifest("cerebras");
     const configured = source("cerebras-catalog");
@@ -2819,7 +2819,7 @@ describe("Cerebras adapter", () => {
         },
         {
           url: "https://inference-docs.cerebras.ai/models/gemma-4-31b.md",
-          body: await fixture("cerebras/gemma.md"),
+          body: overrides.gemma ?? (await fixture("cerebras/gemma.md")),
         },
         {
           url: "https://inference-docs.cerebras.ai/models/zai-glm-47.md",
@@ -2885,7 +2885,7 @@ describe("Cerebras adapter", () => {
     ]);
   });
 
-  it("rejects endpoint and API-reference drift", async () => {
+  it("rejects endpoint, pricing-unit, and API-reference drift", async () => {
     const chat = (await fixture("cerebras/chat-completions.md")).replace(
       "operationId: createChatCompletion",
       "operationId: renamedChatCompletion",
@@ -2900,9 +2900,24 @@ describe("Cerebras adapter", () => {
     await expect(catalog({ completions })).rejects.toThrow(
       "Cerebras Completions API reference drift",
     );
+    const get = (await fixture("cerebras/completions.md")).replace("curl -X POST", "curl -X GET");
+    await expect(catalog({ completions: get })).rejects.toThrow(
+      "Cerebras Completions API reference drift",
+    );
     const gpt = (await fixture("cerebras/gpt.md")).replace('"Chat Completions"', '"Responses"');
     await expect(catalog({ gpt })).rejects.toThrow(
       "Unsupported Cerebras model endpoint: Responses",
+    );
+    const wrongUnit = (await fixture("cerebras/gpt.md")).replace("/ M tokens", "/ requests");
+    await expect(catalog({ gpt: wrongUnit })).rejects.toThrow(
+      "Invalid Cerebras model card inputPrice",
+    );
+    const missingUnit = (await fixture("cerebras/gemma.md")).replace(
+      "per million tokens",
+      "per request",
+    );
+    await expect(catalog({ gemma: missingUnit })).rejects.toThrow(
+      "Invalid Cerebras model card inputPrice",
     );
   });
 
