@@ -7,7 +7,12 @@ import {
   parseSource,
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
-import { curlResponse, linkedDocumentUrls } from "../src/catalog/fetch.ts";
+import {
+  curlResponse,
+  linkedDocumentUrls,
+  normalizeOllamaList,
+  normalizeOllamaResponse,
+} from "../src/catalog/fetch.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { sourceKindSchema, type Provider, type ProviderModel } from "../src/catalog/schema.ts";
@@ -3589,6 +3594,7 @@ describe("Ollama adapters", () => {
     ]);
     expect(models.find(({ model_id }) => model_id === "gemma4")).toMatchObject({
       types: ["generate"],
+      service_families: ["Ollama Library"],
       modalities: { input: ["text", "image", "audio"], output: ["text"] },
       capabilities: { reasoning: true, tool_call: true },
       updated_date: "2026-06-30",
@@ -3604,9 +3610,10 @@ describe("Ollama adapters", () => {
     ]);
   });
 
-  it("combines the cloud list with structured details and retirement state", async () => {
+  it("combines Cloud details without flattening channel lifecycle", async () => {
     const models = await ollamaCloud();
     expect(models.find(({ model_id }) => model_id === "gpt-oss:120b")).toMatchObject({
+      service_families: ["Ollama Cloud"],
       modalities: { input: ["text"], output: ["text"] },
       capabilities: { reasoning: true, tool_call: true, streaming: true },
       limits: { context_tokens: 131072 },
@@ -3615,16 +3622,21 @@ describe("Ollama adapters", () => {
       source_refs: ["ollama-cloud-models"],
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
-      status: "deprecated",
-      is_deprecated: true,
-      retired_at: "2026-07-31",
+      service_families: ["Ollama Cloud", "Ollama Library"],
+      status: "active",
+      is_deprecated: "unknown",
       modalities: { input: ["text", "image"], output: ["text"] },
     });
     expect(models.find(({ model_id }) => model_id === "gemini-3-flash-preview")).toMatchObject({
-      status: "retired",
-      retired_at: "2026-07-15",
+      service_families: ["Ollama Cloud", "Ollama Library"],
+      status: "active",
+      is_deprecated: "unknown",
       description: "A fast multimodal model.",
     });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")?.retired_at).toBeUndefined();
+    expect(
+      models.find(({ model_id }) => model_id === "gemini-3-flash-preview")?.retired_at,
+    ).toBeUndefined();
   });
 
   it("retains every catalog that finds the same exact model", async () => {
@@ -3643,7 +3655,50 @@ describe("Ollama adapters", () => {
       "ollama-library",
       "ollama-cloud-models",
     ]);
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
+      service_families: ["Ollama Cloud", "Ollama Library"],
+      status: "active",
+      is_deprecated: "unknown",
+    });
     expect(provider(value).source_ids).toEqual(["ollama-library", "ollama-cloud-models"]);
+  });
+
+  it("publishes lifecycle only without current Library-family evidence", async () => {
+    const value = manifest("ollama");
+    const source = ollamaSource("ollama-cloud");
+    const body = (await ollamaCloudBody()).replace(
+      'href=\\"/library/kimi-k2.5\\"',
+      'href=\\"/not-a-library-model\\"',
+    );
+    const models = parseSource({ provider: provider(value), source, body, observedAt });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
+      service_families: ["Ollama Cloud"],
+      status: "deprecated",
+      is_deprecated: true,
+      retired_at: "2026-07-31",
+    });
+  });
+
+  it("canonicalizes nonsemantic Cloud transport variation", () => {
+    expect(
+      normalizeOllamaResponse(
+        410,
+        '{"error":"model was retired at 2026-07-15 00:00:00 -0700 PDT (ref: 4276b407-3c87-4cb0-8d79-f8198cdd8e75)"}',
+      ),
+    ).toEqual({ error: "model was retired at 2026-07-15 00:00:00 -0700 PDT" });
+    expect(
+      normalizeOllamaList(
+        '{"models":[{"model":"z-model","name":"z-model"},{"model":"a-model","name":"a-model"}]}',
+      ),
+    ).toBe(
+      '{"models":[{"model":"a-model","name":"a-model"},{"model":"z-model","name":"z-model"}]}',
+    );
+    expect(() =>
+      normalizeOllamaResponse(
+        410,
+        '{"error":"model was retired at 2026-07-15 00:00:00 -0700 PDT"}',
+      ),
+    ).toThrow("omitted its request reference");
   });
 
   it("rejects list/detail and catalog drift atomically", async () => {

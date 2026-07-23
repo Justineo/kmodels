@@ -56,7 +56,7 @@ const showSchema = z
     retirement_on: z.iso.datetime({ offset: true }).optional(),
   })
   .passthrough();
-const errorSchema = z.object({ error: z.string().min(1) });
+const errorSchema = z.strictObject({ error: z.string().min(1) });
 const bundleSchema = z.object({
   list: z.unknown(),
   catalog: z.object({ url: z.url(), body: z.string().min(1) }),
@@ -81,6 +81,9 @@ interface LibraryItem {
   badges: z.infer<typeof badgeSchema>[];
   updated: string;
 }
+
+const cloudFamily = "Ollama Cloud";
+const libraryFamily = "Ollama Library";
 
 function exactDate(value: string): string {
   const match = value.match(
@@ -136,7 +139,10 @@ function libraryItems(body: string): LibraryItem[] {
 
 function facts(
   item: LibraryItem,
-): Pick<ProviderModel, "capabilities" | "description" | "modalities" | "types" | "updated_date"> {
+): Pick<
+  ProviderModel,
+  "capabilities" | "description" | "modalities" | "service_families" | "types" | "updated_date"
+> {
   const badges = new Set(item.badges);
   const embedding = badges.has("embedding");
   const input: Modality[] = ["text"];
@@ -148,6 +154,7 @@ function facts(
   };
   return {
     description: item.description,
+    service_families: [libraryFamily],
     types: classifyModelTypes({
       modelId: item.id,
       name: item.id,
@@ -200,6 +207,7 @@ function cloudModel(
   id: string,
   raw: unknown,
   listed?: z.infer<typeof listItemSchema>,
+  library = false,
 ): ProviderModel {
   const show = showSchema.parse(raw);
   if (listed !== undefined && listed.name !== listed.model)
@@ -246,6 +254,7 @@ function cloudModel(
       observedAt: input.observedAt,
     }),
     types,
+    service_families: library ? [cloudFamily, libraryFamily] : [cloudFamily],
     modalities,
     capabilities: {
       ...unknownCapabilities(),
@@ -258,9 +267,9 @@ function cloudModel(
       ...(dimension === undefined ? {} : { embedding_dimensions: [dimension] }),
     },
     updated_date: show.modified_at.slice(0, 10),
-    status: retirement === undefined ? "active" : retired ? "retired" : "deprecated",
-    is_deprecated: retirement === undefined ? "unknown" : true,
-    retired_at: retirement,
+    status: library || retirement === undefined ? "active" : retired ? "retired" : "deprecated",
+    is_deprecated: library || retirement === undefined ? "unknown" : true,
+    retired_at: library ? undefined : retirement,
     pricing_status: "not_published",
   };
 }
@@ -268,15 +277,13 @@ function cloudModel(
 function retiredModel(input: ParseInput, item: LibraryItem, raw: unknown): ProviderModel {
   const { error } = errorSchema.parse(raw);
   const match = error.match(
-    /^(.+?) was retired at (\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2} [+-]\d{4} [A-Z]+ \(ref: [0-9a-f-]{36}\)$/,
+    /^(.+?) was retired at (\d{4}-\d{2}-\d{2}) \d{2}:\d{2}:\d{2} [+-]\d{4} [A-Z]+(?: \(ref: [0-9a-f-]{36}\))?$/,
   );
   if (match?.[1] !== item.id || match[2] === undefined)
     throw new Error("Ollama cloud retirement response changed shape");
   return {
     ...libraryModel(input, item),
-    status: match[2] <= input.observedAt.slice(0, 10) ? "retired" : "deprecated",
-    is_deprecated: true,
-    retired_at: match[2],
+    service_families: [cloudFamily, libraryFamily],
     pricing_status: "not_published",
   };
 }
@@ -311,12 +318,13 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
   const models = list.models.map((item) => {
     const document = documents.get(item.model);
     if (document?.status !== 200) throw new Error("Ollama cloud listed model was unavailable");
-    return cloudModel(input, item.model, document.body, item);
+    return cloudModel(input, item.model, document.body, item, catalog.has(item.model));
   });
   for (const [id, item] of catalog) {
     if (listed.has(id)) continue;
     const document = documents.get(id);
-    if (document?.status === 200) models.push(cloudModel(input, id, document.body));
+    if (document?.status === 200)
+      models.push(cloudModel(input, id, document.body, undefined, true));
     else if (document?.status === 410) models.push(retiredModel(input, item, document.body));
     else if (document?.status !== 404)
       throw new Error("Ollama cloud catalog probe returned an unexpected status");

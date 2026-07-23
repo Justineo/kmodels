@@ -44,9 +44,12 @@ const googleModelsPageSchema = z.object({
   publisherModels: z.array(z.unknown()),
   nextPageToken: z.string().min(1).optional(),
 });
-const ollamaListSchema = z.object({
-  models: z.array(z.object({ model: modelIdSchema })),
-});
+const ollamaListSchema = z
+  .object({
+    models: z.array(z.object({ model: modelIdSchema }).passthrough()),
+  })
+  .passthrough();
+const ollamaErrorSchema = z.strictObject({ error: z.string().min(1) });
 
 export const sourceStateSchema = z.object({
   etag: z.string().optional(),
@@ -614,8 +617,12 @@ async function attemptPost(
   const responseBody = await readLimited(response, source.maxResponseBytes);
   if (responseBody.trim() === "") throw new Error("Source returned an empty body");
   const contentHash = sha256(responseBody);
-  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
-  await writeSnapshot(`${rootDirectory}${snapshotUri}`, responseBody);
+  const snapshotUri =
+    source.snapshotPolicy === "none"
+      ? undefined
+      : `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
+  if (snapshotUri !== undefined)
+    await writeSnapshot(`${rootDirectory}${snapshotUri}`, responseBody);
   return {
     body: responseBody,
     contentHash,
@@ -787,6 +794,24 @@ function json(body: string): unknown {
   return JSON.parse(body);
 }
 
+export function normalizeOllamaList(body: string): string {
+  const list = ollamaListSchema.parse(json(body));
+  return JSON.stringify({
+    ...list,
+    models: list.models.sort((left, right) => left.model.localeCompare(right.model)),
+  });
+}
+
+export function normalizeOllamaResponse(status: 200 | 404 | 410, body: string): unknown {
+  const value = json(body);
+  if (status !== 410) return value;
+  const { error } = ollamaErrorSchema.parse(value);
+  const match = error.match(/^(.*) \(ref: [0-9a-f-]{36}\)$/);
+  if (match?.[1] === undefined)
+    throw new Error("Ollama cloud retirement response omitted its request reference");
+  return { error: match[1] };
+}
+
 async function fetchOllamaCloud(
   providerId: string,
   source: SourceManifest,
@@ -813,10 +838,21 @@ async function fetchOllamaCloud(
     "html",
     source.maxResponseBytes,
   );
-  const [index, catalog] = await Promise.all([
-    fetchPayload(providerId, indexSource, states[indexKey] ?? states[source.id]),
+  const [rawIndex, catalog] = await Promise.all([
+    fetchPayload(
+      providerId,
+      { ...indexSource, snapshotPolicy: "none" },
+      states[indexKey] ?? states[source.id],
+    ),
     fetchPayload(providerId, catalogSource, states[catalogKey]),
   ]);
+  const indexBody = normalizeOllamaList(rawIndex.body);
+  const index = {
+    ...rawIndex,
+    body: indexBody,
+    contentHash: sha256(indexBody),
+    snapshotUri: undefined,
+  };
   const list = ollamaListSchema.parse(json(index.body));
   const listed = new Set(list.models.map((item) => item.model));
   if (
@@ -831,17 +867,15 @@ async function fetchOllamaCloud(
   const modelIds = [...new Set([...listed, ...catalogIds])].sort();
   const documents = await batches(modelIds, transport.concurrency, async (model) => {
     const key = `${source.id}/show/${sha256(model)}`;
-    const showSource = requestSource(
-      source,
-      key,
-      new URL("https://ollama.com/api/show"),
-      "json",
-      256 * 1024,
-    );
+    const showSource = {
+      ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
+      snapshotPolicy: "none",
+    } satisfies SourceManifest;
     const payload = await fetchPost(providerId, showSource, JSON.stringify({ model }));
     if (listed.has(model) && payload.status !== 200)
       throw new Error("Ollama cloud listed model details were unavailable");
-    return { key, model, payload };
+    const body = JSON.stringify(normalizeOllamaResponse(payload.status, payload.body));
+    return { key, model, payload: { ...payload, body, contentHash: sha256(body) } };
   });
   const body = JSON.stringify({
     list: json(index.body),
