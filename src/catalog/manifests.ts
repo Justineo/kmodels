@@ -522,7 +522,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "bedrock-api" },
-        extractorVersion: "bedrock-api-v1",
+        extractorVersion: "bedrock-api-v2",
         fields: [
           "name",
           "modalities",

@@ -2577,6 +2577,29 @@ describe("document adapter", () => {
       status: "active",
     });
   });
+
+  it("honors the documented optional inventory name and exact enums", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources.find(({ id }) => id === "bedrock-api-us-east-1");
+    if (source === undefined) throw new Error("Missing Bedrock API source");
+    const body = await fixture("document/bedrock-api.json");
+    const withoutName = body.replace('      "modelName": "Claude Haiku 4.5",\n', "");
+    expect(
+      parseSource({
+        provider: provider(value),
+        source,
+        body: withoutName,
+        observedAt,
+      })[0]?.name,
+    ).toBe("anthropic.claude-haiku-4-5-20251001-v1:0");
+    for (const changed of [
+      body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "AUDIO"]'),
+      body.replace('"status": "ACTIVE"', '"status": "AVAILABLE"'),
+    ])
+      expect(() =>
+        parseSource({ provider: provider(value), source, body: changed, observedAt }),
+      ).toThrow();
+  });
 });
 
 describe("Vercel adapter", () => {

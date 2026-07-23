@@ -123,6 +123,18 @@ describe("generated static catalog", () => {
     ).toEqual([]);
   });
 
+  it("does not publish credential identities in collection diagnostics", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const diagnostics = JSON.stringify({
+      coverage: catalog.coverage,
+      warnings: catalog.warnings,
+      quarantine: await json("data/quarantine.json"),
+    });
+    expect(diagnostics).not.toMatch(
+      /\barn:aws(?:-[a-z0-9-]+)?:|\b\d{12}\b|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i,
+    );
+  });
+
   it("does not collapse an exact catalog ID through another model's alias", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
     const o1 = catalog.models.find((model) => model.uid === "openai/o1");
