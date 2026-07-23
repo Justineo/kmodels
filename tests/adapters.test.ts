@@ -3175,6 +3175,7 @@ describe("Kimi adapters", () => {
     expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")).toMatchObject({
       types: ["generate"],
       modalities: { input: ["text"], output: ["text"] },
+      api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
       capabilities: {
         tool_call: true,
         structured_output: true,
@@ -3189,6 +3190,9 @@ describe("Kimi adapters", () => {
     expect(() =>
       parse(source("kimi-openapi"), body.replace('"kimi-k3"]', '"kimi-k3", "ghost-model"]')),
     ).toThrow("mapping disagrees");
+    expect(() =>
+      parse(source("kimi-openapi"), body.replace("/v1/chat/completions", "/v1/responses")),
+    ).toThrow();
   });
 
   it("retains callable and retired IDs only from labeled catalog fields", async () => {
