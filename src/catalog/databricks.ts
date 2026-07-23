@@ -13,7 +13,7 @@ import {
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes } from "./task.ts";
+import { classifyModelTypes, normalizeModelTypes } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -140,7 +140,7 @@ function dimensions(value: string): number[] | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? [parsed] : undefined;
 }
 
-function parseModels(input: Input, streaming: boolean): ProviderModel[] {
+function parseModels(input: Input): ProviderModel[] {
   const $ = load(input.body);
   const models: ProviderModel[] = [];
   $("main h2").each((_index, element) => {
@@ -211,7 +211,6 @@ function parseModels(input: Input, streaming: boolean): ProviderModel[] {
             ? true
             : "unknown",
         structured_output: /structured output/i.test(content) ? true : "unknown",
-        streaming: streaming && types.includes("generate") ? true : "unknown",
         prompt_cache: /prompt caching|cached tensors/i.test(content) ? true : "unknown",
         effort_control: /reasoning effort|effort level/i.test(content) ? true : "unknown",
       },
@@ -248,6 +247,89 @@ function endpointIds($: Document, selection: Selection): string[] {
         .filter((value) => /^databricks-[a-z0-9._-]+$/i.test(value)),
     ),
   ];
+}
+
+function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBody: string): void {
+  const reference = load(referenceBody);
+  const headings = new Set(
+    reference("main h2")
+      .map((_index, element) => text(reference(element).text()))
+      .get(),
+  );
+  const referenceText = text(reference("main").text());
+  if (
+    !headings.has("Chat Completions API") ||
+    !headings.has("Embeddings API") ||
+    !/Chat and completion endpoints support streaming responses\./i.test(referenceText)
+  )
+    throw new Error("Databricks API reference changed");
+
+  const $ = load(tasksBody);
+  if (
+    !$("main a")
+      .map((_index, element) => text($(element).text()))
+      .get()
+      .includes("POST /serving-endpoints/{name}/invocations")
+  )
+    throw new Error("Databricks invocation route changed");
+
+  const tasks = new Map<string, string[]>();
+  $("main table").each((_tableIndex, table) => {
+    const headers = $(table)
+      .find("thead th")
+      .map((_index, element) => text($(element).text()))
+      .get();
+    if (
+      headers.join("|") !==
+      "Task type|Description|Supported models|When to use? Recommended use cases"
+    )
+      return;
+    $(table)
+      .find("tbody tr")
+      .each((_rowIndex, row) => {
+        const cells = $(row).children("td");
+        const task = text(cells.eq(0).text());
+        if (task !== "General purpose" && task !== "Embeddings") return;
+        const ids = endpointIds($, cells.eq(2)).sort();
+        const previous = tasks.get(task);
+        if (ids.length === 0 || (previous !== undefined && previous.join() !== ids.join()))
+          throw new Error(`Databricks ${task} task matrix changed`);
+        tasks.set(task, ids);
+      });
+  });
+  const general = tasks.get("General purpose");
+  const embeddings = tasks.get("Embeddings");
+  if (general === undefined || embeddings === undefined)
+    throw new Error("Databricks task matrix changed");
+
+  const catalog = new Set(models.map((model) => model.model_id));
+  const assigned = new Set([...general, ...embeddings]);
+  for (const id of assigned)
+    if (!catalog.has(id))
+      throw new Error(`Databricks task matrix named unknown catalog model ${id}`);
+  const omitted = models.filter((model) => !assigned.has(model.model_id));
+  if (omitted.length > 0)
+    throw new Error(
+      `Databricks task matrix omitted catalog models: ${omitted
+        .map((model) => model.model_id)
+        .join(", ")}`,
+    );
+
+  const generalIds = new Set(general);
+  const embeddingIds = new Set(embeddings);
+  for (const model of models) {
+    const taskTypes: ProviderModel["types"] = [];
+    if (generalIds.has(model.model_id)) taskTypes.push("generate");
+    if (embeddingIds.has(model.model_id)) taskTypes.push("embeddings");
+    model.types = normalizeModelTypes({ ...model, types: [...taskTypes, ...model.types] }).types;
+    model.capabilities.streaming = taskTypes.includes("generate") ? true : "unknown";
+    model.api_endpoints = [
+      {
+        name: "Invocations",
+        path: `/serving-endpoints/${model.model_id}/invocations`,
+      },
+    ];
+  }
 }
 
 function applyBatch(models: ProviderModel[], body: string): void {
@@ -434,6 +516,15 @@ function openPrices(
   const $ = load(body);
   const table = $("main table").first();
   if (table.length === 0) throw new Error("Databricks open-model pricing table is missing");
+  const headers = table
+    .find("thead th")
+    .map((_index, element) => text($(element).text()))
+    .get();
+  if (
+    headers.map((value) => value.replace(/\s/g, "")).join("|") !==
+    "Model|Pay-Per-Token|ProvisionedThroughput|DBU/Minputtokens|DBU/Moutputtokens|DBU/Mcachereadtokens|DBU/hour(entrycapacity)|DBU/hour(scalingcapacity)"
+  )
+    throw new Error("Databricks open-model pricing table changed shape");
   for (const values of rows($, table)) {
     const label = values[0];
     if (label === undefined) continue;
@@ -455,23 +546,31 @@ function openPrices(
         "DBU / M output tokens",
         { service_tier: "pay_per_token" },
       );
-      const entry = rate(
-        "provisioned_throughput",
+      const cacheRead = rate(
+        "cache_read_text",
         values[3] ?? "",
-        "unit_hour",
+        "million_tokens",
         sourceId,
-        "DBU / hour",
-        { capacity: "entry" },
+        "DBU / M cache read tokens",
+        { service_tier: "pay_per_token" },
       );
-      const scaling = rate(
+      const entry = rate(
         "provisioned_throughput",
         values[4] ?? "",
         "unit_hour",
         sourceId,
-        "DBU / hour",
+        "DBU / hour (entry capacity)",
+        { capacity: "entry" },
+      );
+      const scaling = rate(
+        "provisioned_throughput",
+        values[5] ?? "",
+        "unit_hour",
+        sourceId,
+        "DBU / hour (scaling capacity)",
         { capacity: "scaling" },
       );
-      for (const value of [input, output, entry, scaling])
+      for (const value of [input, output, cacheRead, entry, scaling])
         if (value !== undefined) add(rates, model.model_id, value);
     }
   }
@@ -529,10 +628,14 @@ function partnerPrices(
   const $ = load(body);
   const tables = $("main table");
   if (tables.length !== 3) throw new Error("Databricks partner pricing tables changed shape");
-  tables.each((tableIndex, tableElement) => {
-    const values = rows($, $(tableElement)).filter(
-      (row) => row.length === 8 && new Set(row).size > 1,
-    );
+  const providers = new Set<string>();
+  tables.each((_tableIndex, tableElement) => {
+    const tableRows = rows($, $(tableElement));
+    const provider = tableRows[0]?.[0];
+    if (provider !== "OpenAI" && provider !== "Anthropic" && provider !== "Google")
+      throw new Error("Databricks partner pricing group changed");
+    providers.add(provider);
+    const values = tableRows.filter((row) => row.length === 8 && new Set(row).size > 1);
     const long = new Set(
       values.filter((row) => row[2]?.includes(">200k")).map((row) => row[0] ?? ""),
     );
@@ -570,7 +673,7 @@ function partnerPrices(
           }),
         ].flatMap((value) => (value === undefined ? [] : [value]));
         for (const value of valuesToAdd) {
-          if (tableIndex === 2) {
+          if (provider === "Google") {
             add(rates, model.model_id, {
               ...value,
               conditions: { ...value.conditions, effective_from: "2026-08-01" },
@@ -594,6 +697,8 @@ function partnerPrices(
       }
     }
   });
+  if (providers.size !== tables.length)
+    throw new Error("Databricks partner pricing groups changed");
 
   const standard = rates.get("databricks-claude-sonnet-4-6");
   if (standard !== undefined)
@@ -698,11 +803,11 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     bundle,
     "/aws/en/machine-learning/foundation-model-apis/api-reference",
   );
-  const models = parseModels(
-    { ...input, body: bundle.index.body },
-    text(load(apiReference)("main").text()).includes(
-      "Chat and completion endpoints support streaming responses.",
-    ),
+  const models = parseModels({ ...input, body: bundle.index.body });
+  applyApiSupport(
+    models,
+    document(bundle, "/aws/en/machine-learning/model-serving/score-foundation-models"),
+    apiReference,
   );
   applyBatch(
     models,

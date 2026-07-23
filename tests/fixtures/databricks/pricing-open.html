@@ -2,17 +2,23 @@
   <table>
     <thead>
       <tr>
-        <th>Model</th>
+        <th rowspan="2">Model</th>
+        <th colspan="3">Pay-Per-Token</th>
+        <th colspan="2">Provisioned Throughput</th>
+      </tr>
+      <tr>
         <th>DBU / M input tokens</th>
         <th>DBU / M output tokens</th>
-        <th>DBU / hour entry</th>
-        <th>DBU / hour scaling</th>
+        <th>DBU / M cache read tokens</th>
+        <th>DBU / hour (entry capacity)</th>
+        <th>DBU / hour (scaling capacity)</th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <td>Qwen 3 0.6B Embedding</td>
         <td>0.286</td>
+        <td>n/a</td>
         <td>n/a</td>
         <td>25.000</td>
         <td>25.000</td>
@@ -21,8 +27,17 @@
         <td>GTE</td>
         <td>1.857</td>
         <td>n/a</td>
+        <td>n/a</td>
         <td>20.000</td>
         <td>20.000</td>
+      </tr>
+      <tr>
+        <td>GLM-5.2</td>
+        <td>20.000</td>
+        <td>62.857</td>
+        <td>3.714</td>
+        <td>n/a</td>
+        <td>n/a</td>
       </tr>
     </tbody>
   </table>
