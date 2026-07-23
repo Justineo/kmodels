@@ -8,7 +8,7 @@ The previous 19,326-model result was too broad. It did not crawl every Hub repos
 
 Kmodels now uses only two Hugging Face-operated listings for presence: the public OpenAI-compatible router catalog and concrete `live` mappings served by HF Inference itself. It does not fetch third-party partner mapping inventories. This retains models directly offered through Hugging Face-operated services without turning the catalog into a copy of every community repository accepted by a partner.
 
-The resulting live catalog contains 1,536 rows: 1,408 observed from HF Inference and 128 from the router. Neither count depends on a Hugging Face token.
+The resulting live catalog is roughly 1.5K rows, split between HF Inference and the router. Neither count depends on a Hugging Face token.
 
 ## Official source semantics
 
