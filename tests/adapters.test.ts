@@ -144,6 +144,7 @@ async function vercelCatalog(path: string): Promise<ProviderModel[]> {
 async function xaiCatalog(
   index = "xai/models.txt",
   edit: (body: string) => string = (body) => body,
+  editLlms: (body: string) => string = (body) => body,
 ): Promise<ProviderModel[]> {
   const value = manifest("xai");
   const configured = value.sources[0];
@@ -155,7 +156,9 @@ async function xaiCatalog(
   };
   const body = JSON.stringify({
     index: { url: source.url, body: edit(await fixture(index)) },
-    documents: [{ url: "https://docs.x.ai/llms.txt", body: await fixture("xai/llms.txt") }],
+    documents: [
+      { url: "https://docs.x.ai/llms.txt", body: editLlms(await fixture("xai/llms.txt")) },
+    ],
   });
   return parseSource({ provider: provider(value), source, body, observedAt });
 }
@@ -1918,6 +1921,7 @@ describe("xAI adapter", () => {
       "grok-4.5",
       "grok-imagine-image-pro",
       "grok-imagine-image-quality",
+      "grok-imagine-video",
       "grok-imagine-video-1.5",
       "grok-voice-fast-1.0",
       "grok-voice-think-fast-1.0",
@@ -1927,7 +1931,10 @@ describe("xAI adapter", () => {
     ).toBe(false);
     await expect(
       xaiCatalog("xai/models-voice-services.txt", (body) =>
-        body.replaceAll('"perCharacter":"150000"', '"perCharacter":"160000"'),
+        body.replaceAll(
+          '"realtimeAudioSecondPrice":"8333333"',
+          '"realtimeAudioSecondPrice":"10000000"',
+        ),
       ),
     ).rejects.toThrow("structured and published voice pricing differ");
   });
@@ -1940,12 +1947,17 @@ describe("xAI adapter", () => {
       "grok-4.5",
       "grok-imagine-image-pro",
       "grok-imagine-image-quality",
+      "grok-imagine-video",
       "grok-imagine-video-1.5",
       "grok-voice-fast-1.0",
       "grok-voice-think-fast-1.0",
     ]);
     expect(models.find(({ model_id }) => model_id === "grok-4.5")).toMatchObject({
       name: "Grok 4.5",
+      api_endpoints: [
+        { name: "Chat Completions", path: "/v1/chat/completions" },
+        { name: "Responses", path: "/v1/responses" },
+      ],
       release_date: "2026-07",
       limits: { context_tokens: 500_000 },
       capabilities: {
@@ -1960,12 +1972,17 @@ describe("xAI adapter", () => {
     });
     expect(models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309")).toMatchObject({
       types: ["generate", "agentic"],
+      api_endpoints: [{ name: "Responses", path: "/v1/responses" }],
       release_date: "2026-03",
       status: "preview",
       capabilities: { citations: true, code_execution: true },
     });
     expect(models.find(({ model_id }) => model_id === "grok-imagine-image-quality")).toMatchObject({
       name: "Grok Imagine API",
+      api_endpoints: [
+        { name: "Image Edits", path: "/v1/images/edits" },
+        { name: "Image Generations", path: "/v1/images/generations" },
+      ],
       updated_date: "2026-04-03",
       pricing: expect.arrayContaining([
         expect.objectContaining({
@@ -1977,11 +1994,13 @@ describe("xAI adapter", () => {
       ]),
     });
     expect(models.find(({ model_id }) => model_id === "grok-imagine-video-1.5")).toMatchObject({
+      api_endpoints: [{ name: "Video Generations", path: "/v1/videos/generations" }],
       updated_date: "2026-05-30",
     });
     expect(models.find(({ model_id }) => model_id === "grok-voice-think-fast-1.0")).toMatchObject({
       aliases: ["grok-voice-latest"],
       types: ["agentic", "realtime"],
+      api_endpoints: [{ name: "Realtime", path: "/v1/realtime" }],
       release_date: "2026-04",
       pricing: expect.arrayContaining([
         expect.objectContaining({ meter: "input_audio", price: "0.05", unit: "minute" }),
@@ -1994,6 +2013,14 @@ describe("xAI adapter", () => {
       retired_at: "2026-05-15",
       replacement_model_ids: ["grok-4.3"],
     });
+    expect(models.find(({ model_id }) => model_id === "grok-3")?.api_endpoints).toBeUndefined();
+    await expect(
+      xaiCatalog(
+        "xai/models.txt",
+        (body) => body,
+        (body) => body.replace("https://api.x.ai/v1/images/edits", "/v1/images/edits"),
+      ),
+    ).rejects.toThrow("xAI Image Edits evidence changed");
   });
 
   it("keeps standard, long-context, batch, priority, media, and tool rates distinct", async () => {

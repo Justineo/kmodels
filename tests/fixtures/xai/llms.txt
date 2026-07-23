@@ -3,13 +3,53 @@
 
 > This feature is currently in **beta**.
 
+curl https://api.x.ai/v1/responses -d '{"model": "grok-4.20-multi-agent"}'
+
 ### Supported Models
 
 * `grok-4.20-multi-agent`
 
 
-===/developers/model-capabilities/audio/voice-agent===
-# Voice Agent API
+===/developers/model-capabilities/text/generate-text===
+# Generate Text
+
+curl https://api.x.ai/v1/responses -d '{"model": "grok-4.5"}'
+
+
+===/developers/model-capabilities/legacy/chat-completions===
+# Chat Completions
+
+curl https://api.x.ai/v1/chat/completions -d '{"model": "grok-4.5"}'
+
+
+===/developers/model-capabilities/images/generation===
+# Image Generation
+
+curl https://api.x.ai/v1/images/generations -d '{"model": "grok-imagine-image-quality"}'
+
+
+===/developers/model-capabilities/images/editing===
+# Image Editing
+
+curl https://api.x.ai/v1/images/edits -d '{"model": "grok-imagine-image-quality"}'
+
+
+===/developers/model-capabilities/video/generation===
+# Video Generation
+
+curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video"}'
+
+
+===/developers/model-capabilities/imagine===
+# Imagine
+
+curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video-1.5"}'
+
+
+===/developers/model-capabilities/audio/speech-to-speech===
+# Speech to Speech API
+
+wss://api.x.ai/v1/realtime?model=grok-voice-latest
 
 | Model | Description | |
 |---|---|---|
@@ -36,6 +76,7 @@
 | Model | Cost |
 |---|---|
 | grok-imagine-image-quality | $0.05 / image |
+| grok-imagine-video | $0.050 / sec |
 | grok-imagine-video-1.5 | $0.080 / sec |
 
 ### Voice Pricing

@@ -2,7 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
-import { baseModel } from "./model.ts";
+import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
@@ -21,6 +21,8 @@ interface ParseInput {
   body: string;
   observedAt: string;
 }
+
+type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 
 const integerString = z.string().regex(/^\d+$/);
 const upperModalitySchema = z.enum(["TEXT", "IMAGE", "AUDIO", "VIDEO"]);
@@ -97,9 +99,8 @@ const voiceEndpointSchema = z.discriminatedUnion("endpoint", [
     endpoint: z.literal("REALTIME"),
     basis: z.literal("CONCURRENCY"),
     pricing: z.object({
-      realtimeAudioTokenPrice: integerString,
+      realtimeAudioSecondPrice: integerString,
       realtimeTextInputPrice: integerString,
-      pstnMinutePrice: integerString,
     }),
   }),
 ]);
@@ -322,6 +323,79 @@ function section(body: string, pathname: string): string {
     throw new Error(`xAI llms.txt requires one ${pathname} section`);
   const end = body.indexOf("\n\n===", start + marker.length);
   return body.slice(start + marker.length, end < 0 ? undefined : end).trim();
+}
+
+function documentedEndpoint(
+  body: string,
+  modelId: string,
+  name: string,
+  path: string,
+  requestUrl = `https://api.x.ai${path}`,
+): ApiEndpoint {
+  const quoted = [`"${modelId}"`, `'${modelId}'`, `\`${modelId}\``];
+  if (!quoted.some((value) => body.includes(value)) || !body.includes(requestUrl))
+    throw new Error(`xAI ${name} evidence changed for ${modelId}`);
+  return { name, path };
+}
+
+const endpointEvidence = [
+  ["/developers/model-capabilities/text/generate-text", "grok-4.5", "Responses", "/v1/responses"],
+  [
+    "/developers/model-capabilities/legacy/chat-completions",
+    "grok-4.5",
+    "Chat Completions",
+    "/v1/chat/completions",
+  ],
+  [
+    "/developers/model-capabilities/text/multi-agent",
+    "grok-4.20-multi-agent",
+    "Responses",
+    "/v1/responses",
+  ],
+  [
+    "/developers/model-capabilities/images/generation",
+    "grok-imagine-image-quality",
+    "Image Generations",
+    "/v1/images/generations",
+  ],
+  [
+    "/developers/model-capabilities/images/editing",
+    "grok-imagine-image-quality",
+    "Image Edits",
+    "/v1/images/edits",
+  ],
+  [
+    "/developers/model-capabilities/video/generation",
+    "grok-imagine-video",
+    "Video Generations",
+    "/v1/videos/generations",
+  ],
+  [
+    "/developers/model-capabilities/imagine",
+    "grok-imagine-video-1.5",
+    "Video Generations",
+    "/v1/videos/generations",
+  ],
+] as const;
+
+function endpointFacts(
+  llms: string,
+  models: { name: string; aliases: string[] }[],
+): Map<string, ApiEndpoint[]> {
+  const endpoints = new Map<string, ApiEndpoint[]>();
+  for (const [pathname, modelId, name, path] of endpointEvidence) {
+    const matches = models.filter(
+      (model) => model.name === modelId || model.aliases.includes(modelId),
+    );
+    const model = matches[0];
+    if (model === undefined || matches.length > 1)
+      throw new Error(`xAI endpoint model ${modelId} did not resolve exactly once`);
+    const endpoint = documentedEndpoint(section(llms, pathname), modelId, name, path);
+    endpoints.set(model.name, [...(endpoints.get(model.name) ?? []), endpoint]);
+  }
+  for (const values of endpoints.values())
+    values.sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+  return endpoints;
 }
 
 function displayNames(html: string): Map<string, string> {
@@ -617,13 +691,15 @@ function assertVoiceServices(
     realtime?.endpoint !== "REALTIME"
   )
     throw new Error("xAI voice service catalog was incomplete");
-  const centsPerHour = (ticksPerSecond: string): string =>
-    ((BigInt(ticksPerSecond) * 3_600n + 50_000_000n) / 100_000_000n).toString();
+  const roundedCents = (ticksPerSecond: string, seconds: bigint): string =>
+    ((BigInt(ticksPerSecond) * seconds + 50_000_000n) / 100_000_000n).toString();
   if (
     scaleDecimal(tts.pricing.perCharacter, -4) !== prices.speech ||
-    centsPerHour(stt.pricing.perAudioSecond) !== scaleDecimal(prices.transcription, 2) ||
-    centsPerHour(stt.pricing.perAudioSecondStreaming) !==
+    roundedCents(stt.pricing.perAudioSecond, 3_600n) !== scaleDecimal(prices.transcription, 2) ||
+    roundedCents(stt.pricing.perAudioSecondStreaming, 3_600n) !==
       scaleDecimal(prices.streamingTranscription, 2) ||
+    roundedCents(realtime.pricing.realtimeAudioSecondPrice, 60n) !==
+      scaleDecimal(prices.realtime, 2) ||
     scaleDecimal(realtime.pricing.realtimeTextInputPrice, -10) !== prices.text
   )
     throw new Error("xAI structured and published voice pricing differ");
@@ -665,6 +741,7 @@ function currentModels(
     catalog.clusterConfigs.flatMap(({ videoGenerationModels }) => videoGenerationModels),
     "video",
   );
+  const endpoints = endpointFacts(llms, [...language, ...embeddings, ...images, ...videos]);
   const count = language.length + embeddings.length + images.length + voice.length + videos.length;
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-catalog") throw new Error("Invalid xAI catalog extractor");
@@ -694,6 +771,7 @@ function currentModels(
       ...details(value.name, value.aliases),
       aliases: value.aliases,
       types: multiAgent ? ["generate", "agentic"] : ["generate"],
+      api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
         output: upperModalities(value.outputModalities),
@@ -743,6 +821,7 @@ function currentModels(
       ...details(value.name, value.aliases),
       aliases: value.aliases,
       types: ["embeddings"],
+      api_endpoints: endpoints.get(value.name),
       modalities: { input: upperModalities(value.inputModalities), output: ["embedding"] },
       status: "active",
       is_deprecated: false,
@@ -762,6 +841,7 @@ function currentModels(
       ...details(value.name, value.aliases),
       aliases: value.aliases,
       types: ["image"],
+      api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
         output: upperModalities(value.outputModalities),
@@ -789,6 +869,7 @@ function currentModels(
       ...details(value.name, value.aliases),
       aliases: value.aliases,
       types: ["video"],
+      api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
         output: upperModalities(value.outputModalities),
@@ -804,7 +885,7 @@ function currentModels(
 }
 
 function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
-  const voice = section(llms, "/developers/model-capabilities/audio/voice-agent");
+  const voice = section(llms, "/developers/model-capabilities/audio/speech-to-speech");
   const latest = voice
     .match(/`(grok-voice-latest)` always points to the newest model \(currently `(grok-[^`]+)`\)/)
     ?.slice(1);
@@ -834,6 +915,13 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
   });
   if (rows.length < 2 || !rows.some(({ id }) => id === latestModel))
     throw new Error("xAI voice model table was incomplete");
+  const endpoint = documentedEndpoint(
+    voice,
+    latestAlias,
+    "Realtime",
+    "/v1/realtime",
+    `wss://api.x.ai/v1/realtime?model=${latestAlias}`,
+  );
   const pricing = section(llms, "/developers/pricing");
   const rates = [...voiceRates(pricing, input.source.id), ...toolRates(pricing, input.source.id)];
   const releases = releaseSections(section(llms, "/developers/release-notes"));
@@ -843,6 +931,7 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
       description: row.description,
       aliases: isLatest ? [latestAlias] : [],
       types: ["agentic", "realtime"],
+      api_endpoints: [endpoint],
       modalities: { input: ["text", "audio"], output: ["text", "audio"] },
       capabilities: {
         ...unknownCapabilities(),
