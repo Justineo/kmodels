@@ -8,7 +8,7 @@ The previous 19,326-model result was too broad. It did not crawl every Hub repos
 
 Kmodels now uses only two Hugging Face-operated listings for presence: the public OpenAI-compatible router catalog and concrete `live` mappings served by HF Inference itself. It does not fetch third-party partner mapping inventories. This retains models directly offered through Hugging Face-operated services without turning the catalog into a copy of every community repository accepted by a partner.
 
-The 2026-07-23 synchronized responses contain 1,409 concrete HF Inference mappings and 128 router models, with no overlap: 1,537 rows in total. These are volatile service inventories rather than a fixed model registry, and neither depends on a Hugging Face token.
+The latest 2026-07-23 synchronized responses contain 1,408 concrete HF Inference mappings and 126 router models, with no overlap: 1,534 rows in total. These are volatile service inventories rather than a fixed model registry, and neither depends on a Hugging Face token.
 
 ## Official source semantics
 
@@ -60,7 +60,7 @@ For example:
 }
 ```
 
-The router is an independent row-creating chat catalog. Only live backends contribute OpenAI-compatible presence, route-conditioned pricing, the maximum advertised context, and conservative capability aggregates. A route cannot be both explicitly free and nonzero-priced. The router does not publish a provider model ID, so Kmodels does not invent one or reconstruct a join to the removed partner inventories. Volatile latency and throughput probes remain outside the stable catalog.
+The router is an independent row-creating chat catalog. Every accepted row receives the router's documented `/v1/chat/completions` endpoint; only live backends contribute presence, route-conditioned pricing, the maximum advertised context, and conservative capability aggregates. A route cannot be both explicitly free and nonzero-priced. The router does not publish a provider model ID, so Kmodels does not invent one or reconstruct a join to the removed partner inventories. Volatile latency and throughput probes remain outside the stable catalog.
 
 ## Kong AI Gateway compatibility
 

@@ -3107,6 +3107,9 @@ describe("Hugging Face adapter", () => {
     expect(model?.capabilities.tool_call).toBe(true);
     expect(model?.capabilities.structured_output).toBe(true);
     expect(model?.modalities.input).toEqual(["text", "image"]);
+    expect(model?.api_endpoints).toEqual([
+      { name: "Chat Completions", path: "/v1/chat/completions" },
+    ]);
     expect(model?.release_date).toBeUndefined();
     expect(
       model?.pricing.some((rate) => rate.conditions.route_provider === "unavailable-route"),

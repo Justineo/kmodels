@@ -1,12 +1,12 @@
 # OpenAI refinement
 
-Status: reviewed against catalog snapshot `2026-07-22T17:04:19.221Z` and Kong AI Gateway 2.0; endpoint-evidence refinement implemented 2026-07-23
+Status: revalidated against the live public catalog, authenticated inventory, and Kong AI Gateway 2.0 on 2026-07-23
 
 ## Catalog assessment
 
 The 93 rows are plausible for an exhaustive model catalog that retains active, deprecated, and retired request IDs, snapshots, and aliases across text, agentic, embeddings, audio, image, realtime, video, and moderation. The snapshot contains 43 active, 40 deprecated, and ten retired rows; 19 rows expose multiple operation types.
 
-Eighty-seven rows have published prices, five open-weight or free-service rows use `not_applicable`, and one row remains unknown. Twenty-one rows lack context limits. The authenticated account inventory was skipped, but it is correctly scoped to validation and cannot create or remove global rows.
+Eighty-seven rows have published prices, five open-weight or free-service rows use `not_applicable`, and one row remains unknown. Twenty-one rows lack context limits. The authenticated account inventory now succeeds and returns 131 IDs; exact IDs or aliases match 77 public rows. It remains scoped validation: account-only IDs do not create global rows, and absence does not imply deprecation.
 
 The provider-page endpoint cards are strong operation evidence. Their exact endpoint identity should be retained, not only the normalized `types` union.
 
@@ -25,6 +25,6 @@ The broad `generate` type cannot distinguish chat completions, legacy completion
 1. Keep the full lifecycle catalog and all exact pricing meters.
 2. Retain per-model endpoint support and derive Kong matches endpoint by endpoint.
 3. Exclude moderation from the Kong 2.0 intersection.
-4. Flag deprecated examples and leave skipped account availability explicit.
+4. Flag deprecated examples and keep account inventory evidence scoped and non-creating.
 
 Implementation outcome: enabled model endpoint cards now publish their exact official labels and API paths in `api_endpoints`. Unknown label/path pairs fail the OpenAI refresh, disabled cards remain excluded, and Batch or Fine-tuning route evidence does not widen provider-neutral model `types`. The website exposes the retained routes in model details, providing the missing evidence needed for a future Kong endpoint-level intersection without publishing a premature compatibility boolean.
