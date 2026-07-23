@@ -537,17 +537,25 @@ interface PriceSegment {
   label?: string;
 }
 
-function priceSegments(raw: string): PriceSegment[] {
-  if (/^Free$/i.test(raw.trim())) return [{ price: "0" }];
-  const matches = [...raw.matchAll(/\$([\d,.]+)/g)];
-  if (matches.length === 0) return [];
-  return matches.flatMap((match, index) => {
-    const price = match[1] === undefined ? undefined : decimal(match[1]);
-    if (price === undefined) return [];
-    const start =
-      index === 0 ? 0 : (matches[index - 1]?.index ?? 0) + (matches[index - 1]?.[0].length ?? 0);
-    const label = text(raw.slice(start, match.index));
-    return [{ price, ...(label === "" || matches.length === 1 ? {} : { label }) }];
+function priceSegments(cell: Cell): PriceSegment[] {
+  const parts = cell.parts.length === 0 ? [cell.text] : cell.parts;
+  const pricedParts = parts.filter((part) => /\$[\d,.]+|^Free$/i.test(part.trim()));
+  return pricedParts.flatMap((raw) => {
+    if (/^Free$/i.test(raw.trim())) return [{ price: "0" }];
+    const matches = [...raw.matchAll(/\$([\d,.]+)/g)];
+    return matches.flatMap((match, index) => {
+      const price = match[1] === undefined ? undefined : decimal(match[1]);
+      if (price === undefined) return [];
+      const start =
+        index === 0 ? 0 : (matches[index - 1]?.index ?? 0) + (matches[index - 1]?.[0].length ?? 0);
+      const label = text(raw.slice(start, match.index));
+      return [
+        {
+          price,
+          ...(label === "" || (pricedParts.length === 1 && matches.length === 1) ? {} : { label }),
+        },
+      ];
+    });
   });
 }
 
@@ -556,10 +564,14 @@ function segmentConditions(label: string | undefined): PriceRate["conditions"] {
   const resolution = label.match(/\b\d{3,4}P\b/i)?.[0];
   const promptExtend = label.match(/prompt_extend=(true|false)/i)?.[0];
   const modality = label.match(/(?:Image\/video|Text|Audio|Image|Video)\s*:?[\s]*$/i)?.[0];
-  const normalized = text(label.replace(/^.*?(?:price|video):/i, "")).replace(/[:：]+$/, "");
-  const operation = /^(?:Image\/video|Text|Audio|Image|Video)$/i.test(normalized)
-    ? undefined
-    : normalized;
+  const normalized = text(label.replace(/^(?:List price|Output video):\s*/i, "")).replace(
+    /[:：]+$/,
+    "",
+  );
+  const operation =
+    normalized === "" || /^(?:Image\/video|Text|Audio|Image|Video)$/i.test(normalized)
+      ? undefined
+      : normalized;
   return {
     ...(resolution === undefined ? {} : { resolution }),
     ...(promptExtend === undefined ? {} : { operation: promptExtend }),
@@ -587,12 +599,13 @@ function rates(table: Table, row: Cell[], types: ModelType[], sourceId: string):
       /Qwen-TTS-Realtime/i.test(table.headings.join(" ")) && index === priceIndexes[1]
         ? header.replace(/^Input/i, "Output")
         : header;
-    const raw = row[index]?.text;
-    if (raw === undefined) continue;
+    const cell = row[index];
+    if (cell === undefined) continue;
+    const raw = cell.text;
     const rateUnit = unit(effectiveHeader, raw);
     if (rateUnit === undefined) continue;
     const baseConditions = priceConditions(table, row, effectiveHeader);
-    for (const segment of priceSegments(raw)) {
+    for (const segment of priceSegments(cell)) {
       const base: PriceRate = {
         meter: meter(effectiveHeader, table.headings, types, rateUnit),
         price: normalizedPrice(segment.price, rateUnit),

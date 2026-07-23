@@ -3441,6 +3441,49 @@ describe("DashScope adapters", () => {
         }),
       ]),
     );
+    const embedding = models.find(({ model_id }) => model_id === "qwen3-vl-embedding");
+    expect(embedding?.pricing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "0.258",
+          conditions: expect.objectContaining({ modality: "image/video" }),
+        }),
+        expect.objectContaining({
+          price: "0.1",
+          conditions: expect.objectContaining({ modality: "text" }),
+        }),
+      ]),
+    );
+    expect(embedding?.pricing.every(({ conditions }) => conditions.operation === undefined)).toBe(
+      true,
+    );
+    const video = models.find(({ model_id }) => model_id === "wan2.2-s2v");
+    expect(video?.pricing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "0.071677",
+          conditions: expect.objectContaining({ resolution: "480P" }),
+        }),
+        expect.objectContaining({
+          price: "0.129018",
+          conditions: expect.objectContaining({ resolution: "720P" }),
+        }),
+      ]),
+    );
+    expect(video?.pricing.every(({ conditions }) => conditions.operation === undefined)).toBe(true);
+    const aspectRatio = models.find(({ model_id }) => model_id === "emo-v1");
+    expect(aspectRatio?.pricing).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          price: "0.011469",
+          conditions: expect.objectContaining({ operation: "1_1_landscape_video" }),
+        }),
+        expect.objectContaining({
+          price: "0.022937",
+          conditions: expect.objectContaining({ operation: "3_4_landscape_video" }),
+        }),
+      ]),
+    );
   });
 
   it("keeps every source that observes the same exact model", async () => {
