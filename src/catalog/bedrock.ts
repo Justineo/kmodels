@@ -893,10 +893,16 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
       if (current !== undefined && current.name !== card.name)
         throw new Error(`Bedrock model ID ${id} has conflicting display names`);
       const pricing = prices.get(id) ?? [];
-      const apiEndpoints = card.apiEndpoints
-        .filter(({ programmaticEndpoint }) => access.endpoints.has(programmaticEndpoint))
-        .map(({ name, path }) => ({ name, path }))
-        .sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+      const apiEndpoints = [
+        ...new Map(
+          card.apiEndpoints
+            .filter(({ programmaticEndpoint }) => access.endpoints.has(programmaticEndpoint))
+            .map(({ name, path }) => {
+              const endpoint = { name, path };
+              return [apiEndpointKey(endpoint), endpoint];
+            }),
+        ).values(),
+      ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
       const availability = card.availability
         .filter(({ deploymentType }) => access.deploymentTypes.has(deploymentType))
         .flatMap(({ region, deploymentType }) =>
