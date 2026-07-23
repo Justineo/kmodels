@@ -46,7 +46,11 @@ interface CollectionOptions {
 
 function message(error: unknown): string {
   return error instanceof Error
-    ? error.message.replace(/https?:\/\/\S+/g, "[source]")
+    ? error.message
+        .replace(/https?:\/\/\S+/g, "[source]")
+        .replace(/\barn:aws(?:-[a-z0-9-]+)?:[^\s,;"']+/gi, "[resource]")
+        .replace(/\b\d{12}\b/g, "[account]")
+        .replace(/\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, "[identity]")
     : "Unknown collection failure";
 }
 

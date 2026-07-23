@@ -138,27 +138,30 @@ const priceListSchema = z.object({
   }),
 });
 
+const apiDateSchema = z.iso.datetime({ offset: true });
+const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING"]);
+const customizationSchema = z.enum(["FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]);
+
 const lifecycleSchema = z
   .object({
-    status: z.string().optional(),
-    startOfLifeTime: z.union([z.string(), z.number()]).optional(),
-    legacyTime: z.union([z.string(), z.number()]).optional(),
-    endOfLifeTime: z.union([z.string(), z.number()]).optional(),
+    status: z.enum(["ACTIVE", "LEGACY"]),
+    startOfLifeTime: apiDateSchema.optional(),
+    legacyTime: apiDateSchema.optional(),
+    endOfLifeTime: apiDateSchema.optional(),
   })
   .optional();
 
 const apiItemSchema = z.object({
   modelId: modelIdSchema,
-  modelName: z.string().min(1),
-  inputModalities: z.array(z.string()).optional(),
-  outputModalities: z.array(z.string()).optional(),
-  customizationsSupported: z.array(z.string()).optional(),
-  inferenceTypesSupported: z.array(z.string()).optional(),
+  modelName: z.string().min(1).optional(),
+  inputModalities: z.array(apiModalitySchema).optional(),
+  outputModalities: z.array(apiModalitySchema).optional(),
+  customizationsSupported: z.array(customizationSchema).optional(),
   responseStreamingSupported: z.boolean().optional(),
   modelLifecycle: lifecycleSchema,
 });
 
-const apiSchema = z.object({ modelSummaries: z.array(z.unknown()).min(1) });
+const apiSchema = z.object({ modelSummaries: z.array(apiItemSchema).min(1) });
 
 const months = new Map([
   ["jan", 1],
@@ -229,10 +232,8 @@ function humanDate(value: string | undefined): string | undefined {
   return `${numeric[3]}-${numeric[1].padStart(2, "0")}-${numeric[2].padStart(2, "0")}`;
 }
 
-function apiDate(value: string | number | undefined): string | undefined {
-  if (value === undefined) return undefined;
-  const date = new Date(typeof value === "number" ? value * 1000 : value);
-  return Number.isNaN(date.valueOf()) ? undefined : date.toISOString().slice(0, 10);
+function apiDate(value: string | undefined): string | undefined {
+  return value?.slice(0, 10);
 }
 
 function tokens(value: string | undefined): number | undefined {
@@ -739,7 +740,7 @@ function rate(
         : "bedrock-runtime";
   const rateConditions = conditions(attributes, text, effectiveDate, endpoint);
   let normalizedUnit: PriceRate["unit"] | undefined;
-  let normalizedPrice = scaleDecimal(price, 0);
+  let normalizedPrice = price;
   let derived = false;
   if (unit === "1K tokens") {
     normalizedUnit = "million_tokens";
@@ -953,72 +954,46 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function apiModalities(values: string[] | undefined): Modality[] {
-  return unique(
-    (values ?? []).flatMap((value) => {
-      const parsed = modalitySchema.safeParse(value.toLowerCase());
-      return parsed.success ? [parsed.data] : [];
-    }),
-  );
-}
-
-function apiStatus(value: string | undefined): ProviderModel["status"] {
-  switch (value?.toUpperCase()) {
-    case "ACTIVE":
-    case "AVAILABLE":
-      return "active";
-    case "LEGACY":
-      return "deprecated";
-    case "END_OF_LIFE":
-    case "RETIRED":
-      return "retired";
-    default:
-      return "unknown";
-  }
+function apiModalities(values: z.infer<typeof apiModalitySchema>[] | undefined): Modality[] {
+  return unique((values ?? []).map((value) => modalitySchema.parse(value.toLowerCase())));
 }
 
 export function parseBedrockApi(input: ParseInput): ProviderModel[] {
-  const value = apiSchema.parse(JSON.parse(input.body));
-  const results = value.modelSummaries.map((item) => apiItemSchema.safeParse(item));
-  if (results.some((result) => !result.success)) throw new Error("Bedrock API schema drift");
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
-    const status = apiStatus(item.modelLifecycle?.status);
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.modelId,
-          name: item.modelName,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        modalities: {
-          input: apiModalities(item.inputModalities),
-          output: apiModalities(item.outputModalities),
-        },
-        capabilities: {
-          ...unknownCapabilities(),
-          streaming: item.responseStreamingSupported ?? "unknown",
-          fine_tuning:
-            item.customizationsSupported === undefined
-              ? "unknown"
-              : item.customizationsSupported.includes("FINE_TUNING"),
-        },
-        release_date: apiDate(item.modelLifecycle?.startOfLifeTime),
-        deprecated_at: apiDate(item.modelLifecycle?.legacyTime),
-        retired_at: apiDate(item.modelLifecycle?.endOfLifeTime),
-        status,
-        is_deprecated:
-          status === "deprecated" || status === "retired"
-            ? true
-            : status === "active"
-              ? false
-              : "unknown",
-        scope: "regional_catalog",
+  const { modelSummaries } = apiSchema.parse(JSON.parse(input.body));
+  return modelSummaries.map((item) => {
+    const status: ProviderModel["status"] =
+      item.modelLifecycle?.status === "ACTIVE"
+        ? "active"
+        : item.modelLifecycle?.status === "LEGACY"
+          ? "deprecated"
+          : "unknown";
+    return {
+      ...baseModel({
+        providerId: input.provider.id,
+        id: item.modelId,
+        name: item.modelName ?? item.modelId,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      modalities: {
+        input: apiModalities(item.inputModalities),
+        output: apiModalities(item.outputModalities),
       },
-    ];
+      capabilities: {
+        ...unknownCapabilities(),
+        streaming: item.responseStreamingSupported ?? "unknown",
+        fine_tuning:
+          item.customizationsSupported === undefined
+            ? "unknown"
+            : item.customizationsSupported.includes("FINE_TUNING"),
+      },
+      release_date: apiDate(item.modelLifecycle?.startOfLifeTime),
+      deprecated_at: apiDate(item.modelLifecycle?.legacyTime),
+      retired_at: apiDate(item.modelLifecycle?.endOfLifeTime),
+      status,
+      is_deprecated: status === "deprecated" ? true : status === "active" ? false : "unknown",
+      scope: "regional_catalog",
+    };
   });
 }
 
