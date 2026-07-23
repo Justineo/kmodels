@@ -1,0 +1,22 @@
+openapi: 3.2.0
+info:
+  title: Azure AI Foundry Models Service
+  version: preview
+paths:
+  /audio/speech:
+    post:
+      operationId: createSpeech
+  /audio/transcriptions:
+    post:
+      operationId: createTranscription
+  /audio/translations:
+    post:
+      operationId: createTranslation
+  /images/generations:
+    post:
+      operationId: createImage
+  /videos:
+    post:
+      operationId: Videos_Create
+servers:
+  - url: "{endpoint}/openai/v1"

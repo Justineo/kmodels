@@ -2,7 +2,7 @@ import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { baseModel, modelUid } from "./model.ts";
+import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
 import {
   modelTypeSchema,
   type Modality,
@@ -24,6 +24,7 @@ interface Input {
 interface MarkdownTable {
   section: string;
   subsection: string;
+  detail: string;
   headers: string[];
   rows: string[][];
 }
@@ -33,9 +34,82 @@ interface CatalogFact {
   version: string | undefined;
   rawType: string;
   details: string;
+  serviceFamily: ServiceFamily;
+  apiEndpoints: ProviderModel["api_endpoints"];
   limits: ProviderModel["limits"];
   status: ProviderModel["status"];
 }
+
+const serviceFamilies = {
+  openAi: "Azure OpenAI",
+  sold: "Foundry Models sold by Azure",
+  partner: "Foundry Models from partners and community",
+} as const;
+type ServiceFamily = (typeof serviceFamilies)[keyof typeof serviceFamilies];
+
+interface AzureApiEndpoint {
+  path: string;
+  operationId: string;
+  spec: "stable" | "preview";
+}
+
+const azureApiEndpoints = {
+  batch: {
+    path: "openai/v1/batches",
+    operationId: "createBatch",
+    spec: "stable",
+  },
+  chat: {
+    path: "openai/v1/chat/completions",
+    operationId: "createChatCompletion",
+    spec: "stable",
+  },
+  completion: {
+    path: "openai/v1/completions",
+    operationId: "createCompletion",
+    spec: "stable",
+  },
+  embedding: {
+    path: "openai/v1/embeddings",
+    operationId: "createEmbedding",
+    spec: "stable",
+  },
+  realtime: {
+    path: "openai/v1/realtime/sessions",
+    operationId: "createRealtimeSession",
+    spec: "stable",
+  },
+  response: {
+    path: "openai/v1/responses",
+    operationId: "createResponse",
+    spec: "stable",
+  },
+  speech: {
+    path: "openai/v1/audio/speech",
+    operationId: "createSpeech",
+    spec: "preview",
+  },
+  transcription: {
+    path: "openai/v1/audio/transcriptions",
+    operationId: "createTranscription",
+    spec: "preview",
+  },
+  translation: {
+    path: "openai/v1/audio/translations",
+    operationId: "createTranslation",
+    spec: "preview",
+  },
+  image: {
+    path: "openai/v1/images/generations",
+    operationId: "createImage",
+    spec: "preview",
+  },
+  video: {
+    path: "openai/v1/videos",
+    operationId: "Videos_Create",
+    spec: "preview",
+  },
+} as const satisfies Record<string, AzureApiEndpoint>;
 
 const azureModelSchema = z.object({
   kind: z.string().optional(),
@@ -137,15 +211,22 @@ function tables(body: string): MarkdownTable[] {
   const results: MarkdownTable[] = [];
   let section = "";
   let subsection = "";
+  let detail = "";
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
     if (line.startsWith("## ")) {
       section = plain(line.slice(3));
       subsection = "";
+      detail = "";
       continue;
     }
-    if (/^#{3,4} /.test(line)) {
-      subsection = plain(line.replace(/^#{3,4} /, ""));
+    if (line.startsWith("### ")) {
+      subsection = plain(line.slice(4));
+      detail = "";
+      continue;
+    }
+    if (line.startsWith("#### ")) {
+      detail = plain(line.slice(5));
       continue;
     }
     const separator = lines[index + 1];
@@ -166,7 +247,7 @@ function tables(body: string): MarkdownTable[] {
       index += 1;
     }
     index -= 1;
-    results.push({ section, subsection, headers, rows });
+    results.push({ section, subsection, detail, headers, rows });
   }
   return results;
 }
@@ -385,7 +466,37 @@ function capabilities(details: string): ProviderModel["capabilities"] {
   };
 }
 
-function catalogFacts(body: string): CatalogFact[] {
+function endpoint(value: AzureApiEndpoint): NonNullable<ProviderModel["api_endpoints"]>[number] {
+  return { name: value.operationId, path: value.path };
+}
+
+function endpointsFor(rawType: string, details: string): ProviderModel["api_endpoints"] {
+  const evidence = `${rawType} ${details}`;
+  const values: NonNullable<ProviderModel["api_endpoints"]> = [];
+  if (/Chat Completions API/i.test(evidence)) values.push(endpoint(azureApiEndpoints.chat));
+  if (/Completions API/i.test(evidence.replace(/Chat Completions API/gi, "")))
+    values.push(endpoint(azureApiEndpoints.completion));
+  if (/Responses API/i.test(evidence)) values.push(endpoint(azureApiEndpoints.response));
+  if (
+    /Realtime API/i.test(evidence) ||
+    (/Audio models GPT-4o audio models/i.test(rawType) && /\breal-?time\b/i.test(details))
+  )
+    values.push(endpoint(azureApiEndpoints.realtime));
+  if (/\bEmbeddings?\b/i.test(rawType)) values.push(endpoint(azureApiEndpoints.embedding));
+  if (/Image generation models?/i.test(rawType)) values.push(endpoint(azureApiEndpoints.image));
+  if (/Video generation models?/i.test(rawType)) values.push(endpoint(azureApiEndpoints.video));
+  if (/Speech-to-text models?/i.test(rawType))
+    values.push(endpoint(azureApiEndpoints.transcription));
+  if (/Speech translation models?/i.test(rawType))
+    values.push(endpoint(azureApiEndpoints.translation));
+  if (/Text-to-speech models?/i.test(rawType)) values.push(endpoint(azureApiEndpoints.speech));
+  if (values.length === 0) return undefined;
+  return [...new Map(values.map((value) => [apiEndpointKey(value), value])).values()].sort(
+    (left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+  );
+}
+
+function catalogFacts(body: string, serviceFamily: ServiceFamily): CatalogFact[] {
   const facts: CatalogFact[] = [];
   for (const table of tables(body)) {
     const modelIndex = headerIndex(table, /^Model(?: ID)?$/i);
@@ -396,7 +507,9 @@ function catalogFacts(body: string): CatalogFact[] {
       const references = modelReferences(row[modelIndex] ?? "");
       if (references.length === 0) continue;
       const rawType =
-        typeIndex < 0 ? `${table.section} ${table.subsection}`.trim() : plain(row[typeIndex] ?? "");
+        typeIndex < 0
+          ? `${table.section} ${table.subsection} ${table.detail}`.trim()
+          : plain(row[typeIndex] ?? "");
       const details = `${rawType} ${
         descriptionIndex < 0 ? "" : plain(row[descriptionIndex] ?? "")
       }`.trim();
@@ -407,7 +520,16 @@ function catalogFacts(body: string): CatalogFact[] {
         ? "preview"
         : "active";
       for (const reference of references)
-        facts.push({ ...reference, rawType, details, limits: rowLimits, status });
+        facts.push({
+          ...reference,
+          rawType,
+          details,
+          serviceFamily,
+          apiEndpoints:
+            serviceFamily === serviceFamilies.openAi ? endpointsFor(rawType, details) : undefined,
+          limits: rowLimits,
+          status,
+        });
     }
   }
   return facts;
@@ -444,9 +566,23 @@ function mergeModel(left: ProviderModel, right: ProviderModel): ProviderModel {
   ].sort((a, b) =>
     `${a.deployment_type}\u0000${a.region}`.localeCompare(`${b.deployment_type}\u0000${b.region}`),
   );
+  const serviceFamilyValues = unique([
+    ...(left.service_families ?? []),
+    ...(right.service_families ?? []),
+  ]).sort();
+  const endpointValues = [
+    ...new Map(
+      [...(left.api_endpoints ?? []), ...(right.api_endpoints ?? [])].map((item) => [
+        apiEndpointKey(item),
+        item,
+      ]),
+    ).values(),
+  ].sort((a, b) => apiEndpointKey(a).localeCompare(apiEndpointKey(b)));
   return {
     ...left,
     raw_type: left.raw_type ?? right.raw_type,
+    service_families: serviceFamilyValues.length === 0 ? undefined : serviceFamilyValues,
+    api_endpoints: endpointValues.length === 0 ? undefined : endpointValues,
     types: orderedTypes([
       ...left.types.filter(
         (type) => right.raw_type === undefined || type !== "generate" || right.types.includes(type),
@@ -494,6 +630,15 @@ function upsert(models: Map<string, ProviderModel>, incoming: ProviderModel): vo
   models.set(incoming.uid, current === undefined ? incoming : mergeModel(current, incoming));
 }
 
+function lifecycleServiceFamily(table: MarkdownTable): ServiceFamily {
+  if (table.section === serviceFamilies.partner) return serviceFamilies.partner;
+  if (table.section === serviceFamilies.sold)
+    return table.subsection === serviceFamilies.openAi
+      ? serviceFamilies.openAi
+      : serviceFamilies.sold;
+  throw new Error(`Unsupported Azure lifecycle service family: ${table.section}`);
+}
+
 function lifecycle(models: Map<string, ProviderModel>, input: Input, body: string): void {
   for (const table of tables(body)) {
     const modelIndex = headerIndex(table, /^Model$/i);
@@ -507,6 +652,7 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
       )
     )
       continue;
+    const serviceFamily = lifecycleServiceFamily(table);
     for (const row of table.rows) {
       const id = modelId(row[modelIndex] ?? "");
       if (id === undefined) throw new Error("Azure lifecycle table contained an invalid model ID");
@@ -535,6 +681,7 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
         ...base(input, id, version),
         types,
         modalities: modelModalities(table.section, "", types),
+        service_families: [serviceFamily],
         status,
         is_deprecated: status === "deprecated" || status === "retired",
         retired_at: retiredAt === "—" || retiredAt === "-" ? undefined : retiredAt,
@@ -559,6 +706,11 @@ function availability(models: Map<string, ProviderModel>, input: Input, body: st
     const modelIndex = headerIndex(table, /^Model$/i);
     const versionIndex = headerIndex(table, /^Version$/i);
     if (modelIndex < 0 || versionIndex < 0) continue;
+    const serviceFamily = /^Availability for Azure OpenAI in Foundry Models$/i.test(table.detail)
+      ? serviceFamilies.openAi
+      : /^Availability for other Foundry Models sold by Azure$/i.test(table.detail)
+        ? serviceFamilies.sold
+        : undefined;
     for (const row of table.rows) {
       const id = modelId(row[modelIndex] ?? "");
       const version = plain(row[versionIndex] ?? "");
@@ -573,6 +725,11 @@ function availability(models: Map<string, ProviderModel>, input: Input, body: st
         ...base(input, id, version),
         types,
         modalities: modelModalities(table.section, "", types),
+        service_families: serviceFamily === undefined ? undefined : [serviceFamily],
+        api_endpoints:
+          serviceFamily === serviceFamilies.openAi && /batch/i.test(table.section)
+            ? [endpoint(azureApiEndpoints.batch)]
+            : undefined,
         capabilities: {
           ...unknownCapabilities(),
           batch: /batch/i.test(table.section) ? true : "unknown",
@@ -606,6 +763,7 @@ function assistants(models: Map<string, ProviderModel>, input: Input, body: stri
       upsert(models, {
         ...base(input, id, version),
         types: orderedTypes([...modelTypes(id, "Assistants", ""), "agentic"]),
+        service_families: [serviceFamilies.openAi],
         availability: regions.map((region) => ({ region, deployment_type: "Standard/Regional" })),
       });
     }
@@ -620,6 +778,22 @@ function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): s
   return item.body;
 }
 
+function validateApiSpecs(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const specs = {
+    stable: document(bundle, "/azure-v1-v1-generated.yaml"),
+    preview: document(bundle, "/azure-v1-preview-generated.yaml"),
+  };
+  for (const body of Object.values(specs))
+    if (!/^  - url: ["']\{endpoint\}\/openai\/v1["']$/m.test(body))
+      throw new Error("Azure OpenAI API specification server drifted");
+  for (const value of Object.values(azureApiEndpoints)) {
+    const relativePath = value.path.replace(/^openai\/v1/, "");
+    const operation = `  ${relativePath}:\n    post:\n      operationId: ${value.operationId}`;
+    if (!specs[value.spec].includes(operation))
+      throw new Error(`Azure OpenAI API specification drifted for ${value.path}`);
+  }
+}
+
 export function parseAzureCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-catalog") throw new Error("Wrong Azure catalog extractor");
@@ -628,6 +802,7 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
   const others = document(bundle, "/models-azure-direct-others.md");
   const partners = document(bundle, "/models-partners.md");
   const models = new Map<string, ProviderModel>();
+  validateApiSpecs(bundle);
 
   lifecycle(models, input, document(bundle, "/concepts-model-retirement-schedule-content.md"));
   for (const suffix of [
@@ -638,34 +813,28 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
     availability(models, input, document(bundle, suffix));
 
   for (const fact of [
-    ...catalogFacts(openAi),
-    ...catalogFacts(others),
-    ...catalogFacts(partners),
+    ...catalogFacts(openAi, serviceFamilies.openAi),
+    ...catalogFacts(others, serviceFamilies.sold),
+    ...catalogFacts(partners, serviceFamilies.partner),
   ]) {
-    const candidates = [...models.values()]
-      .filter(
-        (model) =>
-          model.model_id === fact.id && model.status !== "retired" && model.status !== "deprecated",
-      )
-      .sort((left, right) => (right.version ?? "").localeCompare(left.version ?? ""));
-    const normalizedCandidates = [...models.values()]
-      .filter(
-        (model) =>
-          model.model_id.toLowerCase() === fact.id.toLowerCase() &&
-          (fact.version === undefined || model.version === fact.version) &&
-          model.status !== "retired" &&
-          model.status !== "deprecated",
-      )
-      .sort((left, right) => (right.version ?? "").localeCompare(left.version ?? ""));
-    const normalizedIds = new Set(normalizedCandidates.map((model) => model.model_id));
-    const target =
-      candidates[0] ?? (normalizedIds.size === 1 ? normalizedCandidates[0] : undefined);
+    const candidates = [...models.values()].filter(
+      (model) =>
+        model.model_id.toLowerCase() === fact.id.toLowerCase() &&
+        (fact.version === undefined || model.version === fact.version) &&
+        model.status !== "retired" &&
+        model.status !== "deprecated",
+    );
+    const exact = candidates.filter((model) => model.model_id === fact.id);
+    const eligible = exact.length === 0 ? candidates : exact;
+    const target = eligible.length === 1 ? eligible[0] : undefined;
     const id = target?.model_id ?? fact.id;
     const version = target?.version ?? fact.version;
     const types = modelTypes(id, fact.rawType, fact.details);
     upsert(models, {
       ...base(input, id, version),
       raw_type: fact.rawType,
+      service_families: [fact.serviceFamily],
+      api_endpoints: fact.apiEndpoints,
       types,
       modalities: modelModalities(fact.rawType, fact.details, types),
       capabilities: capabilities(`${fact.rawType} ${fact.details}`),

@@ -31,6 +31,13 @@ export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
 export const sourceKindSchema = z.enum(["api", "website", "repository"]);
 export const sourceAccessSchema = z.enum(["public", "authenticated", "configured"]);
 export const sourceFormatSchema = z.enum(["json", "html", "markdown", "mixed"]);
+export const modelRouteSchema = z.object({
+  source_ref: z.string().min(1),
+  provider: z.string().min(1),
+  provider_model_id: z.string().min(1),
+  task: z.string().min(1),
+  status: z.literal("live"),
+});
 
 export const priceRateSchema = z.object({
   meter: z.enum([
@@ -133,6 +140,7 @@ export const providerModelSchema = z.object({
     .min(1)
     .transform((types) => [...new Set(types)]),
   raw_type: z.string().optional(),
+  service_families: z.array(z.string().min(1)).min(1).optional(),
   api_endpoints: z
     .array(
       z.object({
@@ -141,6 +149,7 @@ export const providerModelSchema = z.object({
       }),
     )
     .optional(),
+  routes: z.array(modelRouteSchema).optional(),
   modalities: z.object({ input: z.array(modalitySchema), output: z.array(modalitySchema) }),
   capabilities: z.object({
     reasoning: triStateSchema,
@@ -278,6 +287,7 @@ export const catalogEnvelopeSchema = z.object({
 export type Catalog = z.infer<typeof catalogSchema>;
 export type CatalogWarning = z.infer<typeof catalogWarningSchema>;
 export type Coverage = z.infer<typeof coverageSchema>;
+export type ModelRoute = z.infer<typeof modelRouteSchema>;
 export type ModelType = z.infer<typeof modelTypeSchema>;
 export type Modality = z.infer<typeof modalitySchema>;
 export type PriceRate = z.infer<typeof priceRateSchema>;

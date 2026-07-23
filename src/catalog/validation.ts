@@ -1,4 +1,4 @@
-import { modelUid } from "./model.ts";
+import { apiEndpointKey, modelRouteKey, modelUid } from "./model.ts";
 import { providerModelSchema, type PriceRate, type ProviderModel } from "./schema.ts";
 
 export interface ValidationResult {
@@ -30,8 +30,10 @@ function changedOverHalf(previous: string, next: string): boolean {
   return difference * 2n > left;
 }
 
-function countRates(models: ProviderModel[]): number {
-  return models.reduce((total, model) => total + model.pricing.length, 0);
+type CountedField = "pricing" | "service_families" | "api_endpoints" | "routes" | "availability";
+
+function count(models: ProviderModel[], field: CountedField): number {
+  return models.reduce((total, model) => total + (model[field]?.length ?? 0), 0);
 }
 
 export function validateProvider(
@@ -54,13 +56,56 @@ export function validateProvider(
         return { ok: false, reason: `duplicate conditional rate for ${model.uid}` };
       rates.add(key);
     }
+    const serviceFamilies = new Set<string>();
+    for (const family of model.service_families ?? []) {
+      if (serviceFamilies.has(family))
+        return { ok: false, reason: `duplicate service family for ${model.uid}` };
+      serviceFamilies.add(family);
+    }
+    const endpoints = new Set<string>();
+    for (const endpoint of model.api_endpoints ?? []) {
+      const key = apiEndpointKey(endpoint);
+      if (endpoints.has(key))
+        return { ok: false, reason: `duplicate API endpoint for ${model.uid}` };
+      endpoints.add(key);
+    }
+    const routes = new Set<string>();
+    for (const route of model.routes ?? []) {
+      const key = modelRouteKey(route);
+      if (routes.has(key)) return { ok: false, reason: `duplicate route for ${model.uid}` };
+      if (!model.source_refs.includes(route.source_ref))
+        return { ok: false, reason: `route source is missing for ${model.uid}` };
+      routes.add(key);
+    }
+    const availability = new Set<string>();
+    for (const item of model.availability ?? []) {
+      const key = `${item.region}\0${item.deployment_type}`;
+      if (availability.has(key))
+        return { ok: false, reason: `duplicate availability for ${model.uid}` };
+      availability.add(key);
+    }
   }
 
   if (previous.length > 0 && models.length < previous.length * 0.9)
     return { ok: false, reason: "model count dropped by more than 10%" };
-  const previousRates = countRates(previous);
-  if (previousRates > 0 && countRates(models) < previousRates * 0.8)
+  const previousRates = count(previous, "pricing");
+  if (previousRates > 0 && count(models, "pricing") < previousRates * 0.8)
     return { ok: false, reason: "price-rate count dropped by more than 20%" };
+  const previousServiceFamilies = count(previous, "service_families");
+  if (
+    previousServiceFamilies > 0 &&
+    count(models, "service_families") < previousServiceFamilies * 0.8
+  )
+    return { ok: false, reason: "service-family count dropped by more than 20%" };
+  const previousEndpoints = count(previous, "api_endpoints");
+  if (previousEndpoints > 0 && count(models, "api_endpoints") < previousEndpoints * 0.8)
+    return { ok: false, reason: "API endpoint count dropped by more than 20%" };
+  const previousRoutes = count(previous, "routes");
+  if (previousRoutes > 0 && count(models, "routes") < previousRoutes * 0.8)
+    return { ok: false, reason: "route count dropped by more than 20%" };
+  const previousAvailability = count(previous, "availability");
+  if (previousAvailability > 0 && count(models, "availability") < previousAvailability * 0.8)
+    return { ok: false, reason: "availability count dropped by more than 20%" };
 
   const previousByUid = new Map(previous.map((model) => [model.uid, model]));
   for (const model of models) {

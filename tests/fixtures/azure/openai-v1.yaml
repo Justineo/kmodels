@@ -1,0 +1,25 @@
+openapi: 3.2.0
+info:
+  title: Azure AI Foundry Models Service
+  version: v1
+paths:
+  /batches:
+    post:
+      operationId: createBatch
+  /chat/completions:
+    post:
+      operationId: createChatCompletion
+  /completions:
+    post:
+      operationId: createCompletion
+  /embeddings:
+    post:
+      operationId: createEmbedding
+  /realtime/sessions:
+    post:
+      operationId: createRealtimeSession
+  /responses:
+    post:
+      operationId: createResponse
+servers:
+  - url: "{endpoint}/openai/v1"

@@ -10,6 +10,7 @@ import {
 } from "./manifests.ts";
 import { readJson, rootDirectory, sha256, stableJson, writeJson } from "./io.ts";
 import { isCredentialLikeIdentifier } from "./identity.ts";
+import { apiEndpointKey, modelRouteKey } from "./model.ts";
 import {
   catalogSchema,
   type Catalog,
@@ -116,6 +117,9 @@ function applyFields(
     incoming.modalities.input.length + incoming.modalities.output.length > 0;
   const incomingType = incoming.types.some((type) => type !== "other");
   const incomingPricing = incoming.pricing.length > 0 || incoming.pricing_status !== "unknown";
+  const serviceFamilies = [
+    ...new Set([...(current.service_families ?? []), ...(incoming.service_families ?? [])]),
+  ].sort();
   return {
     ...current,
     name:
@@ -136,15 +140,30 @@ function applyFields(
         : current.types,
     raw_type:
       fields.has("types") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
+    service_families: fields.has("service_families")
+      ? serviceFamilies.length === 0
+        ? undefined
+        : serviceFamilies
+      : current.service_families,
     api_endpoints: fields.has("api_endpoints")
       ? [
           ...new Map(
             [...(current.api_endpoints ?? []), ...(incoming.api_endpoints ?? [])].map(
-              (endpoint) => [`${endpoint.name}\u0000${endpoint.path}`, endpoint],
+              (endpoint) => [apiEndpointKey(endpoint), endpoint],
             ),
           ).values(),
-        ].sort((left, right) => left.path.localeCompare(right.path))
+        ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)))
       : current.api_endpoints,
+    routes: fields.has("routes")
+      ? [
+          ...new Map(
+            [...(current.routes ?? []), ...(incoming.routes ?? [])].map((route) => [
+              modelRouteKey(route),
+              route,
+            ]),
+          ).values(),
+        ].sort((left, right) => modelRouteKey(left).localeCompare(modelRouteKey(right)))
+      : current.routes,
     modalities:
       fields.has("modalities") && incomingModalities
         ? {
@@ -407,7 +426,13 @@ async function collectProvider(
     return sourceRefs.length > 0 &&
       !manifest.supersededIdKinds?.includes(model.id_kind) &&
       !manifest.supersededModelIds?.includes(model.model_id)
-      ? [{ ...model, source_refs: sourceRefs }]
+      ? [
+          {
+            ...model,
+            routes: model.routes?.filter((route) => currentSourceIds.has(route.source_ref)),
+            source_refs: sourceRefs,
+          },
+        ]
       : [];
   });
   const oldSources = previousSources(previous, manifest.provider.id);
