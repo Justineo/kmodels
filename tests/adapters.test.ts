@@ -995,6 +995,7 @@ describe("OpenAI adapters", () => {
     expect({
       name: model?.name,
       types: model?.types,
+      endpoints: model?.api_endpoints,
       aliases: model?.aliases,
       context: model?.limits.context_tokens,
       output: model?.limits.max_output_tokens,
@@ -1007,6 +1008,11 @@ describe("OpenAI adapters", () => {
     }).toEqual({
       name: "GPT-5.4",
       types: ["generate", "agentic"],
+      endpoints: [
+        { name: "Chat Completions", path: "v1/chat/completions" },
+        { name: "Responses", path: "v1/responses" },
+        { name: "Assistants", path: "v1/assistants" },
+      ],
       aliases: ["gpt-5.4-2026-03-05"],
       context: 1_050_000,
       output: 128_000,
@@ -1054,6 +1060,23 @@ describe("OpenAI adapters", () => {
       { meter: "output_text", price: "4.00", conditions: {} },
     ]);
     expect(model?.capabilities.batch).toBe(true);
+    expect(model?.api_endpoints).toEqual([
+      { name: "Responses", path: "v1/responses" },
+      { name: "Batch", path: "v1/batch" },
+    ]);
+  });
+
+  it("fails closed on an unreviewed endpoint card", async () => {
+    const value = manifest("openai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing OpenAI catalog source");
+    const body = (await fixture("openai/catalog.json")).replace(
+      "v1/chat/completions",
+      "v1/conversations",
+    );
+    expect(() => parseSource({ provider: provider(value), source, body, observedAt })).toThrow(
+      "Unsupported OpenAI endpoint card",
+    );
   });
 
   it("parses scoped API inventory without treating it as the global catalog", async () => {
@@ -1850,6 +1873,7 @@ describe("Vercel adapter", () => {
     const videoToken = byId.get("acme/video-token-1");
     const speech = byId.get("acme/speech-1");
     const transcription = byId.get("acme/transcribe-preview");
+    const realtime = byId.get("acme/realtime-1");
     expect({
       embedding: {
         modalities: embedding?.modalities,
@@ -1869,6 +1893,13 @@ describe("Vercel adapter", () => {
         deprecatedAt: transcription?.deprecated_at,
         pricing: transcription?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
       },
+      realtime: realtime?.pricing.map((rate) => ({
+        meter: rate.meter,
+        price: rate.price,
+        unit: rate.unit,
+        derived: rate.derived,
+        rawUnit: rate.raw_unit,
+      })),
     }).toEqual({
       embedding: {
         modalities: { input: ["text"], output: ["embedding"] },
@@ -1910,6 +1941,50 @@ describe("Vercel adapter", () => {
         deprecatedAt: "2025-07-01",
         pricing: [{ meter: "input_audio", unit: "second" }],
       },
+      realtime: [
+        {
+          meter: "input_text",
+          price: "4",
+          unit: "million_tokens",
+          derived: true,
+          rawUnit: "token",
+        },
+        {
+          meter: "output_text",
+          price: "16",
+          unit: "million_tokens",
+          derived: true,
+          rawUnit: "token",
+        },
+        {
+          meter: "input_audio",
+          price: "32",
+          unit: "million_tokens",
+          derived: true,
+          rawUnit: "token",
+        },
+        {
+          meter: "output_audio",
+          price: "64",
+          unit: "million_tokens",
+          derived: true,
+          rawUnit: "token",
+        },
+        {
+          meter: "realtime_client_message",
+          price: "0.004",
+          unit: "request",
+          derived: false,
+          rawUnit: "message",
+        },
+        {
+          meter: "realtime_session_duration",
+          price: "0.000834",
+          unit: "second",
+          derived: false,
+          rawUnit: "second",
+        },
+      ],
     });
   });
 

@@ -136,6 +136,15 @@ function applyFields(
         : current.types,
     raw_type:
       fields.has("types") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
+    api_endpoints: fields.has("api_endpoints")
+      ? [
+          ...new Map(
+            [...(current.api_endpoints ?? []), ...(incoming.api_endpoints ?? [])].map(
+              (endpoint) => [`${endpoint.name}\u0000${endpoint.path}`, endpoint],
+            ),
+          ).values(),
+        ].sort((left, right) => left.path.localeCompare(right.path))
+      : current.api_endpoints,
     modalities:
       fields.has("modalities") && incomingModalities
         ? {
@@ -351,6 +360,27 @@ function missingFieldWarning(
   };
 }
 
+function missingFieldWarnings(
+  manifest: ProviderManifest,
+  models: ProviderModel[],
+): CatalogWarning[] {
+  const configuration = manifest.warnOnMissing;
+  if (configuration === undefined) return [];
+  const relevantModels =
+    configuration.statuses === undefined
+      ? models
+      : models.filter((model) => configuration.statuses?.includes(model.status));
+  return configuration.fields.flatMap((field) => {
+    const warning = missingFieldWarning(
+      field,
+      relevantModels,
+      manifest.provider.id,
+      configuration.sourceId,
+    );
+    return warning === undefined ? [] : [warning];
+  });
+}
+
 function providerRecord(
   manifest: ProviderManifest,
   models: ProviderModel[],
@@ -524,21 +554,6 @@ async function collectProvider(
       candidate = applyGroups(candidate, [inventory], false);
     }
     candidate = candidate.map(normalizeModelTypes);
-    const warnOnMissing = manifest.warnOnMissing;
-    if (warnOnMissing !== undefined)
-      warnings.push(
-        ...warnOnMissing.fields.flatMap((field) => {
-          const warning = missingFieldWarning(
-            field,
-            warnOnMissing.statuses === undefined
-              ? candidate
-              : candidate.filter((model) => warnOnMissing.statuses?.includes(model.status)),
-            manifest.provider.id,
-            warnOnMissing.sourceId,
-          );
-          return warning === undefined ? [] : [warning];
-        }),
-      );
     const validation = validateProvider(candidate, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
     const models = preserveMissing(candidate, comparableOldModels);
@@ -566,7 +581,7 @@ async function collectProvider(
         checked_at: observedAt,
         last_successful_sync_at: observedAt,
       },
-      warnings,
+      warnings: [...warnings, ...missingFieldWarnings(manifest, models)],
     };
   } catch (error) {
     const reason = message(error);
@@ -584,7 +599,7 @@ async function collectProvider(
         last_successful_sync_at: oldCoverage?.last_successful_sync_at,
         reason,
       },
-      warnings,
+      warnings: [...warnings, ...missingFieldWarnings(manifest, oldModels)],
       quarantine: { provider_id: manifest.provider.id, checked_at: observedAt, reason },
     };
   }
