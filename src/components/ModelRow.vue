@@ -107,11 +107,11 @@ function filterStatus(): void {
     </td>
     <td class="context-col numeric">{{ formatTokenCount(model.limits.context_tokens) }}</td>
     <td class="input-col price-cell numeric">
-      <strong>{{ formatPrice(inputRate) }}</strong>
+      <span class="price-value">{{ formatPrice(inputRate) }}</span>
       <small v-if="inputRateUnit">{{ inputRateUnit }}</small>
     </td>
     <td class="output-col price-cell numeric">
-      <strong>{{ formatPrice(outputRate) }}</strong>
+      <span class="price-value">{{ formatPrice(outputRate) }}</span>
       <small v-if="outputRateUnit">{{ outputRateUnit }}</small>
     </td>
     <td class="updated-col numeric">
