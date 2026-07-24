@@ -1,6 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import { darkProviderSymbolId, providerSymbolId } from "../icons/sprite.ts";
+import { providerSymbolId } from "../icons/sprite.ts";
 
 const props = defineProps<{
   providerId: string;
@@ -8,7 +8,6 @@ const props = defineProps<{
 }>();
 
 const icon = computed(() => providerSymbolId(props.providerId));
-const darkIcon = computed(() => darkProviderSymbolId(props.providerId));
 const fallback = computed(() => props.providerName.slice(0, 1).toLocaleUpperCase());
 </script>
 
@@ -16,9 +15,6 @@ const fallback = computed(() => props.providerName.slice(0, 1).toLocaleUpperCase
   <span class="provider-icon" :data-provider="providerId" aria-hidden="true">
     <svg v-if="icon" class="provider-icon-art" viewBox="0 0 24 24">
       <use :href="`#${icon}`"></use>
-    </svg>
-    <svg v-if="darkIcon" class="provider-icon-art provider-icon-art-dark" viewBox="0 0 24 24">
-      <use :href="`#${darkIcon}`"></use>
     </svg>
     <span class="provider-icon-fallback" v-if="!icon">{{ fallback }}</span>
   </span>
