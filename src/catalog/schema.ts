@@ -8,26 +8,34 @@ const modelDate = z.union([
 ]);
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
-export const modelTypeSchema = z.enum([
-  "generate",
-  "agentic",
+export const modelOperationSchema = z.enum([
+  "text_generation",
   "embeddings",
+  "reranking",
+  "image_generation",
+  "video_generation",
   "audio_generation",
-  "audio_speech",
-  "audio_transcription",
-  "audio_translation",
-  "image",
-  "video",
-  "realtime",
-  "rerank",
+  "speech_synthesis",
+  "transcription",
+  "translation",
+  "speech_to_speech",
   "moderation",
   "classification",
   "ocr",
-  "other",
+  "object_detection",
+  "segmentation",
 ]);
 
 export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
+export const modelLifecycleSchema = z.enum([
+  "active",
+  "legacy",
+  "deprecated",
+  "retired",
+  "unknown",
+]);
+export const modelReleaseStageSchema = z.enum(["stable", "preview", "experimental", "unknown"]);
 export const sourceKindSchema = z.enum(["api", "website", "repository"]);
 export const sourceAccessSchema = z.enum(["public", "authenticated", "configured"]);
 export const sourceFormatSchema = z.enum(["json", "html", "markdown", "mixed"]);
@@ -135,10 +143,7 @@ export const providerModelSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   aliases: z.array(z.string().min(1)),
-  types: z
-    .array(modelTypeSchema)
-    .min(1)
-    .transform((types) => [...new Set(types)]),
+  operations: z.array(modelOperationSchema).transform((operations) => [...new Set(operations)]),
   raw_type: z.string().optional(),
   service_families: z.array(z.string().min(1)).min(1).optional(),
   api_endpoints: z
@@ -179,8 +184,8 @@ export const providerModelSchema = z.object({
   updated_date: modelDate.optional(),
   deprecated_at: z.string().optional(),
   retired_at: z.string().optional(),
-  status: z.enum(["active", "preview", "deprecated", "retired", "unknown"]),
-  is_deprecated: triStateSchema.default("unknown"),
+  status: modelLifecycleSchema,
+  release_stage: modelReleaseStageSchema,
   replacement_model_ids: z.array(z.string().min(1)).default([]),
   pricing_status: z.enum([
     "published",
@@ -288,7 +293,9 @@ export type Catalog = z.infer<typeof catalogSchema>;
 export type CatalogWarning = z.infer<typeof catalogWarningSchema>;
 export type Coverage = z.infer<typeof coverageSchema>;
 export type ModelRoute = z.infer<typeof modelRouteSchema>;
-export type ModelType = z.infer<typeof modelTypeSchema>;
+export type ModelLifecycle = z.infer<typeof modelLifecycleSchema>;
+export type ModelOperation = z.infer<typeof modelOperationSchema>;
+export type ModelReleaseStage = z.infer<typeof modelReleaseStageSchema>;
 export type Modality = z.infer<typeof modalitySchema>;
 export type PriceRate = z.infer<typeof priceRateSchema>;
 export type Provider = z.infer<typeof providerSchema>;

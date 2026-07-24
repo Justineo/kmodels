@@ -4,11 +4,12 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import { orderedOperations } from "./operation.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -766,11 +767,11 @@ function currentModels(
   };
   const languageModels = language.map((value) => {
     const multiAgent = value.aliases.includes("grok-4.20-multi-agent");
-    const status = preview(value.name, value.aliases, llms, releases) ? "preview" : "active";
+    const releaseStage = preview(value.name, value.aliases, llms, releases) ? "preview" : "unknown";
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      types: multiAgent ? ["generate", "agentic"] : ["generate"],
+      operations: ["text_generation"],
       api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
@@ -792,8 +793,8 @@ function currentModels(
           multiAgent || value.features.reasoningEffortOptions !== undefined ? true : "unknown",
       },
       limits: { context_tokens: value.maxPromptLength },
-      status,
-      is_deprecated: false,
+      status: "active",
+      release_stage: releaseStage,
       pricing_status: "published",
       pricing: [...textRates(value, input.source.id), ...tools],
     });
@@ -820,11 +821,10 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      types: ["embeddings"],
+      operations: ["embeddings"],
       api_endpoints: endpoints.get(value.name),
       modalities: { input: upperModalities(value.inputModalities), output: ["embedding"] },
       status: "active",
-      is_deprecated: false,
       pricing_status: rates.length > 0 ? "published" : "unknown",
       pricing: rates,
     });
@@ -840,7 +840,7 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      types: ["image"],
+      operations: ["image_generation"],
       api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
@@ -848,7 +848,6 @@ function currentModels(
       },
       capabilities: { ...unknownCapabilities(), batch: true },
       status: "active",
-      is_deprecated: false,
       pricing_status: "published",
       pricing: rates,
     });
@@ -868,7 +867,7 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      types: ["video"],
+      operations: ["video_generation"],
       api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
@@ -876,7 +875,6 @@ function currentModels(
       },
       capabilities: { ...unknownCapabilities(), batch: true },
       status: "active",
-      is_deprecated: false,
       pricing_status: "published",
       pricing: rates,
     });
@@ -930,7 +928,7 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
     return model(input, row.id, {
       description: row.description,
       aliases: isLatest ? [latestAlias] : [],
-      types: ["agentic", "realtime"],
+      operations: ["text_generation", "speech_to_speech"],
       api_endpoints: [endpoint],
       modalities: { input: ["text", "audio"], output: ["text", "audio"] },
       capabilities: {
@@ -942,7 +940,6 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
       },
       release_date: releaseDate(releases, row.id, row.id),
       status: row.deprecated ? "deprecated" : "active",
-      is_deprecated: row.deprecated,
       pricing_status: "published",
       pricing: rates,
     });
@@ -976,12 +973,11 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
   return retired.map((id) => {
     const image = id === "grok-imagine-image-pro";
     return model(input, id, {
-      types: image ? ["image"] : ["generate"],
+      operations: image ? ["image_generation"] : ["text_generation"],
       release_date: releaseDate(releases, id, id),
       deprecated_at: date,
       retired_at: date,
       status: isRetired ? "retired" : "deprecated",
-      is_deprecated: true,
       replacement_model_ids: [replacements.get(id) ?? ""].filter(Boolean),
     });
   });
@@ -994,7 +990,7 @@ function combine(models: ProviderModel[]): ProviderModel[] {
   const rank = new Map<ProviderModel["status"], number>([
     ["unknown", 0],
     ["active", 1],
-    ["preview", 2],
+    ["legacy", 2],
     ["deprecated", 3],
     ["retired", 4],
   ]);
@@ -1009,7 +1005,7 @@ function combine(models: ProviderModel[]): ProviderModel[] {
       name: current.name === current.model_id ? value.name : current.name,
       description: value.description ?? current.description,
       aliases: unique([...current.aliases, ...value.aliases]),
-      types: unique([...current.types, ...value.types]),
+      operations: orderedOperations([...current.operations, ...value.operations]),
       modalities: {
         input: unique([...current.modalities.input, ...value.modalities.input]),
         output: unique([...current.modalities.output, ...value.modalities.output]),
@@ -1049,7 +1045,8 @@ function combine(models: ProviderModel[]): ProviderModel[] {
         (rank.get(value.status) ?? 0) > (rank.get(current.status) ?? 0)
           ? value.status
           : current.status,
-      is_deprecated: known(current.is_deprecated, value.is_deprecated),
+      release_stage:
+        value.release_stage === "unknown" ? current.release_stage : value.release_stage,
       replacement_model_ids: unique([
         ...current.replacement_model_ids,
         ...value.replacement_model_ids,
@@ -1097,16 +1094,16 @@ export function parseXaiApi(input: ParseInput): ProviderModel[] {
         ? imageApiSchema
         : videoApiSchema;
   const values = z.object({ models: z.array(schema).min(1) }).parse(JSON.parse(input.body)).models;
-  const type: ModelType =
+  const type: ModelOperation =
     extractor.category === "language"
-      ? "generate"
+      ? "text_generation"
       : extractor.category === "image"
-        ? "image"
-        : "video";
+        ? "image_generation"
+        : "video_generation";
   return values.map((value) =>
     model(input, value.id, {
       aliases: value.aliases,
-      types: [type],
+      operations: [type],
       modalities: { input: value.input_modalities, output: value.output_modalities },
       scope: "runtime_observation",
     }),

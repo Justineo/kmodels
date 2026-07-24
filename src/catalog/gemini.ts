@@ -2,20 +2,20 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
+import { classifyModelOperations, orderedOperations } from "./operation.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   modalitySchema,
-  modelTypeSchema,
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -28,6 +28,7 @@ interface Card {
   name: string;
   description: string | undefined;
   status: ProviderModel["status"];
+  releaseStage: ProviderModel["release_stage"];
 }
 
 type LoadedDocument = ReturnType<typeof load>;
@@ -36,7 +37,7 @@ type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 interface MethodFact {
   pathField?: "model" | "batch.model";
   path?: string;
-  types?: ModelType[];
+  operations?: ModelOperation[];
   streaming?: true;
   batch?: true;
 }
@@ -55,22 +56,27 @@ const months = new Map([
   ["November", "11"],
   ["December", "12"],
 ]);
-const typeOrder = new Map(modelTypeSchema.options.map((type, index) => [type, index]));
 const modalityOrder = new Map(modalitySchema.options.map((modality, index) => [modality, index]));
 const livePath =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 const methodFacts = new Map<string, MethodFact>([
-  ["asyncBatchEmbedContent", { pathField: "batch.model", types: ["embeddings"], batch: true }],
-  ["batchEmbedContents", { pathField: "model", types: ["embeddings"], batch: true }],
-  ["batchGenerateContent", { pathField: "batch.model", types: ["generate"], batch: true }],
+  ["asyncBatchEmbedContent", { pathField: "batch.model", operations: ["embeddings"], batch: true }],
+  ["batchEmbedContents", { pathField: "model", operations: ["embeddings"], batch: true }],
+  [
+    "batchGenerateContent",
+    { pathField: "batch.model", operations: ["text_generation"], batch: true },
+  ],
   ["countTokens", { pathField: "model" }],
-  ["embedContent", { pathField: "model", types: ["embeddings"] }],
-  ["generateContent", { pathField: "model", types: ["generate"] }],
+  ["embedContent", { pathField: "model", operations: ["embeddings"] }],
+  ["generateContent", { pathField: "model", operations: ["text_generation"] }],
   ["predict", { pathField: "model" }],
   ["predictLongRunning", { pathField: "model" }],
-  ["streamGenerateContent", { pathField: "model", types: ["generate"], streaming: true }],
-  ["generateMessage", { types: ["generate"] }],
-  ["bidiGenerateContent", { path: livePath, types: ["realtime"], streaming: true }],
+  [
+    "streamGenerateContent",
+    { pathField: "model", operations: ["text_generation"], streaming: true },
+  ],
+  ["generateMessage", { operations: ["text_generation"] }],
+  ["bidiGenerateContent", { path: livePath, operations: ["speech_to_speech"], streaming: true }],
 ]);
 
 const apiItemSchema = z.object({
@@ -95,14 +101,6 @@ const apiListSchema = z.object({
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
-}
-
-function types(values: ModelType[]): ModelType[] {
-  const result = unique(values);
-  const known = result.filter((value) => value !== "other");
-  return (known.length === 0 ? result : known).sort(
-    (left, right) => (typeOrder.get(left) ?? 0) - (typeOrder.get(right) ?? 0),
-  );
 }
 
 function modalities(values: Modality[]): Modality[] {
@@ -131,15 +129,6 @@ function modelDate(value: string): string | undefined {
   return partialMonth === undefined || partial?.[2] === undefined
     ? undefined
     : `${partial[2]}-${partialMonth}`;
-}
-
-function status(value: string): ProviderModel["status"] {
-  const lower = value.toLowerCase();
-  if (lower.includes("shut down") || lower.includes("shutdown")) return "retired";
-  if (lower.includes("deprecated")) return "deprecated";
-  if (lower.includes("preview") || lower.includes("experimental")) return "preview";
-  if (lower.includes("stable")) return "active";
-  return "unknown";
 }
 
 function media(value: string): Modality[] {
@@ -206,25 +195,26 @@ function modelLimits(cell: Selection | undefined): ProviderModel["limits"] {
   const recommended = value.match(/Recommended:\s*([\d,\s]+)/i)?.[1];
   const exact = range === null ? token(value, /Output dimension size\s*([\d,]+)/i) : undefined;
   return {
-    context_tokens: input,
-    max_input_tokens: input,
-    max_output_tokens: output,
-    embedding_dimensions: exact === undefined ? undefined : [exact],
-    embedding_dimension_range:
-      range?.[1] === undefined || range[2] === undefined
-        ? undefined
-        : {
+    ...(input === undefined ? {} : { context_tokens: input, max_input_tokens: input }),
+    ...(output === undefined ? {} : { max_output_tokens: output }),
+    ...(exact === undefined ? {} : { embedding_dimensions: [exact] }),
+    ...(range?.[1] === undefined || range[2] === undefined
+      ? {}
+      : {
+          embedding_dimension_range: {
             min: Number(range[1].replaceAll(",", "")),
             max: Number(range[2].replaceAll(",", "")),
           },
-    recommended_embedding_dimensions:
-      recommended === undefined
-        ? undefined
-        : unique(
+        }),
+    ...(recommended === undefined
+      ? {}
+      : {
+          recommended_embedding_dimensions: unique(
             [...recommended.matchAll(/[\d,]+/g)]
               .map((match) => Number(match[0].replaceAll(",", "")))
               .filter((item) => Number.isSafeInteger(item) && item > 0),
           ),
+        }),
   };
 }
 
@@ -260,38 +250,39 @@ function modelCapabilities(
   return result;
 }
 
-function pageTypes(
+function pageOperations(
   title: string,
   codeLabel: string,
   modelModalities: ProviderModel["modalities"],
   capabilities: ProviderModel["capabilities"],
   capabilityCell: Selection | undefined,
-): ModelType[] {
-  const values: ModelType[] = [];
+): ModelOperation[] {
+  const values: ModelOperation[] = [];
   const lower = title.toLowerCase();
   const capabilityText = capabilityCell === undefined ? "" : text(capabilityCell.text());
   const agent = /agent code/i.test(codeLabel);
   const live = /Live API\s+Supported/i.test(capabilityText) || /\blive\b|realtime/i.test(lower);
-  if (agent) values.push("agentic");
+  if (agent) values.push("text_generation");
   if (!agent && modelModalities.output.includes("embedding")) values.push("embeddings");
-  if (!agent && modelModalities.output.includes("video")) values.push("video");
-  if (!agent && modelModalities.output.includes("image")) values.push("image");
+  if (!agent && modelModalities.output.includes("video")) values.push("video_generation");
+  if (!agent && modelModalities.output.includes("image")) values.push("image_generation");
   if (!agent && modelModalities.output.includes("audio")) {
     if (/lyria|music/i.test(title)) values.push("audio_generation");
-    else if (/translat/i.test(title)) values.push("audio_translation");
-    else if (/tts|text-to-speech/i.test(title)) values.push("audio_speech");
-    else if (live) values.push("realtime");
+    else if (/translat/i.test(title)) values.push("translation");
+    else if (/tts|text-to-speech/i.test(title)) values.push("speech_synthesis");
+    else if (live) values.push("speech_to_speech");
   }
   if (
     !agent &&
     modelModalities.output.includes("text") &&
     !/tts|text-to-speech|lyria|music/i.test(lower)
   )
-    values.push("generate");
-  if (/Image generation\s+Supported/i.test(capabilityText)) values.push("image");
-  if (live) values.push("realtime");
-  if (capabilities.computer_use === true) values.push("agentic");
-  return types(values.length === 0 ? ["other"] : values);
+    values.push("text_generation");
+  if (/Image generation\s+Supported/i.test(capabilityText)) values.push("image_generation");
+  if (live && modelModalities.input.includes("audio") && modelModalities.output.includes("audio"))
+    values.push("speech_to_speech");
+  if (capabilities.computer_use === true) values.push("text_generation");
+  return orderedOperations(values);
 }
 
 function cards(body: string): Map<string, Card> {
@@ -311,17 +302,22 @@ function cards(body: string): Map<string, Card> {
     if (name === "") return;
     const description =
       text(container.find(".description-centered,.gemini-model-desc").first().text()) || undefined;
-    const modelStatus = status(
-      text(container.find(".status-subtext,.model-status").first().text()),
-    );
+    const stage =
+      text(container.find(".status-subtext").first().text()) ||
+      text(container.find(".model-status").first().text());
+    const modelStatus = modelStateFromLabel(stage);
     const current = result.get(href);
     result.set(href, {
       name: current?.name ?? name,
       description: current?.description ?? description,
       status:
         current?.status === undefined || current.status === "unknown"
-          ? modelStatus
+          ? modelStatus.status
           : current.status,
+      releaseStage:
+        current?.releaseStage === undefined || current.releaseStage === "unknown"
+          ? modelStatus.release_stage
+          : current.releaseStage,
     });
   });
   return result;
@@ -378,56 +374,51 @@ function primaryPageModel(
           observedAt: input.observedAt,
         }),
         description: card?.description ?? description($),
-        types: pageTypes(title, codeLabel, modelModalities, capabilities, capabilityCell),
+        operations: pageOperations(title, codeLabel, modelModalities, capabilities, capabilityCell),
         modalities: modelModalities,
         capabilities,
         limits,
         updated_date: updated,
         status: modelStatus,
-        is_deprecated:
-          modelStatus === "deprecated" || modelStatus === "retired"
-            ? true
-            : modelStatus === "active" || modelStatus === "preview"
-              ? false
-              : "unknown",
+        release_stage: card?.releaseStage ?? "unknown",
       } satisfies ProviderModel;
     }),
     versionIds,
   };
 }
 
-function sectionTypes(section: string, id: string): ModelType[] {
+function sectionOperations(section: string, id: string): ModelOperation[] {
   const lower = section.toLowerCase();
-  const fallback: ModelType = lower.includes("embedding")
+  const fallback: ModelOperation = lower.includes("embedding")
     ? "embeddings"
     : lower.includes("imagen")
-      ? "image"
+      ? "image_generation"
       : lower.includes("veo")
-        ? "video"
+        ? "video_generation"
         : lower.includes("live api")
-          ? "realtime"
+          ? "speech_to_speech"
           : lower.includes("audio")
-            ? "audio_speech"
+            ? "speech_synthesis"
             : lower.includes("lyria")
               ? "audio_generation"
-              : lower.includes("robotics")
-                ? "agentic"
-                : "generate";
-  const classified = classifyModelTypes({
+              : "text_generation";
+  const classified = classifyModelOperations({
     modelId: id,
     name: id,
     rawType: undefined,
     modalities: { input: [], output: [] },
     fallback,
   });
-  return types(fallback === "audio_generation" ? [fallback, ...classified] : classified);
+  return orderedOperations(
+    fallback === "audio_generation" ? [fallback, ...classified] : classified,
+  );
 }
 
 function ensure(
   models: Map<string, ProviderModel>,
   input: Input,
   id: string,
-  modelTypes: ModelType[],
+  modelOperations: ModelOperation[],
 ): ProviderModel {
   const current = models.get(id);
   if (current !== undefined) return current;
@@ -439,7 +430,7 @@ function ensure(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: modelTypes,
+    operations: modelOperations,
   } satisfies ProviderModel;
   models.set(id, created);
   return created;
@@ -464,7 +455,7 @@ function applyLifecycle(models: Map<string, ProviderModel>, input: Input, body: 
           if (cells.length < 4) return;
           const id = text(cells.eq(0).find("code").first().text());
           if (!modelIdSchema.safeParse(id).success) return;
-          const item = ensure(models, input, id, sectionTypes(section, id));
+          const item = ensure(models, input, id, sectionOperations(section, id));
           const released = modelDate(text(cells.eq(1).text()));
           const shutdownText = text(cells.eq(2).text());
           const shutdown = modelDate(shutdownText);
@@ -480,15 +471,12 @@ function applyLifecycle(models: Map<string, ProviderModel>, input: Input, body: 
           item.release_date = released ?? item.release_date;
           item.retired_at = shutdown ?? item.retired_at;
           item.replacement_model_ids = unique([...item.replacement_model_ids, ...replacements]);
-          item.status = retired
-            ? "retired"
-            : shutdown === undefined
-              ? preview
-                ? "preview"
-                : "active"
-              : "deprecated";
-          item.is_deprecated = shutdown === undefined ? false : true;
-          item.types = types([...item.types, ...sectionTypes(section, id)]);
+          item.status = retired ? "retired" : shutdown === undefined ? "active" : "deprecated";
+          item.release_stage = preview ? "preview" : item.release_stage;
+          item.operations = orderedOperations([
+            ...item.operations,
+            ...sectionOperations(section, id),
+          ]);
         });
     });
   });
@@ -523,7 +511,7 @@ function applyGemma(
   if (ids.length !== 2) throw new Error("Gemma-on-Gemini supported-model list changed");
   const card = load(cardBody);
   for (const id of ids) {
-    const item = ensure(models, input, id, ["generate"]);
+    const item = ensure(models, input, id, ["text_generation"]);
     const needle = id.includes("26b-a4b") ? /26B A4B/i : /31B/i;
     card(".devsite-article-body table").each((_tableIndex, table) => {
       const headers = card(table).find("tr").first().find("th,td");
@@ -550,7 +538,6 @@ function applyGemma(
     item.capabilities.reasoning = true;
     item.capabilities.tool_call = true;
     item.status = "active";
-    item.is_deprecated = false;
     item.pricing_status = "not_published";
   }
 }
@@ -712,13 +699,13 @@ function meterRates(
     return [{ meter: "image_generation", conditions: baseConditions }];
   if (
     /video (?:generation|price)/.test(lower) ||
-    (unit === "second" && model.types.includes("video"))
+    (unit === "second" && model.operations.includes("video_generation"))
   )
     return [{ meter: "video_generation", conditions: baseConditions }];
   if (
     lower.includes("lyria") ||
     lower.includes("song") ||
-    (model.types.includes("audio_generation") && /per song/i.test(segment))
+    (model.operations.includes("audio_generation") && /per song/i.test(segment))
   )
     return [
       {
@@ -734,7 +721,7 @@ function meterRates(
       conditions: { ...baseConditions, modality },
     }));
   }
-  const embedding = model.types.includes("embeddings");
+  const embedding = model.operations.includes("embeddings");
   const input = lower.includes("input price");
   const output = lower.includes("output price");
   const cache = lower.includes("context caching price");
@@ -1011,7 +998,7 @@ function applyInteractions(
   for (const [id, kind] of supported) {
     const model = models.get(id);
     if (model === undefined) throw new Error(`Gemini Interactions references unknown model: ${id}`);
-    if (kind === "Agent" && !model.types.includes("agentic"))
+    if (kind === "Agent" && !model.operations.includes("text_generation"))
       throw new Error(`Gemini Interactions agent classification changed: ${id}`);
     model.api_endpoints = [endpoint];
   }
@@ -1081,7 +1068,7 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
     });
     const methodsReviewed =
       item.supportedGenerationMethods !== undefined && facts.length === methods.length;
-    const modelTypes = facts.flatMap((fact): ModelType[] => fact.types ?? ["other"]);
+    const modelOperations = facts.flatMap((fact): ModelOperation[] => fact.operations ?? []);
     const endpoints = facts.flatMap(({ method, path, pathField }): ApiEndpoint[] => {
       if (pathField !== undefined)
         return [{ name: method, path: `/v1beta/models/${id}:${method}` }];
@@ -1100,7 +1087,7 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
         description: item.description,
         aliases:
           item.baseModelId === undefined || item.baseModelId === id ? [] : [item.baseModelId],
-        types: types(modelTypes.length === 0 ? ["other"] : modelTypes),
+        operations: orderedOperations(modelOperations),
         api_endpoints: endpoints.length === 0 ? undefined : endpoints,
         capabilities: {
           ...unknownCapabilities(),

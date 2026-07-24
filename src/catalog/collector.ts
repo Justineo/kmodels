@@ -10,6 +10,7 @@ import {
 } from "./manifests.ts";
 import { readJson, rootDirectory, sha256, stableJson, writeJson } from "./io.ts";
 import { isCredentialLikeIdentifier } from "./identity.ts";
+import { normalizeModelReleaseStage } from "./lifecycle.ts";
 import { apiEndpointKey, modelRouteKey } from "./model.ts";
 import {
   catalogSchema,
@@ -21,7 +22,7 @@ import {
   type SourceRecord,
 } from "./schema.ts";
 import { preserveMissing, validateProvider } from "./validation.ts";
-import { normalizeModelTypes } from "./task.ts";
+import { normalizeModelOperations } from "./operation.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -60,7 +61,8 @@ function previousModels(catalog: Catalog | undefined, providerId: string): Provi
       .filter(
         (model) => model.provider_id === providerId && !isCredentialLikeIdentifier(model.model_id),
       )
-      .map(normalizeModelTypes) ?? []
+      .map(normalizeModelReleaseStage)
+      .map(normalizeModelOperations) ?? []
   );
 }
 
@@ -120,7 +122,7 @@ function applyFields(
   const fields = new Set(source.fields);
   const incomingModalities =
     incoming.modalities.input.length + incoming.modalities.output.length > 0;
-  const incomingType = incoming.types.some((type) => type !== "other");
+  const incomingOperations = incoming.operations.length > 0;
   const incomingPricing = incoming.pricing.length > 0 || incoming.pricing_status !== "unknown";
   const serviceFamilies = [
     ...new Set([...(current.service_families ?? []), ...(incoming.service_families ?? [])]),
@@ -139,12 +141,14 @@ function applyFields(
     aliases: fields.has("aliases")
       ? [...new Set([...current.aliases, ...incoming.aliases])]
       : current.aliases,
-    types:
-      fields.has("types") && incomingType
-        ? [...new Set([...current.types.filter((type) => type !== "other"), ...incoming.types])]
-        : current.types,
+    operations:
+      fields.has("operations") && incomingOperations
+        ? [...new Set([...current.operations, ...incoming.operations])]
+        : current.operations,
     raw_type:
-      fields.has("types") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
+      fields.has("operations") && incoming.raw_type !== undefined
+        ? incoming.raw_type
+        : current.raw_type,
     service_families: fields.has("service_families")
       ? serviceFamilies.length === 0
         ? undefined
@@ -229,9 +233,10 @@ function applyFields(
         : current.retired_at,
     status:
       fields.has("status") && incoming.status !== "unknown" ? incoming.status : current.status,
-    is_deprecated: fields.has("is_deprecated")
-      ? known(current.is_deprecated, incoming.is_deprecated)
-      : current.is_deprecated,
+    release_stage:
+      fields.has("release_stage") && incoming.release_stage !== "unknown"
+        ? incoming.release_stage
+        : current.release_stage,
     replacement_model_ids: fields.has("replacement_model_ids")
       ? [...new Set([...current.replacement_model_ids, ...incoming.replacement_model_ids])]
       : current.replacement_model_ids,
@@ -582,7 +587,7 @@ async function collectProvider(
         );
       candidate = applyGroups(candidate, [inventory], false);
     }
-    candidate = candidate.map(normalizeModelTypes);
+    candidate = candidate.map(normalizeModelReleaseStage).map(normalizeModelOperations);
     const validation = validateProvider(candidate, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
     const models = preserveMissing(candidate, comparableOldModels);

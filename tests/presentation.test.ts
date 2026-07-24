@@ -5,6 +5,7 @@ import {
   perMillionTokenRate,
 } from "../src/catalog/presentation.ts";
 import type { PriceRate } from "../src/catalog/schema.ts";
+import { svgSymbol } from "../src/icons/svg.ts";
 
 function rate(price: string, unit: PriceRate["unit"]): PriceRate {
   return {
@@ -43,5 +44,18 @@ describe("rate presentation", () => {
   it("omits the table default while preserving exceptional units", () => {
     expect(formatTableRateUnit(rate("2", "million_tokens"))).toBe("");
     expect(formatTableRateUnit(rate("4", "million_characters"))).toBe("/1M characters");
+  });
+});
+
+describe("SVG sprite", () => {
+  it("preserves presentation attributes and scopes definition references", () => {
+    const symbol = svgSymbol(
+      "provider-test",
+      '<svg viewBox="0 0 24 24" fill="currentColor"><defs><linearGradient id="paint"></linearGradient></defs><path fill="url(#paint)"></path></svg>',
+    );
+
+    expect(symbol).toContain('<symbol id="provider-test" viewBox="0 0 24 24" fill="currentColor">');
+    expect(symbol).toContain('id="provider-test-paint"');
+    expect(symbol).toContain('fill="url(#provider-test-paint)"');
   });
 });

@@ -4,7 +4,7 @@ Status: reviewed against catalog snapshot `2026-07-23T13:05:45.554Z`, the live d
 
 ## Catalog assessment
 
-The 379 rows are plausible because the regional catalog unions eleven independent official capability, pricing, and lifecycle pages across text, vision, image, video, speech, omni, embeddings, and reranking. Sixty-one rows expose multiple operation types. The snapshot contains 308 active, 47 deprecated, 17 retired, and seven preview rows, with 3,069 condition-preserving price rates.
+The 379 rows are plausible because the regional catalog unions eleven independent official capability, pricing, and lifecycle pages across text, vision, image, video, speech, omni, embeddings, and reranking. Twenty-five rows expose multiple normalized operations. The lifecycle snapshot contains 315 active, 47 deprecated, and 17 retired rows; release maturity is separate, with nine preview and one experimental rows. The catalog retains 3,069 condition-preserving price rates.
 
 This is a regional, non-exhaustive catalog. Thirty-five rows lack pricing, 264 lack context limits, and model release/update dates are mostly unavailable. The optional Singapore deployment request succeeds and currently returns one complete page of 16 account-visible base models: eleven expose `ptu_v2` and eight expose `mu`, with some models supporting both. The live response omits the unused request ID. Although the international English reference still lists `ptu`, Alibaba's current deployment reference and live response establish `ptu_v2`; Kmodels accepts both exact structured values, preserves the observed plan, and keeps it region- and account-scoped.
 
@@ -16,7 +16,7 @@ The Kong source of truth is `app/ai-gateway/ai-providers/dashscope.md` and the D
 
 Kong supports only chat generation, embeddings, and image operations against the mainland or international Dashscope hosts. Kmodels also correctly catalogs audio generation, speech, transcription, translation, video, realtime, rerank, OCR, and classification, but those operations are outside this Kong provider matrix.
 
-The Kong examples `qwen-plus` and `qwen-image-plus` are active, but neither appears in the current recommended-card overlay with a complete request URL, so their broad type and lifecycle facts alone do not make them endpoint candidates. The current overlay does publish exact international embedding evidence for `text-embedding-v4` and exact image evidence for `qwen-image-2.0-pro`.
+The Kong examples `qwen-plus` and `qwen-image-plus` are active, but neither appears in the current recommended-card overlay with a complete request URL, so their broad operation and lifecycle facts alone do not make them endpoint candidates. The current overlay does publish exact international embedding evidence for `text-embedding-v4` and exact image evidence for `qwen-image-2.0-pro`.
 
 `text-embedding-v1` is absent from the current embedding catalog and decommissioning page. A legacy Alibaba model-overview document last updated in 2024 confirms that the ID once existed, but it does not establish current availability. The Kong example is therefore historical documentation drift rather than a reason to restore a current Kmodels row.
 

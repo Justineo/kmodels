@@ -1,15 +1,21 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
-import { formatCount, formatModelType } from "./catalog/presentation.ts";
+import { formatCount, formatModelOperation } from "./catalog/presentation.ts";
 import {
   catalogEnvelopeSchema,
-  type ModelType,
+  modelLifecycleSchema,
+  modelReleaseStageSchema,
+  type ModelLifecycle,
+  type ModelOperation,
+  type ModelReleaseStage,
   type Provider,
   type ProviderModel,
   type SourceRecord,
 } from "./catalog/schema.ts";
+import { orderedOperations } from "./catalog/operation.ts";
 import { calculateVirtualRange } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
+import IconSprite from "./components/IconSprite.vue";
 import ModelDetails from "./components/ModelDetails.vue";
 import ModelRow from "./components/ModelRow.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
@@ -22,15 +28,12 @@ const OVERSCAN_ROWS = 8;
 
 type SortKey = "name" | "provider" | "context" | "updated";
 type SortDirection = "ascending" | "descending";
-type ModelStatus = ProviderModel["status"];
-
-const STATUS_OPTIONS: readonly ModelStatus[] = [
-  "active",
-  "preview",
-  "deprecated",
-  "retired",
-  "unknown",
-];
+type SortState = {
+  key: SortKey;
+  direction: SortDirection;
+};
+const LIFECYCLE_OPTIONS = modelLifecycleSchema.options;
+const RELEASE_STAGE_OPTIONS = modelReleaseStageSchema.options;
 
 const models = ref<ProviderModel[]>([]);
 const providers = ref<Provider[]>([]);
@@ -38,13 +41,13 @@ const sources = ref<SourceRecord[]>([]);
 const generatedAt = ref("");
 const query = ref("");
 const selectedProvider = ref("");
-const selectedTypes = ref<ModelType[]>([]);
-const selectedStatuses = ref<ModelStatus[]>([]);
+const selectedOperations = ref<ModelOperation[]>([]);
+const selectedLifecycles = ref<ModelLifecycle[]>([]);
+const selectedReleaseStages = ref<ModelReleaseStage[]>([]);
 const loading = ref(true);
 const loadError = ref<string>();
 const selectedModel = ref<ProviderModel>();
-const sortKey = ref<SortKey>("name");
-const sortDirection = ref<SortDirection>("ascending");
+const sort = ref<SortState>();
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
 const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
 const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
@@ -75,8 +78,8 @@ const providerNames = computed(
 const providerOptions = computed(() =>
   [...providers.value].sort((left, right) => left.name.localeCompare(right.name)),
 );
-const typeOptions = computed(() =>
-  [...new Set(models.value.flatMap((model) => model.types))].sort(),
+const operationOptions = computed(() =>
+  orderedOperations(models.value.flatMap((model) => model.operations)),
 );
 const filteredModels = computed(() => {
   const normalizedQuery = query.value.trim().toLocaleLowerCase();
@@ -84,11 +87,16 @@ const filteredModels = computed(() => {
     (model) =>
       (normalizedQuery === "" || model.name.toLocaleLowerCase().includes(normalizedQuery)) &&
       (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
-      (selectedTypes.value.length === 0 ||
-        model.types.some((modelType) => selectedTypes.value.includes(modelType))) &&
-      (selectedStatuses.value.length === 0 || selectedStatuses.value.includes(model.status)),
+      (selectedOperations.value.length === 0 ||
+        model.operations.some((operation) => selectedOperations.value.includes(operation))) &&
+      (selectedLifecycles.value.length === 0 || selectedLifecycles.value.includes(model.status)) &&
+      (selectedReleaseStages.value.length === 0 ||
+        selectedReleaseStages.value.includes(model.release_stage)),
   );
-  values.sort(compareModels);
+  const activeSort = sort.value;
+  if (activeSort) {
+    values.sort((left, right) => compareModels(left, right, activeSort));
+  }
   return values;
 });
 const virtualModels = computed(() =>
@@ -98,11 +106,15 @@ const hasFilters = computed(
   () =>
     query.value !== "" ||
     selectedProvider.value !== "" ||
-    selectedTypes.value.length > 0 ||
-    selectedStatuses.value.length > 0,
+    selectedOperations.value.length > 0 ||
+    selectedLifecycles.value.length > 0 ||
+    selectedReleaseStages.value.length > 0,
 );
 const advancedFilterCount = computed(
-  () => selectedTypes.value.length + selectedStatuses.value.length,
+  () =>
+    selectedOperations.value.length +
+    selectedLifecycles.value.length +
+    selectedReleaseStages.value.length,
 );
 const generatedAtLabel = computed(() => {
   if (generatedAt.value === "") return "—";
@@ -144,29 +156,33 @@ function compareOptionalString(
   return direction === "ascending" ? comparison : -comparison;
 }
 
-function compareModels(left: ProviderModel, right: ProviderModel): number {
+function compareModels(
+  left: ProviderModel,
+  right: ProviderModel,
+  { key, direction }: SortState,
+): number {
   let comparison: number;
-  switch (sortKey.value) {
+  switch (key) {
     case "name":
       comparison = left.name.localeCompare(right.name);
-      if (sortDirection.value === "descending") comparison *= -1;
+      if (direction === "descending") comparison *= -1;
       break;
     case "provider":
       comparison = providerName(left.provider_id).localeCompare(providerName(right.provider_id));
-      if (sortDirection.value === "descending") comparison *= -1;
+      if (direction === "descending") comparison *= -1;
       break;
     case "context":
       comparison = compareOptionalNumber(
         left.limits.context_tokens,
         right.limits.context_tokens,
-        sortDirection.value,
+        direction,
       );
       break;
     case "updated":
       comparison = compareOptionalString(
         left.updated_date ?? left.release_date,
         right.updated_date ?? right.release_date,
-        sortDirection.value,
+        direction,
       );
       break;
   }
@@ -178,41 +194,48 @@ function providerName(providerId: string): string {
 }
 
 function setSort(nextKey: SortKey): void {
-  if (sortKey.value === nextKey) {
-    sortDirection.value = sortDirection.value === "ascending" ? "descending" : "ascending";
+  const current = sort.value;
+  if (current?.key !== nextKey) {
+    sort.value = { key: nextKey, direction: "ascending" };
     return;
   }
-  sortKey.value = nextKey;
-  sortDirection.value = "ascending";
+
+  sort.value =
+    current.direction === "ascending" ? { key: nextKey, direction: "descending" } : undefined;
 }
 
 function ariaSort(key: SortKey): "ascending" | "descending" | "none" {
-  return sortKey.value === key ? sortDirection.value : "none";
+  return sort.value?.key === key ? sort.value.direction : "none";
 }
 
 function resetFilters(): void {
   query.value = "";
   selectedProvider.value = "";
-  selectedTypes.value = [];
-  selectedStatuses.value = [];
-  searchInput.value?.focus();
+  selectedOperations.value = [];
+  selectedLifecycles.value = [];
+  selectedReleaseStages.value = [];
 }
 
 function clearAdvancedFilters(): void {
-  selectedTypes.value = [];
-  selectedStatuses.value = [];
+  selectedOperations.value = [];
+  selectedLifecycles.value = [];
+  selectedReleaseStages.value = [];
 }
 
 function filterProvider(providerId: string): void {
   selectedProvider.value = providerId;
 }
 
-function filterType(modelType: ModelType): void {
-  selectedTypes.value = [modelType];
+function filterOperation(operation: ModelOperation): void {
+  selectedOperations.value = [operation];
 }
 
-function filterStatus(status: ModelStatus): void {
-  selectedStatuses.value = [status];
+function filterLifecycle(lifecycle: ModelLifecycle): void {
+  selectedLifecycles.value = [lifecycle];
+}
+
+function filterReleaseStage(releaseStage: ModelReleaseStage): void {
+  selectedReleaseStages.value = [releaseStage];
 }
 
 function handleFilterToggle(event: ToggleEvent): void {
@@ -284,6 +307,8 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <IconSprite />
+
   <header class="site-header">
     <h1 id="page-title">
       <a class="brand" href="/" aria-label="Kmodels home">Kmodels</a>
@@ -392,24 +417,55 @@ onUnmounted(() => {
                 <fieldset class="filter-group">
                   <legend>Operations</legend>
                   <div class="filter-options">
-                    <label v-for="modelType in typeOptions" :key="modelType" class="filter-option">
-                      <input v-model="selectedTypes" type="checkbox" :value="modelType" />
-                      <span>{{ formatModelType(modelType) }}</span>
+                    <label
+                      v-for="operation in operationOptions"
+                      :key="operation"
+                      class="filter-option"
+                    >
+                      <input v-model="selectedOperations" type="checkbox" :value="operation" />
+                      <span>{{ formatModelOperation(operation) }}</span>
                     </label>
                   </div>
                 </fieldset>
 
                 <fieldset class="filter-group">
-                  <legend>Status</legend>
+                  <legend>Lifecycle</legend>
                   <div class="filter-options">
-                    <label v-for="status in STATUS_OPTIONS" :key="status" class="filter-option">
-                      <input v-model="selectedStatuses" type="checkbox" :value="status" />
+                    <label
+                      v-for="lifecycle in LIFECYCLE_OPTIONS"
+                      :key="lifecycle"
+                      class="filter-option"
+                    >
+                      <input v-model="selectedLifecycles" type="checkbox" :value="lifecycle" />
                       <span
                         class="filter-status-dot"
-                        :data-status="status"
+                        :data-status="lifecycle"
                         aria-hidden="true"
                       ></span>
-                      <span class="status-filter-label">{{ status }}</span>
+                      <span class="status-filter-label">{{ lifecycle }}</span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="filter-group">
+                  <legend>Release stage</legend>
+                  <div class="filter-options">
+                    <label
+                      v-for="releaseStage in RELEASE_STAGE_OPTIONS"
+                      :key="releaseStage"
+                      class="filter-option"
+                    >
+                      <input
+                        v-model="selectedReleaseStages"
+                        type="checkbox"
+                        :value="releaseStage"
+                      />
+                      <span
+                        class="filter-status-dot"
+                        :data-status="releaseStage"
+                        aria-hidden="true"
+                      ></span>
+                      <span class="status-filter-label">{{ releaseStage }}</span>
                     </label>
                   </div>
                 </fieldset>
@@ -448,14 +504,14 @@ onUnmounted(() => {
                 <th class="model-col" scope="col" :aria-sort="ariaSort('name')">
                   <ColumnSortButton
                     label="Model"
-                    :direction="sortKey === 'name' ? sortDirection : undefined"
+                    :direction="sort?.key === 'name' ? sort.direction : undefined"
                     @sort="setSort('name')"
                   />
                 </th>
                 <th class="provider-col" scope="col" :aria-sort="ariaSort('provider')">
                   <ColumnSortButton
                     label="Provider"
-                    :direction="sortKey === 'provider' ? sortDirection : undefined"
+                    :direction="sort?.key === 'provider' ? sort.direction : undefined"
                     @sort="setSort('provider')"
                   />
                 </th>
@@ -464,7 +520,7 @@ onUnmounted(() => {
                 <th class="context-col numeric" scope="col" :aria-sort="ariaSort('context')">
                   <ColumnSortButton
                     label="Context"
-                    :direction="sortKey === 'context' ? sortDirection : undefined"
+                    :direction="sort?.key === 'context' ? sort.direction : undefined"
                     @sort="setSort('context')"
                   />
                 </th>
@@ -487,7 +543,7 @@ onUnmounted(() => {
                 <th class="updated-col numeric" scope="col" :aria-sort="ariaSort('updated')">
                   <ColumnSortButton
                     label="Updated"
-                    :direction="sortKey === 'updated' ? sortDirection : undefined"
+                    :direction="sort?.key === 'updated' ? sort.direction : undefined"
                     @sort="setSort('updated')"
                   />
                 </th>
@@ -510,8 +566,9 @@ onUnmounted(() => {
                 :selected="selectedModel?.uid === model.uid"
                 @select="selectedModel = $event"
                 @filter-provider="filterProvider"
-                @filter-type="filterType"
-                @filter-status="filterStatus"
+                @filter-operation="filterOperation"
+                @filter-lifecycle="filterLifecycle"
+                @filter-release-stage="filterReleaseStage"
               />
               <tr v-if="virtualRange.paddingAfter > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="9" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>

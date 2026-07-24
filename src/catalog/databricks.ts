@@ -13,7 +13,7 @@ import {
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes, normalizeModelTypes } from "./task.ts";
+import { classifyModelOperations, normalizeModelOperations } from "./operation.ts";
 
 interface Input {
   provider: Provider;
@@ -175,17 +175,20 @@ function parseModels(input: Input): ProviderModel[] {
         ? ["embedding"]
         : ["text"];
     const modelModalities = { input: inputModalities, output: outputModalities };
-    const types = classifyModelTypes({
+    const operations = classifyModelOperations({
       modelId: id,
       name,
       rawType: undefined,
       modalities: modelModalities,
-      fallback: "generate",
+      fallback: "text_generation",
     });
     const deprecated = /\bis deprecated\b|\bwill be retired\b|\bplanned for retirement\b/i.test(
       content,
     );
     const preview = /\bPublic Preview\b|\bis in Preview\b/i.test(content);
+    const contextTokens = contextLimit(content);
+    const maxOutputTokens = outputLimit(content);
+    const embeddingDimensions = dimensions(content);
     models.push({
       ...baseModel({
         providerId: input.provider.id,
@@ -195,7 +198,7 @@ function parseModels(input: Input): ProviderModel[] {
         observedAt: input.observedAt,
       }),
       description: summary,
-      types,
+      operations,
       modalities: modelModalities,
       capabilities: {
         ...unknownCapabilities(),
@@ -215,12 +218,12 @@ function parseModels(input: Input): ProviderModel[] {
         effort_control: /reasoning effort|effort level/i.test(content) ? true : "unknown",
       },
       limits: {
-        context_tokens: contextLimit(content),
-        max_output_tokens: outputLimit(content),
-        embedding_dimensions: dimensions(content),
+        ...(contextTokens === undefined ? {} : { context_tokens: contextTokens }),
+        ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
+        ...(embeddingDimensions === undefined ? {} : { embedding_dimensions: embeddingDimensions }),
       },
-      status: deprecated ? "deprecated" : preview ? "preview" : "active",
-      is_deprecated: deprecated,
+      status: deprecated ? "deprecated" : "active",
+      release_stage: preview ? "preview" : "unknown",
       scope: "regional_catalog",
     });
   });
@@ -318,11 +321,14 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
   const generalIds = new Set(general);
   const embeddingIds = new Set(embeddings);
   for (const model of models) {
-    const taskTypes: ProviderModel["types"] = [];
-    if (generalIds.has(model.model_id)) taskTypes.push("generate");
-    if (embeddingIds.has(model.model_id)) taskTypes.push("embeddings");
-    model.types = normalizeModelTypes({ ...model, types: [...taskTypes, ...model.types] }).types;
-    model.capabilities.streaming = taskTypes.includes("generate") ? true : "unknown";
+    const taskOperations: ProviderModel["operations"] = [];
+    if (generalIds.has(model.model_id)) taskOperations.push("text_generation");
+    if (embeddingIds.has(model.model_id)) taskOperations.push("embeddings");
+    model.operations = normalizeModelOperations({
+      ...model,
+      operations: [...taskOperations, ...model.operations],
+    }).operations;
+    model.capabilities.streaming = taskOperations.includes("text_generation") ? true : "unknown";
     model.api_endpoints = [
       {
         name: "Invocations",
@@ -529,7 +535,7 @@ function openPrices(
     const label = values[0];
     if (label === undefined) continue;
     for (const model of matched(models, label, true)) {
-      const embedding = model.types.includes("embeddings");
+      const embedding = model.operations.includes("embeddings");
       const input = rate(
         embedding ? "embedding" : "input_text",
         values[1] ?? "",
@@ -743,7 +749,6 @@ function applyLifecycle(models: ProviderModel[], body: string, observedAt: strin
         for (const model of matched(models, label, false)) {
           model.retired_at = retiredAt;
           model.status = retiredAt <= observedAt.slice(0, 10) ? "retired" : "deprecated";
-          model.is_deprecated = true;
           model.replacement_model_ids = [...new Set(replacements)].sort();
         }
       });
@@ -857,14 +862,14 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
 }
 
 function apiTask(value: string | undefined): {
-  type: ProviderModel["types"][number];
+  operation?: ProviderModel["operations"][number];
   modalities: ProviderModel["modalities"];
 } {
   if (value?.toLowerCase().includes("embedding"))
-    return { type: "embeddings", modalities: { input: ["text"], output: ["embedding"] } };
+    return { operation: "embeddings", modalities: { input: ["text"], output: ["embedding"] } };
   if (/\b(?:chat|completions?|responses?)\b/i.test(value ?? ""))
-    return { type: "generate", modalities: { input: ["text"], output: ["text"] } };
-  return { type: "other", modalities: { input: [], output: [] } };
+    return { operation: "text_generation", modalities: { input: ["text"], output: ["text"] } };
+  return { modalities: { input: [], output: [] } };
 }
 
 export function parseDatabricksApi(input: Input): ProviderModel[] {
@@ -883,7 +888,7 @@ export function parseDatabricksApi(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        types: [task.type],
+        operations: task.operation === undefined ? [] : [task.operation],
         modalities: task.modalities,
         scope: "runtime_observation",
       },

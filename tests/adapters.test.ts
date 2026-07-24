@@ -2,8 +2,10 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import { z } from "zod";
 import {
-  classifyModelTypes,
+  classifyModelOperations,
+  modelStateFromLabel,
   multiplyDecimal,
+  normalizeModelReleaseStage,
   parseSource,
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
@@ -565,41 +567,78 @@ describe("decimal normalization", () => {
   });
 });
 
-describe("model task taxonomy", () => {
-  it("normalizes operation families and permits multiple observed types", () => {
-    const types = (modelId: string): ReturnType<typeof classifyModelTypes> =>
-      classifyModelTypes({
+describe("model operation taxonomy", () => {
+  it("normalizes task semantics and permits multiple observed operations", () => {
+    const operations = (modelId: string): ReturnType<typeof classifyModelOperations> =>
+      classifyModelOperations({
         modelId,
         name: modelId,
         rawType: undefined,
         modalities: { input: [], output: [] },
-        fallback: "generate",
+        fallback: "text_generation",
       });
     expect([
-      types("text-embedding-3-large"),
-      types("cohere/rerank-v4-fast"),
-      types("gpt-4o-transcribe"),
-      types("gpt-image-2"),
-      types("gpt-realtime-2"),
-      types("computer-use-realtime-preview"),
-      types("voxtral-tts-26-03"),
-      types("amazon.titan-embed-image-v1"),
-      types("wan2.7-image-pro"),
-      types("claude-sonnet-5"),
-      types("translate-gemma"),
+      operations("text-embedding-3-large"),
+      operations("cohere/rerank-v4-fast"),
+      operations("gpt-4o-transcribe"),
+      operations("gpt-image-2"),
+      operations("gpt-realtime-2"),
+      operations("computer-use-realtime-preview"),
+      operations("voxtral-tts-26-03"),
+      operations("amazon.titan-embed-image-v1"),
+      operations("wan2.7-image-pro"),
+      operations("claude-sonnet-5"),
+      operations("translate-gemma"),
     ]).toEqual([
       ["embeddings"],
-      ["rerank"],
-      ["audio_transcription"],
-      ["image"],
-      ["realtime"],
-      ["agentic", "realtime"],
-      ["audio_speech"],
+      ["reranking"],
+      ["transcription"],
+      ["image_generation"],
+      ["text_generation"],
+      ["text_generation"],
+      ["speech_synthesis"],
       ["embeddings"],
-      ["image"],
-      ["generate"],
-      ["generate"],
+      ["image_generation"],
+      ["text_generation"],
+      ["translation"],
     ]);
+    expect(
+      classifyModelOperations({
+        modelId: "gpt-realtime-2",
+        name: "GPT Realtime 2",
+        rawType: undefined,
+        modalities: { input: ["audio"], output: ["audio"] },
+      }),
+    ).toEqual(["speech_to_speech"]);
+  });
+
+  it("keeps release maturity separate from lifecycle state", () => {
+    const model = baseModel({
+      providerId: "test",
+      id: "voice-exp",
+      name: "Voice experimental",
+      sourceId: "test-source",
+      observedAt,
+    });
+    expect(normalizeModelReleaseStage(model)).toMatchObject({
+      status: "unknown",
+      release_stage: "experimental",
+    });
+    expect(
+      normalizeModelReleaseStage({
+        ...model,
+        model_id: "voice-preview",
+        name: "Voice preview",
+        status: "deprecated",
+      }),
+    ).toMatchObject({
+      status: "deprecated",
+      release_stage: "preview",
+    });
+    expect(modelStateFromLabel("Deprecated · Preview")).toEqual({
+      status: "deprecated",
+      release_stage: "preview",
+    });
   });
 });
 
@@ -664,7 +703,7 @@ describe("Cohere adapters", () => {
       },
       arabic: {
         name: arabic?.name,
-        types: arabic?.types,
+        operations: arabic?.operations,
         modalities: arabic?.modalities,
         release: arabic?.release_date,
         pricing_status: arabic?.pricing_status,
@@ -736,7 +775,7 @@ describe("Cohere adapters", () => {
       },
       arabic: {
         name: "Cohere Transcribe Arabic",
-        types: ["audio_transcription"],
+        operations: ["transcription"],
         modalities: { input: ["audio"], output: ["text"] },
         release: "2026-07-07",
         pricing_status: "custom_quote",
@@ -761,41 +800,36 @@ describe("Cohere adapters", () => {
   it("treats the authenticated API as a complete scoped page", async () => {
     const models = await parsed("cohere", "cohere/api.json", "cohere-api");
     expect(
-      models.map(({ model_id, types, api_endpoints, limits, is_deprecated }) => ({
+      models.map(({ model_id, operations, api_endpoints, limits }) => ({
         model_id,
-        types,
+        operations,
         api_endpoints,
         limits,
-        is_deprecated,
       })),
     ).toEqual([
       {
         model_id: "command-r-08-2024",
-        types: ["generate"],
+        operations: ["text_generation"],
         api_endpoints: [{ name: "Generate", path: "v1/generate" }],
         limits: { context_tokens: 128_000 },
-        is_deprecated: false,
       },
       {
         model_id: "embed-v4.0",
-        types: ["embeddings", "classification"],
+        operations: ["embeddings", "classification"],
         api_endpoints: [{ name: "Classify", path: "v1/classify" }],
         limits: { context_tokens: 128_000 },
-        is_deprecated: false,
       },
       {
         model_id: "cohere-transcribe-07-2026",
-        types: ["audio_transcription"],
+        operations: ["transcription"],
         api_endpoints: undefined,
         limits: { context_tokens: 10_000 },
-        is_deprecated: "unknown",
       },
       {
         model_id: "embed-english-v3.0-image",
-        types: ["embeddings"],
+        operations: ["embeddings"],
         api_endpoints: undefined,
         limits: {},
-        is_deprecated: "unknown",
       },
     ]);
     await expect(parsed("cohere", "cohere/truncated-api.json", "cohere-api")).rejects.toThrow(
@@ -821,8 +855,8 @@ describe("Cohere adapters", () => {
       "<td>command-nightly</td>\n      <td>Cohere API</td>\n    </tr>\n    <tr>\n      <td>research-nightly</td>\n      <td>Cohere API</td>\n    </tr>",
     );
     const models = await cohereCatalog({ index });
-    expect(models.find(({ model_id }) => model_id === "research-nightly")?.types).toEqual([
-      "generate",
+    expect(models.find(({ model_id }) => model_id === "research-nightly")?.operations).toEqual([
+      "text_generation",
     ]);
     await expect(
       cohereCatalog({
@@ -880,7 +914,7 @@ describe("Mistral adapters", () => {
         name: medium?.name,
         version: medium?.version,
         aliases: medium?.aliases,
-        types: medium?.types,
+        operations: medium?.operations,
         api_endpoints: medium?.api_endpoints,
         modalities: medium?.modalities,
         limits: medium?.limits,
@@ -894,11 +928,11 @@ describe("Mistral adapters", () => {
         })),
       },
       embed: {
-        types: embed?.types,
+        operations: embed?.operations,
         api_endpoints: embed?.api_endpoints,
       },
       ocr: {
-        types: ocr?.types,
+        operations: ocr?.operations,
         api_endpoints: ocr?.api_endpoints,
         modalities: ocr?.modalities,
         pricing: ocr?.pricing.map(({ meter, price, unit, conditions }) => ({
@@ -909,13 +943,13 @@ describe("Mistral adapters", () => {
         })),
       },
       speech: {
-        types: speech?.types,
+        operations: speech?.operations,
         api_endpoints: speech?.api_endpoints,
         modalities: speech?.modalities,
         pricing: speech?.pricing.map(({ meter, price, unit }) => ({ meter, price, unit })),
       },
       retired: {
-        types: retired?.types,
+        operations: retired?.operations,
         status: retired?.status,
         deprecated_at: retired?.deprecated_at,
         retired_at: retired?.retired_at,
@@ -928,7 +962,7 @@ describe("Mistral adapters", () => {
         name: "Mistral Medium 3.5",
         version: "26.04",
         aliases: ["mistral-medium-3", "mistral-medium-latest"],
-        types: ["generate", "agentic"],
+        operations: ["text_generation"],
         api_endpoints: [
           { name: "Agents", path: "/v1/agents" },
           { name: "Batch", path: "/v1/batch" },
@@ -977,14 +1011,14 @@ describe("Mistral adapters", () => {
         ],
       },
       embed: {
-        types: ["embeddings"],
+        operations: ["embeddings"],
         api_endpoints: [
           { name: "Batch", path: "/v1/batch" },
           { name: "Embeddings", path: "/v1/embeddings" },
         ],
       },
       ocr: {
-        types: ["ocr"],
+        operations: ["ocr"],
         api_endpoints: [
           { name: "Batch", path: "/v1/batch" },
           { name: "OCR", path: "/v1/ocr" },
@@ -1018,7 +1052,7 @@ describe("Mistral adapters", () => {
         ],
       },
       speech: {
-        types: ["audio_speech"],
+        operations: ["speech_synthesis"],
         api_endpoints: [{ name: "Audio Speech", path: "/v1/audio/speech" }],
         modalities: { input: ["text", "audio"], output: ["audio"] },
         pricing: [
@@ -1027,7 +1061,7 @@ describe("Mistral adapters", () => {
         ],
       },
       retired: {
-        types: ["generate"],
+        operations: ["text_generation"],
         status: "retired",
         deprecated_at: "2024-11-30",
         retired_at: "2025-03-30",
@@ -1071,22 +1105,24 @@ describe("Mistral adapters", () => {
   it("validates structured base models and ignores private fine-tunes", async () => {
     const models = await parsed("mistral", "mistral/api.json", "mistral-api");
     expect(
-      models.map(({ model_id, name, aliases, types, modalities, limits, status, source_refs }) => ({
-        model_id,
-        name,
-        aliases,
-        types,
-        modalities,
-        limits,
-        status,
-        source_refs,
-      })),
+      models.map(
+        ({ model_id, name, aliases, operations, modalities, limits, status, source_refs }) => ({
+          model_id,
+          name,
+          aliases,
+          operations,
+          modalities,
+          limits,
+          status,
+          source_refs,
+        }),
+      ),
     ).toEqual([
       {
         model_id: "mistral-medium-3-5",
         name: "Mistral Medium 3.5 API",
         aliases: ["mistral-medium-latest"],
-        types: ["generate"],
+        operations: ["text_generation"],
         modalities: { input: ["text", "image"], output: ["text"] },
         limits: { context_tokens: 262_144 },
         status: "active",
@@ -1096,7 +1132,7 @@ describe("Mistral adapters", () => {
         model_id: "mistral-ocr-4-0",
         name: "OCR 4",
         aliases: ["mistral-ocr-latest"],
-        types: ["ocr"],
+        operations: ["ocr"],
         modalities: { input: ["image", "pdf"], output: ["text"] },
         limits: {},
         status: "unknown",
@@ -1166,12 +1202,12 @@ describe("Meta Llama adapters", () => {
         api_endpoints: hosted?.api_endpoints,
       },
       guard: {
-        types: guard?.types,
+        operations: guard?.operations,
         modalities: guard?.modalities,
         context: guard?.limits.context_tokens,
       },
       promptGuard: {
-        types: promptGuard?.types,
+        operations: promptGuard?.operations,
         context: promptGuard?.limits.context_tokens,
       },
     }).toEqual({
@@ -1198,11 +1234,11 @@ describe("Meta Llama adapters", () => {
         api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
       },
       guard: {
-        types: ["moderation"],
+        operations: ["moderation"],
         modalities: { input: ["text", "image"], output: ["text"] },
         context: 131_072,
       },
-      promptGuard: { types: ["classification"], context: 512 },
+      promptGuard: { operations: ["classification"], context: 512 },
     });
   });
 
@@ -1364,7 +1400,7 @@ describe("OpenAI adapters", () => {
     const embedding = models.find((candidate) => candidate.model_id === "text-embedding-3-large");
     expect({
       name: model?.name,
-      types: model?.types,
+      operations: model?.operations,
       endpoints: model?.api_endpoints,
       aliases: model?.aliases,
       context: model?.limits.context_tokens,
@@ -1372,12 +1408,11 @@ describe("OpenAI adapters", () => {
       modalities: model?.modalities,
       capabilities: model?.capabilities,
       status: model?.status,
-      embedding_type: embedding?.types,
+      embedding_type: embedding?.operations,
       embedding_output: embedding?.modalities.output,
-      embedding_deprecated: embedding?.is_deprecated,
     }).toEqual({
       name: "GPT-5.4",
-      types: ["generate", "agentic"],
+      operations: ["text_generation"],
       endpoints: [
         { name: "Chat Completions", path: "v1/chat/completions" },
         { name: "Responses", path: "v1/responses" },
@@ -1404,7 +1439,6 @@ describe("OpenAI adapters", () => {
       status: "active",
       embedding_type: ["embeddings"],
       embedding_output: ["embedding"],
-      embedding_deprecated: true,
     });
     expect(
       model?.pricing.find(
@@ -1507,23 +1541,30 @@ describe("Azure adapters", () => {
     const newer = models.find((candidate) => candidate.uid === "azure/gpt-multi@2026-02-01");
     const family = models.find((candidate) => candidate.uid === "azure/gpt-family");
     expect({
-      types: model?.types,
+      operations: model?.operations,
       serviceFamilies: model?.service_families,
       endpoints: model?.api_endpoints,
       modalities: model?.modalities,
       context: model?.limits.context_tokens,
       output: model?.limits.max_output_tokens,
+      lifecycle: [model?.status, model?.release_stage],
       availability: model?.availability?.length,
-      whisper: whisper?.types,
+      whisper: whisper?.operations,
       whisperEndpoints: whisper?.api_endpoints,
       realtimeEndpoints: realtime?.api_endpoints,
-      rerank: rerank?.types,
-      embedding: [embedding?.types, embedding?.modalities.output, embedding?.service_families],
+      rerank: rerank?.operations,
+      embedding: [
+        embedding?.operations,
+        embedding?.modalities.output,
+        embedding?.service_families,
+        embedding?.status,
+        embedding?.release_stage,
+      ],
       retired: [retired?.status, retired?.replacement_model_ids],
       newer: [newer?.limits, newer?.api_endpoints],
       versionless: [family?.version, family?.service_families, family?.api_endpoints],
     }).toEqual({
-      types: ["generate", "agentic"],
+      operations: ["text_generation"],
       serviceFamilies: ["Azure OpenAI"],
       endpoints: expect.arrayContaining([
         { name: "createBatch", path: "openai/v1/batches" },
@@ -1533,15 +1574,22 @@ describe("Azure adapters", () => {
       modalities: { input: ["text", "image"], output: ["text"] },
       context: 128_000,
       output: 16_384,
+      lifecycle: ["active", "stable"],
       availability: 5,
-      whisper: ["audio_transcription", "audio_translation"],
+      whisper: ["transcription", "translation"],
       whisperEndpoints: expect.arrayContaining([
         { name: "createTranscription", path: "openai/v1/audio/transcriptions" },
         { name: "createTranslation", path: "openai/v1/audio/translations" },
       ]),
       realtimeEndpoints: [{ name: "createRealtimeSession", path: "openai/v1/realtime/sessions" }],
-      rerank: ["rerank", "classification"],
-      embedding: [["embeddings"], ["embedding"], ["Foundry Models from partners and community"]],
+      rerank: ["reranking", "classification"],
+      embedding: [
+        ["embeddings"],
+        ["embedding"],
+        ["Foundry Models from partners and community"],
+        "active",
+        "preview",
+      ],
       retired: ["retired", ["gpt-multi"]],
       newer: [{}, undefined],
       versionless: [
@@ -1575,7 +1623,7 @@ describe("Azure adapters", () => {
     expect({
       uid: model?.uid,
       description: model?.description,
-      types: model?.types,
+      operations: model?.operations,
       capabilities: model?.capabilities,
       context: model?.limits.context_tokens,
       status: model?.status,
@@ -1587,7 +1635,7 @@ describe("Azure adapters", () => {
     }).toEqual({
       uid: "azure/gpt-multi@2026-01-01",
       description: "A structured regional model.",
-      types: ["generate", "agentic"],
+      operations: ["text_generation"],
       capabilities: {
         reasoning: "unknown",
         tool_call: "unknown",
@@ -1628,6 +1676,21 @@ describe("Azure adapters", () => {
       "schema drift",
     );
   });
+
+  it("preserves ARM Legacy as a callable lifecycle state", async () => {
+    const value = manifest("azure");
+    const source = value.sources.find((candidate) => candidate.id === "azure-api");
+    if (source === undefined) throw new Error("Missing Azure API source");
+    const body = (await fixture("azure/api.json")).replace(
+      '"lifecycleStatus": "GenerallyAvailable"',
+      '"lifecycleStatus": "Legacy"',
+    );
+    const model = parseSource({ provider: provider(value), source, body, observedAt })[0];
+    expect(model).toMatchObject({
+      status: "legacy",
+      release_stage: "unknown",
+    });
+  });
 });
 
 describe("Gemini adapters", () => {
@@ -1637,13 +1700,14 @@ describe("Gemini adapters", () => {
     expect({
       name: model?.name,
       aliases: model?.aliases,
-      types: model?.types,
+      operations: model?.operations,
       modalities: model?.modalities,
       capabilities: model?.capabilities,
       limits: model?.limits,
       release: model?.release_date,
       updated: model?.updated_date,
       status: model?.status,
+      releaseStage: model?.release_stage,
       endpoints: endpoints(model),
       input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
       cached: model?.pricing.find((rate) => rate.meter === "cache_read_text")?.price,
@@ -1651,7 +1715,7 @@ describe("Gemini adapters", () => {
     }).toEqual({
       name: "Gemini Test",
       aliases: ["gemini-test-latest"],
-      types: ["generate", "agentic"],
+      operations: ["text_generation"],
       modalities: { input: ["text", "image", "pdf"], output: ["text"] },
       capabilities: {
         reasoning: true,
@@ -1674,7 +1738,8 @@ describe("Gemini adapters", () => {
       },
       release: "2026-07-01",
       updated: "2026-07",
-      status: "preview",
+      status: "active",
+      releaseStage: "preview",
       endpoints: ["interactions.create /v1beta/interactions"],
       input: "1.50",
       cached: "0.15",
@@ -1689,13 +1754,15 @@ describe("Gemini adapters", () => {
     const gemma = models.find((item) => item.model_id === "gemma-4-31b-it");
     expect({
       music: {
-        types: music?.types,
+        operations: music?.operations,
         modalities: music?.modalities,
+        releaseStage: music?.release_stage,
         rate: music?.pricing[0],
       },
       embedding: {
-        types: embedding?.types,
+        operations: embedding?.operations,
         limits: embedding?.limits,
+        releaseStage: embedding?.release_stage,
         units: embedding?.pricing.map((rate) => rate.unit),
       },
       gemma: {
@@ -1706,8 +1773,9 @@ describe("Gemini adapters", () => {
       },
     }).toEqual({
       music: {
-        types: ["audio_generation"],
+        operations: ["audio_generation"],
         modalities: { input: ["text", "image"], output: ["text", "audio"] },
+        releaseStage: "experimental",
         rate: expect.objectContaining({
           meter: "output_audio",
           price: "0.50",
@@ -1716,13 +1784,14 @@ describe("Gemini adapters", () => {
         }),
       },
       embedding: {
-        types: ["embeddings"],
+        operations: ["embeddings"],
         limits: {
           context_tokens: 8192,
           max_input_tokens: 8192,
           embedding_dimension_range: { min: 128, max: 3072 },
           recommended_embedding_dimensions: [768, 1536],
         },
+        releaseStage: "stable",
         units: ["image", "million_tokens", "million_tokens"],
       },
       gemma: {
@@ -1744,7 +1813,7 @@ describe("Gemini adapters", () => {
       id: model?.model_id,
       name: model?.name,
       aliases: model?.aliases,
-      types: model?.types,
+      operations: model?.operations,
       reasoning: model?.capabilities.reasoning,
       streaming: model?.capabilities.streaming,
       batch: model?.capabilities.batch,
@@ -1755,7 +1824,7 @@ describe("Gemini adapters", () => {
       id: "gemini-test-preview",
       name: "Gemini Test API",
       aliases: ["gemini-test"],
-      types: ["generate"],
+      operations: ["text_generation"],
       reasoning: true,
       streaming: true,
       batch: true,
@@ -1774,30 +1843,30 @@ describe("Gemini adapters", () => {
       scope: "runtime_observation",
     });
     expect({
-      embeddingTypes: embedding?.types,
+      embeddingOperations: embedding?.operations,
       embeddingBatch: embedding?.capabilities.batch,
       embeddingEndpoints: endpoints(embedding),
-      liveTypes: live?.types,
+      liveOperations: live?.operations,
       liveStreaming: live?.capabilities.streaming,
       liveEndpoints: endpoints(live),
-      futureTypes: future?.types,
+      futureOperations: future?.operations,
       futureStreaming: future?.capabilities.streaming,
       futureBatch: future?.capabilities.batch,
       futureEndpoints: endpoints(future),
     }).toEqual({
-      embeddingTypes: ["embeddings"],
+      embeddingOperations: ["embeddings"],
       embeddingBatch: true,
       embeddingEndpoints: [
         "embedContent /v1beta/models/embedding-test:embedContent",
         "batchEmbedContents /v1beta/models/embedding-test:batchEmbedContents",
         "asyncBatchEmbedContent /v1beta/models/embedding-test:asyncBatchEmbedContent",
       ],
-      liveTypes: ["realtime"],
+      liveOperations: ["speech_to_speech"],
       liveStreaming: true,
       liveEndpoints: [
         "bidiGenerateContent wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent",
       ],
-      futureTypes: ["other"],
+      futureOperations: [],
       futureStreaming: "unknown",
       futureBatch: "unknown",
       futureEndpoints: undefined,
@@ -1847,7 +1916,7 @@ describe("Vertex AI adapters", () => {
     const retired = models.find((model) => model.model_id === "gemini-old");
     expect({
       name: current?.name,
-      types: current?.types,
+      operations: current?.operations,
       modalities: current?.modalities,
       limits: current?.limits,
       capabilities: current?.capabilities,
@@ -1866,7 +1935,7 @@ describe("Vertex AI adapters", () => {
       },
     }).toEqual({
       name: "Gemini Test",
-      types: ["generate", "agentic", "image"],
+      operations: ["text_generation", "image_generation"],
       modalities: { input: ["text", "image"], output: ["text", "image"] },
       limits: {
         context_tokens: 1_000_000,
@@ -2079,7 +2148,7 @@ describe("Anthropic adapters", () => {
     });
   });
 
-  it("publishes current Messages and explicitly universal batch support", async () => {
+  it("publishes Messages for callable models and batches only for active models", async () => {
     const models = await anthropicCatalog();
     const endpoints = (id: string) => models.find((model) => model.model_id === id)?.api_endpoints;
     expect(endpoints("claude-fable-5")).toEqual([
@@ -2133,10 +2202,10 @@ describe("Databricks adapters", () => {
       retired_at: retired?.retired_at,
       replacements: retired?.replacement_model_ids,
       replacement_output: replacement?.limits.max_output_tokens,
-      embedding_type: embedding?.types,
+      embedding_type: embedding?.operations,
       embedding_context: embedding?.limits.context_tokens,
       embedding_dimensions: embedding?.limits.embedding_dimensions,
-      image_types: image?.types,
+      image_operations: image?.operations,
       endpoints: sol?.api_endpoints,
     }).toEqual({
       count: 9,
@@ -2155,7 +2224,7 @@ describe("Databricks adapters", () => {
       embedding_type: ["embeddings"],
       embedding_context: 8_192,
       embedding_dimensions: [1_024],
-      image_types: ["generate", "image"],
+      image_operations: ["text_generation", "image_generation"],
       endpoints: [
         {
           name: "Invocations",
@@ -2253,10 +2322,10 @@ describe("Databricks adapters", () => {
 
   it("parses workspace endpoints only as a scoped inventory", async () => {
     const models = await parsed("databricks", "databricks/api.json", "databricks-api");
-    expect(models.map((model) => [model.model_id, model.types[0], model.scope])).toEqual([
-      ["databricks-gpt-5-6-sol", "generate", "runtime_observation"],
+    expect(models.map((model) => [model.model_id, model.operations[0], model.scope])).toEqual([
+      ["databricks-gpt-5-6-sol", "text_generation", "runtime_observation"],
       ["databricks-qwen3-embedding-0-6b", "embeddings", "runtime_observation"],
-      ["private-endpoint", "generate", "runtime_observation"],
+      ["private-endpoint", "text_generation", "runtime_observation"],
     ]);
   });
 });
@@ -2320,10 +2389,11 @@ describe("xAI adapter", () => {
       },
     });
     expect(models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309")).toMatchObject({
-      types: ["generate", "agentic"],
+      operations: ["text_generation"],
       api_endpoints: [{ name: "Responses", path: "/v1/responses" }],
       release_date: "2026-03",
-      status: "preview",
+      status: "active",
+      release_stage: "preview",
       capabilities: { citations: true, code_execution: true },
     });
     expect(models.find(({ model_id }) => model_id === "grok-imagine-image-quality")).toMatchObject({
@@ -2348,7 +2418,7 @@ describe("xAI adapter", () => {
     });
     expect(models.find(({ model_id }) => model_id === "grok-voice-think-fast-1.0")).toMatchObject({
       aliases: ["grok-voice-latest"],
-      types: ["agentic", "realtime"],
+      operations: ["text_generation", "speech_to_speech"],
       api_endpoints: [{ name: "Realtime", path: "/v1/realtime" }],
       release_date: "2026-04",
       pricing: expect.arrayContaining([
@@ -2358,7 +2428,6 @@ describe("xAI adapter", () => {
     });
     expect(models.find(({ model_id }) => model_id === "grok-3")).toMatchObject({
       status: "retired",
-      is_deprecated: true,
       retired_at: "2026-05-15",
       replacement_model_ids: ["grok-4.3"],
     });
@@ -2402,13 +2471,19 @@ describe("xAI adapter", () => {
     const video = await parsed("xai", "xai/video-api.json", "xai-video-api");
     expect(language[0]).toMatchObject({
       model_id: "grok-4.5",
-      types: ["generate"],
+      operations: ["text_generation"],
       modalities: { input: ["text", "image"], output: ["text"] },
       scope: "runtime_observation",
       source_refs: ["xai-language-api"],
     });
-    expect(image[0]).toMatchObject({ types: ["image"], scope: "runtime_observation" });
-    expect(video[0]).toMatchObject({ types: ["video"], scope: "runtime_observation" });
+    expect(image[0]).toMatchObject({
+      operations: ["image_generation"],
+      scope: "runtime_observation",
+    });
+    expect(video[0]).toMatchObject({
+      operations: ["video_generation"],
+      scope: "runtime_observation",
+    });
   });
 
   it("retains a source when its canonical API ID matches a public alias", async () => {
@@ -2453,7 +2528,7 @@ describe("document adapter", () => {
     );
     const mantle = models.find((model) => model.model_id === "anthropic.claude-haiku-4-5");
     const rerank = models.find((model) => model.model_id === "cohere.rerank-v3-5:0");
-    expect(models[0]?.types).toEqual(["generate"]);
+    expect(models[0]?.operations).toEqual(["text_generation"]);
     expect(models[0]?.modalities.input).toEqual(["text", "image"]);
     expect(runtime?.aliases).toEqual([
       "global.anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -2496,7 +2571,7 @@ describe("document adapter", () => {
         }),
       }),
     ]);
-    expect(models[2]?.status).toBe("deprecated");
+    expect(models[2]?.status).toBe("legacy");
     expect(models[2]?.aliases).toEqual(["us.cohere.command-r-v1:0"]);
   });
 
@@ -2627,10 +2702,10 @@ describe("Vercel adapter", () => {
     }).toEqual(await expected("vercel/expected.json"));
   });
 
-  it("keeps structured multi-type, service-tier, and tool facts", async () => {
+  it("keeps service-tier and tool facts without treating realtime transport as an operation", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     expect({
-      types: model?.types,
+      operations: model?.operations,
       effort: model?.capabilities.effort_control,
       services: model?.pricing
         .filter((rate) => rate.conditions.service_tier === "flex")
@@ -2647,7 +2722,7 @@ describe("Vercel adapter", () => {
           unit: rate.unit,
         })),
     }).toEqual({
-      types: ["generate", "realtime"],
+      operations: ["text_generation"],
       effort: true,
       services: [
         { meter: "input_text", min: undefined, max: 200000 },
@@ -2687,7 +2762,7 @@ describe("Vercel adapter", () => {
       })),
       speech: speech?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
       transcription: {
-        types: transcription?.types,
+        operations: transcription?.operations,
         status: transcription?.status,
         deprecatedAt: transcription?.deprecated_at,
         pricing: transcription?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
@@ -2740,7 +2815,7 @@ describe("Vercel adapter", () => {
       ],
       speech: [{ meter: "input_text", unit: "character" }],
       transcription: {
-        types: ["audio_transcription", "realtime"],
+        operations: ["transcription"],
         status: "deprecated",
         deprecatedAt: "2025-07-01",
         pricing: [{ meter: "input_audio", unit: "second" }],
@@ -2868,9 +2943,10 @@ describe("Cerebras adapter", () => {
   it("retains structured capabilities without treating created=0 as a release", async () => {
     const model = (await parse("cerebras-models", "cerebras/normal.json"))[0];
     expect(model?.capabilities.reasoning).toBe(true);
-    expect(model?.types).toEqual(["generate"]);
+    expect(model?.operations).toEqual(["text_generation"]);
     expect(model?.capabilities.structured_output).toBe(false);
-    expect(model?.status).toBe("preview");
+    expect(model?.status).toBe("active");
+    expect(model?.release_stage).toBe("preview");
     expect(model?.release_date).toBeUndefined();
   });
 
@@ -2892,8 +2968,8 @@ describe("Cerebras adapter", () => {
     const gemma = models.find(({ model_id }) => model_id === "gemma-4-31b");
     expect(glm).toMatchObject({
       name: "Z.ai GLM 4.7",
-      status: "preview",
-      is_deprecated: false,
+      status: "active",
+      release_stage: "preview",
       deprecated_at: "2026-08-17",
       limits: { context_tokens: 131000, max_output_tokens: 40000 },
     });
@@ -2901,6 +2977,7 @@ describe("Cerebras adapter", () => {
       price: "0.35",
       derived: true,
     });
+    expect(gpt?.release_stage).toBe("stable");
     expect(gpt?.api_endpoints).toEqual([{ name: "Chat Completions", path: "v1/chat/completions" }]);
     expect(gemma?.api_endpoints).toEqual([
       { name: "Chat Completions", path: "v1/chat/completions" },
@@ -3025,12 +3102,12 @@ describe("Hugging Face adapter", () => {
       "org/model-1",
       "org/multi-model",
     ]);
-    expect(multi?.types).toEqual(["image", "video"]);
+    expect(multi?.operations).toEqual(["image_generation", "video_generation"]);
     expect(multi?.modalities).toEqual({
       input: ["text", "image"],
       output: ["image", "video"],
     });
-    expect(embedding?.types).toEqual(["embeddings"]);
+    expect(embedding?.operations).toEqual(["embeddings"]);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
     expect(multi?.routes).toEqual([
       {
@@ -3211,7 +3288,7 @@ describe("DeepSeek adapters", () => {
     ]);
     expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")).toMatchObject({
       name: "DeepSeek-V4-Pro",
-      types: ["generate"],
+      operations: ["text_generation"],
       api_endpoints: [{ name: "Chat Completions", path: "/chat/completions" }],
       modalities: { input: ["text"], output: ["text"] },
       capabilities: {
@@ -3236,7 +3313,6 @@ describe("DeepSeek adapters", () => {
       deprecated_at: "2026-07-24T15:59:00Z",
       retired_at: "2026-07-24T15:59:00Z",
       status: "active",
-      is_deprecated: false,
       replacement_model_ids: ["deepseek-v4-flash"],
       pricing: [
         expect.objectContaining({ meter: "cache_read_text", price: "0.0028" }),
@@ -3360,20 +3436,22 @@ describe("DashScope adapters", () => {
 
   it("reads exact labeled IDs without a product-prefix allowlist", async () => {
     const models = parse(source("dashscope-text"), await fixture("dashscope/catalog.html"));
-    expect(models.map(({ model_id, types, limits }) => ({ model_id, types, limits }))).toEqual([
+    expect(
+      models.map(({ model_id, operations, limits }) => ({ model_id, operations, limits })),
+    ).toEqual([
       {
         model_id: "MiniMax-M2.5",
-        types: ["generate"],
+        operations: ["text_generation"],
         limits: { context_tokens: 204_000 },
       },
       {
         model_id: "qwen3.7-plus",
-        types: ["generate"],
+        operations: ["text_generation"],
         limits: { context_tokens: 1_000_000 },
       },
       {
         model_id: "qwen3.7-plus-2026-05-26",
-        types: ["generate"],
+        operations: ["text_generation"],
         limits: { context_tokens: 1_000_000 },
       },
     ]);
@@ -3382,15 +3460,17 @@ describe("DashScope adapters", () => {
       source("dashscope-embedding"),
       await fixture("dashscope/embedding.html"),
     );
-    expect(embedding.map(({ model_id, types, limits }) => ({ model_id, types, limits }))).toEqual([
+    expect(
+      embedding.map(({ model_id, operations, limits }) => ({ model_id, operations, limits })),
+    ).toEqual([
       {
         model_id: "qwen3-vl-rerank",
-        types: ["rerank"],
+        operations: ["reranking"],
         limits: { max_input_tokens: 8_000 },
       },
       {
         model_id: "text-embedding-v4",
-        types: ["embeddings"],
+        operations: ["embeddings"],
         limits: {
           embedding_dimension_range: { min: 64, max: 2048 },
           max_input_tokens: 8_192,
@@ -3584,7 +3664,6 @@ describe("DashScope adapters", () => {
     );
     expect(models.find(({ model_id }) => model_id === "qwen3.7-plus")).toMatchObject({
       status: "deprecated",
-      is_deprecated: true,
       retired_at: "2026-10-10",
       replacement_model_ids: ["qwen3.8-plus"],
       source_refs: [
@@ -3691,7 +3770,7 @@ describe("Kimi adapters", () => {
     const models = parse(source("kimi-openapi"), body);
     expect(models).toHaveLength(12);
     expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")).toMatchObject({
-      types: ["generate"],
+      operations: ["text_generation"],
       modalities: { input: ["text"], output: ["text"] },
       api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
       capabilities: {
@@ -3721,8 +3800,7 @@ describe("Kimi adapters", () => {
       modalities: { input: ["text", "image"], output: ["text"] },
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
-      status: "deprecated",
-      is_deprecated: true,
+      status: "legacy",
     });
     expect(models.find(({ model_id }) => model_id === "kimi-thinking-preview")).toMatchObject({
       status: "retired",
@@ -3840,7 +3918,7 @@ describe("Ollama adapters", () => {
       "nomic-embed-text",
     ]);
     expect(models.find(({ model_id }) => model_id === "gemma4")).toMatchObject({
-      types: ["generate"],
+      operations: ["text_generation"],
       service_families: ["Ollama Library"],
       modalities: { input: ["text", "image", "audio"], output: ["text"] },
       capabilities: { reasoning: true, tool_call: true },
@@ -3848,11 +3926,11 @@ describe("Ollama adapters", () => {
       pricing_status: "not_applicable",
     });
     expect(models.find(({ model_id }) => model_id === "nomic-embed-text")).toMatchObject({
-      types: ["embeddings"],
+      operations: ["embeddings"],
       modalities: { input: ["text"], output: ["embedding"] },
     });
-    expect(models.find(({ model_id }) => model_id === "glm-ocr")?.types).toEqual([
-      "generate",
+    expect(models.find(({ model_id }) => model_id === "glm-ocr")?.operations).toEqual([
+      "text_generation",
       "ocr",
     ]);
   });
@@ -3871,13 +3949,11 @@ describe("Ollama adapters", () => {
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
       service_families: ["Ollama Cloud", "Ollama Library"],
       status: "active",
-      is_deprecated: "unknown",
       modalities: { input: ["text", "image"], output: ["text"] },
     });
     expect(models.find(({ model_id }) => model_id === "gemini-3-flash-preview")).toMatchObject({
       service_families: ["Ollama Cloud", "Ollama Library"],
       status: "active",
-      is_deprecated: "unknown",
       description: "A fast multimodal model.",
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")?.retired_at).toBeUndefined();
@@ -3905,7 +3981,6 @@ describe("Ollama adapters", () => {
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
       service_families: ["Ollama Cloud", "Ollama Library"],
       status: "active",
-      is_deprecated: "unknown",
     });
     expect(provider(value).source_ids).toEqual(["ollama-library", "ollama-cloud-models"]);
   });
@@ -3921,7 +3996,6 @@ describe("Ollama adapters", () => {
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
       service_families: ["Ollama Cloud"],
       status: "deprecated",
-      is_deprecated: true,
       retired_at: "2026-07-31",
     });
   });

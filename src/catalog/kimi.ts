@@ -150,7 +150,7 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      types: ["generate"],
+      operations: ["text_generation"],
       modalities: { input: ["text"], output: ["text"] },
       api_endpoints: [{ name: "Chat Completions", path: chatPath }],
       capabilities: {
@@ -242,6 +242,7 @@ function catalogModel(
   status: ProviderModel["status"],
   retiredAt?: string,
   replacements: string[] = [],
+  releaseStage: ProviderModel["release_stage"] = "unknown",
 ): ProviderModel {
   const prose = description ?? "";
   const media = /视觉|图片/.test(prose) ? ["image" as const] : [];
@@ -255,7 +256,7 @@ function catalogModel(
       observedAt: input.observedAt,
     }),
     description,
-    types: ["generate"],
+    operations: ["text_generation"],
     modalities: { input: ["text", ...media, ...video], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
@@ -263,7 +264,7 @@ function catalogModel(
     },
     limits: { context_tokens: tokenCount(prose) },
     status,
-    is_deprecated: status === "deprecated" || status === "retired",
+    release_stage: releaseStage,
     retired_at: retiredAt,
     replacement_model_ids: replacements,
   };
@@ -292,14 +293,8 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
       const id = exactCode(row[0] ?? "");
       const description = row[1]?.trim() || undefined;
       const retired = table.section === "已下线模型";
-      const deprecated = restricted && (id === "kimi-k2.5" || id.startsWith("moonshot-v1-"));
-      const status: ProviderModel["status"] = retired
-        ? "retired"
-        : deprecated
-          ? "deprecated"
-          : id.includes("preview")
-            ? "preview"
-            : "active";
+      const legacy = restricted && (id === "kimi-k2.5" || id.startsWith("moonshot-v1-"));
+      const status: ProviderModel["status"] = retired ? "retired" : legacy ? "legacy" : "active";
       return catalogModel(
         input,
         id,
@@ -307,6 +302,7 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
         status,
         retired ? retiredAt : undefined,
         retired ? ["kimi-k3"] : [],
+        id.includes("preview") ? "preview" : "unknown",
       );
     }),
   );
@@ -461,7 +457,7 @@ function pricingModel(input: Input, body: string, row: string[], batch: boolean)
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: ["generate"],
+    operations: ["text_generation"],
     modalities: { input: ["text", ...image, ...video], output: ["text"] },
     api_endpoints: batch ? [{ name: "Batch", path: batchPath }] : undefined,
     capabilities: {
@@ -609,7 +605,7 @@ function releaseModel(input: Input, id: string, date: string): ProviderModel {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: ["generate"],
+    operations: ["text_generation"],
     release_date: date,
   };
 }
@@ -692,7 +688,7 @@ export function parseKimiApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      types: ["generate"],
+      operations: ["text_generation"],
       modalities: {
         input: [
           "text",

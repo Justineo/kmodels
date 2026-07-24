@@ -34,7 +34,7 @@ The 227 generation and 12 embedding rows are discovery candidates, not a compati
 
 Kong's examples `llama3.2:1b` and `qwen3-embedding:8b` are not exact Kmodels rows; only `llama3.2` and `qwen3-embedding` are present. This is expected because the public Library index does not enumerate tags. Neither a family row nor a normalized operation justifies manufacturing those tagged IDs or claiming that a configured host has pulled them.
 
-The general Ollama API references publish host-level routes rather than a per-model endpoint matrix. Kmodels therefore does not derive `api_endpoints` from a Library badge or normalized `types`; Kong route selection remains contingent on the configured upstream and its exact served model.
+The general Ollama API references publish host-level routes rather than a per-model endpoint matrix. Kmodels therefore does not derive `api_endpoints` from a Library badge or normalized `operations`; Kong route selection remains contingent on the configured upstream and its exact served model.
 
 ## Refinement decision
 

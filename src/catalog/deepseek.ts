@@ -192,7 +192,7 @@ function model(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: ["generate"],
+    operations: ["text_generation"],
     ...(hasChatEndpoint ? { api_endpoints: [chatEndpoint] } : {}),
     modalities: { input: ["text"], output: ["text"] },
     capabilities: {
@@ -205,7 +205,6 @@ function model(
     },
     limits: { context_tokens: context, max_output_tokens: output },
     status: "active",
-    is_deprecated: false,
     pricing_status: "published",
     pricing: prices.map(([meter, label]) =>
       publishedRate(
@@ -278,7 +277,6 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
       deprecated_at: lifecycle.at,
       retired_at: lifecycle.at,
       status: retired ? "retired" : "active",
-      is_deprecated: retired,
       replacement_model_ids: [lifecycle.replacement],
     });
   }
@@ -340,7 +338,7 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      types: ["generate"],
+      operations: ["text_generation"],
       ...(observed.release === undefined ? {} : { release_date: observed.release }),
       ...(observed.update === undefined || observed.update === observed.release
         ? {}
@@ -371,6 +369,6 @@ export function parseDeepseekApi(input: Input): ProviderModel[] {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: ["generate"],
+    operations: ["text_generation"],
   }));
 }
