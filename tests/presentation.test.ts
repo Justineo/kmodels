@@ -1,22 +1,61 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   formatRateUnit,
+  formatTablePricingState,
+  formatTableRateLabel,
   formatTableRateUnit,
   perMillionTokenRate,
+  representativeTableRate,
 } from "../src/catalog/presentation.ts";
-import type { PriceRate } from "../src/catalog/schema.ts";
+import {
+  type ModelOperation,
+  type PriceRate,
+  type ProviderModel,
+  unknownCapabilities,
+} from "../src/catalog/schema.ts";
 import { darkProviderSymbolId, providerSymbolId, spriteSymbols } from "../src/icons/sprite.ts";
 import { svgSymbol } from "../src/icons/svg.ts";
 
-function rate(price: string, unit: PriceRate["unit"]): PriceRate {
+function rate(
+  price: string,
+  unit: PriceRate["unit"],
+  meter: PriceRate["meter"] = "input_text",
+  conditions: PriceRate["conditions"] = {},
+): PriceRate {
   return {
-    meter: "input_text",
+    meter,
     price,
     currency: "USD",
     unit,
-    conditions: {},
+    conditions,
     source_ref: "test",
     derived: false,
+  };
+}
+
+function model(operations: ModelOperation[], pricing: PriceRate[]): ProviderModel {
+  return {
+    provider_id: "test",
+    model_id: "model",
+    uid: "test/model",
+    id_kind: "api_id",
+    name: "Model",
+    aliases: [],
+    operations,
+    modalities: { input: [], output: [] },
+    capabilities: unknownCapabilities(),
+    limits: {},
+    status: "active",
+    release_stage: "stable",
+    replacement_model_ids: [],
+    pricing_status: pricing.length === 0 ? "unknown" : "published",
+    pricing,
+    scope: "global_catalog",
+    account_availability: "unknown",
+    first_seen_at: "2026-07-24T00:00:00.000Z",
+    last_seen_at: "2026-07-24T00:00:00.000Z",
+    observed_at: "2026-07-24T00:00:00.000Z",
+    source_refs: ["test"],
   };
 }
 
@@ -45,6 +84,62 @@ describe("rate presentation", () => {
   it("omits the table default while preserving exceptional units", () => {
     expect(formatTableRateUnit(rate("2", "million_tokens"))).toBe("");
     expect(formatTableRateUnit(rate("4", "million_characters"))).toBe("/1M characters");
+    expect(formatTableRateUnit(rate("0.04", "image"))).toBe("/img");
+    expect(formatTableRateUnit(rate("0.1", "second"))).toBe("/sec");
+  });
+
+  it("selects operation-aware representative request rates", () => {
+    const image = model(
+      ["text_generation", "image_generation"],
+      [
+        rate("5", "million_tokens", "input_text"),
+        rate("40", "million_tokens", "output_image"),
+        rate("0.04", "image", "image_generation", { resolution: "1024x1024" }),
+      ],
+    );
+    expect(representativeTableRate(image, "input")?.meter).toBe("input_text");
+    expect(representativeTableRate(image, "output")).toMatchObject({
+      meter: "image_generation",
+      unit: "image",
+    });
+
+    const embedding = model(
+      ["embeddings"],
+      [
+        rate("0.13", "million_tokens", "embedding"),
+        rate("2", "unit_hour", "provisioned_throughput"),
+      ],
+    );
+    expect(representativeTableRate(embedding, "output")?.meter).toBe("embedding");
+
+    const audio = model(["transcription"], [rate("0.6", "million_tokens", "input_audio")]);
+    expect(representativeTableRate(audio, "input")?.meter).toBe("input_audio");
+  });
+
+  it("keeps full rate semantics accessible while compacting the cell", () => {
+    expect(formatTableRateLabel(rate("0.04", "image", "image_generation"))).toBe(
+      "image generation · $0.04 /image",
+    );
+  });
+
+  it("uses one explicit state when no comparable request rate exists", () => {
+    const unknown = model([], []);
+    expect(formatTablePricingState(unknown)).toBe("Price unknown");
+    expect(
+      formatTablePricingState({
+        ...unknown,
+        pricing_status: "not_published",
+      }),
+    ).toBe("Not published");
+    expect(
+      formatTablePricingState({
+        ...unknown,
+        pricing_status: "not_applicable",
+      }),
+    ).toBe("Not applicable");
+    expect(
+      formatTablePricingState(model([], [rate("2", "unit_hour", "provisioned_throughput")])),
+    ).toBe("Other rates");
   });
 });
 
