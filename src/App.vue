@@ -623,7 +623,7 @@ onUnmounted(() => {
                   aria-label="Cached input rate per 1 million tokens"
                   title="Default unit: per 1M tokens"
                 >
-                  Cached / 1M
+                  Cached input / 1M
                 </th>
                 <th
                   class="output-col numeric"
