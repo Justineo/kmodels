@@ -66,7 +66,7 @@ jobs:
 
       - name: Commit validated changes
         run: |
-          git add data public/data public/v1
+          git add data/catalog.json data/fetch-state.json data/quarantine.json data/refresh-summary.json
           if git diff --cached --quiet; then
             exit 0
           fi

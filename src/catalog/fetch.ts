@@ -7,7 +7,7 @@ import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { readSnapshot, rootDirectory, sha256, writeSnapshot } from "./io.ts";
+import { sha256 } from "./io.ts";
 
 const execute = promisify(execFile);
 
@@ -55,7 +55,6 @@ export const sourceStateSchema = z.object({
   etag: z.string().optional(),
   lastModified: z.string().optional(),
   contentHash: z.string().length(64),
-  snapshotUri: z.string().min(1).optional(),
   lastSuccessAt: z.iso.datetime({ offset: true }),
   checkedAt: z.iso.datetime({ offset: true }),
   consecutiveFailures: z.number().int().nonnegative(),
@@ -71,10 +70,8 @@ export type SourceState = z.infer<typeof sourceStateSchema>;
 interface FetchPayload {
   body: string;
   contentHash: string;
-  snapshotUri: string | undefined;
   etag: string | undefined;
   lastModified: string | undefined;
-  notModified: boolean;
 }
 
 interface StatusPayload extends FetchPayload {
@@ -161,12 +158,7 @@ export function curlResponse(value: string): Response {
   return new Response(status === 204 || status === 304 ? null : body, { status, headers });
 }
 
-async function curlRequest(
-  url: URL,
-  source: SourceManifest,
-  previous: SourceState | undefined,
-  json?: string,
-): Promise<Response> {
+async function curlRequest(url: URL, source: SourceManifest, json?: string): Promise<Response> {
   const args = [
     "--silent",
     "--show-error",
@@ -219,14 +211,6 @@ async function curlRequest(
       "--data-binary",
       json,
     );
-  if (json === undefined && previous?.snapshotUri !== undefined && previous.etag !== undefined)
-    args.push("--header", `If-None-Match: ${previous.etag}`);
-  if (
-    json === undefined &&
-    previous?.snapshotUri !== undefined &&
-    previous.lastModified !== undefined
-  )
-    args.push("--header", `If-Modified-Since: ${previous.lastModified}`);
   args.push(url.href);
   try {
     const result = await execute("curl", args, {
@@ -525,15 +509,11 @@ function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
-async function request(
-  source: SourceManifest,
-  previous: SourceState | undefined,
-  json?: string,
-): Promise<Response> {
+async function request(source: SourceManifest, json?: string): Promise<Response> {
   let url = checkedUrl(source.url, source);
   for (let redirect = 0; redirect <= 4; redirect += 1) {
-    const response = await curlRequest(url, source, previous, json);
-    if (response.status >= 300 && response.status < 400 && response.status !== 304) {
+    const response = await curlRequest(url, source, json);
+    if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
       if (location === null) throw new Error("Redirect response omitted Location");
       url = checkedUrl(new URL(location, url).href, source);
@@ -565,84 +545,42 @@ async function readLimited(response: Response, limit: number): Promise<string> {
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
-async function attemptFetch(
-  providerId: string,
-  source: SourceManifest,
-  previous: SourceState | undefined,
-): Promise<FetchPayload> {
-  const reusable = source.snapshotPolicy === "none" ? undefined : previous;
-  const response = await request(source, reusable);
-  if (response.status === 304) {
-    if (reusable?.snapshotUri === undefined)
-      throw new Error("Received 304 without a previous snapshot");
-    return {
-      body: await readSnapshot(`${rootDirectory}${reusable.snapshotUri}`),
-      contentHash: reusable.contentHash,
-      snapshotUri: reusable.snapshotUri,
-      etag: response.headers.get("etag") ?? reusable.etag,
-      lastModified: response.headers.get("last-modified") ?? reusable.lastModified,
-      notModified: true,
-    };
-  }
+async function attemptFetch(source: SourceManifest): Promise<FetchPayload> {
+  const response = await request(source);
   if (response.status === 429 || response.status >= 500)
     throw new TransientFetchError(`Transient HTTP ${response.status}`, retryDelay(response));
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = await readLimited(response, source.maxResponseBytes);
   if (body.trim() === "") throw new Error("Source returned an empty body");
-  const contentHash = sha256(body);
-  const snapshotUri =
-    source.snapshotPolicy === "none"
-      ? undefined
-      : `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
-  if (snapshotUri !== undefined) await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
   return {
     body,
-    contentHash,
-    snapshotUri,
+    contentHash: sha256(body),
     etag: response.headers.get("etag") ?? undefined,
     lastModified: response.headers.get("last-modified") ?? undefined,
-    notModified: false,
   };
 }
 
-async function attemptPost(
-  providerId: string,
-  source: SourceManifest,
-  body: string,
-): Promise<StatusPayload> {
-  const response = await request(source, undefined, body);
+async function attemptPost(source: SourceManifest, body: string): Promise<StatusPayload> {
+  const response = await request(source, body);
   if (response.status === 429 || response.status >= 500)
     throw new TransientFetchError(`Transient HTTP ${response.status}`, retryDelay(response));
   if (![200, 404, 410].includes(response.status)) throw new Error(`HTTP ${response.status}`);
   const responseBody = await readLimited(response, source.maxResponseBytes);
   if (responseBody.trim() === "") throw new Error("Source returned an empty body");
-  const contentHash = sha256(responseBody);
-  const snapshotUri =
-    source.snapshotPolicy === "none"
-      ? undefined
-      : `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
-  if (snapshotUri !== undefined)
-    await writeSnapshot(`${rootDirectory}${snapshotUri}`, responseBody);
   return {
     body: responseBody,
-    contentHash,
-    snapshotUri,
+    contentHash: sha256(responseBody),
     etag: undefined,
     lastModified: undefined,
-    notModified: false,
     status: response.status === 200 ? 200 : response.status === 404 ? 404 : 410,
   };
 }
 
-async function fetchPost(
-  providerId: string,
-  source: SourceManifest,
-  body: string,
-): Promise<StatusPayload> {
+async function fetchPost(source: SourceManifest, body: string): Promise<StatusPayload> {
   let lastError: Error = new Error("Source fetch failed");
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await attemptPost(providerId, source, body);
+      return await attemptPost(source, body);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown collection failure");
       if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
@@ -652,15 +590,11 @@ async function fetchPost(
   throw lastError;
 }
 
-async function fetchPayload(
-  providerId: string,
-  source: SourceManifest,
-  previous: SourceState | undefined,
-): Promise<FetchPayload> {
+async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
   let lastError: Error = new Error("Source fetch failed");
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await attemptFetch(providerId, source, previous);
+      return await attemptFetch(source);
     } catch (error) {
       lastError = error instanceof Error ? error : new Error("Unknown source fetch failure");
       if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
@@ -674,10 +608,8 @@ function observation(key: string, payload: FetchPayload): FetchObservation {
   return {
     key,
     contentHash: payload.contentHash,
-    snapshotUri: payload.snapshotUri,
     etag: payload.etag,
     lastModified: payload.lastModified,
-    notModified: payload.notModified,
   };
 }
 
@@ -812,11 +744,7 @@ export function normalizeOllamaResponse(status: 200 | 404 | 410, body: string): 
   return { error: match[1] };
 }
 
-async function fetchOllamaCloud(
-  providerId: string,
-  source: SourceManifest,
-  states: Record<string, SourceState>,
-): Promise<FetchResult> {
+async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   const transport = source.transport;
   if (transport?.kind !== "ollama-cloud") throw new Error("Invalid Ollama cloud transport");
   const indexKey = `${source.id}/index`;
@@ -839,19 +767,14 @@ async function fetchOllamaCloud(
     source.maxResponseBytes,
   );
   const [rawIndex, catalog] = await Promise.all([
-    fetchPayload(
-      providerId,
-      { ...indexSource, snapshotPolicy: "none" },
-      states[indexKey] ?? states[source.id],
-    ),
-    fetchPayload(providerId, catalogSource, states[catalogKey]),
+    fetchPayload(indexSource),
+    fetchPayload(catalogSource),
   ]);
   const indexBody = normalizeOllamaList(rawIndex.body);
   const index = {
     ...rawIndex,
     body: indexBody,
     contentHash: sha256(indexBody),
-    snapshotUri: undefined,
   };
   const list = ollamaListSchema.parse(json(index.body));
   const listed = new Set(list.models.map((item) => item.model));
@@ -869,9 +792,8 @@ async function fetchOllamaCloud(
     const key = `${source.id}/show/${sha256(model)}`;
     const showSource = {
       ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
-      snapshotPolicy: "none",
     } satisfies SourceManifest;
-    const payload = await fetchPost(providerId, showSource, JSON.stringify({ model }));
+    const payload = await fetchPost(showSource, JSON.stringify({ model }));
     if (listed.has(model) && payload.status !== 200)
       throw new Error("Ollama cloud listed model details were unavailable");
     const body = JSON.stringify(normalizeOllamaResponse(payload.status, payload.body));
@@ -888,16 +810,11 @@ async function fetchOllamaCloud(
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Ollama cloud bundle exceeded byte limit");
-  const contentHash = sha256(body);
-  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
-  await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
   return {
     body,
-    contentHash,
-    snapshotUri,
+    contentHash: sha256(body),
     etag: index.etag,
     lastModified: index.lastModified,
-    notModified: false,
     dependencies: [
       observation(indexKey, index),
       observation(catalogKey, catalog),
@@ -906,26 +823,20 @@ async function fetchOllamaCloud(
   };
 }
 
-export async function fetchSource(
-  providerId: string,
-  source: SourceManifest,
-  states: Record<string, SourceState>,
-): Promise<FetchResult> {
+export async function fetchSource(source: SourceManifest): Promise<FetchResult> {
   if (source.transport?.kind === "aws-bedrock") {
     const body = await fetchBedrockInventory(source.transport.region, source.maxResponseBytes);
     return {
       body,
       contentHash: sha256(body),
-      snapshotUri: undefined,
       etag: undefined,
       lastModified: undefined,
-      notModified: false,
       dependencies: [],
     };
   }
   if (source.transport?.kind === "databricks") {
     const configured = databricksSource(source, source.transport.hostEnv);
-    const payload = await fetchPayload(providerId, configured, undefined);
+    const payload = await fetchPayload(configured);
     return { ...payload, dependencies: [] };
   }
   if (source.transport?.kind === "azure-models") {
@@ -937,10 +848,8 @@ export async function fetchSource(
     return {
       body,
       contentHash: sha256(body),
-      snapshotUri: undefined,
       etag: undefined,
       lastModified: undefined,
-      notModified: false,
       dependencies: [],
     };
   }
@@ -949,25 +858,22 @@ export async function fetchSource(
     return {
       body,
       contentHash: sha256(body),
-      snapshotUri: undefined,
       etag: undefined,
       lastModified: undefined,
-      notModified: false,
       dependencies: [],
     };
   }
-  if (source.transport?.kind === "ollama-cloud")
-    return fetchOllamaCloud(providerId, source, states);
+  if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
   const crawl = source.linkedDocuments;
   if (crawl === undefined) {
-    const payload = await fetchPayload(providerId, source, states[source.id]);
+    const payload = await fetchPayload(source);
     return { ...payload, dependencies: [] };
   }
 
   const indexKey = `${source.id}/index`;
   const indexSource = linkedSource(source, indexKey, new URL(source.url));
-  const index = await fetchPayload(providerId, indexSource, states[indexKey] ?? states[source.id]);
+  const index = await fetchPayload(indexSource);
   const urls = linkedDocumentUrls(index.body, source);
   const discovered = urls.map((url) => {
     const filename = url.pathname.split("/").at(-1);
@@ -1000,9 +906,7 @@ export async function fetchSource(
     throw new Error("Linked document keys must be unique");
   const documents = await batches(entries, crawl.concurrency, async (entry) => {
     const payload = await fetchPayload(
-      providerId,
       linkedSource(source, entry.key, entry.url, entry.maxResponseBytes),
-      states[entry.key],
     );
     return { key: entry.key, url: entry.url.href, payload };
   });
@@ -1012,16 +916,11 @@ export async function fetchSource(
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Linked documents exceeded aggregate byte limit");
-  const contentHash = sha256(body);
-  const snapshotUri = `data/snapshots/${providerId}/${source.id}/${contentHash}.txt.gz`;
-  await writeSnapshot(`${rootDirectory}${snapshotUri}`, body);
   return {
     body,
-    contentHash,
-    snapshotUri,
+    contentHash: sha256(body),
     etag: index.etag,
     lastModified: index.lastModified,
-    notModified: index.notModified && documents.every((document) => document.payload.notModified),
     dependencies: [
       observation(indexKey, index),
       ...documents.map((document) => observation(document.key, document.payload)),

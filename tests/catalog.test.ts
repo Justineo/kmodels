@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
+import { catalogAssets } from "../src/catalog/endpoints.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { modelUid } from "../src/catalog/model.ts";
 import { catalogEnvelopeSchema, catalogSchema } from "../src/catalog/schema.ts";
@@ -50,15 +51,19 @@ describe("generated static catalog", () => {
       expect(source).not.toHaveProperty("source_type");
       expect(source).not.toHaveProperty("access");
       expect(source).not.toHaveProperty("format");
+      expect(source).not.toHaveProperty("snapshot_uri");
     }
   });
 
-  it("keeps the public envelope aligned with durable state", async () => {
+  it("builds public endpoints from durable state", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
-    const envelope = catalogEnvelopeSchema.parse(await json("public/v1/catalog/index.json"));
+    const assets = catalogAssets(catalog);
+    const catalogAsset = assets.find(({ fileName }) => fileName === "v1/catalog/index.json");
+    const envelope = catalogEnvelopeSchema.parse(JSON.parse(catalogAsset?.source ?? ""));
     expect(envelope.catalog_version).toBe(catalog.catalog_version);
     expect(envelope.data.models).toHaveLength(catalog.models.length);
     expect(envelope.data.providers).toEqual(catalog.providers);
+    expect(assets).toHaveLength(2 + catalog.providers.length * 2);
   });
 
   it("publishes vLLM as an explicitly empty runtime scope", async () => {
@@ -148,6 +153,7 @@ describe("generated static catalog", () => {
       coverage: catalog.coverage,
       warnings: catalog.warnings,
       quarantine: await json("data/quarantine.json"),
+      refresh: await json("data/refresh-summary.json"),
     });
     expect(diagnostics).not.toMatch(
       /\barn:aws(?:-[a-z0-9-]+)?:|\b\d{12}\b|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i,

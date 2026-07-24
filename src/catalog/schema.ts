@@ -243,7 +243,6 @@ export const sourceRecordSchema = z.strictObject({
   last_modified: z.string().optional(),
   content_hash: z.string().length(64),
   extractor_version: z.string().min(1),
-  snapshot_uri: z.string().min(1).optional(),
 });
 
 export const catalogWarningSchema = z.union([
@@ -304,6 +303,25 @@ export type SourceRecord = z.infer<typeof sourceRecordSchema>;
 export type SourceAccess = z.infer<typeof sourceAccessSchema>;
 export type SourceFormat = z.infer<typeof sourceFormatSchema>;
 export type SourceKind = z.infer<typeof sourceKindSchema>;
+
+export function migrateCatalogStorage(value: unknown): unknown {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !("sources" in value) ||
+    !Array.isArray(value.sources)
+  )
+    return value;
+  return {
+    ...value,
+    sources: value.sources.map((source) => {
+      if (source === null || typeof source !== "object" || Array.isArray(source)) return source;
+      return Object.fromEntries(
+        Object.entries(source).filter(([field]) => field !== "snapshot_uri"),
+      );
+    }),
+  };
+}
 
 export function unknownCapabilities(): ProviderModel["capabilities"] {
   return {

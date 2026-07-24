@@ -14,6 +14,7 @@ import { normalizeModelReleaseStage } from "./lifecycle.ts";
 import { apiEndpointKey, modelRouteKey } from "./model.ts";
 import {
   catalogSchema,
+  migrateCatalogStorage,
   type Catalog,
   type CatalogWarning,
   type Coverage,
@@ -23,6 +24,7 @@ import {
 } from "./schema.ts";
 import { preserveMissing, validateProvider } from "./validation.ts";
 import { normalizeModelOperations } from "./operation.ts";
+import { summarizeRefresh } from "./summary.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -75,17 +77,13 @@ function previousCoverage(catalog: Catalog | undefined, providerId: string): Cov
 }
 
 function sourceState(
-  result: Pick<
-    Awaited<ReturnType<typeof fetchSource>>,
-    "etag" | "lastModified" | "contentHash" | "snapshotUri"
-  >,
+  result: Pick<Awaited<ReturnType<typeof fetchSource>>, "etag" | "lastModified" | "contentHash">,
   observedAt: string,
 ): SourceState {
   return {
     etag: result.etag,
     lastModified: result.lastModified,
     contentHash: result.contentHash,
-    snapshotUri: result.snapshotUri,
     lastSuccessAt: observedAt,
     checkedAt: observedAt,
     consecutiveFailures: 0,
@@ -487,7 +485,7 @@ async function collectProvider(
 
       let result: Awaited<ReturnType<typeof fetchSource>>;
       try {
-        result = await fetchSource(manifest.provider.id, source, state.sources);
+        result = await fetchSource(source);
       } catch (error) {
         const oldState = state.sources[source.id];
         if (oldState !== undefined) {
@@ -547,7 +545,6 @@ async function collectProvider(
         last_modified: result.lastModified,
         content_hash: result.contentHash,
         extractor_version: source.extractorVersion,
-        snapshot_uri: result.snapshotUri,
       });
       state.sources[source.id] = sourceState(result, observedAt);
       const dependencyKeys = new Set(result.dependencies.map((dependency) => dependency.key));
@@ -640,41 +637,7 @@ async function collectProvider(
 }
 
 async function publish(catalog: Catalog): Promise<void> {
-  const envelope = {
-    catalog_version: catalog.catalog_version,
-    generated_at: catalog.generated_at,
-    data: {
-      providers: catalog.providers,
-      models: catalog.models,
-      sources: catalog.sources,
-      coverage: catalog.coverage,
-    },
-    warnings: catalog.warnings,
-  };
   await writeJson(join(rootDirectory, "data/catalog.json"), catalog);
-  await writeJson(join(rootDirectory, "public/data/catalog.json"), catalog);
-  await writeJson(join(rootDirectory, "public/v1/catalog/index.json"), envelope);
-  await writeJson(join(rootDirectory, "public/v1/providers/index.json"), {
-    catalog_version: catalog.catalog_version,
-    generated_at: catalog.generated_at,
-    data: catalog.providers,
-    warnings: catalog.warnings,
-  });
-  for (const provider of catalog.providers) {
-    const models = catalog.models.filter((model) => model.provider_id === provider.id);
-    await writeJson(join(rootDirectory, `public/v1/providers/${provider.id}/index.json`), {
-      catalog_version: catalog.catalog_version,
-      generated_at: catalog.generated_at,
-      data: provider,
-      warnings: catalog.warnings,
-    });
-    await writeJson(join(rootDirectory, `public/v1/providers/${provider.id}/models/index.json`), {
-      catalog_version: catalog.catalog_version,
-      generated_at: catalog.generated_at,
-      data: models,
-      warnings: catalog.warnings,
-    });
-  }
 }
 
 export async function collect(options: CollectionOptions = {}): Promise<Catalog> {
@@ -683,7 +646,9 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
 
   const previousValue = await readJson(join(rootDirectory, "data/catalog.json"));
   const previousResult =
-    previousValue === undefined ? undefined : catalogSchema.safeParse(previousValue);
+    previousValue === undefined
+      ? undefined
+      : catalogSchema.safeParse(migrateCatalogStorage(previousValue));
   const previous = options.rebuild
     ? undefined
     : previousResult?.success
@@ -691,7 +656,8 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       : undefined;
   const stateValue = await readJson(join(rootDirectory, "data/fetch-state.json"));
   const stateResult = stateValue === undefined ? undefined : fetchStateSchema.safeParse(stateValue);
-  const state: FetchState = stateResult?.success ? stateResult.data : { sources: {} };
+  const previousState: FetchState = stateResult?.success ? stateResult.data : { sources: {} };
+  const state = structuredClone(previousState);
 
   const results: ProviderResult[] = [];
   for (let index = 0; index < manifests.length; index += 4) {
@@ -748,5 +714,9 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     results.flatMap((result) => (result.quarantine === undefined ? [] : [result.quarantine])),
   );
   await publish(catalog);
+  await writeJson(
+    join(rootDirectory, "data/refresh-summary.json"),
+    summarizeRefresh(previous, catalog),
+  );
   return catalog;
 }
