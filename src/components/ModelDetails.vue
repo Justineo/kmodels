@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { computed, nextTick, useTemplateRef, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import {
   formatPrice,
   formatRateUnit,
@@ -26,6 +26,7 @@ const emit = defineEmits<{
 const dialog = useTemplateRef<HTMLDialogElement>("dialog");
 const scrollHost = useTemplateRef<HTMLDivElement>("scrollHost");
 const scrollViewport = useTemplateRef<HTMLDivElement>("scrollViewport");
+const closing = ref(false);
 const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
   viewport: scrollViewport.value,
@@ -57,23 +58,45 @@ const positiveCapabilities = computed(() => {
 watch(
   () => props.model,
   async (model) => {
+    if (model !== undefined) closing.value = false;
     await nextTick();
     const element = dialog.value;
     if (element === null) return;
-    if (model !== undefined && !element.open) element.showModal();
-    if (model === undefined && element.open) element.close();
+    if (model !== undefined && !element.open) element.show();
+    if (model === undefined) {
+      if (element.open) element.close();
+      closing.value = false;
+    }
     updateScrollbars();
   },
   { immediate: true },
 );
 
 function requestClose(): void {
+  if (props.model === undefined || closing.value) return;
+  closing.value = true;
+}
+
+function finishClose(): void {
+  if (!closing.value) return;
   emit("close");
 }
 
-function closeFromBackdrop(event: MouseEvent): void {
-  if (event.target === dialog.value) requestClose();
+function closeFromEscape(event: KeyboardEvent): void {
+  if (event.key !== "Escape" || event.defaultPrevented || props.model === undefined) return;
+  const target = event.target;
+  if (
+    target instanceof Element &&
+    (target.matches("select") || target.closest(":popover-open") !== null)
+  ) {
+    return;
+  }
+  event.preventDefault();
+  requestClose();
 }
+
+onMounted(() => document.addEventListener("keydown", closeFromEscape));
+onUnmounted(() => document.removeEventListener("keydown", closeFromEscape));
 
 function conditions(rate: ProviderModel["pricing"][number]): string {
   const values = Object.entries(rate.conditions);
@@ -86,11 +109,11 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
   <dialog
     ref="dialog"
     class="details-dialog"
+    :data-closing="closing || undefined"
     aria-labelledby="details-title"
     @cancel.prevent="requestClose"
-    @click="closeFromBackdrop"
   >
-    <article v-if="model" class="details-panel">
+    <article v-if="model" class="details-panel" @animationend.self="finishClose">
       <header class="details-header">
         <div>
           <p class="eyebrow">

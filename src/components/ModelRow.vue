@@ -34,8 +34,12 @@ const emit = defineEmits<{
 }>();
 
 const inputRate = computed(() => perMillionTokenRate(preferredRate(props.model, "input_text")));
+const cachedRate = computed(() =>
+  perMillionTokenRate(preferredRate(props.model, "cache_read_text")),
+);
 const outputRate = computed(() => perMillionTokenRate(preferredRate(props.model, "output_text")));
 const inputRateUnit = computed(() => formatTableRateUnit(inputRate.value));
+const cachedRateUnit = computed(() => formatTableRateUnit(cachedRate.value));
 const outputRateUnit = computed(() => formatTableRateUnit(outputRate.value));
 const status = computed(() => primaryStatus(props.model));
 
@@ -109,6 +113,10 @@ function filterStatus(): void {
     <td class="input-col price-cell numeric">
       <span class="price-value">{{ formatPrice(inputRate) }}</span>
       <small v-if="inputRateUnit">{{ inputRateUnit }}</small>
+    </td>
+    <td class="cached-col price-cell numeric">
+      <span class="price-value">{{ formatPrice(cachedRate) }}</span>
+      <small v-if="cachedRateUnit">{{ cachedRateUnit }}</small>
     </td>
     <td class="output-col price-cell numeric">
       <span class="price-value">{{ formatPrice(outputRate) }}</span>
