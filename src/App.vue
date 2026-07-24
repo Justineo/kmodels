@@ -13,6 +13,7 @@ import {
   type SourceRecord,
 } from "./catalog/schema.ts";
 import { orderedOperations } from "./catalog/operation.ts";
+import { indexModels, searchModels } from "./catalog/search.ts";
 import { calculateVirtualRange } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
 import IconSprite from "./components/IconSprite.vue";
@@ -84,11 +85,10 @@ const providerOptions = computed(() =>
 const operationOptions = computed(() =>
   orderedOperations(models.value.flatMap((model) => model.operations)),
 );
+const searchIndex = computed(() => indexModels(models.value));
 const filteredModels = computed(() => {
-  const normalizedQuery = query.value.trim().toLocaleLowerCase();
-  const values = models.value.filter(
+  const values = searchModels(searchIndex.value, query.value).filter(
     (model) =>
-      (normalizedQuery === "" || model.name.toLocaleLowerCase().includes(normalizedQuery)) &&
       (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
       (selectedOperations.value.length === 0 ||
         model.operations.some((operation) => selectedOperations.value.includes(operation))) &&
@@ -97,9 +97,7 @@ const filteredModels = computed(() => {
         selectedReleaseStages.value.includes(model.release_stage)),
   );
   const activeSort = sort.value;
-  if (activeSort) {
-    values.sort((left, right) => compareModels(left, right, activeSort));
-  }
+  if (activeSort) values.sort((left, right) => compareModels(left, right, activeSort));
   return values;
 });
 const virtualModels = computed(() =>
@@ -343,13 +341,13 @@ onUnmounted(() => {
     <section class="catalog-section" aria-label="Model catalog">
       <div class="filter-bar">
         <label class="search-field">
-          <span class="visually-hidden">Search models</span>
+          <span class="visually-hidden">Search model IDs and display names</span>
           <UiIcon name="search" />
           <input
             ref="searchInput"
             v-model="query"
             type="search"
-            placeholder="Model name…"
+            placeholder="Model ID or name…"
             autocomplete="off"
           />
           <kbd>/</kbd>
