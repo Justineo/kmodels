@@ -1312,11 +1312,28 @@ kbd {
   flex: 1;
 }
 
+.details-scroll-host[data-overlayscrollbars-initialize] {
+  overflow: hidden !important;
+}
+
+.details-scroll-host[data-overlayscrollbars-initialize] .details-scroll {
+  scrollbar-width: none;
+}
+
+.details-scroll-host[data-overlayscrollbars-initialize] .details-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .details-scroll {
   height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 20px 32px;
   overscroll-behavior: contain;
+}
+
+.details-content {
+  min-width: 0;
+  padding: 0 20px 32px;
 }
 
 .status-line {
@@ -1808,7 +1825,7 @@ kbd {
     padding-inline: 16px;
   }
 
-  .details-scroll {
+  .details-content {
     padding-inline: 16px;
   }
 
