@@ -5,6 +5,7 @@ import {
   perMillionTokenRate,
 } from "../src/catalog/presentation.ts";
 import type { PriceRate } from "../src/catalog/schema.ts";
+import { darkProviderSymbolId, providerSymbolId, spriteSymbols } from "../src/icons/sprite.ts";
 import { svgSymbol } from "../src/icons/svg.ts";
 
 function rate(price: string, unit: PriceRate["unit"]): PriceRate {
@@ -57,5 +58,13 @@ describe("SVG sprite", () => {
     expect(symbol).toContain('<symbol id="provider-test" viewBox="0 0 24 24" fill="currentColor">');
     expect(symbol).toContain('id="provider-test-paint"');
     expect(symbol).toContain('fill="url(#provider-test-paint)"');
+  });
+
+  it("registers the direct LobeHub Kimi assets for light and dark themes", () => {
+    expect(providerSymbolId("kimi")).toBe("provider-kimi");
+    expect(darkProviderSymbolId("kimi")).toBe("provider-kimi-dark");
+    expect(spriteSymbols).toContain('<symbol id="provider-kimi"');
+    expect(spriteSymbols).toContain('<symbol id="provider-kimi-dark"');
+    expect(spriteSymbols).toContain('fill="#1783FF"');
   });
 });

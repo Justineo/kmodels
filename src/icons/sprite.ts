@@ -7,6 +7,7 @@ import deepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?raw";
 import gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?raw";
 import huggingFace from "@lobehub/icons-static-svg/icons/huggingface-color.svg?raw";
 import kimi from "@lobehub/icons-static-svg/icons/kimi.svg?raw";
+import kimiColor from "@lobehub/icons-static-svg/icons/kimi-color.svg?raw";
 import meta from "@lobehub/icons-static-svg/icons/meta-color.svg?raw";
 import mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg?raw";
 import ollama from "@lobehub/icons-static-svg/icons/ollama.svg?raw";
@@ -66,6 +67,10 @@ const providerSources: Readonly<Record<string, string>> = {
   xai,
 };
 
+const darkProviderSources: Readonly<Record<string, string>> = {
+  kimi: kimiColor,
+};
+
 export type UiIconName = keyof typeof uiSources;
 
 export function uiSymbolId(name: UiIconName): string {
@@ -76,7 +81,14 @@ export function providerSymbolId(providerId: string): string | undefined {
   return providerSources[providerId] === undefined ? undefined : `provider-${providerId}`;
 }
 
+export function darkProviderSymbolId(providerId: string): string | undefined {
+  return darkProviderSources[providerId] === undefined ? undefined : `provider-${providerId}-dark`;
+}
+
 export const spriteSymbols = [
   ...Object.entries(uiSources).map(([name, source]) => svgSymbol(`ui-${name}`, source)),
   ...Object.entries(providerSources).map(([id, source]) => svgSymbol(`provider-${id}`, source)),
+  ...Object.entries(darkProviderSources).map(([id, source]) =>
+    svgSymbol(`provider-${id}-dark`, source),
+  ),
 ].join("");
