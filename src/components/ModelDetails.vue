@@ -21,6 +21,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: [];
+  navigate: [offset: -1 | 1];
 }>();
 
 const dialog = useTemplateRef<HTMLDialogElement>("dialog");
@@ -62,7 +63,10 @@ watch(
     await nextTick();
     const element = dialog.value;
     if (element === null) return;
-    if (model !== undefined && !element.open) element.show();
+    if (model !== undefined) {
+      if (!element.open) element.show();
+      scrollViewport.value?.scrollTo({ top: 0 });
+    }
     if (model === undefined) {
       if (element.open) element.close();
       closing.value = false;
@@ -82,21 +86,56 @@ function finishClose(): void {
   emit("close");
 }
 
-function closeFromEscape(event: KeyboardEvent): void {
-  if (event.key !== "Escape" || event.defaultPrevented || props.model === undefined) return;
+const arrowKeyControlSelector = [
+  "input",
+  "textarea",
+  "select",
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="textbox"]',
+  '[role="combobox"]',
+  '[role="listbox"]',
+  '[role="slider"]',
+  '[role="spinbutton"]',
+  '[role="tree"]',
+  '[role="grid"]',
+].join(",");
+
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.defaultPrevented || props.model === undefined || closing.value) return;
   const target = event.target;
+
+  if (event.key === "Escape") {
+    if (
+      target instanceof Element &&
+      (target.matches("select") || target.closest(":popover-open") !== null)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    requestClose();
+    return;
+  }
+
   if (
-    target instanceof Element &&
-    (target.matches("select") || target.closest(":popover-open") !== null)
+    (event.key !== "ArrowUp" && event.key !== "ArrowDown") ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
+    event.shiftKey ||
+    event.isComposing ||
+    (target instanceof Element &&
+      (target.closest(arrowKeyControlSelector) !== null ||
+        target.closest(":popover-open") !== null))
   ) {
     return;
   }
+
   event.preventDefault();
-  requestClose();
+  emit("navigate", event.key === "ArrowUp" ? -1 : 1);
 }
 
-onMounted(() => document.addEventListener("keydown", closeFromEscape));
-onUnmounted(() => document.removeEventListener("keydown", closeFromEscape));
+onMounted(() => document.addEventListener("keydown", handleKeydown));
+onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
 
 function conditions(rate: ProviderModel["pricing"][number]): string {
   const values = Object.entries(rate.conditions);
@@ -111,6 +150,7 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
     class="details-dialog"
     :data-closing="closing || undefined"
     aria-labelledby="details-title"
+    aria-keyshortcuts="ArrowUp ArrowDown"
     @cancel.prevent="requestClose"
   >
     <article v-if="model" class="details-panel" @animationend.self="finishClose">
