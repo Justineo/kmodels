@@ -2,6 +2,7 @@ import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedr
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { scaleDecimal } from "./pricing.ts";
@@ -139,8 +140,14 @@ const priceListSchema = z.object({
 });
 
 const apiDateSchema = z.iso.datetime({ offset: true });
-const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING"]);
-const customizationSchema = z.enum(["FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]);
+const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING", "AUDIO", "SPEECH", "VIDEO"]);
+const customizationSchema = z.enum([
+  "FINE_TUNING",
+  "PREFERENCE_FINE_TUNING",
+  "CONTINUED_PRE_TRAINING",
+  "DISTILLATION",
+]);
+const inferenceTypeSchema = z.enum(["ON_DEMAND", "PROVISIONED", "INFERENCE_PROFILE"]);
 
 const lifecycleSchema = z
   .object({
@@ -157,6 +164,7 @@ const apiItemSchema = z.object({
   inputModalities: z.array(apiModalitySchema).optional(),
   outputModalities: z.array(apiModalitySchema).optional(),
   customizationsSupported: z.array(customizationSchema).optional(),
+  inferenceTypesSupported: z.array(inferenceTypeSchema).optional(),
   responseStreamingSupported: z.boolean().optional(),
   modelLifecycle: lifecycleSchema,
 });
@@ -809,6 +817,256 @@ function addRate(rates: Map<string, PriceRate>, next: PriceRate, modelId: string
   rates.set(key, next);
 }
 
+function mergeOptionalFact<T>(
+  modelId: string,
+  field: string,
+  current: T | undefined,
+  incoming: T | undefined,
+): T | undefined {
+  if (current === undefined) return incoming;
+  if (incoming === undefined) return current;
+  if (stableJson(current) !== stableJson(incoming))
+    throw new Error(`Bedrock model ID ${modelId} has conflicting ${field}`);
+  return current;
+}
+
+function mergeKnownFact<T extends string>(
+  modelId: string,
+  field: string,
+  current: T,
+  incoming: T,
+  unknown: T,
+): T {
+  if (current === unknown) return incoming;
+  if (incoming === unknown) return current;
+  if (current !== incoming) throw new Error(`Bedrock model ID ${modelId} has conflicting ${field}`);
+  return current;
+}
+
+function mergeCapability(
+  modelId: string,
+  field: string,
+  current: boolean | "unknown",
+  incoming: boolean | "unknown",
+): boolean | "unknown" {
+  if (current === "unknown") return incoming;
+  if (incoming === "unknown") return current;
+  if (current !== incoming)
+    throw new Error(`Bedrock model ID ${modelId} has conflicting capability ${field}`);
+  return current;
+}
+
+function mergeBedrockModels(current: ProviderModel, incoming: ProviderModel): ProviderModel {
+  const modelId = current.model_id;
+  if (current.uid !== incoming.uid || current.name !== incoming.name)
+    throw new Error(`Bedrock model ID ${modelId} has conflicting identity`);
+  const rates = new Map<string, PriceRate>();
+  for (const rate of [...current.pricing, ...incoming.pricing]) addRate(rates, rate, modelId);
+  const endpoints = new Map(
+    [...(current.api_endpoints ?? []), ...(incoming.api_endpoints ?? [])].map((endpoint) => [
+      apiEndpointKey(endpoint),
+      endpoint,
+    ]),
+  );
+  const availability = new Map(
+    [...(current.availability ?? []), ...(incoming.availability ?? [])].map((item) => [
+      `${item.region}\0${item.deployment_type}`,
+      item,
+    ]),
+  );
+  const contextTokens = mergeOptionalFact(
+    modelId,
+    "context token limit",
+    current.limits.context_tokens,
+    incoming.limits.context_tokens,
+  );
+  const maxInputTokens = mergeOptionalFact(
+    modelId,
+    "maximum input token limit",
+    current.limits.max_input_tokens,
+    incoming.limits.max_input_tokens,
+  );
+  const maxOutputTokens = mergeOptionalFact(
+    modelId,
+    "maximum output token limit",
+    current.limits.max_output_tokens,
+    incoming.limits.max_output_tokens,
+  );
+  const embeddingDimensions = mergeOptionalFact(
+    modelId,
+    "embedding dimensions",
+    current.limits.embedding_dimensions,
+    incoming.limits.embedding_dimensions,
+  );
+  const embeddingDimensionRange = mergeOptionalFact(
+    modelId,
+    "embedding dimension range",
+    current.limits.embedding_dimension_range,
+    incoming.limits.embedding_dimension_range,
+  );
+  const recommendedEmbeddingDimensions = mergeOptionalFact(
+    modelId,
+    "recommended embedding dimensions",
+    current.limits.recommended_embedding_dimensions,
+    incoming.limits.recommended_embedding_dimensions,
+  );
+  const limits: ProviderModel["limits"] = {
+    ...(contextTokens === undefined ? {} : { context_tokens: contextTokens }),
+    ...(maxInputTokens === undefined ? {} : { max_input_tokens: maxInputTokens }),
+    ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
+    ...(embeddingDimensions === undefined ? {} : { embedding_dimensions: embeddingDimensions }),
+    ...(embeddingDimensionRange === undefined
+      ? {}
+      : { embedding_dimension_range: embeddingDimensionRange }),
+    ...(recommendedEmbeddingDimensions === undefined
+      ? {}
+      : { recommended_embedding_dimensions: recommendedEmbeddingDimensions }),
+  };
+  return {
+    ...current,
+    description: mergeOptionalFact(
+      modelId,
+      "description",
+      current.description,
+      incoming.description,
+    ),
+    aliases: [...new Set([...current.aliases, ...incoming.aliases])].sort(),
+    operations: unique([...current.operations, ...incoming.operations]),
+    api_endpoints:
+      endpoints.size === 0
+        ? undefined
+        : [...endpoints.values()].sort((left, right) =>
+            apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+          ),
+    modalities: {
+      input: unique([...current.modalities.input, ...incoming.modalities.input]),
+      output: unique([...current.modalities.output, ...incoming.modalities.output]),
+    },
+    capabilities: {
+      reasoning: mergeCapability(
+        modelId,
+        "reasoning",
+        current.capabilities.reasoning,
+        incoming.capabilities.reasoning,
+      ),
+      tool_call: mergeCapability(
+        modelId,
+        "tool_call",
+        current.capabilities.tool_call,
+        incoming.capabilities.tool_call,
+      ),
+      structured_output: mergeCapability(
+        modelId,
+        "structured_output",
+        current.capabilities.structured_output,
+        incoming.capabilities.structured_output,
+      ),
+      streaming: mergeCapability(
+        modelId,
+        "streaming",
+        current.capabilities.streaming,
+        incoming.capabilities.streaming,
+      ),
+      batch: mergeCapability(
+        modelId,
+        "batch",
+        current.capabilities.batch,
+        incoming.capabilities.batch,
+      ),
+      prompt_cache: mergeCapability(
+        modelId,
+        "prompt_cache",
+        current.capabilities.prompt_cache,
+        incoming.capabilities.prompt_cache,
+      ),
+      fine_tuning: mergeCapability(
+        modelId,
+        "fine_tuning",
+        current.capabilities.fine_tuning,
+        incoming.capabilities.fine_tuning,
+      ),
+      citations: mergeCapability(
+        modelId,
+        "citations",
+        current.capabilities.citations,
+        incoming.capabilities.citations,
+      ),
+      code_execution: mergeCapability(
+        modelId,
+        "code_execution",
+        current.capabilities.code_execution,
+        incoming.capabilities.code_execution,
+      ),
+      context_management: mergeCapability(
+        modelId,
+        "context_management",
+        current.capabilities.context_management,
+        incoming.capabilities.context_management,
+      ),
+      effort_control: mergeCapability(
+        modelId,
+        "effort_control",
+        current.capabilities.effort_control,
+        incoming.capabilities.effort_control,
+      ),
+      computer_use: mergeCapability(
+        modelId,
+        "computer_use",
+        current.capabilities.computer_use,
+        incoming.capabilities.computer_use,
+      ),
+    },
+    limits,
+    release_date: mergeOptionalFact(
+      modelId,
+      "release date",
+      current.release_date,
+      incoming.release_date,
+    ),
+    deprecated_at: mergeOptionalFact(
+      modelId,
+      "deprecation date",
+      current.deprecated_at,
+      incoming.deprecated_at,
+    ),
+    retired_at: mergeOptionalFact(
+      modelId,
+      "retirement date",
+      current.retired_at,
+      incoming.retired_at,
+    ),
+    status: mergeKnownFact(modelId, "lifecycle", current.status, incoming.status, "unknown"),
+    release_stage: mergeKnownFact(
+      modelId,
+      "release stage",
+      current.release_stage,
+      incoming.release_stage,
+      "unknown",
+    ),
+    pricing_status: mergeKnownFact(
+      modelId,
+      "pricing status",
+      current.pricing_status,
+      incoming.pricing_status,
+      "unknown",
+    ),
+    pricing: [...rates.values()].sort((left, right) =>
+      `${left.meter}:${JSON.stringify(left.conditions)}`.localeCompare(
+        `${right.meter}:${JSON.stringify(right.conditions)}`,
+      ),
+    ),
+    availability:
+      availability.size === 0
+        ? undefined
+        : [...availability.values()].sort((left, right) =>
+            `${left.deployment_type}\0${left.region}`.localeCompare(
+              `${right.deployment_type}\0${right.region}`,
+            ),
+          ),
+    source_refs: [...new Set([...current.source_refs, ...incoming.source_refs])].sort(),
+  };
+}
+
 function parsePrices(
   documents: z.infer<typeof linkedBundleSchema>["documents"],
   cards: Card[],
@@ -921,7 +1179,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
             `${right.deployment_type}\0${right.region}`,
           ),
         );
-      models.set(id, {
+      const incoming: ProviderModel = {
         ...baseModel({
           providerId: input.provider.id,
           id,
@@ -950,14 +1208,23 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         pricing,
         availability,
         scope: "regional_catalog",
-      });
+      };
+      models.set(id, current === undefined ? incoming : mergeBedrockModels(current, incoming));
     }
   }
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
+function apiModality(value: z.infer<typeof apiModalitySchema>): Modality {
+  if (value === "TEXT") return "text";
+  if (value === "IMAGE") return "image";
+  if (value === "EMBEDDING") return "embedding";
+  if (value === "VIDEO") return "video";
+  return "audio";
+}
+
 function apiModalities(values: z.infer<typeof apiModalitySchema>[] | undefined): Modality[] {
-  return unique((values ?? []).map((value) => modalitySchema.parse(value.toLowerCase())));
+  return unique((values ?? []).map(apiModality));
 }
 
 export function parseBedrockApi(input: ParseInput): ProviderModel[] {
@@ -987,7 +1254,9 @@ export function parseBedrockApi(input: ParseInput): ProviderModel[] {
         fine_tuning:
           item.customizationsSupported === undefined
             ? "unknown"
-            : item.customizationsSupported.includes("FINE_TUNING"),
+            : item.customizationsSupported.some(
+                (value) => value === "FINE_TUNING" || value === "PREFERENCE_FINE_TUNING",
+              ),
       },
       release_date: apiDate(item.modelLifecycle?.startOfLifeTime),
       deprecated_at: apiDate(item.modelLifecycle?.legacyTime),

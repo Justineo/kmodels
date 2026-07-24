@@ -2630,6 +2630,41 @@ describe("document adapter", () => {
     );
   });
 
+  it("merges additive evidence for an exact model ID repeated across cards", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock catalog source");
+    const bundle = z
+      .object({
+        index: z.object({ url: z.string(), body: z.string() }),
+        documents: z.array(z.object({ url: z.string(), body: z.string() })),
+      })
+      .parse(JSON.parse(await fixture("document/bedrock.json")));
+    const card = bundle.documents.find((document) =>
+      document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
+    );
+    if (card === undefined) throw new Error("Missing Bedrock fixture card");
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-4-5-copy.md",
+      body: card.body.replace(
+        "![Yes](icon-yes.png) Messages",
+        "![Yes](icon-yes.png) Chat Completions",
+      ),
+    });
+    const model = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    }).find(({ model_id }) => model_id === "anthropic.claude-haiku-4-5-20251001-v1:0");
+    expect(model?.api_endpoints).toEqual([
+      { name: "Converse", path: "model/{modelId}/converse" },
+      { name: "Invoke", path: "model/{modelId}/invoke" },
+      { name: "Messages", path: "model/{modelId}/invoke" },
+      { name: "Chat Completions", path: "v1/chat/completions" },
+    ]);
+  });
+
   it("parses the signed regional inventory as a scoped structured overlay", async () => {
     const model = (
       await parsed("amazon-bedrock", "document/bedrock-api.json", "bedrock-api-us-east-1")
@@ -2653,7 +2688,7 @@ describe("document adapter", () => {
     });
   });
 
-  it("honors the documented optional inventory name and exact enums", async () => {
+  it("normalizes observed inventory enums and rejects unknown values", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources.find(({ id }) => id === "bedrock-api-us-east-1");
     if (source === undefined) throw new Error("Missing Bedrock API source");
@@ -2667,8 +2702,46 @@ describe("document adapter", () => {
         observedAt,
       })[0]?.name,
     ).toBe("anthropic.claude-haiku-4-5-20251001-v1:0");
+    const expanded = body
+      .replace(
+        '"inputModalities": ["TEXT", "IMAGE"]',
+        '"inputModalities": ["TEXT", "IMAGE", "AUDIO", "SPEECH", "VIDEO"]',
+      )
+      .replace('"outputModalities": ["TEXT"]', '"outputModalities": ["TEXT", "SPEECH", "VIDEO"]')
+      .replace(
+        '"customizationsSupported": ["FINE_TUNING"]',
+        '"customizationsSupported": ["PREFERENCE_FINE_TUNING"]',
+      )
+      .replace(
+        '"inferenceTypesSupported": ["ON_DEMAND"]',
+        '"inferenceTypesSupported": ["INFERENCE_PROFILE"]',
+      );
+    const expandedModel = parseSource({
+      provider: provider(value),
+      source,
+      body: expanded,
+      observedAt,
+    })[0];
+    expect({
+      modalities: expandedModel?.modalities,
+      fineTuning: expandedModel?.capabilities.fine_tuning,
+    }).toEqual({
+      modalities: {
+        input: ["text", "image", "audio", "video"],
+        output: ["text", "audio", "video"],
+      },
+      fineTuning: true,
+    });
     for (const changed of [
-      body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "AUDIO"]'),
+      body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "MUSIC"]'),
+      body.replace(
+        '"customizationsSupported": ["FINE_TUNING"]',
+        '"customizationsSupported": ["ADAPTER_TUNING"]',
+      ),
+      body.replace(
+        '"inferenceTypesSupported": ["ON_DEMAND"]',
+        '"inferenceTypesSupported": ["SERVERLESS"]',
+      ),
       body.replace('"status": "ACTIVE"', '"status": "AVAILABLE"'),
     ])
       expect(() =>
