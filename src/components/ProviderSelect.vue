@@ -18,7 +18,7 @@ const selectedProvider = computed(() =>
   <div class="select-field">
     <label class="select-label" for="provider-select">Provider</label>
     <div class="provider-select-control">
-      <select id="provider-select" v-model="selected" class="provider-select">
+      <select id="provider-select" :key="options.length" v-model="selected" class="provider-select">
         <option value="">
           <span class="provider-option-placeholder" aria-hidden="true"></span>
           <span class="provider-option-label">All providers</span>

@@ -5,14 +5,18 @@ import {
   catalogEnvelopeSchema,
   modelLifecycleSchema,
   modelReleaseStageSchema,
-  type ModelLifecycle,
-  type ModelOperation,
-  type ModelReleaseStage,
   type Provider,
   type ProviderModel,
   type SourceRecord,
 } from "./catalog/schema.ts";
 import { orderedOperations } from "./catalog/operation.ts";
+import {
+  formatRouteSearch,
+  parseRouteSearch,
+  type SortDirection,
+  type SortKey,
+  type SortState,
+} from "./catalog/route.ts";
 import { indexModels, searchModels } from "./catalog/search.ts";
 import { calculateVirtualRange } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
@@ -28,30 +32,25 @@ const TABLE_HEADER_HEIGHT = 34;
 const OVERSCAN_ROWS = 8;
 
 type Theme = "light" | "dark";
-type SortKey = "name" | "provider" | "context" | "updated";
-type SortDirection = "ascending" | "descending";
-type SortState = {
-  key: SortKey;
-  direction: SortDirection;
-};
 const LIFECYCLE_OPTIONS = modelLifecycleSchema.options;
 const RELEASE_STAGE_OPTIONS = modelReleaseStageSchema.options;
 const root = document.documentElement;
+const initialRoute = parseRouteSearch(location.search);
 
 const models = ref<ProviderModel[]>([]);
 const providers = ref<Provider[]>([]);
 const sources = ref<SourceRecord[]>([]);
 const generatedAt = ref("");
-const query = ref("");
-const selectedProvider = ref("");
-const selectedOperations = ref<ModelOperation[]>([]);
-const selectedLifecycles = ref<ModelLifecycle[]>([]);
-const selectedReleaseStages = ref<ModelReleaseStage[]>([]);
+const query = ref(initialRoute.query);
+const selectedProvider = ref(initialRoute.provider);
+const selectedOperations = ref(initialRoute.operations);
+const selectedLifecycles = ref(initialRoute.lifecycles);
+const selectedReleaseStages = ref(initialRoute.releaseStages);
 const loading = ref(true);
 const loadError = ref<string>();
-const selectedModel = ref<ProviderModel>();
+const selectedModelUid = ref(initialRoute.modelUid);
 const theme = ref<Theme>(root.dataset.theme === "dark" ? "dark" : "light");
-const sort = ref<SortState>();
+const sort = ref(initialRoute.sort);
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
 const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
 const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
@@ -67,6 +66,7 @@ const virtualRange = ref(
   }),
 );
 let tableResizeObserver: ResizeObserver | undefined;
+let applyingRoute = false;
 const updateFilterScrollbars = useOverlayScrollbars(() => ({
   target: filterScrollHost.value,
   viewport: filterScrollViewport.value,
@@ -79,6 +79,10 @@ useOverlayScrollbars(() => ({
 const providerNames = computed(
   () => new Map(providers.value.map((provider) => [provider.id, provider.name])),
 );
+const selectedModel = computed(() => {
+  const uid = selectedModelUid.value;
+  return uid === undefined ? undefined : models.value.find((model) => model.uid === uid);
+});
 const providerOptions = computed(() =>
   [...providers.value].sort((left, right) => left.name.localeCompare(right.name)),
 );
@@ -138,6 +142,20 @@ const themeToggleLabel = computed(() =>
 watch(filteredModels, () => {
   void nextTick(resetVirtualScroll);
 });
+
+watch(
+  [
+    query,
+    selectedProvider,
+    selectedOperations,
+    selectedLifecycles,
+    selectedReleaseStages,
+    sort,
+    selectedModelUid,
+  ],
+  syncRoute,
+  { deep: true, flush: "post" },
+);
 
 function compareOptionalNumber(
   left: number | undefined,
@@ -246,13 +264,60 @@ function resetVirtualScroll(): void {
   updateVirtualRange();
 }
 
+function syncRoute(): void {
+  if (applyingRoute) return;
+  const search = formatRouteSearch({
+    query: query.value,
+    provider: selectedProvider.value,
+    operations: selectedOperations.value,
+    lifecycles: selectedLifecycles.value,
+    releaseStages: selectedReleaseStages.value,
+    sort: sort.value,
+    modelUid: selectedModelUid.value,
+  });
+  if (search === location.search) return;
+  history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
+}
+
+function reconcileRouteSelections(): void {
+  if (
+    selectedProvider.value !== "" &&
+    !providers.value.some((provider) => provider.id === selectedProvider.value)
+  ) {
+    selectedProvider.value = "";
+  }
+  if (
+    selectedModelUid.value !== undefined &&
+    !models.value.some((model) => model.uid === selectedModelUid.value)
+  ) {
+    selectedModelUid.value = undefined;
+  }
+}
+
+function applyRoute(): void {
+  const state = parseRouteSearch(location.search);
+  applyingRoute = true;
+  query.value = state.query;
+  selectedProvider.value = state.provider;
+  selectedOperations.value = state.operations;
+  selectedLifecycles.value = state.lifecycles;
+  selectedReleaseStages.value = state.releaseStages;
+  sort.value = state.sort;
+  selectedModelUid.value = state.modelUid;
+  if (models.value.length > 0) reconcileRouteSelections();
+  void nextTick(() => {
+    applyingRoute = false;
+    syncRoute();
+  });
+}
+
 function selectRelativeModel(offset: -1 | 1): void {
   const current = selectedModel.value;
   if (current === undefined) return;
   const index = filteredModels.value.findIndex((model) => model.uid === current.uid);
   if (index === -1) return;
   const next = filteredModels.value[index + offset];
-  if (next !== undefined) selectedModel.value = next;
+  if (next !== undefined) selectedModelUid.value = next.uid;
 }
 
 function handleShortcut(event: KeyboardEvent): void {
@@ -288,6 +353,7 @@ async function loadCatalog(): Promise<void> {
     providers.value = catalog.data.providers;
     sources.value = catalog.data.sources;
     generatedAt.value = catalog.generated_at;
+    reconcileRouteSelections();
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : "Catalog unavailable";
   } finally {
@@ -297,17 +363,20 @@ async function loadCatalog(): Promise<void> {
 
 onMounted(() => {
   window.addEventListener("keydown", handleShortcut);
+  window.addEventListener("popstate", applyRoute);
   const element = tableShell.value;
   if (element !== null) {
     tableResizeObserver = new ResizeObserver(updateVirtualRange);
     tableResizeObserver.observe(element);
   }
   updateVirtualRange();
+  syncRoute();
   void loadCatalog();
 });
 
 onUnmounted(() => {
   window.removeEventListener("keydown", handleShortcut);
+  window.removeEventListener("popstate", applyRoute);
   tableResizeObserver?.disconnect();
 });
 </script>
@@ -587,8 +656,8 @@ onUnmounted(() => {
                 :model="model"
                 :provider-name="providerName(model.provider_id)"
                 :row-index="virtualRange.start + index + 2"
-                :selected="selectedModel?.uid === model.uid"
-                @select="selectedModel = $event"
+                :selected="selectedModelUid === model.uid"
+                @select="selectedModelUid = $event.uid"
                 @filter-provider="selectedProvider = $event"
                 @filter-operation="selectedOperations = [$event]"
                 @filter-lifecycle="selectedLifecycles = [$event]"
@@ -628,7 +697,7 @@ onUnmounted(() => {
     :model="selectedModel"
     :provider-name="selectedModel ? providerName(selectedModel.provider_id) : ''"
     :sources="sources"
-    @close="selectedModel = undefined"
+    @close="selectedModelUid = undefined"
     @navigate="selectRelativeModel"
   />
 </template>
