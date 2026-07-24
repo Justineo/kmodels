@@ -1,0 +1,230 @@
+:root {
+  /* Brand and neutral foundations */
+  --color-brand-green: #000f06;
+  --color-brand-lime: #ccff00;
+  --color-brand-bay: #b7bdb5;
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #f7f9f6;
+  --color-neutral-100: #f0f3ef;
+  --color-neutral-200: #e7ede5;
+  --color-neutral-300: #d7ded4;
+  --color-neutral-400: #cdd4cb;
+  --color-neutral-500: #a1a69f;
+  --color-neutral-600: #858983;
+  --color-neutral-700: #676b66;
+  --color-neutral-800: #4a4d49;
+  --color-neutral-850: #2d2e2c;
+  --color-neutral-900: #101110;
+  --color-black: #000000;
+  --color-transparent: transparent;
+
+  /* Typography */
+  --font-family-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-family-mono: "SFMono-Regular", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-size-micro: 9px;
+  --font-size-label: 10px;
+  --font-size-caption: 11px;
+  --font-size-body: 12px;
+  --font-size-chrome: 13px;
+  --font-size-brand: 14px;
+  --font-size-title: 20px;
+  --font-size-display: 24px;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --line-height-none: 1;
+  --line-height-tight: 1.25;
+  --line-height-control: 1.4;
+  --line-height-body: 1.5;
+  --line-height-relaxed: 1.65;
+  --tracking-tight: -0.025em;
+  --tracking-snug: -0.015em;
+  --tracking-compact: -0.005em;
+  --tracking-normal: 0;
+  --tracking-table: 0.005em;
+  --tracking-label: 0.04em;
+
+  /* Spacing and shape */
+  --space-0: 0;
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-3-5: 14px;
+  --space-4: 16px;
+  --space-4-5: 18px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-24: 96px;
+  --radius-none: 0;
+  --radius-xs: 3px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 999px;
+  --stroke-hairline: 1px;
+  --stroke-focus: 2px;
+
+  /* Control, icon, and layout metrics */
+  --control-height-compact: 20px;
+  --control-height-default: 28px;
+  --control-height-comfortable: 32px;
+  --target-size-minimum: 44px;
+  --icon-size-xs: 12px;
+  --icon-size-sm: 14px;
+  --icon-size-md: 16px;
+  --icon-size-lg: 18px;
+  --status-dot-size: 6px;
+  --layout-header-height: 52px;
+  --layout-toolbar-height: 42px;
+  --layout-table-header-height: 34px;
+  --layout-table-row-height: 48px;
+  --layout-workspace-gutter: clamp(12px, 1.4vw, 20px);
+  --layout-table-cell-padding: 12px;
+  --layout-sort-control-space: 17px;
+  --layout-filter-header-height: 56px;
+  --layout-details-header-height: 100px;
+  --layout-detail-cell-height: 60px;
+  --layout-empty-state-height: 240px;
+  --layout-list-row-height: 48px;
+  --layout-filter-popover-width: 460px;
+  --layout-details-panel-width: 600px;
+  --layout-tooltip-width: 250px;
+  --layout-viewport-min-width: 320px;
+  --layout-select-max-height: 420px;
+  --layout-copy-measure: 380px;
+  --layout-fallback-measure: 560px;
+
+  /* Motion and elevation */
+  --duration-fast: 100ms;
+  --duration-standard: 120ms;
+  --duration-panel: 180ms;
+  --duration-panel-exit: 140ms;
+  --duration-spinner: 650ms;
+  --duration-reduced-motion: 0.01ms;
+  --easing-standard: ease;
+  --easing-enter: ease-out;
+  --easing-linear: linear;
+  --easing-panel-enter: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --easing-panel-exit: cubic-bezier(0.4, 0, 1, 1);
+  --opacity-hidden: 0;
+  --opacity-visible: 1;
+  --opacity-subdued: 0.3;
+  --opacity-sort-idle: 0.25;
+  --opacity-panel-enter: 0.8;
+  --reveal-distance-compact: 4px;
+  --reveal-distance-panel: 24px;
+  --backdrop-saturation: 180%;
+  --backdrop-blur-header: 16px;
+  --backdrop-blur-toolbar: 12px;
+  --layer-sticky-control: 10;
+  --layer-table-header: 20;
+  --layer-toolbar: 30;
+  --layer-header: 40;
+  --layer-overlay: 50;
+
+  /* Light semantic roles */
+  --color-canvas: var(--color-neutral-200);
+  --color-surface: var(--color-neutral-0);
+  --color-surface-subtle: color-mix(in srgb, var(--color-neutral-200) 42%, var(--color-neutral-0));
+  --color-surface-alternate: color-mix(
+    in srgb,
+    var(--color-neutral-200) 18%,
+    var(--color-neutral-0)
+  );
+  --color-surface-hover: color-mix(in srgb, var(--color-neutral-200) 68%, var(--color-neutral-0));
+  --color-surface-selected: color-mix(in srgb, var(--color-brand-lime) 14%, var(--color-neutral-0));
+  --color-text-primary: var(--color-brand-green);
+  --color-text-secondary: var(--color-neutral-800);
+  --color-text-muted: var(--color-neutral-700);
+  --color-border-subtle: var(--color-neutral-300);
+  --color-border-default: var(--color-neutral-400);
+  --color-border-interactive: var(--color-neutral-500);
+  --color-accent: var(--color-brand-green);
+  --color-accent-soft: color-mix(in srgb, var(--color-brand-lime) 12%, var(--color-neutral-0));
+  --color-control-hover: rgb(0 15 6 / 6%);
+  --color-tag-background: rgb(0 15 6 / 5%);
+  --color-tag-background-hover: rgb(0 15 6 / 9%);
+  --color-link-underline: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  --color-status-positive: #22863a;
+  --color-status-warning: #9a6700;
+  --color-status-danger: #c93c37;
+  --color-selection: var(--color-brand-lime);
+  --color-header-backdrop: rgb(255 255 255 / 88%);
+  --color-toolbar-backdrop: rgb(255 255 255 / 94%);
+  --shadow-popover: 0 16px 40px rgb(0 15 6 / 12%);
+  --shadow-filter: 0 18px 48px rgb(0 15 6 / 14%);
+  --shadow-panel: -20px 0 50px rgb(0 15 6 / 10%);
+  --shadow-focus-inset: inset 0 -2px var(--color-accent);
+  --shadow-selection-inset: inset 2px 0 var(--color-accent);
+
+  /* Component roles */
+  --tag-height: 18px;
+  --tag-radius: var(--radius-xs);
+  --tag-padding-inline: var(--space-1);
+  --tag-font-size: var(--font-size-label);
+  --tag-font-weight: var(--font-weight-medium);
+  --tag-text: var(--color-text-secondary);
+  --tag-background: var(--color-tag-background);
+  --tag-text-hover: var(--color-text-primary);
+  --tag-background-hover: var(--color-tag-background-hover);
+  --floating-surface-radius: var(--radius-lg);
+  --list-surface-radius: var(--radius-md);
+
+  color: var(--color-text-primary);
+  background: var(--color-canvas);
+  font-family: var(--font-family-sans);
+  font-size: var(--font-size-chrome);
+  font-synthesis: none;
+}
+
+:root[data-theme="dark"] {
+  --color-canvas: var(--color-brand-green);
+  --color-surface: var(--color-neutral-900);
+  --color-surface-subtle: color-mix(
+    in srgb,
+    var(--color-neutral-850) 42%,
+    var(--color-neutral-900)
+  );
+  --color-surface-alternate: color-mix(
+    in srgb,
+    var(--color-brand-green) 30%,
+    var(--color-neutral-900)
+  );
+  --color-surface-hover: var(--color-neutral-850);
+  --color-surface-selected: color-mix(
+    in srgb,
+    var(--color-brand-lime) 10%,
+    var(--color-neutral-900)
+  );
+  --color-text-primary: var(--color-neutral-0);
+  --color-text-secondary: var(--color-brand-bay);
+  --color-text-muted: var(--color-neutral-600);
+  --color-border-subtle: var(--color-neutral-850);
+  --color-border-default: var(--color-neutral-800);
+  --color-border-interactive: var(--color-neutral-700);
+  --color-accent: var(--color-brand-lime);
+  --color-accent-soft: color-mix(in srgb, var(--color-brand-lime) 10%, var(--color-neutral-900));
+  --color-control-hover: rgb(255 255 255 / 7%);
+  --color-tag-background: rgb(255 255 255 / 7%);
+  --color-tag-background-hover: rgb(255 255 255 / 12%);
+  --color-status-positive: #48b96b;
+  --color-status-warning: #d4a341;
+  --color-status-danger: #ef6b65;
+  --color-header-backdrop: rgb(0 15 6 / 90%);
+  --color-toolbar-backdrop: rgb(16 17 16 / 94%);
+  --shadow-popover: 0 18px 44px rgb(0 0 0 / 45%);
+  --shadow-filter: 0 20px 52px rgb(0 0 0 / 48%);
+  --shadow-panel: -20px 0 50px rgb(0 0 0 / 38%);
+}
+
+@media (width <= 580px) {
+  :root {
+    --layout-header-height: 48px;
+    --layout-table-cell-padding: 8px;
+  }
+}

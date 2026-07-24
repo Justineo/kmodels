@@ -81,6 +81,41 @@ export function formatModelTask(value: ModelTask): string {
   }
 }
 
+export function formatTableTask(value: ModelTask): string {
+  switch (value) {
+    case "audio_generation":
+      return "Audio";
+    case "classification":
+      return "Classify";
+    case "embeddings":
+      return "Embed";
+    case "image_generation":
+      return "Image";
+    case "moderation":
+      return "Moderate";
+    case "object_detection":
+      return "Detect";
+    case "ocr":
+      return "OCR";
+    case "reranking":
+      return "Rerank";
+    case "segmentation":
+      return "Segment";
+    case "speech_synthesis":
+      return "TTS";
+    case "speech_to_speech":
+      return "S2S";
+    case "text_generation":
+      return "Text";
+    case "transcription":
+      return "STT";
+    case "translation":
+      return "Translate";
+    case "video_generation":
+      return "Video";
+  }
+}
+
 export function modelTaskList(model: ProviderModel): string {
   if (model.tasks.length === 0) return "Not published";
   return model.tasks.map(formatModelTask).join(", ");

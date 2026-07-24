@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 import { normalizeDeliveryModes } from "../src/catalog/delivery.ts";
 import { baseModel } from "../src/catalog/model.ts";
-import { migrateCatalogStorage, unknownCapabilities } from "../src/catalog/schema.ts";
+import {
+  catalogEnvelopeSchema,
+  migrateCatalogEnvelope,
+  migrateCatalogStorage,
+  unknownCapabilities,
+} from "../src/catalog/schema.ts";
 import { normalizeModelTasks } from "../src/catalog/task.ts";
 
 function model() {
@@ -76,6 +81,25 @@ describe("task taxonomy", () => {
       sources: [{ id: "source", field_paths: ["model_id", "tasks"] }],
       models: [{ model_id: "model", tasks: ["text_generation"] }],
     });
+  });
+
+  it("migrates the former operations field at the website envelope boundary", () => {
+    const { tasks: _tasks, ...legacyModel } = model();
+    const envelope = catalogEnvelopeSchema.parse(
+      migrateCatalogEnvelope({
+        catalog_version: "0".repeat(64),
+        generated_at: "2026-07-24T00:00:00.000Z",
+        data: {
+          providers: [],
+          models: [{ ...legacyModel, operations: ["text_generation"] }],
+          sources: [],
+          coverage: [],
+        },
+        warnings: [],
+      }),
+    );
+
+    expect(envelope.data.models[0]?.tasks).toEqual(["text_generation"]);
   });
 });
 

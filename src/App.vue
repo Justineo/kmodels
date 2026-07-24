@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch 
 import { formatCount, formatModelTask } from "./catalog/presentation.ts";
 import {
   catalogEnvelopeSchema,
+  migrateCatalogEnvelope,
   modelLifecycleSchema,
   modelReleaseStageSchema,
   type Provider,
@@ -28,9 +29,8 @@ import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 
-const ROW_HEIGHT = 48;
-const TABLE_HEADER_HEIGHT = 34;
 const OVERSCAN_ROWS = 8;
+const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 
 type Theme = "light" | "dark";
 const LIFECYCLE_OPTIONS = modelLifecycleSchema.options;
@@ -60,7 +60,7 @@ const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
 const virtualRange = ref(
   calculateVirtualRange({
     count: 0,
-    itemSize: ROW_HEIGHT,
+    itemSize: INITIAL_VIRTUAL_ITEM_SIZE,
     overscan: OVERSCAN_ROWS,
     scrollOffset: 0,
     viewportSize: 0,
@@ -68,6 +68,8 @@ const virtualRange = ref(
 );
 let tableResizeObserver: ResizeObserver | undefined;
 let applyingRoute = false;
+let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
+let tableHeaderHeight = 0;
 const updateFilterScrollbars = useOverlayScrollbars(() => ({
   target: filterScrollHost.value,
   viewport: filterScrollViewport.value,
@@ -250,11 +252,17 @@ function updateVirtualRange(): void {
   const element = tableShell.value;
   virtualRange.value = calculateVirtualRange({
     count: filteredModels.value.length,
-    itemSize: ROW_HEIGHT,
+    itemSize: virtualItemSize,
     overscan: OVERSCAN_ROWS,
     scrollOffset: element?.scrollTop ?? 0,
-    viewportSize: Math.max(0, (element?.clientHeight ?? 0) - TABLE_HEADER_HEIGHT),
+    viewportSize: Math.max(0, (element?.clientHeight ?? 0) - tableHeaderHeight),
   });
+}
+
+function pixelToken(name: `--${string}`): number {
+  const value = Number.parseFloat(getComputedStyle(root).getPropertyValue(name));
+  if (!Number.isFinite(value) || value <= 0) throw new Error(`Invalid pixel token ${name}`);
+  return value;
 }
 
 function resetVirtualScroll(): void {
@@ -343,11 +351,12 @@ async function loadCatalog(): Promise<void> {
   loadError.value = undefined;
   try {
     const response = await fetch("/v1/catalog/index.json", {
+      cache: "no-cache",
       headers: { Accept: "application/json" },
     });
     if (!response.ok) throw new Error(`Catalog request failed with ${response.status}`);
     const value: unknown = await response.json();
-    const catalog = catalogEnvelopeSchema.parse(value);
+    const catalog = catalogEnvelopeSchema.parse(migrateCatalogEnvelope(value));
     models.value = catalog.data.models;
     providers.value = catalog.data.providers;
     sources.value = catalog.data.sources;
@@ -361,6 +370,8 @@ async function loadCatalog(): Promise<void> {
 }
 
 onMounted(() => {
+  virtualItemSize = pixelToken("--layout-table-row-height");
+  tableHeaderHeight = pixelToken("--layout-table-header-height");
   window.addEventListener("keydown", handleShortcut);
   window.addEventListener("popstate", applyRoute);
   const element = tableShell.value;
