@@ -501,6 +501,7 @@ onUnmounted(() => {
               <col class="status-col" />
               <col class="context-col" />
               <col class="input-col" />
+              <col class="cached-col" />
               <col class="output-col" />
               <col class="updated-col" />
               <col class="disclosure-col" />
@@ -539,6 +540,14 @@ onUnmounted(() => {
                   Input / 1M
                 </th>
                 <th
+                  class="cached-col numeric"
+                  scope="col"
+                  aria-label="Cached input rate per 1 million tokens"
+                  title="Default unit: per 1M tokens"
+                >
+                  Cached / 1M
+                </th>
+                <th
                   class="output-col numeric"
                   scope="col"
                   aria-label="Output rate per 1 million tokens"
@@ -561,7 +570,7 @@ onUnmounted(() => {
 
             <tbody v-if="filteredModels.length > 0">
               <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
-                <td colspan="9" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
+                <td colspan="10" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
               </tr>
               <ModelRow
                 v-for="(model, index) in virtualModels"
@@ -577,12 +586,12 @@ onUnmounted(() => {
                 @filter-release-stage="selectedReleaseStages = [$event]"
               />
               <tr v-if="virtualRange.paddingAfter > 0" class="virtual-spacer" aria-hidden="true">
-                <td colspan="9" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
+                <td colspan="10" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
               </tr>
             </tbody>
             <tbody v-else>
               <tr>
-                <td colspan="9">
+                <td colspan="10">
                   <div v-if="loading" class="table-state">
                     <UiIcon class="loader" name="loader-circle" />
                     <p>Loading validated catalog…</p>

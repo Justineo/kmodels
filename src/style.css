@@ -77,7 +77,6 @@ img {
   --header-background: rgb(255 255 255 / 88%);
   --toolbar-background: rgb(255 255 255 / 94%);
   --control-hover: rgb(0 15 6 / 6%);
-  --dialog-backdrop: rgb(0 15 6 / 22%);
   --border-hover: #a1a69f;
   --popover-shadow: 0 16px 40px rgb(0 15 6 / 12%);
   --filter-shadow: 0 18px 48px rgb(0 15 6 / 14%);
@@ -114,7 +113,6 @@ img {
   --header-background: rgb(0 15 6 / 90%);
   --toolbar-background: rgb(16 17 16 / 94%);
   --control-hover: rgb(255 255 255 / 7%);
-  --dialog-backdrop: rgb(0 0 0 / 52%);
   --border-hover: #676b66;
   --popover-shadow: 0 18px 44px rgb(0 0 0 / 45%);
   --filter-shadow: 0 20px 52px rgb(0 0 0 / 48%);
@@ -810,15 +808,15 @@ kbd {
 }
 
 .model-table col.model-col {
-  width: 25%;
+  width: 24%;
 }
 
 .model-table col.provider-col {
-  width: 15%;
+  width: 14%;
 }
 
 .model-table col.operations-col {
-  width: 12%;
+  width: 10%;
 }
 
 .model-table col.status-col {
@@ -830,12 +828,13 @@ kbd {
 }
 
 .model-table col.input-col,
+.model-table col.cached-col,
 .model-table col.output-col {
-  width: 9%;
+  width: 8%;
 }
 
 .model-table col.updated-col {
-  width: 10%;
+  width: 8%;
 }
 
 .model-table col.disclosure-col {
@@ -1234,6 +1233,9 @@ kbd {
 }
 
 .details-dialog {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
   width: 100%;
   max-width: none;
   height: 100%;
@@ -1241,12 +1243,10 @@ kbd {
   overflow: hidden;
   padding: 0;
   border: 0;
+  margin: 0;
   color: var(--text);
   background: transparent;
-}
-
-.details-dialog::backdrop {
-  background: var(--dialog-backdrop);
+  pointer-events: none;
 }
 
 .details-panel {
@@ -1258,7 +1258,13 @@ kbd {
   border-left: 1px solid var(--border-strong);
   background: var(--surface);
   box-shadow: var(--panel-shadow);
+  pointer-events: auto;
   animation: reveal-panel 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.details-dialog[data-closing] .details-panel {
+  pointer-events: none;
+  animation: hide-panel 140ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
 .details-header {
@@ -1661,6 +1667,13 @@ kbd {
   }
 }
 
+@keyframes hide-panel {
+  to {
+    translate: 24px 0;
+    opacity: 0;
+  }
+}
+
 @keyframes reveal-filter-popover {
   from {
     translate: 0 -4px;
@@ -1709,6 +1722,7 @@ kbd {
   }
 
   .operations-col,
+  .cached-col,
   .output-col {
     display: none;
   }
