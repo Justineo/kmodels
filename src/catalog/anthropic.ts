@@ -145,7 +145,7 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
   } satisfies ProviderModel;
   models.set(id, created);
   return created;
@@ -563,7 +563,7 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        operations: ["text_generation"],
+        tasks: ["text_generation"],
         modalities: { input: inputModalities, output: ["text"] },
         capabilities: {
           ...unknownCapabilities(),

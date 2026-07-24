@@ -1,11 +1,12 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import {
+  formatModelTask,
   formatPrice,
   formatRateUnit,
   formatSnakeCase,
   formatTokenCount,
-  modelOperationList,
+  modelTaskList,
   primaryStatus,
 } from "../catalog/presentation.ts";
 import type { ProviderModel, SourceRecord } from "../catalog/schema.ts";
@@ -43,8 +44,6 @@ const positiveCapabilities = computed(() => {
     ["reasoning", "Reasoning"],
     ["tool_call", "Tool calling"],
     ["structured_output", "Structured output"],
-    ["streaming", "Streaming"],
-    ["batch", "Batch"],
     ["prompt_cache", "Prompt cache"],
     ["fine_tuning", "Fine-tuning"],
     ["citations", "Citations"],
@@ -191,8 +190,14 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
               <h3 id="overview-heading">Overview</h3>
               <dl class="detail-grid">
                 <div>
-                  <dt>Operations</dt>
-                  <dd>{{ modelOperationList(model) }}</dd>
+                  <dt>Tasks</dt>
+                  <dd>{{ modelTaskList(model) }}</dd>
+                </div>
+                <div>
+                  <dt>Delivery modes</dt>
+                  <dd>
+                    {{ model.delivery_modes?.map(formatSnakeCase).join(", ") || "Not published" }}
+                  </dd>
                 </div>
                 <div>
                   <dt>Lifecycle</dt>
@@ -246,6 +251,23 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
               <p v-else class="unknown-note">
                 No positive capability flags were published by the source.
               </p>
+            </section>
+
+            <section
+              v-if="model.task_evidence?.length"
+              class="detail-section"
+              aria-labelledby="task-evidence-heading"
+            >
+              <h3 id="task-evidence-heading">Task evidence</h3>
+              <ul class="endpoint-list">
+                <li
+                  v-for="evidence in model.task_evidence"
+                  :key="`${evidence.task}:${evidence.source_ref}:${evidence.raw_value}`"
+                >
+                  <span>{{ formatModelTask(evidence.task) }}</span>
+                  <code>{{ evidence.namespace }}: {{ evidence.raw_value }}</code>
+                </li>
+              </ul>
             </section>
 
             <section

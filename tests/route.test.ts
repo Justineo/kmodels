@@ -5,7 +5,7 @@ function emptyState(): RouteState {
   return {
     query: "",
     provider: "",
-    operations: [],
+    tasks: [],
     lifecycles: [],
     releaseStages: [],
     sort: undefined,
@@ -22,7 +22,7 @@ describe("catalog route state", () => {
     const state: RouteState = {
       query: "claude 4",
       provider: "anthropic",
-      operations: ["text_generation", "speech_to_speech"],
+      tasks: ["text_generation", "speech_to_speech"],
       lifecycles: ["active", "retired"],
       releaseStages: ["stable", "experimental"],
       sort: { key: "name", direction: "descending" },
@@ -39,7 +39,7 @@ describe("catalog route state", () => {
   it("ignores unknown codes and parameters", () => {
     expect(parseRouteSearch("?o=t!&l=ax&r=pu&s=x&m=&extra=value")).toEqual({
       ...emptyState(),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       lifecycles: ["active"],
       releaseStages: ["preview", "unknown"],
     });
@@ -49,7 +49,7 @@ describe("catalog route state", () => {
     expect(
       formatRouteSearch({
         ...emptyState(),
-        operations: ["speech_to_speech", "text_generation", "speech_to_speech"],
+        tasks: ["speech_to_speech", "text_generation", "speech_to_speech"],
         lifecycles: ["retired", "active"],
       }),
     ).toBe("?o=tS&l=ar");

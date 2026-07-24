@@ -6,7 +6,7 @@ const semanticModelFields = [
   "name",
   "description",
   "aliases",
-  "operations",
+  "tasks",
   "raw_type",
   "service_families",
   "api_endpoints",

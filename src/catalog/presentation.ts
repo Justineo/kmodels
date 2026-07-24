@@ -1,6 +1,6 @@
 import type {
   ModelLifecycle,
-  ModelOperation,
+  ModelTask,
   ModelReleaseStage,
   PriceRate,
   ProviderModel,
@@ -56,7 +56,7 @@ export function formatTokenCount(value: number | undefined): string {
   return value === undefined ? "—" : compactNumber.format(value);
 }
 
-export function formatModelOperation(value: ModelOperation): string {
+export function formatModelTask(value: ModelTask): string {
   switch (value) {
     case "audio_generation":
       return "Audio generation";
@@ -81,9 +81,9 @@ export function formatModelOperation(value: ModelOperation): string {
   }
 }
 
-export function modelOperationList(model: ProviderModel): string {
-  if (model.operations.length === 0) return "Not published";
-  return model.operations.map(formatModelOperation).join(", ");
+export function modelTaskList(model: ProviderModel): string {
+  if (model.tasks.length === 0) return "Not published";
+  return model.tasks.map(formatModelTask).join(", ");
 }
 
 export function primaryStatus(model: ProviderModel): ModelLifecycle | ModelReleaseStage {
@@ -103,17 +103,17 @@ export function preferredRate(
   );
 }
 
-function operationOutputMeters(model: ProviderModel): readonly PriceRate["meter"][] {
-  if (model.operations.includes("image_generation"))
+function taskOutputMeters(model: ProviderModel): readonly PriceRate["meter"][] {
+  if (model.tasks.includes("image_generation"))
     return ["image_generation", "output_image", ...defaultOutputMeters];
-  if (model.operations.includes("video_generation"))
+  if (model.tasks.includes("video_generation"))
     return ["video_generation", "output_video", ...defaultOutputMeters];
-  if (model.operations.includes("embeddings")) return ["embedding", ...defaultOutputMeters];
-  if (model.operations.includes("reranking")) return ["rerank_request", ...defaultOutputMeters];
+  if (model.tasks.includes("embeddings")) return ["embedding", ...defaultOutputMeters];
+  if (model.tasks.includes("reranking")) return ["rerank_request", ...defaultOutputMeters];
   if (
-    model.operations.includes("audio_generation") ||
-    model.operations.includes("speech_synthesis") ||
-    model.operations.includes("speech_to_speech")
+    model.tasks.includes("audio_generation") ||
+    model.tasks.includes("speech_synthesis") ||
+    model.tasks.includes("speech_to_speech")
   )
     return ["output_audio", ...defaultOutputMeters];
   return defaultOutputMeters;
@@ -124,11 +124,7 @@ export function representativeTableRate(
   slot: TableRateSlot,
 ): PriceRate | undefined {
   const meters =
-    slot === "input"
-      ? inputMeters
-      : slot === "cached"
-        ? cachedMeters
-        : operationOutputMeters(model);
+    slot === "input" ? inputMeters : slot === "cached" ? cachedMeters : taskOutputMeters(model);
   for (const meter of new Set(meters)) {
     const rate = preferredRate(model, meter);
     if (rate !== undefined) return perMillionTokenRate(rate);

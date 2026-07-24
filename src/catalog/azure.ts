@@ -3,10 +3,10 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
-import { classifyModelOperations, orderedOperations } from "./operation.ts";
+import { classifyModelTasks, orderedTasks } from "./task.ts";
 import {
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -333,7 +333,7 @@ function labeledValue(value: string, label: "Input" | "Output"): string | undefi
 function modelModalities(
   rawType: string,
   details: string,
-  operations: ModelOperation[],
+  tasks: ModelTask[],
 ): ProviderModel["modalities"] {
   const evidence = `${rawType} ${details}`;
   const inputValue = labeledValue(evidence, "Input");
@@ -355,64 +355,63 @@ function modelModalities(
     if (phrase !== undefined) output.push(...modalityValues(phrase));
     if (/text out/i.test(evidence)) output.push("text");
   }
-  if (operations.includes("embeddings")) {
+  if (tasks.includes("embeddings")) {
     if (input.length === 0) input.push("text");
     output.push("embedding");
   }
-  if (operations.includes("image_generation")) output.push("image");
-  if (operations.includes("video_generation")) output.push("video");
-  if (operations.includes("speech_synthesis")) {
+  if (tasks.includes("image_generation")) output.push("image");
+  if (tasks.includes("video_generation")) output.push("video");
+  if (tasks.includes("speech_synthesis")) {
     if (input.length === 0) input.push("text");
     output.push("audio");
   }
-  if (operations.includes("transcription") || operations.includes("translation")) {
+  if (tasks.includes("transcription") || tasks.includes("translation")) {
     input.push("audio");
     if (output.length === 0) output.push("text");
   }
-  if (operations.includes("speech_to_speech")) {
+  if (tasks.includes("speech_to_speech")) {
     input.push("audio");
     output.push("audio");
   }
-  if (operations.includes("text_generation")) {
+  if (tasks.includes("text_generation")) {
     if (input.length === 0) input.push("text");
     if (output.length === 0) output.push("text");
   }
   return { input: unique(input), output: unique(output) };
 }
 
-function explicitOperations(rawType: string, details: string): ModelOperation[] {
+function explicitOperations(rawType: string, details: string): ModelTask[] {
   const value = `${rawType} ${details}`.toLowerCase();
-  const operations: ModelOperation[] = [];
+  const tasks: ModelTask[] = [];
   if (/chat[- ]completion|messages|responses api|completions api/.test(value))
-    operations.push("text_generation");
-  if (/assistants/.test(value)) operations.push("text_generation");
-  if (/embedding/.test(rawType.toLowerCase())) operations.push("embeddings");
-  if (/text classification/.test(value)) operations.push("classification");
-  if (/rerank/.test(value)) operations.push("reranking");
-  if (/image generation|image-to-image|text-to-image/.test(value))
-    operations.push("image_generation");
-  if (/image-to-text|document ai|\bocr\b/.test(value)) operations.push("ocr");
-  if (/video generation/.test(value)) operations.push("video_generation");
-  if (/speech-to-text|speech to text/.test(value)) operations.push("transcription");
-  if (/speech translation/.test(value)) operations.push("translation");
-  if (/text-to-speech|text to speech/.test(value)) operations.push("speech_synthesis");
+    tasks.push("text_generation");
+  if (/assistants/.test(value)) tasks.push("text_generation");
+  if (/embedding/.test(rawType.toLowerCase())) tasks.push("embeddings");
+  if (/text classification/.test(value)) tasks.push("classification");
+  if (/rerank/.test(value)) tasks.push("reranking");
+  if (/image generation|image-to-image|text-to-image/.test(value)) tasks.push("image_generation");
+  if (/image-to-text|document ai|\bocr\b/.test(value)) tasks.push("ocr");
+  if (/video generation/.test(value)) tasks.push("video_generation");
+  if (/speech-to-text|speech to text/.test(value)) tasks.push("transcription");
+  if (/speech translation/.test(value)) tasks.push("translation");
+  if (/text-to-speech|text to speech/.test(value)) tasks.push("speech_synthesis");
   if (/\baudio\b.*(?:real-?time|\brealtime\b)|(?:real-?time|\brealtime\b).*\baudio\b/.test(value))
-    operations.push("speech_to_speech");
+    tasks.push("speech_to_speech");
   if (/audio and text generation|audio generation/.test(value))
-    operations.push("text_generation", "speech_synthesis");
-  return orderedOperations(operations);
+    tasks.push("text_generation", "speech_synthesis");
+  return orderedTasks(tasks);
 }
 
-function modelOperations(id: string, rawType: string, details: string): ModelOperation[] {
+function modelTasks(id: string, rawType: string, details: string): ModelTask[] {
   const explicit = explicitOperations(rawType, details);
-  const classified = classifyModelOperations({
+  const classified = classifyModelTasks({
     modelId: id,
     name: id,
     rawType: undefined,
     modalities: { input: [], output: [] },
     fallback: "text_generation",
   });
-  return orderedOperations(
+  return orderedTasks(
     explicit.length === 0
       ? classified
       : [
@@ -573,14 +572,14 @@ function mergeModel(left: ProviderModel, right: ProviderModel): ProviderModel {
     raw_type: left.raw_type ?? right.raw_type,
     service_families: serviceFamilyValues.length === 0 ? undefined : serviceFamilyValues,
     api_endpoints: endpointValues.length === 0 ? undefined : endpointValues,
-    operations: orderedOperations([
-      ...left.operations.filter(
+    tasks: orderedTasks([
+      ...left.tasks.filter(
         (operation) =>
           right.raw_type === undefined ||
           operation !== "text_generation" ||
-          right.operations.includes(operation),
+          right.tasks.includes(operation),
       ),
-      ...right.operations,
+      ...right.tasks,
     ]),
     modalities: {
       input: unique([...left.modalities.input, ...right.modalities.input]),
@@ -677,11 +676,11 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
         .map((value) => value.replace(/\s+\([^)]*\)$/, "").trim())
         .filter((value) => modelIdSchema.safeParse(value).success);
       const existing = models.get(modelUid(input.provider.id, id, version));
-      const operations = modelOperations(id, table.section, "");
+      const tasks = modelTasks(id, table.section, "");
       const incoming = {
         ...base(input, id, version),
-        operations,
-        modalities: modelModalities(table.section, "", operations),
+        tasks,
+        modalities: modelModalities(table.section, "", tasks),
         service_families: [serviceFamily],
         status,
         release_stage: releaseStage,
@@ -721,11 +720,11 @@ function availability(models: Map<string, ProviderModel>, input: Input, body: st
         .slice(2)
         .flatMap((region, index) => (plain(row[index + 2] ?? "") === "✅" ? [region] : []));
       if (regions.length === 0) continue;
-      const operations = modelOperations(id, table.section, "");
+      const tasks = modelTasks(id, table.section, "");
       upsert(models, {
         ...base(input, id, version),
-        operations,
-        modalities: modelModalities(table.section, "", operations),
+        tasks,
+        modalities: modelModalities(table.section, "", tasks),
         service_families: serviceFamily === undefined ? undefined : [serviceFamily],
         api_endpoints:
           serviceFamily === serviceFamilies.openAi && /batch/i.test(table.section)
@@ -762,10 +761,7 @@ function assistants(models: Map<string, ProviderModel>, input: Input, body: stri
       );
       upsert(models, {
         ...base(input, id, version),
-        operations: orderedOperations([
-          ...modelOperations(id, "Assistants", ""),
-          "text_generation",
-        ]),
+        tasks: orderedTasks([...modelTasks(id, "Assistants", ""), "text_generation"]),
         service_families: [serviceFamilies.openAi],
         availability: regions.map((region) => ({ region, deployment_type: "Standard/Regional" })),
       });
@@ -832,14 +828,14 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
     const target = eligible.length === 1 ? eligible[0] : undefined;
     const id = target?.model_id ?? fact.id;
     const version = target?.version ?? fact.version;
-    const operations = modelOperations(id, fact.rawType, fact.details);
+    const tasks = modelTasks(id, fact.rawType, fact.details);
     upsert(models, {
       ...base(input, id, version),
       raw_type: fact.rawType,
       service_families: [fact.serviceFamily],
       api_endpoints: fact.apiEndpoints,
-      operations,
-      modalities: modelModalities(fact.rawType, fact.details, operations),
+      tasks,
+      modalities: modelModalities(fact.rawType, fact.details, tasks),
       capabilities: capabilities(`${fact.rawType} ${fact.details}`),
       limits: fact.limits,
       status: target?.status ?? fact.status,
@@ -1002,13 +998,13 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       ]),
     );
     const supports = (keys: string[]): boolean => booleanCapability(raw, keys) === true;
-    const operations: ModelOperation[] = [];
-    if (supports(["chatCompletion", "completion", "responses"])) operations.push("text_generation");
-    if (supports(["assistants", "agentsV2"])) operations.push("text_generation");
-    if (supports(["realtime"])) operations.push("speech_to_speech");
-    const classified = modelOperations(item.model.name, item.kind ?? item.model.format ?? "", "");
-    const modelOperationsValue = orderedOperations(
-      operations.length === 0 ? classified : [...operations, ...classified],
+    const tasks: ModelTask[] = [];
+    if (supports(["chatCompletion", "completion", "responses"])) tasks.push("text_generation");
+    if (supports(["assistants", "agentsV2"])) tasks.push("text_generation");
+    if (supports(["realtime"])) tasks.push("speech_to_speech");
+    const classified = modelTasks(item.model.name, item.kind ?? item.model.format ?? "", "");
+    const modelTasksValue = orderedTasks(
+      tasks.length === 0 ? classified : [...tasks, ...classified],
     );
     const status = apiStatus(item.model.lifecycleStatus);
     const rates = pricesFor(item, prices, bundle.location, input.source.id);
@@ -1016,8 +1012,8 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       {
         ...base(input, item.model.name, item.model.version),
         description: item.description,
-        operations: modelOperationsValue,
-        modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelOperationsValue),
+        tasks: modelTasksValue,
+        modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelTasksValue),
         capabilities: {
           ...unknownCapabilities(),
           tool_call: booleanCapability(raw, ["toolCalling", "functionCalling"]),

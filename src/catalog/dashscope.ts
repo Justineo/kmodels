@@ -11,12 +11,12 @@ import {
 } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { orderedOperations } from "./operation.ts";
+import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import {
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -106,9 +106,9 @@ function rowOperations(
   rawType: string | undefined,
   api: string | undefined,
   headings: string[],
-): ModelOperation[] {
+): ModelTask[] {
   const evidence = `${id} ${rawType ?? ""} ${headings.join(" ")}`.toLowerCase();
-  const result: ModelOperation[] = [];
+  const result: ModelTask[] = [];
   if (category === "text" || category === "vision" || category === "omni")
     result.push("text_generation");
   if (category === "image") result.push("image_generation");
@@ -125,7 +125,7 @@ function rowOperations(
   )
     result.push("speech_to_speech");
   if (category === "s2s" && result.length === 0) result.push("speech_to_speech");
-  return orderedOperations(result);
+  return orderedTasks(result);
 }
 
 function rowModalities(
@@ -211,7 +211,7 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
     ...left,
     description: left.description ?? right.description,
     aliases: unique([...left.aliases, ...right.aliases]),
-    operations: orderedOperations([...left.operations, ...right.operations]),
+    tasks: orderedTasks([...left.tasks, ...right.tasks]),
     raw_type: left.raw_type ?? right.raw_type,
     api_endpoints:
       endpoints.size === 0
@@ -311,7 +311,7 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
         add(models, {
           ...model,
           description: value(table, row, /^(?:Description|Use case|Use cases)(?:$| \/)/i),
-          operations: rowOperations(extractor.category, id, rawType, api, table.headings),
+          tasks: rowOperations(extractor.category, id, rawType, api, table.headings),
           raw_type: rawType,
           modalities: rowModalities(extractor.category, table, row, rawType),
           capabilities: {
@@ -485,14 +485,14 @@ function unit(header: string, raw: string): PriceRate["unit"] | undefined {
 function meter(
   header: string,
   headings: string[],
-  operations: ModelOperation[],
+  tasks: ModelTask[],
   rateUnit: PriceRate["unit"],
 ): PriceRate["meter"] {
   const evidence = `${header} ${headings.join(" ")}`.toLowerCase();
-  if (rateUnit === "image" || operations.includes("image_generation")) return "image_generation";
-  if (operations.includes("video_generation")) return "video_generation";
-  if (operations.includes("audio_generation")) return "output_audio";
-  if (operations.includes("transcription")) return "input_audio";
+  if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
+  if (tasks.includes("video_generation")) return "video_generation";
+  if (tasks.includes("audio_generation")) return "output_audio";
+  if (tasks.includes("transcription")) return "input_audio";
   if (/output/.test(header.toLowerCase())) {
     if (/audio/.test(header.toLowerCase())) return "output_audio";
     if (/image/.test(header.toLowerCase())) return "output_image";
@@ -503,7 +503,7 @@ function meter(
   if (/image/.test(header.toLowerCase())) return "input_image";
   if (/video/.test(header.toLowerCase())) return "input_video";
   if (/voice clone/.test(evidence)) return "tool_call";
-  return operations.includes("embeddings") ? "embedding" : "input_text";
+  return tasks.includes("embeddings") ? "embedding" : "input_text";
 }
 
 function priceConditions(table: Table, row: Cell[], header: string): PriceRate["conditions"] {
@@ -592,12 +592,7 @@ function normalizedPrice(price: string, rateUnit: PriceRate["unit"]): string {
   return rateUnit === "million_characters" ? scaleDecimal(price, 2) : price;
 }
 
-function rates(
-  table: Table,
-  row: Cell[],
-  operations: ModelOperation[],
-  sourceId: string,
-): PriceRate[] {
+function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string): PriceRate[] {
   const result: PriceRate[] = [];
   const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
   const idCell = idIndex === undefined ? undefined : row[idIndex];
@@ -618,7 +613,7 @@ function rates(
     const baseConditions = priceConditions(table, row, effectiveHeader);
     for (const segment of priceSegments(cell)) {
       const base: PriceRate = {
-        meter: meter(effectiveHeader, table.headings, operations, rateUnit),
+        meter: meter(effectiveHeader, table.headings, tasks, rateUnit),
         price: normalizedPrice(segment.price, rateUnit),
         currency: "USD",
         unit: rateUnit,
@@ -668,9 +663,9 @@ function rates(
   return result;
 }
 
-function priceOperations(id: string, headings: string[]): ModelOperation[] {
+function priceOperations(id: string, headings: string[]): ModelTask[] {
   const evidence = `${id} ${headings.join(" ")}`.toLowerCase();
-  const result: ModelOperation[] = [];
+  const result: ModelTask[] = [];
   if (/embedding/.test(evidence)) result.push("embeddings");
   if (/rerank/.test(evidence)) result.push("reranking");
   if (/image generation|image processing|text-to-image/.test(evidence))
@@ -690,13 +685,10 @@ function priceOperations(id: string, headings: string[]): ModelOperation[] {
   if (/intent/.test(evidence)) result.push("classification");
   if (/ocr/.test(evidence)) result.push("ocr");
   if (result.length === 0) result.push("text_generation");
-  return orderedOperations(result);
+  return orderedTasks(result);
 }
 
-function priceModalities(
-  operations: ModelOperation[],
-  modelRates: PriceRate[],
-): ProviderModel["modalities"] {
+function priceModalities(tasks: ModelTask[], modelRates: PriceRate[]): ProviderModel["modalities"] {
   const input: Modality[] = [];
   const output: Modality[] = [];
   for (const item of modelRates) {
@@ -709,11 +701,11 @@ function priceModalities(
     if (item.meter === "output_audio") output.push("audio");
     if (item.meter === "output_video" || item.meter === "video_generation") output.push("video");
   }
-  if (operations.includes("embeddings")) output.push("embedding");
-  if (operations.includes("speech_synthesis") || operations.includes("audio_generation"))
+  if (tasks.includes("embeddings")) output.push("embedding");
+  if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
     output.push("audio");
-  if (operations.includes("transcription")) output.push("text");
-  if (operations.includes("speech_to_speech")) {
+  if (tasks.includes("transcription")) output.push("text");
+  if (tasks.includes("speech_to_speech")) {
     input.push("audio");
     output.push("audio");
   }
@@ -798,8 +790,8 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       const idCell = row[idIndex];
       const id = cellIds(idCell)[0];
       if (id === undefined) continue;
-      const operations = priceOperations(id, table.headings);
-      const modelRates = rates(table, row, operations, input.source.id);
+      const tasks = priceOperations(id, table.headings);
+      const modelRates = rates(table, row, tasks, input.source.id);
       const model = baseModel({
         providerId: input.provider.id,
         id,
@@ -811,8 +803,8 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       add(models, {
         ...model,
         aliases: equivalentIds(idCell),
-        operations,
-        modalities: priceModalities(operations, modelRates),
+        tasks,
+        modalities: priceModalities(tasks, modelRates),
         status: "active",
         release_stage: /preview/i.test(id) ? "preview" : "unknown",
         pricing_status: modelRates.length === 0 ? "unknown" : "published",
@@ -835,7 +827,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       });
       add(models, {
         ...model,
-        operations: current?.operations ?? ["text_generation"],
+        tasks: current?.tasks ?? ["text_generation"],
         modalities: current?.modalities ?? { input: ["text"], output: ["text"] },
         capabilities: { ...model.capabilities, prompt_cache: true },
         status: current?.status ?? "active",
@@ -866,7 +858,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope pricing");
 }
 
-function lifecycleOperations(category: string, id: string): ModelOperation[] {
+function lifecycleOperations(category: string, id: string): ModelTask[] {
   const evidence = `${category} ${id}`.toLowerCase();
   if (/rerank/.test(evidence)) return ["reranking"];
   if (/embedding/.test(evidence)) return ["embeddings"];
@@ -925,7 +917,7 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
         });
         add(models, {
           ...model,
-          operations: lifecycleOperations(category, id),
+          tasks: lifecycleOperations(category, id),
           status:
             retiredAt !== undefined && retiredAt <= input.observedAt.slice(0, 10)
               ? "retired"

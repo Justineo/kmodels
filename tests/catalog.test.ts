@@ -12,8 +12,8 @@ async function json(path: string): Promise<unknown> {
 describe("generated static catalog", () => {
   it("publishes every provider with coverage and resolvable provenance", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
-    expect(catalog.providers).toHaveLength(19);
-    expect(catalog.coverage).toHaveLength(19);
+    expect(catalog.providers).toHaveLength(18);
+    expect(catalog.coverage).toHaveLength(18);
     expect(catalog.models.length).toBeGreaterThan(0);
 
     const sourceIds = new Set(catalog.sources.map((source) => source.id));
@@ -30,6 +30,18 @@ describe("generated static catalog", () => {
       modelIds.add(model.uid);
       expect(model.uid).toBe(modelUid(model.provider_id, model.model_id, model.version));
       expect(model.source_refs.every((source) => sourceIds.has(source))).toBe(true);
+      expect(
+        model.task_evidence?.every(
+          (evidence) => sourceIds.has(evidence.source_ref) && model.tasks.includes(evidence.task),
+        ) ?? true,
+      ).toBe(true);
+      expect(
+        model.delivery_mode_evidence?.every(
+          (evidence) =>
+            sourceIds.has(evidence.source_ref) &&
+            model.delivery_modes?.includes(evidence.mode) === true,
+        ) ?? true,
+      ).toBe(true);
       expect(model.pricing.every((rate) => sourceIds.has(rate.source_ref))).toBe(true);
       expect(
         model.routes?.every(
@@ -64,32 +76,6 @@ describe("generated static catalog", () => {
     expect(envelope.data.models).toHaveLength(catalog.models.length);
     expect(envelope.data.providers).toEqual(catalog.providers);
     expect(assets).toHaveLength(2 + catalog.providers.length * 2);
-  });
-
-  it("publishes vLLM as an explicitly empty runtime scope", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
-    const provider = catalog.providers.find(({ id }) => id === "vllm");
-    const coverage = catalog.coverage.find(({ provider_id }) => provider_id === "vllm");
-    expect({
-      source_ids: provider?.source_ids,
-      catalog_version: provider?.catalog_version,
-      coverage,
-      models: catalog.models.filter(({ provider_id }) => provider_id === "vllm"),
-      sources: catalog.sources.filter(({ provider_id }) => provider_id === "vllm"),
-    }).toEqual({
-      source_ids: [],
-      catalog_version: undefined,
-      coverage: {
-        provider_id: "vllm",
-        status: "not_configured",
-        model_count: 0,
-        price_rate_count: 0,
-        checked_at: catalog.generated_at,
-        reason: "No explicitly allowlisted runtime endpoint is configured.",
-      },
-      models: [],
-      sources: [],
-    });
   });
 
   it("keeps Hugging Face within its operated-service boundary", async () => {
@@ -190,7 +176,7 @@ describe("generated static catalog", () => {
     expect(rates.length).toBeGreaterThan(1_000);
     expect(models.every((model) => model.release_date !== undefined)).toBe(true);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
-    expect(realtime?.operations).toEqual(["text_generation"]);
+    expect(realtime?.tasks).toEqual(["text_generation"]);
     const hasMissingPricingWarning = catalog.warnings.some(
       (warning) =>
         warning.code === "missing_field" &&

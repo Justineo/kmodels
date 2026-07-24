@@ -13,7 +13,7 @@ import {
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelOperations, normalizeModelOperations } from "./operation.ts";
+import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -175,7 +175,7 @@ function parseModels(input: Input): ProviderModel[] {
         ? ["embedding"]
         : ["text"];
     const modelModalities = { input: inputModalities, output: outputModalities };
-    const operations = classifyModelOperations({
+    const tasks = classifyModelTasks({
       modelId: id,
       name,
       rawType: undefined,
@@ -198,7 +198,7 @@ function parseModels(input: Input): ProviderModel[] {
         observedAt: input.observedAt,
       }),
       description: summary,
-      operations,
+      tasks,
       modalities: modelModalities,
       capabilities: {
         ...unknownCapabilities(),
@@ -321,13 +321,13 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
   const generalIds = new Set(general);
   const embeddingIds = new Set(embeddings);
   for (const model of models) {
-    const taskOperations: ProviderModel["operations"] = [];
+    const taskOperations: ProviderModel["tasks"] = [];
     if (generalIds.has(model.model_id)) taskOperations.push("text_generation");
     if (embeddingIds.has(model.model_id)) taskOperations.push("embeddings");
-    model.operations = normalizeModelOperations({
+    model.tasks = normalizeModelTasks({
       ...model,
-      operations: [...taskOperations, ...model.operations],
-    }).operations;
+      tasks: [...taskOperations, ...model.tasks],
+    }).tasks;
     model.capabilities.streaming = taskOperations.includes("text_generation") ? true : "unknown";
     model.api_endpoints = [
       {
@@ -535,7 +535,7 @@ function openPrices(
     const label = values[0];
     if (label === undefined) continue;
     for (const model of matched(models, label, true)) {
-      const embedding = model.operations.includes("embeddings");
+      const embedding = model.tasks.includes("embeddings");
       const input = rate(
         embedding ? "embedding" : "input_text",
         values[1] ?? "",
@@ -862,7 +862,7 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
 }
 
 function apiTask(value: string | undefined): {
-  operation?: ProviderModel["operations"][number];
+  operation?: ProviderModel["tasks"][number];
   modalities: ProviderModel["modalities"];
 } {
   if (value?.toLowerCase().includes("embedding"))
@@ -888,7 +888,7 @@ export function parseDatabricksApi(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        operations: task.operation === undefined ? [] : [task.operation],
+        tasks: task.operation === undefined ? [] : [task.operation],
         modalities: task.modalities,
         scope: "runtime_observation",
       },

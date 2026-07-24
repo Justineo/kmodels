@@ -7,7 +7,7 @@ import {
   representativeTableRate,
 } from "../src/catalog/presentation.ts";
 import {
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type ProviderModel,
   unknownCapabilities,
@@ -32,7 +32,7 @@ function rate(
   };
 }
 
-function model(operations: ModelOperation[], pricing: PriceRate[]): ProviderModel {
+function model(tasks: ModelTask[], pricing: PriceRate[]): ProviderModel {
   return {
     provider_id: "test",
     model_id: "model",
@@ -40,7 +40,7 @@ function model(operations: ModelOperation[], pricing: PriceRate[]): ProviderMode
     id_kind: "api_id",
     name: "Model",
     aliases: [],
-    operations,
+    tasks,
     modalities: { input: [], output: [] },
     capabilities: unknownCapabilities(),
     limits: {},
@@ -89,7 +89,7 @@ describe("rate presentation", () => {
     expect(formatTableRateUnit(rate("4", "gpu_hour"))).toBe("/GPU·hr");
   });
 
-  it("selects operation-aware representative request rates", () => {
+  it("selects task-aware representative request rates", () => {
     const image = model(
       ["text_generation", "image_generation"],
       [

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import { normalizeDeliveryModes } from "./delivery.ts";
 import { fetchSource, fetchStateSchema, type FetchState, type SourceState } from "./fetch.ts";
 import {
   manifests,
@@ -23,7 +24,7 @@ import {
   type SourceRecord,
 } from "./schema.ts";
 import { preserveMissing, validateProvider } from "./validation.ts";
-import { normalizeModelOperations } from "./operation.ts";
+import { normalizeModelTasks } from "./task.ts";
 import { summarizeRefresh } from "./summary.ts";
 
 const availabilityWarning: CatalogWarning = {
@@ -64,7 +65,8 @@ function previousModels(catalog: Catalog | undefined, providerId: string): Provi
         (model) => model.provider_id === providerId && !isCredentialLikeIdentifier(model.model_id),
       )
       .map(normalizeModelReleaseStage)
-      .map(normalizeModelOperations) ?? []
+      .map(normalizeModelTasks)
+      .map(normalizeDeliveryModes) ?? []
   );
 }
 
@@ -120,7 +122,7 @@ function applyFields(
   const fields = new Set(source.fields);
   const incomingModalities =
     incoming.modalities.input.length + incoming.modalities.output.length > 0;
-  const incomingOperations = incoming.operations.length > 0;
+  const incomingOperations = incoming.tasks.length > 0;
   const incomingPricing = incoming.pricing.length > 0 || incoming.pricing_status !== "unknown";
   const serviceFamilies = [
     ...new Set([...(current.service_families ?? []), ...(incoming.service_families ?? [])]),
@@ -139,14 +141,12 @@ function applyFields(
     aliases: fields.has("aliases")
       ? [...new Set([...current.aliases, ...incoming.aliases])]
       : current.aliases,
-    operations:
-      fields.has("operations") && incomingOperations
-        ? [...new Set([...current.operations, ...incoming.operations])]
-        : current.operations,
+    tasks:
+      fields.has("tasks") && incomingOperations
+        ? [...new Set([...current.tasks, ...incoming.tasks])]
+        : current.tasks,
     raw_type:
-      fields.has("operations") && incoming.raw_type !== undefined
-        ? incoming.raw_type
-        : current.raw_type,
+      fields.has("tasks") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
     service_families: fields.has("service_families")
       ? serviceFamilies.length === 0
         ? undefined
@@ -584,7 +584,10 @@ async function collectProvider(
         );
       candidate = applyGroups(candidate, [inventory], false);
     }
-    candidate = candidate.map(normalizeModelReleaseStage).map(normalizeModelOperations);
+    candidate = candidate
+      .map(normalizeModelReleaseStage)
+      .map(normalizeModelTasks)
+      .map(normalizeDeliveryModes);
     const validation = validateProvider(candidate, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
     const models = preserveMissing(candidate, comparableOldModels);

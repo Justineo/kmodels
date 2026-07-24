@@ -192,7 +192,7 @@ function model(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
     ...(hasChatEndpoint ? { api_endpoints: [chatEndpoint] } : {}),
     modalities: { input: ["text"], output: ["text"] },
     capabilities: {
@@ -338,7 +338,7 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       ...(observed.release === undefined ? {} : { release_date: observed.release }),
       ...(observed.update === undefined || observed.update === observed.release
         ? {}
@@ -369,6 +369,6 @@ export function parseDeepseekApi(input: Input): ProviderModel[] {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
   }));
 }

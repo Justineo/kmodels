@@ -5,12 +5,12 @@ import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import { classifyModelOperations, orderedOperations } from "./operation.ts";
+import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -37,7 +37,7 @@ type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 interface MethodFact {
   pathField?: "model" | "batch.model";
   path?: string;
-  operations?: ModelOperation[];
+  tasks?: ModelTask[];
   streaming?: true;
   batch?: true;
 }
@@ -60,23 +60,17 @@ const modalityOrder = new Map(modalitySchema.options.map((modality, index) => [m
 const livePath =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 const methodFacts = new Map<string, MethodFact>([
-  ["asyncBatchEmbedContent", { pathField: "batch.model", operations: ["embeddings"], batch: true }],
-  ["batchEmbedContents", { pathField: "model", operations: ["embeddings"], batch: true }],
-  [
-    "batchGenerateContent",
-    { pathField: "batch.model", operations: ["text_generation"], batch: true },
-  ],
+  ["asyncBatchEmbedContent", { pathField: "batch.model", tasks: ["embeddings"], batch: true }],
+  ["batchEmbedContents", { pathField: "model", tasks: ["embeddings"], batch: true }],
+  ["batchGenerateContent", { pathField: "batch.model", tasks: ["text_generation"], batch: true }],
   ["countTokens", { pathField: "model" }],
-  ["embedContent", { pathField: "model", operations: ["embeddings"] }],
-  ["generateContent", { pathField: "model", operations: ["text_generation"] }],
+  ["embedContent", { pathField: "model", tasks: ["embeddings"] }],
+  ["generateContent", { pathField: "model", tasks: ["text_generation"] }],
   ["predict", { pathField: "model" }],
   ["predictLongRunning", { pathField: "model" }],
-  [
-    "streamGenerateContent",
-    { pathField: "model", operations: ["text_generation"], streaming: true },
-  ],
-  ["generateMessage", { operations: ["text_generation"] }],
-  ["bidiGenerateContent", { path: livePath, operations: ["speech_to_speech"], streaming: true }],
+  ["streamGenerateContent", { pathField: "model", tasks: ["text_generation"], streaming: true }],
+  ["generateMessage", { tasks: ["text_generation"] }],
+  ["bidiGenerateContent", { path: livePath, tasks: ["speech_to_speech"], streaming: true }],
 ]);
 
 const apiItemSchema = z.object({
@@ -256,8 +250,8 @@ function pageOperations(
   modelModalities: ProviderModel["modalities"],
   capabilities: ProviderModel["capabilities"],
   capabilityCell: Selection | undefined,
-): ModelOperation[] {
-  const values: ModelOperation[] = [];
+): ModelTask[] {
+  const values: ModelTask[] = [];
   const lower = title.toLowerCase();
   const capabilityText = capabilityCell === undefined ? "" : text(capabilityCell.text());
   const agent = /agent code/i.test(codeLabel);
@@ -282,7 +276,7 @@ function pageOperations(
   if (live && modelModalities.input.includes("audio") && modelModalities.output.includes("audio"))
     values.push("speech_to_speech");
   if (capabilities.computer_use === true) values.push("text_generation");
-  return orderedOperations(values);
+  return orderedTasks(values);
 }
 
 function cards(body: string): Map<string, Card> {
@@ -374,7 +368,7 @@ function primaryPageModel(
           observedAt: input.observedAt,
         }),
         description: card?.description ?? description($),
-        operations: pageOperations(title, codeLabel, modelModalities, capabilities, capabilityCell),
+        tasks: pageOperations(title, codeLabel, modelModalities, capabilities, capabilityCell),
         modalities: modelModalities,
         capabilities,
         limits,
@@ -387,9 +381,9 @@ function primaryPageModel(
   };
 }
 
-function sectionOperations(section: string, id: string): ModelOperation[] {
+function sectionOperations(section: string, id: string): ModelTask[] {
   const lower = section.toLowerCase();
-  const fallback: ModelOperation = lower.includes("embedding")
+  const fallback: ModelTask = lower.includes("embedding")
     ? "embeddings"
     : lower.includes("imagen")
       ? "image_generation"
@@ -402,23 +396,21 @@ function sectionOperations(section: string, id: string): ModelOperation[] {
             : lower.includes("lyria")
               ? "audio_generation"
               : "text_generation";
-  const classified = classifyModelOperations({
+  const classified = classifyModelTasks({
     modelId: id,
     name: id,
     rawType: undefined,
     modalities: { input: [], output: [] },
     fallback,
   });
-  return orderedOperations(
-    fallback === "audio_generation" ? [fallback, ...classified] : classified,
-  );
+  return orderedTasks(fallback === "audio_generation" ? [fallback, ...classified] : classified);
 }
 
 function ensure(
   models: Map<string, ProviderModel>,
   input: Input,
   id: string,
-  modelOperations: ModelOperation[],
+  modelTasks: ModelTask[],
 ): ProviderModel {
   const current = models.get(id);
   if (current !== undefined) return current;
@@ -430,7 +422,7 @@ function ensure(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations: modelOperations,
+    tasks: modelTasks,
   } satisfies ProviderModel;
   models.set(id, created);
   return created;
@@ -473,10 +465,7 @@ function applyLifecycle(models: Map<string, ProviderModel>, input: Input, body: 
           item.replacement_model_ids = unique([...item.replacement_model_ids, ...replacements]);
           item.status = retired ? "retired" : shutdown === undefined ? "active" : "deprecated";
           item.release_stage = preview ? "preview" : item.release_stage;
-          item.operations = orderedOperations([
-            ...item.operations,
-            ...sectionOperations(section, id),
-          ]);
+          item.tasks = orderedTasks([...item.tasks, ...sectionOperations(section, id)]);
         });
     });
   });
@@ -699,13 +688,13 @@ function meterRates(
     return [{ meter: "image_generation", conditions: baseConditions }];
   if (
     /video (?:generation|price)/.test(lower) ||
-    (unit === "second" && model.operations.includes("video_generation"))
+    (unit === "second" && model.tasks.includes("video_generation"))
   )
     return [{ meter: "video_generation", conditions: baseConditions }];
   if (
     lower.includes("lyria") ||
     lower.includes("song") ||
-    (model.operations.includes("audio_generation") && /per song/i.test(segment))
+    (model.tasks.includes("audio_generation") && /per song/i.test(segment))
   )
     return [
       {
@@ -721,7 +710,7 @@ function meterRates(
       conditions: { ...baseConditions, modality },
     }));
   }
-  const embedding = model.operations.includes("embeddings");
+  const embedding = model.tasks.includes("embeddings");
   const input = lower.includes("input price");
   const output = lower.includes("output price");
   const cache = lower.includes("context caching price");
@@ -998,7 +987,7 @@ function applyInteractions(
   for (const [id, kind] of supported) {
     const model = models.get(id);
     if (model === undefined) throw new Error(`Gemini Interactions references unknown model: ${id}`);
-    if (kind === "Agent" && !model.operations.includes("text_generation"))
+    if (kind === "Agent" && !model.tasks.includes("text_generation"))
       throw new Error(`Gemini Interactions agent classification changed: ${id}`);
     model.api_endpoints = [endpoint];
   }
@@ -1068,7 +1057,7 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
     });
     const methodsReviewed =
       item.supportedGenerationMethods !== undefined && facts.length === methods.length;
-    const modelOperations = facts.flatMap((fact): ModelOperation[] => fact.operations ?? []);
+    const modelTasks = facts.flatMap((fact): ModelTask[] => fact.tasks ?? []);
     const endpoints = facts.flatMap(({ method, path, pathField }): ApiEndpoint[] => {
       if (pathField !== undefined)
         return [{ name: method, path: `/v1beta/models/${id}:${method}` }];
@@ -1087,7 +1076,7 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
         description: item.description,
         aliases:
           item.baseModelId === undefined || item.baseModelId === id ? [] : [item.baseModelId],
-        operations: orderedOperations(modelOperations),
+        tasks: orderedTasks(modelTasks),
         api_endpoints: endpoints.length === 0 ? undefined : endpoints,
         capabilities: {
           ...unknownCapabilities(),

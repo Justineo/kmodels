@@ -1,4 +1,4 @@
-import type { ModelLifecycle, ModelOperation, ModelReleaseStage } from "./schema.ts";
+import type { ModelLifecycle, ModelTask, ModelReleaseStage } from "./schema.ts";
 
 export type SortKey = "name" | "provider" | "context" | "updated";
 export type SortDirection = "ascending" | "descending";
@@ -10,7 +10,7 @@ export interface SortState {
 export interface RouteState {
   query: string;
   provider: string;
-  operations: ModelOperation[];
+  tasks: ModelTask[];
   lifecycles: ModelLifecycle[];
   releaseStages: ModelReleaseStage[];
   sort: SortState | undefined;
@@ -19,7 +19,7 @@ export interface RouteState {
 
 type CodeEntry<T extends string> = readonly [code: string, value: T];
 
-const operationCodes = [
+const taskCodes = [
   ["t", "text_generation"],
   ["e", "embeddings"],
   ["r", "reranking"],
@@ -35,7 +35,7 @@ const operationCodes = [
   ["o", "ocr"],
   ["d", "object_detection"],
   ["g", "segmentation"],
-] as const satisfies readonly CodeEntry<ModelOperation>[];
+] as const satisfies readonly CodeEntry<ModelTask>[];
 
 const lifecycleCodes = [
   ["a", "active"],
@@ -93,7 +93,7 @@ export function parseRouteSearch(search: string): RouteState {
   return {
     query: params.get("q") ?? "",
     provider: params.get("p") ?? "",
-    operations: parseCodes(params.get("o"), operationCodes),
+    tasks: parseCodes(params.get("o"), taskCodes),
     lifecycles: parseCodes(params.get("l"), lifecycleCodes),
     releaseStages: parseCodes(params.get("r"), releaseStageCodes),
     sort: parseSort(params.get("s")),
@@ -106,11 +106,11 @@ export function formatRouteSearch(state: RouteState): string {
   if (state.query !== "") params.set("q", state.query);
   if (state.provider !== "") params.set("p", state.provider);
 
-  const operations = formatCodes(state.operations, operationCodes);
+  const tasks = formatCodes(state.tasks, taskCodes);
   const lifecycles = formatCodes(state.lifecycles, lifecycleCodes);
   const releaseStages = formatCodes(state.releaseStages, releaseStageCodes);
   const sort = formatSort(state.sort);
-  if (operations !== "") params.set("o", operations);
+  if (tasks !== "") params.set("o", tasks);
   if (lifecycles !== "") params.set("l", lifecycles);
   if (releaseStages !== "") params.set("r", releaseStages);
   if (sort !== undefined) params.set("s", sort);

@@ -5,11 +5,11 @@ import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { orderedOperations } from "./operation.ts";
+import { orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -372,14 +372,14 @@ function capabilities($: LoadedDocument, table: Selection): ProviderModel["capab
   };
 }
 
-function modelOperations(
+function modelTasks(
   id: string,
   name: string,
   observed: ProviderModel["modalities"],
   features: ProviderModel["capabilities"],
-): ModelOperation[] {
+): ModelTask[] {
   const value = `${id} ${name}`.toLowerCase();
-  const result: ModelOperation[] = [];
+  const result: ModelTask[] = [];
   const ocr = /\bocr\b/.test(value);
   const live =
     observed.input.includes("audio") &&
@@ -396,7 +396,7 @@ function modelOperations(
   if (ocr) result.push("ocr");
   else if (observed.output.includes("text")) result.push("text_generation");
   if (features.computer_use === true) result.push("text_generation");
-  return orderedOperations(result);
+  return orderedTasks(result);
 }
 
 function regions($: LoadedDocument, table: Selection): ProviderModel["availability"] {
@@ -460,7 +460,7 @@ function modelEndpoints(
         )
       )
         return [endpoints.embedding];
-      return model.operations.includes("speech_to_speech") ? undefined : [endpoints.generate];
+      return model.tasks.includes("speech_to_speech") ? undefined : [endpoints.generate];
     }
     if (/\/models\/veo\//.test(path)) return [endpoints.video];
     if (/\/models\/(?:lyria|imagen)\//.test(path)) return [endpoints.predict];
@@ -480,7 +480,7 @@ function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evide
   model.name =
     model.name === model.model_id && next.name !== next.model_id ? next.name : model.name;
   model.description ??= next.description;
-  model.operations = orderedOperations([...model.operations, ...next.operations]);
+  model.tasks = orderedTasks([...model.tasks, ...next.tasks]);
   if (model.modalities.input.length + model.modalities.output.length === 0)
     model.modalities = next.modalities;
   const known = <T extends boolean | "unknown">(left: T, right: T): T =>
@@ -583,7 +583,7 @@ function parseModelTables(
         observedAt: input.observedAt,
       }),
       description: description($, heading),
-      operations: modelOperations(id, name, observedModalities, observedCapabilities),
+      tasks: modelTasks(id, name, observedModalities, observedCapabilities),
       service_families: publisherFamily($, input.source.id),
       modalities: observedModalities,
       capabilities: observedCapabilities,
@@ -609,7 +609,7 @@ function parseModelTables(
   });
 }
 
-function lifecycleOperations(section: string): ModelOperation[] {
+function lifecycleOperations(section: string): ModelTask[] {
   const lower = section.toLowerCase();
   if (lower.includes("embedding")) return ["embeddings"];
   if (lower.includes("image")) return ["image_generation"];
@@ -621,7 +621,7 @@ function ensure(
   models: Map<string, Evidence>,
   input: Input,
   id: string,
-  operations: ModelOperation[],
+  tasks: ModelTask[],
 ): Evidence {
   const current = models.get(id);
   if (current !== undefined) return current;
@@ -633,7 +633,7 @@ function ensure(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations,
+    tasks,
     service_families:
       input.source.id === "vertex-google-models" ? ["publishers/google"] : undefined,
     scope: "regional_catalog",
