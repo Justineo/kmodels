@@ -12,6 +12,31 @@ const compactNumber = new Intl.NumberFormat("en", {
   maximumFractionDigits: 1,
 });
 
+export type TableRateSlot = "input" | "cached" | "output";
+
+const inputMeters: readonly PriceRate["meter"][] = [
+  "input_text",
+  "input_image",
+  "input_audio",
+  "input_video",
+];
+const cachedMeters: readonly PriceRate["meter"][] = [
+  "cache_read_text",
+  "cache_read_image",
+  "cache_read_audio",
+  "cache_read_video",
+];
+const defaultOutputMeters: readonly PriceRate["meter"][] = [
+  "output_text",
+  "output_image",
+  "output_audio",
+  "output_video",
+  "image_generation",
+  "video_generation",
+  "embedding",
+  "rerank_request",
+];
+
 export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
@@ -67,6 +92,39 @@ export function preferredRate(
   );
 }
 
+function operationOutputMeters(model: ProviderModel): readonly PriceRate["meter"][] {
+  if (model.operations.includes("image_generation"))
+    return ["image_generation", "output_image", ...defaultOutputMeters];
+  if (model.operations.includes("video_generation"))
+    return ["video_generation", "output_video", ...defaultOutputMeters];
+  if (model.operations.includes("embeddings")) return ["embedding", ...defaultOutputMeters];
+  if (model.operations.includes("reranking")) return ["rerank_request", ...defaultOutputMeters];
+  if (
+    model.operations.includes("audio_generation") ||
+    model.operations.includes("speech_synthesis") ||
+    model.operations.includes("speech_to_speech")
+  )
+    return ["output_audio", ...defaultOutputMeters];
+  return defaultOutputMeters;
+}
+
+export function representativeTableRate(
+  model: ProviderModel,
+  slot: TableRateSlot,
+): PriceRate | undefined {
+  const meters =
+    slot === "input"
+      ? inputMeters
+      : slot === "cached"
+        ? cachedMeters
+        : operationOutputMeters(model);
+  for (const meter of new Set(meters)) {
+    const rate = preferredRate(model, meter);
+    if (rate !== undefined) return perMillionTokenRate(rate);
+  }
+  return undefined;
+}
+
 export function perMillionTokenRate(rate: PriceRate | undefined): PriceRate | undefined {
   if (rate === undefined || rate.unit === "million_tokens") return rate;
   const places = rate.unit === "token" ? 6 : rate.unit === "thousand_tokens" ? 3 : undefined;
@@ -116,7 +174,39 @@ export function formatRateUnit(rate: PriceRate | undefined): string {
 }
 
 export function formatTableRateUnit(rate: PriceRate | undefined): string {
-  return rate?.unit === "million_tokens" ? "" : formatRateUnit(rate);
+  if (rate === undefined || rate.unit === "million_tokens") return "";
+  switch (rate.unit) {
+    case "character":
+      return "/char";
+    case "image":
+      return "/img";
+    case "minute":
+      return "/min";
+    case "request":
+      return "/req";
+    case "second":
+      return "/sec";
+    default:
+      return formatRateUnit(rate);
+  }
+}
+
+export function formatTableRateLabel(rate: PriceRate): string {
+  return `${formatSnakeCase(rate.meter)} · ${formatPrice(rate)} ${formatRateUnit(rate)}`;
+}
+
+export function formatTablePricingState(model: ProviderModel): string {
+  if (model.pricing.length > 0) return "Other rates";
+  switch (model.pricing_status) {
+    case "custom_quote":
+      return "Custom quote";
+    case "not_applicable":
+      return "Not applicable";
+    case "not_published":
+      return "Not published";
+    default:
+      return "Price unknown";
+  }
 }
 
 export function formatSnakeCase(value: string): string {

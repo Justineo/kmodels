@@ -612,24 +612,24 @@ onUnmounted(() => {
                 <th
                   class="input-col numeric"
                   scope="col"
-                  aria-label="Input rate per 1 million tokens"
-                  title="Default unit: per 1M tokens"
+                  aria-label="Representative input rate; per 1 million tokens unless noted"
+                  title="Per 1M tokens unless the cell shows another unit"
                 >
                   Input / 1M
                 </th>
                 <th
                   class="cached-col numeric"
                   scope="col"
-                  aria-label="Cached input rate per 1 million tokens"
-                  title="Default unit: per 1M tokens"
+                  aria-label="Representative cached input rate; per 1 million tokens unless noted"
+                  title="Per 1M tokens unless the cell shows another unit"
                 >
                   Cached input / 1M
                 </th>
                 <th
                   class="output-col numeric"
                   scope="col"
-                  aria-label="Output rate per 1 million tokens"
-                  title="Default unit: per 1M tokens"
+                  aria-label="Representative output or task rate; per 1 million tokens unless noted"
+                  title="Per 1M tokens unless the cell shows another unit"
                 >
                   Output / 1M
                 </th>
