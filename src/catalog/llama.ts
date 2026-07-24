@@ -437,7 +437,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       }),
       description: model.description,
       aliases,
-      types: guard ? ["moderation"] : promptGuard ? ["classification"] : ["generate"],
+      operations: guard ? ["moderation"] : promptGuard ? ["classification"] : ["text_generation"],
       ...(evidence === undefined ? {} : { api_endpoints: [endpoint] }),
       modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
       capabilities: {
@@ -455,7 +455,6 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       limits: { context_tokens: contextTokens(model) },
       release_date: releaseDate(model, dates, quantizedDate, llama33Date),
       status: "active",
-      is_deprecated: false,
       pricing_status: "not_applicable",
     };
   });
@@ -475,6 +474,5 @@ export function parseLlamaApi(input: ParseInput): ProviderModel[] {
       observedAt: input.observedAt,
     }),
     status: "active",
-    is_deprecated: false,
   }));
 }

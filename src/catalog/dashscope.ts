@@ -11,11 +11,12 @@ import {
 } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
+import { orderedOperations } from "./operation.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import {
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -99,27 +100,32 @@ function support(raw: string | undefined): TriState {
   return "unknown";
 }
 
-function rowTypes(
+function rowOperations(
   category: Extract<SourceManifest["extractor"], { kind: "dashscope-catalog" }>["category"],
   id: string,
   rawType: string | undefined,
   api: string | undefined,
   headings: string[],
-): ModelType[] {
+): ModelOperation[] {
   const evidence = `${id} ${rawType ?? ""} ${headings.join(" ")}`.toLowerCase();
-  const result: ModelType[] = [];
-  if (category === "text" || category === "vision" || category === "omni") result.push("generate");
-  if (category === "image") result.push("image");
-  if (category === "video") result.push("video");
-  if (category === "asr") result.push("audio_transcription");
-  if (category === "tts") result.push("audio_speech");
+  const result: ModelOperation[] = [];
+  if (category === "text" || category === "vision" || category === "omni")
+    result.push("text_generation");
+  if (category === "image") result.push("image_generation");
+  if (category === "video") result.push("video_generation");
+  if (category === "asr") result.push("transcription");
+  if (category === "tts") result.push("speech_synthesis");
   if (category === "embedding")
-    result.push(/rerank/i.test(rawType ?? id) ? "rerank" : "embeddings");
+    result.push(/rerank/i.test(rawType ?? id) ? "reranking" : "embeddings");
   if (/ocr/.test(evidence)) result.push("ocr");
-  if (/livetranslate|translation/.test(evidence)) result.push("audio_translation");
-  if (/WebSocket|realtime/i.test(`${api ?? ""} ${id}`)) result.push("realtime");
-  if (category === "s2s" && result.length === 0) result.push("generate");
-  return unique(result.length > 0 ? result : ["other"]);
+  if (/livetranslate|translation/.test(evidence)) result.push("translation");
+  if (
+    (category === "s2s" || category === "omni") &&
+    /WebSocket|realtime/i.test(`${api ?? ""} ${id}`)
+  )
+    result.push("speech_to_speech");
+  if (category === "s2s" && result.length === 0) result.push("speech_to_speech");
+  return orderedOperations(result);
 }
 
 function rowModalities(
@@ -205,7 +211,7 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
     ...left,
     description: left.description ?? right.description,
     aliases: unique([...left.aliases, ...right.aliases]),
-    types: unique([...left.types.filter((item) => item !== "other"), ...right.types]),
+    operations: orderedOperations([...left.operations, ...right.operations]),
     raw_type: left.raw_type ?? right.raw_type,
     api_endpoints:
       endpoints.size === 0
@@ -253,7 +259,7 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
         undefined,
     },
     status: right.status === "unknown" ? left.status : right.status,
-    is_deprecated: mergeState(left.is_deprecated, right.is_deprecated),
+    release_stage: right.release_stage === "unknown" ? left.release_stage : right.release_stage,
     replacement_model_ids: unique([...left.replacement_model_ids, ...right.replacement_model_ids]),
     pricing_status:
       pricing.size === 0
@@ -305,7 +311,7 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
         add(models, {
           ...model,
           description: value(table, row, /^(?:Description|Use case|Use cases)(?:$| \/)/i),
-          types: rowTypes(extractor.category, id, rawType, api, table.headings),
+          operations: rowOperations(extractor.category, id, rawType, api, table.headings),
           raw_type: rawType,
           modalities: rowModalities(extractor.category, table, row, rawType),
           capabilities: {
@@ -321,8 +327,8 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
             ...(output === undefined ? {} : { max_output_tokens: output }),
             ...(embeddingTokens === undefined ? {} : { max_input_tokens: embeddingTokens }),
           },
-          status: /preview/i.test(id) ? "preview" : "active",
-          is_deprecated: false,
+          status: "active",
+          release_stage: /preview/i.test(id) ? "preview" : "unknown",
           pricing_status: "unknown",
           scope: "regional_catalog",
         });
@@ -479,14 +485,14 @@ function unit(header: string, raw: string): PriceRate["unit"] | undefined {
 function meter(
   header: string,
   headings: string[],
-  types: ModelType[],
+  operations: ModelOperation[],
   rateUnit: PriceRate["unit"],
 ): PriceRate["meter"] {
   const evidence = `${header} ${headings.join(" ")}`.toLowerCase();
-  if (rateUnit === "image" || types.includes("image")) return "image_generation";
-  if (types.includes("video")) return "video_generation";
-  if (types.includes("audio_generation")) return "output_audio";
-  if (types.includes("audio_transcription")) return "input_audio";
+  if (rateUnit === "image" || operations.includes("image_generation")) return "image_generation";
+  if (operations.includes("video_generation")) return "video_generation";
+  if (operations.includes("audio_generation")) return "output_audio";
+  if (operations.includes("transcription")) return "input_audio";
   if (/output/.test(header.toLowerCase())) {
     if (/audio/.test(header.toLowerCase())) return "output_audio";
     if (/image/.test(header.toLowerCase())) return "output_image";
@@ -497,7 +503,7 @@ function meter(
   if (/image/.test(header.toLowerCase())) return "input_image";
   if (/video/.test(header.toLowerCase())) return "input_video";
   if (/voice clone/.test(evidence)) return "tool_call";
-  return types.includes("embeddings") ? "embedding" : "input_text";
+  return operations.includes("embeddings") ? "embedding" : "input_text";
 }
 
 function priceConditions(table: Table, row: Cell[], header: string): PriceRate["conditions"] {
@@ -586,7 +592,12 @@ function normalizedPrice(price: string, rateUnit: PriceRate["unit"]): string {
   return rateUnit === "million_characters" ? scaleDecimal(price, 2) : price;
 }
 
-function rates(table: Table, row: Cell[], types: ModelType[], sourceId: string): PriceRate[] {
+function rates(
+  table: Table,
+  row: Cell[],
+  operations: ModelOperation[],
+  sourceId: string,
+): PriceRate[] {
   const result: PriceRate[] = [];
   const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
   const idCell = idIndex === undefined ? undefined : row[idIndex];
@@ -607,7 +618,7 @@ function rates(table: Table, row: Cell[], types: ModelType[], sourceId: string):
     const baseConditions = priceConditions(table, row, effectiveHeader);
     for (const segment of priceSegments(cell)) {
       const base: PriceRate = {
-        meter: meter(effectiveHeader, table.headings, types, rateUnit),
+        meter: meter(effectiveHeader, table.headings, operations, rateUnit),
         price: normalizedPrice(segment.price, rateUnit),
         currency: "USD",
         unit: rateUnit,
@@ -657,27 +668,35 @@ function rates(table: Table, row: Cell[], types: ModelType[], sourceId: string):
   return result;
 }
 
-function priceTypes(id: string, headings: string[]): ModelType[] {
+function priceOperations(id: string, headings: string[]): ModelOperation[] {
   const evidence = `${id} ${headings.join(" ")}`.toLowerCase();
-  const result: ModelType[] = [];
+  const result: ModelOperation[] = [];
   if (/embedding/.test(evidence)) result.push("embeddings");
-  if (/rerank/.test(evidence)) result.push("rerank");
-  if (/image generation|image processing|text-to-image/.test(evidence)) result.push("image");
-  if (/video generation|video processing/.test(evidence)) result.push("video");
+  if (/rerank/.test(evidence)) result.push("reranking");
+  if (/image generation|image processing|text-to-image/.test(evidence))
+    result.push("image_generation");
+  if (/video generation|video processing/.test(evidence)) result.push("video_generation");
   if (/music generation/.test(evidence)) result.push("audio_generation");
   if (/speech synthesis|tts|cosyvoice|voice (?:clone|design|enrollment)/.test(evidence))
-    result.push("audio_speech");
-  if (/livetranslate|speech translation/.test(evidence)) result.push("audio_translation");
-  if (/speech recognition|(?:^|[ -])asr|paraformer/.test(evidence))
-    result.push("audio_transcription");
-  if (/realtime/.test(evidence)) result.push("realtime");
+    result.push("speech_synthesis");
+  if (/livetranslate|speech translation/.test(evidence)) result.push("translation");
+  if (/speech recognition|(?:^|[ -])asr|paraformer/.test(evidence)) result.push("transcription");
+  if (
+    /speech[- ]to[- ]speech|(?:audio|omni)[\s\S]*realtime|realtime[\s\S]*(?:audio|omni)/.test(
+      evidence,
+    )
+  )
+    result.push("speech_to_speech");
   if (/intent/.test(evidence)) result.push("classification");
   if (/ocr/.test(evidence)) result.push("ocr");
-  if (result.length === 0) result.push("generate");
-  return unique(result);
+  if (result.length === 0) result.push("text_generation");
+  return orderedOperations(result);
 }
 
-function priceModalities(types: ModelType[], modelRates: PriceRate[]): ProviderModel["modalities"] {
+function priceModalities(
+  operations: ModelOperation[],
+  modelRates: PriceRate[],
+): ProviderModel["modalities"] {
   const input: Modality[] = [];
   const output: Modality[] = [];
   for (const item of modelRates) {
@@ -690,9 +709,14 @@ function priceModalities(types: ModelType[], modelRates: PriceRate[]): ProviderM
     if (item.meter === "output_audio") output.push("audio");
     if (item.meter === "output_video" || item.meter === "video_generation") output.push("video");
   }
-  if (types.includes("embeddings")) output.push("embedding");
-  if (types.includes("audio_speech") || types.includes("audio_generation")) output.push("audio");
-  if (types.includes("audio_transcription")) output.push("text");
+  if (operations.includes("embeddings")) output.push("embedding");
+  if (operations.includes("speech_synthesis") || operations.includes("audio_generation"))
+    output.push("audio");
+  if (operations.includes("transcription")) output.push("text");
+  if (operations.includes("speech_to_speech")) {
+    input.push("audio");
+    output.push("audio");
+  }
   return { input: unique(input), output: unique(output) };
 }
 
@@ -774,8 +798,8 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       const idCell = row[idIndex];
       const id = cellIds(idCell)[0];
       if (id === undefined) continue;
-      const types = priceTypes(id, table.headings);
-      const modelRates = rates(table, row, types, input.source.id);
+      const operations = priceOperations(id, table.headings);
+      const modelRates = rates(table, row, operations, input.source.id);
       const model = baseModel({
         providerId: input.provider.id,
         id,
@@ -787,10 +811,10 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       add(models, {
         ...model,
         aliases: equivalentIds(idCell),
-        types,
-        modalities: priceModalities(types, modelRates),
-        status: /preview/i.test(id) ? "preview" : "active",
-        is_deprecated: false,
+        operations,
+        modalities: priceModalities(operations, modelRates),
+        status: "active",
+        release_stage: /preview/i.test(id) ? "preview" : "unknown",
         pricing_status: modelRates.length === 0 ? "unknown" : "published",
         pricing: modelRates,
         availability: region === undefined ? undefined : [{ region, deployment_type: "model_api" }],
@@ -811,11 +835,11 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       });
       add(models, {
         ...model,
-        types: current?.types ?? ["generate"],
+        operations: current?.operations ?? ["text_generation"],
         modalities: current?.modalities ?? { input: ["text"], output: ["text"] },
         capabilities: { ...model.capabilities, prompt_cache: true },
-        status: current?.status ?? (/preview/i.test(id) ? "preview" : "active"),
-        is_deprecated: false,
+        status: current?.status ?? "active",
+        release_stage: current?.release_stage ?? (/preview/i.test(id) ? "preview" : "unknown"),
         availability: [{ region, deployment_type: "model_api" }],
         scope: "regional_catalog",
       });
@@ -842,16 +866,18 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope pricing");
 }
 
-function lifecycleTypes(category: string, id: string): ModelType[] {
+function lifecycleOperations(category: string, id: string): ModelOperation[] {
   const evidence = `${category} ${id}`.toLowerCase();
-  if (/rerank/.test(evidence)) return ["rerank"];
+  if (/rerank/.test(evidence)) return ["reranking"];
   if (/embedding/.test(evidence)) return ["embeddings"];
-  if (/image/.test(evidence)) return ["image"];
-  if (/video/.test(evidence)) return ["video"];
-  if (/tts|cosyvoice/.test(evidence)) return ["audio_speech"];
-  if (/asr|paraformer/.test(evidence)) return ["audio_transcription"];
+  if (/image/.test(evidence)) return ["image_generation"];
+  if (/video/.test(evidence)) return ["video_generation"];
+  if (/tts|cosyvoice/.test(evidence)) return ["speech_synthesis"];
+  if (/asr|paraformer/.test(evidence)) return ["transcription"];
+  if (/livetranslate|translation/.test(evidence)) return ["translation"];
+  if (/speech[- ]to[- ]speech|(?:audio|omni).*realtime/.test(evidence)) return ["speech_to_speech"];
   if (/ocr/.test(evidence)) return ["ocr"];
-  return ["generate"];
+  return ["text_generation"];
 }
 
 function modelDate(raw: string | undefined): string | undefined {
@@ -899,12 +925,11 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
         });
         add(models, {
           ...model,
-          types: lifecycleTypes(category, id),
+          operations: lifecycleOperations(category, id),
           status:
             retiredAt !== undefined && retiredAt <= input.observedAt.slice(0, 10)
               ? "retired"
               : "deprecated",
-          is_deprecated: true,
           retired_at: retiredAt,
           replacement_model_ids:
             replacementColumn === undefined ? [] : cellIds(row[replacementColumn]),

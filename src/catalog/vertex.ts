@@ -2,13 +2,14 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
+import { orderedOperations } from "./operation.ts";
 import { publishedRate } from "./pricing.ts";
 import {
-  modelTypeSchema,
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -148,7 +149,6 @@ const months = new Map([
   ["November", "11"],
   ["December", "12"],
 ]);
-const typeOrder = new Map(modelTypeSchema.options.map((value, index) => [value, index]));
 const apiItemSchema = z.object({
   name: z.string().regex(/^publishers\/[a-z0-9-]+\/models\/[a-z0-9][a-z0-9._:/@-]*$/i),
   launchStage: z.string().optional(),
@@ -188,14 +188,6 @@ function reference(
 function validateEndpointReferences(sourceId: string, documents: LinkedDocument[]): void {
   for (const [path, patterns, message] of endpointReferences[sourceId] ?? [])
     reference(documents, path, patterns, message);
-}
-
-function orderedTypes(values: ModelType[]): ModelType[] {
-  const result = unique(values);
-  return result.sort(
-    (left, right) =>
-      (typeOrder.get(left) ?? typeOrder.size) - (typeOrder.get(right) ?? typeOrder.size),
-  );
 }
 
 function modelDate(value: string): string | undefined {
@@ -380,34 +372,31 @@ function capabilities($: LoadedDocument, table: Selection): ProviderModel["capab
   };
 }
 
-function modelTypes(
+function modelOperations(
   id: string,
   name: string,
   observed: ProviderModel["modalities"],
   features: ProviderModel["capabilities"],
-): ModelType[] {
+): ModelOperation[] {
   const value = `${id} ${name}`.toLowerCase();
-  const result: ModelType[] = [];
+  const result: ModelOperation[] = [];
   const ocr = /\bocr\b/.test(value);
+  const live =
+    observed.input.includes("audio") &&
+    observed.output.includes("audio") &&
+    /\blive\b|\brealtime\b|\bomni\b/.test(value);
   if (observed.output.includes("embedding") || /\bembedding/.test(value)) result.push("embeddings");
-  if (observed.output.includes("video")) result.push("video");
-  if (observed.output.includes("image")) result.push("image");
-  if (observed.output.includes("audio"))
-    result.push(/\blyria\b|\bmusic\b/.test(value) ? "audio_generation" : "audio_speech");
+  if (observed.output.includes("video")) result.push("video_generation");
+  if (observed.output.includes("image")) result.push("image_generation");
+  if (observed.output.includes("audio")) {
+    if (/\blyria\b|\bmusic\b/.test(value)) result.push("audio_generation");
+    else if (live) result.push("speech_to_speech");
+    else if (/\btts\b|text-to-speech/.test(value)) result.push("speech_synthesis");
+  }
   if (ocr) result.push("ocr");
-  else if (observed.output.includes("text")) result.push("generate");
-  if (/\blive\b|\brealtime\b|\bomni\b/.test(value)) result.push("realtime");
-  if (features.computer_use === true) result.push("agentic");
-  return orderedTypes(result.length === 0 ? ["other"] : result);
-}
-
-function status(value: string): ProviderModel["status"] {
-  const lower = value.toLowerCase();
-  if (/retired|discontinued|shut down/.test(lower)) return "retired";
-  if (/deprecated/.test(lower)) return "deprecated";
-  if (/preview|experimental/.test(lower)) return "preview";
-  if (/generally available|\bga\b/.test(lower)) return "active";
-  return "unknown";
+  else if (observed.output.includes("text")) result.push("text_generation");
+  if (features.computer_use === true) result.push("text_generation");
+  return orderedOperations(result);
 }
 
 function regions($: LoadedDocument, table: Selection): ProviderModel["availability"] {
@@ -471,7 +460,7 @@ function modelEndpoints(
         )
       )
         return [endpoints.embedding];
-      return model.types.includes("realtime") ? undefined : [endpoints.generate];
+      return model.operations.includes("speech_to_speech") ? undefined : [endpoints.generate];
     }
     if (/\/models\/veo\//.test(path)) return [endpoints.video];
     if (/\/models\/(?:lyria|imagen)\//.test(path)) return [endpoints.predict];
@@ -491,7 +480,7 @@ function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evide
   model.name =
     model.name === model.model_id && next.name !== next.model_id ? next.name : model.name;
   model.description ??= next.description;
-  model.types = orderedTypes([...model.types.filter((value) => value !== "other"), ...next.types]);
+  model.operations = orderedOperations([...model.operations, ...next.operations]);
   if (model.modalities.input.length + model.modalities.output.length === 0)
     model.modalities = next.modalities;
   const known = <T extends boolean | "unknown">(left: T, right: T): T =>
@@ -526,8 +515,7 @@ function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evide
     model.status === "unknown"
   )
     model.status = next.status;
-  if (next.is_deprecated === true || model.is_deprecated === "unknown")
-    model.is_deprecated = next.is_deprecated;
+  if (model.release_stage === "unknown") model.release_stage = next.release_stage;
   model.replacement_model_ids = unique([
     ...model.replacement_model_ids,
     ...next.replacement_model_ids,
@@ -585,7 +573,7 @@ function parseModelTables(
     const observedCapabilities = capabilities($, table);
     const versionText = text(rowCell($, table, /^Versions$/i)?.text() ?? "");
     const launchText = `${text(rowCell($, table, /^Launch stage$/i)?.text() ?? "")} ${versionText}`;
-    const modelStatus = status(launchText);
+    const modelStatus = modelStateFromLabel(launchText);
     const model = {
       ...baseModel({
         providerId: input.provider.id,
@@ -595,19 +583,13 @@ function parseModelTables(
         observedAt: input.observedAt,
       }),
       description: description($, heading),
-      types: modelTypes(id, name, observedModalities, observedCapabilities),
+      operations: modelOperations(id, name, observedModalities, observedCapabilities),
       service_families: publisherFamily($, input.source.id),
       modalities: observedModalities,
       capabilities: observedCapabilities,
       limits: limits($, table),
       release_date: modelDate(versionText),
-      status: modelStatus,
-      is_deprecated:
-        modelStatus === "deprecated" || modelStatus === "retired"
-          ? true
-          : modelStatus === "active" || modelStatus === "preview"
-            ? false
-            : "unknown",
+      ...modelStatus,
       availability: regions($, table),
       scope: "regional_catalog",
     } satisfies ProviderModel;
@@ -622,25 +604,24 @@ function parseModelTables(
         model.retired_at !== undefined && model.retired_at <= input.observedAt.slice(0, 10)
           ? "retired"
           : "deprecated";
-      model.is_deprecated = true;
     }
     add(models, { model, names: new Set([name]) });
   });
 }
 
-function lifecycleTypes(section: string): ModelType[] {
+function lifecycleOperations(section: string): ModelOperation[] {
   const lower = section.toLowerCase();
   if (lower.includes("embedding")) return ["embeddings"];
-  if (lower.includes("image")) return ["image"];
-  if (lower.includes("veo")) return ["video"];
-  return ["generate"];
+  if (lower.includes("image")) return ["image_generation"];
+  if (lower.includes("veo")) return ["video_generation"];
+  return ["text_generation"];
 }
 
 function ensure(
   models: Map<string, Evidence>,
   input: Input,
   id: string,
-  types: ModelType[],
+  operations: ModelOperation[],
 ): Evidence {
   const current = models.get(id);
   if (current !== undefined) return current;
@@ -652,7 +633,7 @@ function ensure(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types,
+    operations,
     service_families:
       input.source.id === "vertex-google-models" ? ["publishers/google"] : undefined,
     scope: "regional_catalog",
@@ -690,7 +671,7 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
         const cells = $(row).find("th,td");
         const id = text(cells.eq(0).find("code").first().text() || cells.eq(0).text());
         if (!modelIdSchema.safeParse(id).success) return;
-        const item = ensure(models, input, id, lifecycleTypes(section)).model;
+        const item = ensure(models, input, id, lifecycleOperations(section)).model;
         const released =
           releaseIndex < 0 ? undefined : modelDate(text(cells.eq(releaseIndex).text()));
         const retirementText = retirementIndex < 0 ? "" : text(cells.eq(retirementIndex).text());
@@ -715,10 +696,8 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
           exactRetirement !== undefined && exactRetirement <= input.observedAt.slice(0, 10);
         if (deprecated !== undefined || pastRetirement || /retired/i.test(section)) {
           item.status = pastRetirement || /retired/i.test(section) ? "retired" : "deprecated";
-          item.is_deprecated = true;
         } else if (item.status === "unknown") {
           item.status = "active";
-          item.is_deprecated = false;
         }
       });
   });
@@ -1178,7 +1157,7 @@ export function parseVertexApi(input: Input): ProviderModel[] {
         !modelIdSchema.safeParse(id).success
       )
         throw new Error("Vertex Model Garden API returned an invalid resource name");
-      const modelStatus = status(
+      const modelStatus = modelStateFromLabel(
         `${parsed.data.launchStage ?? ""} ${parsed.data.versionState ?? ""}`,
       );
       models.set(id, {
@@ -1190,13 +1169,7 @@ export function parseVertexApi(input: Input): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         service_families: [`publishers/${resourcePublisher}`],
-        status: modelStatus,
-        is_deprecated:
-          modelStatus === "deprecated" || modelStatus === "retired"
-            ? true
-            : modelStatus === "active" || modelStatus === "preview"
-              ? false
-              : "unknown",
+        ...modelStatus,
         scope: "runtime_observation",
       });
     }

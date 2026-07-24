@@ -5,13 +5,13 @@ import { baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes } from "./task.ts";
+import { classifyModelOperations, orderedOperations } from "./operation.ts";
 
 interface Input {
   provider: Provider;
@@ -173,20 +173,26 @@ function modalities(item: Item): ProviderModel["modalities"] {
   };
 }
 
-function types(item: Item, modelModalities: ProviderModel["modalities"]): ModelType[] {
-  const tagged: ModelType[] = [];
+function operations(item: Item, modelModalities: ProviderModel["modalities"]): ModelOperation[] {
+  const tagged: ModelOperation[] = [];
   const tags = item.tags ?? [];
-  if (tags.includes("image-generation")) tagged.push("image");
-  if (tags.includes("video-generation")) tagged.push("video");
-  if (tags.includes("websocket-realtime")) tagged.push("realtime");
-  if (tags.includes("websocket-transcription")) tagged.push("audio_transcription", "realtime");
-  return unique([
-    ...classifyModelTypes({
+  if (tags.includes("image-generation") && modelModalities.output.includes("image"))
+    tagged.push("image_generation");
+  if (tags.includes("video-generation") && modelModalities.output.includes("video"))
+    tagged.push("video_generation");
+  if (
+    tags.includes("websocket-realtime") &&
+    modelModalities.input.includes("audio") &&
+    modelModalities.output.includes("audio")
+  )
+    tagged.push("speech_to_speech");
+  if (tags.includes("websocket-transcription")) tagged.push("transcription");
+  return orderedOperations([
+    ...classifyModelOperations({
       modelId: item.id,
       name: item.name,
       rawType: item.type,
       modalities: modelModalities,
-      fallback: "other",
     }),
     ...tagged,
   ]);
@@ -420,7 +426,7 @@ function model(item: Item, input: Input): ProviderModel {
       observedAt: input.observedAt,
     }),
     description: item.description || undefined,
-    types: types(item, modelModalities),
+    operations: operations(item, modelModalities),
     raw_type: item.type,
     modalities: modelModalities,
     capabilities: {
@@ -447,8 +453,8 @@ function model(item: Item, input: Input): ProviderModel {
     },
     release_date: date(item.released),
     deprecated_at: deprecatedAt,
-    status: deprecated ? "deprecated" : preview ? "preview" : "active",
-    is_deprecated: deprecated,
+    status: deprecated ? "deprecated" : "active",
+    release_stage: preview ? "preview" : "unknown",
     pricing_status:
       rates.length === 0
         ? "not_published"

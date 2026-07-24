@@ -1,14 +1,20 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
 import {
-  formatModelType,
+  formatModelOperation,
   formatPrice,
   formatTableRateUnit,
   formatTokenCount,
   perMillionTokenRate,
   preferredRate,
+  primaryStatus,
 } from "../catalog/presentation.ts";
-import type { ModelType, ProviderModel } from "../catalog/schema.ts";
+import type {
+  ModelLifecycle,
+  ModelOperation,
+  ModelReleaseStage,
+  ProviderModel,
+} from "../catalog/schema.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import UiIcon from "./UiIcon.vue";
 
@@ -22,27 +28,32 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [model: ProviderModel];
   filterProvider: [providerId: string];
-  filterType: [modelType: ModelType];
-  filterStatus: [status: ProviderModel["status"]];
+  filterOperation: [operation: ModelOperation];
+  filterLifecycle: [lifecycle: ModelLifecycle];
+  filterReleaseStage: [releaseStage: ModelReleaseStage];
 }>();
 
 const inputRate = computed(() => perMillionTokenRate(preferredRate(props.model, "input_text")));
 const outputRate = computed(() => perMillionTokenRate(preferredRate(props.model, "output_text")));
 const inputRateUnit = computed(() => formatTableRateUnit(inputRate.value));
 const outputRateUnit = computed(() => formatTableRateUnit(outputRate.value));
+const status = computed(() => primaryStatus(props.model));
 
 function selectModel(): void {
   emit("select", props.model);
 }
+
+function filterStatus(): void {
+  if (props.model.status === "active" && props.model.release_stage !== "unknown") {
+    emit("filterReleaseStage", props.model.release_stage);
+    return;
+  }
+  emit("filterLifecycle", props.model.status);
+}
 </script>
 
 <template>
-  <tr
-    class="model-row"
-    :aria-rowindex="rowIndex"
-    :aria-selected="selected"
-    :data-status="model.status"
-  >
+  <tr class="model-row" :aria-rowindex="rowIndex" :aria-selected="selected" :data-status="status">
     <td class="model-col">
       <button
         class="model-identity"
@@ -69,27 +80,29 @@ function selectModel(): void {
     </td>
     <td class="operations-col">
       <span class="operation-list">
-        <button
-          v-for="modelType in model.types"
-          :key="modelType"
-          class="operation-filter-button"
-          type="button"
-          :aria-label="`Filter by operation ${formatModelType(modelType)}`"
-          @click="emit('filterType', modelType)"
-        >
-          {{ formatModelType(modelType) }}
-        </button>
+        <span v-if="model.operations.length === 0">—</span>
+        <template v-for="(operation, index) in model.operations" :key="operation">
+          <span v-if="index > 0" class="operation-separator" aria-hidden="true">, </span>
+          <button
+            class="operation-filter-button"
+            type="button"
+            :aria-label="`Filter by operation ${formatModelOperation(operation)}`"
+            @click="emit('filterOperation', operation)"
+          >
+            {{ formatModelOperation(operation) }}
+          </button>
+        </template>
       </span>
     </td>
     <td class="status-col">
       <button
         class="row-status"
         type="button"
-        :aria-label="`Filter by status ${model.status}`"
-        @click="emit('filterStatus', model.status)"
+        :aria-label="`Filter by status ${status}`"
+        @click="filterStatus"
       >
         <span aria-hidden="true"></span>
-        {{ model.status }}
+        {{ status }}
       </button>
     </td>
     <td class="context-col numeric">{{ formatTokenCount(model.limits.context_tokens) }}</td>

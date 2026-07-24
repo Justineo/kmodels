@@ -3,16 +3,15 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
+import { classifyModelOperations, orderedOperations } from "./operation.ts";
 import {
-  modelTypeSchema,
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -38,6 +37,7 @@ interface CatalogFact {
   apiEndpoints: ProviderModel["api_endpoints"];
   limits: ProviderModel["limits"];
   status: ProviderModel["status"];
+  releaseStage: ProviderModel["release_stage"];
 }
 
 const serviceFamilies = {
@@ -126,7 +126,7 @@ const azureModelSchema = z.object({
       .object({ fineTune: z.string().optional(), inference: z.string().optional() })
       .optional(),
     lifecycleStatus: z
-      .enum(["Stable", "Preview", "GenerallyAvailable", "Deprecating", "Deprecated"])
+      .enum(["Stable", "Preview", "GenerallyAvailable", "Legacy", "Deprecating", "Deprecated"])
       .optional(),
     skus: z
       .array(
@@ -172,18 +172,8 @@ const azureApiBundleSchema = z.object({
   prices: z.array(z.unknown()),
 });
 
-const typeOrder = new Map(modelTypeSchema.options.map((type, index) => [type, index]));
-
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
-}
-
-function orderedTypes(values: ModelType[]): ModelType[] {
-  const types = unique(values);
-  const known = types.filter((type) => type !== "other");
-  return (known.length === 0 ? types : known).sort(
-    (left, right) => (typeOrder.get(left) ?? 0) - (typeOrder.get(right) ?? 0),
-  );
 }
 
 function plain(value: string): string {
@@ -343,7 +333,7 @@ function labeledValue(value: string, label: "Input" | "Output"): string | undefi
 function modelModalities(
   rawType: string,
   details: string,
-  types: ModelType[],
+  operations: ModelOperation[],
 ): ProviderModel["modalities"] {
   const evidence = `${rawType} ${details}`;
   const inputValue = labeledValue(evidence, "Input");
@@ -365,68 +355,71 @@ function modelModalities(
     if (phrase !== undefined) output.push(...modalityValues(phrase));
     if (/text out/i.test(evidence)) output.push("text");
   }
-  if (types.includes("embeddings")) {
+  if (operations.includes("embeddings")) {
     if (input.length === 0) input.push("text");
     output.push("embedding");
   }
-  if (types.includes("image")) output.push("image");
-  if (types.includes("video")) output.push("video");
-  if (types.includes("audio_speech")) {
+  if (operations.includes("image_generation")) output.push("image");
+  if (operations.includes("video_generation")) output.push("video");
+  if (operations.includes("speech_synthesis")) {
     if (input.length === 0) input.push("text");
     output.push("audio");
   }
-  if (types.includes("audio_transcription") || types.includes("audio_translation")) {
+  if (operations.includes("transcription") || operations.includes("translation")) {
     input.push("audio");
     if (output.length === 0) output.push("text");
   }
-  if (types.includes("realtime")) {
+  if (operations.includes("speech_to_speech")) {
     input.push("audio");
-    if (!types.includes("audio_transcription") || types.includes("audio_translation"))
-      output.push("audio");
+    output.push("audio");
   }
-  if (types.includes("generate")) {
+  if (operations.includes("text_generation")) {
     if (input.length === 0) input.push("text");
     if (output.length === 0) output.push("text");
   }
   return { input: unique(input), output: unique(output) };
 }
 
-function explicitTypes(rawType: string, details: string): ModelType[] {
+function explicitOperations(rawType: string, details: string): ModelOperation[] {
   const value = `${rawType} ${details}`.toLowerCase();
-  const types: ModelType[] = [];
+  const operations: ModelOperation[] = [];
   if (/chat[- ]completion|messages|responses api|completions api/.test(value))
-    types.push("generate");
-  if (/assistants/.test(value)) types.push("agentic");
-  if (/embedding/.test(rawType.toLowerCase())) types.push("embeddings");
-  if (/text classification/.test(value)) types.push("classification");
-  if (/rerank/.test(value)) types.push("rerank");
-  if (/image generation|image-to-image|text-to-image/.test(value)) types.push("image");
-  if (/image-to-text|document ai|\bocr\b/.test(value)) types.push("ocr");
-  if (/video generation/.test(value)) types.push("video");
-  if (/speech-to-text|speech to text/.test(value)) types.push("audio_transcription");
-  if (/speech translation/.test(value)) types.push("audio_translation");
-  if (/text-to-speech|text to speech/.test(value)) types.push("audio_speech");
-  if (/real-?time|\brealtime\b/.test(value)) types.push("realtime");
+    operations.push("text_generation");
+  if (/assistants/.test(value)) operations.push("text_generation");
+  if (/embedding/.test(rawType.toLowerCase())) operations.push("embeddings");
+  if (/text classification/.test(value)) operations.push("classification");
+  if (/rerank/.test(value)) operations.push("reranking");
+  if (/image generation|image-to-image|text-to-image/.test(value))
+    operations.push("image_generation");
+  if (/image-to-text|document ai|\bocr\b/.test(value)) operations.push("ocr");
+  if (/video generation/.test(value)) operations.push("video_generation");
+  if (/speech-to-text|speech to text/.test(value)) operations.push("transcription");
+  if (/speech translation/.test(value)) operations.push("translation");
+  if (/text-to-speech|text to speech/.test(value)) operations.push("speech_synthesis");
+  if (/\baudio\b.*(?:real-?time|\brealtime\b)|(?:real-?time|\brealtime\b).*\baudio\b/.test(value))
+    operations.push("speech_to_speech");
   if (/audio and text generation|audio generation/.test(value))
-    types.push("generate", "audio_speech");
-  return orderedTypes(types);
+    operations.push("text_generation", "speech_synthesis");
+  return orderedOperations(operations);
 }
 
-function modelTypes(id: string, rawType: string, details: string): ModelType[] {
-  const explicit = explicitTypes(rawType, details);
-  const classified = classifyModelTypes({
+function modelOperations(id: string, rawType: string, details: string): ModelOperation[] {
+  const explicit = explicitOperations(rawType, details);
+  const classified = classifyModelOperations({
     modelId: id,
     name: id,
     rawType: undefined,
     modalities: { input: [], output: [] },
-    fallback: "generate",
+    fallback: "text_generation",
   });
-  return orderedTypes(
+  return orderedOperations(
     explicit.length === 0
       ? classified
       : [
           ...explicit,
-          ...classified.filter((type) => type !== "generate" || explicit.includes(type)),
+          ...classified.filter(
+            (operation) => operation !== "text_generation" || explicit.includes(operation),
+          ),
         ],
   );
 }
@@ -514,11 +507,7 @@ function catalogFacts(body: string, serviceFamily: ServiceFamily): CatalogFact[]
         descriptionIndex < 0 ? "" : plain(row[descriptionIndex] ?? "")
       }`.trim();
       const rowLimits = limits(table, row, details);
-      const status: ProviderModel["status"] = /\bpreview\b/i.test(
-        `${row[modelIndex] ?? ""} ${details}`,
-      )
-        ? "preview"
-        : "active";
+      const preview = /\bpreview\b/i.test(`${row[modelIndex] ?? ""} ${details}`);
       for (const reference of references)
         facts.push({
           ...reference,
@@ -528,7 +517,8 @@ function catalogFacts(body: string, serviceFamily: ServiceFamily): CatalogFact[]
           apiEndpoints:
             serviceFamily === serviceFamilies.openAi ? endpointsFor(rawType, details) : undefined,
           limits: rowLimits,
-          status,
+          status: "active",
+          releaseStage: preview ? "preview" : "unknown",
         });
     }
   }
@@ -583,11 +573,14 @@ function mergeModel(left: ProviderModel, right: ProviderModel): ProviderModel {
     raw_type: left.raw_type ?? right.raw_type,
     service_families: serviceFamilyValues.length === 0 ? undefined : serviceFamilyValues,
     api_endpoints: endpointValues.length === 0 ? undefined : endpointValues,
-    types: orderedTypes([
-      ...left.types.filter(
-        (type) => right.raw_type === undefined || type !== "generate" || right.types.includes(type),
+    operations: orderedOperations([
+      ...left.operations.filter(
+        (operation) =>
+          right.raw_type === undefined ||
+          operation !== "text_generation" ||
+          right.operations.includes(operation),
       ),
-      ...right.types,
+      ...right.operations,
     ]),
     modalities: {
       input: unique([...left.modalities.input, ...right.modalities.input]),
@@ -661,29 +654,37 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
       const stage = plain(row[lifecycleIndex] ?? "").toLowerCase();
       const status: ProviderModel["status"] =
         stage === "preview"
-          ? "preview"
+          ? "active"
           : stage === "ga" || stage === "stable" || stage === "generallyavailable"
             ? "active"
-            : stage === "deprecated" || stage === "legacy"
-              ? "deprecated"
-              : stage === "retired"
-                ? "retired"
-                : "unknown";
+            : stage === "legacy"
+              ? "legacy"
+              : stage === "deprecated"
+                ? "deprecated"
+                : stage === "retired"
+                  ? "retired"
+                  : "unknown";
       if (status === "unknown") throw new Error(`Unsupported Azure lifecycle stage: ${stage}`);
+      const releaseStage: ProviderModel["release_stage"] =
+        stage === "preview"
+          ? "preview"
+          : stage === "ga" || stage === "stable" || stage === "generallyavailable"
+            ? "stable"
+            : "unknown";
       const retiredAt = plain(row[retirementIndex] ?? "");
       const replacements = plain(row[replacementIndex] ?? "")
         .split(",")
         .map((value) => value.replace(/\s+\([^)]*\)$/, "").trim())
         .filter((value) => modelIdSchema.safeParse(value).success);
       const existing = models.get(modelUid(input.provider.id, id, version));
-      const types = modelTypes(id, table.section, "");
+      const operations = modelOperations(id, table.section, "");
       const incoming = {
         ...base(input, id, version),
-        types,
-        modalities: modelModalities(table.section, "", types),
+        operations,
+        modalities: modelModalities(table.section, "", operations),
         service_families: [serviceFamily],
         status,
-        is_deprecated: status === "deprecated" || status === "retired",
+        release_stage: releaseStage,
         retired_at: retiredAt === "—" || retiredAt === "-" ? undefined : retiredAt,
         replacement_model_ids: unique(replacements),
       } satisfies ProviderModel;
@@ -693,7 +694,7 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
         models.set(incoming.uid, {
           ...merged,
           status,
-          is_deprecated: incoming.is_deprecated,
+          release_stage: releaseStage,
           retired_at: incoming.retired_at,
           replacement_model_ids: incoming.replacement_model_ids,
         });
@@ -720,11 +721,11 @@ function availability(models: Map<string, ProviderModel>, input: Input, body: st
         .slice(2)
         .flatMap((region, index) => (plain(row[index + 2] ?? "") === "✅" ? [region] : []));
       if (regions.length === 0) continue;
-      const types = modelTypes(id, table.section, "");
+      const operations = modelOperations(id, table.section, "");
       upsert(models, {
         ...base(input, id, version),
-        types,
-        modalities: modelModalities(table.section, "", types),
+        operations,
+        modalities: modelModalities(table.section, "", operations),
         service_families: serviceFamily === undefined ? undefined : [serviceFamily],
         api_endpoints:
           serviceFamily === serviceFamilies.openAi && /batch/i.test(table.section)
@@ -735,7 +736,6 @@ function availability(models: Map<string, ProviderModel>, input: Input, body: st
           batch: /batch/i.test(table.section) ? true : "unknown",
         },
         status: "active",
-        is_deprecated: false,
         availability: regions.map((region) => ({ region, deployment_type: table.section })),
       });
     }
@@ -762,7 +762,10 @@ function assistants(models: Map<string, ProviderModel>, input: Input, body: stri
       );
       upsert(models, {
         ...base(input, id, version),
-        types: orderedTypes([...modelTypes(id, "Assistants", ""), "agentic"]),
+        operations: orderedOperations([
+          ...modelOperations(id, "Assistants", ""),
+          "text_generation",
+        ]),
         service_families: [serviceFamilies.openAi],
         availability: regions.map((region) => ({ region, deployment_type: "Standard/Regional" })),
       });
@@ -829,18 +832,18 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
     const target = eligible.length === 1 ? eligible[0] : undefined;
     const id = target?.model_id ?? fact.id;
     const version = target?.version ?? fact.version;
-    const types = modelTypes(id, fact.rawType, fact.details);
+    const operations = modelOperations(id, fact.rawType, fact.details);
     upsert(models, {
       ...base(input, id, version),
       raw_type: fact.rawType,
       service_families: [fact.serviceFamily],
       api_endpoints: fact.apiEndpoints,
-      types,
-      modalities: modelModalities(fact.rawType, fact.details, types),
+      operations,
+      modalities: modelModalities(fact.rawType, fact.details, operations),
       capabilities: capabilities(`${fact.rawType} ${fact.details}`),
       limits: fact.limits,
       status: target?.status ?? fact.status,
-      is_deprecated: target?.is_deprecated ?? false,
+      release_stage: target?.release_stage ?? fact.releaseStage,
       pricing_status: "unknown",
     });
   }
@@ -876,16 +879,16 @@ function integerCapability(values: Map<string, string>, keys: string[]): number 
   }
 }
 
-function apiStatus(value: z.infer<typeof azureModelSchema>["model"]["lifecycleStatus"]): {
-  status: ProviderModel["status"];
-  deprecated: ProviderModel["is_deprecated"];
-} {
-  if (value === "Preview") return { status: "preview", deprecated: false };
+function apiStatus(
+  value: z.infer<typeof azureModelSchema>["model"]["lifecycleStatus"],
+): Pick<ProviderModel, "status" | "release_stage"> {
+  if (value === "Preview") return { status: "active", release_stage: "preview" };
   if (value === "Stable" || value === "GenerallyAvailable")
-    return { status: "active", deprecated: false };
-  if (value === "Deprecating") return { status: "deprecated", deprecated: true };
-  if (value === "Deprecated") return { status: "retired", deprecated: true };
-  return { status: "unknown", deprecated: "unknown" };
+    return { status: "active", release_stage: "stable" };
+  if (value === "Legacy") return { status: "legacy", release_stage: "unknown" };
+  if (value === "Deprecating") return { status: "deprecated", release_stage: "unknown" };
+  if (value === "Deprecated") return { status: "retired", release_stage: "unknown" };
+  return { status: "unknown", release_stage: "unknown" };
 }
 
 function retailUnit(value: string): PriceRate["unit"] | undefined {
@@ -999,13 +1002,13 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       ]),
     );
     const supports = (keys: string[]): boolean => booleanCapability(raw, keys) === true;
-    const types: ModelType[] = [];
-    if (supports(["chatCompletion", "completion", "responses"])) types.push("generate");
-    if (supports(["assistants", "agentsV2"])) types.push("agentic");
-    if (supports(["realtime"])) types.push("realtime");
-    const classified = modelTypes(item.model.name, item.kind ?? item.model.format ?? "", "");
-    const modelTypesValue = orderedTypes(
-      types.length === 0 ? classified : [...types, ...classified],
+    const operations: ModelOperation[] = [];
+    if (supports(["chatCompletion", "completion", "responses"])) operations.push("text_generation");
+    if (supports(["assistants", "agentsV2"])) operations.push("text_generation");
+    if (supports(["realtime"])) operations.push("speech_to_speech");
+    const classified = modelOperations(item.model.name, item.kind ?? item.model.format ?? "", "");
+    const modelOperationsValue = orderedOperations(
+      operations.length === 0 ? classified : [...operations, ...classified],
     );
     const status = apiStatus(item.model.lifecycleStatus);
     const rates = pricesFor(item, prices, bundle.location, input.source.id);
@@ -1013,8 +1016,8 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       {
         ...base(input, item.model.name, item.model.version),
         description: item.description,
-        types: modelTypesValue,
-        modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelTypesValue),
+        operations: modelOperationsValue,
+        modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelOperationsValue),
         capabilities: {
           ...unknownCapabilities(),
           tool_call: booleanCapability(raw, ["toolCalling", "functionCalling"]),
@@ -1031,8 +1034,7 @@ export function parseAzureApi(input: Input): ProviderModel[] {
           max_output_tokens: integerCapability(raw, ["maxOutputToken"]),
         },
         deprecated_at: item.model.deprecation?.inference?.slice(0, 10),
-        status: status.status,
-        is_deprecated: status.deprecated,
+        ...status,
         pricing_status: rates.length === 0 ? "unknown" : "published",
         pricing: rates,
         availability: (item.model.skus ?? []).map((sku) => ({

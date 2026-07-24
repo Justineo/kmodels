@@ -5,16 +5,16 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
+import { classifyModelOperations, orderedOperations } from "./operation.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import {
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -38,7 +38,7 @@ interface Draft {
   releaseDate?: string;
   version?: string;
   catalogType: string;
-  status: ProviderModel["status"];
+  status: "active" | "preview" | "deprecated" | "retired";
   apiNames: string[];
   input: string[];
   output: string[];
@@ -301,7 +301,7 @@ function parseDraft(sourceSlug: string, body: string): Draft {
     throw new Error(`Mistral model path and slug disagree for ${sourceSlug}`);
   const catalogType = requiredString(object, "type");
   const rawStatus = requiredString(object, "status");
-  const status: ProviderModel["status"] =
+  const status: Draft["status"] =
     rawStatus === "Retired"
       ? "retired"
       : rawStatus === "Deprecated"
@@ -468,67 +468,51 @@ function modalities(draft: Draft): ProviderModel["modalities"] {
   };
 }
 
-const typeOrder: ModelType[] = [
-  "generate",
-  "agentic",
-  "embeddings",
-  "audio_generation",
-  "audio_speech",
-  "audio_transcription",
-  "audio_translation",
-  "image",
-  "video",
-  "realtime",
-  "rerank",
-  "moderation",
-  "classification",
-  "ocr",
-  "other",
-];
-
-const featureTypes = new Map<string, ModelType[]>([
-  ["chat-completions", ["generate"]],
+const featureOperations = new Map<string, ModelOperation[]>([
+  ["chat-completions", ["text_generation"]],
   ["function-calling", []],
-  ["agents-conversations", ["agentic"]],
-  ["connectors", ["agentic"]],
+  ["agents-conversations", ["text_generation"]],
+  ["connectors", ["text_generation"]],
   ["structured-outputs", []],
   ["predicted-outputs", []],
   ["prefix", []],
   ["ocr", ["ocr"]],
   ["annotations-structured-ocr", ["ocr"]],
   ["bbox-extraction", ["ocr"]],
-  ["document-qna", ["generate"]],
-  ["fim", ["generate"]],
+  ["document-qna", ["text_generation"]],
+  ["fim", ["text_generation"]],
   ["embeddings", ["embeddings"]],
   ["moderations", ["moderation"]],
   ["chat-moderations", ["moderation"]],
-  ["transcriptions", ["audio_transcription"]],
-  ["tts", ["audio_speech"]],
-  ["timestamps", ["audio_transcription"]],
+  ["transcriptions", ["transcription"]],
+  ["tts", ["speech_synthesis"]],
+  ["timestamps", ["transcription"]],
   ["batching", []],
 ]);
 
-function types(draft: Draft, observedModalities: ProviderModel["modalities"]): ModelType[] {
-  const result: ModelType[] = [];
+function operations(
+  draft: Draft,
+  observedModalities: ProviderModel["modalities"],
+): ModelOperation[] {
+  const result: ModelOperation[] = [];
+  const fallback: ModelOperation | undefined = observedModalities.output.includes("text")
+    ? "text_generation"
+    : undefined;
   for (const feature of draft.features) {
-    const observed = featureTypes.get(feature);
+    const observed = featureOperations.get(feature);
     if (observed === undefined) throw new Error(`Mistral published an unknown feature: ${feature}`);
     result.push(...observed);
   }
   result.push(
-    ...classifyModelTypes({
+    ...classifyModelOperations({
       modelId: draft.apiNames[0] ?? draft.sourceSlug,
       name: draft.name,
       rawType: undefined,
       modalities: observedModalities,
-      fallback: observedModalities.output.includes("text") ? "generate" : "other",
+      ...(fallback === undefined ? {} : { fallback }),
     }),
   );
-  const normalized = unique(result);
-  const known = normalized.filter((type) => type !== "other");
-  return (known.length === 0 ? normalized : known).sort(
-    (left, right) => typeOrder.indexOf(left) - typeOrder.indexOf(right),
-  );
+  return orderedOperations(result);
 }
 
 function modelEndpoints(
@@ -546,7 +530,11 @@ function modelEndpoints(
   );
 }
 
-function directRate(price: SourcePrice, modelTypes: ModelType[], sourceId: string): PriceRate {
+function directRate(
+  price: SourcePrice,
+  modelOperations: ModelOperation[],
+  sourceId: string,
+): PriceRate {
   const conditions: PriceRate["conditions"] = {};
   let unit: PriceRate["unit"];
   let meter: PriceRate["meter"];
@@ -555,7 +543,7 @@ function directRate(price: SourcePrice, modelTypes: ModelType[], sourceId: strin
     meter =
       price.direction === "output"
         ? "output_text"
-        : modelTypes.includes("embeddings")
+        : modelOperations.includes("embeddings")
           ? "embedding"
           : "input_text";
   } else if (price.denominator === "/M Chars") {
@@ -575,8 +563,8 @@ function directRate(price: SourcePrice, modelTypes: ModelType[], sourceId: strin
   return publishedRate(meter, price.price, unit, sourceId, price.denominator, conditions);
 }
 
-function pricing(draft: Draft, modelTypes: ModelType[], sourceId: string): PriceRate[] {
-  const direct = draft.prices.map((price) => directRate(price, modelTypes, sourceId));
+function pricing(draft: Draft, modelOperations: ModelOperation[], sourceId: string): PriceRate[] {
+  const direct = draft.prices.map((price) => directRate(price, modelOperations, sourceId));
   const derived: PriceRate[] = [];
   if (draft.status !== "retired" && draft.features.includes("batching"))
     derived.push(
@@ -623,9 +611,9 @@ function sourceModel(
   const id = draft.apiNames[0];
   if (id === undefined) return undefined;
   const observedModalities = modalities(draft);
-  const modelTypes = types(draft, observedModalities);
+  const modelOperations = operations(draft, observedModalities);
   const apiEndpoints = modelEndpoints(draft, endpointsByFeature);
-  const rates = pricing(draft, modelTypes, input.source.id);
+  const rates = pricing(draft, modelOperations, input.source.id);
   const active = draft.status === "active" || draft.status === "preview";
   const feature = (name: string): boolean | "unknown" =>
     draft.features.includes(name) ? true : active ? false : "unknown";
@@ -640,7 +628,7 @@ function sourceModel(
     }),
     ...(draft.description === undefined ? {} : { description: draft.description }),
     aliases: draft.apiNames.slice(1),
-    types: modelTypes,
+    operations: modelOperations,
     raw_type: draft.catalogType,
     ...(apiEndpoints.length === 0 ? {} : { api_endpoints: apiEndpoints }),
     modalities: observedModalities,
@@ -659,8 +647,8 @@ function sourceModel(
     ...(draft.releaseDate === undefined ? {} : { release_date: draft.releaseDate }),
     ...(draft.deprecatedAt === undefined ? {} : { deprecated_at: draft.deprecatedAt }),
     ...(draft.retiredAt === undefined ? {} : { retired_at: draft.retiredAt }),
-    status: draft.status,
-    is_deprecated: draft.status === "deprecated" || draft.status === "retired",
+    status: draft.status === "preview" ? "active" : draft.status,
+    release_stage: draft.status === "preview" ? "preview" : "unknown",
     replacement_model_ids: replacementId === undefined ? [] : [replacementId],
     pricing_status: rates.length > 0 ? "published" : "unknown",
     pricing: rates,
@@ -726,16 +714,16 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function apiTypes(capabilities: z.infer<typeof apiCapabilitiesSchema>): ModelType[] {
-  const result: ModelType[] = [];
-  if (capabilities.completion_chat || capabilities.completion_fim) result.push("generate");
+function apiOperations(capabilities: z.infer<typeof apiCapabilitiesSchema>): ModelOperation[] {
+  const result: ModelOperation[] = [];
+  if (capabilities.completion_chat || capabilities.completion_fim) result.push("text_generation");
   if (capabilities.classification) result.push("classification");
   if (capabilities.moderation) result.push("moderation");
   if (capabilities.ocr) result.push("ocr");
-  if (capabilities.audio_transcription) result.push("audio_transcription");
-  if (capabilities.audio_transcription_realtime) result.push("audio_transcription", "realtime");
-  if (capabilities.audio_speech) result.push("audio_speech");
-  return result.length === 0 ? ["other"] : unique(result);
+  if (capabilities.audio_transcription) result.push("transcription");
+  if (capabilities.audio_transcription_realtime) result.push("transcription");
+  if (capabilities.audio_speech) result.push("speech_synthesis");
+  return unique(result);
 }
 
 function apiModalities(
@@ -796,7 +784,7 @@ export function parseMistralApi(input: Input): ProviderModel[] {
         }),
         ...(value.description == null ? {} : { description: value.description }),
         aliases: unique((value.aliases ?? []).filter((alias) => alias !== value.id)),
-        types: apiTypes(value.capabilities),
+        operations: apiOperations(value.capabilities),
         raw_type: value.type,
         modalities: apiModalities(value.capabilities),
         capabilities: {
@@ -811,8 +799,6 @@ export function parseMistralApi(input: Input): ProviderModel[] {
             : { context_tokens: value.max_context_length },
         ...(deprecation === undefined ? {} : { deprecated_at: deprecation }),
         status: value.deprecation === null ? "active" : deprecated ? "deprecated" : "unknown",
-        is_deprecated:
-          value.deprecation === null ? false : deprecation === undefined ? "unknown" : deprecated,
         replacement_model_ids:
           value.deprecation_replacement_model == null ? [] : [value.deprecation_replacement_model],
       },

@@ -8,13 +8,13 @@ import { scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelTypes } from "./task.ts";
+import { classifyModelOperations } from "./operation.ts";
 
 interface ParseInput {
   provider: Provider;
@@ -43,8 +43,8 @@ interface Card {
   deprecatedAt: string | undefined;
   retiredAt: string | undefined;
   status: ProviderModel["status"];
-  isDeprecated: ProviderModel["is_deprecated"];
-  types: ModelType[];
+  releaseStage: ProviderModel["release_stage"];
+  operations: ModelOperation[];
   identityKeys: Set<string>;
 }
 
@@ -528,16 +528,13 @@ function parseCard(body: string): Card {
   const status: ProviderModel["status"] = lifecycle?.startsWith("active")
     ? "active"
     : lifecycle?.startsWith("preview")
-      ? "preview"
+      ? "active"
       : lifecycle?.startsWith("legacy")
-        ? "deprecated"
+        ? "legacy"
         : "unknown";
-  const isDeprecated: ProviderModel["is_deprecated"] =
-    status === "deprecated"
-      ? true
-      : status === "active" || status === "preview"
-        ? false
-        : "unknown";
+  const releaseStage: ProviderModel["release_stage"] = lifecycle?.startsWith("preview")
+    ? "preview"
+    : "unknown";
   const eol = fact(body, "Model EOL date");
   const deprecatedAt = eol?.startsWith("Legacy:")
     ? humanDate(eol.slice("Legacy:".length).trim())
@@ -566,12 +563,12 @@ function parseCard(body: string): Card {
   const output = tokens(fact(body, "Max output tokens"));
   if (context !== undefined) limits.context_tokens = context;
   if (output !== undefined) limits.max_output_tokens = output;
-  const types = classifyModelTypes({
+  const operations = classifyModelOperations({
     modelId: cardIds.keys().next().value ?? name,
     name,
     rawType: undefined,
     modalities: cardSupport.modalities,
-    fallback: "generate",
+    fallback: "text_generation",
   });
   return {
     name,
@@ -587,8 +584,8 @@ function parseCard(body: string): Card {
     deprecatedAt,
     retiredAt,
     status,
-    isDeprecated,
-    types,
+    releaseStage,
+    operations,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
   };
 }
@@ -617,7 +614,7 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function meter(text: string, types: ModelType[]): PriceRate["meter"] | undefined {
+function meter(text: string, operations: ModelOperation[]): PriceRate["meter"] | undefined {
   if (/provisioned|reserved|model.?units|tokens per minute|tpm/.test(text))
     return "provisioned_throughput";
   if (/cache.?read/.test(text)) {
@@ -630,10 +627,14 @@ function meter(text: string, types: ModelType[]): PriceRate["meter"] | undefined
     if (/image/.test(text)) return "cache_write_image";
     return "cache_write_text";
   }
-  if (types.includes("rerank") && /search|rerank|request/.test(text)) return "rerank_request";
-  if (types.includes("embeddings") && /input|token|second|minute|image|request|page/.test(text))
+  if (operations.includes("reranking") && /search|rerank|request/.test(text))
+    return "rerank_request";
+  if (
+    operations.includes("embeddings") &&
+    /input|token|second|minute|image|request|page/.test(text)
+  )
     return "embedding";
-  if (types.includes("image") && /output image|created.?image|per image/.test(text))
+  if (operations.includes("image_generation") && /output image|created.?image|per image/.test(text))
     return "image_generation";
   if (/output.*video|video.*output/.test(text)) return "output_video";
   if (/input.*video|video.*input/.test(text)) return "input_video";
@@ -645,15 +646,16 @@ function meter(text: string, types: ModelType[]): PriceRate["meter"] | undefined
   if (/text input/.test(text)) return "input_text";
   if (/rerank/.test(text)) return "rerank_request";
   if (/output|response/.test(text))
-    return types.includes("audio_speech") || types.includes("realtime")
+    return operations.includes("speech_synthesis") || operations.includes("speech_to_speech")
       ? "output_audio"
       : "output_text";
   if (/input|prompt/.test(text))
-    return types.includes("audio_transcription") || types.includes("realtime")
+    return operations.includes("transcription") || operations.includes("speech_to_speech")
       ? "input_audio"
       : "input_text";
-  if (types.includes("image") && /image/.test(text)) return "image_generation";
-  if (types.includes("video") && /video|second/.test(text)) return "video_generation";
+  if (operations.includes("image_generation") && /image/.test(text)) return "image_generation";
+  if (operations.includes("video_generation") && /video|second/.test(text))
+    return "video_generation";
 }
 
 function tier(attributes: Record<string, string>, text: string): string | undefined {
@@ -724,14 +726,14 @@ function rate(
   unit: string,
   price: string,
   effectiveDate: string | undefined,
-  types: ModelType[],
+  operations: ModelOperation[],
   sourceId: string,
 ): PriceRate | undefined {
   const usage = attributes.usagetype ?? "";
   const text =
     `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
   if (/\bcustom\b|customization|training|storage/.test(text)) return undefined;
-  const observedMeter = meter(text, types);
+  const observedMeter = meter(text, operations);
   const endpoint =
     offerCode === "AmazonBedrockFoundationModels"
       ? undefined
@@ -777,7 +779,7 @@ function rate(
   }
   const finalMeter =
     observedMeter ??
-    (normalizedUnit === "image" && types.includes("image")
+    (normalizedUnit === "image" && operations.includes("image_generation")
       ? "image_generation"
       : normalizedUnit === "second" || normalizedUnit === "video"
         ? "video_generation"
@@ -848,7 +850,7 @@ function parsePrices(
             dimension.unit,
             price,
             term.effectiveDate,
-            card.types,
+            card.operations,
             sourceId,
           );
           if (parsed === undefined) continue;
@@ -929,7 +931,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         }),
         description: card.description,
         aliases: [...access.aliases].sort(),
-        types: card.types,
+        operations: card.operations,
         api_endpoints: apiEndpoints.length > 0 ? apiEndpoints : undefined,
         modalities: card.modalities,
         capabilities: {
@@ -943,7 +945,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         deprecated_at: card.deprecatedAt,
         retired_at: card.retiredAt,
         status: card.status,
-        is_deprecated: card.isDeprecated,
+        release_stage: card.releaseStage,
         pricing_status: pricing.length > 0 ? "published" : "unknown",
         pricing,
         availability,
@@ -965,7 +967,7 @@ export function parseBedrockApi(input: ParseInput): ProviderModel[] {
       item.modelLifecycle?.status === "ACTIVE"
         ? "active"
         : item.modelLifecycle?.status === "LEGACY"
-          ? "deprecated"
+          ? "legacy"
           : "unknown";
     return {
       ...baseModel({
@@ -991,7 +993,6 @@ export function parseBedrockApi(input: ParseInput): ProviderModel[] {
       deprecated_at: apiDate(item.modelLifecycle?.legacyTime),
       retired_at: apiDate(item.modelLifecycle?.endOfLifeTime),
       status,
-      is_deprecated: status === "deprecated" ? true : status === "active" ? false : "unknown",
       scope: "regional_catalog",
     };
   });

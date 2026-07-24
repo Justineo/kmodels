@@ -4,7 +4,7 @@ Status: implemented and replayed against the live public and authenticated APIs,
 
 ## Catalog assessment
 
-The catalog remains a lifecycle union of 15 exact IDs: one active, two preview, and 12 deprecated. Historical IDs remain useful evidence but are not current deployment candidates. The three current rows are independently present in the unauthenticated public model API, Model Catalog, and the configured authenticated account inventory; the catalog's Production/Preview sections own lifecycle when the public API flags disagree.
+The catalog remains a lifecycle union of 15 exact IDs: three active and 12 deprecated. Release maturity is modeled separately: one active model is stable and two are preview. Historical IDs remain useful evidence but are not current deployment candidates. The three current rows are independently present in the unauthenticated public model API, Model Catalog, and the configured authenticated account inventory; the catalog's Production/Preview sections own maturity when the public API flags disagree.
 
 All rows are generation models. The three current rows publish context limits and direct input/output rates, and the prompt-cache policy establishes a derived cache-read rate equal to standard input. Model-card amounts are accepted only when they carry `/ M tokens` themselves or appear under the same component's exact `per million tokens` label. This covers both current structured forms while ignoring a conflicting stale prose price on the Gemma card. The structured public API retains its documented per-token denomination before exact decimal scaling and currently agrees with all three component values. Historical rows retain unknown price and context rather than inheriting facts from another host of the same open-weight model.
 
@@ -22,7 +22,7 @@ The current Kong provider supports Cerebras chat completions at `/v1/chat/comple
 
 A current Kong candidate therefore requires:
 
-1. active or preview lifecycle;
+1. active lifecycle with an acceptable release stage;
 2. exact `Chat Completions` endpoint evidence;
 3. positive streaming capability; and
 4. visibility in the user's authenticated account.

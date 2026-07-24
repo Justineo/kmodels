@@ -5,7 +5,8 @@ import {
   formatRateUnit,
   formatSnakeCase,
   formatTokenCount,
-  modelTypeList,
+  modelOperationList,
+  primaryStatus,
 } from "../catalog/presentation.ts";
 import type { ProviderModel, SourceRecord } from "../catalog/schema.ts";
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
@@ -114,7 +115,9 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
       <div ref="scrollHost" class="details-scroll-host" data-overlayscrollbars-initialize>
         <div ref="scrollViewport" class="details-scroll">
           <div class="status-line">
-            <span class="status-badge" :data-status="model.status">{{ model.status }}</span>
+            <span class="status-badge" :data-status="primaryStatus(model)">
+              {{ primaryStatus(model) }}
+            </span>
             <span>{{ formatSnakeCase(model.scope) }}</span>
           </div>
 
@@ -125,7 +128,15 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
             <dl class="detail-grid">
               <div>
                 <dt>Operations</dt>
-                <dd>{{ modelTypeList(model) }}</dd>
+                <dd>{{ modelOperationList(model) }}</dd>
+              </div>
+              <div>
+                <dt>Lifecycle</dt>
+                <dd>{{ model.status }}</dd>
+              </div>
+              <div>
+                <dt>Release stage</dt>
+                <dd>{{ model.release_stage }}</dd>
               </div>
               <div>
                 <dt>Context window</dt>

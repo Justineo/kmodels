@@ -141,7 +141,7 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
         observedAt: input.observedAt,
       }),
       description: item.description,
-      types: ["generate"],
+      operations: ["text_generation"],
       modalities: { input: modalities, output: ["text"] },
       capabilities: {
         ...unknownCapabilities(),
@@ -154,8 +154,8 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
         context_tokens: item.limits.max_context_length,
         max_output_tokens: item.limits.max_completion_tokens,
       },
-      status: item.deprecated ? "deprecated" : item.preview ? "preview" : "active",
-      is_deprecated: item.deprecated,
+      status: item.deprecated ? "deprecated" : "active",
+      release_stage: item.preview ? "preview" : "stable",
       pricing_status: "derived",
       pricing: [
         scaledRate("input_text", item.pricing.prompt, input.source.id),
@@ -340,18 +340,18 @@ function cardModalities(body: string, field: "inputFormats" | "outputFormats"): 
 interface CatalogRow {
   id: string;
   name: string;
-  status: "active" | "preview";
+  releaseStage: "stable" | "preview";
 }
 
 function catalogRows(body: string): CatalogRow[] {
   return tables(body).flatMap((table) => {
-    const status =
+    const releaseStage =
       table.section === "Production Models"
-        ? "active"
+        ? "stable"
         : table.section === "Preview Models"
           ? "preview"
           : undefined;
-    if (status === undefined) return [];
+    if (releaseStage === undefined) return [];
     const nameIndex = table.headers.indexOf("Model Name");
     const idIndex = table.headers.indexOf("Model ID");
     if (nameIndex < 0 || idIndex < 0) throw new Error("Cerebras model table schema drift");
@@ -360,7 +360,7 @@ function catalogRows(body: string): CatalogRow[] {
       const rawId = row[idIndex];
       if (rawName === undefined || rawId === undefined)
         throw new Error("Cerebras model table omitted a value");
-      return { id: exactCode(rawId), name: text(rawName), status };
+      return { id: exactCode(rawId), name: text(rawName), releaseStage };
     });
   });
 }
@@ -424,7 +424,7 @@ function catalogCard(
       observedAt: input.observedAt,
     }),
     description: text(description),
-    types: ["generate"],
+    operations: ["text_generation"],
     api_endpoints: endpoints,
     modalities: {
       input: cardModalities(body, "inputFormats"),
@@ -443,8 +443,8 @@ function catalogCard(
       max_output_tokens: largestTokenCount(objectBlock(body, "maxOutput")),
     },
     deprecated_at: deprecatedAt,
-    status: deprecated ? "deprecated" : row.status,
-    is_deprecated: deprecated,
+    status: deprecated ? "deprecated" : "active",
+    release_stage: row.releaseStage,
     pricing_status: rates.some(({ derived }) => derived) ? "derived" : "published",
     pricing: rates,
   };
@@ -540,11 +540,10 @@ export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        types: ["generate"],
+        operations: ["text_generation"],
         modalities: { input: ["text"], output: ["text"] },
         deprecated_at: update.date,
         status: "deprecated",
-        is_deprecated: true,
         replacement_model_ids: replacements,
       }),
     );
@@ -584,7 +583,7 @@ export function parseCerebrasReleases(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      types: ["generate"],
+      operations: ["text_generation"],
       release_date: date,
     }),
   );
@@ -603,7 +602,7 @@ export function parseCerebrasApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      types: ["generate"],
+      operations: ["text_generation"],
     }),
   );
   return bounded(input, "cerebras-api", models);

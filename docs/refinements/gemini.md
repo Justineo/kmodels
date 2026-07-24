@@ -4,7 +4,7 @@ Status: reviewed against the live Gemini API catalog and current Kong AI Gateway
 
 ## Catalog assessment
 
-The 73 rows are plausible because the exhaustive official catalog includes model codes, agent codes, rolling aliases, previews, and lifecycle history across language, embeddings, Live, image, video, speech, translation, and music generation. The live result contains 12 active, 16 preview, 14 deprecated, and 31 retired rows. Twelve rows expose multiple operation types.
+The 73 rows are plausible because the exhaustive official catalog includes model codes, agent codes, rolling aliases, previews, and lifecycle history across language, embeddings, Live, image, video, speech, translation, and music generation. The lifecycle result contains 28 active, 14 deprecated, and 31 retired rows. Release maturity is independent across current and historical IDs: 40 preview, three experimental, and 30 unknown. Ten rows expose multiple normalized operations.
 
 Forty rows have published prices and 33 remain unknown. Sixty-eight rows have release dates and 39 have explicit update dates. The exact current Interactions support table supplies `/v1beta/interactions` route evidence for 19 rows. Requests pin English because the official site localizes the table labels used as structural boundaries.
 
@@ -14,7 +14,7 @@ The authenticated inventory currently returns 56 models. Its live response omits
 
 The Kong source of truth is `app/ai-gateway/ai-providers/gemini.md` and the Gemini entry in `app/_data/ai-gateway/v2/providers.yaml`.
 
-Kong supports generation, embeddings, files, batches, image, realtime, video, and native Gemini APIs. Files and batches are service-level capabilities. Kmodels agentic, audio-speech, audio-translation, and music-generation rows are not automatically supported by this matrix.
+Kong supports generation, embeddings, files, batches, image, realtime, video, and native Gemini APIs. Files and batches are service-level capabilities. Kmodels text-generation agents, speech synthesis, translation, and audio-generation rows are not automatically supported by this matrix.
 
 Exact API method evidence matters: `generateContent`, `embedContent`/`batchEmbedContents`, `BidiGenerateContent`, and `predictLongRunning` are not interchangeable even when a model has several modalities. Kong's native-format table currently spells the batch embedding method `batchEmbedContent`, while the provider's current REST method is `batchEmbedContents`; this drift must not be normalized into false evidence.
 

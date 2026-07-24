@@ -3,10 +3,10 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { classifyModelTypes } from "./task.ts";
+import { classifyModelOperations } from "./operation.ts";
 import {
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
@@ -141,7 +141,7 @@ function facts(
   item: LibraryItem,
 ): Pick<
   ProviderModel,
-  "capabilities" | "description" | "modalities" | "service_families" | "types" | "updated_date"
+  "capabilities" | "description" | "modalities" | "service_families" | "operations" | "updated_date"
 > {
   const badges = new Set(item.badges);
   const embedding = badges.has("embedding");
@@ -155,12 +155,12 @@ function facts(
   return {
     description: item.description,
     service_families: [libraryFamily],
-    types: classifyModelTypes({
+    operations: classifyModelOperations({
       modelId: item.id,
       name: item.id,
       rawType: embedding ? "embedding" : "language",
       modalities,
-      fallback: embedding ? "embeddings" : "generate",
+      fallback: embedding ? "embeddings" : "text_generation",
     }),
     modalities,
     capabilities: {
@@ -230,10 +230,10 @@ function cloudModel(
   if (capabilities.has("embedding")) output.push("embedding");
   if (capabilities.has("image")) output.push("image");
   const modalities = { input: modalityInput, output };
-  const types: ModelType[] = [];
-  if (capabilities.has("completion")) types.push("generate");
-  if (capabilities.has("embedding")) types.push("embeddings");
-  if (capabilities.has("image")) types.push("image");
+  const operations: ModelOperation[] = [];
+  if (capabilities.has("completion")) operations.push("text_generation");
+  if (capabilities.has("embedding")) operations.push("embeddings");
+  if (capabilities.has("image")) operations.push("image_generation");
   const architecture = show.model_info["general.architecture"];
   const context =
     typeof architecture === "string"
@@ -253,7 +253,7 @@ function cloudModel(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types,
+    operations,
     service_families: library ? [cloudFamily, libraryFamily] : [cloudFamily],
     modalities,
     capabilities: {
@@ -268,7 +268,6 @@ function cloudModel(
     },
     updated_date: show.modified_at.slice(0, 10),
     status: library || retirement === undefined ? "active" : retired ? "retired" : "deprecated",
-    is_deprecated: library || retirement === undefined ? "unknown" : true,
     retired_at: library ? undefined : retirement,
     pricing_status: "not_published",
   };

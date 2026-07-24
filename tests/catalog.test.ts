@@ -184,7 +184,7 @@ describe("generated static catalog", () => {
     expect(rates.length).toBeGreaterThan(1_000);
     expect(models.every((model) => model.release_date !== undefined)).toBe(true);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
-    expect(realtime?.types).toEqual(["generate", "realtime"]);
+    expect(realtime?.operations).toEqual(["text_generation"]);
     const hasMissingPricingWarning = catalog.warnings.some(
       (warning) =>
         warning.code === "missing_field" &&

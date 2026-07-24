@@ -1,4 +1,10 @@
-import type { ModelType, PriceRate, ProviderModel } from "./schema.ts";
+import type {
+  ModelLifecycle,
+  ModelOperation,
+  ModelReleaseStage,
+  PriceRate,
+  ProviderModel,
+} from "./schema.ts";
 import { scaleDecimal } from "./pricing.ts";
 
 const compactNumber = new Intl.NumberFormat("en", {
@@ -14,16 +20,24 @@ export function formatTokenCount(value: number | undefined): string {
   return value === undefined ? "—" : compactNumber.format(value);
 }
 
-export function formatModelType(value: ModelType): string {
+export function formatModelOperation(value: ModelOperation): string {
   switch (value) {
     case "audio_generation":
       return "Audio generation";
-    case "audio_speech":
+    case "speech_synthesis":
       return "Text to speech";
-    case "audio_transcription":
+    case "speech_to_speech":
+      return "Speech to speech";
+    case "transcription":
       return "Transcription";
-    case "audio_translation":
-      return "Audio translation";
+    case "text_generation":
+      return "Text generation";
+    case "image_generation":
+      return "Image generation";
+    case "video_generation":
+      return "Video generation";
+    case "object_detection":
+      return "Object detection";
     case "ocr":
       return "OCR";
     default:
@@ -31,8 +45,15 @@ export function formatModelType(value: ModelType): string {
   }
 }
 
-export function modelTypeList(model: ProviderModel): string {
-  return model.types.map(formatModelType).join(", ");
+export function modelOperationList(model: ProviderModel): string {
+  if (model.operations.length === 0) return "Not published";
+  return model.operations.map(formatModelOperation).join(", ");
+}
+
+export function primaryStatus(model: ProviderModel): ModelLifecycle | ModelReleaseStage {
+  return model.status === "active" && model.release_stage !== "unknown"
+    ? model.release_stage
+    : model.status;
 }
 
 export function preferredRate(

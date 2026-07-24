@@ -8,7 +8,7 @@ The previous 19,326-model result was too broad. It did not crawl every Hub repos
 
 Kmodels now uses only two Hugging Face-operated listings for presence: the public OpenAI-compatible router catalog and concrete `live` mappings served by HF Inference itself. It does not fetch third-party partner mapping inventories. This retains models directly offered through Hugging Face-operated services without turning the catalog into a copy of every community repository accepted by a partner.
 
-The latest 2026-07-23 synchronized responses contain 1,408 concrete HF Inference mappings and 126 router models, with no overlap: 1,534 rows in total. These are volatile service inventories rather than a fixed model registry, and neither depends on a Hugging Face token.
+The latest 2026-07-24 synchronized responses contain 1,409 concrete HF Inference mappings and 127 router models, with no overlap: 1,536 rows in total. These are volatile service inventories rather than a fixed model registry, and neither depends on a Hugging Face token.
 
 ## Official source semantics
 
@@ -41,7 +41,7 @@ A community repository may still appear when Hugging Face itself lists it in the
 
 ## Route evidence
 
-`source_refs` proves which sources observed a model but cannot represent the mapping itself. Each mapping is therefore retained in `routes` instead of being reduced to a broad normalized type:
+`source_refs` proves which sources observed a model but cannot represent the mapping itself. Each mapping is therefore retained in `routes` instead of being reduced to a broad normalized operation:
 
 For example:
 
@@ -77,16 +77,16 @@ Kong does not maintain a fixed Hugging Face model allowlist. The documentation d
 
 The current AI Gateway 2.0 provider definition declares these Hugging Face capabilities:
 
-| Kong capability            | Hugging Face upstream                                           | Required model evidence                                                                                    |
-| -------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `generate`                 | `/v1/chat/completions`                                          | Presence in the OpenAI-compatible router with a live chat route; a generic `generate` type is insufficient |
-| `embeddings`               | `/hf-inference/models/{model_name}/pipeline/feature-extraction` | A concrete `hf-inference` mapping for `feature-extraction`                                                 |
-| `audio_transcription`      | `/v1/audio/transcriptions`                                      | A concrete callable route for `automatic-speech-recognition`                                               |
-| `image`                    | `/v1/images/generations`                                        | A concrete callable image-generation route, retaining its exact Hugging Face task                          |
-| `video`                    | `/v1/videos`                                                    | A concrete callable video-generation route, retaining its exact Hugging Face task                          |
-| Native Hugging Face format | `/generate`, `/generate_stream`                                 | A concrete text-generation route compatible with the native endpoint                                       |
+| Kong capability            | Hugging Face upstream                                           | Required model evidence                                                                                  |
+| -------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `generate`                 | `/v1/chat/completions`                                          | Presence in the OpenAI-compatible router with a live chat route; `text_generation` alone is insufficient |
+| `embeddings`               | `/hf-inference/models/{model_name}/pipeline/feature-extraction` | A concrete `hf-inference` mapping for `feature-extraction`                                               |
+| `audio_transcription`      | `/v1/audio/transcriptions`                                      | A concrete callable route for `automatic-speech-recognition`                                             |
+| `image`                    | `/v1/images/generations`                                        | A concrete callable image-generation route, retaining its exact Hugging Face task                        |
+| `video`                    | `/v1/videos`                                                    | A concrete callable video-generation route, retaining its exact Hugging Face task                        |
+| Native Hugging Face format | `/generate`, `/generate_stream`                                 | A concrete text-generation route compatible with the native endpoint                                     |
 
-The same definition explicitly marks completions, files, batches, agentic operations, speech synthesis, audio translation, realtime, and reranking as unsupported. Those model tasks must not be labeled Kong-compatible for AI Gateway 2.0 merely because Hugging Face exposes them.
+The same definition explicitly marks completions, files, batches, agent endpoints, speech synthesis, audio translation, realtime, and reranking as unsupported. Those surfaces or model tasks must not be labeled Kong-compatible for AI Gateway 2.0 merely because Hugging Face exposes them.
 
 ### AI Gateway 1.x
 

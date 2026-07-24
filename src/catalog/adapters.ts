@@ -37,14 +37,14 @@ import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
-import { classifyModelTypes } from "./task.ts";
+import { classifyModelOperations } from "./operation.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
 import { parseXaiApi, parseXaiCatalog } from "./xai.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelType,
+  type ModelOperation,
   type PriceRate,
   type ProviderModel,
   type Provider,
@@ -52,7 +52,12 @@ import {
 } from "./schema.ts";
 
 export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
-export { classifyModelTypes, normalizeModelTypes } from "./task.ts";
+export { classifyModelOperations, normalizeModelOperations } from "./operation.ts";
+export {
+  modelStateFromLabel,
+  normalizeModelReleaseStage,
+  releaseStageFromIdentity,
+} from "./lifecycle.ts";
 
 const openAiItemSchema = z.object({
   id: modelIdSchema,
@@ -150,42 +155,42 @@ function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
   };
 }
 
-const openAiEndpointDefinitions = new Map<string, { name: string; types: ModelType[] }>([
-  ["v1/chat/completions", { name: "Chat Completions", types: ["generate"] }],
-  ["v1/responses", { name: "Responses", types: ["generate"] }],
-  ["v1/realtime", { name: "Realtime", types: ["realtime"] }],
-  [
-    "v1/realtime/translations",
-    { name: "Realtime translation", types: ["realtime", "audio_translation"] },
-  ],
+const openAiEndpointDefinitions = new Map<string, { name: string; operations: ModelOperation[] }>([
+  ["v1/chat/completions", { name: "Chat Completions", operations: ["text_generation"] }],
+  ["v1/responses", { name: "Responses", operations: ["text_generation"] }],
+  ["v1/realtime", { name: "Realtime", operations: ["speech_to_speech"] }],
+  ["v1/realtime/translations", { name: "Realtime translation", operations: ["translation"] }],
   [
     "v1/realtime/transcription_sessions",
-    { name: "Realtime transcription", types: ["realtime", "audio_transcription"] },
+    { name: "Realtime transcription", operations: ["transcription"] },
   ],
-  ["v1/assistants", { name: "Assistants", types: ["agentic"] }],
-  ["v1/batch", { name: "Batch", types: [] }],
-  ["v1/fine-tuning", { name: "Fine-tuning", types: [] }],
-  ["v1/embeddings", { name: "Embeddings", types: ["embeddings"] }],
-  ["v1/images/generations", { name: "Image generation", types: ["image"] }],
-  ["v1/videos", { name: "Videos", types: ["video"] }],
-  ["v1/images/edits", { name: "Image edit", types: ["image"] }],
-  ["v1/audio/speech", { name: "Speech generation", types: ["audio_speech"] }],
-  ["v1/audio/transcriptions", { name: "Transcription", types: ["audio_transcription"] }],
-  ["v1/audio/translations", { name: "Translation", types: ["audio_translation"] }],
-  ["v1/moderations", { name: "Moderation", types: ["moderation"] }],
-  ["v1/completions", { name: "Completions (legacy)", types: ["generate"] }],
+  ["v1/assistants", { name: "Assistants", operations: ["text_generation"] }],
+  ["v1/batch", { name: "Batch", operations: [] }],
+  ["v1/fine-tuning", { name: "Fine-tuning", operations: [] }],
+  ["v1/embeddings", { name: "Embeddings", operations: ["embeddings"] }],
+  ["v1/images/generations", { name: "Image generation", operations: ["image_generation"] }],
+  ["v1/videos", { name: "Videos", operations: ["video_generation"] }],
+  ["v1/images/edits", { name: "Image edit", operations: ["image_generation"] }],
+  ["v1/audio/speech", { name: "Speech generation", operations: ["speech_synthesis"] }],
+  ["v1/audio/transcriptions", { name: "Transcription", operations: ["transcription"] }],
+  ["v1/audio/translations", { name: "Translation", operations: ["translation"] }],
+  ["v1/moderations", { name: "Moderation", operations: ["moderation"] }],
+  ["v1/completions", { name: "Completions (legacy)", operations: ["text_generation"] }],
 ]);
 
 interface OpenAiEndpointEvidence {
   endpoints: NonNullable<ProviderModel["api_endpoints"]>;
-  types: ModelType[];
+  operations: ModelOperation[];
 }
 
-function openAiEndpointEvidence($: LoadedDocument, fallback: ModelType[]): OpenAiEndpointEvidence {
+function openAiEndpointEvidence(
+  $: LoadedDocument,
+  fallback: ModelOperation[],
+): OpenAiEndpointEvidence {
   const content = sectionContent($, "Endpoints");
   if (content.length === 0) throw new Error("OpenAI model page omitted Endpoints");
   const endpoints: NonNullable<ProviderModel["api_endpoints"]> = [];
-  const types: ModelType[] = [];
+  const operations: ModelOperation[] = [];
   const observedPaths = new Set<string>();
   content
     .find("div")
@@ -207,11 +212,14 @@ function openAiEndpointEvidence($: LoadedDocument, fallback: ModelType[]): OpenA
       observedPaths.add(path);
       if (nameNode.hasClass("text-gray-400")) return;
       endpoints.push({ name, path });
-      types.push(...definition.types);
+      operations.push(...definition.operations);
     });
   if (observedPaths.size === 0)
     throw new Error("OpenAI Endpoints section contained no endpoint cards");
-  return { endpoints, types: types.length > 0 ? unique(types) : fallback };
+  return {
+    endpoints,
+    operations: operations.length > 0 ? unique(operations) : fallback,
+  };
 }
 
 function openAiAliases($: LoadedDocument, id: string): string[] {
@@ -248,7 +256,7 @@ function openAiAliases($: LoadedDocument, id: string): string[] {
 function openAiMeter(
   group: string,
   label: string,
-  types: ModelType[],
+  operations: ModelOperation[],
 ): PriceRate["meter"] | undefined {
   if (group === "Text tokens") {
     if (label === "Input") return "input_text";
@@ -269,12 +277,17 @@ function openAiMeter(
   if (group === "Image generation") return "image_generation";
   if (group === "Video generation") return "video_generation";
   if (group === "Realtime audio duration" && label === "Price") {
-    if (types.includes("audio_transcription") || types.includes("realtime")) return "input_audio";
-    if (types.includes("audio_speech")) return "output_audio";
+    if (operations.includes("transcription")) return "input_audio";
+    if (operations.includes("speech_synthesis") || operations.includes("speech_to_speech"))
+      return "output_audio";
   }
 }
 
-function openAiPricing($: LoadedDocument, sourceId: string, types: ModelType[]): PriceRate[] {
+function openAiPricing(
+  $: LoadedDocument,
+  sourceId: string,
+  operations: ModelOperation[],
+): PriceRate[] {
   const content = sectionContent($, "Pricing");
   if (content.length === 0) return [];
   const rates: PriceRate[] = [];
@@ -331,7 +344,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, types: ModelType[]):
         const rawPrice = normalizedText($(card).children().last().text());
         const match = rawPrice.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/);
         if (match?.[1] === undefined) return;
-        const meter = openAiMeter(group, label, types);
+        const meter = openAiMeter(group, label, operations);
         if (meter === undefined)
           throw new Error(`Unsupported OpenAI pricing field: ${group}/${label}`);
         const conditions: PriceRate["conditions"] = {};
@@ -456,7 +469,7 @@ function openAiTokenLimit(
 function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(parseJson(input.body));
   const index = load(bundle.index.body);
-  const statuses = new Map<string, ProviderModel["status"]>();
+  const statuses = new Map<string, Pick<ProviderModel, "status" | "release_stage">>();
   index("a[href]").each((_index, element) => {
     const target = index(element).attr("href");
     const match = target?.match(/^\/api\/docs\/models\/([a-z0-9._-]+)$/);
@@ -470,7 +483,10 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
             index(child).children().length === 0 &&
             normalizedText(index(child).text()) === "Deprecated",
         ).length > 0;
-    statuses.set(id, deprecated ? "deprecated" : id.includes("preview") ? "preview" : "active");
+    statuses.set(id, {
+      status: deprecated ? "deprecated" : "active",
+      release_stage: id.includes("preview") ? "preview" : "unknown",
+    });
   });
   if (statuses.size !== bundle.documents.length)
     throw new Error("OpenAI catalog index and model pages disagree");
@@ -478,8 +494,8 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
   return bundle.documents
     .map((document) => {
       const id = modelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1));
-      const status = statuses.get(id);
-      if (status === undefined) throw new Error(`OpenAI catalog omitted index entry for ${id}`);
+      const lifecycle = statuses.get(id);
+      if (lifecycle === undefined) throw new Error(`OpenAI catalog omitted index entry for ${id}`);
       const $ = load(document.body);
       const name = normalizedText(
         $("main .text-2xl.font-semibold.whitespace-nowrap").first().text(),
@@ -487,20 +503,20 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
       if (name === "") throw new Error(`OpenAI model page omitted display name for ${id}`);
       const description = normalizedText($("main .hidden.text-secondary.sm\\:flex").first().text());
       const observedModalities = openAiModalities($);
-      const classifiedTypes = classifyModelTypes({
+      const classifiedOperations = classifyModelOperations({
         modelId: id,
         name,
         rawType: undefined,
         modalities: observedModalities,
-        fallback: "generate",
+        fallback: "text_generation",
       });
-      const endpointEvidence = openAiEndpointEvidence($, classifiedTypes);
-      const types = endpointEvidence.types;
+      const endpointEvidence = openAiEndpointEvidence($, classifiedOperations);
+      const operations = endpointEvidence.operations;
       const embeddingOutput: Modality[] = ["embedding"];
-      const modelModalities: ProviderModel["modalities"] = types.includes("embeddings")
+      const modelModalities: ProviderModel["modalities"] = operations.includes("embeddings")
         ? { input: observedModalities.input, output: embeddingOutput }
         : observedModalities;
-      const pricing = openAiPricing($, input.source.id, types);
+      const pricing = openAiPricing($, input.source.id, operations);
       const features = openAiFeatures($);
       const pageText = normalizedText($("main").text());
       const aliases = openAiAliases($, id);
@@ -514,7 +530,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         }),
         description: description || undefined,
         aliases,
-        types,
+        operations,
         api_endpoints: endpointEvidence.endpoints,
         modalities: modelModalities,
         capabilities: {
@@ -536,8 +552,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
           context_tokens: openAiTokenLimit($, "context window"),
           max_output_tokens: openAiTokenLimit($, "max output tokens"),
         },
-        status,
-        is_deprecated: status === "deprecated",
+        ...lifecycle,
         pricing_status:
           pricing.length > 0
             ? "published"
@@ -663,15 +678,14 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
               sourceId: input.source.id,
               observedAt: input.observedAt,
             }),
-            types: classifyModelTypes({
+            operations: classifyModelOperations({
               modelId: id,
               name: id,
               rawType: undefined,
               modalities: { input: [], output: [] },
-              fallback: "generate",
+              fallback: "text_generation",
             }),
             status,
-            is_deprecated: true,
             retired_at: retiredAt,
             replacement_model_ids: replacements,
           };

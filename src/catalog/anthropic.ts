@@ -145,7 +145,7 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    types: ["generate"],
+    operations: ["text_generation"],
   } satisfies ProviderModel;
   models.set(id, created);
   return created;
@@ -186,7 +186,6 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
         max_output_tokens: tokenCount(outputs?.[column]),
       };
       item.status = /\(deprecated\)$/i.test(table.headers[column] ?? "") ? "deprecated" : "active";
-      item.is_deprecated = item.status === "deprecated";
     }
   }
 
@@ -198,11 +197,10 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
     item.name = `Claude ${match[1]}`;
     item.modalities = { input: ["text", "image"], output: ["text"] };
     if (match[1] === "Mythos Preview") {
-      item.status = "preview";
-      item.is_deprecated = false;
+      item.status = "active";
+      item.release_stage = "preview";
     } else {
       item.status = "active";
-      item.is_deprecated = false;
     }
   }
 }
@@ -233,7 +231,8 @@ function launch(body: string, input: Input, models: Map<string, ProviderModel>):
 }
 
 function status(value: string): ProviderModel["status"] | undefined {
-  if (value === "Active" || value === "Legacy") return "active";
+  if (value === "Active") return "active";
+  if (value === "Legacy") return "legacy";
   if (value === "Deprecated") return "deprecated";
   if (value === "Retired") return "retired";
   return undefined;
@@ -249,7 +248,6 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
     if (id === undefined || state === undefined || !modelIdSchema.safeParse(id).success) continue;
     const item = model(models, input, id);
     item.status = state;
-    item.is_deprecated = state === "deprecated" || state === "retired";
     const deprecatedAt = date(values[2] ?? "");
     if (deprecatedAt !== undefined) item.deprecated_at = deprecatedAt;
     const retiredAt = date(values[3] ?? "");
@@ -277,7 +275,6 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
       item.deprecated_at = deprecatedAt;
       item.retired_at = retiredAt;
       item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
-      item.is_deprecated = true;
       if (replacement !== undefined && modelIdSchema.safeParse(replacement).success)
         item.replacement_model_ids = [...new Set([...item.replacement_model_ids, replacement])];
     }
@@ -291,7 +288,6 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
     const item = model(models, input, mythos[1]);
     item.retired_at = retiredAt;
     item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
-    item.is_deprecated = true;
     item.replacement_model_ids = [mythos[3]];
   }
 }
@@ -313,9 +309,9 @@ function applyEndpoints(
   if (!/^All \[active models]\([^)]*\) support the Message Batches API\.$/m.test(batchGuide))
     throw new Error("Anthropic batch model coverage drifted");
   for (const item of models.values()) {
-    if (item.status === "active" || item.status === "preview")
-      item.api_endpoints = [messagesEndpoint, batchEndpoint];
-    else if (item.status === "deprecated") item.api_endpoints = [messagesEndpoint];
+    if (item.status === "active") item.api_endpoints = [messagesEndpoint, batchEndpoint];
+    else if (item.status === "legacy" || item.status === "deprecated")
+      item.api_endpoints = [messagesEndpoint];
   }
 }
 
@@ -567,7 +563,7 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        types: ["generate"],
+        operations: ["text_generation"],
         modalities: { input: inputModalities, output: ["text"] },
         capabilities: {
           ...unknownCapabilities(),
