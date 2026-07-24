@@ -328,6 +328,21 @@ export type SourceAccess = z.infer<typeof sourceAccessSchema>;
 export type SourceFormat = z.infer<typeof sourceFormatSchema>;
 export type SourceKind = z.infer<typeof sourceKindSchema>;
 
+export function migrateCatalogEnvelope(value: unknown): unknown {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !("data" in value) ||
+    value.data === null ||
+    typeof value.data !== "object"
+  )
+    return value;
+  return {
+    ...value,
+    data: migrateCatalogStorage(value.data),
+  };
+}
+
 export function migrateCatalogStorage(value: unknown): unknown {
   if (
     value === null ||

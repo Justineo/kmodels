@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  formatModelTask,
   formatRateUnit,
   formatTableRateLabel,
   formatTableRateUnit,
+  formatTableTask,
   perMillionTokenRate,
   representativeTableRate,
 } from "../src/catalog/presentation.ts";
@@ -57,6 +59,32 @@ function model(tasks: ModelTask[], pricing: PriceRate[]): ProviderModel {
     source_refs: ["test"],
   };
 }
+
+describe("task presentation", () => {
+  it.each([
+    ["text_generation", "Text generation", "Text"],
+    ["image_generation", "Image generation", "Image"],
+    ["video_generation", "Video generation", "Video"],
+    ["audio_generation", "Audio generation", "Audio"],
+    ["speech_synthesis", "Text to speech", "TTS"],
+    ["transcription", "Transcription", "STT"],
+    ["speech_to_speech", "Speech to speech", "S2S"],
+    ["embeddings", "Embeddings", "Embed"],
+    ["reranking", "Reranking", "Rerank"],
+    ["moderation", "Moderation", "Moderate"],
+    ["classification", "Classification", "Classify"],
+    ["translation", "Translation", "Translate"],
+    ["ocr", "OCR", "OCR"],
+    ["object_detection", "Object detection", "Detect"],
+    ["segmentation", "Segmentation", "Segment"],
+  ] satisfies [ModelTask, string, string][])(
+    "keeps %s exact outside the compact table",
+    (task, full, compact) => {
+      expect(formatModelTask(task)).toBe(full);
+      expect(formatTableTask(task)).toBe(compact);
+    },
+  );
+});
 
 describe("rate presentation", () => {
   it("normalizes comparable token prices to one million tokens", () => {

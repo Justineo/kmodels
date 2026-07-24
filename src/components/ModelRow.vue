@@ -5,6 +5,7 @@ import {
   formatPrice,
   formatTableRateLabel,
   formatTableRateUnit,
+  formatTableTask,
   formatTokenCount,
   primaryStatus,
   representativeTableRate,
@@ -83,15 +84,15 @@ function filterStatus(): void {
     <td class="tasks-col">
       <span class="task-list">
         <span v-if="model.tasks.length === 0">—</span>
-        <template v-for="(task, index) in model.tasks" :key="task">
-          <span v-if="index > 0" class="task-separator" aria-hidden="true">, </span>
+        <template v-for="task in model.tasks" :key="task">
           <button
             class="task-filter-button"
             type="button"
             :aria-label="`Filter by task ${formatModelTask(task)}`"
+            :title="formatModelTask(task)"
             @click="emit('filterTask', task)"
           >
-            {{ formatModelTask(task) }}
+            {{ formatTableTask(task) }}
           </button>
         </template>
       </span>
