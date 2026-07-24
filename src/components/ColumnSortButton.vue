@@ -1,4 +1,6 @@
 <script setup lang="ts" vapor>
+import UiIcon from "./UiIcon.vue";
+
 defineProps<{
   direction: "ascending" | "descending" | undefined;
   label: string;
@@ -20,7 +22,7 @@ const emit = defineEmits<{
       }"
       aria-hidden="true"
     >
-      <svg viewBox="0 0 12 12"><path d="m3 7 3 3 3-3M6 10V2" /></svg>
+      <UiIcon name="arrow-up" />
     </span>
   </button>
 </template>

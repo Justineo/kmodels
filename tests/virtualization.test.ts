@@ -6,16 +6,16 @@ describe("fixed-row virtual range", () => {
     expect(
       calculateVirtualRange({
         count: 100,
-        itemSize: 52,
+        itemSize: 48,
         overscan: 8,
-        scrollOffset: 520,
-        viewportSize: 520,
+        scrollOffset: 480,
+        viewportSize: 480,
       }),
     ).toEqual({
       start: 2,
       end: 28,
-      paddingBefore: 104,
-      paddingAfter: 3_744,
+      paddingBefore: 96,
+      paddingAfter: 3_456,
     });
   });
 
@@ -23,30 +23,30 @@ describe("fixed-row virtual range", () => {
     expect(
       calculateVirtualRange({
         count: 100,
-        itemSize: 52,
+        itemSize: 48,
         overscan: 8,
         scrollOffset: 0,
-        viewportSize: 520,
+        viewportSize: 480,
       }),
     ).toEqual({
       start: 0,
       end: 18,
       paddingBefore: 0,
-      paddingAfter: 4_264,
+      paddingAfter: 3_936,
     });
 
     expect(
       calculateVirtualRange({
         count: 100,
-        itemSize: 52,
+        itemSize: 48,
         overscan: 8,
-        scrollOffset: 4_680,
-        viewportSize: 520,
+        scrollOffset: 4_320,
+        viewportSize: 480,
       }),
     ).toEqual({
       start: 82,
       end: 100,
-      paddingBefore: 4_264,
+      paddingBefore: 3_936,
       paddingAfter: 0,
     });
   });
@@ -55,10 +55,10 @@ describe("fixed-row virtual range", () => {
     expect(
       calculateVirtualRange({
         count: 0,
-        itemSize: 52,
+        itemSize: 48,
         overscan: 8,
         scrollOffset: 0,
-        viewportSize: 520,
+        viewportSize: 480,
       }),
     ).toEqual({
       start: 0,

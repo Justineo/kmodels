@@ -1,4 +1,4 @@
-# Azure AI Foundry refinement
+# Microsoft Foundry refinement
 
 Status: implemented and replayed against catalog snapshot `2026-07-22T17:04:19.221Z` and the current official Azure OpenAI v1 specifications
 

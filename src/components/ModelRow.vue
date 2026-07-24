@@ -1,13 +1,16 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
 import {
+  formatModelType,
   formatPrice,
-  formatRateUnit,
+  formatTableRateUnit,
   formatTokenCount,
-  modelTypeList,
+  perMillionTokenRate,
   preferredRate,
 } from "../catalog/presentation.ts";
-import type { ProviderModel } from "../catalog/schema.ts";
+import type { ModelType, ProviderModel } from "../catalog/schema.ts";
+import ProviderIcon from "./ProviderIcon.vue";
+import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
   model: ProviderModel;
@@ -18,10 +21,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [model: ProviderModel];
+  filterProvider: [providerId: string];
+  filterType: [modelType: ModelType];
+  filterStatus: [status: ProviderModel["status"]];
 }>();
 
-const inputRate = computed(() => preferredRate(props.model, "input_text"));
-const outputRate = computed(() => preferredRate(props.model, "output_text"));
+const inputRate = computed(() => perMillionTokenRate(preferredRate(props.model, "input_text")));
+const outputRate = computed(() => perMillionTokenRate(preferredRate(props.model, "output_text")));
+const inputRateUnit = computed(() => formatTableRateUnit(inputRate.value));
+const outputRateUnit = computed(() => formatTableRateUnit(outputRate.value));
 
 function selectModel(): void {
   emit("select", props.model);
@@ -34,14 +42,13 @@ function selectModel(): void {
     :aria-rowindex="rowIndex"
     :aria-selected="selected"
     :data-status="model.status"
-    @click="selectModel"
   >
     <td class="model-col">
       <button
         class="model-identity"
         type="button"
         :aria-label="`View ${model.name} details`"
-        @click.stop="selectModel"
+        @click="selectModel"
       >
         <strong>{{ model.name }}</strong>
         <code>
@@ -49,22 +56,50 @@ function selectModel(): void {
         </code>
       </button>
     </td>
-    <td class="provider-col">{{ providerName }}</td>
-    <td class="operations-col">{{ modelTypeList(model) }}</td>
+    <td class="provider-col">
+      <button
+        class="provider-identity"
+        type="button"
+        :aria-label="`Filter by provider ${providerName}`"
+        @click="emit('filterProvider', model.provider_id)"
+      >
+        <ProviderIcon :provider-id="model.provider_id" :provider-name="providerName" />
+        <span>{{ providerName }}</span>
+      </button>
+    </td>
+    <td class="operations-col">
+      <span class="operation-list">
+        <button
+          v-for="modelType in model.types"
+          :key="modelType"
+          class="operation-filter-button"
+          type="button"
+          :aria-label="`Filter by operation ${formatModelType(modelType)}`"
+          @click="emit('filterType', modelType)"
+        >
+          {{ formatModelType(modelType) }}
+        </button>
+      </span>
+    </td>
     <td class="status-col">
-      <span class="row-status">
+      <button
+        class="row-status"
+        type="button"
+        :aria-label="`Filter by status ${model.status}`"
+        @click="emit('filterStatus', model.status)"
+      >
         <span aria-hidden="true"></span>
         {{ model.status }}
-      </span>
+      </button>
     </td>
     <td class="context-col numeric">{{ formatTokenCount(model.limits.context_tokens) }}</td>
     <td class="input-col price-cell numeric">
       <strong>{{ formatPrice(inputRate) }}</strong>
-      <small>{{ formatRateUnit(inputRate) }}</small>
+      <small v-if="inputRateUnit">{{ inputRateUnit }}</small>
     </td>
     <td class="output-col price-cell numeric">
       <strong>{{ formatPrice(outputRate) }}</strong>
-      <small>{{ formatRateUnit(outputRate) }}</small>
+      <small v-if="outputRateUnit">{{ outputRateUnit }}</small>
     </td>
     <td class="updated-col numeric">
       {{ model.updated_date ?? model.release_date ?? "—" }}
@@ -74,11 +109,9 @@ function selectModel(): void {
         class="disclosure-button"
         type="button"
         :aria-label="`View ${model.name} details`"
-        @click.stop="selectModel"
+        @click="selectModel"
       >
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="m6 3 5 5-5 5" />
-        </svg>
+        <UiIcon name="chevron-right" />
       </button>
     </td>
   </tr>

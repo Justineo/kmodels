@@ -723,7 +723,7 @@ export const manifests = [
   {
     provider: {
       id: "azure",
-      name: "Azure AI Foundry",
+      name: "Microsoft Foundry",
       kind: "cloud_platform",
       homepage: "https://azure.microsoft.com/products/ai-foundry/",
       docs_url:
