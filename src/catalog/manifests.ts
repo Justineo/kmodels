@@ -468,7 +468,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v4",
+        extractorVersion: "bedrock-catalog-v5",
         fields: [
           "model_id",
           "name",
@@ -531,7 +531,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "bedrock-api" },
-        extractorVersion: "bedrock-api-v2",
+        extractorVersion: "bedrock-api-v3",
         fields: [
           "name",
           "modalities",
