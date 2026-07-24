@@ -26,6 +26,7 @@ const ROW_HEIGHT = 48;
 const TABLE_HEADER_HEIGHT = 34;
 const OVERSCAN_ROWS = 8;
 
+type Theme = "light" | "dark";
 type SortKey = "name" | "provider" | "context" | "updated";
 type SortDirection = "ascending" | "descending";
 type SortState = {
@@ -47,6 +48,7 @@ const selectedReleaseStages = ref<ModelReleaseStage[]>([]);
 const loading = ref(true);
 const loadError = ref<string>();
 const selectedModel = ref<ProviderModel>();
+const theme = ref<Theme>(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 const sort = ref<SortState>();
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
 const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
@@ -130,6 +132,9 @@ const resultCountLabel = computed(() => {
   const count = filteredModels.value.length;
   return `${formatCount(count)} ${count === 1 ? "result" : "results"}`;
 });
+const themeToggleLabel = computed(() =>
+  theme.value === "dark" ? "Switch to light mode" : "Switch to dark mode",
+);
 
 watch(filteredModels, () => {
   void nextTick(resetVirtualScroll);
@@ -268,6 +273,17 @@ function handleShortcut(event: KeyboardEvent): void {
   searchInput.value?.focus();
 }
 
+function toggleTheme(): void {
+  theme.value = theme.value === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme.value;
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute("content", theme.value === "dark" ? "#0d0d0f" : "#f7f7f8");
+  try {
+    localStorage.setItem("theme", theme.value);
+  } catch {}
+}
+
 async function loadCatalog(): Promise<void> {
   loading.value = true;
   loadError.value = undefined;
@@ -328,6 +344,15 @@ onUnmounted(() => {
         JSON
         <UiIcon name="external-link" />
       </a>
+      <button
+        class="theme-toggle"
+        type="button"
+        :aria-label="themeToggleLabel"
+        :title="themeToggleLabel"
+        @click="toggleTheme"
+      >
+        <UiIcon :name="theme === 'dark' ? 'sun' : 'moon'" />
+      </button>
     </div>
   </header>
 

@@ -1,7 +1,6 @@
 import alibabaCloud from "@lobehub/icons-static-svg/icons/alibabacloud-color.svg?raw";
 import anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg?raw";
 import bedrock from "@lobehub/icons-static-svg/icons/bedrock-color.svg?raw";
-import cerebrasMono from "@lobehub/icons-static-svg/icons/cerebras.svg?raw";
 import cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg?raw";
 import cohere from "@lobehub/icons-static-svg/icons/cohere-color.svg?raw";
 import deepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?raw";
@@ -23,7 +22,9 @@ import chevronRight from "lucide-static/icons/chevron-right.svg?raw";
 import externalLink from "lucide-static/icons/external-link.svg?raw";
 import listFilter from "lucide-static/icons/list-filter.svg?raw";
 import loaderCircle from "lucide-static/icons/loader-circle.svg?raw";
+import moon from "lucide-static/icons/moon.svg?raw";
 import search from "lucide-static/icons/search.svg?raw";
+import sun from "lucide-static/icons/sun.svg?raw";
 import x from "lucide-static/icons/x.svg?raw";
 import databricks from "../assets/provider-icons/databricks.svg?raw";
 import microsoftFoundry from "../assets/provider-icons/microsoft-foundry.svg?raw";
@@ -37,7 +38,9 @@ const uiSources = {
   "external-link": externalLink,
   "list-filter": listFilter,
   "loader-circle": loaderCircle,
+  moon,
   search,
+  sun,
   x,
 } as const;
 
@@ -73,12 +76,7 @@ export function providerSymbolId(providerId: string): string | undefined {
   return providerSources[providerId] === undefined ? undefined : `provider-${providerId}`;
 }
 
-export function darkProviderSymbolId(providerId: string): string | undefined {
-  return providerId === "cerebras" ? "provider-cerebras-dark" : undefined;
-}
-
 export const spriteSymbols = [
   ...Object.entries(uiSources).map(([name, source]) => svgSymbol(`ui-${name}`, source)),
   ...Object.entries(providerSources).map(([id, source]) => svgSymbol(`provider-${id}`, source)),
-  svgSymbol("provider-cerebras-dark", cerebrasMono),
 ].join("");
