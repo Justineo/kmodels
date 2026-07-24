@@ -246,6 +246,15 @@ function resetVirtualScroll(): void {
   updateVirtualRange();
 }
 
+function selectRelativeModel(offset: -1 | 1): void {
+  const current = selectedModel.value;
+  if (current === undefined) return;
+  const index = filteredModels.value.findIndex((model) => model.uid === current.uid);
+  if (index === -1) return;
+  const next = filteredModels.value[index + offset];
+  if (next !== undefined) selectedModel.value = next;
+}
+
 function handleShortcut(event: KeyboardEvent): void {
   if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target;
@@ -620,5 +629,6 @@ onUnmounted(() => {
     :provider-name="selectedModel ? providerName(selectedModel.provider_id) : ''"
     :sources="sources"
     @close="selectedModel = undefined"
+    @navigate="selectRelativeModel"
   />
 </template>
