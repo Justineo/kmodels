@@ -3,7 +3,6 @@ import { computed } from "vue";
 import {
   formatModelOperation,
   formatPrice,
-  formatTablePricingState,
   formatTableRateLabel,
   formatTableRateUnit,
   formatTokenCount,
@@ -40,13 +39,6 @@ const outputRate = computed(() => representativeTableRate(props.model, "output")
 const inputRateUnit = computed(() => formatTableRateUnit(inputRate.value));
 const cachedRateUnit = computed(() => formatTableRateUnit(cachedRate.value));
 const outputRateUnit = computed(() => formatTableRateUnit(outputRate.value));
-const hasRepresentativeRate = computed(
-  () =>
-    inputRate.value !== undefined ||
-    cachedRate.value !== undefined ||
-    outputRate.value !== undefined,
-);
-const pricingState = computed(() => formatTablePricingState(props.model));
 const status = computed(() => primaryStatus(props.model));
 
 function selectModel(): void {
@@ -116,52 +108,30 @@ function filterStatus(): void {
       </button>
     </td>
     <td class="context-col numeric">{{ formatTokenCount(model.limits.context_tokens) }}</td>
-    <template v-if="hasRepresentativeRate">
-      <td
-        class="input-col price-cell numeric"
-        :aria-label="inputRate ? formatTableRateLabel(inputRate) : undefined"
-        :title="inputRate ? formatTableRateLabel(inputRate) : undefined"
-      >
-        <template v-if="inputRate">
-          <span class="price-value">{{ formatPrice(inputRate) }}</span>
-          <small v-if="inputRateUnit">{{ inputRateUnit }}</small>
-        </template>
-        <span v-else aria-hidden="true">—</span>
-      </td>
-      <td
-        class="cached-col price-cell numeric"
-        :aria-label="cachedRate ? formatTableRateLabel(cachedRate) : undefined"
-        :title="cachedRate ? formatTableRateLabel(cachedRate) : undefined"
-      >
-        <template v-if="cachedRate">
-          <span class="price-value">{{ formatPrice(cachedRate) }}</span>
-          <small v-if="cachedRateUnit">{{ cachedRateUnit }}</small>
-        </template>
-        <span v-else aria-hidden="true">—</span>
-      </td>
-      <td
-        class="output-col price-cell numeric"
-        :aria-label="outputRate ? formatTableRateLabel(outputRate) : undefined"
-        :title="outputRate ? formatTableRateLabel(outputRate) : undefined"
-      >
-        <template v-if="outputRate">
-          <span class="price-value">{{ formatPrice(outputRate) }}</span>
-          <small v-if="outputRateUnit">{{ outputRateUnit }}</small>
-        </template>
-        <span v-else aria-hidden="true">—</span>
-      </td>
-    </template>
-    <template v-else>
-      <td
-        class="input-col pricing-state-cell"
-        :aria-label="`Pricing: ${pricingState}`"
-        :title="`Pricing: ${pricingState}`"
-      >
-        {{ pricingState }}
-      </td>
-      <td class="cached-col" aria-hidden="true"></td>
-      <td class="output-col" aria-hidden="true"></td>
-    </template>
+    <td
+      class="input-col price-cell numeric"
+      :aria-label="inputRate ? formatTableRateLabel(inputRate) : undefined"
+      :title="inputRate ? formatTableRateLabel(inputRate) : undefined"
+    >
+      <span class="price-value">{{ formatPrice(inputRate) }}</span>
+      <small v-if="inputRateUnit">{{ inputRateUnit }}</small>
+    </td>
+    <td
+      class="cached-col price-cell numeric"
+      :aria-label="cachedRate ? formatTableRateLabel(cachedRate) : undefined"
+      :title="cachedRate ? formatTableRateLabel(cachedRate) : undefined"
+    >
+      <span class="price-value">{{ formatPrice(cachedRate) }}</span>
+      <small v-if="cachedRateUnit">{{ cachedRateUnit }}</small>
+    </td>
+    <td
+      class="output-col price-cell numeric"
+      :aria-label="outputRate ? formatTableRateLabel(outputRate) : undefined"
+      :title="outputRate ? formatTableRateLabel(outputRate) : undefined"
+    >
+      <span class="price-value">{{ formatPrice(outputRate) }}</span>
+      <small v-if="outputRateUnit">{{ outputRateUnit }}</small>
+    </td>
     <td class="updated-col numeric">
       {{ model.updated_date ?? model.release_date ?? "—" }}
     </td>
