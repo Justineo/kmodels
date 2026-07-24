@@ -5,11 +5,11 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { classifyModelOperations, orderedOperations } from "./operation.ts";
+import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import {
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -468,7 +468,7 @@ function modalities(draft: Draft): ProviderModel["modalities"] {
   };
 }
 
-const featureOperations = new Map<string, ModelOperation[]>([
+const featureOperations = new Map<string, ModelTask[]>([
   ["chat-completions", ["text_generation"]],
   ["function-calling", []],
   ["agents-conversations", ["text_generation"]],
@@ -490,12 +490,9 @@ const featureOperations = new Map<string, ModelOperation[]>([
   ["batching", []],
 ]);
 
-function operations(
-  draft: Draft,
-  observedModalities: ProviderModel["modalities"],
-): ModelOperation[] {
-  const result: ModelOperation[] = [];
-  const fallback: ModelOperation | undefined = observedModalities.output.includes("text")
+function tasks(draft: Draft, observedModalities: ProviderModel["modalities"]): ModelTask[] {
+  const result: ModelTask[] = [];
+  const fallback: ModelTask | undefined = observedModalities.output.includes("text")
     ? "text_generation"
     : undefined;
   for (const feature of draft.features) {
@@ -504,7 +501,7 @@ function operations(
     result.push(...observed);
   }
   result.push(
-    ...classifyModelOperations({
+    ...classifyModelTasks({
       modelId: draft.apiNames[0] ?? draft.sourceSlug,
       name: draft.name,
       rawType: undefined,
@@ -512,7 +509,7 @@ function operations(
       ...(fallback === undefined ? {} : { fallback }),
     }),
   );
-  return orderedOperations(result);
+  return orderedTasks(result);
 }
 
 function modelEndpoints(
@@ -530,11 +527,7 @@ function modelEndpoints(
   );
 }
 
-function directRate(
-  price: SourcePrice,
-  modelOperations: ModelOperation[],
-  sourceId: string,
-): PriceRate {
+function directRate(price: SourcePrice, modelTasks: ModelTask[], sourceId: string): PriceRate {
   const conditions: PriceRate["conditions"] = {};
   let unit: PriceRate["unit"];
   let meter: PriceRate["meter"];
@@ -543,7 +536,7 @@ function directRate(
     meter =
       price.direction === "output"
         ? "output_text"
-        : modelOperations.includes("embeddings")
+        : modelTasks.includes("embeddings")
           ? "embedding"
           : "input_text";
   } else if (price.denominator === "/M Chars") {
@@ -563,8 +556,8 @@ function directRate(
   return publishedRate(meter, price.price, unit, sourceId, price.denominator, conditions);
 }
 
-function pricing(draft: Draft, modelOperations: ModelOperation[], sourceId: string): PriceRate[] {
-  const direct = draft.prices.map((price) => directRate(price, modelOperations, sourceId));
+function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): PriceRate[] {
+  const direct = draft.prices.map((price) => directRate(price, modelTasks, sourceId));
   const derived: PriceRate[] = [];
   if (draft.status !== "retired" && draft.features.includes("batching"))
     derived.push(
@@ -611,9 +604,9 @@ function sourceModel(
   const id = draft.apiNames[0];
   if (id === undefined) return undefined;
   const observedModalities = modalities(draft);
-  const modelOperations = operations(draft, observedModalities);
+  const modelTasks = tasks(draft, observedModalities);
   const apiEndpoints = modelEndpoints(draft, endpointsByFeature);
-  const rates = pricing(draft, modelOperations, input.source.id);
+  const rates = pricing(draft, modelTasks, input.source.id);
   const active = draft.status === "active" || draft.status === "preview";
   const feature = (name: string): boolean | "unknown" =>
     draft.features.includes(name) ? true : active ? false : "unknown";
@@ -628,7 +621,7 @@ function sourceModel(
     }),
     ...(draft.description === undefined ? {} : { description: draft.description }),
     aliases: draft.apiNames.slice(1),
-    operations: modelOperations,
+    tasks: modelTasks,
     raw_type: draft.catalogType,
     ...(apiEndpoints.length === 0 ? {} : { api_endpoints: apiEndpoints }),
     modalities: observedModalities,
@@ -714,8 +707,8 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function apiOperations(capabilities: z.infer<typeof apiCapabilitiesSchema>): ModelOperation[] {
-  const result: ModelOperation[] = [];
+function apiOperations(capabilities: z.infer<typeof apiCapabilitiesSchema>): ModelTask[] {
+  const result: ModelTask[] = [];
   if (capabilities.completion_chat || capabilities.completion_fim) result.push("text_generation");
   if (capabilities.classification) result.push("classification");
   if (capabilities.moderation) result.push("moderation");
@@ -784,7 +777,7 @@ export function parseMistralApi(input: Input): ProviderModel[] {
         }),
         ...(value.description == null ? {} : { description: value.description }),
         aliases: unique((value.aliases ?? []).filter((alias) => alias !== value.id)),
-        operations: apiOperations(value.capabilities),
+        tasks: apiOperations(value.capabilities),
         raw_type: value.type,
         modalities: apiModalities(value.capabilities),
         capabilities: {

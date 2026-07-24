@@ -3,10 +3,10 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { classifyModelOperations } from "./operation.ts";
+import { classifyModelTasks } from "./task.ts";
 import {
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
@@ -141,7 +141,7 @@ function facts(
   item: LibraryItem,
 ): Pick<
   ProviderModel,
-  "capabilities" | "description" | "modalities" | "service_families" | "operations" | "updated_date"
+  "capabilities" | "description" | "modalities" | "service_families" | "tasks" | "updated_date"
 > {
   const badges = new Set(item.badges);
   const embedding = badges.has("embedding");
@@ -155,7 +155,7 @@ function facts(
   return {
     description: item.description,
     service_families: [libraryFamily],
-    operations: classifyModelOperations({
+    tasks: classifyModelTasks({
       modelId: item.id,
       name: item.id,
       rawType: embedding ? "embedding" : "language",
@@ -230,10 +230,10 @@ function cloudModel(
   if (capabilities.has("embedding")) output.push("embedding");
   if (capabilities.has("image")) output.push("image");
   const modalities = { input: modalityInput, output };
-  const operations: ModelOperation[] = [];
-  if (capabilities.has("completion")) operations.push("text_generation");
-  if (capabilities.has("embedding")) operations.push("embeddings");
-  if (capabilities.has("image")) operations.push("image_generation");
+  const tasks: ModelTask[] = [];
+  if (capabilities.has("completion")) tasks.push("text_generation");
+  if (capabilities.has("embedding")) tasks.push("embeddings");
+  if (capabilities.has("image")) tasks.push("image_generation");
   const architecture = show.model_info["general.architecture"];
   const context =
     typeof architecture === "string"
@@ -253,7 +253,7 @@ function cloudModel(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations,
+    tasks,
     service_families: library ? [cloudFamily, libraryFamily] : [cloudFamily],
     modalities,
     capabilities: {

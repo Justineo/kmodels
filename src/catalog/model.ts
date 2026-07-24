@@ -32,7 +32,7 @@ export function baseModel(input: BaseModelInput): ProviderModel {
     id_kind: "api_id",
     name: input.name,
     aliases: [],
-    operations: [],
+    tasks: [],
     modalities: { input: [], output: [] },
     capabilities: unknownCapabilities(),
     limits: {},

@@ -1,7 +1,7 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
 import {
-  formatModelOperation,
+  formatModelTask,
   formatPrice,
   formatTableRateLabel,
   formatTableRateUnit,
@@ -11,7 +11,7 @@ import {
 } from "../catalog/presentation.ts";
 import type {
   ModelLifecycle,
-  ModelOperation,
+  ModelTask,
   ModelReleaseStage,
   ProviderModel,
 } from "../catalog/schema.ts";
@@ -28,7 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [model: ProviderModel];
   filterProvider: [providerId: string];
-  filterOperation: [operation: ModelOperation];
+  filterTask: [task: ModelTask];
   filterLifecycle: [lifecycle: ModelLifecycle];
   filterReleaseStage: [releaseStage: ModelReleaseStage];
 }>();
@@ -80,18 +80,18 @@ function filterStatus(): void {
         <span>{{ providerName }}</span>
       </button>
     </td>
-    <td class="operations-col">
-      <span class="operation-list">
-        <span v-if="model.operations.length === 0">—</span>
-        <template v-for="(operation, index) in model.operations" :key="operation">
-          <span v-if="index > 0" class="operation-separator" aria-hidden="true">, </span>
+    <td class="tasks-col">
+      <span class="task-list">
+        <span v-if="model.tasks.length === 0">—</span>
+        <template v-for="(task, index) in model.tasks" :key="task">
+          <span v-if="index > 0" class="task-separator" aria-hidden="true">, </span>
           <button
-            class="operation-filter-button"
+            class="task-filter-button"
             type="button"
-            :aria-label="`Filter by operation ${formatModelOperation(operation)}`"
-            @click="emit('filterOperation', operation)"
+            :aria-label="`Filter by task ${formatModelTask(task)}`"
+            @click="emit('filterTask', task)"
           >
-            {{ formatModelOperation(operation) }}
+            {{ formatModelTask(task) }}
           </button>
         </template>
       </span>

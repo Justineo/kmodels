@@ -1,6 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
-import { formatCount, formatModelOperation } from "./catalog/presentation.ts";
+import { formatCount, formatModelTask } from "./catalog/presentation.ts";
 import {
   catalogEnvelopeSchema,
   modelLifecycleSchema,
@@ -9,7 +9,7 @@ import {
   type ProviderModel,
   type SourceRecord,
 } from "./catalog/schema.ts";
-import { orderedOperations } from "./catalog/operation.ts";
+import { orderedTasks } from "./catalog/task.ts";
 import {
   formatRouteSearch,
   parseRouteSearch,
@@ -23,6 +23,7 @@ import ColumnSortButton from "./components/ColumnSortButton.vue";
 import IconSprite from "./components/IconSprite.vue";
 import ModelDetails from "./components/ModelDetails.vue";
 import ModelRow from "./components/ModelRow.vue";
+import PricingHeaderTooltip from "./components/PricingHeaderTooltip.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
@@ -43,7 +44,7 @@ const sources = ref<SourceRecord[]>([]);
 const generatedAt = ref("");
 const query = ref(initialRoute.query);
 const selectedProvider = ref(initialRoute.provider);
-const selectedOperations = ref(initialRoute.operations);
+const selectedTasks = ref(initialRoute.tasks);
 const selectedLifecycles = ref(initialRoute.lifecycles);
 const selectedReleaseStages = ref(initialRoute.releaseStages);
 const loading = ref(true);
@@ -86,16 +87,14 @@ const selectedModel = computed(() => {
 const providerOptions = computed(() =>
   [...providers.value].sort((left, right) => left.name.localeCompare(right.name)),
 );
-const operationOptions = computed(() =>
-  orderedOperations(models.value.flatMap((model) => model.operations)),
-);
+const taskOptions = computed(() => orderedTasks(models.value.flatMap((model) => model.tasks)));
 const searchIndex = computed(() => indexModels(models.value));
 const filteredModels = computed(() => {
   const values = searchModels(searchIndex.value, query.value).filter(
     (model) =>
       (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
-      (selectedOperations.value.length === 0 ||
-        model.operations.some((operation) => selectedOperations.value.includes(operation))) &&
+      (selectedTasks.value.length === 0 ||
+        model.tasks.some((task) => selectedTasks.value.includes(task))) &&
       (selectedLifecycles.value.length === 0 || selectedLifecycles.value.includes(model.status)) &&
       (selectedReleaseStages.value.length === 0 ||
         selectedReleaseStages.value.includes(model.release_stage)),
@@ -111,13 +110,13 @@ const hasFilters = computed(
   () =>
     query.value !== "" ||
     selectedProvider.value !== "" ||
-    selectedOperations.value.length > 0 ||
+    selectedTasks.value.length > 0 ||
     selectedLifecycles.value.length > 0 ||
     selectedReleaseStages.value.length > 0,
 );
 const advancedFilterCount = computed(
   () =>
-    selectedOperations.value.length +
+    selectedTasks.value.length +
     selectedLifecycles.value.length +
     selectedReleaseStages.value.length,
 );
@@ -147,7 +146,7 @@ watch(
   [
     query,
     selectedProvider,
-    selectedOperations,
+    selectedTasks,
     selectedLifecycles,
     selectedReleaseStages,
     sort,
@@ -237,7 +236,7 @@ function resetFilters(): void {
 }
 
 function clearAdvancedFilters(): void {
-  selectedOperations.value = [];
+  selectedTasks.value = [];
   selectedLifecycles.value = [];
   selectedReleaseStages.value = [];
 }
@@ -269,7 +268,7 @@ function syncRoute(): void {
   const search = formatRouteSearch({
     query: query.value,
     provider: selectedProvider.value,
-    operations: selectedOperations.value,
+    tasks: selectedTasks.value,
     lifecycles: selectedLifecycles.value,
     releaseStages: selectedReleaseStages.value,
     sort: sort.value,
@@ -299,7 +298,7 @@ function applyRoute(): void {
   applyingRoute = true;
   query.value = state.query;
   selectedProvider.value = state.provider;
-  selectedOperations.value = state.operations;
+  selectedTasks.value = state.tasks;
   selectedLifecycles.value = state.lifecycles;
   selectedReleaseStages.value = state.releaseStages;
   sort.value = state.sort;
@@ -499,15 +498,11 @@ onUnmounted(() => {
 
               <div class="filter-popover-body">
                 <fieldset class="filter-group">
-                  <legend>Operations</legend>
+                  <legend>Tasks</legend>
                   <div class="filter-options">
-                    <label
-                      v-for="operation in operationOptions"
-                      :key="operation"
-                      class="filter-option"
-                    >
-                      <input v-model="selectedOperations" type="checkbox" :value="operation" />
-                      <span>{{ formatModelOperation(operation) }}</span>
+                    <label v-for="task in taskOptions" :key="task" class="filter-option">
+                      <input v-model="selectedTasks" type="checkbox" :value="task" />
+                      <span>{{ formatModelTask(task) }}</span>
                     </label>
                   </div>
                 </fieldset>
@@ -575,7 +570,7 @@ onUnmounted(() => {
             <colgroup>
               <col class="model-col" />
               <col class="provider-col" />
-              <col class="operations-col" />
+              <col class="tasks-col" />
               <col class="status-col" />
               <col class="context-col" />
               <col class="input-col" />
@@ -600,7 +595,7 @@ onUnmounted(() => {
                     @sort="setSort('provider')"
                   />
                 </th>
-                <th class="operations-col" scope="col">Operations</th>
+                <th class="tasks-col" scope="col">Tasks</th>
                 <th class="status-col" scope="col">Status</th>
                 <th class="context-col numeric" scope="col" :aria-sort="ariaSort('context')">
                   <ColumnSortButton
@@ -609,29 +604,59 @@ onUnmounted(() => {
                     @sort="setSort('context')"
                   />
                 </th>
-                <th
-                  class="input-col numeric"
-                  scope="col"
-                  aria-label="Representative input rate; per 1 million tokens unless noted"
-                  title="Per 1M tokens unless the cell shows another unit"
-                >
-                  Input / 1M
+                <th class="input-col numeric" scope="col" aria-label="Representative input rate">
+                  <PricingHeaderTooltip label="Input" tooltip-id="pricing-input-tooltip">
+                    <strong>Default input units</strong>
+                    <span>
+                      <span>Token input</span>
+                      <code>/1M tokens</code>
+                    </span>
+                    <span>
+                      <span>Speech synthesis</span>
+                      <code>/1M characters</code>
+                    </span>
+                    <span>
+                      <span>Timed media</span>
+                      <code>/second or minute</code>
+                    </span>
+                    <small>Other native units are shown in the price cell.</small>
+                  </PricingHeaderTooltip>
                 </th>
-                <th
-                  class="cached-col numeric"
-                  scope="col"
-                  aria-label="Representative cached input rate; per 1 million tokens unless noted"
-                  title="Per 1M tokens unless the cell shows another unit"
-                >
-                  Cached input / 1M
+                <th class="cached-col numeric" scope="col" aria-label="Representative cache rate">
+                  <PricingHeaderTooltip label="Cache" tooltip-id="pricing-cache-tooltip">
+                    <strong>Default cache units</strong>
+                    <span>
+                      <span>Read &amp; write</span>
+                      <code>/1M tokens</code>
+                    </span>
+                    <span>
+                      <span>Storage</span>
+                      <code>/1M tokens/hour</code>
+                    </span>
+                    <small>Other native units are shown in the price cell.</small>
+                  </PricingHeaderTooltip>
                 </th>
-                <th
-                  class="output-col numeric"
-                  scope="col"
-                  aria-label="Representative output or task rate; per 1 million tokens unless noted"
-                  title="Per 1M tokens unless the cell shows another unit"
-                >
-                  Output / 1M
+                <th class="output-col numeric" scope="col" aria-label="Representative output rate">
+                  <PricingHeaderTooltip label="Output" tooltip-id="pricing-output-tooltip">
+                    <strong>Default output units</strong>
+                    <span>
+                      <span>Text &amp; embeddings</span>
+                      <code>/1M tokens</code>
+                    </span>
+                    <span>
+                      <span>Image generation</span>
+                      <code>/image</code>
+                    </span>
+                    <span>
+                      <span>Video generation</span>
+                      <code>/second</code>
+                    </span>
+                    <span>
+                      <span>Requests &amp; capacity</span>
+                      <code>source unit</code>
+                    </span>
+                    <small>Other native units are shown in the price cell.</small>
+                  </PricingHeaderTooltip>
                 </th>
                 <th class="updated-col numeric" scope="col" :aria-sort="ariaSort('updated')">
                   <ColumnSortButton
@@ -659,7 +684,7 @@ onUnmounted(() => {
                 :selected="selectedModelUid === model.uid"
                 @select="selectedModelUid = $event.uid"
                 @filter-provider="selectedProvider = $event"
-                @filter-operation="selectedOperations = [$event]"
+                @filter-task="selectedTasks = [$event]"
                 @filter-lifecycle="selectedLifecycles = [$event]"
                 @filter-release-stage="selectedReleaseStages = [$event]"
               />

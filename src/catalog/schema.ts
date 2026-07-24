@@ -8,7 +8,7 @@ const modelDate = z.union([
 ]);
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
-export const modelOperationSchema = z.enum([
+export const modelTaskSchema = z.enum([
   "text_generation",
   "embeddings",
   "reranking",
@@ -26,6 +26,21 @@ export const modelOperationSchema = z.enum([
   "segmentation",
 ]);
 
+export const taskEvidenceSchema = z.object({
+  task: modelTaskSchema,
+  source_ref: z.string().min(1),
+  namespace: z.string().min(1),
+  raw_value: z.string().min(1),
+  kind: z.enum(["provider_task", "provider_type"]),
+});
+export const deliveryModeSchema = z.enum(["streaming", "realtime", "batch", "async"]);
+export const deliveryModeEvidenceSchema = z.object({
+  mode: deliveryModeSchema,
+  source_ref: z.string().min(1),
+  namespace: z.string().min(1),
+  raw_value: z.string().min(1),
+  kind: z.enum(["capability", "endpoint", "provider_type"]),
+});
 export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
 export const modelLifecycleSchema = z.enum([
@@ -143,7 +158,13 @@ export const providerModelSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   aliases: z.array(z.string().min(1)),
-  operations: z.array(modelOperationSchema).transform((operations) => [...new Set(operations)]),
+  tasks: z.array(modelTaskSchema).transform((tasks) => [...new Set(tasks)]),
+  task_evidence: z.array(taskEvidenceSchema).optional(),
+  delivery_modes: z
+    .array(deliveryModeSchema)
+    .transform((modes) => [...new Set(modes)])
+    .optional(),
+  delivery_mode_evidence: z.array(deliveryModeEvidenceSchema).optional(),
   raw_type: z.string().optional(),
   service_families: z.array(z.string().min(1)).min(1).optional(),
   api_endpoints: z
@@ -293,7 +314,10 @@ export type CatalogWarning = z.infer<typeof catalogWarningSchema>;
 export type Coverage = z.infer<typeof coverageSchema>;
 export type ModelRoute = z.infer<typeof modelRouteSchema>;
 export type ModelLifecycle = z.infer<typeof modelLifecycleSchema>;
-export type ModelOperation = z.infer<typeof modelOperationSchema>;
+export type ModelTask = z.infer<typeof modelTaskSchema>;
+export type TaskEvidence = z.infer<typeof taskEvidenceSchema>;
+export type DeliveryMode = z.infer<typeof deliveryModeSchema>;
+export type DeliveryModeEvidence = z.infer<typeof deliveryModeEvidenceSchema>;
 export type ModelReleaseStage = z.infer<typeof modelReleaseStageSchema>;
 export type Modality = z.infer<typeof modalitySchema>;
 export type PriceRate = z.infer<typeof priceRateSchema>;
@@ -314,11 +338,30 @@ export function migrateCatalogStorage(value: unknown): unknown {
     return value;
   return {
     ...value,
+    ...("models" in value && Array.isArray(value.models)
+      ? {
+          models: value.models.map((model) => {
+            if (model === null || typeof model !== "object" || Array.isArray(model)) return model;
+            if ("tasks" in model || !("operations" in model)) return model;
+            return Object.fromEntries(
+              Object.entries({ ...model, tasks: model.operations }).filter(
+                ([field]) => field !== "operations",
+              ),
+            );
+          }),
+        }
+      : {}),
     sources: value.sources.map((source) => {
       if (source === null || typeof source !== "object" || Array.isArray(source)) return source;
-      return Object.fromEntries(
-        Object.entries(source).filter(([field]) => field !== "snapshot_uri"),
-      );
+      const entries = Object.entries(source)
+        .filter(([field]) => field !== "snapshot_uri")
+        .map(([field, item]) => [
+          field,
+          field === "field_paths" && Array.isArray(item)
+            ? item.map((path) => (path === "operations" ? "tasks" : path))
+            : item,
+        ]);
+      return Object.fromEntries(entries);
     }),
   };
 }

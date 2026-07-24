@@ -37,14 +37,14 @@ import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
-import { classifyModelOperations } from "./operation.ts";
+import { classifyModelTasks } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
 import { parseXaiApi, parseXaiCatalog } from "./xai.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type ProviderModel,
   type Provider,
@@ -52,7 +52,7 @@ import {
 } from "./schema.ts";
 
 export { multiplyDecimal, scaleDecimal } from "./pricing.ts";
-export { classifyModelOperations, normalizeModelOperations } from "./operation.ts";
+export { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 export {
   modelStateFromLabel,
   normalizeModelReleaseStage,
@@ -155,42 +155,39 @@ function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
   };
 }
 
-const openAiEndpointDefinitions = new Map<string, { name: string; operations: ModelOperation[] }>([
-  ["v1/chat/completions", { name: "Chat Completions", operations: ["text_generation"] }],
-  ["v1/responses", { name: "Responses", operations: ["text_generation"] }],
-  ["v1/realtime", { name: "Realtime", operations: ["speech_to_speech"] }],
-  ["v1/realtime/translations", { name: "Realtime translation", operations: ["translation"] }],
+const openAiEndpointDefinitions = new Map<string, { name: string; tasks: ModelTask[] }>([
+  ["v1/chat/completions", { name: "Chat Completions", tasks: ["text_generation"] }],
+  ["v1/responses", { name: "Responses", tasks: ["text_generation"] }],
+  ["v1/realtime", { name: "Realtime", tasks: ["speech_to_speech"] }],
+  ["v1/realtime/translations", { name: "Realtime translation", tasks: ["translation"] }],
   [
     "v1/realtime/transcription_sessions",
-    { name: "Realtime transcription", operations: ["transcription"] },
+    { name: "Realtime transcription", tasks: ["transcription"] },
   ],
-  ["v1/assistants", { name: "Assistants", operations: ["text_generation"] }],
-  ["v1/batch", { name: "Batch", operations: [] }],
-  ["v1/fine-tuning", { name: "Fine-tuning", operations: [] }],
-  ["v1/embeddings", { name: "Embeddings", operations: ["embeddings"] }],
-  ["v1/images/generations", { name: "Image generation", operations: ["image_generation"] }],
-  ["v1/videos", { name: "Videos", operations: ["video_generation"] }],
-  ["v1/images/edits", { name: "Image edit", operations: ["image_generation"] }],
-  ["v1/audio/speech", { name: "Speech generation", operations: ["speech_synthesis"] }],
-  ["v1/audio/transcriptions", { name: "Transcription", operations: ["transcription"] }],
-  ["v1/audio/translations", { name: "Translation", operations: ["translation"] }],
-  ["v1/moderations", { name: "Moderation", operations: ["moderation"] }],
-  ["v1/completions", { name: "Completions (legacy)", operations: ["text_generation"] }],
+  ["v1/assistants", { name: "Assistants", tasks: ["text_generation"] }],
+  ["v1/batch", { name: "Batch", tasks: [] }],
+  ["v1/fine-tuning", { name: "Fine-tuning", tasks: [] }],
+  ["v1/embeddings", { name: "Embeddings", tasks: ["embeddings"] }],
+  ["v1/images/generations", { name: "Image generation", tasks: ["image_generation"] }],
+  ["v1/videos", { name: "Videos", tasks: ["video_generation"] }],
+  ["v1/images/edits", { name: "Image edit", tasks: ["image_generation"] }],
+  ["v1/audio/speech", { name: "Speech generation", tasks: ["speech_synthesis"] }],
+  ["v1/audio/transcriptions", { name: "Transcription", tasks: ["transcription"] }],
+  ["v1/audio/translations", { name: "Translation", tasks: ["translation"] }],
+  ["v1/moderations", { name: "Moderation", tasks: ["moderation"] }],
+  ["v1/completions", { name: "Completions (legacy)", tasks: ["text_generation"] }],
 ]);
 
 interface OpenAiEndpointEvidence {
   endpoints: NonNullable<ProviderModel["api_endpoints"]>;
-  operations: ModelOperation[];
+  tasks: ModelTask[];
 }
 
-function openAiEndpointEvidence(
-  $: LoadedDocument,
-  fallback: ModelOperation[],
-): OpenAiEndpointEvidence {
+function openAiEndpointEvidence($: LoadedDocument, fallback: ModelTask[]): OpenAiEndpointEvidence {
   const content = sectionContent($, "Endpoints");
   if (content.length === 0) throw new Error("OpenAI model page omitted Endpoints");
   const endpoints: NonNullable<ProviderModel["api_endpoints"]> = [];
-  const operations: ModelOperation[] = [];
+  const tasks: ModelTask[] = [];
   const observedPaths = new Set<string>();
   content
     .find("div")
@@ -212,13 +209,13 @@ function openAiEndpointEvidence(
       observedPaths.add(path);
       if (nameNode.hasClass("text-gray-400")) return;
       endpoints.push({ name, path });
-      operations.push(...definition.operations);
+      tasks.push(...definition.tasks);
     });
   if (observedPaths.size === 0)
     throw new Error("OpenAI Endpoints section contained no endpoint cards");
   return {
     endpoints,
-    operations: operations.length > 0 ? unique(operations) : fallback,
+    tasks: tasks.length > 0 ? unique(tasks) : fallback,
   };
 }
 
@@ -256,7 +253,7 @@ function openAiAliases($: LoadedDocument, id: string): string[] {
 function openAiMeter(
   group: string,
   label: string,
-  operations: ModelOperation[],
+  tasks: ModelTask[],
 ): PriceRate["meter"] | undefined {
   if (group === "Text tokens") {
     if (label === "Input") return "input_text";
@@ -277,17 +274,13 @@ function openAiMeter(
   if (group === "Image generation") return "image_generation";
   if (group === "Video generation") return "video_generation";
   if (group === "Realtime audio duration" && label === "Price") {
-    if (operations.includes("transcription")) return "input_audio";
-    if (operations.includes("speech_synthesis") || operations.includes("speech_to_speech"))
+    if (tasks.includes("transcription")) return "input_audio";
+    if (tasks.includes("speech_synthesis") || tasks.includes("speech_to_speech"))
       return "output_audio";
   }
 }
 
-function openAiPricing(
-  $: LoadedDocument,
-  sourceId: string,
-  operations: ModelOperation[],
-): PriceRate[] {
+function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]): PriceRate[] {
   const content = sectionContent($, "Pricing");
   if (content.length === 0) return [];
   const rates: PriceRate[] = [];
@@ -344,7 +337,7 @@ function openAiPricing(
         const rawPrice = normalizedText($(card).children().last().text());
         const match = rawPrice.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/);
         if (match?.[1] === undefined) return;
-        const meter = openAiMeter(group, label, operations);
+        const meter = openAiMeter(group, label, tasks);
         if (meter === undefined)
           throw new Error(`Unsupported OpenAI pricing field: ${group}/${label}`);
         const conditions: PriceRate["conditions"] = {};
@@ -503,7 +496,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
       if (name === "") throw new Error(`OpenAI model page omitted display name for ${id}`);
       const description = normalizedText($("main .hidden.text-secondary.sm\\:flex").first().text());
       const observedModalities = openAiModalities($);
-      const classifiedOperations = classifyModelOperations({
+      const classifiedOperations = classifyModelTasks({
         modelId: id,
         name,
         rawType: undefined,
@@ -511,12 +504,12 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         fallback: "text_generation",
       });
       const endpointEvidence = openAiEndpointEvidence($, classifiedOperations);
-      const operations = endpointEvidence.operations;
+      const tasks = endpointEvidence.tasks;
       const embeddingOutput: Modality[] = ["embedding"];
-      const modelModalities: ProviderModel["modalities"] = operations.includes("embeddings")
+      const modelModalities: ProviderModel["modalities"] = tasks.includes("embeddings")
         ? { input: observedModalities.input, output: embeddingOutput }
         : observedModalities;
-      const pricing = openAiPricing($, input.source.id, operations);
+      const pricing = openAiPricing($, input.source.id, tasks);
       const features = openAiFeatures($);
       const pageText = normalizedText($("main").text());
       const aliases = openAiAliases($, id);
@@ -530,7 +523,7 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         }),
         description: description || undefined,
         aliases,
-        operations,
+        tasks,
         api_endpoints: endpointEvidence.endpoints,
         modalities: modelModalities,
         capabilities: {
@@ -678,7 +671,7 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
               sourceId: input.source.id,
               observedAt: input.observedAt,
             }),
-            operations: classifyModelOperations({
+            tasks: classifyModelTasks({
               modelId: id,
               name: id,
               rawType: undefined,

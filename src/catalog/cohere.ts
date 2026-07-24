@@ -6,7 +6,7 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -68,7 +68,7 @@ interface EndpointDefinition {
   documentPath: string;
   title: string;
   marker: string;
-  operation: ModelOperation;
+  operation: ModelTask;
   endpoint: ApiEndpoint;
   href?: string;
   labels: string[];
@@ -76,7 +76,7 @@ interface EndpointDefinition {
 }
 
 interface EndpointReference {
-  operation: ModelOperation;
+  operation: ModelTask;
   endpoint: ApiEndpoint;
   labels: string[];
   modelIds?: Set<string>;
@@ -88,7 +88,7 @@ interface EndpointReferences {
 }
 
 interface ApiEndpointFact {
-  operation?: ModelOperation;
+  operation?: ModelTask;
   endpoint?: ApiEndpoint;
 }
 
@@ -187,7 +187,7 @@ const apiEndpointFacts = new Map<z.infer<typeof endpointSchema>, ApiEndpointFact
   ["transcriptions", { operation: "transcription" }],
 ]);
 
-const operationsBySection = new Map<string, ModelOperation[]>([
+const operationsBySection = new Map<string, ModelTask[]>([
   ["Command", ["text_generation"]],
   ["Embed", ["embeddings"]],
   ["Rerank", ["reranking"]],
@@ -237,7 +237,7 @@ function tokens(value: string): number | undefined {
 function operationsFromEndpointLabels(
   labels: string[],
   references: EndpointReferences,
-): ModelOperation[] {
+): ModelTask[] {
   return unique(
     labels.map((label) => {
       const reference = references.byLabel.get(label);
@@ -340,7 +340,7 @@ function model(
   models: Map<string, ProviderModel>,
   input: Input,
   id: string,
-  operations: ModelOperation[],
+  tasks: ModelTask[],
 ): ProviderModel {
   const current = models.get(id);
   if (current !== undefined) return current;
@@ -352,7 +352,7 @@ function model(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations,
+    tasks,
   };
   models.set(id, created);
   return created;
@@ -375,7 +375,7 @@ function rootTables(
   references: EndpointReferences,
 ): void {
   const $ = load(body);
-  let sectionOperations: ModelOperation[] | undefined;
+  let sectionOperations: ModelTask[] | undefined;
   $("h2,table").each((_tableIndex, table) => {
     if ($(table).is("h2")) {
       sectionOperations = operationsBySection.get(text($(table).text()));
@@ -436,12 +436,12 @@ function rootTables(
             .map((match) => Number(match[0]?.replace(/,/g, "")))
             .filter((item) => Number.isSafeInteger(item) && item > 0),
         );
-        const modelOperations = unique([
+        const modelTasks = unique([
           ...defaultOperations,
           ...operationsFromEndpointLabels(endpointLabels, references),
         ]);
-        const isEmbedding = modelOperations.includes("embeddings");
-        const isTranscription = modelOperations.includes("transcription");
+        const isEmbedding = modelTasks.includes("embeddings");
+        const isTranscription = modelTasks.includes("transcription");
         const inputModalities: Modality[] = [];
         if (modality.toLowerCase().includes("text")) inputModalities.push("text");
         if (modality.toLowerCase().includes("image")) inputModalities.push("image");
@@ -449,7 +449,7 @@ function rootTables(
         if (isTranscription) inputModalities.push("audio");
         const outputModalities: Modality[] = [];
         if (isEmbedding) outputModalities.push("embedding");
-        if (isTranscription || modelOperations.includes("text_generation"))
+        if (isTranscription || modelTasks.includes("text_generation"))
           outputModalities.push("text");
         const deprecated = statusText?.startsWith("Deprecated") ?? false;
         const retired = statusText?.startsWith("Retired") ?? false;
@@ -459,7 +459,7 @@ function rootTables(
             {
               ...current,
               description: description || current.description,
-              operations: modelOperations,
+              tasks: modelTasks,
               modalities:
                 inputModalities.length + outputModalities.length > 0
                   ? { input: [...inputModalities], output: [...outputModalities] }
@@ -578,20 +578,20 @@ function commandCard(
     .map((_index, element) => text($(element).text()))
     .get();
   if (endpointLabels.length === 0) throw new Error(`Cohere endpoint card drifted for ${id}`);
-  const operations = operationsFromEndpointLabels(endpointLabels, references);
+  const tasks = operationsFromEndpointLabels(endpointLabels, references);
   const apiEndpoints = endpointLabels.map((label) => {
     const reference = references.byLabel.get(label);
     if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
     return reference.endpoint;
   });
-  const inputModalities = [...model(models, input, id, operations).modalities.input];
+  const inputModalities = [...model(models, input, id, tasks).modalities.input];
   if (capability.get("Image Inputs") === true) inputModalities.push("image");
   update(models, id, (current) =>
     withEndpoints(
       {
         ...current,
         name: title ?? current.name,
-        operations,
+        tasks,
         modalities: {
           input: unique(inputModalities),
           output: current.modalities.output,
@@ -677,7 +677,7 @@ function transcribePage(
         ...current,
         name: text($("h1").first().text()) || current.name,
         description: current.description ?? description,
-        operations: ["transcription"],
+        tasks: ["transcription"],
         modalities: { input: ["audio"], output: ["text"] },
         status: "active",
         pricing_status: customQuote ? "custom_quote" : current.pricing_status,
@@ -703,9 +703,9 @@ function lifecycle(input: Input, models: Map<string, ProviderModel>, body: strin
     if (ids.length === 0)
       throw new Error(`Cohere lifecycle section ${heading} contained no model IDs`);
     for (const id of ids) {
-      const operations: ModelOperation[] =
+      const tasks: ModelTask[] =
         heading === "2026-04-04:" && id.startsWith("embed-") ? ["embeddings"] : ["text_generation"];
-      model(models, input, id, operations);
+      model(models, input, id, tasks);
       update(models, id, (current) => ({
         ...current,
         status,
@@ -733,7 +733,7 @@ function lifecycle(input: Input, models: Map<string, ProviderModel>, body: strin
       model(models, input, id.data, ["reranking"]);
       update(models, id.data, (current) => ({
         ...current,
-        operations: ["reranking"],
+        tasks: ["reranking"],
         status: "retired",
         retired_at: cells[0],
         replacement_model_ids: unique([...current.replacement_model_ids, replacement.data]),
@@ -862,7 +862,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
                 input.source.id,
                 unit,
               )
-            : current.operations.includes("embeddings")
+            : current.tasks.includes("embeddings")
               ? publishedRate("embedding", String(price), "million_tokens", input.source.id, unit, {
                   modality: normalized.includes("image") ? "image" : "text",
                 })
@@ -1109,7 +1109,7 @@ export function parseCohereApi(input: Input): ProviderModel[] {
       if (fact === undefined) throw new Error(`Unsupported Cohere API endpoint: ${endpoint}`);
       return fact;
     });
-    const operations = unique(
+    const tasks = unique(
       facts.flatMap((fact) => (fact.operation === undefined ? [] : [fact.operation])),
     );
     const apiEndpoints = unique(
@@ -1124,7 +1124,7 @@ export function parseCohereApi(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        operations,
+        tasks,
         api_endpoints: apiEndpoints.length === 0 ? undefined : apiEndpoints,
         limits:
           item.context_length === undefined || item.context_length === 0

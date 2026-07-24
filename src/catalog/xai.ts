@@ -4,12 +4,12 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { orderedOperations } from "./operation.ts";
+import { orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -771,7 +771,7 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
@@ -821,7 +821,7 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      operations: ["embeddings"],
+      tasks: ["embeddings"],
       api_endpoints: endpoints.get(value.name),
       modalities: { input: upperModalities(value.inputModalities), output: ["embedding"] },
       status: "active",
@@ -840,7 +840,7 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      operations: ["image_generation"],
+      tasks: ["image_generation"],
       api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
@@ -867,7 +867,7 @@ function currentModels(
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       aliases: value.aliases,
-      operations: ["video_generation"],
+      tasks: ["video_generation"],
       api_endpoints: endpoints.get(value.name),
       modalities: {
         input: upperModalities(value.inputModalities),
@@ -928,7 +928,7 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
     return model(input, row.id, {
       description: row.description,
       aliases: isLatest ? [latestAlias] : [],
-      operations: ["text_generation", "speech_to_speech"],
+      tasks: ["text_generation", "speech_to_speech"],
       api_endpoints: [endpoint],
       modalities: { input: ["text", "audio"], output: ["text", "audio"] },
       capabilities: {
@@ -973,7 +973,7 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
   return retired.map((id) => {
     const image = id === "grok-imagine-image-pro";
     return model(input, id, {
-      operations: image ? ["image_generation"] : ["text_generation"],
+      tasks: image ? ["image_generation"] : ["text_generation"],
       release_date: releaseDate(releases, id, id),
       deprecated_at: date,
       retired_at: date,
@@ -1005,7 +1005,7 @@ function combine(models: ProviderModel[]): ProviderModel[] {
       name: current.name === current.model_id ? value.name : current.name,
       description: value.description ?? current.description,
       aliases: unique([...current.aliases, ...value.aliases]),
-      operations: orderedOperations([...current.operations, ...value.operations]),
+      tasks: orderedTasks([...current.tasks, ...value.tasks]),
       modalities: {
         input: unique([...current.modalities.input, ...value.modalities.input]),
         output: unique([...current.modalities.output, ...value.modalities.output]),
@@ -1094,7 +1094,7 @@ export function parseXaiApi(input: ParseInput): ProviderModel[] {
         ? imageApiSchema
         : videoApiSchema;
   const values = z.object({ models: z.array(schema).min(1) }).parse(JSON.parse(input.body)).models;
-  const type: ModelOperation =
+  const type: ModelTask =
     extractor.category === "language"
       ? "text_generation"
       : extractor.category === "image"
@@ -1103,7 +1103,7 @@ export function parseXaiApi(input: ParseInput): ProviderModel[] {
   return values.map((value) =>
     model(input, value.id, {
       aliases: value.aliases,
-      operations: [type],
+      tasks: [type],
       modalities: { input: value.input_modalities, output: value.output_modalities },
       scope: "runtime_observation",
     }),

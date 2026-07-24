@@ -14,7 +14,6 @@ import ollama from "@lobehub/icons-static-svg/icons/ollama.svg?raw";
 import openAi from "@lobehub/icons-static-svg/icons/openai.svg?raw";
 import vercel from "@lobehub/icons-static-svg/icons/vercel.svg?raw";
 import vertex from "@lobehub/icons-static-svg/icons/vertexai-color.svg?raw";
-import vllm from "@lobehub/icons-static-svg/icons/vllm-color.svg?raw";
 import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
 import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
 import arrowUp from "lucide-static/icons/arrow-up.svg?raw";
@@ -63,7 +62,6 @@ const providerSources: Readonly<Record<string, string>> = {
   openai: openAi,
   vercel,
   vertex,
-  vllm,
   xai,
 };
 

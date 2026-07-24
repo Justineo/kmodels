@@ -5,13 +5,13 @@ import { baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelOperations, orderedOperations } from "./operation.ts";
+import { classifyModelTasks, orderedTasks } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -173,8 +173,8 @@ function modalities(item: Item): ProviderModel["modalities"] {
   };
 }
 
-function operations(item: Item, modelModalities: ProviderModel["modalities"]): ModelOperation[] {
-  const tagged: ModelOperation[] = [];
+function tasks(item: Item, modelModalities: ProviderModel["modalities"]): ModelTask[] {
+  const tagged: ModelTask[] = [];
   const tags = item.tags ?? [];
   if (tags.includes("image-generation") && modelModalities.output.includes("image"))
     tagged.push("image_generation");
@@ -187,8 +187,8 @@ function operations(item: Item, modelModalities: ProviderModel["modalities"]): M
   )
     tagged.push("speech_to_speech");
   if (tags.includes("websocket-transcription")) tagged.push("transcription");
-  return orderedOperations([
-    ...classifyModelOperations({
+  return orderedTasks([
+    ...classifyModelTasks({
       modelId: item.id,
       name: item.name,
       rawType: item.type,
@@ -426,7 +426,7 @@ function model(item: Item, input: Input): ProviderModel {
       observedAt: input.observedAt,
     }),
     description: item.description || undefined,
-    operations: operations(item, modelModalities),
+    tasks: tasks(item, modelModalities),
     raw_type: item.type,
     modalities: modelModalities,
     capabilities: {

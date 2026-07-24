@@ -150,7 +150,7 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       modalities: { input: ["text"], output: ["text"] },
       api_endpoints: [{ name: "Chat Completions", path: chatPath }],
       capabilities: {
@@ -256,7 +256,7 @@ function catalogModel(
       observedAt: input.observedAt,
     }),
     description,
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
     modalities: { input: ["text", ...media, ...video], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
@@ -457,7 +457,7 @@ function pricingModel(input: Input, body: string, row: string[], batch: boolean)
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
     modalities: { input: ["text", ...image, ...video], output: ["text"] },
     api_endpoints: batch ? [{ name: "Batch", path: batchPath }] : undefined,
     capabilities: {
@@ -605,7 +605,7 @@ function releaseModel(input: Input, id: string, date: string): ProviderModel {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
     release_date: date,
   };
 }
@@ -688,7 +688,7 @@ export function parseKimiApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       modalities: {
         input: [
           "text",

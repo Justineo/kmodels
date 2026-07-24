@@ -2,13 +2,13 @@ import { z } from "zod";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { orderedOperations } from "./operation.ts";
+import { orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
   type ModelRoute,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
@@ -23,7 +23,7 @@ interface Input {
 }
 
 interface TaskFacts {
-  operations: ModelOperation[];
+  tasks: ModelTask[];
   input: Modality[];
   output: Modality[];
 }
@@ -80,51 +80,51 @@ function facts(task: string): TaskFacts {
     case "question-answering":
     case "table-question-answering":
     case "fill-mask":
-      return { operations: ["text_generation"], input: ["text"], output: ["text"] };
+      return { tasks: ["text_generation"], input: ["text"], output: ["text"] };
     case "translation":
-      return { operations: ["translation"], input: ["text"], output: ["text"] };
+      return { tasks: ["translation"], input: ["text"], output: ["text"] };
     case "document-question-answering":
-      return { operations: ["text_generation"], input: ["text", "image"], output: ["text"] };
+      return { tasks: ["text_generation"], input: ["text", "image"], output: ["text"] };
     case "image-to-text":
     case "visual-question-answering":
-      return { operations: ["text_generation"], input: ["image"], output: ["text"] };
+      return { tasks: ["text_generation"], input: ["image"], output: ["text"] };
     case "feature-extraction":
     case "sentence-similarity":
-      return { operations: ["embeddings"], input: ["text"], output: ["embedding"] };
+      return { tasks: ["embeddings"], input: ["text"], output: ["embedding"] };
     case "text-ranking":
-      return { operations: ["reranking"], input: ["text"], output: [] };
+      return { tasks: ["reranking"], input: ["text"], output: [] };
     case "automatic-speech-recognition":
-      return { operations: ["transcription"], input: ["audio"], output: ["text"] };
+      return { tasks: ["transcription"], input: ["audio"], output: ["text"] };
     case "text-to-speech":
-      return { operations: ["speech_synthesis"], input: ["text"], output: ["audio"] };
+      return { tasks: ["speech_synthesis"], input: ["text"], output: ["audio"] };
     case "text-to-audio":
-      return { operations: ["audio_generation"], input: ["text"], output: ["audio"] };
+      return { tasks: ["audio_generation"], input: ["text"], output: ["audio"] };
     case "audio-to-audio":
-      return { operations: ["audio_generation"], input: ["audio"], output: ["audio"] };
+      return { tasks: ["audio_generation"], input: ["audio"], output: ["audio"] };
     case "text-to-image":
-      return { operations: ["image_generation"], input: ["text"], output: ["image"] };
+      return { tasks: ["image_generation"], input: ["text"], output: ["image"] };
     case "image-to-image":
-      return { operations: ["image_generation"], input: ["image"], output: ["image"] };
+      return { tasks: ["image_generation"], input: ["image"], output: ["image"] };
     case "text-to-video":
-      return { operations: ["video_generation"], input: ["text"], output: ["video"] };
+      return { tasks: ["video_generation"], input: ["text"], output: ["video"] };
     case "image-to-video":
-      return { operations: ["video_generation"], input: ["image"], output: ["video"] };
+      return { tasks: ["video_generation"], input: ["image"], output: ["video"] };
     case "audio-classification":
-      return { operations: ["classification"], input: ["audio"], output: ["text"] };
+      return { tasks: ["classification"], input: ["audio"], output: ["text"] };
     case "image-classification":
     case "zero-shot-image-classification":
-      return { operations: ["classification"], input: ["image"], output: ["text"] };
+      return { tasks: ["classification"], input: ["image"], output: ["text"] };
     case "image-segmentation":
-      return { operations: ["segmentation"], input: ["image"], output: ["image"] };
+      return { tasks: ["segmentation"], input: ["image"], output: ["image"] };
     case "object-detection":
-      return { operations: ["object_detection"], input: ["image"], output: [] };
+      return { tasks: ["object_detection"], input: ["image"], output: [] };
     case "text-classification":
     case "token-classification":
     case "zero-shot-classification":
     case "tabular-classification":
-      return { operations: ["classification"], input: ["text"], output: ["text"] };
+      return { tasks: ["classification"], input: ["text"], output: ["text"] };
     default:
-      return { operations: [], input: [], output: [] };
+      return { tasks: [], input: [], output: [] };
   }
 }
 
@@ -177,10 +177,10 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
       const routes = [...(current.routes ?? []), route].sort((left, right) =>
         modelRouteKey(left).localeCompare(modelRouteKey(right)),
       );
-      const operations = orderedOperations([...current.operations, ...observed.operations]);
+      const tasks = orderedTasks([...current.tasks, ...observed.tasks]);
       models.set(id, {
         ...current,
-        operations,
+        tasks,
         routes,
         modalities: {
           input: unique([...current.modalities.input, ...observed.input]),
@@ -272,7 +272,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       modalities: {
         input: unique(item.architecture.input_modalities),
         output: unique(item.architecture.output_modalities),

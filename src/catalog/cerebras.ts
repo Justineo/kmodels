@@ -141,7 +141,7 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
         observedAt: input.observedAt,
       }),
       description: item.description,
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       modalities: { input: modalities, output: ["text"] },
       capabilities: {
         ...unknownCapabilities(),
@@ -424,7 +424,7 @@ function catalogCard(
       observedAt: input.observedAt,
     }),
     description: text(description),
-    operations: ["text_generation"],
+    tasks: ["text_generation"],
     api_endpoints: endpoints,
     modalities: {
       input: cardModalities(body, "inputFormats"),
@@ -540,7 +540,7 @@ export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        operations: ["text_generation"],
+        tasks: ["text_generation"],
         modalities: { input: ["text"], output: ["text"] },
         deprecated_at: update.date,
         status: "deprecated",
@@ -583,7 +583,7 @@ export function parseCerebrasReleases(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
       release_date: date,
     }),
   );
@@ -602,7 +602,7 @@ export function parseCerebrasApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      operations: ["text_generation"],
+      tasks: ["text_generation"],
     }),
   );
   return bounded(input, "cerebras-api", models);

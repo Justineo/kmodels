@@ -9,13 +9,13 @@ import { scaleDecimal } from "./pricing.ts";
 import {
   modalitySchema,
   type Modality,
-  type ModelOperation,
+  type ModelTask,
   type PriceRate,
   type Provider,
   type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
-import { classifyModelOperations } from "./operation.ts";
+import { classifyModelTasks } from "./task.ts";
 
 interface ParseInput {
   provider: Provider;
@@ -45,7 +45,7 @@ interface Card {
   retiredAt: string | undefined;
   status: ProviderModel["status"];
   releaseStage: ProviderModel["release_stage"];
-  operations: ModelOperation[];
+  tasks: ModelTask[];
   identityKeys: Set<string>;
 }
 
@@ -571,7 +571,7 @@ function parseCard(body: string): Card {
   const output = tokens(fact(body, "Max output tokens"));
   if (context !== undefined) limits.context_tokens = context;
   if (output !== undefined) limits.max_output_tokens = output;
-  const operations = classifyModelOperations({
+  const tasks = classifyModelTasks({
     modelId: cardIds.keys().next().value ?? name,
     name,
     rawType: undefined,
@@ -593,7 +593,7 @@ function parseCard(body: string): Card {
     retiredAt,
     status,
     releaseStage,
-    operations,
+    tasks,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
   };
 }
@@ -622,7 +622,7 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function meter(text: string, operations: ModelOperation[]): PriceRate["meter"] | undefined {
+function meter(text: string, tasks: ModelTask[]): PriceRate["meter"] | undefined {
   if (/provisioned|reserved|model.?units|tokens per minute|tpm/.test(text))
     return "provisioned_throughput";
   if (/cache.?read/.test(text)) {
@@ -635,14 +635,10 @@ function meter(text: string, operations: ModelOperation[]): PriceRate["meter"] |
     if (/image/.test(text)) return "cache_write_image";
     return "cache_write_text";
   }
-  if (operations.includes("reranking") && /search|rerank|request/.test(text))
-    return "rerank_request";
-  if (
-    operations.includes("embeddings") &&
-    /input|token|second|minute|image|request|page/.test(text)
-  )
+  if (tasks.includes("reranking") && /search|rerank|request/.test(text)) return "rerank_request";
+  if (tasks.includes("embeddings") && /input|token|second|minute|image|request|page/.test(text))
     return "embedding";
-  if (operations.includes("image_generation") && /output image|created.?image|per image/.test(text))
+  if (tasks.includes("image_generation") && /output image|created.?image|per image/.test(text))
     return "image_generation";
   if (/output.*video|video.*output/.test(text)) return "output_video";
   if (/input.*video|video.*input/.test(text)) return "input_video";
@@ -654,16 +650,15 @@ function meter(text: string, operations: ModelOperation[]): PriceRate["meter"] |
   if (/text input/.test(text)) return "input_text";
   if (/rerank/.test(text)) return "rerank_request";
   if (/output|response/.test(text))
-    return operations.includes("speech_synthesis") || operations.includes("speech_to_speech")
+    return tasks.includes("speech_synthesis") || tasks.includes("speech_to_speech")
       ? "output_audio"
       : "output_text";
   if (/input|prompt/.test(text))
-    return operations.includes("transcription") || operations.includes("speech_to_speech")
+    return tasks.includes("transcription") || tasks.includes("speech_to_speech")
       ? "input_audio"
       : "input_text";
-  if (operations.includes("image_generation") && /image/.test(text)) return "image_generation";
-  if (operations.includes("video_generation") && /video|second/.test(text))
-    return "video_generation";
+  if (tasks.includes("image_generation") && /image/.test(text)) return "image_generation";
+  if (tasks.includes("video_generation") && /video|second/.test(text)) return "video_generation";
 }
 
 function tier(attributes: Record<string, string>, text: string): string | undefined {
@@ -734,14 +729,14 @@ function rate(
   unit: string,
   price: string,
   effectiveDate: string | undefined,
-  operations: ModelOperation[],
+  tasks: ModelTask[],
   sourceId: string,
 ): PriceRate | undefined {
   const usage = attributes.usagetype ?? "";
   const text =
     `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
   if (/\bcustom\b|customization|training|storage/.test(text)) return undefined;
-  const observedMeter = meter(text, operations);
+  const observedMeter = meter(text, tasks);
   const endpoint =
     offerCode === "AmazonBedrockFoundationModels"
       ? undefined
@@ -787,7 +782,7 @@ function rate(
   }
   const finalMeter =
     observedMeter ??
-    (normalizedUnit === "image" && operations.includes("image_generation")
+    (normalizedUnit === "image" && tasks.includes("image_generation")
       ? "image_generation"
       : normalizedUnit === "second" || normalizedUnit === "video"
         ? "video_generation"
@@ -931,7 +926,7 @@ function mergeBedrockModels(current: ProviderModel, incoming: ProviderModel): Pr
       incoming.description,
     ),
     aliases: [...new Set([...current.aliases, ...incoming.aliases])].sort(),
-    operations: unique([...current.operations, ...incoming.operations]),
+    tasks: unique([...current.tasks, ...incoming.tasks]),
     api_endpoints:
       endpoints.size === 0
         ? undefined
@@ -1108,7 +1103,7 @@ function parsePrices(
             dimension.unit,
             price,
             term.effectiveDate,
-            card.operations,
+            card.tasks,
             sourceId,
           );
           if (parsed === undefined) continue;
@@ -1189,7 +1184,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         }),
         description: card.description,
         aliases: [...access.aliases].sort(),
-        operations: card.operations,
+        tasks: card.tasks,
         api_endpoints: apiEndpoints.length > 0 ? apiEndpoints : undefined,
         modalities: card.modalities,
         capabilities: {

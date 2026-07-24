@@ -815,7 +815,7 @@ kbd {
   width: 14%;
 }
 
-.model-table col.operations-col {
+.model-table col.tasks-col {
   width: 10%;
 }
 
@@ -879,6 +879,96 @@ kbd {
 .model-table th.numeric > button {
   width: 100%;
   justify-content: flex-end;
+}
+
+.pricing-header-tooltip {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.pricing-header-trigger {
+  padding: 2px 0 1px;
+  border-bottom: 1px dotted currentColor;
+  color: var(--text-tertiary);
+  cursor: help;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: 1;
+}
+
+.pricing-header-trigger:hover,
+.pricing-header-trigger:focus-visible {
+  color: var(--text);
+}
+
+.pricing-unit-tooltip {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 7px);
+  right: -5px;
+  display: grid;
+  width: 250px;
+  gap: 7px;
+  padding: 10px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  visibility: hidden;
+  color: var(--text-secondary);
+  background: var(--surface);
+  box-shadow: var(--popover-shadow);
+  font-size: 10px;
+  font-weight: 450;
+  letter-spacing: 0;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  text-align: left;
+  transform: translateY(-3px);
+  transition:
+    opacity 100ms ease,
+    transform 100ms ease,
+    visibility 100ms;
+  white-space: normal;
+}
+
+.pricing-unit-tooltip > strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.pricing-unit-tooltip > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pricing-unit-tooltip code {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.pricing-unit-tooltip small {
+  padding-top: 1px;
+  border-top: 1px solid var(--border);
+  color: var(--text-tertiary);
+  font-size: 9px;
+}
+
+.pricing-header-tooltip:hover .pricing-unit-tooltip,
+.pricing-header-tooltip:focus-within .pricing-unit-tooltip {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.model-table th:has(.pricing-header-tooltip:hover, .pricing-header-tooltip:focus-within) {
+  z-index: 40;
 }
 
 .model-table th > button:hover {
@@ -1050,26 +1140,26 @@ kbd {
   white-space: nowrap;
 }
 
-.operation-list {
+.task-list {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.operation-filter-button {
+.task-filter-button {
   display: inline;
   color: inherit;
   line-height: inherit;
   text-align: left;
 }
 
-.operation-separator {
+.task-separator {
   color: var(--text-tertiary);
 }
 
 .provider-identity:hover > span:last-child,
-.operation-filter-button:hover,
+.task-filter-button:hover,
 .row-status:hover {
   color: var(--accent);
   text-decoration: underline;
@@ -1078,7 +1168,7 @@ kbd {
 }
 
 .provider-identity:focus-visible,
-.operation-filter-button:focus-visible,
+.task-filter-button:focus-visible,
 .row-status:focus-visible {
   outline-offset: -1px;
 }
@@ -1722,7 +1812,7 @@ kbd {
     width: 11%;
   }
 
-  .operations-col,
+  .tasks-col,
   .cached-col {
     display: none;
   }

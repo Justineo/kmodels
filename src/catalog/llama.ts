@@ -437,7 +437,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       }),
       description: model.description,
       aliases,
-      operations: guard ? ["moderation"] : promptGuard ? ["classification"] : ["text_generation"],
+      tasks: guard ? ["moderation"] : promptGuard ? ["classification"] : ["text_generation"],
       ...(evidence === undefined ? {} : { api_endpoints: [endpoint] }),
       modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
       capabilities: {
