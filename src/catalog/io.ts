@@ -1,12 +1,7 @@
 import { createHash } from "node:crypto";
-import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { gzip, gunzip } from "node:zlib";
-import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-
-const compress = promisify(gzip);
-const decompress = promisify(gunzip);
 
 export const rootDirectory = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -48,17 +43,4 @@ export async function atomicWrite(path: string, contents: string | Uint8Array): 
 
 export async function writeJson(path: string, value: unknown): Promise<void> {
   await atomicWrite(path, stableJson(value));
-}
-
-export async function writeSnapshot(path: string, body: string): Promise<void> {
-  try {
-    await access(path);
-  } catch {
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, await compress(body, { level: 9 }));
-  }
-}
-
-export async function readSnapshot(path: string): Promise<string> {
-  return (await decompress(await readFile(path))).toString("utf8");
 }

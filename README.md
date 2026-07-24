@@ -8,14 +8,14 @@ pnpm collect
 pnpm dev
 ```
 
-The collector reads only the official hosts reviewed in `src/catalog/manifests.ts`. It stores content-addressed raw snapshots, validates drift per provider, and retains the last valid provider catalog when a refresh fails. See [`design.md`](./design.md) for the current repository decisions and data semantics.
+The collector reads only the official hosts reviewed in `src/catalog/manifests.ts`. It validates drift per provider, stores no raw responses, and retains the last valid provider catalog when a refresh fails. See [`design.md`](./design.md) for the current repository decisions and data semantics.
 
 ## Commands
 
-- `pnpm collect` refreshes static JSON in `data/` and `public/v1/`.
+- `pnpm collect` refreshes the durable catalog and semantic summary in `data/`.
 - `pnpm check` formats, lints and type-checks with Vite+.
 - `pnpm test` replays adapter fixtures and drift checks.
-- `pnpm build` builds the plain HTML/CSS site.
+- `pnpm build` builds the site and derives its static JSON endpoints in `dist/`.
 - `pnpm run deploy` deploys the prebuilt `dist/` directory to Void.
 
 ## Automation

@@ -894,7 +894,6 @@ describe("Cohere adapters", () => {
         scope: "account",
         role: "inventory",
         fields: expect.arrayContaining(["api_endpoints"]),
-        snapshotPolicy: "none",
       },
     ]);
   });
@@ -1164,7 +1163,6 @@ describe("Mistral adapters", () => {
         type: "api",
         scope: "account",
         role: "inventory",
-        snapshotPolicy: "none",
       },
     ]);
   });
@@ -1319,7 +1317,6 @@ describe("Meta Llama adapters", () => {
         type: "api",
         scope: "account",
         role: "inventory",
-        snapshotPolicy: "none",
       },
     ]);
   });

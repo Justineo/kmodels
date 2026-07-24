@@ -139,7 +139,6 @@ export interface SourceManifest {
         maxModels: number;
         concurrency: number;
       };
-  snapshotPolicy?: "full" | "none";
   linkedDocuments?: LinkedDocuments;
 }
 
@@ -190,7 +189,6 @@ const xaiApiSource = (
   role: "inventory",
   optional: true,
   auth: { scheme: "bearer", env: "XAI_API_KEY" },
-  snapshotPolicy: "none",
 });
 
 const huggingFaceInferenceSource: SourceManifest = {
@@ -213,7 +211,6 @@ const huggingFaceInferenceSource: SourceManifest = {
   scope: "global",
   exhaustive: true,
   role: "catalog",
-  snapshotPolicy: "none",
 };
 
 const dashscopeCatalogSource = (
@@ -346,7 +343,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "OPENAI_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -440,7 +436,6 @@ export const manifests = [
         optional: true,
         auth: { scheme: "header", env: "ANTHROPIC_API_KEY", header: "x-api-key" },
         headers: [{ name: "anthropic-version", value: "2023-06-01" }],
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -553,7 +548,6 @@ export const manifests = [
           envs: ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"],
         },
         transport: { kind: "aws-bedrock", region: "us-east-1" },
-        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["display_name"],
@@ -673,7 +667,6 @@ export const manifests = [
         optional: true,
         auth: { scheme: "bearer", env: "DATABRICKS_TOKEN" },
         transport: { kind: "databricks", hostEnv: "DATABRICKS_HOST" },
-        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["display_name"],
@@ -862,7 +855,6 @@ export const manifests = [
           subscriptionEnv: "AZURE_SUBSCRIPTION_ID",
           locationEnv: "AZURE_LOCATION",
         },
-        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["display_name"],
@@ -996,7 +988,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "header", env: "GEMINI_API_KEY", header: "x-goog-api-key" },
-        snapshotPolicy: "none",
       },
     ],
     supersededModelIds: ["gemini-2.5-flash-preview-09-2025", "gemini-flash-latest"],
@@ -1263,7 +1254,6 @@ export const manifests = [
             "openai",
           ],
         },
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -1411,7 +1401,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "COHERE_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["source_generated"],
@@ -1526,7 +1515,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "MISTRAL_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["source_generated"],
@@ -1654,7 +1642,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "LLAMA_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     supersededIdKinds: ["display_name", "source_generated"],
@@ -1776,7 +1763,6 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "catalog",
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -1899,7 +1885,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "DASHSCOPE_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -2055,7 +2040,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "CEREBRAS_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -2244,7 +2228,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "DEEPSEEK_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
@@ -2429,7 +2412,6 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "MOONSHOT_API_KEY" },
-        snapshotPolicy: "none",
       },
     ],
     warnOnMissing: {
