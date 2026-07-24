@@ -14,18 +14,19 @@ describe("model search", () => {
     expect(searchModels(index, "Claude 4.5 Sonnet")).toEqual([claudeSonnet]);
   });
 
-  it("ignores separators when matching identifiers", () => {
-    expect(searchModels(index, "gpt41mini")[0]).toBe(gpt41Mini);
+  it("ignores case, spaces, and hyphens", () => {
+    expect(searchModels(index, "GPT 4.1 MINI")).toEqual([gpt41Mini]);
+    expect(searchModels(index, "claude sonnet 4 5")).toEqual([claudeSonnet]);
   });
 
-  it("uses bounded LCS matching for typo tolerance", () => {
-    expect(searchModels(index, "claude 4.5 sonet")).toEqual([claudeSonnet]);
+  it("requires a contiguous normalized substring", () => {
+    expect(searchModels(index, "sonnet45")).toEqual([claudeSonnet]);
+    expect(searchModels(index, "claude 4.5 sonet")).toEqual([]);
     expect(searchModels(index, "zzzz")).toEqual([]);
   });
 
-  it("ranks exact matches above fuzzy alternatives", () => {
-    expect(searchModels(index, "gpt41mini")[0]).toBe(gpt41Mini);
-    expect(searchModels(index, "gpt41mini")).toContain(gpt4oMini);
+  it("preserves catalog order for matches", () => {
+    expect(searchModels(index, "gpt")).toEqual([gpt41Mini, gpt4oMini]);
   });
 
   it("does not treat punctuation as an empty search", () => {
