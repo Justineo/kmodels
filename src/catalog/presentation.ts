@@ -25,6 +25,11 @@ const cachedMeters: readonly PriceRate["meter"][] = [
   "cache_read_image",
   "cache_read_audio",
   "cache_read_video",
+  "cache_write_text",
+  "cache_write_image",
+  "cache_write_audio",
+  "cache_write_video",
+  "cache_storage",
 ];
 const defaultOutputMeters: readonly PriceRate["meter"][] = [
   "output_text",
@@ -35,6 +40,12 @@ const defaultOutputMeters: readonly PriceRate["meter"][] = [
   "video_generation",
   "embedding",
   "rerank_request",
+  "tool_call",
+  "realtime_client_message",
+  "realtime_session_duration",
+  "batch_inference",
+  "gpu_hour",
+  "provisioned_throughput",
 ];
 
 export function formatCount(value: number): string {
@@ -178,14 +189,32 @@ export function formatTableRateUnit(rate: PriceRate | undefined): string {
   switch (rate.unit) {
     case "character":
       return "/char";
+    case "gpu_hour":
+      return "/GPU·hr";
     case "image":
       return "/img";
+    case "million_characters":
+      return "/1M chars";
+    case "million_tokens_per_hour":
+      return "/1M tok·hr";
     case "minute":
       return "/min";
     case "request":
       return "/req";
     case "second":
       return "/sec";
+    case "thousand_characters":
+      return "/1K chars";
+    case "thousand_requests":
+      return "/1K req";
+    case "thousand_search_units":
+      return "/1K search";
+    case "thousand_tokens_per_minute_hour":
+      return "/1K TPM·hr";
+    case "unit_hour":
+      return "/unit·hr";
+    case "unit_month":
+      return "/unit·mo";
     default:
       return formatRateUnit(rate);
   }
@@ -193,20 +222,6 @@ export function formatTableRateUnit(rate: PriceRate | undefined): string {
 
 export function formatTableRateLabel(rate: PriceRate): string {
   return `${formatSnakeCase(rate.meter)} · ${formatPrice(rate)} ${formatRateUnit(rate)}`;
-}
-
-export function formatTablePricingState(model: ProviderModel): string {
-  if (model.pricing.length > 0) return "Other rates";
-  switch (model.pricing_status) {
-    case "custom_quote":
-      return "Custom quote";
-    case "not_applicable":
-      return "Not applicable";
-    case "not_published":
-      return "Not published";
-    default:
-      return "Price unknown";
-  }
 }
 
 export function formatSnakeCase(value: string): string {

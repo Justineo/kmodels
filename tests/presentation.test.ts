@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   formatRateUnit,
-  formatTablePricingState,
   formatTableRateLabel,
   formatTableRateUnit,
   perMillionTokenRate,
@@ -83,9 +82,11 @@ describe("rate presentation", () => {
 
   it("omits the table default while preserving exceptional units", () => {
     expect(formatTableRateUnit(rate("2", "million_tokens"))).toBe("");
-    expect(formatTableRateUnit(rate("4", "million_characters"))).toBe("/1M characters");
+    expect(formatTableRateUnit(rate("4", "million_characters"))).toBe("/1M chars");
     expect(formatTableRateUnit(rate("0.04", "image"))).toBe("/img");
     expect(formatTableRateUnit(rate("0.1", "second"))).toBe("/sec");
+    expect(formatTableRateUnit(rate("2", "unit_hour"))).toBe("/unit·hr");
+    expect(formatTableRateUnit(rate("4", "gpu_hour"))).toBe("/GPU·hr");
   });
 
   it("selects operation-aware representative request rates", () => {
@@ -122,24 +123,17 @@ describe("rate presentation", () => {
     );
   });
 
-  it("uses one explicit state when no comparable request rate exists", () => {
-    const unknown = model([], []);
-    expect(formatTablePricingState(unknown)).toBe("Price unknown");
-    expect(
-      formatTablePricingState({
-        ...unknown,
-        pricing_status: "not_published",
-      }),
-    ).toBe("Not published");
-    expect(
-      formatTablePricingState({
-        ...unknown,
-        pricing_status: "not_applicable",
-      }),
-    ).toBe("Not applicable");
-    expect(
-      formatTablePricingState(model([], [rate("2", "unit_hour", "provisioned_throughput")])),
-    ).toBe("Other rates");
+  it("falls back to published non-request rates before leaving a slot empty", () => {
+    const capacity = model([], [rate("2", "unit_hour", "provisioned_throughput")]);
+    expect(representativeTableRate(capacity, "output")).toMatchObject({
+      meter: "provisioned_throughput",
+      unit: "unit_hour",
+      price: "2",
+    });
+
+    const cacheWrite = model([], [rate("1.25", "million_tokens", "cache_write_text")]);
+    expect(representativeTableRate(cacheWrite, "cached")?.meter).toBe("cache_write_text");
+    expect(representativeTableRate(model([], []), "output")).toBeUndefined();
   });
 });
 
