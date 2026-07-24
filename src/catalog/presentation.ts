@@ -1,4 +1,5 @@
 import type { ModelType, PriceRate, ProviderModel } from "./schema.ts";
+import { scaleDecimal } from "./pricing.ts";
 
 const compactNumber = new Intl.NumberFormat("en", {
   notation: "compact",
@@ -45,6 +46,17 @@ export function preferredRate(
   );
 }
 
+export function perMillionTokenRate(rate: PriceRate | undefined): PriceRate | undefined {
+  if (rate === undefined || rate.unit === "million_tokens") return rate;
+  const places = rate.unit === "token" ? 6 : rate.unit === "thousand_tokens" ? 3 : undefined;
+  if (places === undefined) return rate;
+  return {
+    ...rate,
+    price: scaleDecimal(rate.price, places),
+    unit: "million_tokens",
+  };
+}
+
 function formatDecimal(value: string): string {
   const decimalPoint = value.indexOf(".");
   if (decimalPoint === -1) return value;
@@ -61,23 +73,31 @@ export function formatPrice(rate: PriceRate | undefined): string {
 }
 
 export function formatRateUnit(rate: PriceRate | undefined): string {
-  return rate === undefined ? "" : `/${formatSnakeCase(rate.unit)}`;
+  if (rate === undefined) return "";
+  switch (rate.unit) {
+    case "thousand_tokens":
+      return "/1K tokens";
+    case "million_tokens":
+      return "/1M tokens";
+    case "million_characters":
+      return "/1M characters";
+    case "thousand_characters":
+      return "/1K characters";
+    case "thousand_pages":
+      return "/1K pages";
+    case "thousand_requests":
+      return "/1K requests";
+    case "thousand_search_units":
+      return "/1K search units";
+    default:
+      return `/${formatSnakeCase(rate.unit)}`;
+  }
+}
+
+export function formatTableRateUnit(rate: PriceRate | undefined): string {
+  return rate?.unit === "million_tokens" ? "" : formatRateUnit(rate);
 }
 
 export function formatSnakeCase(value: string): string {
   return value.replaceAll("_", " ");
-}
-
-export function searchableModelText(model: ProviderModel): string {
-  return [
-    model.name,
-    model.model_id,
-    model.version ?? "",
-    model.provider_id,
-    ...model.types,
-    ...(model.service_families ?? []),
-    ...(model.api_endpoints ?? []).flatMap(({ name, path }) => [name, path]),
-  ]
-    .join(" ")
-    .toLocaleLowerCase();
 }

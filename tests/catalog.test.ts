@@ -18,6 +18,12 @@ describe("generated static catalog", () => {
     const sourceIds = new Set(catalog.sources.map((source) => source.id));
     const referencedSourceIds = new Set(catalog.models.flatMap((model) => model.source_refs));
     const modelIds = new Set<string>();
+    const manifestsByProvider = new Map(
+      manifests.map((manifest) => [manifest.provider.id, manifest.provider]),
+    );
+    for (const provider of catalog.providers) {
+      expect(provider.name).toBe(manifestsByProvider.get(provider.id)?.name);
+    }
     for (const model of catalog.models) {
       expect(modelIds.has(model.uid)).toBe(false);
       modelIds.add(model.uid);
@@ -101,6 +107,19 @@ describe("generated static catalog", () => {
     expect(deepseek?.api_endpoints?.filter(({ name }) => name === "Chat Completions")).toEqual([
       { name: "Chat Completions", path: "v1/chat/completions" },
     ]);
+  });
+
+  it("keeps Azure OpenAI as a service family inside Microsoft Foundry", async () => {
+    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const models = catalog.models.filter(({ provider_id }) => provider_id === "azure");
+    const families = new Set(models.flatMap(({ service_families }) => service_families ?? []));
+    expect(families).toEqual(
+      new Set([
+        "Azure OpenAI",
+        "Foundry Models from partners and community",
+        "Foundry Models sold by Azure",
+      ]),
+    );
   });
 
   it("publishes the repaired authenticated inventories without transport or schema failures", async () => {

@@ -1,9 +1,9 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
-import { formatCount, formatModelType, searchableModelText } from "./catalog/presentation.ts";
+import { formatCount, formatModelType } from "./catalog/presentation.ts";
 import {
   catalogEnvelopeSchema,
-  type Coverage,
+  type ModelType,
   type Provider,
   type ProviderModel,
   type SourceRecord,
@@ -12,29 +12,43 @@ import { calculateVirtualRange } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
 import ModelDetails from "./components/ModelDetails.vue";
 import ModelRow from "./components/ModelRow.vue";
+import ProviderSelect from "./components/ProviderSelect.vue";
+import UiIcon from "./components/UiIcon.vue";
+import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 
-const ROW_HEIGHT = 52;
+const ROW_HEIGHT = 48;
 const TABLE_HEADER_HEIGHT = 34;
 const OVERSCAN_ROWS = 8;
 
 type SortKey = "name" | "provider" | "context" | "updated";
 type SortDirection = "ascending" | "descending";
+type ModelStatus = ProviderModel["status"];
+
+const STATUS_OPTIONS: readonly ModelStatus[] = [
+  "active",
+  "preview",
+  "deprecated",
+  "retired",
+  "unknown",
+];
 
 const models = ref<ProviderModel[]>([]);
 const providers = ref<Provider[]>([]);
 const sources = ref<SourceRecord[]>([]);
-const coverage = ref<Coverage[]>([]);
 const generatedAt = ref("");
-const catalogVersion = ref("");
 const query = ref("");
 const selectedProvider = ref("");
-const selectedType = ref("");
+const selectedTypes = ref<ModelType[]>([]);
+const selectedStatuses = ref<ModelStatus[]>([]);
 const loading = ref(true);
 const loadError = ref<string>();
 const selectedModel = ref<ProviderModel>();
 const sortKey = ref<SortKey>("name");
 const sortDirection = ref<SortDirection>("ascending");
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
+const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
+const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
+const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
 const virtualRange = ref(
   calculateVirtualRange({
@@ -46,42 +60,33 @@ const virtualRange = ref(
   }),
 );
 let tableResizeObserver: ResizeObserver | undefined;
+const updateFilterScrollbars = useOverlayScrollbars(() => ({
+  target: filterScrollHost.value,
+  viewport: filterScrollViewport.value,
+}));
+useOverlayScrollbars(() => ({
+  target: tableScrollHost.value,
+  viewport: tableShell.value,
+}));
 
 const providerNames = computed(
   () => new Map(providers.value.map((provider) => [provider.id, provider.name])),
 );
-const providerGroups = computed(() => {
-  const groups: ReadonlyArray<[Provider["kind"], string]> = [
-    ["hosted", "Hosted providers"],
-    ["cloud_platform", "Cloud platforms"],
-    ["gateway", "Gateways"],
-    ["model_publisher", "Model publishers"],
-    ["local_runtime", "Local runtimes"],
-  ];
-  return groups
-    .map(([kind, label]) => ({
-      kind,
-      label,
-      providers: providers.value
-        .filter((provider) => provider.kind === kind)
-        .sort((left, right) => left.name.localeCompare(right.name)),
-    }))
-    .filter((group) => group.providers.length > 0);
-});
-const typeOptions = computed(() => {
-  return [...new Set(models.value.flatMap((model) => model.types))].sort();
-});
-const freshCount = computed(
-  () => coverage.value.filter((providerCoverage) => providerCoverage.status === "fresh").length,
+const providerOptions = computed(() =>
+  [...providers.value].sort((left, right) => left.name.localeCompare(right.name)),
+);
+const typeOptions = computed(() =>
+  [...new Set(models.value.flatMap((model) => model.types))].sort(),
 );
 const filteredModels = computed(() => {
   const normalizedQuery = query.value.trim().toLocaleLowerCase();
   const values = models.value.filter(
     (model) =>
-      (normalizedQuery === "" || searchableModelText(model).includes(normalizedQuery)) &&
+      (normalizedQuery === "" || model.name.toLocaleLowerCase().includes(normalizedQuery)) &&
       (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
-      (selectedType.value === "" ||
-        model.types.some((modelType) => modelType === selectedType.value)),
+      (selectedTypes.value.length === 0 ||
+        model.types.some((modelType) => selectedTypes.value.includes(modelType))) &&
+      (selectedStatuses.value.length === 0 || selectedStatuses.value.includes(model.status)),
   );
   values.sort(compareModels);
   return values;
@@ -90,19 +95,24 @@ const virtualModels = computed(() =>
   filteredModels.value.slice(virtualRange.value.start, virtualRange.value.end),
 );
 const hasFilters = computed(
-  () => query.value !== "" || selectedProvider.value !== "" || selectedType.value !== "",
+  () =>
+    query.value !== "" ||
+    selectedProvider.value !== "" ||
+    selectedTypes.value.length > 0 ||
+    selectedStatuses.value.length > 0,
+);
+const advancedFilterCount = computed(
+  () => selectedTypes.value.length + selectedStatuses.value.length,
 );
 const generatedAtLabel = computed(() => {
   if (generatedAt.value === "") return "—";
   return new Intl.DateTimeFormat("en", {
-    dateStyle: "medium",
-    timeStyle: "short",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   }).format(new Date(generatedAt.value));
-});
-const syncLabel = computed(() => {
-  if (loading.value) return "Loading";
-  if (loadError.value !== undefined) return "Unavailable";
-  return `${freshCount.value}/${providers.value.length} fresh`;
 });
 const resultCountLabel = computed(() => {
   const count = filteredModels.value.length;
@@ -183,8 +193,31 @@ function ariaSort(key: SortKey): "ascending" | "descending" | "none" {
 function resetFilters(): void {
   query.value = "";
   selectedProvider.value = "";
-  selectedType.value = "";
+  selectedTypes.value = [];
+  selectedStatuses.value = [];
   searchInput.value?.focus();
+}
+
+function clearAdvancedFilters(): void {
+  selectedTypes.value = [];
+  selectedStatuses.value = [];
+}
+
+function filterProvider(providerId: string): void {
+  selectedProvider.value = providerId;
+}
+
+function filterType(modelType: ModelType): void {
+  selectedTypes.value = [modelType];
+}
+
+function filterStatus(status: ModelStatus): void {
+  selectedStatuses.value = [status];
+}
+
+function handleFilterToggle(event: ToggleEvent): void {
+  if (event.newState !== "open") return;
+  void nextTick(updateFilterScrollbars);
 }
 
 function updateVirtualRange(): void {
@@ -207,12 +240,7 @@ function resetVirtualScroll(): void {
 function handleShortcut(event: KeyboardEvent): void {
   if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
   const target = event.target;
-  if (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
-  )
-    return;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
   event.preventDefault();
   searchInput.value?.focus();
 }
@@ -230,9 +258,7 @@ async function loadCatalog(): Promise<void> {
     models.value = catalog.data.models;
     providers.value = catalog.data.providers;
     sources.value = catalog.data.sources;
-    coverage.value = catalog.data.coverage;
     generatedAt.value = catalog.generated_at;
-    catalogVersion.value = catalog.catalog_version;
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : "Catalog unavailable";
   } finally {
@@ -259,93 +285,61 @@ onUnmounted(() => {
 
 <template>
   <header class="site-header">
-    <div class="header-context">
+    <h1 id="page-title">
       <a class="brand" href="/" aria-label="Kmodels home">Kmodels</a>
-      <span class="header-divider" aria-hidden="true"></span>
-      <span class="current-area">Catalog</span>
-    </div>
+    </h1>
     <div class="header-actions">
-      <span v-if="catalogVersion" class="catalog-version" :title="catalogVersion">
-        {{ catalogVersion.slice(0, 8) }}
+      <span class="catalog-summary" aria-label="Catalog summary">
+        <strong>{{ loading ? "—" : formatCount(models.length) }}</strong>
+        models
+        <span aria-hidden="true">·</span>
+        <strong>{{ loading ? "—" : providers.length }}</strong>
+        providers
       </span>
-      <span class="sync-state" :class="{ failed: loadError !== undefined }" aria-live="polite">
-        <span class="status-dot" aria-hidden="true"></span>
-        {{ syncLabel }}
-      </span>
+      <time class="generated-at" :datetime="generatedAt || undefined">
+        Updated {{ generatedAtLabel }}
+      </time>
       <a class="json-link" href="/v1/catalog/index.json">
         JSON
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M6 3h7v7M13 3 4 12" />
-        </svg>
+        <UiIcon name="external-link" />
       </a>
     </div>
   </header>
 
-  <main class="workspace">
-    <section class="page-header" aria-labelledby="page-title">
-      <div class="page-title">
-        <h1 id="page-title">Models</h1>
-        <p>Observed identities and facts from allowlisted official provider sources.</p>
-      </div>
-      <dl class="page-metadata">
-        <div>
-          <dt>Models</dt>
-          <dd>{{ loading ? "—" : formatCount(models.length) }}</dd>
-        </div>
-        <div>
-          <dt>Providers</dt>
-          <dd>{{ loading ? "—" : providers.length }}</dd>
-        </div>
-        <div>
-          <dt>Coverage</dt>
-          <dd>{{ loading ? "—" : `${freshCount}/${providers.length} fresh` }}</dd>
-        </div>
-        <div>
-          <dt>Generated</dt>
-          <dd>{{ generatedAtLabel }}</dd>
-        </div>
-      </dl>
-    </section>
-
-    <section aria-label="Model catalog">
+  <main class="workspace" aria-labelledby="page-title">
+    <section class="catalog-section" aria-label="Model catalog">
       <div class="filter-bar">
         <label class="search-field">
           <span class="visually-hidden">Search models</span>
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <circle cx="8.5" cy="8.5" r="5.5" />
-            <path d="m13 13 4 4" />
-          </svg>
+          <UiIcon name="search" />
           <input
             ref="searchInput"
             v-model="query"
             type="search"
-            placeholder="Model, provider, endpoint…"
+            placeholder="Model name…"
             autocomplete="off"
           />
           <kbd>/</kbd>
         </label>
 
-        <label class="select-field">
-          <span>Provider</span>
-          <select v-model="selectedProvider" class="filter-select">
-            <option value="">All providers</option>
-            <optgroup v-for="group in providerGroups" :key="group.kind" :label="group.label">
-              <option v-for="provider in group.providers" :key="provider.id" :value="provider.id">
-                {{ provider.name }}
-              </option>
-            </optgroup>
-          </select>
-        </label>
+        <ProviderSelect v-model="selectedProvider" :options="providerOptions" />
 
-        <label class="select-field">
-          <span>Operation</span>
-          <select v-model="selectedType" class="filter-select">
-            <option value="">All operations</option>
-            <option v-for="modelType in typeOptions" :key="modelType" :value="modelType">
-              {{ formatModelType(modelType) }}
-            </option>
-          </select>
-        </label>
+        <button
+          class="filter-trigger"
+          type="button"
+          popovertarget="catalog-filters"
+          :aria-label="
+            advancedFilterCount === 0
+              ? 'More filters'
+              : `More filters, ${advancedFilterCount} selected`
+          "
+        >
+          <UiIcon name="list-filter" />
+          <span>Filters</span>
+          <span v-if="advancedFilterCount > 0" class="filter-count">
+            {{ advancedFilterCount }}
+          </span>
+        </button>
 
         <button
           class="clear-button"
@@ -355,115 +349,196 @@ onUnmounted(() => {
           title="Clear filters"
           @click="resetFilters"
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="m4 4 8 8M12 4l-8 8" />
-          </svg>
+          <UiIcon name="x" />
         </button>
 
         <output class="result-count" aria-live="polite">{{ resultCountLabel }}</output>
-      </div>
 
-      <div
-        ref="tableShell"
-        class="table-shell"
-        :aria-busy="loading"
-        :aria-label="`Model results, ${resultCountLabel}`"
-        tabindex="0"
-        @scroll.passive="updateVirtualRange"
-      >
-        <table class="model-table" :aria-rowcount="filteredModels.length + 1">
-          <caption class="visually-hidden">
-            Observed models and representative published rates
-          </caption>
-          <colgroup>
-            <col class="model-col" />
-            <col class="provider-col" />
-            <col class="operations-col" />
-            <col class="status-col" />
-            <col class="context-col" />
-            <col class="input-col" />
-            <col class="output-col" />
-            <col class="updated-col" />
-            <col class="disclosure-col" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th class="model-col" scope="col" :aria-sort="ariaSort('name')">
-                <ColumnSortButton
-                  label="Model"
-                  :direction="sortKey === 'name' ? sortDirection : undefined"
-                  @sort="setSort('name')"
-                />
-              </th>
-              <th class="provider-col" scope="col" :aria-sort="ariaSort('provider')">
-                <ColumnSortButton
-                  label="Provider"
-                  :direction="sortKey === 'provider' ? sortDirection : undefined"
-                  @sort="setSort('provider')"
-                />
-              </th>
-              <th class="operations-col" scope="col">Operations</th>
-              <th class="status-col" scope="col">Status</th>
-              <th class="context-col numeric" scope="col" :aria-sort="ariaSort('context')">
-                <ColumnSortButton
-                  label="Context"
-                  :direction="sortKey === 'context' ? sortDirection : undefined"
-                  @sort="setSort('context')"
-                />
-              </th>
-              <th class="input-col numeric" scope="col">Input rate</th>
-              <th class="output-col numeric" scope="col">Output rate</th>
-              <th class="updated-col" scope="col" :aria-sort="ariaSort('updated')">
-                <ColumnSortButton
-                  label="Updated"
-                  :direction="sortKey === 'updated' ? sortDirection : undefined"
-                  @sort="setSort('updated')"
-                />
-              </th>
-              <th class="disclosure-col" scope="col">
-                <span class="visually-hidden">Details</span>
-              </th>
-            </tr>
-          </thead>
-
-          <tbody v-if="filteredModels.length > 0">
-            <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
-              <td colspan="9" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
-            </tr>
-            <ModelRow
-              v-for="(model, index) in virtualModels"
-              :key="model.uid"
-              :model="model"
-              :provider-name="providerName(model.provider_id)"
-              :row-index="virtualRange.start + index + 2"
-              :selected="selectedModel?.uid === model.uid"
-              @select="selectedModel = $event"
-            />
-            <tr v-if="virtualRange.paddingAfter > 0" class="virtual-spacer" aria-hidden="true">
-              <td colspan="9" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
-            </tr>
-          </tbody>
-          <tbody v-else>
-            <tr>
-              <td colspan="9">
-                <div v-if="loading" class="table-state">
-                  <span class="loader" aria-hidden="true"></span>
-                  <p>Loading validated catalog…</p>
+        <dialog
+          id="catalog-filters"
+          class="filter-popover"
+          popover="auto"
+          aria-labelledby="filter-popover-title"
+          @toggle="handleFilterToggle"
+        >
+          <div ref="filterScrollHost" class="filter-scroll-host" data-overlayscrollbars-initialize>
+            <div ref="filterScrollViewport" class="filter-scroll-viewport">
+              <header class="filter-popover-header">
+                <div>
+                  <h2 id="filter-popover-title">Filters</h2>
+                  <p>Matches any selected value within each group.</p>
                 </div>
-                <div v-else-if="loadError" class="table-state error-state">
-                  <p>{{ loadError }}</p>
-                  <button type="button" @click="loadCatalog">Try again</button>
-                </div>
-                <div v-else class="table-state">
-                  <p>No observed models match these filters.</p>
-                  <button v-if="hasFilters" type="button" @click="resetFilters">
-                    Clear filters
+                <div class="filter-popover-actions">
+                  <button
+                    type="button"
+                    :disabled="advancedFilterCount === 0"
+                    @click="clearAdvancedFilters"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    class="filter-popover-close"
+                    type="button"
+                    popovertarget="catalog-filters"
+                    popovertargetaction="hide"
+                    aria-label="Close filters"
+                  >
+                    <UiIcon name="x" />
                   </button>
                 </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </header>
+
+              <div class="filter-popover-body">
+                <fieldset class="filter-group">
+                  <legend>Operations</legend>
+                  <div class="filter-options">
+                    <label v-for="modelType in typeOptions" :key="modelType" class="filter-option">
+                      <input v-model="selectedTypes" type="checkbox" :value="modelType" />
+                      <span>{{ formatModelType(modelType) }}</span>
+                    </label>
+                  </div>
+                </fieldset>
+
+                <fieldset class="filter-group">
+                  <legend>Status</legend>
+                  <div class="filter-options">
+                    <label v-for="status in STATUS_OPTIONS" :key="status" class="filter-option">
+                      <input v-model="selectedStatuses" type="checkbox" :value="status" />
+                      <span
+                        class="filter-status-dot"
+                        :data-status="status"
+                        aria-hidden="true"
+                      ></span>
+                      <span class="status-filter-label">{{ status }}</span>
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+            </div>
+          </div>
+        </dialog>
+      </div>
+
+      <div ref="tableScrollHost" class="table-scroll-host" data-overlayscrollbars-initialize>
+        <div
+          ref="tableShell"
+          class="table-shell"
+          :aria-busy="loading"
+          :aria-label="`Model results, ${resultCountLabel}`"
+          tabindex="0"
+          @scroll.passive="updateVirtualRange"
+        >
+          <table class="model-table" :aria-rowcount="filteredModels.length + 1">
+            <caption class="visually-hidden">
+              Observed models and representative published rates
+            </caption>
+            <colgroup>
+              <col class="model-col" />
+              <col class="provider-col" />
+              <col class="operations-col" />
+              <col class="status-col" />
+              <col class="context-col" />
+              <col class="input-col" />
+              <col class="output-col" />
+              <col class="updated-col" />
+              <col class="disclosure-col" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="model-col" scope="col" :aria-sort="ariaSort('name')">
+                  <ColumnSortButton
+                    label="Model"
+                    :direction="sortKey === 'name' ? sortDirection : undefined"
+                    @sort="setSort('name')"
+                  />
+                </th>
+                <th class="provider-col" scope="col" :aria-sort="ariaSort('provider')">
+                  <ColumnSortButton
+                    label="Provider"
+                    :direction="sortKey === 'provider' ? sortDirection : undefined"
+                    @sort="setSort('provider')"
+                  />
+                </th>
+                <th class="operations-col" scope="col">Operations</th>
+                <th class="status-col" scope="col">Status</th>
+                <th class="context-col numeric" scope="col" :aria-sort="ariaSort('context')">
+                  <ColumnSortButton
+                    label="Context"
+                    :direction="sortKey === 'context' ? sortDirection : undefined"
+                    @sort="setSort('context')"
+                  />
+                </th>
+                <th
+                  class="input-col numeric"
+                  scope="col"
+                  aria-label="Input rate per 1 million tokens"
+                  title="Default unit: per 1M tokens"
+                >
+                  Input / 1M
+                </th>
+                <th
+                  class="output-col numeric"
+                  scope="col"
+                  aria-label="Output rate per 1 million tokens"
+                  title="Default unit: per 1M tokens"
+                >
+                  Output / 1M
+                </th>
+                <th class="updated-col numeric" scope="col" :aria-sort="ariaSort('updated')">
+                  <ColumnSortButton
+                    label="Updated"
+                    :direction="sortKey === 'updated' ? sortDirection : undefined"
+                    @sort="setSort('updated')"
+                  />
+                </th>
+                <th class="disclosure-col" scope="col">
+                  <span class="visually-hidden">Details</span>
+                </th>
+              </tr>
+            </thead>
+
+            <tbody v-if="filteredModels.length > 0">
+              <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
+                <td colspan="9" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
+              </tr>
+              <ModelRow
+                v-for="(model, index) in virtualModels"
+                :key="model.uid"
+                :model="model"
+                :provider-name="providerName(model.provider_id)"
+                :row-index="virtualRange.start + index + 2"
+                :selected="selectedModel?.uid === model.uid"
+                @select="selectedModel = $event"
+                @filter-provider="filterProvider"
+                @filter-type="filterType"
+                @filter-status="filterStatus"
+              />
+              <tr v-if="virtualRange.paddingAfter > 0" class="virtual-spacer" aria-hidden="true">
+                <td colspan="9" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
+              </tr>
+            </tbody>
+            <tbody v-else>
+              <tr>
+                <td colspan="9">
+                  <div v-if="loading" class="table-state">
+                    <UiIcon class="loader" name="loader-circle" />
+                    <p>Loading validated catalog…</p>
+                  </div>
+                  <div v-else-if="loadError" class="table-state error-state">
+                    <p>{{ loadError }}</p>
+                    <button type="button" @click="loadCatalog">Try again</button>
+                  </div>
+                  <div v-else class="table-state">
+                    <p>No observed models match these filters.</p>
+                    <button v-if="hasFilters" type="button" @click="resetFilters">
+                      Clear filters
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   </main>
