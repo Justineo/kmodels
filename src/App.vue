@@ -35,6 +35,7 @@ type SortState = {
 };
 const LIFECYCLE_OPTIONS = modelLifecycleSchema.options;
 const RELEASE_STAGE_OPTIONS = modelReleaseStageSchema.options;
+const root = document.documentElement;
 
 const models = ref<ProviderModel[]>([]);
 const providers = ref<Provider[]>([]);
@@ -48,7 +49,7 @@ const selectedReleaseStages = ref<ModelReleaseStage[]>([]);
 const loading = ref(true);
 const loadError = ref<string>();
 const selectedModel = ref<ProviderModel>();
-const theme = ref<Theme>(document.documentElement.dataset.theme === "dark" ? "dark" : "light");
+const theme = ref<Theme>(root.dataset.theme === "dark" ? "dark" : "light");
 const sort = ref<SortState>();
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
 const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
@@ -216,31 +217,13 @@ function ariaSort(key: SortKey): "ascending" | "descending" | "none" {
 function resetFilters(): void {
   query.value = "";
   selectedProvider.value = "";
-  selectedOperations.value = [];
-  selectedLifecycles.value = [];
-  selectedReleaseStages.value = [];
+  clearAdvancedFilters();
 }
 
 function clearAdvancedFilters(): void {
   selectedOperations.value = [];
   selectedLifecycles.value = [];
   selectedReleaseStages.value = [];
-}
-
-function filterProvider(providerId: string): void {
-  selectedProvider.value = providerId;
-}
-
-function filterOperation(operation: ModelOperation): void {
-  selectedOperations.value = [operation];
-}
-
-function filterLifecycle(lifecycle: ModelLifecycle): void {
-  selectedLifecycles.value = [lifecycle];
-}
-
-function filterReleaseStage(releaseStage: ModelReleaseStage): void {
-  selectedReleaseStages.value = [releaseStage];
 }
 
 function handleFilterToggle(event: ToggleEvent): void {
@@ -275,10 +258,10 @@ function handleShortcut(event: KeyboardEvent): void {
 
 function toggleTheme(): void {
   theme.value = theme.value === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = theme.value;
+  root.dataset.theme = theme.value;
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    ?.setAttribute("content", theme.value === "dark" ? "#0d0d0f" : "#f7f7f8");
+    ?.setAttribute("content", getComputedStyle(root).backgroundColor);
   try {
     localStorage.setItem("theme", theme.value);
   } catch {}
@@ -590,10 +573,10 @@ onUnmounted(() => {
                 :row-index="virtualRange.start + index + 2"
                 :selected="selectedModel?.uid === model.uid"
                 @select="selectedModel = $event"
-                @filter-provider="filterProvider"
-                @filter-operation="filterOperation"
-                @filter-lifecycle="filterLifecycle"
-                @filter-release-stage="filterReleaseStage"
+                @filter-provider="selectedProvider = $event"
+                @filter-operation="selectedOperations = [$event]"
+                @filter-lifecycle="selectedLifecycles = [$event]"
+                @filter-release-stage="selectedReleaseStages = [$event]"
               />
               <tr v-if="virtualRange.paddingAfter > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="9" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
