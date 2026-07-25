@@ -8,7 +8,7 @@ pnpm collect
 pnpm dev
 ```
 
-The collector reads only the official hosts reviewed in `src/catalog/manifests.ts`. It validates drift per provider, stores no raw responses, and retains the last valid provider catalog when a refresh fails. See [`design.md`](./design.md) for the current repository decisions and data semantics.
+The collector reads only the official hosts reviewed in `src/catalog/manifests.ts`. It validates drift per provider, stores no raw responses, and retains the last valid provider catalog when a refresh fails. [`design.md`](./design.md) indexes the current shared and provider-specific decisions.
 
 ## Commands
 
@@ -20,7 +20,7 @@ The collector reads only the official hosts reviewed in `src/catalog/manifests.t
 
 ## Automation
 
-GitHub Actions checks sources every 30 minutes and commits only validated output. Public catalogs need no secret; optional scoped inventories use the named provider credentials documented in `design.md`. Void deployment uses GitHub OIDC: set the repository variable `VOID_PROJECT`, then connect the repository once from an authenticated workstation:
+GitHub Actions checks sources every 30 minutes and commits only validated output. Public catalogs need no secret; optional scoped inventories use the credentials documented in the matching provider file in the [`design.md` index](./design.md#providers). Void deployment uses GitHub OIDC: set the repository variable `VOID_PROJECT`, then connect the repository once from an authenticated workstation:
 
 ```sh
 void github connect "$VOID_PROJECT" \
