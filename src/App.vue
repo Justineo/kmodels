@@ -1,6 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
-import { formatCount, formatModelTask } from "./catalog/presentation.ts";
+import { formatCount, formatModelTask, versionBadgeModelUids } from "./catalog/presentation.ts";
 import {
   catalogEnvelopeSchema,
   migrateCatalogEnvelope,
@@ -90,6 +90,7 @@ const providerOptions = computed(() =>
   [...providers.value].sort((left, right) => left.name.localeCompare(right.name)),
 );
 const taskOptions = computed(() => orderedTasks(models.value.flatMap((model) => model.tasks)));
+const versionBadgeUids = computed(() => versionBadgeModelUids(models.value));
 const searchIndex = computed(() => indexModels(models.value));
 const filteredModels = computed(() => {
   const values = searchModels(searchIndex.value, query.value).filter(
@@ -480,33 +481,33 @@ onUnmounted(() => {
           aria-labelledby="filter-popover-title"
           @toggle="handleFilterToggle"
         >
+          <header class="filter-popover-header">
+            <div>
+              <h2 id="filter-popover-title">Filters</h2>
+              <p>Matches any selected value within each group.</p>
+            </div>
+            <div class="filter-popover-actions">
+              <button
+                type="button"
+                :disabled="advancedFilterCount === 0"
+                @click="clearAdvancedFilters"
+              >
+                Clear
+              </button>
+              <button
+                class="filter-popover-close"
+                type="button"
+                popovertarget="catalog-filters"
+                popovertargetaction="hide"
+                aria-label="Close filters"
+              >
+                <UiIcon name="x" />
+              </button>
+            </div>
+          </header>
+
           <div ref="filterScrollHost" class="filter-scroll-host" data-overlayscrollbars-initialize>
             <div ref="filterScrollViewport" class="filter-scroll-viewport">
-              <header class="filter-popover-header">
-                <div>
-                  <h2 id="filter-popover-title">Filters</h2>
-                  <p>Matches any selected value within each group.</p>
-                </div>
-                <div class="filter-popover-actions">
-                  <button
-                    type="button"
-                    :disabled="advancedFilterCount === 0"
-                    @click="clearAdvancedFilters"
-                  >
-                    Clear
-                  </button>
-                  <button
-                    class="filter-popover-close"
-                    type="button"
-                    popovertarget="catalog-filters"
-                    popovertargetaction="hide"
-                    aria-label="Close filters"
-                  >
-                    <UiIcon name="x" />
-                  </button>
-                </div>
-              </header>
-
               <div class="filter-popover-body">
                 <fieldset class="filter-group">
                   <legend>Tasks</legend>
@@ -693,6 +694,7 @@ onUnmounted(() => {
                 :provider-name="providerName(model.provider_id)"
                 :row-index="virtualRange.start + index + 2"
                 :selected="selectedModelUid === model.uid"
+                :show-version-badge="versionBadgeUids.has(model.uid)"
                 @select="selectedModelUid = $event.uid"
                 @filter-provider="selectedProvider = $event"
                 @filter-task="selectedTasks = [$event]"
