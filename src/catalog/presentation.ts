@@ -52,6 +52,23 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
+export function versionBadgeModelUids(models: readonly ProviderModel[]): Set<string> {
+  const counts = new Map<string, number>();
+  for (const model of models) {
+    const key = JSON.stringify([model.provider_id, model.model_id]);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return new Set(
+    models
+      .filter(
+        (model) =>
+          model.version !== undefined &&
+          (counts.get(JSON.stringify([model.provider_id, model.model_id])) ?? 0) > 1,
+      )
+      .map((model) => model.uid),
+  );
+}
+
 export function formatTokenCount(value: number | undefined): string {
   return value === undefined ? "—" : compactNumber.format(value);
 }

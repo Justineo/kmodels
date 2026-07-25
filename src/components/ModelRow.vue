@@ -24,6 +24,7 @@ const props = defineProps<{
   providerName: string;
   rowIndex: number;
   selected: boolean;
+  showVersionBadge: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -58,17 +59,31 @@ function filterStatus(): void {
 <template>
   <tr class="model-row" :aria-rowindex="rowIndex" :aria-selected="selected" :data-status="status">
     <td class="model-col">
-      <button
-        class="model-identity"
-        type="button"
-        :aria-label="`View ${model.name} details`"
-        @click="selectModel"
-      >
-        <strong>{{ model.name }}</strong>
-        <code>
-          {{ model.model_id }}<span v-if="model.version"> · {{ model.version }}</span>
-        </code>
-      </button>
+      <div class="model-cell">
+        <button
+          class="model-identity"
+          type="button"
+          :aria-label="`View ${model.name} details`"
+          @click="selectModel"
+        >
+          <strong>{{ model.name }}</strong>
+          <code>{{ model.model_id }}</code>
+        </button>
+        <span v-if="showVersionBadge && model.version" class="version-disclosure">
+          <button
+            class="version-badge"
+            type="button"
+            :aria-describedby="`version-tooltip-${rowIndex}`"
+            :aria-label="`Provider model version ${model.version}`"
+          >
+            @{{ model.version }}
+          </button>
+          <span :id="`version-tooltip-${rowIndex}`" class="version-tooltip" role="tooltip">
+            <span>Provider model version</span>
+            <code>{{ model.version }}</code>
+          </span>
+        </span>
+      </div>
     </td>
     <td class="provider-col">
       <button

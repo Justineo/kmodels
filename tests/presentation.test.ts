@@ -7,6 +7,7 @@ import {
   formatTableTask,
   perMillionTokenRate,
   representativeTableRate,
+  versionBadgeModelUids,
 } from "../src/catalog/presentation.ts";
 import {
   type ModelTask,
@@ -84,6 +85,26 @@ describe("task presentation", () => {
       expect(formatTableTask(task)).toBe(compact);
     },
   );
+});
+
+describe("version presentation", () => {
+  it("shows version badges only when a provider model ID needs disambiguation", () => {
+    const base = model([], []);
+    const values: ProviderModel[] = [
+      { ...base, uid: "azure/model@1", provider_id: "azure", version: "1" },
+      { ...base, uid: "azure/model@2", provider_id: "azure", version: "2" },
+      { ...base, uid: "openai/model", provider_id: "openai", version: "2026-01-01" },
+      {
+        ...base,
+        uid: "azure/other@1",
+        provider_id: "azure",
+        model_id: "other",
+        version: "1",
+      },
+    ];
+
+    expect([...versionBadgeModelUids(values)].sort()).toEqual(["azure/model@1", "azure/model@2"]);
+  });
 });
 
 describe("rate presentation", () => {
