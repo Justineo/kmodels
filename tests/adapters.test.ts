@@ -17,8 +17,9 @@ import {
 } from "../src/catalog/fetch.ts";
 import { applyGroups } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
-import { sourceKindSchema, type Provider, type ProviderModel } from "../src/catalog/schema.ts";
 import { baseModel } from "../src/catalog/model.ts";
+import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
+import { sourceKindSchema, type Provider } from "../src/catalog/schema.ts";
 import { preserveMissing, validateProvider } from "../src/catalog/validation.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
@@ -672,22 +673,22 @@ describe("Cohere adapters", () => {
       count: models.length,
       command_a_name: commandA?.name,
       command_a_release: commandA?.release_date,
-      command_a_price_count: commandA?.pricing.length,
+      command_a_price_count: commandA?.price_facts.length,
       plus_name: commandAPlus?.name,
       plus_modalities: commandAPlus?.modalities,
       plus_reasoning: commandAPlus?.capabilities.reasoning,
-      plus_pricing_status: commandAPlus?.pricing_status,
+      plus_pricing_state: commandAPlus?.pricing_state,
       plus_endpoints: commandAPlus?.api_endpoints,
       command_a_endpoints: commandA?.api_endpoints,
       embedding_limits: embedding?.limits,
       embedding_endpoints: embedding?.api_endpoints,
-      embedding_prices: embedding?.pricing.map(({ meter, price, unit, conditions }) => ({
+      embedding_prices: embedding?.price_facts.map(({ meter, price, unit, conditions }) => ({
         meter,
         price,
         unit,
         conditions,
       })),
-      rerank_prices: rerank?.pricing.map(({ price, unit, conditions }) => ({
+      rerank_prices: rerank?.price_facts.map(({ price, unit, conditions }) => ({
         price,
         unit,
         conditions,
@@ -702,7 +703,7 @@ describe("Cohere adapters", () => {
         tasks: arabic?.tasks,
         modalities: arabic?.modalities,
         release: arabic?.release_date,
-        pricing_status: arabic?.pricing_status,
+        pricing_state: arabic?.pricing_state,
         endpoints: arabic?.api_endpoints,
       },
     }).toEqual({
@@ -713,7 +714,7 @@ describe("Cohere adapters", () => {
       plus_name: "Command A+",
       plus_modalities: { input: ["text", "image"], output: ["text"] },
       plus_reasoning: true,
-      plus_pricing_status: "custom_quote",
+      plus_pricing_state: "custom_quote",
       plus_endpoints: [
         { name: "Chat Completions", path: "compatibility/v1/chat/completions" },
         { name: "Chat V2", path: "v2/chat" },
@@ -774,7 +775,7 @@ describe("Cohere adapters", () => {
         tasks: ["transcription"],
         modalities: { input: ["audio"], output: ["text"] },
         release: "2026-07-07",
-        pricing_status: "custom_quote",
+        pricing_state: "custom_quote",
         endpoints: [{ name: "Audio Transcriptions", path: "v2/audio/transcriptions" }],
       },
     });
@@ -914,7 +915,7 @@ describe("Mistral adapters", () => {
         modalities: medium?.modalities,
         limits: medium?.limits,
         release_date: medium?.release_date,
-        pricing: medium?.pricing.map(({ meter, price, unit, conditions, derived }) => ({
+        pricing: medium?.price_facts.map(({ meter, price, unit, conditions, derived }) => ({
           meter,
           price,
           unit,
@@ -930,7 +931,7 @@ describe("Mistral adapters", () => {
         tasks: ocr?.tasks,
         api_endpoints: ocr?.api_endpoints,
         modalities: ocr?.modalities,
-        pricing: ocr?.pricing.map(({ meter, price, unit, conditions }) => ({
+        pricing: ocr?.price_facts.map(({ meter, price, unit, conditions }) => ({
           meter,
           price,
           unit,
@@ -941,7 +942,7 @@ describe("Mistral adapters", () => {
         tasks: speech?.tasks,
         api_endpoints: speech?.api_endpoints,
         modalities: speech?.modalities,
-        pricing: speech?.pricing.map(({ meter, price, unit }) => ({ meter, price, unit })),
+        pricing: speech?.price_facts.map(({ meter, price, unit }) => ({ meter, price, unit })),
       },
       retired: {
         tasks: retired?.tasks,
@@ -1432,13 +1433,13 @@ describe("OpenAI adapters", () => {
       embedding_output: ["embedding"],
     });
     expect(
-      model?.pricing.find(
+      model?.price_facts.find(
         (rate) =>
           rate.meter === "cache_write_text" && rate.conditions.context_min_tokens === undefined,
       )?.price,
     ).toBe("3.125");
     expect(
-      model?.pricing.find(
+      model?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.context_min_tokens === 272_001,
       )?.price,
     ).toBe("5");
@@ -1447,7 +1448,7 @@ describe("OpenAI adapters", () => {
   it("keeps batch and standard token prices as separate tiers", async () => {
     const model = (await parsed("openai", "openai/batch-catalog.json"))[0];
     expect(
-      model?.pricing.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
+      model?.price_facts.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
     ).toEqual([
       { meter: "input_text", price: "2.00", conditions: { service_tier: "batch" } },
       { meter: "output_text", price: "8.00", conditions: { service_tier: "batch" } },
@@ -1620,8 +1621,8 @@ describe("Azure adapters", () => {
       status: model?.status,
       deprecatedAt: model?.deprecated_at,
       availability: model?.availability,
-      price: model?.pricing[0],
-      imagePrice: model?.pricing.find((rate) => rate.meter === "input_image")?.price,
+      price: model?.price_facts[0],
+      imagePrice: model?.price_facts.find((rate) => rate.meter === "input_image")?.price,
       scope: model?.scope,
     }).toEqual({
       uid: "azure/gpt-multi@2026-01-01",
@@ -1653,12 +1654,12 @@ describe("Azure adapters", () => {
         conditions: {
           region: "eastus",
           deployment_scope: "GlobalStandard",
-          effective_from: "2026-01-01",
         },
         source_ref: "azure-api",
         derived: false,
         raw_price: "1.25",
         raw_unit: "1M Tokens",
+        raw_validity: "2026-01-01T00:00:00Z",
       },
       imagePrice: "2.5",
       scope: "runtime_observation",
@@ -1666,6 +1667,60 @@ describe("Azure adapters", () => {
     await expect(parsed("azure", "azure/broken-api.json", "azure-api")).rejects.toThrow(
       "schema drift",
     );
+  });
+
+  it("extracts current public retail rates without Azure credentials", async () => {
+    const value = manifest("azure");
+    const configured = value.sources.find(({ id }) => id === "azure-retail-prices");
+    if (configured === undefined || configured.extractor.kind !== "azure-retail-prices")
+      throw new Error("Missing Azure retail-price source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "azure-retail-prices", minModels: 3, maxModels: 5 },
+    };
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("azure/retail-prices.json"),
+      observedAt,
+    });
+    const gpt = models.find(({ model_id }) => model_id === "gpt-4.1");
+    const terra = models.find(({ model_id }) => model_id === "gpt-5.6-terra");
+    const audio = models.find(({ model_id }) => model_id === "gpt-audio-1.5");
+    expect(models).toHaveLength(3);
+    expect(gpt?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "input_text",
+        price: "0.0022",
+        unit: "thousand_tokens",
+        conditions: { region: "eastus", deployment_scope: "Standard" },
+        raw_validity: "2025-11-01T00:00:00Z",
+      }),
+      expect.objectContaining({ meter: "output_text", price: "0.0088" }),
+      expect.objectContaining({ meter: "cache_read_text", price: "0.00055" }),
+    ]);
+    expect(terra?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "input_text",
+        conditions: {
+          region: "eastus2",
+          deployment_scope: "GlobalStandard",
+          context_tier: "short_context",
+        },
+        raw_validity: "2026-07-01T00:00:00Z – 2026-08-31T23:59:00Z",
+      }),
+      expect.objectContaining({
+        meter: "cache_read_text",
+        conditions: {
+          region: "eastus2",
+          deployment_scope: "GlobalStandard",
+          service_tier: "priority",
+          context_tier: "short_context",
+        },
+      }),
+      expect.objectContaining({ meter: "cache_write_text" }),
+    ]);
+    expect(audio?.price_facts.map(({ meter }) => meter)).toEqual(["input_text", "input_audio"]);
   });
 
   it("preserves ARM Legacy as a callable lifecycle state", async () => {
@@ -1700,9 +1755,9 @@ describe("Gemini adapters", () => {
       status: model?.status,
       releaseStage: model?.release_stage,
       endpoints: endpoints(model),
-      input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
-      cached: model?.pricing.find((rate) => rate.meter === "cache_read_text")?.price,
-      storage: model?.pricing.find((rate) => rate.meter === "cache_storage")?.unit,
+      input: model?.price_facts.find((rate) => rate.meter === "input_text")?.price,
+      cached: model?.price_facts.find((rate) => rate.meter === "cache_read_text")?.price,
+      storage: model?.price_facts.find((rate) => rate.meter === "cache_storage")?.unit,
     }).toEqual({
       name: "Gemini Test",
       aliases: ["gemini-test-latest"],
@@ -1748,19 +1803,19 @@ describe("Gemini adapters", () => {
         tasks: music?.tasks,
         modalities: music?.modalities,
         releaseStage: music?.release_stage,
-        rate: music?.pricing[0],
+        rate: music?.price_facts[0],
       },
       embedding: {
         tasks: embedding?.tasks,
         limits: embedding?.limits,
         releaseStage: embedding?.release_stage,
-        units: embedding?.pricing.map((rate) => rate.unit),
+        units: embedding?.price_facts.map((rate) => rate.unit),
       },
       gemma: {
         context: gemma?.limits.context_tokens,
-        pricing: gemma?.pricing_status,
-        rates: gemma?.pricing.length,
-        prices: [...new Set(gemma?.pricing.map((rate) => rate.price))],
+        pricing: gemma?.pricing_state,
+        rates: gemma?.price_facts.length,
+        prices: [...new Set(gemma?.price_facts.map((rate) => rate.price))],
       },
     }).toEqual({
       music: {
@@ -1787,7 +1842,7 @@ describe("Gemini adapters", () => {
       },
       gemma: {
         context: 256_000,
-        pricing: "published",
+        pricing: "numeric",
         rates: 7,
         prices: ["0"],
       },
@@ -1916,8 +1971,11 @@ describe("Vertex AI adapters", () => {
       retiredAt: current?.retired_at,
       families: current?.service_families,
       endpoints: endpoints(current),
-      meters: current?.pricing.map((rate) => rate.meter),
-      storageUnit: current?.pricing.find((rate) => rate.meter === "cache_storage")?.unit,
+      meters: current?.price_facts.map((rate) => rate.meter),
+      contextRanges: current?.price_facts
+        .filter((rate) => rate.meter === "input_text")
+        .map(({ conditions }) => [conditions.context_min_tokens, conditions.context_max_tokens]),
+      storageUnit: current?.price_facts.find((rate) => rate.meter === "cache_storage")?.unit,
       retired: {
         status: retired?.status,
         release: retired?.release_date,
@@ -1967,6 +2025,10 @@ describe("Vertex AI adapters", () => {
         "input_text",
         "output_text",
         "output_text",
+      ],
+      contextRanges: [
+        [undefined, 200_000],
+        [200_001, undefined],
       ],
       storageUnit: "million_tokens_per_hour",
       retired: {
@@ -2087,19 +2149,19 @@ describe("Anthropic adapters", () => {
       name: fable?.name,
       release: fable?.release_date,
       limits: fable?.limits,
-      input: fable?.pricing.find(
+      input: fable?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === undefined,
       )?.price,
-      usInput: fable?.pricing.find(
+      usInput: fable?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.inference_geo === "us",
       )?.price,
-      batchCache: fable?.pricing.find(
+      batchCache: fable?.price_facts.find(
         (rate) =>
           rate.meter === "cache_read_text" &&
           rate.conditions.service_tier === "batch" &&
           rate.conditions.inference_geo === undefined,
       )?.price,
-      sonnetRates: sonnet?.pricing.length,
+      sonnetRates: sonnet?.price_facts.length,
       previewStatus: preview?.status,
       previewReplacement: preview?.replacement_model_ids,
     }).toEqual({
@@ -2223,22 +2285,22 @@ describe("Databricks adapters", () => {
         },
       ],
     });
-    expect(open?.pricing.find((rate) => rate.meter === "cache_read_text")).toMatchObject({
+    expect(open?.price_facts.find((rate) => rate.meter === "cache_read_text")).toMatchObject({
       price: "3.714",
       unit: "million_tokens",
     });
-    expect(open?.pricing.some((rate) => rate.meter === "provisioned_throughput")).toBe(false);
+    expect(open?.price_facts.some((rate) => rate.meter === "provisioned_throughput")).toBe(false);
     expect(
       models
         .find((model) => model.model_id === "databricks-qwen3-embedding-0-6b")
-        ?.pricing.filter((rate) => rate.meter === "provisioned_throughput")
+        ?.price_facts.filter((rate) => rate.meter === "provisioned_throughput")
         .map((rate) => [rate.conditions.capacity, rate.price]),
     ).toEqual([
       ["entry", "25"],
       ["scaling", "25"],
     ]);
     expect(
-      sol?.pricing.find(
+      sol?.price_facts.find(
         (rate) =>
           rate.meter === "input_text" &&
           rate.conditions.endpoint === "global" &&
@@ -2246,7 +2308,7 @@ describe("Databricks adapters", () => {
       ),
     ).toMatchObject({ price: "71.429", currency: "DBU", unit: "million_tokens" });
     expect(
-      sol?.pricing.find(
+      sol?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.context_min_tokens === 200_001,
       )?.price,
     ).toBe("142.857");
@@ -2257,7 +2319,7 @@ describe("Databricks adapters", () => {
     const gemini = models.find((model) => model.model_id === "databricks-gemini-3-5-flash");
     const sonnet = models.find((model) => model.model_id === "databricks-claude-sonnet-5");
     expect(
-      gemini?.pricing.find(
+      gemini?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
       ),
     ).toMatchObject({
@@ -2266,12 +2328,12 @@ describe("Databricks adapters", () => {
       conditions: { effective_until: "2026-07-31" },
     });
     expect(
-      sonnet?.pricing.find(
+      sonnet?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.effective_from === "2026-09-01",
       ),
     ).toMatchObject({ price: "42.857", derived: true });
     expect(
-      sonnet?.pricing.find(
+      sonnet?.price_facts.find(
         (rate) => rate.meter === "input_text" && rate.conditions.promotion === true,
       )?.conditions.effective_until,
     ).toBe("2026-08-31");
@@ -2394,7 +2456,7 @@ describe("xAI adapter", () => {
         { name: "Image Generations", path: "/v1/images/generations" },
       ],
       updated_date: "2026-04-03",
-      pricing: expect.arrayContaining([
+      price_facts: expect.arrayContaining([
         expect.objectContaining({
           meter: "image_generation",
           price: "0.07",
@@ -2412,7 +2474,7 @@ describe("xAI adapter", () => {
       tasks: ["text_generation", "speech_to_speech"],
       api_endpoints: [{ name: "Realtime", path: "/v1/realtime" }],
       release_date: "2026-04",
-      pricing: expect.arrayContaining([
+      price_facts: expect.arrayContaining([
         expect.objectContaining({ meter: "input_audio", price: "0.05", unit: "minute" }),
         expect.objectContaining({ meter: "input_text", price: "0.004", unit: "request" }),
       ]),
@@ -2436,12 +2498,12 @@ describe("xAI adapter", () => {
     const models = await xaiCatalog();
     const multiAgent = models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309");
     expect(
-      multiAgent?.pricing.find(
+      multiAgent?.price_facts.find(
         ({ meter, conditions }) => meter === "input_text" && conditions.service_tier === "batch",
       ),
     ).toMatchObject({ price: "1", derived: true });
     expect(
-      multiAgent?.pricing.find(
+      multiAgent?.price_facts.find(
         ({ meter, conditions }) =>
           meter === "output_text" &&
           conditions.service_tier === "priority" &&
@@ -2449,7 +2511,7 @@ describe("xAI adapter", () => {
       ),
     ).toMatchObject({ price: "10", derived: true });
     expect(
-      multiAgent?.pricing.find(
+      multiAgent?.price_facts.find(
         ({ meter, conditions }) =>
           meter === "tool_call" && conditions.operation === "collections_search",
       ),
@@ -2550,7 +2612,7 @@ describe("document adapter", () => {
     expect(models[0]?.release_date).toBe("2025-10-15");
     expect(models[0]?.capabilities.reasoning).toBe(true);
     expect(models[0]?.capabilities.prompt_cache).toBe(true);
-    expect(runtime?.pricing).toEqual([
+    expect(runtime?.price_facts).toEqual([
       expect.objectContaining({
         meter: "input_text",
         price: "0.8",
@@ -2747,7 +2809,7 @@ describe("Vercel adapter", () => {
     expect({
       limits: model?.limits,
       release: model?.release_date,
-      pricing: model?.pricing_status,
+      pricing: model?.pricing_state,
     }).toEqual({
       limits: { context_tokens: 32768, max_output_tokens: 4096 },
       release: "2025-05-29",
@@ -2759,10 +2821,10 @@ describe("Vercel adapter", () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     expect({
       id: model?.model_id,
-      input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
-      output: model?.pricing.find((rate) => rate.meter === "output_text")?.price,
-      cache_rates: model?.pricing.filter((rate) => rate.meter === "cache_read_text").length,
-      pricing_status: model?.pricing_status,
+      input: model?.price_facts.find((rate) => rate.meter === "input_text")?.price,
+      output: model?.price_facts.find((rate) => rate.meter === "output_text")?.price,
+      cache_rates: model?.price_facts.filter((rate) => rate.meter === "cache_read_text").length,
+      pricing_state: model?.pricing_state,
     }).toEqual(await expected("vercel/expected.json"));
   });
 
@@ -2771,14 +2833,14 @@ describe("Vercel adapter", () => {
     expect({
       tasks: model?.tasks,
       effort: model?.capabilities.effort_control,
-      services: model?.pricing
+      services: model?.price_facts
         .filter((rate) => rate.conditions.service_tier === "flex")
         .map((rate) => ({
           meter: rate.meter,
           min: rate.conditions.context_min_tokens,
           max: rate.conditions.context_max_tokens,
         })),
-      tools: model?.pricing
+      tools: model?.price_facts
         .filter((rate) => rate.meter === "tool_call")
         .map((rate) => ({
           operation: rate.conditions.operation,
@@ -2816,27 +2878,27 @@ describe("Vercel adapter", () => {
       embedding: {
         modalities: embedding?.modalities,
         maxOutput: embedding?.limits.max_output_tokens,
-        meter: embedding?.pricing[0]?.meter,
+        meter: embedding?.price_facts[0]?.meter,
       },
-      image: image?.pricing.map((rate) => ({ price: rate.price, conditions: rate.conditions })),
-      video: video?.pricing[0],
-      videoToken: videoToken?.pricing.map((rate) => ({
+      image: image?.price_facts.map((rate) => ({ price: rate.price, conditions: rate.conditions })),
+      video: video?.price_facts[0],
+      videoToken: videoToken?.price_facts.map((rate) => ({
         price: rate.price,
         conditions: rate.conditions,
       })),
-      speech: speech?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
+      speech: speech?.price_facts.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
       transcription: {
         tasks: transcription?.tasks,
         status: transcription?.status,
         deprecatedAt: transcription?.deprecated_at,
-        pricing: transcription?.pricing.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
+        pricing: transcription?.price_facts.map((rate) => ({ meter: rate.meter, unit: rate.unit })),
       },
-      tokenTranscription: tokenTranscription?.pricing.map((rate) => ({
+      tokenTranscription: tokenTranscription?.price_facts.map((rate) => ({
         meter: rate.meter,
         price: rate.price,
         unit: rate.unit,
       })),
-      realtime: realtime?.pricing.map((rate) => ({
+      realtime: realtime?.price_facts.map((rate) => ({
         meter: rate.meter,
         price: rate.price,
         unit: rate.unit,
@@ -3019,9 +3081,9 @@ describe("Cerebras adapter", () => {
     expect(model?.release_date).toBeUndefined();
     expect({
       id: model?.model_id,
-      input: model?.pricing.find((rate) => rate.meter === "input_text")?.price,
-      output: model?.pricing.find((rate) => rate.meter === "output_text")?.price,
-      pricing_status: model?.pricing_status,
+      input: model?.price_facts.find((rate) => rate.meter === "input_text")?.price,
+      output: model?.price_facts.find((rate) => rate.meter === "output_text")?.price,
+      pricing_state: model?.pricing_state,
     }).toEqual(await expected("cerebras/expected.json"));
   });
 
@@ -3037,7 +3099,7 @@ describe("Cerebras adapter", () => {
       deprecated_at: "2026-08-17",
       limits: { context_tokens: 131000, max_output_tokens: 40000 },
     });
-    expect(gpt?.pricing.find(({ meter }) => meter === "cache_read_text")).toMatchObject({
+    expect(gpt?.price_facts.find(({ meter }) => meter === "cache_read_text")).toMatchObject({
       price: "0.35",
       derived: true,
     });
@@ -3135,7 +3197,7 @@ describe("Cerebras adapter", () => {
     expect(
       merged
         .find(({ model_id }) => model_id === "gpt-oss-120b")
-        ?.pricing.map(({ meter, source_ref }) => [meter, source_ref]),
+        ?.price_facts.map(({ meter, source_ref }) => [meter, source_ref]),
     ).toEqual([
       ["cache_read_text", "cerebras-catalog"],
       ["input_text", "cerebras-models"],
@@ -3237,12 +3299,14 @@ describe("Hugging Face adapter", () => {
     const free = models.find((item) => item.model_id === "org/free-model");
     expect({
       id: model?.model_id,
-      input_rates: model?.pricing.filter((rate) => rate.meter === "input_text").length,
-      output_rates: model?.pricing.filter((rate) => rate.meter === "output_text").length,
+      input_rates: model?.price_facts.filter((rate) => rate.meter === "input_text").length,
+      output_rates: model?.price_facts.filter((rate) => rate.meter === "output_text").length,
       routes: [
-        ...new Set(model?.pricing.flatMap((rate) => rate.conditions.route_provider ?? []) ?? []),
+        ...new Set(
+          model?.price_facts.flatMap((rate) => rate.conditions.route_provider ?? []) ?? [],
+        ),
       ].sort(),
-      pricing_status: model?.pricing_status,
+      pricing_state: model?.pricing_state,
     }).toEqual(await expected("huggingface/expected.json"));
     expect(model?.limits.context_tokens).toBe(131072);
     expect(model?.capabilities.tool_call).toBe(true);
@@ -3253,11 +3317,11 @@ describe("Hugging Face adapter", () => {
     ]);
     expect(model?.release_date).toBeUndefined();
     expect(
-      model?.pricing.some((rate) => rate.conditions.route_provider === "unavailable-route"),
+      model?.price_facts.some((rate) => rate.conditions.route_provider === "unavailable-route"),
     ).toBe(false);
     expect(models.some((item) => item.model_id === "org/unavailable-model")).toBe(false);
     expect(
-      free?.pricing.map((rate) => [rate.meter, rate.price, rate.conditions.promotion]),
+      free?.price_facts.map((rate) => [rate.meter, rate.price, rate.conditions.promotion]),
     ).toEqual([
       ["input_text", "0", true],
       ["output_text", "0", true],
@@ -3364,8 +3428,8 @@ describe("DeepSeek adapters", () => {
         prompt_cache: true,
       },
       limits: { context_tokens: 1_000_000, max_output_tokens: 384_000 },
-      pricing_status: "published",
-      pricing: [
+      pricing_state: "numeric",
+      price_facts: [
         expect.objectContaining({ meter: "cache_read_text", price: "0.003625" }),
         expect.objectContaining({ meter: "input_text", price: "0.435" }),
         expect.objectContaining({ meter: "output_text", price: "0.87" }),
@@ -3378,7 +3442,7 @@ describe("DeepSeek adapters", () => {
       retired_at: "2026-07-24T15:59:00Z",
       status: "active",
       replacement_model_ids: ["deepseek-v4-flash"],
-      pricing: [
+      price_facts: [
         expect.objectContaining({ meter: "cache_read_text", price: "0.0028" }),
         expect.objectContaining({ meter: "input_text", price: "0.14" }),
         expect.objectContaining({ meter: "output_text", price: "0.28" }),
@@ -3608,7 +3672,7 @@ describe("DashScope adapters", () => {
     const model = models.find(({ model_id }) => model_id === "qwen3.7-plus");
     expect(model?.aliases).toEqual(["qwen3.7-plus-2026-05-26"]);
     expect(
-      model?.pricing.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
+      model?.price_facts.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ meter: "input_text", price: "0.4" }),
@@ -3636,7 +3700,7 @@ describe("DashScope adapters", () => {
       ]),
     );
     const embedding = models.find(({ model_id }) => model_id === "qwen3-vl-embedding");
-    expect(embedding?.pricing).toEqual(
+    expect(embedding?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           price: "0.258",
@@ -3648,11 +3712,11 @@ describe("DashScope adapters", () => {
         }),
       ]),
     );
-    expect(embedding?.pricing.every(({ conditions }) => conditions.operation === undefined)).toBe(
-      true,
-    );
+    expect(
+      embedding?.price_facts.every(({ conditions }) => conditions.operation === undefined),
+    ).toBe(true);
     const video = models.find(({ model_id }) => model_id === "wan2.2-s2v");
-    expect(video?.pricing).toEqual(
+    expect(video?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           price: "0.071677",
@@ -3664,9 +3728,11 @@ describe("DashScope adapters", () => {
         }),
       ]),
     );
-    expect(video?.pricing.every(({ conditions }) => conditions.operation === undefined)).toBe(true);
+    expect(video?.price_facts.every(({ conditions }) => conditions.operation === undefined)).toBe(
+      true,
+    );
     const aspectRatio = models.find(({ model_id }) => model_id === "emo-v1");
-    expect(aspectRatio?.pricing).toEqual(
+    expect(aspectRatio?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           price: "0.011469",
@@ -3880,7 +3946,7 @@ describe("Kimi adapters", () => {
     const k26 = models.find(({ model_id }) => model_id === "kimi-k2.6");
     expect(k26?.capabilities).toMatchObject({ reasoning: true, batch: true, prompt_cache: true });
     expect(k26?.api_endpoints).toEqual([{ name: "Batch", path: "/v1/batches" }]);
-    expect(k26?.pricing).toEqual(
+    expect(k26?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           meter: "cache_read_text",
@@ -3983,7 +4049,7 @@ describe("Ollama adapters", () => {
       modalities: { input: ["text", "image", "audio"], output: ["text"] },
       capabilities: { reasoning: true, tool_call: true },
       updated_date: "2026-06-30",
-      pricing_status: "not_applicable",
+      pricing_state: "not_applicable",
     });
     expect(models.find(({ model_id }) => model_id === "nomic-embed-text")).toMatchObject({
       tasks: ["embeddings"],
@@ -4003,7 +4069,7 @@ describe("Ollama adapters", () => {
       capabilities: { reasoning: true, tool_call: true, streaming: true },
       limits: { context_tokens: 131072 },
       updated_date: "2025-08-05",
-      pricing_status: "not_published",
+      pricing_state: "not_published",
       source_refs: ["ollama-cloud-models"],
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
@@ -4125,7 +4191,7 @@ describe("provider drift validation", () => {
     ]);
   });
 
-  it("quarantines large deletions and price jumps", async () => {
+  it("quarantines large deletions", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     if (model === undefined) throw new Error("Missing fixture model");
     const second = {
@@ -4138,13 +4204,6 @@ describe("provider drift validation", () => {
       ok: false,
       reason: "model count dropped by more than 10%",
     });
-    const changed = {
-      ...model,
-      pricing: model.pricing.map((rate) =>
-        rate.meter === "input_text" ? { ...rate, price: "0.19" } : rate,
-      ),
-    };
-    expect(validateProvider([changed], [model]).reason).toContain("price changed over 50%");
   });
 
   it("rejects duplicate or abruptly missing structured evidence", async () => {

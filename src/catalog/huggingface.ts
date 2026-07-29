@@ -4,14 +4,13 @@ import { baseModel, modelRouteKey } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   modalitySchema,
   type Modality,
   type ModelRoute,
   type ModelTask,
-  type PriceRate,
   type Provider,
-  type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
 
@@ -200,7 +199,7 @@ function availability(values: (boolean | undefined)[]): boolean | "unknown" {
   return "unknown";
 }
 
-function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): PriceRate[] {
+function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): SourcePriceFact[] {
   const conditions = { route_provider: route.provider };
   if (route.is_free === true) {
     if (
@@ -216,7 +215,7 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Price
       }),
     );
   }
-  const rates: PriceRate[] = [];
+  const rates: SourcePriceFact[] = [];
   if (route.pricing?.input !== undefined)
     rates.push(
       publishedRate(
@@ -286,8 +285,8 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       limits: {
         context_tokens: contexts.length === 0 ? undefined : Math.max(...contexts),
       },
-      pricing_status: pricing.length === 0 ? "unknown" : "published",
-      pricing,
+      pricing_state: pricing.length === 0 ? "unknown" : "numeric",
+      price_facts: pricing,
     });
   }
   if (models.length < config.minModels || models.length > config.maxModels)

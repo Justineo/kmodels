@@ -1,48 +1,94 @@
-import { readFileSync } from "node:fs";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite-plus";
-import { catalogAssets } from "./src/catalog/endpoints.ts";
-import { catalogSchema, migrateCatalogStorage } from "./src/catalog/schema.ts";
+import { catalogApiAssets, catalogAssets } from "./src/catalog/endpoints.ts";
+import { recoverCatalogPair } from "./src/catalog/pricing-publication.ts";
+import {
+  websiteCatalog,
+  websiteDetailRef,
+  websiteModelDetail,
+} from "./src/catalog/website-data.ts";
 
-function catalogPlugins(): Plugin[] {
-  const catalog = catalogSchema.parse(
-    migrateCatalogStorage(
-      JSON.parse(readFileSync(new URL("./data/catalog.json", import.meta.url), "utf8")),
+let developmentWebsiteData: ReturnType<typeof loadDevelopmentWebsiteData> | undefined;
+
+async function loadDevelopmentWebsiteData() {
+  const pair = await recoverCatalogPair();
+  if (pair === undefined) throw new Error("No accepted catalog pair is available");
+  return {
+    catalog: pair.catalog,
+    pricing: pair.pricing.data,
+    pricingAssetSource: pair.pricingAssetSource,
+    modelByDetailRef: new Map(
+      pair.catalog.models.map((model) => [websiteDetailRef(model.uid), model]),
     ),
-  );
-  const assets = catalogAssets(catalog);
-  const byPath = new Map(assets.map((asset) => [`/${asset.fileName}`, asset.source]));
-  return [
-    {
-      name: "kmodels-catalog-build",
-      apply: "build",
-      buildStart() {
-        for (const asset of assets)
-          this.emitFile({ type: "asset", fileName: asset.fileName, source: asset.source });
-      },
+  };
+}
+
+async function developmentAsset(path: string): Promise<string | undefined> {
+  if (
+    path !== "/pricing/index.json" &&
+    path !== "/catalog/index.json" &&
+    !path.startsWith("/providers/") &&
+    !path.startsWith("/ui/")
+  )
+    return undefined;
+
+  developmentWebsiteData ??= loadDevelopmentWebsiteData();
+  const { catalog, pricing, pricingAssetSource, modelByDetailRef } = await developmentWebsiteData;
+  if (path === "/pricing/index.json") return pricingAssetSource;
+  if (path.startsWith("/ui/")) {
+    if (path === "/ui/catalog/index.json") return JSON.stringify(websiteCatalog(catalog, pricing));
+    const reference = path.match(/^\/ui\/models\/([0-9a-f]{64})\.json$/)?.[1];
+    if (reference === undefined) return undefined;
+    const model = modelByDetailRef.get(reference);
+    return model === undefined ? undefined : JSON.stringify(websiteModelDetail(pricing, model));
+  }
+  return new Map(
+    catalogApiAssets(catalog).map((asset): [string, string] => [
+      `/${asset.fileName}`,
+      asset.source,
+    ]),
+  ).get(path);
+}
+
+function serveCatalog(): Plugin {
+  return {
+    name: "kmodels-catalog-serve",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const path = new URL(request.url ?? "/", "http://localhost").pathname;
+        void developmentAsset(path)
+          .then((source) => {
+            if (source === undefined) {
+              next();
+              return;
+            }
+            response.statusCode = 200;
+            response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.end(source);
+          })
+          .catch(next);
+      });
     },
-    {
-      name: "kmodels-catalog-serve",
-      apply: "serve",
-      configureServer(server) {
-        server.middlewares.use((request, response, next) => {
-          const path = new URL(request.url ?? "/", "http://localhost").pathname;
-          const source = byPath.get(path);
-          if (source === undefined) {
-            next();
-            return;
-          }
-          response.statusCode = 200;
-          response.setHeader("Content-Type", "application/json; charset=utf-8");
-          response.end(source);
-        });
-      },
+  };
+}
+
+function buildCatalog(): Plugin {
+  return {
+    name: "kmodels-catalog-build",
+    apply: "build",
+    async buildStart() {
+      const pair = await recoverCatalogPair();
+      if (pair === undefined) throw new Error("No accepted catalog pair is available");
+      for (const asset of catalogAssets(pair.catalog, pair.pricing)) {
+        this.emitFile({ type: "asset", fileName: asset.fileName, source: asset.source });
+      }
     },
-  ];
+  };
 }
 
 export default defineConfig({
-  plugins: [...catalogPlugins(), vue()],
+  plugins: [buildCatalog(), serveCatalog(), vue()],
   fmt: {
     ignorePatterns: ["data/**"],
   },

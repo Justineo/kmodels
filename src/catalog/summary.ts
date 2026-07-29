@@ -1,4 +1,9 @@
 import { stableJson } from "./io.ts";
+import { canonicalJson, canonicalJsonHash } from "./canonical-json.ts";
+import { compareUtf8 } from "./canonical-value.ts";
+import { commercialPricingProjection } from "./pricing-commercial.ts";
+import { providerPartition } from "./pricing-transition.ts";
+import type { PricingCatalog } from "./pricing-schema.ts";
 import type { Catalog, ProviderModel, SourceRecord } from "./schema.ts";
 
 const semanticModelFields = [
@@ -21,8 +26,6 @@ const semanticModelFields = [
   "status",
   "release_stage",
   "replacement_model_ids",
-  "pricing_status",
-  "pricing",
   "availability",
   "scope",
   "account_availability",
@@ -52,10 +55,23 @@ interface SourceDiffSummary {
 
 interface ProviderRefreshSummary {
   provider_id: string;
-  status: "fresh" | "stale" | "unavailable" | "not_configured";
+  status: "fresh" | "stale" | "unavailable" | "not_configured" | "removed";
   models: ModelDiffSummary;
   sources: SourceDiffSummary;
+  pricing: PricingDiffSummary;
   warning_codes: Record<string, number>;
+}
+
+interface PricingDiffSummary {
+  outcome: "none" | "added" | "removed" | "commercial" | "provenance_only" | "unchanged";
+  previous_commercial_hash?: string;
+  commercial_hash?: string;
+}
+
+interface PricingComparison {
+  data: PricingCatalog;
+  owner: (modelRef: string) => string;
+  commercialHashes: ReadonlyMap<string, string>;
 }
 
 export interface RefreshSummary {
@@ -128,13 +144,27 @@ function sourceDiff(previous: SourceRecord[], current: SourceRecord[]): SourceDi
   };
 }
 
-export function summarizeRefresh(previous: Catalog | undefined, current: Catalog): RefreshSummary {
+export function summarizeRefresh(
+  previous: Catalog | undefined,
+  current: Catalog,
+  previousPricing: PricingCatalog,
+  currentPricing: PricingCatalog,
+): RefreshSummary {
+  const providerIds = [
+    ...new Set([
+      ...(previous?.providers.map(({ id }) => id) ?? []),
+      ...current.providers.map(({ id }) => id),
+    ]),
+  ].sort(compareUtf8);
+  const pricing = {
+    previous: pricingComparison(previousPricing, previous),
+    current: pricingComparison(currentPricing, current),
+  };
   return {
     generated_at: current.generated_at,
     ...(previous === undefined ? {} : { previous_catalog_version: previous.catalog_version }),
     catalog_version: current.catalog_version,
-    providers: current.providers.map((provider) => {
-      const providerId = provider.id;
+    providers: providerIds.map((providerId) => {
       const warnings = current.warnings.filter(
         (warning) => "provider_id" in warning && warning.provider_id === providerId,
       );
@@ -145,7 +175,7 @@ export function summarizeRefresh(previous: Catalog | undefined, current: Catalog
         provider_id: providerId,
         status:
           current.coverage.find((coverage) => coverage.provider_id === providerId)?.status ??
-          "unavailable",
+          (current.providers.some(({ id }) => id === providerId) ? "unavailable" : "removed"),
         models: modelDiff(
           previous?.models.filter((model) => model.provider_id === providerId) ?? [],
           current.models.filter((model) => model.provider_id === providerId),
@@ -154,8 +184,71 @@ export function summarizeRefresh(previous: Catalog | undefined, current: Catalog
           previous?.sources.filter((source) => source.provider_id === providerId) ?? [],
           current.sources.filter((source) => source.provider_id === providerId),
         ),
+        pricing: pricingDiff(pricing.previous, pricing.current, providerId),
         warning_codes: warningCodes,
       };
     }),
   };
+}
+
+function pricingDiff(
+  previous: PricingComparison,
+  current: PricingComparison,
+  providerId: string,
+): PricingDiffSummary {
+  const previousPartition = providerPartition(previous.data, providerId, previous.owner);
+  const currentPartition = providerPartition(current.data, providerId, current.owner);
+  if (previousPartition === undefined && currentPartition === undefined) return { outcome: "none" };
+
+  const previousCommercial = previous.commercialHashes.get(providerId);
+  const currentCommercial = current.commercialHashes.get(providerId);
+  if (previousCommercial === undefined) {
+    if (currentCommercial === undefined) throw new Error("Pricing diff has no provider data");
+    return { outcome: "added", commercial_hash: currentCommercial };
+  }
+  if (currentCommercial === undefined)
+    return { outcome: "removed", previous_commercial_hash: previousCommercial };
+  const hashes = {
+    previous_commercial_hash: previousCommercial,
+    commercial_hash: currentCommercial,
+  };
+  if (previousCommercial !== currentCommercial) return { outcome: "commercial", ...hashes };
+  return {
+    outcome:
+      canonicalJson(previousPartition) === canonicalJson(currentPartition)
+        ? "unchanged"
+        : "provenance_only",
+    ...hashes,
+  };
+}
+
+function pricingComparison(
+  pricing: PricingCatalog,
+  catalog: Catalog | undefined,
+): PricingComparison {
+  const projection = commercialPricingProjection(pricing);
+  const owner = modelOwner(catalog);
+  return {
+    data: pricing,
+    owner,
+    commercialHashes: new Map(
+      pricing.provider_snapshots.map(({ provider_id }) => [
+        provider_id,
+        canonicalJsonHash({
+          provider_atoms: projection.provider_atoms.filter(
+            ({ provider_id: ownerId }) => ownerId === provider_id,
+          ),
+          model_dispositions: projection.model_dispositions.filter(
+            ({ model_ref }) => owner(model_ref) === provider_id,
+          ),
+          books: projection.books.filter(({ provider_id: ownerId }) => ownerId === provider_id),
+        }),
+      ]),
+    ),
+  };
+}
+
+function modelOwner(catalog: Catalog | undefined): (modelRef: string) => string {
+  const owners = new Map(catalog?.models.map(({ uid, provider_id }) => [uid, provider_id]) ?? []);
+  return (modelRef) => owners.get(modelRef) ?? "";
 }

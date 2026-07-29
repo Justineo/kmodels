@@ -5,14 +5,8 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { multiplyDecimal } from "./pricing.ts";
-import {
-  modalitySchema,
-  type Modality,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 
 interface Input {
@@ -481,13 +475,13 @@ function decimal(value: string): string | undefined {
 }
 
 function rate(
-  meter: PriceRate["meter"],
+  meter: SourcePriceFact["meter"],
   rawPrice: string,
-  unit: PriceRate["unit"],
+  unit: SourcePriceFact["unit"],
   sourceId: string,
   rawUnit: string,
-  conditions: PriceRate["conditions"],
-): PriceRate | undefined {
+  conditions: SourcePriceFact["conditions"],
+): SourcePriceFact | undefined {
   const price = decimal(rawPrice);
   return price === undefined
     ? undefined
@@ -504,8 +498,12 @@ function rate(
       };
 }
 
-function add(rates: Map<string, Map<string, PriceRate>>, id: string, value: PriceRate): void {
-  const modelRates = rates.get(id) ?? new Map<string, PriceRate>();
+function add(
+  rates: Map<string, Map<string, SourcePriceFact>>,
+  id: string,
+  value: SourcePriceFact,
+): void {
+  const modelRates = rates.get(id) ?? new Map<string, SourcePriceFact>();
   modelRates.set(
     `${value.meter}:${value.currency}:${value.unit}:${JSON.stringify(value.conditions)}`,
     value,
@@ -517,7 +515,7 @@ function openPrices(
   models: ProviderModel[],
   body: string,
   sourceId: string,
-  rates: Map<string, Map<string, PriceRate>>,
+  rates: Map<string, Map<string, SourcePriceFact>>,
 ): void {
   const $ = load(body);
   const table = $("main table").first();
@@ -592,7 +590,7 @@ function endpoint(value: string): string {
   );
 }
 
-function contextConditions(value: string, hasLongTier: boolean): PriceRate["conditions"] {
+function contextConditions(value: string, hasLongTier: boolean): SourcePriceFact["conditions"] {
   const normalized = value.toLowerCase();
   const contextTier = normalized.startsWith("short")
     ? "short"
@@ -609,7 +607,12 @@ function contextConditions(value: string, hasLongTier: boolean): PriceRate["cond
   };
 }
 
-function promotional(value: PriceRate, factor: string, until: string, reason: string): PriceRate {
+function promotional(
+  value: SourcePriceFact,
+  factor: string,
+  until: string,
+  reason: string,
+): SourcePriceFact {
   const conditions = { ...value.conditions };
   delete conditions.effective_from;
   return {
@@ -629,7 +632,7 @@ function partnerPrices(
   models: ProviderModel[],
   body: string,
   sourceId: string,
-  rates: Map<string, Map<string, PriceRate>>,
+  rates: Map<string, Map<string, SourcePriceFact>>,
 ): void {
   const $ = load(body);
   const tables = $("main table");
@@ -828,7 +831,7 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     document(bundle, "/aws/en/machine-learning/foundation-model-apis/limits"),
   );
   applyReleases(models, document(bundle, "/aws/en/feed.xml"));
-  const rates = new Map<string, Map<string, PriceRate>>();
+  const rates = new Map<string, Map<string, SourcePriceFact>>();
   openPrices(
     models,
     document(bundle, "/product/pricing/foundation-model-serving"),
@@ -855,8 +858,8 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
           ? true
           : model.capabilities.prompt_cache,
       },
-      pricing_status: pricing.length > 0 ? "published" : "unknown",
-      pricing,
+      pricing_state: pricing.length > 0 ? "numeric" : "unknown",
+      price_facts: pricing,
     };
   });
 }

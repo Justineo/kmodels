@@ -54,4 +54,17 @@ describe("catalog route state", () => {
       }),
     ).toBe("?o=tS&l=ar");
   });
+
+  it("keeps the compact date-sort code while sorting release dates", () => {
+    expect(parseRouteSearch("?s=u").sort).toEqual({
+      key: "released",
+      direction: "ascending",
+    });
+    expect(
+      formatRouteSearch({
+        ...emptyState(),
+        sort: { key: "released", direction: "descending" },
+      }),
+    ).toBe("?s=U");
+  });
 });

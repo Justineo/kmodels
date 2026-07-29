@@ -1,446 +1,566 @@
-# Pricing data model
+# Pricing
 
-Status: proposal; not implemented
+Status: implemented
 
-This document proposes the next pricing schema for Kmodels. It is intentionally
-more expressive than the current flat `PriceRate[]` representation. It becomes a
-repo-wide decision only after adoption in `design.md` and implementation in the
-public schema.
+## Decision
 
-## Problem
+Kmodels publishes one canonical pricing resource. The model catalog does not
+contain a second flat-price projection, and the website never falls back to
+one.
 
-Provider pricing is not a single input/output token tuple. Official price books
-also contain:
+The resource models a provider's current public commercial snapshot as:
 
-- cache read, cache write, and time-based cache storage;
-- batch, flex, priority, reserved, and provisioned service tiers;
-- request-context and monthly-volume bands;
-- regional, deployment, endpoint, route, and data-residency variants;
-- text, audio, image, video, character, page, frame, duration, and operation
-  meters;
-- tool, search, OCR, rerank, embedding, training, and hosting charges;
-- fixed capacity prices, provider credits, free allowances, promotions, and
-  custom quotes;
-- prices derived from an officially published multiplier rather than an
-  independently published amount.
+```text
+provider snapshot
+  └─ price book
+       └─ offer
+            ├─ state
+            └─ logical term
+                 └─ applicability-qualified variant
+```
 
-The current rate list preserves many individual facts, but it cannot reliably
-say which input, output, cache, and fixed rates form one coherent purchasing
-option. Consumers can therefore combine rates from different regions or service
-tiers into a price tuple the provider never offered.
+This hierarchy is the minimum needed to preserve distinct offers, billing
+modes, meters, units, conditions, allowances, and unsupported public facts
+without expanding every observed combination into a model-local rate list.
 
-## Goals
+The durable assets are:
 
-The schema must:
+- `data/catalog.json`: providers, models, sources, coverage, and diagnostics;
+- `data/pricing.json.gz`: the gzip-compressed, content-bound canonical pricing envelope.
 
-1. Preserve an official rate without forcing it into token pricing.
-2. Keep related charges in one coherent offer.
-3. Preserve exact applicability conditions without creating cross-products.
-4. Distinguish alternative plans from additive charges and allowances.
-5. Retain source-level evidence and deterministic derivations.
-6. Support comparison views without making the comparison view canonical.
-7. Fail closed when a published billing mechanism cannot be represented.
+They advance as one accepted pair. Public endpoints are
+`/catalog/index.json` and `/pricing/index.json`.
 
-The schema is not an invoice calculator. It does not model account-specific
-discounts, taxes, exchange rates, negotiated commitments, or usage not published
-by an allowlisted official source.
+## Review boundary
+
+This document owns:
+
+- public pricing semantics and their relationships;
+- the closed canonical wire shape;
+- normalization and raw-fallback boundaries;
+- deterministic identity and commercial comparison;
+- conservative presentation behavior;
+- provider-atomic, crash-consistent publication.
+
+The checked TypeScript schemas and conformance tests own exact field syntax,
+limits, sort keys, hash domains, and transition mechanics. A review finding is
+adoption-blocking only when the documented semantics permit:
+
+- two different commercial meanings for one conforming value;
+- two canonical byte representations for the same normalized value;
+- a false public price, scope, state, or provenance claim;
+- private data to enter public normalized or raw output;
+- work or memory outside the declared bounded resource envelope;
+- a broken catalog/pricing reference or publication pair.
+
+The following are deliberately outside this contract:
+
+- invoice calculation, tax, currency conversion, discounts, or account balance;
+- private, negotiated, credential-scoped, or account-specific pricing;
+- a universal formula language or general predicate solver;
+- historical reconstruction when a source publishes only an undated current
+  value;
+- execution of imprecise validity labels as a time query;
+- a provider default, cheapest offer, or automatic offer recommendation;
+- a lossless model for every possible commercial contract.
+
+An unsupported public fact remains visible as bounded raw pricing. A fact
+outside the public boundary is discarded or quarantined, never serialized as
+raw. Requests to solve an excluded capability require a separate design change;
+they are not gaps in this contract.
 
 ## Principles
 
-- Store decimals as strings and perform arithmetic with decimal-string helpers.
-- Preserve the provider's billing denomination. DBU and similar credits are not
-  currencies and must not be converted to USD.
-- Treat every condition array as a conjunction. A set-valued condition is the
-  only disjunction inside one condition.
-- Keep region and deployment facts on the same offer. Never flatten them into
-  independent arrays.
-- A zero amount is a price only when the source explicitly publishes zero.
-- Collection time is provenance, not an effective date.
-- `derived` is rate provenance, not a model-level pricing status.
-- The website's input, output, and cached-input columns are projections over the
-  canonical offers, never the canonical data model.
+### Canonicalize semantics, not source layout
 
-## Proposed public shape
+Equivalent normalized facts should compare equally even when providers group
+or order their pages differently. Canonicalization covers exact numbers, fixed
+units, applicability, resource identity, set-like ordering, and compaction.
+Source spelling and locators remain evidence and do not define normalized
+commercial identity.
 
-`ProviderModel.pricing_status` remains a compact coverage summary.
-`ProviderModel.pricing` becomes an array of coherent offers:
+### Preserve information without pretending to understand it
 
-```ts
-type Decimal = string;
+Every admitted public fact follows this ladder:
 
-type PricingStatus =
-  "published" | "free" | "not_published" | "not_applicable" | "custom_quote" | "unknown";
+1. publish a normalized exact value;
+2. calculate an exact value with a reviewed bounded adapter rule;
+3. preserve the unsupported part as a bounded raw variant beside any
+   normalized variants;
+4. publish an exact non-numeric offer state;
+5. otherwise report unknown.
 
-interface PricingOffer {
-  id: string;
-  kind: "plan" | "add_on" | "allowance";
-  name?: string;
-  selection_group?: string;
-  applies_to_offer_ids?: string[];
-  conditions: PriceCondition[];
-  rates: PriceRate[];
-  valid_from?: string;
-  valid_until?: string;
-  source_refs: string[];
-}
+Raw is a fallback, not a shortcut. A new shared abstraction needs at least two
+real provider cases and a clear canonical meaning.
+
+### Fail closed in summaries, not in detail
+
+Normalized facts remain useful even when another possibly applicable fact is
+raw. The detail view shows both and marks the result incomplete. A representative
+price is withheld whenever ambiguity could change that number.
+
+### Separate commercial data from audit data
+
+The canonical pricing asset retains observations, source references, locators,
+raw source fields, and derivations for validation and audit. Those fields do
+not belong in the website runtime payload.
+
+The website is built from two closed projections:
+
+- `/ui/catalog/index.json` contains only fields needed to render, search,
+  filter, sort, and show representative price cells;
+- `/ui/models/<model-ref-hash>.json` contains one selected model's display
+  details and compact price-book view.
+
+The browser does not fetch the canonical catalog or pricing asset during normal
+application startup or model inspection. The canonical endpoints remain
+explicit download links.
+
+## Scope
+
+The current contract normalizes:
+
+- usage, capacity, subscription, one-time, and hybrid offer identities;
+- normalized rate terms with exact denomination and compound unit;
+- applicability over reviewed categorical, boolean, and bounded decimal
+  dimensions;
+- numeric, free, custom-quote, and not-published offer states;
+- simple usage allowances and denomination credits with explicit targets and
+  reset semantics;
+- model-scoped and provider-service price books;
+- base offers, add-ons, and exact or explicitly unnormalized compatibility;
+- reviewed provider-owned commercial atoms;
+- exact adapter calculations whose result and provenance are bounded.
+
+The current contract keeps these raw:
+
+- unknown amount, denomination, unit, meter, or applicability;
+- usage aggregation whose accumulation/reset basis is not established;
+- formulas outside reviewed adapter calculations;
+- unsupported graduated, block, or contract structures;
+- conflicts that cannot be localized as one exact normalized value;
+- allowances whose normalized target rate is unavailable;
+- structures that exceed a fact-local normalization limit.
+
+Raw variants carry a commercial impact:
+
+- `base_price`: may change the price and blocks a direct price summary;
+- `allowance`: may change benefits and blocks a complete allowance summary;
+- `informational`: retained for audit but excluded from commercial equality.
+
+## Public semantics
+
+### Envelope and provider ownership
+
+The pricing envelope binds:
+
+- the canonical pricing-data hash;
+- the exact catalog version and core-data hash;
+- the joint generation time;
+- the canonical pricing data.
+
+Each represented provider owns exactly one vocabulary and one snapshot.
+Snapshots are `fresh` or `retained`; retention preserves the original
+`observed_at` and never restamps stale facts. A retained snapshot also records
+the latest attempted refresh time and one stable failure code. This metadata is
+provider-partition-wide and non-commercial: it does not claim that a particular
+model failed validation. A successful refresh clears the failure, and Git
+history—not the public schema—retains older attempts.
+
+All model and source references are opaque identities from the bound catalog.
+Books, observations, and dispositions may reference only records owned by the
+same provider. Cross-provider price books are not supported.
+
+### Model outcomes
+
+For one model, presentation uses this precedence:
+
+1. an exact `not_applicable` disposition means official evidence establishes
+   that the provider has no public hosted pricing offer for that model;
+2. otherwise, one or more matching books mean offers are available;
+3. otherwise, pricing is unknown.
+
+`not_published` is not the same as either outcome above. It is an offer state:
+the offer exists, but the provider does not publish its price. `custom_quote`
+likewise identifies an offer whose amount requires provider contact. Missing
+data never means free, and a numeric zero remains a numeric rate.
+
+### Price books
+
+A book has:
+
+- a provider-owned stable key and derived ID;
+- either a model scope or a provider-service scope;
+- one or more offers;
+- claim-local scope evidence and resource provenance.
+
+`scope.model_refs` is the current exact model projection used by the website.
+Scope observations collectively cover that projection and cannot widen beyond
+their observed subjects.
+
+### Offers
+
+An offer represents one selectable billing mechanism. It has:
+
+- a stable key and derived ID within its book;
+- `base` or `add_on` role;
+- one exact billing mode;
+- applicability-qualified states;
+- logical pricing terms.
+
+Add-on compatibility is either an exact set of base offers, every base offer
+in the same book, or explicitly not normalized. Unsupported compatibility
+retains a commercial raw fact so a wording change cannot disappear as
+provenance-only.
+
+The standard billing modes mean:
+
+- `usage`: charges primarily follow measured consumption;
+- `capacity`: charges primarily reserve throughput or resources;
+- `subscription`: a recurring fixed entitlement;
+- `one_time`: a non-recurring purchase;
+- `hybrid`: a documented combination of fixed entitlement and usage/capacity.
+
+If those meanings do not identify the source offer exactly, the adapter uses a
+reviewed provider-owned billing-mode atom or withholds the container.
+
+### Offer states
+
+States are applicability-qualified and may retain source-published validity:
+
+- `numeric`: normalized rate terms define the charge;
+- `free`: the applicable offer is explicitly zero-cost;
+- `custom_quote`: a public offer exists but requires a quote;
+- `not_published`: a public offer exists but no public price is published.
+
+An offer state is not inferred from absence. Conflicting possibly overlapping
+states are downgraded with the affected commercial facts rather than allowing a
+false resolved state.
+
+### Logical terms and variants
+
+A term is one stable commercial component. Its key does not include price,
+validity, region, or array position.
+
+- A `rate` term owns one meter and contains normalized and raw variants.
+- An `allowance` term contains normalized benefits and raw variants.
+- A `raw` term is used when the term's meter or structure itself is not
+  normalized.
+
+Variants carry the changing assertion: value, applicability, optional
+published validity, and observations. Historical/future or region-specific
+values therefore coexist under one logical term without changing its identity.
+
+Normalized and raw variants may coexist under one term. A conflict fallback
+also cascades to dependent allowances so one unsupported component does not
+invalidate an otherwise useful provider partition.
+
+### Rates, quantities, and allowances
+
+A normalized rate is:
+
+```text
+exact rational × denomination per canonical unit expression
 ```
 
-The fields have these semantics:
+Rationals are non-negative, reduced fractions. Denominations are ISO fiat codes
+or provider-qualified credits. Unit expressions are products of bounded,
+positive-power unit factors.
 
-- `plan` is a complete purchasing mode, such as on-demand standard inference,
-  batch, priority, or provisioned capacity.
-- `add_on` is additive to an applicable plan, such as web search or grounding.
-- `allowance` grants an explicitly published quantity and is not represented as
-  a zero-valued rate.
-- Plans in the same `selection_group` are alternatives. Conditions may select
-  the applicable alternative automatically, as with a context threshold.
-- `applies_to_offer_ids` limits an add-on or allowance to specific plans. An
-  omitted field means it can apply to every otherwise compatible plan.
-- `name` is included only when the provider publishes a useful plan label.
-- Validity bounds are included only when explicitly published. They use
-  inclusive `valid_from` and exclusive `valid_until` semantics.
+Fixed units canonicalize to reviewed bases with exact scaling. For example,
+`USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
+denominator is dimensional: storage stated per token-hour is
+`token × second`, not token throughput per second. Calendar months remain
+non-convertible.
 
-Offer IDs are stable internal identifiers. They are derived from the provider
-model, offer kind, selection group, and canonical conditions, but not from the
-price amount or observation timestamp. A price change therefore updates an
-offer instead of creating a new identity.
+A usage allowance references exact normalized rate-term IDs whose units are
+compatible with the allowance quantity. A credit allowance targets the whole
+offer in the same denomination. Empty or ambiguous targets are invalid.
 
-## Rates
+Billing blocks and graduated schedules require a documented aggregation/reset
+basis. Without it they remain raw rather than being presented as ordinary unit
+rates.
 
-A rate is one atomic charge or allowance quantity inside an offer:
+### Meters
 
-```ts
-interface PriceRate {
-  id: string;
-  meter: PriceMeter;
-  amount: PriceAmount;
-  per: BillingQuantity;
-  conditions: PriceCondition[];
-  source_refs: string[];
-  raw_price?: string;
-  raw_unit?: string;
-  derivation?: PriceDerivation;
-}
+Meters identify what is charged, not every operation a model can perform.
+Selection follows the commercial line item:
 
-type PriceAmount = {
-  value: Decimal;
-  denomination: { kind: "fiat"; currency: string } | { kind: "provider_credit"; code: string };
-};
+- model input/output and cache lines use their directional modality meters;
+- a provider line sold explicitly per generation, rerank request, tool call,
+  session, capacity unit, or batch job uses the corresponding operation meter;
+- provider concepts without a stable shared meaning use provider-owned meters.
 
-type BillingQuantity = {
-  value: Decimal;
-  unit: BillingUnit;
-};
+The same source spelling cannot represent two provider meter meanings. Provider
+atoms use reviewed semantic keys; raw spelling remains in observations.
+
+### Applicability
+
+Applicability is bounded disjunctive normal form:
+
+```text
+OR clause
+  AND categorical, boolean, or decimal-range conditions
 ```
 
-`amount.value` is the amount charged per `per.value` units. For example,
-USD 2 per one million tokens is represented as amount `"2"`, quantity
-`"1000000"`, and unit `token`. Composite units such as `million_tokens` are not
-needed.
+The empty AND clause is unconditional. Conditions in one clause use unique
+dimensions. Categorical sets, bounds, clauses, and alternatives are
+canonicalized and sorted; contradictory clauses are removed, while a fact with
+no satisfiable clause falls back to raw.
 
-```ts
-type BillingUnit =
-  { kind: "standard"; unit: StandardBillingUnit } | { kind: "provider"; unit: string };
+Standard dimensions have schema-owned kinds and value grammars. Provider
+dimensions and categorical values are provider-qualified and registered.
+Unknown source applicability is not represented as an exact selector.
 
-type StandardBillingUnit =
-  | "token"
-  | "character"
-  | "image"
-  | "page"
-  | "request"
-  | "search_unit"
-  | "second"
-  | "minute"
-  | "frame"
-  | "megapixel"
-  | "video"
-  | "byte_hour"
-  | "token_hour"
-  | "unit_hour"
-  | "unit_month";
-```
+Partial UI evaluation is three-valued:
 
-The provider-unit escape hatch preserves an official unit that has no reviewed
-normalization. It is valid only with the exact raw unit and must produce a
-coverage warning so common units can be added deliberately.
+- a supplied condition is true or false;
+- an unsupplied dimension is missing;
+- AND is false if any child is false, true if all are true, otherwise missing;
+- OR is true if any child is true, false if all are false, otherwise missing.
 
-## Meters
+A missing selector remains a candidate and requests only dimensions that can
+still change the result. This is deterministic filtering, not source-uncertainty
+resolution.
 
-Meters describe why usage is billed; quantities describe how it is measured.
-This separation avoids a growing enum such as `million_audio_tokens`.
+### Published validity
 
-```ts
-type PriceMeter =
-  | {
-      kind: "model_io";
-      direction: "input" | "output";
-      modality: "text" | "image" | "audio" | "video" | "pdf";
-      cache?: "read" | "write";
-    }
-  | { kind: "cache_storage"; modality: "text" | "image" | "audio" | "video" }
-  | {
-      kind: "operation";
-      operation:
-        | "embedding"
-        | "rerank"
-        | "ocr"
-        | "search"
-        | "tool_call"
-        | "image_generation"
-        | "video_generation"
-        | "speech_generation"
-        | "transcription"
-        | "translation"
-        | "request";
-    }
-  | { kind: "training"; resource: "tokens" | "compute" }
-  | { kind: "capacity"; resource: "gpu" | "instance" | "throughput" }
-  | { kind: "provider"; meter: string };
-```
+Validity preserves an official label with year, month, date, or canonical UTC
+datetime precision and inclusive/exclusive endpoint metadata. It is display
+metadata.
 
-The provider-meter escape hatch follows the same rule as provider units: retain
-the exact official label and warn. It must not silently map an unknown charge to
-a semantically different standard meter.
+Kmodels does not turn collection time into validity and does not execute
+imprecise validity as a historical/current price query. A validity-bearing
+variant is details-only unless a separate source fact establishes currentness.
+Provably empty or reversed intervals are not normalized.
 
-## Conditions
+### Provider-owned atoms
 
-Conditions are typed predicates rather than a growing object of optional
-properties:
+Provider units, meters, dimensions, categorical values, billing modes, credit
+codes, and allowance resets are keyed by provider and kind. Each published key
+has a non-empty reviewed definition in that provider's vocabulary.
 
-```ts
-type ValueDimension =
-  | "billing_mode"
-  | "service_tier"
-  | "region"
-  | "endpoint"
-  | "deployment_type"
-  | "deployment_scope"
-  | "inference_geo"
-  | "route_provider"
-  | "operation"
-  | "modality"
-  | "quality"
-  | "resolution"
-  | "style"
-  | "capacity"
-  | "cache_ttl";
+Provider atoms are not equal to Kmodels atoms or another provider's atom merely
+because their source spelling matches. The registry is finite, checked in, and
+review-owned; adapters cannot invent semantic keys from amounts, positions,
+validity, or applicability.
 
-type RangeDimension =
-  "context_tokens" | "input_tokens" | "output_tokens" | "monthly_usage" | "duration_seconds";
+## Evidence and raw preservation
 
-type PriceCondition =
-  | {
-      kind: "value";
-      dimension: ValueDimension;
-      value: string;
-    }
-  | {
-      kind: "set";
-      dimension: ValueDimension;
-      values: string[];
-    }
-  | {
-      kind: "range";
-      dimension: RangeDimension;
-      min?: Decimal;
-      max?: Decimal;
-      min_inclusive: boolean;
-      max_inclusive: boolean;
-    }
-  | {
-      kind: "flag";
-      dimension: "promotion" | "audio" | "video_input" | "voice_control";
-      value: boolean;
-    }
-  | {
-      kind: "provider";
-      dimension: string;
-      value: string;
-    };
-```
+Every public resource and assertion has non-empty provenance appropriate to the
+claim. Value observations retain:
 
-All offer conditions and rate conditions apply together. Common plan dimensions
-belong on the offer; a condition belongs on a rate only when it applies to that
-charge alone. For example, a five-minute cache-write TTL belongs on the
-cache-write rate, while a long-context threshold that changes both input and
-output prices belongs on the offer.
+- a provider-owned catalog source reference;
+- a bounded locator;
+- the bounded raw commercial fields needed to audit the assertion;
+- the exact applicability established by a normalized observation.
 
-Provider-specific conditions are preserved exactly and warned. A new standard
-dimension is added only after at least one official source gives it stable,
-provider-neutral semantics.
+Evidence is collective where a bounded exact result combines several official
+facts. Each attached observation must establish one declared input, and the set
+must establish the final claim. Formula/derivation text is required only for a
+reviewed calculated result and must be non-empty.
 
-## Derivation
+Raw facts use a closed shape, not arbitrary source JSON. They preserve only
+public commercial fields and are bounded before assembly. Private account
+state, negotiated prices, credentials, and user-controlled identifiers are
+discarded or trigger quarantine.
 
-When a provider publishes a relative pricing rule, Kmodels publishes the exact
-computed amount and the machine-readable derivation:
+The canonical API retains audit evidence. UI projections deliberately remove:
 
-```ts
-interface PriceDerivation {
-  base_rate_id: string;
-  steps: DerivationStep[];
-}
+- source and observation references;
+- locators and raw source spelling;
+- derivations and evidence arrays;
+- catalog/pricing hashes and pair-commit internals.
 
-type DerivationStep =
-  | { kind: "multiply"; value: Decimal; source_refs: string[] }
-  | { kind: "add"; value: Decimal; source_refs: string[] };
-```
+This separation is one-way: UI payloads are derived from a validated accepted
+pair and are never an input to collection or commercial comparison.
 
-The base rate and every derivation step must resolve to official evidence. The
-derived rate's `source_refs` is the union of the base rate and rule sources. If a
-provider independently publishes the final amount, that amount is `published`,
-not `derived`, even when it happens to equal a known multiplier.
+## Canonicalization and identity
 
-Derivations form an acyclic graph and are evaluated only with decimal-string
-arithmetic. A source rule that cannot be represented exactly is retained as a
-warning rather than approximated.
+All public objects are closed; unknown properties are rejected before limits,
+sorting, or hashing. Input must be valid I-JSON, contain only Unicode scalar
+values allowed by I-JSON, and use the schema's lossless numeric rules.
 
-## Pricing status
+RFC 8785 canonical JSON is used after semantic canonicalization. Set-like
+arrays have one schema-owned sort key and reject duplicate identities. Source
+sequences retain source order only where order is itself evidence.
 
-`pricing_status` summarizes evidence; it does not replace offers:
+Stable resource IDs are SHA-256 hashes of domain-separated canonical identity:
 
-- `published`: at least one current or future numeric plan is published. Mixed
-  free and paid plans also use this state.
-- `free`: the provider explicitly states that the complete applicable offering
-  is free, not merely that it has a free allowance.
-- `custom_quote`: the provider explicitly requires negotiated pricing.
-- `not_published`: the provider acknowledges a hosted commercial offering but
-  publishes no amount and no explicit custom-quote instruction.
-- `not_applicable`: the catalog entry is not a provider-hosted billable offering.
-- `unknown`: configured official sources do not establish pricing semantics.
+- book: provider ID and reviewed `book_key`;
+- offer: book ID and reviewed `offer_key`;
+- term: offer ID and reviewed `term_key`.
 
-The current `derived` aggregate status is removed. Derivation is a property of an
-individual rate, and one model may contain both published and derived rates.
+Amounts, validity, applicability, observations, display names, and array
+positions are excluded. Keys are unique within their owner and may not be
+derived from those changing fields.
 
-## Provenance
+Compaction groups equal semantic values and unions their applicability while
+retaining all observations. Canonical output must be maximally compact for the
+declared grouping keys. Unequal overlapping normalized values are not allowed;
+the connected affected component falls back to raw. Equivalent source grouping
+therefore does not cause ID churn or duplicate UI rows.
 
-Provenance remains additive at every useful level:
+The commercial projection removes observations, names, source refs, snapshot
+freshness, and informational raw facts. It retains every field that can change
+selection, amount, units, allowances, compatibility, or model disposition.
+Unsupported commercial raw values contribute their bounded raw facts, so an
+unsupported price change is still a commercial diff.
 
-- A model retains every successfully matched source in `model.source_refs`.
-- An offer retains every source that establishes the offer or its common
-  conditions.
-- A rate retains only sources that establish its amount, unit, meter, or
-  rate-specific conditions.
-- A derived rate retains both its base-price source and every rule source.
+## Presentation
 
-Removing a source from the manifest removes its stale references on the next
-successful provider refresh. Optional authenticated inventories remain
-non-persistent and cannot introduce account-private prices into the global
-catalog.
+### Representative table cells
 
-## Examples
+The table derives input, cache, and output cells only from canonical price
+books. It binds the model UID, gathers matching books, and considers base
+offers that can still apply.
 
-### Standard token plan
+A numeric cell requires:
 
-```json
-{
-  "id": "standard-global",
-  "kind": "plan",
-  "selection_group": "inference",
-  "conditions": [{ "kind": "value", "dimension": "service_tier", "value": "standard" }],
-  "rates": [
-    {
-      "id": "standard-input-text",
-      "meter": { "kind": "model_io", "direction": "input", "modality": "text" },
-      "amount": { "value": "2", "denomination": { "kind": "fiat", "currency": "USD" } },
-      "per": { "value": "1000000", "unit": { "kind": "standard", "unit": "token" } },
-      "conditions": [],
-      "source_refs": ["provider-pricing"]
-    },
-    {
-      "id": "standard-output-text",
-      "meter": { "kind": "model_io", "direction": "output", "modality": "text" },
-      "amount": { "value": "8", "denomination": { "kind": "fiat", "currency": "USD" } },
-      "per": { "value": "1000000", "unit": { "kind": "standard", "unit": "token" } },
-      "conditions": [],
-      "source_refs": ["provider-pricing"]
-    }
-  ],
-  "source_refs": ["provider-pricing"]
-}
-```
+- exactly one applicable base offer;
+- exactly one unconditional, validity-free `numeric` state after binding the
+  model and any categorical value required by every offer-state clause;
+- no possibly applicable raw `base_price` fact;
+- exactly one logical term for the first present meter in the slot's reviewed
+  meter precedence;
+- unconditional, validity-free variants that agree on one exact fiat price;
+- a non-empty canonical unit expression.
 
-### Long-context alternatives
+If a higher-priority meter is present but ineligible, the slot fails closed
+rather than silently switching commercial meaning. Lower-priority meters remain
+detail-only. The projection never adds terms, compares currencies, converts
+provider credits, or chooses a minimum/maximum.
 
-Two plans share `selection_group: "inference"`. The first has
-`context_tokens <= 200000`; the second has `context_tokens > 200000`. Each plan
-contains its own input, output, and cache rates. This preserves the official
-tuples and prevents a consumer from combining short-context input with
-long-context output.
+Exact per-token values may be displayed per million tokens when bounded exact
+arithmetic succeeds. Other standard and reviewed provider units retain their
+native unit. A finite exact rational is rendered as a decimal; a
+non-terminating rational remains a fraction. Display never uses binary floating
+point or an unmarked approximation. USD uses `$` in visible copy and retains
+`USD` in accessible copy.
 
-### Published batch multiplier
+When no representative number exists, one dotted-underlined text status spans
+all three price columns and exposes its explanation through the shared tooltip:
 
-A batch plan contains materialized rates. Each rate references the corresponding
-standard rate and a `multiply` step with value `"0.5"`. The step cites the batch
-discount source, while the derived rate cites both the price table and batch
-documentation.
+- an offer count when several base offers exist;
+- `Varies` for one context-dependent base offer;
+- `Free`, `Quote`, `Unpublished`, `Incomplete`, or `Details` for one
+  non-representative base offer;
+- `No base offer` when pricing detail exists but no base offer applies;
+- `N/A`: an exact `not_applicable` disposition exists;
+- `Unknown`: no reliable public book or disposition exists.
 
-### Provider credits and provisioned capacity
+This is a model-level summary, not an input-price badge or an action request.
+When at least one
+representative number exists, unavailable sibling cells use an em dash.
+`not_published` and `custom_quote` remain distinct from unknown.
 
-A Databricks DBU amount uses `provider_credit: { code: "DBU" }`. A provisioned
-offer uses a capacity meter and a per-unit-hour or per-unit-month quantity. No
-exchange rate or implied utilization is invented.
+### Model details
 
-### Free allowance
+The order is:
 
-A monthly free quota is an `allowance` with the granted quantity and a monthly
-condition. Paid usage remains a separate `plan`; the model's status is
-`published`, not `free`.
+1. base offers and add-ons;
+2. the selected offer's context controls;
+3. states, rates, allowances, and unnormalized warnings.
 
-## Projection for the website
+Offer selection is above its child controls. Multiple choices use compact
+wrapping radio groups, so native radio-key behavior owns arrow keys instead of
+navigating the model list. Changing an offer resets its context. A unique base
+offer is fixed and summarized instead of rendered as a one-item selector; this
+is not inference of a provider default.
 
-The compact table continues to show input, output, and cached-input columns. A
-column may display a numeric value only when exactly one current offer qualifies:
+The calculator filters applicability from explicit user selections. A
+categorical selector with one possible value is fixed automatically and shown
+as compact context rather than as a disabled selector. Exact
+rate or allowance rows appear only when the current partial context proves that
+they apply. Alternatives whose applicability is still unresolved remain hidden,
+and the rate section prompts for exactly those missing dimensions. Resolved
+rows do not repeat the chosen context. A single offer state stays in the offer
+summary, while offers with several possible states show the resolved state
+after context selection. The calculator does not multiply usage, apply
+allowances, estimate a request, or calculate an invoice. Possibly applicable
+raw base pricing marks the offer incomplete while normalized rows remain
+available after resolution. Raw allowance facts similarly make only the
+allowance summary incomplete.
 
-1. `kind` is `plan`;
-2. the plan is the reviewed default on-demand/standard offering;
-3. the rate is the corresponding text model-I/O meter;
-4. no unresolved region, route, context, volume, or provider-specific condition
-   remains.
+The compact detail payload contains display-ready exact values and selectors,
+not audit observations. Equal observations remain one row rather than being
+expanded back into the source's flattened layout.
 
-If several distinct values qualify, the table displays `multiple`; if no value
-is established, it displays an em dash. Details group all rates by offer and
-show conditions, validity, denomination, raw unit, derivation, and sources.
-Kmodels never chooses the cheapest rate or the first parsed rate.
+## Validation and bounded work
 
-## Validation
+Admission has three ownership layers:
 
-Publication must reject a provider candidate when:
+1. adapters decide whether facts are public, map exact commercial containers,
+   perform reviewed calculations, and choose normalized versus raw;
+2. serialized conformance validates only facts observable from the closed
+   candidate, bound catalog, vocabulary, and constants;
+3. publication composes provider transitions and validates the complete final
+   pair.
 
-- an amount or quantity is not an exact non-negative decimal string;
-- `per.value` is zero;
-- an offer or rate ID is duplicated within one model;
-- a source reference does not resolve;
-- validity bounds are reversed;
-- a range is empty or contradictory;
-- identical rate identities in one offer have conflicting amounts;
-- a derivation references a missing rate, changes denomination, or contains a
-  cycle;
-- `free` lacks explicit zero-price/free evidence;
-- `not_applicable`, `custom_quote`, or `unknown` contains numeric plans;
-- an unknown official unit, meter, or condition is dropped instead of retained
-  through its provider escape hatch and warning.
+Origin-sensitive parser decisions are never claimed as serialized checks.
+Conversely, adapters cannot bypass closed-shape, canonicalization, ownership,
+reference, conflict, or resource-limit validation.
 
-Price-change quarantine compares rates by stable semantic identity: offer kind,
-selection group, canonical conditions, meter, denomination, and quantity. The
-price amount is deliberately excluded from identity so a change is detected as
-a change rather than as one deletion plus one insertion.
+Limits cover encoded input before decoding, semantic strings, raw facts,
+numbers, unit factors and powers, selector shape/work, pre-compaction assembly,
+resource counts, provider bytes, and whole-catalog bytes. Exact values live in
+`pricingLimits`; changing them is an implementation calibration change backed
+by fixtures, not a new semantic feature.
 
-## Migration
+Fact-local unsupported structure or fact-local limit overflow becomes raw with
+one canonical reason. Provider/container limits, invalid references, privacy
+violations, noncanonical bytes, and output-envelope limits reject the provider
+candidate.
 
-1. Add the offer schema behind a new static API version while retaining the
-   current endpoints as a compatibility projection.
-2. Add shared constructors, canonical condition ordering, decimal validation,
-   stable IDs, and derivation evaluation.
-3. Migrate one provider adapter at a time. Grouping must come from the provider's
-   table/card structure; a generic migration must not guess which legacy rates
-   form an offer.
-4. Add fixtures for standard plans, context bands, regional plans, cache TTLs,
-   additive tools, batch derivation, promotions, free allowances, provider
-   credits, and provisioned capacity.
-5. Switch the website and public catalog only after every configured provider
-   emits validated offers.
-6. Remove the flat legacy schema and projection once no public consumer depends
-   on it; do not retain two canonical pricing models.
+## Provider-atomic publication
 
-Adoption of this proposal changes repo-wide public data semantics and therefore
-requires the same change to update `design.md`.
+Collection parses every pricing source referenced by a fresh partition in the
+same transaction. A fresh partition cannot cite retained or skipped source
+bytes.
+
+For each provider:
+
+- a valid fresh partition advances with its matching catalog slice;
+- a failed refresh retains the previously accepted provider pair, preserves its
+  verification time, and records the current attempt and reviewed failure
+  category;
+- a validated fresh-empty transition removes pricing while keeping the
+  provider;
+- intentional provider removal removes both sides;
+- a reviewed safety-bound withdrawal removes pricing without requiring a
+  source fetch, but cannot preserve an implicated unsafe catalog slice.
+
+Safety findings override ordinary availability retention. Known-unsafe bytes
+are never republished merely because a refresh failed.
+
+After provider transitions, the complete catalog and pricing envelopes are
+validated again. Publication stages immutable snapshots and atomically advances
+one pair manifest; mirrors are repairable from that pointer after interruption.
+Consumers therefore observe one accepted old pair or one accepted new pair,
+never a mixed pair.
+
+## Maintenance
+
+Changes to pricing semantics must update:
+
+- the closed schemas and canonicalization helpers;
+- validation and commercial projection;
+- representative and detail projections;
+- adapter fixtures covering at least two real uses for a shared abstraction;
+- accepted-pair transition tests when publication behavior changes;
+- this document and affected provider guides.
+
+Required behavior tests cover:
+
+- semantic equality under source reordering and compaction;
+- conflict and raw-fallback containment;
+- partial applicability evaluation;
+- exact unit/rational conversion boundaries;
+- model outcomes and conservative table cells;
+- audit-free initial and lazy UI assets;
+- provider failure, retention, empty, removal, withdrawal, and crash recovery;
+- exact catalog/pricing envelope binding.
+
+The canonical asset may be substantially larger than a UI payload because it
+retains audit evidence. That is intentional. Browser transfer budgets apply to
+the compact `/ui/` projections, never to the decoded `data/pricing.json.gz` envelope.

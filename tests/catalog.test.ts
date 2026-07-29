@@ -3,6 +3,9 @@ import { describe, expect, it } from "vite-plus/test";
 import { catalogAssets } from "../src/catalog/endpoints.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { modelUid } from "../src/catalog/model.ts";
+import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
+import { readPricingMirrorSource } from "../src/catalog/pricing-publication.ts";
+import { pricingCatalogEnvelopeSchema } from "../src/catalog/pricing-schema.ts";
 import { catalogEnvelopeSchema, catalogSchema } from "../src/catalog/schema.ts";
 
 async function json(path: string): Promise<unknown> {
@@ -42,7 +45,6 @@ describe("generated static catalog", () => {
             model.delivery_modes?.includes(evidence.mode) === true,
         ) ?? true,
       ).toBe(true);
-      expect(model.pricing.every((rate) => sourceIds.has(rate.source_ref))).toBe(true);
       expect(
         model.routes?.every(
           (route) =>
@@ -69,13 +71,26 @@ describe("generated static catalog", () => {
 
   it("builds public endpoints from durable state", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
-    const assets = catalogAssets(catalog);
-    const catalogAsset = assets.find(({ fileName }) => fileName === "v1/catalog/index.json");
+    const pricing = createPricingCatalogEnvelope(
+      {
+        provider_vocabularies: [],
+        provider_snapshots: [],
+        model_dispositions: [],
+        books: [],
+      },
+      catalog,
+    );
+    const assets = catalogAssets(catalog, pricing);
+    const catalogAsset = assets.find(({ fileName }) => fileName === "catalog/index.json");
+    const pricingAsset = assets.find(({ fileName }) => fileName === "pricing/index.json");
+    const websiteAsset = assets.find(({ fileName }) => fileName === "ui/catalog/index.json");
     const envelope = catalogEnvelopeSchema.parse(JSON.parse(catalogAsset?.source ?? ""));
     expect(envelope.catalog_version).toBe(catalog.catalog_version);
     expect(envelope.data.models).toHaveLength(catalog.models.length);
     expect(envelope.data.providers).toEqual(catalog.providers);
-    expect(assets).toHaveLength(2 + catalog.providers.length * 2);
+    expect(pricingAsset?.source.endsWith("\n")).toBe(false);
+    expect(websiteAsset).toBeDefined();
+    expect(assets).toHaveLength(4 + catalog.providers.length * 2 + catalog.models.length);
   });
 
   it("keeps Hugging Face within its operated-service boundary", async () => {
@@ -163,27 +178,26 @@ describe("generated static catalog", () => {
     expect(o1?.aliases).not.toContain("o1-preview-2024-09-12");
   });
 
-  it("publishes the complete structured Vercel catalog without hiding missing prices", async () => {
+  it("publishes the complete Vercel catalog with canonical pricing", async () => {
     const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const pricing = pricingCatalogEnvelopeSchema.parse(
+      JSON.parse(await readPricingMirrorSource()),
+    ).data;
     const models = catalog.models.filter((model) => model.provider_id === "vercel");
-    const rates = models.flatMap((model) => model.pricing);
-    const missingPrices = models.filter(
-      (model) => model.pricing_status === "unknown" || model.pricing_status === "not_published",
-    );
+    const variants = pricing.books
+      .filter(({ provider_id }) => provider_id === "vercel")
+      .flatMap(({ offers }) => offers)
+      .flatMap(({ terms }) => terms)
+      .flatMap((term) =>
+        term.kind === "raw" ? term.variants : [...term.variants, ...term.raw_variants],
+      );
     const embedding = models.find((model) => model.model_id === "alibaba/qwen3-embedding-0.6b");
     const realtime = models.find((model) => model.model_id === "openai/gpt-5.6-luna");
     expect(models.length).toBeGreaterThan(250);
-    expect(rates.length).toBeGreaterThan(1_000);
+    expect(variants.length).toBeGreaterThan(1_000);
+    expect(models.every((model) => !("pricing" in model))).toBe(true);
     expect(models.every((model) => model.release_date !== undefined)).toBe(true);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
     expect(realtime?.tasks).toEqual(["text_generation"]);
-    const hasMissingPricingWarning = catalog.warnings.some(
-      (warning) =>
-        warning.code === "missing_field" &&
-        "provider_id" in warning &&
-        warning.provider_id === "vercel" &&
-        warning.field === "pricing",
-    );
-    expect(hasMissingPricingWarning).toBe(missingPrices.length > 0);
   });
 });

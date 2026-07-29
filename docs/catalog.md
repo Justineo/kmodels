@@ -4,7 +4,11 @@ Status: implemented
 
 ## Product boundary
 
-Kmodels is a best-effort catalog of model offerings from 18 providers. The public resources are `Provider` and `ProviderModel`. Equal names or IDs from different providers remain distinct.
+Kmodels is a best-effort catalog of model offerings from 18 providers.
+`Provider` and `ProviderModel` describe the model catalog. Pricing is a separate
+content-bound resource containing provider vocabularies, snapshots, books,
+offers, terms, and explicit model dispositions. Equal names or IDs from
+different providers remain distinct.
 
 The catalog records facts observed from allowlisted official sources. Global presence means presence in an official global catalog, not availability to one account, region, deployment, or runtime. `exhaustive` separately records whether the source claims completeness. Missing price means unknown, never free.
 
@@ -54,7 +58,17 @@ The repository ships:
 ## Provenance, pricing, and diagnostics
 
 - `source_refs` resolve to source records with standardized origins, scope, role, stability, exhaustiveness, extraction, and content hashes. Access method and response format are not model facts.
-- Pricing keeps exact meter, currency, unit, and applicability conditions. Never invent a minimum, average, conversion, or free rate.
+- `ProviderModel` contains no pricing projection. Canonical pricing is bound to
+  the exact co-published catalog and references its opaque model and source
+  identities.
+- Pricing keeps exact meter, denomination, unit, applicability, and local
+  evidence. Supported equal values compact into price-book variants;
+  unsupported public payloads remain bounded raw facts only inside an exact
+  reviewed commercial container. Never invent a minimum, average, currency
+  conversion, default offer, or free rate.
+- Source-published validity is detail metadata, not an executable time query.
+  Private, account-scoped, negotiated, or credential-bearing facts never enter
+  normalized or raw public pricing.
 - Regional availability is exact `{region, deployment_type}` pairs; never publish independent arrays that create false combinations.
 - Provider coverage is `fresh`, `stale`, `unavailable`, or `not_configured`, with a machine-readable reason that does not expose private URLs.
 - Warnings use structured codes with optional provider, source, and field context. Aggregate missing authentication, fetch/parse failures, scoped mismatches, and missing-field coverage instead of warning once per row.

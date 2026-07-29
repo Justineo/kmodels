@@ -1,23 +1,23 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import {
-  formatModelTask,
-  formatPrice,
-  formatRateUnit,
   formatSnakeCase,
   formatTokenCount,
   modelTaskList,
   primaryStatus,
 } from "../catalog/presentation.ts";
-import type { ProviderModel, SourceRecord } from "../catalog/schema.ts";
+import type { WebsiteModel, WebsiteModelDetail } from "../catalog/website-schema.ts";
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
+import PricingDetails from "./PricingDetails.vue";
 import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
-  model: ProviderModel | undefined;
+  model: WebsiteModel | undefined;
   providerName: string;
-  sources: SourceRecord[];
+  detail: WebsiteModelDetail | undefined;
+  loading: boolean;
+  error: string | undefined;
 }>();
 
 const emit = defineEmits<{
@@ -33,14 +33,10 @@ const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
   viewport: scrollViewport.value,
 }));
-const modelSources = computed(() => {
-  const ids = new Set(props.model?.source_refs ?? []);
-  return props.sources.filter((source) => ids.has(source.id));
-});
 const positiveCapabilities = computed(() => {
-  const model = props.model;
-  if (model === undefined) return [];
-  const labels: ReadonlyArray<[keyof ProviderModel["capabilities"], string]> = [
+  const detail = props.detail;
+  if (detail === undefined) return [];
+  const labels: ReadonlyArray<[keyof WebsiteModelDetail["capabilities"], string]> = [
     ["reasoning", "Reasoning"],
     ["tool_call", "Tool calling"],
     ["structured_output", "Structured output"],
@@ -52,8 +48,25 @@ const positiveCapabilities = computed(() => {
     ["effort_control", "Effort control"],
     ["computer_use", "Computer use"],
   ];
-  return labels.filter(([key]) => model.capabilities[key] === true).map(([, label]) => label);
+  return labels.filter(([key]) => detail.capabilities[key] === true).map(([, label]) => label);
 });
+const modelIdentifier = computed(() => {
+  const model = props.model;
+  if (model === undefined) return undefined;
+  if (model.name !== model.model_id)
+    return `${model.model_id}${model.version === undefined ? "" : ` · ${model.version}`}`;
+  return model.version === undefined ? undefined : `Version ${model.version}`;
+});
+const deliveryModes = computed(
+  () => props.detail?.delivery_modes?.map(formatSnakeCase).join(", ") || "Not published",
+);
+const availability = computed(() => {
+  const count = props.detail?.availability_count;
+  return count === undefined
+    ? "Not published"
+    : `${count} observed deployment${count === 1 ? "" : "s"}`;
+});
+const apiEndpoints = computed(() => props.detail?.api_endpoints ?? []);
 
 watch(
   () => props.model,
@@ -135,12 +148,6 @@ function handleKeydown(event: KeyboardEvent): void {
 
 onMounted(() => document.addEventListener("keydown", handleKeydown));
 onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
-
-function conditions(rate: ProviderModel["pricing"][number]): string {
-  const values = Object.entries(rate.conditions);
-  if (values.length === 0) return "Standard conditions";
-  return values.map(([key, value]) => `${formatSnakeCase(key)}: ${String(value)}`).join(" · ");
-}
 </script>
 
 <template>
@@ -160,9 +167,7 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
             {{ providerName }}
           </p>
           <h2 id="details-title">{{ model.name }}</h2>
-          <code
-            >{{ model.model_id }}<span v-if="model.version"> · {{ model.version }}</span></code
-          >
+          <code v-if="modelIdentifier">{{ modelIdentifier }}</code>
         </div>
         <button
           class="icon-button"
@@ -181,10 +186,11 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
               <span class="status-badge" :data-status="primaryStatus(model)">
                 {{ primaryStatus(model) }}
               </span>
-              <span>{{ formatSnakeCase(model.scope) }}</span>
+              <span>{{ detail ? formatSnakeCase(detail.scope) : "Loading details…" }}</span>
             </div>
 
-            <p v-if="model.description" class="details-description">{{ model.description }}</p>
+            <p v-if="detail?.description" class="details-description">{{ detail.description }}</p>
+            <p v-if="error" class="unknown-note" role="alert">{{ error }}</p>
 
             <section class="detail-section" aria-labelledby="overview-heading">
               <h3 id="overview-heading">Overview</h3>
@@ -195,25 +201,15 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
                 </div>
                 <div>
                   <dt>Delivery modes</dt>
-                  <dd>
-                    {{ model.delivery_modes?.map(formatSnakeCase).join(", ") || "Not published" }}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Lifecycle</dt>
-                  <dd>{{ model.status }}</dd>
-                </div>
-                <div>
-                  <dt>Release stage</dt>
-                  <dd>{{ model.release_stage }}</dd>
+                  <dd>{{ deliveryModes }}</dd>
                 </div>
                 <div>
                   <dt>Context window</dt>
-                  <dd>{{ formatTokenCount(model.limits.context_tokens) }}</dd>
+                  <dd>{{ formatTokenCount(model.context_tokens) }}</dd>
                 </div>
                 <div>
                   <dt>Maximum output</dt>
-                  <dd>{{ formatTokenCount(model.limits.max_output_tokens) }}</dd>
+                  <dd>{{ formatTokenCount(detail?.max_output_tokens) }}</dd>
                 </div>
                 <div>
                   <dt>Released</dt>
@@ -225,108 +221,46 @@ function conditions(rate: ProviderModel["pricing"][number]): string {
                 </div>
                 <div>
                   <dt>Availability</dt>
-                  <dd>
-                    {{
-                      model.availability === undefined
-                        ? "Not published"
-                        : `${model.availability.length} observed deployment${model.availability.length === 1 ? "" : "s"}`
-                    }}
-                  </dd>
+                  <dd>{{ availability }}</dd>
                 </div>
               </dl>
             </section>
 
-            <section class="detail-section" aria-labelledby="modalities-heading">
+            <section v-if="detail" class="detail-section" aria-labelledby="modalities-heading">
               <h3 id="modalities-heading">Modalities & capabilities</h3>
               <div class="modality-flow">
-                <span>{{ model.modalities.input.join(", ") || "Unknown input" }}</span>
+                <span>{{ detail.modalities.input.join(", ") || "Unknown input" }}</span>
                 <UiIcon name="arrow-right" />
-                <span>{{ model.modalities.output.join(", ") || "Unknown output" }}</span>
+                <span>{{ detail.modalities.output.join(", ") || "Unknown output" }}</span>
               </div>
               <ul v-if="positiveCapabilities.length > 0" class="capability-list">
                 <li v-for="capability in positiveCapabilities" :key="capability">
                   {{ capability }}
                 </li>
               </ul>
-              <p v-else class="unknown-note">
-                No positive capability flags were published by the source.
-              </p>
+              <p v-else class="unknown-note">No supported capabilities published.</p>
             </section>
 
             <section
-              v-if="model.task_evidence?.length"
-              class="detail-section"
-              aria-labelledby="task-evidence-heading"
-            >
-              <h3 id="task-evidence-heading">Task evidence</h3>
-              <ul class="endpoint-list">
-                <li
-                  v-for="evidence in model.task_evidence"
-                  :key="`${evidence.task}:${evidence.source_ref}:${evidence.raw_value}`"
-                >
-                  <span>{{ formatModelTask(evidence.task) }}</span>
-                  <code>{{ evidence.namespace }}: {{ evidence.raw_value }}</code>
-                </li>
-              </ul>
-            </section>
-
-            <section
-              v-if="model.api_endpoints?.length"
+              v-if="apiEndpoints.length"
               class="detail-section"
               aria-labelledby="routes-heading"
             >
               <h3 id="routes-heading">Published endpoints</h3>
               <ul class="endpoint-list">
-                <li
-                  v-for="endpoint in model.api_endpoints"
-                  :key="`${endpoint.name}:${endpoint.path}`"
-                >
+                <li v-for="endpoint in apiEndpoints" :key="`${endpoint.name}:${endpoint.path}`">
                   <span>{{ endpoint.name }}</span>
                   <code>{{ endpoint.path }}</code>
                 </li>
               </ul>
             </section>
 
-            <section class="detail-section" aria-labelledby="pricing-heading">
-              <h3 id="pricing-heading">Pricing</h3>
-              <div v-if="model.pricing.length > 0" class="rate-list">
-                <div
-                  v-for="rate in model.pricing"
-                  :key="`${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`"
-                  class="rate-row"
-                >
-                  <div>
-                    <span>{{ formatSnakeCase(rate.meter) }}</span>
-                    <small>{{ conditions(rate) }}</small>
-                  </div>
-                  <strong class="numeric">
-                    {{ formatPrice(rate) }}
-                    <small>{{ formatRateUnit(rate) }}</small>
-                  </strong>
-                </div>
-              </div>
-              <p v-else class="unknown-note">
-                {{ formatSnakeCase(model.pricing_status) }}
-              </p>
-            </section>
-
-            <section class="detail-section" aria-labelledby="sources-heading">
-              <h3 id="sources-heading">Evidence</h3>
-              <ul class="evidence-list">
-                <li v-for="source in modelSources" :key="source.id">
-                  <a :href="source.url" target="_blank" rel="noreferrer">
-                    <span>
-                      <strong>{{ source.id }}</strong>
-                      <small
-                        >{{ source.source.join(" + ") }} ·
-                        {{ formatSnakeCase(source.stability) }}</small
-                      >
-                    </span>
-                    <UiIcon name="external-link" />
-                  </a>
-                </li>
-              </ul>
-            </section>
+            <PricingDetails
+              v-if="!error"
+              :model="model"
+              :detail="detail?.pricing"
+              :loading="loading"
+            />
           </div>
         </div>
       </div>

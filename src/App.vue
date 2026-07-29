@@ -1,16 +1,14 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
+import { modelLifecycles, modelReleaseStages } from "./catalog/catalog-vocabulary.ts";
 import { formatCount, formatModelTask, versionBadgeModelUids } from "./catalog/presentation.ts";
-import {
-  catalogEnvelopeSchema,
-  migrateCatalogEnvelope,
-  modelLifecycleSchema,
-  modelReleaseStageSchema,
-  type Provider,
-  type ProviderModel,
-  type SourceRecord,
-} from "./catalog/schema.ts";
 import { orderedTasks } from "./catalog/task.ts";
+import {
+  websiteModelDetailSchema,
+  type WebsiteCatalog,
+  type WebsiteModel,
+  type WebsiteModelDetail,
+} from "./catalog/website-schema.ts";
 import {
   formatRouteSearch,
   parseRouteSearch,
@@ -19,36 +17,35 @@ import {
   type SortState,
 } from "./catalog/route.ts";
 import { indexModels, searchModels } from "./catalog/search.ts";
-import { calculateVirtualRange } from "./catalog/virtualization.ts";
+import { calculateVirtualRange, nearestItemScrollOffset } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
 import IconSprite from "./components/IconSprite.vue";
 import ModelDetails from "./components/ModelDetails.vue";
 import ModelRow from "./components/ModelRow.vue";
-import PricingHeaderTooltip from "./components/PricingHeaderTooltip.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
+import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 
 type Theme = "light" | "dark";
-const LIFECYCLE_OPTIONS = modelLifecycleSchema.options;
-const RELEASE_STAGE_OPTIONS = modelReleaseStageSchema.options;
+const LIFECYCLE_OPTIONS = modelLifecycles;
+const RELEASE_STAGE_OPTIONS = modelReleaseStages;
 const root = document.documentElement;
 const initialRoute = parseRouteSearch(location.search);
+const props = defineProps<{ catalog: WebsiteCatalog }>();
 
-const models = ref<ProviderModel[]>([]);
-const providers = ref<Provider[]>([]);
-const sources = ref<SourceRecord[]>([]);
-const generatedAt = ref("");
+const { models, providers, generated_at: generatedAt } = props.catalog;
+const modelDetail = ref<WebsiteModelDetail>();
+const detailLoading = ref(false);
+const detailError = ref<string>();
 const query = ref(initialRoute.query);
 const selectedProvider = ref(initialRoute.provider);
 const selectedTasks = ref(initialRoute.tasks);
 const selectedLifecycles = ref(initialRoute.lifecycles);
 const selectedReleaseStages = ref(initialRoute.releaseStages);
-const loading = ref(true);
-const loadError = ref<string>();
 const selectedModelUid = ref(initialRoute.modelUid);
 const theme = ref<Theme>(root.dataset.theme === "dark" ? "dark" : "light");
 const sort = ref(initialRoute.sort);
@@ -57,16 +54,11 @@ const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
 const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
 const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
-const virtualRange = ref(
-  calculateVirtualRange({
-    count: 0,
-    itemSize: INITIAL_VIRTUAL_ITEM_SIZE,
-    overscan: OVERSCAN_ROWS,
-    scrollOffset: 0,
-    viewportSize: 0,
-  }),
-);
+const tableScrollOffset = ref(0);
+const tableViewportSize = ref(0);
 let tableResizeObserver: ResizeObserver | undefined;
+const detailCache = new Map<string, WebsiteModelDetail>();
+let detailRequest = "";
 let applyingRoute = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
 let tableHeaderHeight = 0;
@@ -79,21 +71,17 @@ useOverlayScrollbars(() => ({
   viewport: tableShell.value,
 }));
 
-const providerNames = computed(
-  () => new Map(providers.value.map((provider) => [provider.id, provider.name])),
-);
+const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
 const selectedModel = computed(() => {
   const uid = selectedModelUid.value;
-  return uid === undefined ? undefined : models.value.find((model) => model.uid === uid);
+  return uid === undefined ? undefined : models.find((model) => model.uid === uid);
 });
-const providerOptions = computed(() =>
-  [...providers.value].sort((left, right) => left.name.localeCompare(right.name)),
-);
-const taskOptions = computed(() => orderedTasks(models.value.flatMap((model) => model.tasks)));
-const versionBadgeUids = computed(() => versionBadgeModelUids(models.value));
-const searchIndex = computed(() => indexModels(models.value));
+const providerOptions = [...providers].sort((left, right) => left.name.localeCompare(right.name));
+const taskOptions = orderedTasks(models.flatMap((model) => model.tasks));
+const versionBadgeUids = versionBadgeModelUids(models);
+const searchIndex = indexModels(models);
 const filteredModels = computed(() => {
-  const values = searchModels(searchIndex.value, query.value).filter(
+  const values = searchModels(searchIndex, query.value).filter(
     (model) =>
       (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
       (selectedTasks.value.length === 0 ||
@@ -106,9 +94,19 @@ const filteredModels = computed(() => {
   if (activeSort) values.sort((left, right) => compareModels(left, right, activeSort));
   return values;
 });
+const virtualRange = computed(() =>
+  calculateVirtualRange({
+    count: filteredModels.value.length,
+    itemSize: virtualItemSize,
+    overscan: OVERSCAN_ROWS,
+    scrollOffset: tableScrollOffset.value,
+    viewportSize: tableViewportSize.value,
+  }),
+);
 const virtualModels = computed(() =>
   filteredModels.value.slice(virtualRange.value.start, virtualRange.value.end),
 );
+const hasResults = computed(() => filteredModels.value.length > 0);
 const hasFilters = computed(
   () =>
     query.value !== "" ||
@@ -123,16 +121,13 @@ const advancedFilterCount = computed(
     selectedLifecycles.value.length +
     selectedReleaseStages.value.length,
 );
-const generatedAtLabel = computed(() => {
-  if (generatedAt.value === "") return "—";
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(generatedAt.value));
-});
+const generatedAtLabel = new Intl.DateTimeFormat("en", {
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+}).format(new Date(generatedAt));
 const resultCountLabel = computed(() => {
   const count = filteredModels.value.length;
   return `${formatCount(count)} ${count === 1 ? "result" : "results"}`;
@@ -141,9 +136,11 @@ const themeToggleLabel = computed(() =>
   theme.value === "dark" ? "Switch to light mode" : "Switch to dark mode",
 );
 
-watch(filteredModels, () => {
-  void nextTick(resetVirtualScroll);
-});
+watch(
+  [query, selectedProvider, selectedTasks, selectedLifecycles, selectedReleaseStages, sort],
+  () => void nextTick(resetVirtualScroll),
+  { deep: true, flush: "post" },
+);
 
 watch(
   [
@@ -181,8 +178,8 @@ function compareOptionalString(
 }
 
 function compareModels(
-  left: ProviderModel,
-  right: ProviderModel,
+  left: WebsiteModel,
+  right: WebsiteModel,
   { key, direction }: SortState,
 ): number {
   let comparison: number;
@@ -196,25 +193,17 @@ function compareModels(
       if (direction === "descending") comparison *= -1;
       break;
     case "context":
-      comparison = compareOptionalNumber(
-        left.limits.context_tokens,
-        right.limits.context_tokens,
-        direction,
-      );
+      comparison = compareOptionalNumber(left.context_tokens, right.context_tokens, direction);
       break;
-    case "updated":
-      comparison = compareOptionalString(
-        left.updated_date ?? left.release_date,
-        right.updated_date ?? right.release_date,
-        direction,
-      );
+    case "released":
+      comparison = compareOptionalString(left.release_date, right.release_date, direction);
       break;
   }
   return comparison === 0 ? left.uid.localeCompare(right.uid) : comparison;
 }
 
 function providerName(providerId: string): string {
-  return providerNames.value.get(providerId) ?? providerId;
+  return providerNames.get(providerId) ?? providerId;
 }
 
 function setSort(nextKey: SortKey): void {
@@ -251,13 +240,8 @@ function handleFilterToggle(event: ToggleEvent): void {
 
 function updateVirtualRange(): void {
   const element = tableShell.value;
-  virtualRange.value = calculateVirtualRange({
-    count: filteredModels.value.length,
-    itemSize: virtualItemSize,
-    overscan: OVERSCAN_ROWS,
-    scrollOffset: element?.scrollTop ?? 0,
-    viewportSize: Math.max(0, (element?.clientHeight ?? 0) - tableHeaderHeight),
-  });
+  tableScrollOffset.value = element?.scrollTop ?? 0;
+  tableViewportSize.value = Math.max(0, (element?.clientHeight ?? 0) - tableHeaderHeight);
 }
 
 function pixelToken(name: `--${string}`): number {
@@ -284,19 +268,19 @@ function syncRoute(): void {
     modelUid: selectedModelUid.value,
   });
   if (search === location.search) return;
-  history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
+  history.pushState(history.state, "", `${location.pathname}${search}${location.hash}`);
 }
 
 function reconcileRouteSelections(): void {
   if (
     selectedProvider.value !== "" &&
-    !providers.value.some((provider) => provider.id === selectedProvider.value)
+    !providers.some((provider) => provider.id === selectedProvider.value)
   ) {
     selectedProvider.value = "";
   }
   if (
     selectedModelUid.value !== undefined &&
-    !models.value.some((model) => model.uid === selectedModelUid.value)
+    !models.some((model) => model.uid === selectedModelUid.value)
   ) {
     selectedModelUid.value = undefined;
   }
@@ -312,7 +296,7 @@ function applyRoute(): void {
   selectedReleaseStages.value = state.releaseStages;
   sort.value = state.sort;
   selectedModelUid.value = state.modelUid;
-  if (models.value.length > 0) reconcileRouteSelections();
+  reconcileRouteSelections();
   void nextTick(() => {
     applyingRoute = false;
     syncRoute();
@@ -324,8 +308,23 @@ function selectRelativeModel(offset: -1 | 1): void {
   if (current === undefined) return;
   const index = filteredModels.value.findIndex((model) => model.uid === current.uid);
   if (index === -1) return;
-  const next = filteredModels.value[index + offset];
-  if (next !== undefined) selectedModelUid.value = next.uid;
+  const nextIndex = index + offset;
+  const next = filteredModels.value[nextIndex];
+  if (next === undefined) return;
+  selectedModelUid.value = next.uid;
+  scrollModelIntoView(nextIndex);
+}
+
+function scrollModelIntoView(index: number): void {
+  const element = tableShell.value;
+  if (element === null) return;
+  element.scrollTop = nearestItemScrollOffset({
+    index,
+    itemSize: virtualItemSize,
+    scrollOffset: element.scrollTop,
+    viewportSize: Math.max(0, element.clientHeight - tableHeaderHeight),
+  });
+  updateVirtualRange();
 }
 
 function handleShortcut(event: KeyboardEvent): void {
@@ -347,30 +346,45 @@ function toggleTheme(): void {
   } catch {}
 }
 
-async function loadCatalog(): Promise<void> {
-  loading.value = true;
-  loadError.value = undefined;
+async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
+  detailRequest = model?.detail_ref ?? "";
+  modelDetail.value = undefined;
+  detailError.value = undefined;
+  if (model === undefined) {
+    detailLoading.value = false;
+    return;
+  }
+  const reference = model.detail_ref;
+  const cached = detailCache.get(reference);
+  if (cached !== undefined) {
+    modelDetail.value = cached;
+    detailLoading.value = false;
+    return;
+  }
+  detailLoading.value = true;
   try {
-    const response = await fetch("/v1/catalog/index.json", {
+    const response = await fetch(`/ui/models/${reference}.json`, {
       cache: "no-cache",
       headers: { Accept: "application/json" },
     });
-    if (!response.ok) throw new Error(`Catalog request failed with ${response.status}`);
-    const value: unknown = await response.json();
-    const catalog = catalogEnvelopeSchema.parse(migrateCatalogEnvelope(value));
-    models.value = catalog.data.models;
-    providers.value = catalog.data.providers;
-    sources.value = catalog.data.sources;
-    generatedAt.value = catalog.generated_at;
-    reconcileRouteSelections();
+    if (!response.ok) throw new Error(`Model detail request failed with ${response.status}`);
+    const detail = websiteModelDetailSchema.parse(await response.json());
+    if (detail.model_ref !== model.uid)
+      throw new Error("Model detail response belongs to another model");
+    detailCache.set(reference, detail);
+    if (detailRequest === reference) modelDetail.value = detail;
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "Catalog unavailable";
+    if (detailRequest === reference)
+      detailError.value = error instanceof Error ? error.message : "Model details unavailable";
   } finally {
-    loading.value = false;
+    if (detailRequest === reference) detailLoading.value = false;
   }
 }
 
+watch(selectedModel, (model) => void loadModelDetail(model), { immediate: true });
+
 onMounted(() => {
+  reconcileRouteSelections();
   virtualItemSize = pixelToken("--layout-table-row-height");
   tableHeaderHeight = pixelToken("--layout-table-header-height");
   window.addEventListener("keydown", handleShortcut);
@@ -382,7 +396,6 @@ onMounted(() => {
   }
   updateVirtualRange();
   syncRoute();
-  void loadCatalog();
 });
 
 onUnmounted(() => {
@@ -401,28 +414,31 @@ onUnmounted(() => {
     </h1>
     <div class="header-actions">
       <span class="catalog-summary" aria-label="Catalog summary">
-        <strong>{{ loading ? "—" : formatCount(models.length) }}</strong>
+        <strong>{{ formatCount(models.length) }}</strong>
         models
         <span aria-hidden="true">·</span>
-        <strong>{{ loading ? "—" : providers.length }}</strong>
+        <strong>{{ providers.length }}</strong>
         providers
       </span>
-      <time class="generated-at" :datetime="generatedAt || undefined">
-        Updated {{ generatedAtLabel }}
-      </time>
-      <a class="json-link" href="/v1/catalog/index.json">
-        JSON
+      <time class="generated-at" :datetime="generatedAt"> Updated {{ generatedAtLabel }} </time>
+      <a class="json-link" href="/catalog/index.json">
+        Catalog JSON
         <UiIcon name="external-link" />
       </a>
-      <button
+      <a class="json-link" href="/pricing/index.json">
+        Pricing JSON
+        <UiIcon name="external-link" />
+      </a>
+      <UiTooltip
+        as="button"
         class="theme-toggle"
         type="button"
         :aria-label="themeToggleLabel"
-        :title="themeToggleLabel"
+        :content="themeToggleLabel"
         @click="toggleTheme"
       >
         <UiIcon :name="theme === 'dark' ? 'sun' : 'moon'" />
-      </button>
+      </UiTooltip>
     </div>
   </header>
 
@@ -461,16 +477,17 @@ onUnmounted(() => {
           </span>
         </button>
 
-        <button
+        <UiTooltip
+          as="button"
           class="clear-button"
           type="button"
           :disabled="!hasFilters"
           aria-label="Clear filters"
-          title="Clear filters"
+          content="Clear filters"
           @click="resetFilters"
         >
           <UiIcon name="x" />
-        </button>
+        </UiTooltip>
 
         <output class="result-count" aria-live="polite">{{ resultCountLabel }}</output>
 
@@ -570,12 +587,15 @@ onUnmounted(() => {
         <div
           ref="tableShell"
           class="table-shell"
-          :aria-busy="loading"
           :aria-label="`Model results, ${resultCountLabel}`"
           tabindex="0"
           @scroll.passive="updateVirtualRange"
         >
-          <table class="model-table" :aria-rowcount="filteredModels.length + 1">
+          <div v-if="!hasResults" class="table-state">
+            <p>No observed models match these filters.</p>
+            <button v-if="hasFilters" type="button" @click="resetFilters">Clear filters</button>
+          </div>
+          <table v-else class="model-table" :aria-rowcount="filteredModels.length + 1">
             <caption class="visually-hidden">
               Observed models and representative published rates
             </caption>
@@ -588,7 +608,7 @@ onUnmounted(() => {
               <col class="input-col" />
               <col class="cached-col" />
               <col class="output-col" />
-              <col class="updated-col" />
+              <col class="released-col" />
               <col class="disclosure-col" />
             </colgroup>
             <thead>
@@ -617,64 +637,37 @@ onUnmounted(() => {
                   />
                 </th>
                 <th class="input-col numeric" scope="col" aria-label="Representative input rate">
-                  <PricingHeaderTooltip label="Input" tooltip-id="pricing-input-tooltip">
-                    <strong>Default input units</strong>
-                    <span>
-                      <span>Token input</span>
-                      <code>/1M tokens</code>
-                    </span>
-                    <span>
-                      <span>Speech synthesis</span>
-                      <code>/1M characters</code>
-                    </span>
-                    <span>
-                      <span>Timed media</span>
-                      <code>/second or minute</code>
-                    </span>
-                    <small>Other native units are shown in the price cell.</small>
-                  </PricingHeaderTooltip>
+                  <UiTooltip
+                    class="pricing-header-trigger"
+                    tabindex="0"
+                    content="Representative input price. Token rates use 1M tokens; other meters show their native unit in the cell."
+                  >
+                    Input
+                  </UiTooltip>
                 </th>
                 <th class="cached-col numeric" scope="col" aria-label="Representative cache rate">
-                  <PricingHeaderTooltip label="Cache" tooltip-id="pricing-cache-tooltip">
-                    <strong>Default cache units</strong>
-                    <span>
-                      <span>Read &amp; write</span>
-                      <code>/1M tokens</code>
-                    </span>
-                    <span>
-                      <span>Storage</span>
-                      <code>/1M tokens/hour</code>
-                    </span>
-                    <small>Other native units are shown in the price cell.</small>
-                  </PricingHeaderTooltip>
+                  <UiTooltip
+                    class="pricing-header-trigger"
+                    tabindex="0"
+                    content="Representative cache price. Token rates use 1M tokens; other meters show their native unit in the cell."
+                  >
+                    Cache
+                  </UiTooltip>
                 </th>
                 <th class="output-col numeric" scope="col" aria-label="Representative output rate">
-                  <PricingHeaderTooltip label="Output" tooltip-id="pricing-output-tooltip">
-                    <strong>Default output units</strong>
-                    <span>
-                      <span>Text &amp; embeddings</span>
-                      <code>/1M tokens</code>
-                    </span>
-                    <span>
-                      <span>Image generation</span>
-                      <code>/image</code>
-                    </span>
-                    <span>
-                      <span>Video generation</span>
-                      <code>/second</code>
-                    </span>
-                    <span>
-                      <span>Requests &amp; capacity</span>
-                      <code>source unit</code>
-                    </span>
-                    <small>Other native units are shown in the price cell.</small>
-                  </PricingHeaderTooltip>
+                  <UiTooltip
+                    class="pricing-header-trigger"
+                    tabindex="0"
+                    content="Representative output price. Token rates use 1M tokens; other meters show their native unit in the cell."
+                  >
+                    Output
+                  </UiTooltip>
                 </th>
-                <th class="updated-col numeric" scope="col" :aria-sort="ariaSort('updated')">
+                <th class="released-col numeric" scope="col" :aria-sort="ariaSort('released')">
                   <ColumnSortButton
-                    label="Updated"
-                    :direction="sort?.key === 'updated' ? sort.direction : undefined"
-                    @sort="setSort('updated')"
+                    label="Released"
+                    :direction="sort?.key === 'released' ? sort.direction : undefined"
+                    @sort="setSort('released')"
                   />
                 </th>
                 <th class="disclosure-col" scope="col">
@@ -683,7 +676,7 @@ onUnmounted(() => {
               </tr>
             </thead>
 
-            <tbody v-if="filteredModels.length > 0">
+            <tbody>
               <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="10" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
               </tr>
@@ -705,26 +698,6 @@ onUnmounted(() => {
                 <td colspan="10" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
               </tr>
             </tbody>
-            <tbody v-else>
-              <tr>
-                <td colspan="10">
-                  <div v-if="loading" class="table-state">
-                    <UiIcon class="loader" name="loader-circle" />
-                    <p>Loading validated catalog…</p>
-                  </div>
-                  <div v-else-if="loadError" class="table-state error-state">
-                    <p>{{ loadError }}</p>
-                    <button type="button" @click="loadCatalog">Try again</button>
-                  </div>
-                  <div v-else class="table-state">
-                    <p>No observed models match these filters.</p>
-                    <button v-if="hasFilters" type="button" @click="resetFilters">
-                      Clear filters
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
           </table>
         </div>
       </div>
@@ -734,7 +707,9 @@ onUnmounted(() => {
   <ModelDetails
     :model="selectedModel"
     :provider-name="selectedModel ? providerName(selectedModel.provider_id) : ''"
-    :sources="sources"
+    :detail="modelDetail"
+    :loading="detailLoading"
+    :error="detailError"
     @close="selectedModelUid = undefined"
     @navigate="selectRelativeModel"
   />

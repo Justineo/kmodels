@@ -15,6 +15,7 @@ Status: current
 
 - Parse official pricing MDX statically without executing page code.
 - Preserve CNY cached input, uncached input, output, and Batch rates. Batch is a tier condition.
+- The table publishes no effective dates. Treat its rows as current observations; never infer historical start/end dates from collection time.
 - Attach `/v1/batches` only to exact Batch pricing rows while the fixed create-batch reference retains its reviewed operation and payload endpoint.
 - Exclude the web-search charge while its own source says it is outdated and the implemented pricing schema cannot bind the add-on coherently.
 - Preserve `legacy` for models still callable only by existing users; do not flatten it into deprecation.

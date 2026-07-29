@@ -17,6 +17,8 @@ Status: current
 - `Legacy` is callable-but-restricted, not deprecated. “No sooner than” is not an exact retirement date.
 - RAG is service-level. `Invoke` does not imply response streaming. Native Rerank additionally requires its model-specific sample.
 - Price joins require one unique official identity or exact ID occurrence. Preserve region, endpoint, routing class, tier, cache TTL, context threshold, media conditions, capacity direction, unit, and effective date.
+- The AWS Price List label `Units` is source spelling, not a semantic unit. Disambiguate tokens, searches, seconds, images, requests, and capacity only from exact SKU/product attributes; otherwise leave the unit unnormalized.
+- Keep `1K TPM Hour` and reviewed model-capacity hours as provider-qualified atomic capacity units. They are exact prices that can be selected and displayed, but they are not ordinary token-throughput rates and are never converted to tokens.
 - Map inventory enums only through reviewed semantics. New enum values fail closed. Regional streaming evidence remains scoped.
 
 ## Kong AI Gateway

@@ -14,8 +14,32 @@ import { isCredentialLikeIdentifier } from "./identity.ts";
 import { normalizeModelReleaseStage } from "./lifecycle.ts";
 import { apiEndpointKey, modelRouteKey } from "./model.ts";
 import {
+  composeCatalogPair,
+  coreCatalogVersion,
+  type AcceptedPairSafetyFinding,
+} from "./pricing-pair-transition.ts";
+import type { ProviderPricingPartition } from "./pricing-assembly.ts";
+import {
+  commitCatalogPair,
+  prepareCatalogPair,
+  recoverCatalogPair,
+} from "./pricing-publication.ts";
+import {
+  failedPricingTransition,
+  pricingTransitionProviderId,
+  providerPartitionSourceRefs,
+  type ProviderPricingTransition,
+} from "./pricing-transition.ts";
+import { assembleParsedProviderPricing, isRequiredPricingSource } from "./pricing-adapter.ts";
+import {
+  publishedModel,
+  type ParsedProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
+import { validatePricingCatalog } from "./pricing-validation.ts";
+import { emptyPricingCatalog, type PricingRefreshFailureCode } from "./pricing-schema.ts";
+import {
   catalogSchema,
-  migrateCatalogStorage,
   type Catalog,
   type CatalogWarning,
   type Coverage,
@@ -38,6 +62,8 @@ interface ProviderResult {
   sources: SourceRecord[];
   coverage: Coverage;
   warnings: CatalogWarning[];
+  pricing?: ProviderPricingPartition;
+  pricingFailure?: PricingRefreshFailureCode;
   quarantine?: { provider_id: string; checked_at: string; reason: string };
 }
 
@@ -46,6 +72,8 @@ interface CollectionOptions {
   jitterMs?: number;
   rebuild?: boolean;
   rebuildProvider?: string;
+  pricingTransitions?: readonly ProviderPricingTransition[];
+  pricingSafetyFindings?: readonly AcceptedPairSafetyFinding[];
 }
 
 function message(error: unknown): string {
@@ -94,36 +122,39 @@ function sourceState(
 
 export interface SourceGroup {
   source: SourceManifest;
-  models: ProviderModel[];
+  models: ParsedProviderModel[];
 }
 
 function known<T extends boolean | "unknown">(current: T, incoming: T): T {
   return incoming === "unknown" ? current : incoming;
 }
 
-function rateKey(rate: ProviderModel["pricing"][number]): string {
-  return `${rate.meter}\0${rate.currency}\0${rate.unit}\0${JSON.stringify(rate.conditions)}`;
+function priceFactKey(fact: SourcePriceFact): string {
+  return `${fact.meter}\0${fact.currency}\0${fact.unit}\0${JSON.stringify(fact.conditions)}`;
 }
 
-function mergeRates(current: ProviderModel, incoming: ProviderModel): ProviderModel["pricing"] {
-  if (incoming.pricing.length === 0) return incoming.pricing;
+function mergePriceFacts(
+  current: ParsedProviderModel,
+  incoming: ParsedProviderModel,
+): SourcePriceFact[] {
+  if (incoming.price_facts.length === 0) return incoming.price_facts;
   return [
     ...new Map(
-      [...current.pricing, ...incoming.pricing].map((rate) => [rateKey(rate), rate]),
+      [...current.price_facts, ...incoming.price_facts].map((fact) => [priceFactKey(fact), fact]),
     ).values(),
-  ].sort((left, right) => rateKey(left).localeCompare(rateKey(right)));
+  ].sort((left, right) => priceFactKey(left).localeCompare(priceFactKey(right)));
 }
 
 function applyFields(
-  current: ProviderModel,
-  incoming: ProviderModel,
+  current: ParsedProviderModel,
+  incoming: ParsedProviderModel,
   source: SourceManifest,
-): ProviderModel {
+): ParsedProviderModel {
   const fields = new Set(source.fields);
   const incomingModalities =
     incoming.modalities.input.length + incoming.modalities.output.length > 0;
   const incomingOperations = incoming.tasks.length > 0;
-  const incomingPricing = incoming.pricing.length > 0 || incoming.pricing_status !== "unknown";
+  const incomingPricing = incoming.price_facts.length > 0 || incoming.pricing_state !== "unknown";
   const serviceFamilies = [
     ...new Set([...(current.service_families ?? []), ...(incoming.service_families ?? [])]),
   ].sort();
@@ -238,10 +269,12 @@ function applyFields(
     replacement_model_ids: fields.has("replacement_model_ids")
       ? [...new Set([...current.replacement_model_ids, ...incoming.replacement_model_ids])]
       : current.replacement_model_ids,
-    pricing_status:
-      fields.has("pricing") && incomingPricing ? incoming.pricing_status : current.pricing_status,
-    pricing:
-      fields.has("pricing") && incomingPricing ? mergeRates(current, incoming) : current.pricing,
+    pricing_state:
+      fields.has("pricing") && incomingPricing ? incoming.pricing_state : current.pricing_state,
+    price_facts:
+      fields.has("pricing") && incomingPricing
+        ? mergePriceFacts(current, incoming)
+        : current.price_facts,
     availability: fields.has("availability")
       ? [
           ...new Map(
@@ -263,14 +296,14 @@ function applyFields(
 }
 
 export function applyGroups(
-  models: ProviderModel[],
+  models: ParsedProviderModel[],
   groups: SourceGroup[],
   create: boolean,
-): ProviderModel[] {
+): ParsedProviderModel[] {
   const byUid = new Map(models.map((model) => [model.uid, model]));
   const aliases = new Map<string, string | null>();
   const modelIds = new Map<string, string | null>();
-  const index = (model: ProviderModel): void => {
+  const index = (model: ParsedProviderModel): void => {
     const idUid = modelIds.get(model.model_id);
     modelIds.set(model.model_id, idUid === undefined || idUid === model.uid ? model.uid : null);
     for (const alias of model.aliases) {
@@ -358,7 +391,7 @@ function sourceWarning(
 
 function missingFieldWarning(
   field: CoverageField,
-  models: ProviderModel[],
+  models: ParsedProviderModel[],
   providerId: string,
   sourceId: string,
 ): CatalogWarning | undefined {
@@ -366,7 +399,7 @@ function missingFieldWarning(
     field === "limits.context_tokens"
       ? model.limits.context_tokens === undefined
       : field === "pricing"
-        ? model.pricing_status === "unknown" || model.pricing_status === "not_published"
+        ? model.pricing_state === "unknown" || model.pricing_state === "not_published"
         : model[field] === undefined,
   ).length;
   if (count === 0) return undefined;
@@ -389,7 +422,7 @@ function missingFieldWarning(
 
 function missingFieldWarnings(
   manifest: ProviderManifest,
-  models: ProviderModel[],
+  models: ParsedProviderModel[],
 ): CatalogWarning[] {
   const configuration = manifest.warnOnMissing;
   if (configuration === undefined) return [];
@@ -436,7 +469,7 @@ async function collectProvider(
         provider_id: manifest.provider.id,
         status: "not_configured",
         model_count: 0,
-        price_rate_count: 0,
+        pricing_term_count: 0,
         checked_at: observedAt,
         reason: manifest.notConfiguredReason,
       },
@@ -463,11 +496,13 @@ async function collectProvider(
   const oldSources = previousSources(previous, manifest.provider.id);
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
   const warnings: CatalogWarning[] = [];
+  let providerFailure: PricingRefreshFailureCode = "provider_refresh_failed";
 
   try {
     const groups: SourceGroup[] = [];
     const overlays: SourceGroup[] = [];
     const inventories: SourceGroup[] = [];
+    const pricingSources: SourceGroup[] = [];
     const sources: SourceRecord[] = [];
     for (const source of manifest.sources) {
       if (missingCredential(source)) {
@@ -480,6 +515,7 @@ async function collectProvider(
           ),
         );
         if (source.optional) continue;
+        providerFailure = "source_unavailable";
         throw new Error(`Missing credential for ${source.id}`);
       }
 
@@ -499,10 +535,11 @@ async function collectProvider(
           sourceWarning("source_fetch_failed", manifest.provider.id, source.id, message(error)),
         );
         if (source.optional) continue;
+        providerFailure = "source_unavailable";
         throw error;
       }
 
-      let parsed: ProviderModel[];
+      let parsed: ParsedProviderModel[];
       try {
         parsed = parseSource({
           provider: providerRecord(manifest, [], undefined),
@@ -523,10 +560,12 @@ async function collectProvider(
           sourceWarning("source_parse_failed", manifest.provider.id, source.id, message(error)),
         );
         if (source.optional) continue;
+        providerFailure = "source_schema_changed";
         throw error;
       }
 
       const role = source.role ?? "catalog";
+      pricingSources.push({ source, models: parsed });
       if (role === "catalog") groups.push({ source, models: parsed });
       if (role === "overlay") overlays.push({ source, models: parsed });
       if (role === "inventory") inventories.push({ source, models: parsed });
@@ -588,34 +627,81 @@ async function collectProvider(
       .map(normalizeModelReleaseStage)
       .map(normalizeModelTasks)
       .map(normalizeDeliveryModes);
-    const validation = validateProvider(candidate, comparableOldModels);
+    const freshModels = candidate.map(publishedModel);
+    const validation = validateProvider(freshModels, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
-    const models = preserveMissing(candidate, comparableOldModels);
-    const referencedSourceIds = new Set(models.flatMap((model) => model.source_refs));
+    const models = preserveMissing(freshModels, comparableOldModels);
     const sourceById = new Map(
       [...oldSources.filter((source) => currentSourceIds.has(source.id)), ...sources].map(
         (source) => [source.id, source],
       ),
     );
+    const provider = providerRecord(manifest, models, observedAt);
+    let pricing: ProviderPricingPartition | undefined;
+    let pricingFailure: PricingRefreshFailureCode | undefined;
+    try {
+      const expectedPricingSources = manifest.sources.filter(isRequiredPricingSource);
+      const fetchedPricingSourceIds = new Set(pricingSources.map(({ source }) => source.id));
+      const missingPricingSource = expectedPricingSources.find(
+        ({ id }) => !fetchedPricingSourceIds.has(id),
+      );
+      if (missingPricingSource !== undefined)
+        throw new Error(`Pricing source bundle is incomplete at ${missingPricingSource.id}`);
+      pricing = assembleParsedProviderPricing(
+        manifest.provider.id,
+        observedAt,
+        pricingSources,
+        models,
+      );
+      if (pricing !== undefined)
+        validatePricingCatalog(
+          {
+            provider_vocabularies: [pricing.vocabulary],
+            provider_snapshots: [pricing.snapshot],
+            model_dispositions: pricing.model_dispositions,
+            books: pricing.books,
+          },
+          { providers: [provider], models, sources: [...sourceById.values()] },
+        );
+    } catch (error) {
+      warnings.push({
+        code: "pricing_invalid",
+        provider_id: manifest.provider.id,
+        message: message(error),
+      });
+      pricing = undefined;
+      pricingFailure = "pricing_validation_failed";
+    }
+    const referencedSourceIds = new Set([
+      ...models.flatMap((model) => model.source_refs),
+      ...(pricing === undefined ? [] : providerPartitionSourceRefs(pricing)),
+    ]);
     const retainedSources = [...referencedSourceIds].flatMap((sourceId) => {
       const source = sourceById.get(sourceId);
       return source === undefined ? [] : [source];
     });
     if (retainedSources.length !== referencedSourceIds.size)
-      throw new Error("Model provenance source is missing");
+      throw new Error("Published provenance source is missing");
     return {
-      provider: providerRecord(manifest, models, observedAt),
+      provider,
       models,
       sources: retainedSources,
       coverage: {
         provider_id: manifest.provider.id,
         status: "fresh",
         model_count: models.length,
-        price_rate_count: models.reduce((count, model) => count + model.pricing.length, 0),
+        pricing_term_count:
+          pricing?.books.reduce(
+            (count, book) =>
+              count + book.offers.reduce((offerCount, offer) => offerCount + offer.terms.length, 0),
+            0,
+          ) ?? 0,
         checked_at: observedAt,
         last_successful_sync_at: observedAt,
       },
-      warnings: [...warnings, ...missingFieldWarnings(manifest, models)],
+      warnings: [...warnings, ...missingFieldWarnings(manifest, candidate)],
+      ...(pricing === undefined ? {} : { pricing }),
+      ...(pricingFailure === undefined ? {} : { pricingFailure }),
     };
   } catch (error) {
     const reason = message(error);
@@ -628,35 +714,26 @@ async function collectProvider(
         provider_id: manifest.provider.id,
         status: hasPrevious ? "stale" : "unavailable",
         model_count: oldModels.length,
-        price_rate_count: oldModels.reduce((count, model) => count + model.pricing.length, 0),
+        pricing_term_count: oldCoverage?.pricing_term_count ?? 0,
         checked_at: observedAt,
         last_successful_sync_at: oldCoverage?.last_successful_sync_at,
         reason,
       },
-      warnings: [...warnings, ...missingFieldWarnings(manifest, oldModels)],
+      warnings,
+      pricingFailure: providerFailure,
       quarantine: { provider_id: manifest.provider.id, checked_at: observedAt, reason },
     };
   }
-}
-
-async function publish(catalog: Catalog): Promise<void> {
-  await writeJson(join(rootDirectory, "data/catalog.json"), catalog);
 }
 
 export async function collect(options: CollectionOptions = {}): Promise<Catalog> {
   const observedAt = (options.now ?? new Date()).toISOString();
   if ((options.jitterMs ?? 0) > 0) await wait(Math.floor(Math.random() * (options.jitterMs ?? 0)));
 
-  const previousValue = await readJson(join(rootDirectory, "data/catalog.json"));
-  const previousResult =
-    previousValue === undefined
-      ? undefined
-      : catalogSchema.safeParse(migrateCatalogStorage(previousValue));
-  const previous = options.rebuild
-    ? undefined
-    : previousResult?.success
-      ? previousResult.data
-      : undefined;
+  const acceptedPair = await recoverCatalogPair();
+  const acceptedCatalog = acceptedPair?.catalog;
+  const acceptedPricing = acceptedPair?.pricing.data ?? emptyPricingCatalog();
+  const previous = options.rebuild ? undefined : acceptedCatalog;
   const stateValue = await readJson(join(rootDirectory, "data/fetch-state.json"));
   const stateResult = stateValue === undefined ? undefined : fetchStateSchema.safeParse(stateValue);
   const previousState: FetchState = stateResult?.success ? stateResult.data : { sources: {} };
@@ -692,11 +769,8 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   const coverage = results
     .map((result) => result.coverage)
     .sort((left, right) => left.provider_id.localeCompare(right.provider_id));
-  const catalogVersion = sha256(
-    stableJson(providers.map((provider) => [provider.id, provider.catalog_version])),
-  );
   const catalog = catalogSchema.parse({
-    catalog_version: catalogVersion,
+    catalog_version: coreCatalogVersion(providers),
     generated_at: observedAt,
     providers,
     models,
@@ -716,10 +790,45 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     join(rootDirectory, "data/quarantine.json"),
     results.flatMap((result) => (result.quarantine === undefined ? [] : [result.quarantine])),
   );
-  await publish(catalog);
+  const pricingTransitions = new Map<string, ProviderPricingTransition>(
+    results.map((result): [string, ProviderPricingTransition] => [
+      result.provider.id,
+      result.pricing === undefined
+        ? failedPricingTransition(
+            result.provider.id,
+            observedAt,
+            result.pricingFailure ?? "pricing_not_observed",
+          )
+        : { kind: "fresh", partition: result.pricing },
+    ]),
+  );
+  const explicitProviders = new Set<string>();
+  for (const transition of options.pricingTransitions ?? []) {
+    const providerId = pricingTransitionProviderId(transition);
+    if (explicitProviders.has(providerId))
+      throw new Error(`Provider ${providerId} has multiple pricing transitions`);
+    explicitProviders.add(providerId);
+    pricingTransitions.set(providerId, transition);
+  }
+  const composed = composeCatalogPair(
+    acceptedCatalog,
+    catalog,
+    acceptedPricing,
+    [...pricingTransitions.values()],
+    {
+      ...(acceptedPair === undefined ? {} : { accepted_pair_id: acceptedPair.pairId }),
+      safety_findings: options.pricingSafetyFindings ?? [],
+    },
+  );
+  await commitCatalogPair(prepareCatalogPair(composed.catalog, composed.pricing));
   await writeJson(
     join(rootDirectory, "data/refresh-summary.json"),
-    summarizeRefresh(previous, catalog),
+    summarizeRefresh(
+      previous,
+      composed.catalog,
+      previous === undefined ? emptyPricingCatalog() : acceptedPricing,
+      composed.pricing,
+    ),
   );
-  return catalog;
+  return composed.catalog;
 }

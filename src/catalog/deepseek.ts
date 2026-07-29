@@ -6,7 +6,8 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
-import { type Provider, type ProviderModel, unknownCapabilities } from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -205,8 +206,8 @@ function model(
     },
     limits: { context_tokens: context, max_output_tokens: output },
     status: "active",
-    pricing_status: "published",
-    pricing: prices.map(([meter, label]) =>
+    pricing_state: "numeric",
+    price_facts: prices.map(([meter, label]) =>
       publishedRate(
         meter,
         price(cells(table, label, [column])[0] ?? ""),

@@ -1,0 +1,402 @@
+import { describe, expect, it } from "vite-plus/test";
+import {
+  pricingBookId,
+  pricingOfferId,
+  pricingTermId,
+  unconditionalApplicability,
+} from "../src/catalog/pricing-canonical.ts";
+import {
+  displayUnitPrice,
+  evaluateApplicability,
+  fixedOfferStateSelections,
+  formatBillingMode,
+  formatDenomination,
+  formatDimension,
+  formatUnitExpression,
+  modelPricingView,
+  projectPricingTableCell,
+} from "../src/catalog/pricing-presentation.ts";
+import type {
+  PriceApplicability,
+  PriceRateTerm,
+  PricingCatalog,
+  UnitPrice,
+} from "../src/catalog/pricing-schema.ts";
+import type { ProviderModel } from "../src/catalog/schema.ts";
+
+const providerId = "test";
+const modelRef = "test/model";
+const sourceRef = "test-pricing";
+const bookId = pricingBookId(providerId, "public");
+const offerId = pricingOfferId(bookId, "usage");
+const observedAt = "2026-07-28T00:00:00.000Z";
+const source = {
+  source_ref: sourceRef,
+  locator: { kind: "table" as const, value: "row" },
+  raw: { label: "Price" },
+  establishes_applicability: unconditionalApplicability,
+};
+
+function model(): ProviderModel {
+  return {
+    provider_id: providerId,
+    model_id: "model",
+    uid: modelRef,
+    id_kind: "api_id",
+    name: "Model",
+    aliases: [],
+    tasks: ["text_generation"],
+    modalities: { input: ["text"], output: ["text"] },
+    capabilities: {
+      reasoning: "unknown",
+      tool_call: "unknown",
+      structured_output: "unknown",
+      streaming: "unknown",
+      batch: "unknown",
+      prompt_cache: "unknown",
+      fine_tuning: "unknown",
+      citations: "unknown",
+      code_execution: "unknown",
+      context_management: "unknown",
+      effort_control: "unknown",
+      computer_use: "unknown",
+    },
+    limits: {},
+    status: "active",
+    release_stage: "stable",
+    replacement_model_ids: [],
+    scope: "global_catalog",
+    account_availability: "unknown",
+    first_seen_at: observedAt,
+    last_seen_at: observedAt,
+    observed_at: observedAt,
+    source_refs: [sourceRef],
+  };
+}
+
+function term(
+  key: string,
+  meter: "input_text" | "input_audio",
+  price: UnitPrice,
+  applicability = unconditionalApplicability,
+): PriceRateTerm {
+  return {
+    id: pricingTermId(offerId, key),
+    term_key: key,
+    kind: "rate",
+    meter: { namespace: "kmodels", value: meter },
+    source_refs: [sourceRef],
+    variants: [
+      {
+        price,
+        applicability,
+        observations: [{ ...source, establishes_applicability: applicability }],
+      },
+    ],
+    raw_variants: [],
+  };
+}
+
+function catalog(terms: PriceRateTerm[]): PricingCatalog {
+  return {
+    provider_vocabularies: [{ provider_id: providerId, atoms: [] }],
+    provider_snapshots: [
+      { provider_id: providerId, observed_at: observedAt, publication: "fresh" },
+    ],
+    model_dispositions: [],
+    books: [
+      {
+        id: bookId,
+        provider_id: providerId,
+        book_key: "public",
+        scope: { kind: "models", model_refs: [modelRef] },
+        scope_observations: [
+          {
+            source_ref: sourceRef,
+            locator: { kind: "table", value: "heading" },
+            establishes: { kind: "models", model_refs: [modelRef] },
+            raw: { label: "Pricing" },
+          },
+        ],
+        offers: [
+          {
+            id: offerId,
+            offer_key: "usage",
+            role: "base",
+            billing_mode: { namespace: "kmodels", value: "usage" },
+            states: [
+              {
+                state: "numeric",
+                applicability: unconditionalApplicability,
+                observations: [source],
+              },
+            ],
+            terms,
+            source_refs: [sourceRef],
+          },
+        ],
+        source_refs: [sourceRef],
+      },
+    ],
+  };
+}
+
+const tokenPrice: UnitPrice = {
+  value: { numerator: "1", denominator: "500000" },
+  denomination: { kind: "fiat", currency: "USD" },
+  per: {
+    factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+  },
+};
+
+describe("canonical pricing presentation", () => {
+  it("uses concise labels for unit-bearing dimensions", () => {
+    expect(formatDimension({ namespace: "kmodels", value: "cache_ttl_seconds" })).toBe("Cache TTL");
+    expect(formatDimension({ namespace: "kmodels", value: "context_tokens" })).toBe("Context");
+  });
+
+  it("short-circuits partial OR selectors and reports only live missing dimensions", () => {
+    const selector: PriceApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "region" },
+              values: [{ namespace: "kmodels", value: "US" }],
+            },
+          ],
+        },
+        {
+          all_of: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "service_tier" },
+              values: [{ namespace: "kmodels", value: "batch" }],
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      evaluateApplicability(selector, [
+        {
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: "region" },
+          value: { namespace: "kmodels", value: "US" },
+        },
+      ]),
+    ).toEqual({ state: "true", missing_dimensions: [] });
+    expect(
+      evaluateApplicability(selector, [
+        {
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: "region" },
+          value: { namespace: "kmodels", value: "EU" },
+        },
+      ]),
+    ).toEqual({
+      state: "missing",
+      missing_dimensions: [{ namespace: "kmodels", value: "service_tier" }],
+    });
+  });
+
+  it("rejects decimal selections outside the canonical numeric bound", () => {
+    expect(() =>
+      evaluateApplicability(unconditionalApplicability, [
+        {
+          kind: "decimal",
+          dimension: { namespace: "kmodels", value: "duration_seconds" },
+          value: `0.${"0".repeat(127)}1`,
+          unit: { factors: [] },
+        },
+      ]),
+    ).toThrow("exact-integer digit limit");
+  });
+
+  it("formats exact namespace-qualified values without approximation", () => {
+    expect(
+      formatBillingMode({
+        namespace: "provider",
+        provider_id: "test",
+        value: "committed",
+      }),
+    ).toBe('provider-billing-mode("test","committed")');
+    expect(
+      formatDenomination({
+        kind: "provider_credit",
+        provider_id: "test",
+        code: "credit",
+      }),
+    ).toBe('provider-credit("test","credit")');
+    expect(formatUnitExpression({ factors: [] })).toBe("dimensionless");
+    expect(
+      formatUnitExpression({
+        factors: [
+          {
+            unit: { namespace: "provider", provider_id: "test", value: "unit" },
+            power: 2,
+          },
+        ],
+      }),
+    ).toBe('provider-unit("test","unit")^2');
+  });
+
+  it("projects one exact unconditional rate and scales only token power one", () => {
+    const data = catalog([term("input", "input_text", tokenPrice)]);
+    expect(displayUnitPrice(tokenPrice)).toEqual({
+      amount: "$2",
+      displayUnit: "1M tokens",
+      accessibleText: "USD 2 per 1M tokens",
+    });
+    expect(
+      displayUnitPrice({
+        ...tokenPrice,
+        value: { numerator: "9".repeat(128), denominator: "1" },
+      }),
+    ).toMatchObject({
+      amount: `$${"9".repeat(128)}`,
+      displayUnit: "token",
+    });
+    expect(modelPricingView(data, model()).outcome).toBe("offers");
+    expect(projectPricingTableCell(data, model(), "input")).toMatchObject({
+      meter: "input_text",
+      amount: "$2",
+      displayUnit: "1M tokens",
+      accessibleText: "input_text: USD 2 per 1M tokens",
+      showTooltip: false,
+    });
+
+    const squared = structuredClone(tokenPrice);
+    squared.per.factors[0]!.power = 2;
+    expect(
+      projectPricingTableCell(catalog([term("squared", "input_text", squared)]), model(), "input"),
+    ).toMatchObject({ amount: "$0.000002", displayUnit: "token^2" });
+  });
+
+  it("binds a categorical context when the offer has only one possible value", () => {
+    const batch: PriceApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "service_tier" },
+              values: [{ namespace: "kmodels", value: "batch" }],
+            },
+          ],
+        },
+      ],
+    };
+    const data = catalog([term("input", "input_text", tokenPrice, batch)]);
+    const offer = data.books[0]!.offers[0]!;
+    offer.states[0]!.applicability = batch;
+    offer.states[0]!.observations[0]!.establishes_applicability = batch;
+
+    expect(fixedOfferStateSelections(offer, modelRef)).toEqual([
+      {
+        dimension: { namespace: "kmodels", value: "service_tier" },
+        kind: "categorical",
+        value: { namespace: "kmodels", value: "batch" },
+      },
+    ]);
+    expect(projectPricingTableCell(data, model(), "input")).toMatchObject({
+      amount: "$2",
+      displayUnit: "1M tokens",
+    });
+  });
+
+  it("uses exact decimals when finite and fractions only when necessary", () => {
+    const capacityPrice: UnitPrice = {
+      value: { numerator: "99", denominator: "500" },
+      denomination: { kind: "fiat", currency: "USD" },
+      per: {
+        factors: [
+          {
+            unit: {
+              namespace: "provider",
+              provider_id: providerId,
+              value: "1k_tpm_hour",
+            },
+            power: 1,
+          },
+        ],
+      },
+    };
+    expect(
+      projectPricingTableCell(
+        catalog([term("capacity", "input_text", capacityPrice)]),
+        model(),
+        "input",
+      ),
+    ).toMatchObject({
+      amount: "$0.198",
+      displayUnit: "1K TPM·hr",
+      accessibleText: 'input_text: USD 0.198 per provider-unit("test","1k_tpm_hour")',
+      showTooltip: true,
+    });
+    expect(
+      displayUnitPrice({
+        ...capacityPrice,
+        value: { numerator: "3", denominator: "40" },
+      }),
+    ).toMatchObject({ amount: "$0.075" });
+    expect(
+      displayUnitPrice({
+        ...capacityPrice,
+        value: { numerator: "1", denominator: "3" },
+      }),
+    ).toMatchObject({
+      amount: "$1/3",
+      accessibleText: 'USD 1/3 per provider-unit("test","1k_tpm_hour")',
+    });
+  });
+
+  it("stops at a present conditional higher-priority meter", () => {
+    const regional: PriceApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "region" },
+              values: [{ namespace: "kmodels", value: "US" }],
+            },
+          ],
+        },
+      ],
+    };
+    const data = catalog([
+      term("text", "input_text", tokenPrice, regional),
+      term("audio", "input_audio", {
+        value: { numerator: "1", denominator: "20" },
+        denomination: { kind: "fiat", currency: "USD" },
+        per: {
+          factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }],
+        },
+      }),
+    ]);
+    expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+  });
+
+  it("gives an exact negative disposition precedence over matching books", () => {
+    const data = catalog([term("input", "input_text", tokenPrice)]);
+    data.model_dispositions.push({
+      model_ref: modelRef,
+      state: "not_applicable",
+      observations: [
+        {
+          source_ref: sourceRef,
+          locator: { kind: "table", value: "row" },
+          establishes_model_ref: modelRef,
+          raw: { label: "Not offered" },
+        },
+      ],
+    });
+    expect(modelPricingView(data, model())).toMatchObject({
+      outcome: "not_applicable",
+      books: [],
+      baseOffers: [],
+    });
+  });
+});

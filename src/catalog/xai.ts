@@ -6,13 +6,12 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   modalitySchema,
   type Modality,
   type ModelTask,
-  type PriceRate,
   type Provider,
-  type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
 
@@ -220,21 +219,26 @@ function model(input: ParseInput, id: string, values: Partial<ProviderModel>): P
 }
 
 function exactRate(
-  meter: PriceRate["meter"],
+  meter: SourcePriceFact["meter"],
   raw: string,
   places: number,
-  unit: PriceRate["unit"],
+  unit: SourcePriceFact["unit"],
   sourceId: string,
   rawUnit: string,
-  conditions: PriceRate["conditions"] = {},
-): PriceRate {
+  conditions: SourcePriceFact["conditions"] = {},
+): SourcePriceFact {
   return {
     ...publishedRate(meter, scaleDecimal(raw, -places), unit, sourceId, rawUnit, conditions),
     raw_price: raw,
   };
 }
 
-function tierRate(rate: PriceRate, multiplier: string, tier: string, label: string): PriceRate {
+function tierRate(
+  rate: SourcePriceFact,
+  multiplier: string,
+  tier: string,
+  label: string,
+): SourcePriceFact {
   return {
     ...rate,
     price: multiplyDecimal(rate.price, multiplier),
@@ -244,15 +248,18 @@ function tierRate(rate: PriceRate, multiplier: string, tier: string, label: stri
   };
 }
 
-function textRates(value: z.infer<typeof languageModelSchema>, sourceId: string): PriceRate[] {
+function textRates(
+  value: z.infer<typeof languageModelSchema>,
+  sourceId: string,
+): SourcePriceFact[] {
   const threshold = Number(value.longContextThreshold);
   const standard = threshold > 0 ? { context_max_tokens: threshold - 1 } : {};
   const long = threshold > 0 ? { context_min_tokens: threshold } : {};
   const rate = (
-    meter: PriceRate["meter"],
+    meter: SourcePriceFact["meter"],
     raw: string,
-    conditions: PriceRate["conditions"],
-  ): PriceRate =>
+    conditions: SourcePriceFact["conditions"],
+  ): SourcePriceFact =>
     exactRate(meter, raw, 4, "million_tokens", sourceId, "USD cents / 100M tokens", conditions);
   const rates = [
     rate("input_text", value.promptTextTokenPrice, standard),
@@ -277,12 +284,12 @@ function textRates(value: z.infer<typeof languageModelSchema>, sourceId: string)
 }
 
 function mediaRate(
-  meter: PriceRate["meter"],
+  meter: SourcePriceFact["meter"],
   raw: string,
-  unit: PriceRate["unit"],
+  unit: SourcePriceFact["unit"],
   sourceId: string,
-  conditions: PriceRate["conditions"] = {},
-): PriceRate {
+  conditions: SourcePriceFact["conditions"] = {},
+): SourcePriceFact {
   return exactRate(meter, raw, 10, unit, sourceId, "USD ticks", conditions);
 }
 
@@ -602,7 +609,7 @@ function assertPublicPricing(
   }
 }
 
-function toolRates(pricing: string, sourceId: string): PriceRate[] {
+function toolRates(pricing: string, sourceId: string): SourcePriceFact[] {
   const rates = [
     ...pricing.matchAll(
       /^\|\s*[^|]+\|\s*((?:`[^`]+`(?:,\s*)?)+)[^|]*\|[^|]+\|\s*\$([\d.]+)\s*\|$/gim,
@@ -662,7 +669,7 @@ function voicePrices(pricing: string): VoicePrices {
   };
 }
 
-function voiceRates(pricing: string, sourceId: string): PriceRate[] {
+function voiceRates(pricing: string, sourceId: string): SourcePriceFact[] {
   const { realtime, text } = voicePrices(pricing);
   return [
     publishedRate("input_audio", realtime, "minute", sourceId, "USD / min"),
@@ -795,8 +802,8 @@ function currentModels(
       limits: { context_tokens: value.maxPromptLength },
       status: "active",
       release_stage: releaseStage,
-      pricing_status: "published",
-      pricing: [...textRates(value, input.source.id), ...tools],
+      pricing_state: "numeric",
+      price_facts: [...textRates(value, input.source.id), ...tools],
     });
   });
   const embeddingModels = embeddings.map((value) => {
@@ -825,8 +832,8 @@ function currentModels(
       api_endpoints: endpoints.get(value.name),
       modalities: { input: upperModalities(value.inputModalities), output: ["embedding"] },
       status: "active",
-      pricing_status: rates.length > 0 ? "published" : "unknown",
-      pricing: rates,
+      pricing_state: rates.length > 0 ? "numeric" : "unknown",
+      price_facts: rates,
     });
   });
   const imageModels = images.map((value) => {
@@ -848,8 +855,8 @@ function currentModels(
       },
       capabilities: { ...unknownCapabilities(), batch: true },
       status: "active",
-      pricing_status: "published",
-      pricing: rates,
+      pricing_state: "numeric",
+      price_facts: rates,
     });
   });
   const videoModels = videos.map((value) => {
@@ -875,8 +882,8 @@ function currentModels(
       },
       capabilities: { ...unknownCapabilities(), batch: true },
       status: "active",
-      pricing_status: "published",
-      pricing: rates,
+      pricing_state: "numeric",
+      price_facts: rates,
     });
   });
   return [...languageModels, ...embeddingModels, ...imageModels, ...videoModels];
@@ -940,8 +947,8 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
       },
       release_date: releaseDate(releases, row.id, row.id),
       status: row.deprecated ? "deprecated" : "active",
-      pricing_status: "published",
-      pricing: rates,
+      pricing_state: "numeric",
+      price_facts: rates,
     });
   });
 }
@@ -1051,11 +1058,11 @@ function combine(models: ProviderModel[]): ProviderModel[] {
         ...current.replacement_model_ids,
         ...value.replacement_model_ids,
       ]),
-      pricing_status:
-        current.pricing_status === "unknown" ? value.pricing_status : current.pricing_status,
-      pricing: [
+      pricing_state:
+        current.pricing_state === "unknown" ? value.pricing_state : current.pricing_state,
+      price_facts: [
         ...new Map(
-          [...current.pricing, ...value.pricing].map((rate) => [
+          [...current.price_facts, ...value.price_facts].map((rate) => [
             `${rate.meter}\0${rate.price}\0${rate.unit}\0${JSON.stringify(rate.conditions)}`,
             rate,
           ]),

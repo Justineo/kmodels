@@ -2,25 +2,22 @@
 import { computed } from "vue";
 import {
   formatModelTask,
-  formatPrice,
-  formatTableRateLabel,
-  formatTableRateUnit,
   formatTableTask,
   formatTokenCount,
   primaryStatus,
-  representativeTableRate,
 } from "../catalog/presentation.ts";
-import type {
-  ModelLifecycle,
-  ModelTask,
-  ModelReleaseStage,
-  ProviderModel,
-} from "../catalog/schema.ts";
+import type { WebsiteModel } from "../catalog/website-schema.ts";
+import ModelPriceCell from "./ModelPriceCell.vue";
 import ProviderIcon from "./ProviderIcon.vue";
 import UiIcon from "./UiIcon.vue";
+import UiTooltip from "./UiTooltip.vue";
+
+type ModelTask = WebsiteModel["tasks"][number];
+type ModelLifecycle = WebsiteModel["status"];
+type ModelReleaseStage = WebsiteModel["release_stage"];
 
 const props = defineProps<{
-  model: ProviderModel;
+  model: WebsiteModel;
   providerName: string;
   rowIndex: number;
   selected: boolean;
@@ -28,19 +25,20 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  select: [model: ProviderModel];
+  select: [model: WebsiteModel];
   filterProvider: [providerId: string];
   filterTask: [task: ModelTask];
   filterLifecycle: [lifecycle: ModelLifecycle];
   filterReleaseStage: [releaseStage: ModelReleaseStage];
 }>();
 
-const inputRate = computed(() => representativeTableRate(props.model, "input"));
-const cachedRate = computed(() => representativeTableRate(props.model, "cached"));
-const outputRate = computed(() => representativeTableRate(props.model, "output"));
-const inputRateUnit = computed(() => formatTableRateUnit(inputRate.value));
-const cachedRateUnit = computed(() => formatTableRateUnit(cachedRate.value));
-const outputRateUnit = computed(() => formatTableRateUnit(outputRate.value));
+const pricingStatus = computed(() => props.model.pricing.status);
+const hasRepresentativeRate = computed(
+  () =>
+    props.model.pricing.input !== undefined ||
+    props.model.pricing.cache !== undefined ||
+    props.model.pricing.output !== undefined,
+);
 const status = computed(() => primaryStatus(props.model));
 
 function selectModel(): void {
@@ -69,20 +67,16 @@ function filterStatus(): void {
           <strong>{{ model.name }}</strong>
           <code>{{ model.model_id }}</code>
         </button>
-        <span v-if="showVersionBadge && model.version" class="version-disclosure">
-          <button
-            class="version-badge"
-            type="button"
-            :aria-describedby="`version-tooltip-${rowIndex}`"
-            :aria-label="`Provider model version ${model.version}`"
-          >
-            @{{ model.version }}
-          </button>
-          <span :id="`version-tooltip-${rowIndex}`" class="version-tooltip" role="tooltip">
-            <span>Provider model version</span>
-            <code>{{ model.version }}</code>
-          </span>
-        </span>
+        <UiTooltip
+          v-if="showVersionBadge && model.version"
+          as="button"
+          type="button"
+          class="version-badge"
+          :content="`Provider model version ${model.version}`"
+          :aria-label="`Provider model version ${model.version}`"
+        >
+          @{{ model.version }}
+        </UiTooltip>
       </div>
     </td>
     <td class="provider-col">
@@ -100,15 +94,16 @@ function filterStatus(): void {
       <span class="task-list">
         <span v-if="model.tasks.length === 0">—</span>
         <template v-for="task in model.tasks" :key="task">
-          <button
+          <UiTooltip
             class="task-filter-button"
+            as="button"
             type="button"
             :aria-label="`Filter by task ${formatModelTask(task)}`"
-            :title="formatModelTask(task)"
+            :content="formatModelTask(task)"
             @click="emit('filterTask', task)"
           >
             {{ formatTableTask(task) }}
-          </button>
+          </UiTooltip>
         </template>
       </span>
     </td>
@@ -123,34 +118,24 @@ function filterStatus(): void {
         {{ status }}
       </button>
     </td>
-    <td class="context-col numeric">{{ formatTokenCount(model.limits.context_tokens) }}</td>
-    <td
-      class="input-col price-cell numeric"
-      :aria-label="inputRate ? formatTableRateLabel(inputRate) : undefined"
-      :title="inputRate ? formatTableRateLabel(inputRate) : undefined"
-    >
-      <span class="price-value">{{ formatPrice(inputRate) }}</span>
-      <small v-if="inputRateUnit">{{ inputRateUnit }}</small>
+    <td class="context-col numeric">{{ formatTokenCount(model.context_tokens) }}</td>
+    <template v-if="hasRepresentativeRate">
+      <ModelPriceCell class="input-col" :price="model.pricing.input" />
+      <ModelPriceCell class="cached-col" :price="model.pricing.cache" />
+      <ModelPriceCell class="output-col" :price="model.pricing.output" />
+    </template>
+    <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
+      <UiTooltip
+        class="price-status-trigger"
+        tabindex="0"
+        :content="pricingStatus.description"
+        :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
+      >
+        {{ pricingStatus.label }}
+      </UiTooltip>
     </td>
-    <td
-      class="cached-col price-cell numeric"
-      :aria-label="cachedRate ? formatTableRateLabel(cachedRate) : undefined"
-      :title="cachedRate ? formatTableRateLabel(cachedRate) : undefined"
-    >
-      <span class="price-value">{{ formatPrice(cachedRate) }}</span>
-      <small v-if="cachedRateUnit">{{ cachedRateUnit }}</small>
-    </td>
-    <td
-      class="output-col price-cell numeric"
-      :aria-label="outputRate ? formatTableRateLabel(outputRate) : undefined"
-      :title="outputRate ? formatTableRateLabel(outputRate) : undefined"
-    >
-      <span class="price-value">{{ formatPrice(outputRate) }}</span>
-      <small v-if="outputRateUnit">{{ outputRateUnit }}</small>
-    </td>
-    <td class="updated-col numeric">
-      {{ model.updated_date ?? model.release_date ?? "—" }}
-    </td>
+    <td v-else class="price-status-cell" colspan="3">—</td>
+    <td class="released-col numeric">{{ model.release_date ?? "—" }}</td>
     <td class="disclosure-col">
       <button
         class="disclosure-button"

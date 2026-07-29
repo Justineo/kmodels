@@ -1,58 +1,19 @@
-import type {
-  ModelLifecycle,
-  ModelTask,
-  ModelReleaseStage,
-  PriceRate,
-  ProviderModel,
-} from "./schema.ts";
-import { scaleDecimal } from "./pricing.ts";
+import type { ModelLifecycle, ModelTask, ModelReleaseStage, ProviderModel } from "./schema.ts";
+
+type VersionedModel = Pick<ProviderModel, "model_id" | "provider_id" | "uid" | "version">;
+type StatusModel = Pick<ProviderModel, "release_stage" | "status">;
+type TaskModel = Pick<ProviderModel, "tasks">;
 
 const compactNumber = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
 
-export type TableRateSlot = "input" | "cached" | "output";
-
-const inputMeters: readonly PriceRate["meter"][] = [
-  "input_text",
-  "input_image",
-  "input_audio",
-  "input_video",
-];
-const cachedMeters: readonly PriceRate["meter"][] = [
-  "cache_read_text",
-  "cache_read_image",
-  "cache_read_audio",
-  "cache_read_video",
-  "cache_write_text",
-  "cache_write_image",
-  "cache_write_audio",
-  "cache_write_video",
-  "cache_storage",
-];
-const defaultOutputMeters: readonly PriceRate["meter"][] = [
-  "output_text",
-  "output_image",
-  "output_audio",
-  "output_video",
-  "image_generation",
-  "video_generation",
-  "embedding",
-  "rerank_request",
-  "tool_call",
-  "realtime_client_message",
-  "realtime_session_duration",
-  "batch_inference",
-  "gpu_hour",
-  "provisioned_throughput",
-];
-
 export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
-export function versionBadgeModelUids(models: readonly ProviderModel[]): Set<string> {
+export function versionBadgeModelUids(models: readonly VersionedModel[]): Set<string> {
   const counts = new Map<string, number>();
   for (const model of models) {
     const key = JSON.stringify([model.provider_id, model.model_id]);
@@ -133,145 +94,22 @@ export function formatTableTask(value: ModelTask): string {
   }
 }
 
-export function modelTaskList(model: ProviderModel): string {
+export function modelTaskList(model: TaskModel): string {
   if (model.tasks.length === 0) return "Not published";
   return model.tasks.map(formatModelTask).join(", ");
 }
 
-export function primaryStatus(model: ProviderModel): ModelLifecycle | ModelReleaseStage {
+export function primaryStatus(model: StatusModel): ModelLifecycle | ModelReleaseStage {
   return model.status === "active" && model.release_stage !== "unknown"
     ? model.release_stage
     : model.status;
 }
 
-export function preferredRate(
-  model: ProviderModel,
-  meter: PriceRate["meter"],
-): PriceRate | undefined {
-  return (
-    model.pricing.find(
-      (item) => item.meter === meter && Object.keys(item.conditions).length === 0,
-    ) ?? model.pricing.find((item) => item.meter === meter)
-  );
-}
-
-function taskOutputMeters(model: ProviderModel): readonly PriceRate["meter"][] {
-  if (model.tasks.includes("image_generation"))
-    return ["image_generation", "output_image", ...defaultOutputMeters];
-  if (model.tasks.includes("video_generation"))
-    return ["video_generation", "output_video", ...defaultOutputMeters];
-  if (model.tasks.includes("embeddings")) return ["embedding", ...defaultOutputMeters];
-  if (model.tasks.includes("reranking")) return ["rerank_request", ...defaultOutputMeters];
-  if (
-    model.tasks.includes("audio_generation") ||
-    model.tasks.includes("speech_synthesis") ||
-    model.tasks.includes("speech_to_speech")
-  )
-    return ["output_audio", ...defaultOutputMeters];
-  return defaultOutputMeters;
-}
-
-export function representativeTableRate(
-  model: ProviderModel,
-  slot: TableRateSlot,
-): PriceRate | undefined {
-  const meters =
-    slot === "input" ? inputMeters : slot === "cached" ? cachedMeters : taskOutputMeters(model);
-  for (const meter of new Set(meters)) {
-    const rate = preferredRate(model, meter);
-    if (rate !== undefined) return perMillionTokenRate(rate);
-  }
-  return undefined;
-}
-
-export function perMillionTokenRate(rate: PriceRate | undefined): PriceRate | undefined {
-  if (rate === undefined || rate.unit === "million_tokens") return rate;
-  const places = rate.unit === "token" ? 6 : rate.unit === "thousand_tokens" ? 3 : undefined;
-  if (places === undefined) return rate;
-  return {
-    ...rate,
-    price: scaleDecimal(rate.price, places),
-    unit: "million_tokens",
-  };
-}
-
-function formatDecimal(value: string): string {
-  const decimalPoint = value.indexOf(".");
-  if (decimalPoint === -1) return value;
-  const fraction = value.slice(decimalPoint + 1).replace(/0+$/, "");
-  return fraction.length === 0
-    ? value.slice(0, decimalPoint)
-    : `${value.slice(0, decimalPoint)}.${fraction}`;
-}
-
-export function formatPrice(rate: PriceRate | undefined): string {
-  if (rate === undefined) return "—";
-  const amount = formatDecimal(rate.price);
-  return rate.currency === "USD" ? `$${amount}` : `${rate.currency} ${amount}`;
-}
-
-export function formatRateUnit(rate: PriceRate | undefined): string {
-  if (rate === undefined) return "";
-  switch (rate.unit) {
-    case "thousand_tokens":
-      return "/1K tokens";
-    case "million_tokens":
-      return "/1M tokens";
-    case "million_characters":
-      return "/1M characters";
-    case "thousand_characters":
-      return "/1K characters";
-    case "thousand_pages":
-      return "/1K pages";
-    case "thousand_requests":
-      return "/1K requests";
-    case "thousand_search_units":
-      return "/1K search units";
-    default:
-      return `/${formatSnakeCase(rate.unit)}`;
-  }
-}
-
-export function formatTableRateUnit(rate: PriceRate | undefined): string {
-  if (rate === undefined || rate.unit === "million_tokens") return "";
-  switch (rate.unit) {
-    case "character":
-      return "/char";
-    case "gpu_hour":
-      return "/GPU·hr";
-    case "image":
-      return "/img";
-    case "million_characters":
-      return "/1M chars";
-    case "million_tokens_per_hour":
-      return "/1M tok·hr";
-    case "minute":
-      return "/min";
-    case "request":
-      return "/req";
-    case "second":
-      return "/sec";
-    case "thousand_characters":
-      return "/1K chars";
-    case "thousand_requests":
-      return "/1K req";
-    case "thousand_search_units":
-      return "/1K search";
-    case "thousand_tokens_per_minute_hour":
-      return "/1K TPM·hr";
-    case "unit_hour":
-      return "/unit·hr";
-    case "unit_month":
-      return "/unit·mo";
-    default:
-      return formatRateUnit(rate);
-  }
-}
-
-export function formatTableRateLabel(rate: PriceRate): string {
-  return `${formatSnakeCase(rate.meter)} · ${formatPrice(rate)} ${formatRateUnit(rate)}`;
-}
-
 export function formatSnakeCase(value: string): string {
   return value.replaceAll("_", " ");
+}
+
+export function formatSentenceCase(value: string): string {
+  const text = formatSnakeCase(value);
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
 }

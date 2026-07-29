@@ -1,3 +1,4 @@
+import type { ParsedProviderModel } from "./pricing-source.ts";
 import { type ModelRoute, type ProviderModel, unknownCapabilities } from "./schema.ts";
 
 export interface BaseModelInput {
@@ -23,7 +24,7 @@ export function modelRouteKey(route: ModelRoute): string {
   return `${route.provider}\0${route.task}\0${route.provider_model_id}\0${route.source_ref}`;
 }
 
-export function baseModel(input: BaseModelInput): ProviderModel {
+export function baseModel(input: BaseModelInput): ParsedProviderModel {
   return {
     provider_id: input.providerId,
     model_id: input.id,
@@ -39,8 +40,8 @@ export function baseModel(input: BaseModelInput): ProviderModel {
     status: "unknown",
     release_stage: "unknown",
     replacement_model_ids: [],
-    pricing_status: "unknown",
-    pricing: [],
+    pricing_state: "unknown",
+    price_facts: [],
     scope: "global_catalog",
     account_availability: "unknown",
     first_seen_at: input.observedAt,

@@ -15,7 +15,7 @@ Status: current
 - Every used feature must exist and every endpoint key must resolve to a valid relative path. Unknown features, dangling references, invalid paths, or contradictory explicit-free prices reject the provider.
 - Batch is endpoint/delivery evidence, not a task. General text rows remain text generation even when retired definitions lose endpoints.
 - Keep lifecycle and preview maturity independent.
-- Preserve native token, character, duration, and page rates. Derive batch/cache rates only from published multipliers and explicit feature support with decimal-string arithmetic.
+- Preserve native token, character, duration, and page rates. Derive batch/cache rates only from published multipliers and explicit feature support with decimal-string arithmetic; publish the exact result while retaining the multiplier as evidence.
 
 ## Kong AI Gateway
 

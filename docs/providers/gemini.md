@@ -15,7 +15,7 @@ Status: current
 - Tasks are non-exclusive. Agent and computer-use rows remain text generation with endpoint/capability evidence. Live audio is `speech_to_speech`.
 - Interactions and every supported method require exact listed IDs plus fixed method/route references. Names, modalities, spelling, and neighboring tasks never imply an endpoint.
 - Only reviewed `supportedGenerationMethods` with pinned REST/WebSocket routes add endpoint or delivery facts. Missing or unknown methods remain unknown.
-- Preserve native pricing units and conditions. Explicit free tiers are zero rates; missing or unparseable prices remain unknown.
+- Preserve native pricing units and conditions. A storage price stated “per million tokens per hour” is a token-hour denominator, not token throughput. Explicit free tiers are zero rates; missing or unparseable prices remain unknown.
 
 ## Kong AI Gateway
 

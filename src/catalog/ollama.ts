@@ -3,14 +3,9 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
 import { classifyModelTasks } from "./task.ts";
-import {
-  type Modality,
-  type ModelTask,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface ParseInput {
   provider: Provider;
@@ -182,7 +177,7 @@ function libraryModel(input: ParseInput, item: LibraryItem): ProviderModel {
       observedAt: input.observedAt,
     }),
     ...facts(item),
-    pricing_status: "not_applicable",
+    pricing_state: "not_applicable",
     status: "active",
   };
 }
@@ -269,7 +264,7 @@ function cloudModel(
     updated_date: show.modified_at.slice(0, 10),
     status: library || retirement === undefined ? "active" : retired ? "retired" : "deprecated",
     retired_at: library ? undefined : retirement,
-    pricing_status: "not_published",
+    pricing_state: "not_published",
   };
 }
 
@@ -283,7 +278,7 @@ function retiredModel(input: ParseInput, item: LibraryItem, raw: unknown): Provi
   return {
     ...libraryModel(input, item),
     service_families: [cloudFamily, libraryFamily],
-    pricing_status: "not_published",
+    pricing_state: "not_published",
   };
 }
 

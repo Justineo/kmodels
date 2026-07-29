@@ -14,13 +14,8 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, scaleDecimal } from "./pricing.ts";
-import {
-  type Modality,
-  type ModelTask,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { type Modality, type ModelTask, type Provider } from "./schema.ts";
 
 type TriState = ProviderModel["capabilities"]["reasoning"];
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
@@ -188,13 +183,13 @@ function mergeState(current: TriState, incoming: TriState): TriState {
   return incoming;
 }
 
-function rateKey(rate: PriceRate): string {
+function rateKey(rate: SourcePriceFact): string {
   return `${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`;
 }
 
 function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
-  const pricing = new Map(left.pricing.map((item) => [rateKey(item), item]));
-  for (const item of right.pricing) pricing.set(rateKey(item), item);
+  const pricing = new Map(left.price_facts.map((item) => [rateKey(item), item]));
+  for (const item of right.price_facts) pricing.set(rateKey(item), item);
   const endpoints = new Map(
     [...(left.api_endpoints ?? []), ...(right.api_endpoints ?? [])].map((item) => [
       apiEndpointKey(item),
@@ -261,13 +256,8 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
     status: right.status === "unknown" ? left.status : right.status,
     release_stage: right.release_stage === "unknown" ? left.release_stage : right.release_stage,
     replacement_model_ids: unique([...left.replacement_model_ids, ...right.replacement_model_ids]),
-    pricing_status:
-      pricing.size === 0
-        ? left.pricing_status
-        : [...pricing.values()].some((item) => item.derived)
-          ? "derived"
-          : "published",
-    pricing: [...pricing.values()],
+    pricing_state: pricing.size === 0 ? left.pricing_state : "numeric",
+    price_facts: [...pricing.values()],
     availability: availability.size === 0 ? undefined : [...availability.values()],
   };
 }
@@ -329,7 +319,7 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
           },
           status: "active",
           release_stage: /preview/i.test(id) ? "preview" : "unknown",
-          pricing_status: "unknown",
+          pricing_state: "unknown",
           scope: "regional_catalog",
         });
       }
@@ -472,7 +462,7 @@ function decimal(raw: string): string | undefined {
   return trimmed === "" ? whole : `${whole}.${trimmed}`;
 }
 
-function unit(header: string, raw: string): PriceRate["unit"] | undefined {
+function unit(header: string, raw: string): SourcePriceFact["unit"] | undefined {
   const evidence = `${header} ${raw}`.toLowerCase();
   if (/million (?:input )?tokens/.test(evidence)) return "million_tokens";
   if (/10,000 characters/.test(evidence)) return "million_characters";
@@ -486,8 +476,8 @@ function meter(
   header: string,
   headings: string[],
   tasks: ModelTask[],
-  rateUnit: PriceRate["unit"],
-): PriceRate["meter"] {
+  rateUnit: SourcePriceFact["unit"],
+): SourcePriceFact["meter"] {
   const evidence = `${header} ${headings.join(" ")}`.toLowerCase();
   if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
   if (tasks.includes("video_generation")) return "video_generation";
@@ -506,7 +496,7 @@ function meter(
   return tasks.includes("embeddings") ? "embedding" : "input_text";
 }
 
-function priceConditions(table: Table, row: Cell[], header: string): PriceRate["conditions"] {
+function priceConditions(table: Table, row: Cell[], header: string): SourcePriceFact["conditions"] {
   const observedRegion = table.headings.find((heading) =>
     /^(?:Singapore|China \(Beijing\)|Hong Kong \(China\)|China \(Hong Kong\)|Germany \(Frankfurt\)|Japan \(Tokyo\)|US \(Virginia\))$/.test(
       heading,
@@ -565,7 +555,7 @@ function priceSegments(cell: Cell): PriceSegment[] {
   });
 }
 
-function segmentConditions(label: string | undefined): PriceRate["conditions"] {
+function segmentConditions(label: string | undefined): SourcePriceFact["conditions"] {
   if (label === undefined) return {};
   const resolution = label.match(/\b\d{3,4}P\b/i)?.[0];
   const promptExtend = label.match(/prompt_extend=(true|false)/i)?.[0];
@@ -588,12 +578,12 @@ function segmentConditions(label: string | undefined): PriceRate["conditions"] {
   };
 }
 
-function normalizedPrice(price: string, rateUnit: PriceRate["unit"]): string {
+function normalizedPrice(price: string, rateUnit: SourcePriceFact["unit"]): string {
   return rateUnit === "million_characters" ? scaleDecimal(price, 2) : price;
 }
 
-function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string): PriceRate[] {
-  const result: PriceRate[] = [];
+function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string): SourcePriceFact[] {
+  const result: SourcePriceFact[] = [];
   const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
   const idCell = idIndex === undefined ? undefined : row[idIndex];
   const priceIndexes = table.headers.flatMap((header, index) =>
@@ -612,7 +602,7 @@ function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string):
     if (rateUnit === undefined) continue;
     const baseConditions = priceConditions(table, row, effectiveHeader);
     for (const segment of priceSegments(cell)) {
-      const base: PriceRate = {
+      const base: SourcePriceFact = {
         meter: meter(effectiveHeader, table.headings, tasks, rateUnit),
         price: normalizedPrice(segment.price, rateUnit),
         currency: "USD",
@@ -688,7 +678,10 @@ function priceOperations(id: string, headings: string[]): ModelTask[] {
   return orderedTasks(result);
 }
 
-function priceModalities(tasks: ModelTask[], modelRates: PriceRate[]): ProviderModel["modalities"] {
+function priceModalities(
+  tasks: ModelTask[],
+  modelRates: SourcePriceFact[],
+): ProviderModel["modalities"] {
   const input: Modality[] = [];
   const output: Modality[] = [];
   for (const item of modelRates) {
@@ -753,12 +746,12 @@ function cacheModels(body: string): Map<string, Set<string>> {
 }
 
 function cacheRate(
-  input: PriceRate,
+  input: SourcePriceFact,
   meterName: "cache_read_text" | "cache_write_text",
   factor: string,
   operation: string,
   ttl?: number,
-): PriceRate {
+): SourcePriceFact {
   return {
     ...input,
     meter: meterName,
@@ -807,8 +800,8 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
         modalities: priceModalities(tasks, modelRates),
         status: "active",
         release_stage: /preview/i.test(id) ? "preview" : "unknown",
-        pricing_status: modelRates.length === 0 ? "unknown" : "published",
-        pricing: modelRates,
+        pricing_state: modelRates.length === 0 ? "unknown" : "numeric",
+        price_facts: modelRates,
         availability: region === undefined ? undefined : [{ region, deployment_type: "model_api" }],
         scope: "regional_catalog",
       });
@@ -838,10 +831,10 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     }
   }
   for (const [id, model] of models) {
-    const baseRates = model.pricing.filter(
+    const baseRates = model.price_facts.filter(
       (item) => item.meter === "input_text" && item.conditions.promotion !== true,
     );
-    const derived: PriceRate[] = [];
+    const derived: SourcePriceFact[] = [];
     for (const item of baseRates) {
       const region = item.conditions.region;
       if (region === undefined) continue;
@@ -853,7 +846,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
         derived.push(cacheRate(item, "cache_read_text", "0.2", "implicit_cache"));
     }
     if (derived.length > 0)
-      models.set(id, merge(model, { ...model, pricing_status: "derived", pricing: derived }));
+      models.set(id, merge(model, { ...model, pricing_state: "numeric", price_facts: derived }));
   }
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope pricing");
 }
@@ -925,7 +918,7 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
           retired_at: retiredAt,
           replacement_model_ids:
             replacementColumn === undefined ? [] : cellIds(row[replacementColumn]),
-          pricing_status: "unknown",
+          pricing_state: "unknown",
           scope: "regional_catalog",
         });
       }

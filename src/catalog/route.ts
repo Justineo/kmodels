@@ -1,6 +1,6 @@
 import type { ModelLifecycle, ModelTask, ModelReleaseStage } from "./schema.ts";
 
-export type SortKey = "name" | "provider" | "context" | "updated";
+export type SortKey = "name" | "provider" | "context" | "released";
 export type SortDirection = "ascending" | "descending";
 export interface SortState {
   key: SortKey;
@@ -59,8 +59,8 @@ const sortCodes = [
   ["P", { key: "provider", direction: "descending" }],
   ["c", { key: "context", direction: "ascending" }],
   ["C", { key: "context", direction: "descending" }],
-  ["u", { key: "updated", direction: "ascending" }],
-  ["U", { key: "updated", direction: "descending" }],
+  ["u", { key: "released", direction: "ascending" }],
+  ["U", { key: "released", direction: "descending" }],
 ] as const satisfies readonly (readonly [string, SortState])[];
 
 function parseCodes<T extends string>(value: string | null, entries: readonly CodeEntry<T>[]): T[] {

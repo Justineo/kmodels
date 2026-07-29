@@ -1,4 +1,12 @@
 import { z } from "zod";
+import {
+  deliveryModes,
+  modalities,
+  modelLifecycles,
+  modelReleaseStages,
+  modelScopes,
+  modelTasks,
+} from "./catalog-vocabulary.ts";
 
 const dateTime = z.iso.datetime({ offset: true });
 const modelDate = z.union([
@@ -6,25 +14,8 @@ const modelDate = z.union([
   z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
   z.string().regex(/^\d{4}$/),
 ]);
-const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
-export const modelTaskSchema = z.enum([
-  "text_generation",
-  "embeddings",
-  "reranking",
-  "image_generation",
-  "video_generation",
-  "audio_generation",
-  "speech_synthesis",
-  "transcription",
-  "translation",
-  "speech_to_speech",
-  "moderation",
-  "classification",
-  "ocr",
-  "object_detection",
-  "segmentation",
-]);
+export const modelTaskSchema = z.enum(modelTasks);
 
 export const taskEvidenceSchema = z.object({
   task: modelTaskSchema,
@@ -33,7 +24,7 @@ export const taskEvidenceSchema = z.object({
   raw_value: z.string().min(1),
   kind: z.enum(["provider_task", "provider_type"]),
 });
-export const deliveryModeSchema = z.enum(["streaming", "realtime", "batch", "async"]);
+export const deliveryModeSchema = z.enum(deliveryModes);
 export const deliveryModeEvidenceSchema = z.object({
   mode: deliveryModeSchema,
   source_ref: z.string().min(1),
@@ -41,16 +32,10 @@ export const deliveryModeEvidenceSchema = z.object({
   raw_value: z.string().min(1),
   kind: z.enum(["capability", "endpoint", "provider_type"]),
 });
-export const modalitySchema = z.enum(["text", "image", "audio", "video", "pdf", "embedding"]);
+export const modalitySchema = z.enum(modalities);
 export const triStateSchema = z.union([z.boolean(), z.literal("unknown")]);
-export const modelLifecycleSchema = z.enum([
-  "active",
-  "legacy",
-  "deprecated",
-  "retired",
-  "unknown",
-]);
-export const modelReleaseStageSchema = z.enum(["stable", "preview", "experimental", "unknown"]);
+export const modelLifecycleSchema = z.enum(modelLifecycles);
+export const modelReleaseStageSchema = z.enum(modelReleaseStages);
 export const sourceKindSchema = z.enum(["api", "website", "repository"]);
 export const sourceAccessSchema = z.enum(["public", "authenticated", "configured"]);
 export const sourceFormatSchema = z.enum(["json", "html", "markdown", "mixed"]);
@@ -60,93 +45,6 @@ export const modelRouteSchema = z.object({
   provider_model_id: z.string().min(1),
   task: z.string().min(1),
   status: z.literal("live"),
-});
-
-export const priceRateSchema = z.object({
-  meter: z.enum([
-    "input_text",
-    "output_text",
-    "cache_read_text",
-    "cache_write_text",
-    "cache_read_audio",
-    "cache_write_audio",
-    "cache_read_image",
-    "cache_write_image",
-    "cache_read_video",
-    "cache_write_video",
-    "cache_storage",
-    "input_audio",
-    "output_audio",
-    "input_image",
-    "output_image",
-    "input_video",
-    "output_video",
-    "image_generation",
-    "video_generation",
-    "embedding",
-    "rerank_request",
-    "tool_call",
-    "realtime_client_message",
-    "realtime_session_duration",
-    "gpu_hour",
-    "provisioned_throughput",
-    "batch_inference",
-  ]),
-  price: decimal,
-  currency: z.string().min(1),
-  unit: z.enum([
-    "token",
-    "thousand_tokens",
-    "million_tokens",
-    "request",
-    "thousand_requests",
-    "thousand_search_units",
-    "image",
-    "second",
-    "minute",
-    "character",
-    "thousand_characters",
-    "million_characters",
-    "page",
-    "thousand_pages",
-    "search_unit",
-    "video",
-    "gpu_hour",
-    "unit_hour",
-    "unit_month",
-    "million_tokens_per_hour",
-    "frame",
-    "thousand_tokens_per_minute_hour",
-  ]),
-  conditions: z.object({
-    region: z.string().optional(),
-    endpoint: z.string().optional(),
-    deployment_scope: z.string().optional(),
-    service_tier: z.string().optional(),
-    inference_geo: z.string().optional(),
-    route_provider: z.string().optional(),
-    context_min_tokens: z.number().int().nonnegative().optional(),
-    context_max_tokens: z.number().int().nonnegative().optional(),
-    context_tier: z.string().optional(),
-    cache_ttl_seconds: z.number().int().nonnegative().optional(),
-    capacity: z.string().optional(),
-    modality: z.string().optional(),
-    operation: z.string().optional(),
-    resolution: z.string().optional(),
-    quality: z.string().optional(),
-    style: z.string().optional(),
-    audio: z.boolean().optional(),
-    voice_control: z.boolean().optional(),
-    video_input: z.boolean().optional(),
-    effective_from: z.string().optional(),
-    effective_until: z.string().optional(),
-    promotion: z.boolean().optional(),
-  }),
-  source_ref: z.string().min(1),
-  derived: z.boolean(),
-  derivation: z.string().optional(),
-  raw_price: z.string().optional(),
-  raw_unit: z.string().optional(),
 });
 
 export const providerModelSchema = z.object({
@@ -208,15 +106,6 @@ export const providerModelSchema = z.object({
   status: modelLifecycleSchema,
   release_stage: modelReleaseStageSchema,
   replacement_model_ids: z.array(z.string().min(1)).default([]),
-  pricing_status: z.enum([
-    "published",
-    "derived",
-    "not_published",
-    "not_applicable",
-    "custom_quote",
-    "unknown",
-  ]),
-  pricing: z.array(priceRateSchema),
   availability: z
     .array(
       z.object({
@@ -225,7 +114,7 @@ export const providerModelSchema = z.object({
       }),
     )
     .optional(),
-  scope: z.enum(["global_catalog", "regional_catalog", "runtime_observation"]),
+  scope: z.enum(modelScopes),
   account_availability: z.literal("unknown"),
   first_seen_at: dateTime,
   last_seen_at: dateTime,
@@ -281,7 +170,7 @@ export const coverageSchema = z.object({
   provider_id: z.string().min(1),
   status: z.enum(["fresh", "stale", "unavailable", "not_configured"]),
   model_count: z.number().int().nonnegative(),
-  price_rate_count: z.number().int().nonnegative(),
+  pricing_term_count: z.number().int().nonnegative(),
   checked_at: dateTime,
   last_successful_sync_at: dateTime.optional(),
   reason: z.string().optional(),
@@ -310,6 +199,7 @@ export const catalogEnvelopeSchema = z.object({
 });
 
 export type Catalog = z.infer<typeof catalogSchema>;
+export type CatalogEnvelope = z.infer<typeof catalogEnvelopeSchema>;
 export type CatalogWarning = z.infer<typeof catalogWarningSchema>;
 export type Coverage = z.infer<typeof coverageSchema>;
 export type ModelRoute = z.infer<typeof modelRouteSchema>;
@@ -320,7 +210,6 @@ export type DeliveryMode = z.infer<typeof deliveryModeSchema>;
 export type DeliveryModeEvidence = z.infer<typeof deliveryModeEvidenceSchema>;
 export type ModelReleaseStage = z.infer<typeof modelReleaseStageSchema>;
 export type Modality = z.infer<typeof modalitySchema>;
-export type PriceRate = z.infer<typeof priceRateSchema>;
 export type Provider = z.infer<typeof providerSchema>;
 export type ProviderModel = z.infer<typeof providerModelSchema>;
 export type SourceRecord = z.infer<typeof sourceRecordSchema>;

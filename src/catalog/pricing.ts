@@ -1,4 +1,4 @@
-import type { PriceRate } from "./schema.ts";
+import type { SourcePriceFact } from "./pricing-source.ts";
 
 export function scaleDecimal(value: string, places: number): string {
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);
@@ -34,13 +34,13 @@ export function multiplyDecimal(left: string, right: string): string {
 }
 
 export function publishedRate(
-  meter: PriceRate["meter"],
+  meter: SourcePriceFact["meter"],
   price: string,
-  unit: PriceRate["unit"],
+  unit: SourcePriceFact["unit"],
   sourceId: string,
   rawUnit: string,
-  conditions: PriceRate["conditions"] = {},
-): PriceRate {
+  conditions: SourcePriceFact["conditions"] = {},
+): SourcePriceFact {
   return {
     meter,
     price,
