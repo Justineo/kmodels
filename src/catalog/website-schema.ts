@@ -128,7 +128,7 @@ const websitePricingSnapshotSchema = z.discriminatedUnion("publication", [
   }),
 ]);
 
-const websitePricingSummarySchema = z.strictObject({
+export const websitePricingSummarySchema = z.strictObject({
   outcome: z.enum(["not_applicable", "unknown", "offers"]),
   status: z
     .strictObject({
@@ -141,23 +141,22 @@ const websitePricingSummarySchema = z.strictObject({
   output: websitePricingCellSchema.optional(),
 });
 
-const websiteModelSchema = z.strictObject({
+const websiteCatalogIndexModelSchema = z.strictObject({
   provider_id: nonEmpty,
   model_id: nonEmpty,
   version: nonEmpty.optional(),
-  uid: nonEmpty,
   name: nonEmpty,
   tasks: z.array(modelTaskSchema),
   release_date: modelDate.optional(),
-  updated_date: modelDate.optional(),
   status: z.enum(modelLifecycles),
   release_stage: z.enum(modelReleaseStages),
   context_tokens: z.number().int().nonnegative().optional(),
-  detail_ref: hash,
-  pricing: websitePricingSummarySchema,
+  detail_chunk: z.number().int().nonnegative(),
 });
 
-export const websiteCatalogSchema = z.strictObject({
+export const websiteCatalogIndexSchema = z.strictObject({
+  schema_version: z.literal(1),
+  data_version: hash,
   generated_at: z.string().min(1),
   providers: z.array(
     z.strictObject({
@@ -165,7 +164,13 @@ export const websiteCatalogSchema = z.strictObject({
       name: z.string().min(1),
     }),
   ),
-  models: z.array(websiteModelSchema),
+  models: z.array(websiteCatalogIndexModelSchema),
+});
+
+export const websitePricingSummariesSchema = z.strictObject({
+  schema_version: z.literal(1),
+  data_version: hash,
+  pricing: z.array(websitePricingSummarySchema),
 });
 
 const selectorBase = {
@@ -257,6 +262,7 @@ export const websitePricingDetailSchema = z.strictObject({
 
 export const websiteModelDetailSchema = z.strictObject({
   model_ref: nonEmpty,
+  updated_date: modelDate.optional(),
   description: z.string().optional(),
   delivery_modes: z.array(z.enum(deliveryModes)).optional(),
   api_endpoints: z
@@ -291,8 +297,26 @@ export const websiteModelDetailSchema = z.strictObject({
   pricing: websitePricingDetailSchema.optional(),
 });
 
-export type WebsiteCatalog = z.infer<typeof websiteCatalogSchema>;
-export type WebsiteModel = z.infer<typeof websiteModelSchema>;
+export const websiteDetailChunkSchema = z.strictObject({
+  schema_version: z.literal(1),
+  data_version: hash,
+  provider_id: nonEmpty,
+  chunk: z.number().int().nonnegative(),
+  details: z.array(websiteModelDetailSchema),
+});
+
+export type WebsiteCatalogIndex = z.infer<typeof websiteCatalogIndexSchema>;
+export type WebsiteCatalogIndexModel = z.infer<typeof websiteCatalogIndexModelSchema>;
+export type WebsitePricingSummaries = z.infer<typeof websitePricingSummariesSchema>;
+export type WebsitePricingSummary = z.infer<typeof websitePricingSummarySchema>;
+export type WebsiteDetailChunk = z.infer<typeof websiteDetailChunkSchema>;
+export type WebsiteModel = WebsiteCatalogIndexModel & {
+  uid: string;
+  pricing: WebsitePricingSummary;
+};
+export type WebsiteCatalog = Omit<WebsiteCatalogIndex, "models"> & {
+  models: WebsiteModel[];
+};
 export type WebsiteModelDetail = z.infer<typeof websiteModelDetailSchema>;
 export type WebsitePricingDetail = z.infer<typeof websitePricingDetailSchema>;
 export type WebsitePricingOffer = z.infer<typeof websitePricingOfferSchema>;

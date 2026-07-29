@@ -28,8 +28,9 @@ The durable assets are:
 - `data/catalog.json`: providers, models, sources, coverage, and diagnostics;
 - `data/pricing.json.gz`: the gzip-compressed, content-bound canonical pricing envelope.
 
-They advance as one accepted pair. Public endpoints are
-`/catalog/index.json` and `/pricing/index.json`.
+They advance as one accepted pair. The canonical pricing endpoint is
+`/pricing/index.json`; catalog publication profiles are defined in
+[Catalog semantics](catalog.md).
 
 ## Review boundary
 

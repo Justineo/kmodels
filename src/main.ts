@@ -1,7 +1,6 @@
 import { createVaporApp } from "vue";
-import "overlayscrollbars/overlayscrollbars.css";
 import App from "./App.vue";
-import { websiteCatalogSchema } from "./catalog/website-schema.ts";
+import { parseWebsiteCatalog } from "./catalog/website-runtime.ts";
 import "./tokens.css";
 import "./style.css";
 
@@ -11,7 +10,8 @@ try {
     headers: { Accept: "application/json" },
   });
   if (!response.ok) throw new Error(`Catalog request failed with ${response.status}`);
-  const catalog = websiteCatalogSchema.parse(await response.json());
+  const value: unknown = await response.json();
+  const catalog = parseWebsiteCatalog(value);
   createVaporApp(App, { catalog }).mount("#app");
 } catch (error) {
   console.error(error);

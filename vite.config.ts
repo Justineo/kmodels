@@ -1,12 +1,7 @@
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite-plus";
-import { catalogApiAssets, catalogAssets } from "./src/catalog/endpoints.ts";
+import { catalogApiAssets, catalogAssets, websiteAssets } from "./src/catalog/endpoints.ts";
 import { recoverCatalogPair } from "./src/catalog/pricing-publication.ts";
-import {
-  websiteCatalog,
-  websiteDetailRef,
-  websiteModelDetail,
-} from "./src/catalog/website-data.ts";
 
 let developmentWebsiteData: ReturnType<typeof loadDevelopmentWebsiteData> | undefined;
 
@@ -15,10 +10,12 @@ async function loadDevelopmentWebsiteData() {
   if (pair === undefined) throw new Error("No accepted catalog pair is available");
   return {
     catalog: pair.catalog,
-    pricing: pair.pricing.data,
     pricingAssetSource: pair.pricingAssetSource,
-    modelByDetailRef: new Map(
-      pair.catalog.models.map((model) => [websiteDetailRef(model.uid), model]),
+    websiteAssetByPath: new Map(
+      websiteAssets(pair.catalog, pair.pricing).map((asset): [string, string] => [
+        `/${asset.fileName}`,
+        asset.source,
+      ]),
     ),
   };
 }
@@ -27,21 +24,17 @@ async function developmentAsset(path: string): Promise<string | undefined> {
   if (
     path !== "/pricing/index.json" &&
     path !== "/catalog/index.json" &&
+    path !== "/catalog/ids.json" &&
+    path !== "/catalog/models.json" &&
     !path.startsWith("/providers/") &&
     !path.startsWith("/ui/")
   )
     return undefined;
 
   developmentWebsiteData ??= loadDevelopmentWebsiteData();
-  const { catalog, pricing, pricingAssetSource, modelByDetailRef } = await developmentWebsiteData;
+  const { catalog, pricingAssetSource, websiteAssetByPath } = await developmentWebsiteData;
   if (path === "/pricing/index.json") return pricingAssetSource;
-  if (path.startsWith("/ui/")) {
-    if (path === "/ui/catalog/index.json") return JSON.stringify(websiteCatalog(catalog, pricing));
-    const reference = path.match(/^\/ui\/models\/([0-9a-f]{64})\.json$/)?.[1];
-    if (reference === undefined) return undefined;
-    const model = modelByDetailRef.get(reference);
-    return model === undefined ? undefined : JSON.stringify(websiteModelDetail(pricing, model));
-  }
+  if (path.startsWith("/ui/")) return websiteAssetByPath.get(path);
   return new Map(
     catalogApiAssets(catalog).map((asset): [string, string] => [
       `/${asset.fileName}`,
@@ -99,5 +92,22 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts"],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (
+            id.includes("/node_modules/vue/") ||
+            id.includes("/node_modules/@vue/") ||
+            id.includes("/node_modules/.pnpm/@vue+")
+          )
+            return "vue";
+          if (id.includes("/node_modules/zod/")) return "validation";
+          if (id.includes("/node_modules/overlayscrollbars/")) return "scrollbars";
+          return undefined;
+        },
+      },
+    },
   },
 });

@@ -21,11 +21,7 @@ export function versionBadgeModelUids(models: readonly VersionedModel[]): Set<st
   }
   return new Set(
     models
-      .filter(
-        (model) =>
-          model.version !== undefined &&
-          (counts.get(JSON.stringify([model.provider_id, model.model_id])) ?? 0) > 1,
-      )
+      .filter((model) => (counts.get(JSON.stringify([model.provider_id, model.model_id])) ?? 0) > 1)
       .map((model) => model.uid),
   );
 }

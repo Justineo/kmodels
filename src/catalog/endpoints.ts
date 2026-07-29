@@ -1,10 +1,11 @@
-import { stableJson } from "./io.ts";
+import { sha256, stableCompactJson, stableJson } from "./io.ts";
 import { pricingCatalogJson } from "./pricing-envelope.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
+import { catalogIds, catalogModels } from "./publication.ts";
 import type { Catalog, CatalogEnvelope } from "./schema.ts";
-import { websiteCatalog, websiteModelDetails } from "./website-data.ts";
+import { websitePublication } from "./website-data.ts";
 
-interface CatalogAsset {
+export interface CatalogAsset {
   fileName: string;
   source: string;
 }
@@ -39,6 +40,14 @@ export function catalogApiAssets(catalog: Catalog): CatalogAsset[] {
     {
       fileName: "catalog/index.json",
       source: catalogJson(catalog),
+    },
+    {
+      fileName: "catalog/ids.json",
+      source: stableCompactJson(catalogIds(catalog)),
+    },
+    {
+      fileName: "catalog/models.json",
+      source: stableCompactJson(catalogModels(catalog)),
     },
     {
       fileName: "providers/index.json",
@@ -80,15 +89,20 @@ export function catalogAssets(catalog: Catalog, pricing: PricingCatalogEnvelope)
   ];
 }
 
-function websiteAssets(catalog: Catalog, pricing: PricingCatalogEnvelope): CatalogAsset[] {
-  const website = websiteCatalog(catalog, pricing.data);
+export function websiteAssets(catalog: Catalog, pricing: PricingCatalogEnvelope): CatalogAsset[] {
+  const dataVersion = sha256(`${catalog.catalog_version}\u0000${pricing.pricing_data_version}`);
+  const website = websitePublication(catalog, pricing.data, dataVersion);
   return [
     {
       fileName: "ui/catalog/index.json",
-      source: JSON.stringify(website),
+      source: JSON.stringify(website.catalog),
     },
-    ...[...websiteModelDetails(catalog, pricing.data)].map(([reference, detail]) => ({
-      fileName: `ui/models/${reference}.json`,
+    {
+      fileName: "ui/catalog/pricing.json",
+      source: JSON.stringify(website.pricing),
+    },
+    ...website.details.map((detail) => ({
+      fileName: `ui/details/${detail.provider_id}/${detail.chunk}.json`,
       source: JSON.stringify(detail),
     })),
   ];

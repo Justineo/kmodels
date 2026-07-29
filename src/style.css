@@ -768,6 +768,10 @@ kbd {
   gap: var(--space-1);
 }
 
+.model-row[data-nested="true"] .model-cell {
+  padding-left: var(--space-4);
+}
+
 .model-identity {
   display: flex;
   width: auto;
@@ -824,6 +828,15 @@ kbd {
 .version-badge:focus-visible {
   color: var(--tag-text-hover);
   background: var(--tag-background-hover);
+}
+
+.version-count-badge {
+  cursor: default;
+}
+
+.group-varies {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-caption);
 }
 
 .provider-icon {
@@ -1064,6 +1077,11 @@ kbd {
 .disclosure-button .ui-icon {
   width: var(--icon-size-sm);
   height: var(--icon-size-sm);
+  transition: transform var(--duration-standard) var(--easing-standard);
+}
+
+.group-disclosure[aria-expanded="true"] .ui-icon {
+  transform: rotate(90deg);
 }
 
 .model-row:hover .disclosure-button,

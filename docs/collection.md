@@ -102,9 +102,10 @@ withdrawal may temporarily leave a safe pricing-only source record in the
 catalog; the next
 successful fresh provider publication prunes it.
 
-During development, Vite derives the canonical API endpoints and compact UI
-projections from the accepted mirrors. Production builds recover and revalidate
-the accepted pair before writing those assets to ignored `dist/`. The website
-loads only `/ui/` projections; audit-rich canonical data remains available at
-the explicit `/catalog/` and `/pricing/` endpoints. Do not commit duplicate
-endpoint assets under `public/`.
+During development, Vite derives the lean ID inventory, grouped semantic
+catalog, canonical audit endpoints, and compact UI projections from the
+accepted mirrors. Production builds recover and revalidate the accepted pair
+before writing those assets to ignored `dist/`. The website loads only `/ui/`
+projections; the public catalog profiles and audit-rich canonical data remain
+available at the explicit `/catalog/` and `/pricing/` endpoints. Do not commit
+duplicate endpoint assets under `public/`.
