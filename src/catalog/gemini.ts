@@ -7,13 +7,12 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   modalitySchema,
   type Modality,
   type ModelTask,
-  type PriceRate,
   type Provider,
-  type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
 
@@ -527,7 +526,7 @@ function applyGemma(
     item.capabilities.reasoning = true;
     item.capabilities.tool_call = true;
     item.status = "active";
-    item.pricing_status = "not_published";
+    item.pricing_state = "not_published";
   }
 }
 
@@ -539,7 +538,11 @@ function segments(cell: Selection): string[] {
     .filter(Boolean);
 }
 
-function priceUnit(header: string, descriptor: string, row: string): PriceRate["unit"] | undefined {
+function priceUnit(
+  header: string,
+  descriptor: string,
+  row: string,
+): SourcePriceFact["unit"] | undefined {
   const value = `${descriptor} ${row}`.toLowerCase();
   if (/tokens per hour/.test(value)) return "million_tokens_per_hour";
   if (/\/\s*min\b|per minute/.test(value)) return "minute";
@@ -595,7 +598,7 @@ function applyGemmaFreePricing(
     const input = model.modalities.input.filter((modality) => modality !== "pdf");
     for (const modality of input) {
       const suffix = modality === "image" ? "image" : "text";
-      model.pricing.push(
+      model.price_facts.push(
         publishedRate(
           suffix === "image" ? "input_image" : "input_text",
           "0",
@@ -622,7 +625,7 @@ function applyGemmaFreePricing(
         ),
       );
     }
-    model.pricing.push(
+    model.price_facts.push(
       publishedRate(
         "output_text",
         "0",
@@ -653,8 +656,8 @@ function priceModalities(
   return rowModalities.length > 0 ? rowModalities : fallback.filter((value) => value !== "pdf");
 }
 
-function conditions(tier: string, descriptor: string, row: string): PriceRate["conditions"] {
-  const result: PriceRate["conditions"] = {};
+function conditions(tier: string, descriptor: string, row: string): SourcePriceFact["conditions"] {
+  const result: SourcePriceFact["conditions"] = {};
   const normalizedTier = tier.toLowerCase();
   if (normalizedTier !== "" && normalizedTier !== "standard") result.service_tier = normalizedTier;
   if (/prompts?\s*(?:<=|≤)\s*200k/i.test(descriptor)) result.context_max_tokens = 200_000;
@@ -670,9 +673,9 @@ function meterRates(
   row: string,
   segment: string,
   descriptor: string,
-  unit: PriceRate["unit"],
-  baseConditions: PriceRate["conditions"],
-): { meter: PriceRate["meter"]; conditions: PriceRate["conditions"] }[] {
+  unit: SourcePriceFact["unit"],
+  baseConditions: SourcePriceFact["conditions"],
+): { meter: SourcePriceFact["meter"]; conditions: SourcePriceFact["conditions"] }[] {
   const lower = row.toLowerCase();
   if (lower.includes("grounding with google"))
     return [
@@ -722,7 +725,8 @@ function meterRates(
     input || cache ? model.modalities.input : model.modalities.output,
   );
   const selectedOrText: Modality[] = selected.length === 0 ? ["text"] : selected;
-  const rates: { meter: PriceRate["meter"]; conditions: PriceRate["conditions"] }[] = [];
+  const rates: { meter: SourcePriceFact["meter"]; conditions: SourcePriceFact["conditions"] }[] =
+    [];
   for (const modality of selectedOrText) {
     if (embedding) {
       rates.push({ meter: "embedding", conditions: { ...baseConditions, modality } });
@@ -828,7 +832,7 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
                   unit,
                   conditions(tier, descriptor, row),
                 ))
-                  model.pricing.push(
+                  model.price_facts.push(
                     publishedRate(
                       rate.meter,
                       price,
@@ -846,9 +850,9 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
   });
   applyGemmaFreePricing(models, sourceId, body);
   for (const item of models.values()) {
-    item.pricing = [
+    item.price_facts = [
       ...new Map(
-        item.pricing.map((rate) => [
+        item.price_facts.map((rate) => [
           `${rate.meter}\u0000${rate.price}\u0000${rate.unit}\u0000${JSON.stringify(rate.conditions)}`,
           rate,
         ]),
@@ -858,7 +862,7 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
         `${right.meter}\u0000${right.unit}\u0000${right.price}\u0000${JSON.stringify(right.conditions)}`,
       ),
     );
-    if (item.pricing.length > 0) item.pricing_status = "published";
+    if (item.price_facts.length > 0) item.pricing_state = "numeric";
   }
 }
 

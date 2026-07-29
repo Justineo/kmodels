@@ -3,15 +3,9 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
-import {
-  type Modality,
-  type ModelTask,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -157,19 +151,26 @@ const retailPriceSchema = z.object({
   currencyCode: z.string().min(1),
   retailPrice: decimalValue,
   armRegionName: z.string(),
-  effectiveStartDate: z.string().min(1),
+  effectiveStartDate: z.string().min(1).optional(),
+  effectiveEndDate: z.string().min(1).optional(),
   meterId: z.string().min(1),
   meterName: z.string().min(1),
   productName: z.string().min(1),
   skuName: z.string().min(1),
   serviceName: z.literal("Foundry Models"),
   unitOfMeasure: z.string().min(1),
+  type: z.literal("Consumption").optional(),
 });
+type RetailPrice = z.infer<typeof retailPriceSchema>;
 
 const azureApiBundleSchema = z.object({
   location: z.string().min(1),
   models: z.array(z.unknown()).min(1),
   prices: z.array(z.unknown()),
+});
+
+const azureRetailBundleSchema = z.object({
+  prices: z.array(z.unknown()).min(1),
 });
 
 function unique<T>(values: T[]): T[] {
@@ -840,7 +841,7 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
       limits: fact.limits,
       status: target?.status ?? fact.status,
       release_stage: target?.release_stage ?? fact.releaseStage,
-      pricing_status: "unknown",
+      pricing_state: "unknown",
     });
   }
   assistants(models, input, openAi);
@@ -887,35 +888,272 @@ function apiStatus(
   return { status: "unknown", release_stage: "unknown" };
 }
 
-function retailUnit(value: string): PriceRate["unit"] | undefined {
-  const unit = value.toLowerCase();
-  if (/1m.*tokens?|million.*tokens?/.test(unit)) return "million_tokens";
-  if (/1k.*tokens?|thousand.*tokens?/.test(unit)) return "thousand_tokens";
-  if (/\btokens?\b/.test(unit)) return "token";
-  if (/1k.*requests?|thousand.*requests?/.test(unit)) return "thousand_requests";
-  if (/\brequests?\b/.test(unit)) return "request";
-  if (/\bimages?\b/.test(unit)) return "image";
-  if (/\bseconds?\b/.test(unit)) return "second";
-  if (/\bminutes?\b/.test(unit)) return "minute";
-  if (/\bhours?\b/.test(unit)) return "unit_hour";
+interface RetailModelAlias {
+  id: string;
+  aliases: string[];
+  products: string[];
 }
 
-function retailMeter(label: string, unit: PriceRate["unit"]): PriceRate["meter"] | undefined {
-  const value = label.toLowerCase();
-  const input = /input|prompt/.test(value);
-  const output = /output|completion/.test(value);
-  const cacheWrite = /cache.*(?:write|creation)/.test(value);
-  const cacheRead = /cache|cached/.test(value);
-  const audio = /audio|speech|realtime|transcri|translat/.test(value);
-  const image = /image/.test(value);
-  const video = /video/.test(value);
+const openAiProducts = [
+  "Azure OpenAI",
+  "Azure OpenAI Embedding",
+  "Azure OpenAI GPT5",
+  "Azure OpenAI Media",
+  "Azure OpenAI OSS Models",
+  "Azure OpenAI Reasoning",
+];
+
+const retailModelAliases: RetailModelAlias[] = [
+  { id: "gpt-5.6-luna", aliases: ["5.6 luna"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.6-sol", aliases: ["5.6 sol"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.6-terra", aliases: ["5.6 terra"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.5", aliases: ["5.5"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.4-mini", aliases: ["5.4 mini"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.4-nano", aliases: ["5.4 nano"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.4-pro", aliases: ["5.4 pro"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.4", aliases: ["5.4"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.3-codex", aliases: ["5.3 codex"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.3-chat", aliases: ["5.3 chat"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.2-codex", aliases: ["5.2 codex"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.2-chat", aliases: ["5.2 chat"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.2", aliases: ["5.2"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.1-codex-max", aliases: ["5.1 codex max"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.1-codex-mini", aliases: ["5.1 codex mini"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.1-codex", aliases: ["5.1 codex"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.1-chat", aliases: ["5.1 chat"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5.1", aliases: ["5.1"], products: ["Azure OpenAI GPT5"] },
+  {
+    id: "gpt-chat-latest",
+    aliases: ["chat-latest", "gpt-latest"],
+    products: ["Azure OpenAI GPT5", "Azure OpenAI Media"],
+  },
+  { id: "gpt-5-codex", aliases: ["gpt-5-codex"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5-mini", aliases: ["gpt 5 mini", "5 mini"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5-nano", aliases: ["gpt 5 nano", "5 nano"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5-pro", aliases: ["gpt 5 pro", "5 pro"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5-chat", aliases: ["gpt 5 chat", "5 chat"], products: ["Azure OpenAI GPT5"] },
+  { id: "gpt-5", aliases: ["gpt 5", "5"], products: ["Azure OpenAI GPT5"] },
+  {
+    id: "gpt-4.1-mini",
+    aliases: ["gpt 4.1 mini", "gpt-4.1-mini"],
+    products: openAiProducts,
+  },
+  {
+    id: "gpt-4.1-nano",
+    aliases: ["gpt 4.1 nano", "gpt-4.1-nano"],
+    products: openAiProducts,
+  },
+  { id: "gpt-4.1", aliases: ["gpt 4.1", "gpt-4.1"], products: openAiProducts },
+  {
+    id: "gpt-4o-mini-realtime-preview",
+    aliases: ["gpt4omini rt", "gpt 4o mini realtime", "gpt-4o-mini-realtime"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-realtime-preview",
+    aliases: ["gpt4o rt", "gpt 4o realtime", "gpt-4o-rt"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-mini-audio-preview",
+    aliases: ["gpt4omini aud", "gpt 4o mini audio"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-audio-preview",
+    aliases: ["gpt 4o audio", "gpt-4o-aud"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-mini-transcribe",
+    aliases: ["gpt-4o-mini-transcribe"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-transcribe",
+    aliases: ["gpt-4o-transcribe"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-mini-tts",
+    aliases: ["gpt4o mn tts", "gpt-4o-mini-tts"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-4o-mini",
+    aliases: ["gpt 4o mini", "gpt-4o-mini", "gpt4omini"],
+    products: ["Azure OpenAI"],
+  },
+  { id: "gpt-4o", aliases: ["gpt 4o", "gpt-4o", "gpt4o"], products: ["Azure OpenAI"] },
+  { id: "gpt-4-32k", aliases: ["gpt-4-32k"], products: ["Azure OpenAI"] },
+  { id: "gpt-4", aliases: ["gpt-4"], products: ["Azure OpenAI"] },
+  {
+    id: "gpt-audio-1.5",
+    aliases: ["gpt aud 1.5", "gpt audio 1.5"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-audio-mini",
+    aliases: ["gpt aud mini", "gpt audio mini"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-audio",
+    aliases: ["gpt aud 0828", "gpt audio 0828"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-realtime-1.5",
+    aliases: ["gpt rt 1.5", "gpt realtime 1.5"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-realtime-mini",
+    aliases: ["gpt rt mini", "gpt rt txt mn", "gpt rt aud mn"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-realtime",
+    aliases: ["gpt rt txt 0828", "gpt rt aud 0828"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-image-1-mini",
+    aliases: ["gpt img 1 mini", "gpt-image-1-mini"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-image-1.5",
+    aliases: ["gpt img 1.5", "gpt-image-1.5"],
+    products: ["Azure OpenAI Media"],
+  },
+  {
+    id: "gpt-image-1",
+    aliases: ["gpt img 1", "gpt-image-1"],
+    products: ["Azure OpenAI", "Azure OpenAI Media"],
+  },
+  { id: "gpt-image-2", aliases: ["image 2"], products: ["Azure OpenAI Media"] },
+  { id: "o3-deep-research", aliases: ["o3 deep research"], products: openAiProducts },
+  { id: "o3-mini", aliases: ["o3 mini"], products: openAiProducts },
+  { id: "o3-pro", aliases: ["o3 pro"], products: openAiProducts },
+  { id: "o3", aliases: ["o3"], products: openAiProducts },
+  { id: "o4-mini", aliases: ["o4 mini"], products: openAiProducts },
+  { id: "o1-mini", aliases: ["o1 mini"], products: openAiProducts },
+  { id: "o1-pro", aliases: ["o1 pro"], products: openAiProducts },
+  { id: "o1", aliases: ["o1"], products: openAiProducts },
+  {
+    id: "text-embedding-3-large",
+    aliases: ["text-embedding-3-large", "text embedding 3 large"],
+    products: openAiProducts,
+  },
+  {
+    id: "text-embedding-3-small",
+    aliases: ["text-embedding-3-small", "text embedding 3 small"],
+    products: openAiProducts,
+  },
+  {
+    id: "text-embedding-ada-002",
+    aliases: ["text-embedding-ada-002", "embedding ada"],
+    products: openAiProducts,
+  },
+  { id: "gpt-oss-120b", aliases: ["gpt-oss-120b", "oss-120b"], products: openAiProducts },
+  { id: "gpt-oss-20b", aliases: ["gpt-oss-20b", "oss-20b"], products: openAiProducts },
+];
+
+const retailVersionMarkers: Partial<Record<string, Record<string, string>>> = {
+  "gpt-4o": {
+    "0513": "2024-05-13",
+    "0806": "2024-08-06",
+    "1120": "2024-11-20",
+  },
+  "gpt-4o-mini": { "0718": "2024-07-18" },
+  "gpt-4o-audio-preview": {
+    "1217": "2024-12-17",
+    "0603": "2025-06-03",
+  },
+  "gpt-4o-mini-audio-preview": { "1217": "2024-12-17" },
+  "gpt-4o-realtime-preview": {
+    "1217": "2024-12-17",
+    "0603": "2025-06-03",
+  },
+  "gpt-4o-mini-realtime-preview": { "1217": "2024-12-17" },
+  "gpt-5.2-chat": { "0210": "2026-02-10" },
+  "gpt-chat-latest": {
+    "05052026": "2026-05-05",
+    "05282026": "2026-05-28",
+    "06242026": "2026-06-24",
+  },
+  o1: { "1217": "2024-12-17" },
+  "o3-mini": { "0131": "2025-01-31" },
+  o3: { "0416": "2025-04-16" },
+  "o4-mini": { "0416": "2025-04-16" },
+};
+
+function retailWords(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function startsWithWords(value: string, prefix: string): boolean {
+  return value === prefix || value.startsWith(`${prefix} `);
+}
+
+function retailModelIdentity(price: RetailPrice): { id: string; version?: string } | undefined {
+  const sku = retailWords(price.skuName);
+  const matches = retailModelAliases
+    .filter(({ products }) => products.includes(price.productName))
+    .flatMap(({ id, aliases }) =>
+      aliases.flatMap((alias) => {
+        const normalized = retailWords(alias);
+        return startsWithWords(sku, normalized) ? [{ id, length: normalized.length }] : [];
+      }),
+    )
+    .sort((left, right) => right.length - left.length);
+  const match = matches[0];
+  if (match === undefined) return undefined;
+  const version = Object.entries(retailVersionMarkers[match.id] ?? {}).find(([marker]) =>
+    ` ${sku} `.includes(` ${marker} `),
+  )?.[1];
+  return { id: match.id, ...(version === undefined ? {} : { version }) };
+}
+
+function retailUnit(value: string, label = value): SourcePriceFact["unit"] | undefined {
+  const unit = value.toLowerCase();
+  const description = `${unit} ${label.toLowerCase()}`;
+  if (/\b(?:1m|million)\b/.test(unit) && /\btokens?\b/.test(description)) return "million_tokens";
+  if (/\b(?:1k|thousand)\b/.test(unit) && /\btokens?\b/.test(description)) return "thousand_tokens";
+  if (/\btokens?\b/.test(description)) return "token";
+  if (/\b(?:1k|thousand)\b/.test(unit) && /\b(?:calls?|requests?)\b/.test(description))
+    return "thousand_requests";
+  if (/\b(?:calls?|requests?|sessions?)\b/.test(description)) return "request";
+  if (/\bimages?\b/.test(description)) return "image";
+  if (/\bseconds?\b/.test(description)) return "second";
+  if (/\bminutes?\b/.test(description)) return "minute";
+  if (/\bhours?\b/.test(description)) return "unit_hour";
+}
+
+function retailMeter(
+  label: string,
+  unit: SourcePriceFact["unit"],
+): SourcePriceFact["meter"] | undefined {
+  const value = ` ${retailWords(label)} `;
+  const input = /\b(?:inp|inpt|input|prompt)\b/.test(value);
+  const output = /\b(?:opt|out|outp|outpt|output|completion)\b/.test(value);
+  const cache = /\b(?:cache|cached|cchd|cd)\b/.test(value);
+  const cacheWrite = cache && /\b(?:write|wr|creation)\b/.test(value);
+  const text = /\b(?:text|txt)\b/.test(value);
+  const image = !text && /\b(?:img|image)\b/.test(value);
+  const audio = !text && !image && /\b(?:aud|audio|speech)\b/.test(value);
+  const video = /\bvideo\b/.test(value);
   if (unit === "unit_hour" && /provisioned|\bptu\b/.test(value)) return "provisioned_throughput";
   if (cacheWrite && audio) return "cache_write_audio";
   if (cacheWrite && image) return "cache_write_image";
   if (cacheWrite) return "cache_write_text";
-  if (cacheRead && audio) return "cache_read_audio";
-  if (cacheRead && image) return "cache_read_image";
-  if (cacheRead) return "cache_read_text";
+  if (cache && audio) return "cache_read_audio";
+  if (cache && image) return "cache_read_image";
+  if (cache) return "cache_read_text";
   if (/embedding/.test(value)) return "embedding";
   if (/rerank/.test(value)) return "rerank_request";
   if (video && input) return "input_video";
@@ -930,41 +1168,137 @@ function retailMeter(label: string, unit: PriceRate["unit"]): PriceRate["meter"]
   if (input) return "input_text";
 }
 
+function retailConditions(price: RetailPrice): SourcePriceFact["conditions"] {
+  const sku = ` ${retailWords(price.skuName)} `;
+  const batch = /\bbatch\b/.test(sku);
+  const priority = /\bpp\b/.test(sku);
+  const global = /\b(?:global|glbl|gl)\b/.test(sku);
+  const dataZone = /\b(?:data zone|datazone|dzone|dz|dzn)\b/.test(sku);
+  const regional = /\b(?:regional|regnl|rgnl|rg)\b/.test(sku);
+  const deployment =
+    global || dataZone || regional
+      ? `${global ? "Global" : dataZone ? "DataZone" : ""}${batch ? "Batch" : "Standard"}`
+      : undefined;
+  return {
+    ...(price.armRegionName === "" ? {} : { region: price.armRegionName }),
+    ...(deployment === undefined ? {} : { deployment_scope: deployment }),
+    ...(batch ? { service_tier: "batch" } : priority ? { service_tier: "priority" } : {}),
+    ...(/\blongco\b/.test(sku)
+      ? { context_tier: "long_context" }
+      : /\bshortco\b/.test(sku)
+        ? { context_tier: "short_context" }
+        : {}),
+  };
+}
+
+function isBaseRetailPrice(price: RetailPrice): boolean {
+  const sku = ` ${retailWords(price.skuName)} `;
+  return (
+    !/\b(?:available|fine tuned|finetuned|ft|grader|grdr|hosting|hstng|overage|provisioned|training|trng)\b/.test(
+      sku,
+    ) && !/\b(?:assistants?|code interpreter|file search)\b/.test(sku)
+  );
+}
+
+function retailValidity(price: RetailPrice): string | undefined {
+  return (
+    [price.effectiveStartDate, price.effectiveEndDate]
+      .filter((value) => value !== undefined)
+      .join(" – ") || undefined
+  );
+}
+
+function retailPriceFact(
+  price: RetailPrice,
+  label: string,
+  conditions: SourcePriceFact["conditions"],
+  sourceRef: string,
+): SourcePriceFact | undefined {
+  const unit = retailUnit(price.unitOfMeasure, label);
+  if (unit === undefined) return;
+  const meter = retailMeter(label, unit);
+  if (meter === undefined) return;
+  const rawValidity = retailValidity(price);
+  return {
+    meter,
+    price: price.retailPrice,
+    currency: price.currencyCode,
+    unit,
+    conditions,
+    source_ref: sourceRef,
+    derived: false,
+    raw_price: price.retailPrice,
+    raw_unit: price.unitOfMeasure,
+    ...(rawValidity === undefined ? {} : { raw_validity: rawValidity }),
+  };
+}
+
+export function parseAzureRetailPrices(input: Input): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "azure-retail-prices")
+    throw new Error("Wrong Azure Retail Prices extractor");
+  const bundle = azureRetailBundleSchema.parse(JSON.parse(input.body));
+  const parsed = z.array(retailPriceSchema).safeParse(bundle.prices);
+  if (!parsed.success) throw new Error("Azure Retail Prices API schema drift");
+
+  const models = new Map<string, ProviderModel>();
+  for (const price of parsed.data) {
+    if (!isBaseRetailPrice(price)) continue;
+    const identity = retailModelIdentity(price);
+    if (identity === undefined) continue;
+    const label = `${price.meterName} ${price.skuName}`;
+    const fact = retailPriceFact(price, label, retailConditions(price), input.source.id);
+    if (fact === undefined) continue;
+    const uid = modelUid(input.provider.id, identity.id, identity.version);
+    const current =
+      models.get(uid) ??
+      ({
+        ...base(input, identity.id, identity.version),
+        pricing_state: "numeric",
+        price_facts: [],
+      } satisfies ProviderModel);
+    current.price_facts.push(fact);
+    models.set(uid, current);
+  }
+
+  const values = [...models.values()].map((model) => ({
+    ...model,
+    price_facts: [
+      ...new Map(
+        model.price_facts.map((rate) => [
+          `${rate.meter}\0${rate.price}\0${rate.currency}\0${rate.unit}\0${JSON.stringify(rate.conditions)}`,
+          rate,
+        ]),
+      ).values(),
+    ],
+  }));
+  if (values.length < extractor.minModels || values.length > extractor.maxModels)
+    throw new Error("Azure retail-priced model count outside reviewed bounds");
+  return values.sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
 function pricesFor(
   item: z.infer<typeof azureModelSchema>,
-  prices: z.infer<typeof retailPriceSchema>[],
+  pricesByMeter: ReadonlyMap<string, readonly RetailPrice[]>,
   location: string,
   sourceId: string,
-): PriceRate[] {
-  const byMeter = new Map<string, z.infer<typeof retailPriceSchema>[]>();
-  for (const price of prices)
-    byMeter.set(price.meterId, [...(byMeter.get(price.meterId) ?? []), price]);
-  const rates: PriceRate[] = [];
+): SourcePriceFact[] {
+  const rates: SourcePriceFact[] = [];
   for (const sku of item.model.skus ?? []) {
     for (const cost of sku.cost ?? []) {
-      for (const price of byMeter.get(cost.meterId) ?? []) {
-        const unit = retailUnit(price.unitOfMeasure);
-        if (unit === undefined) continue;
-        const meter = retailMeter(
-          `${cost.name ?? ""} ${price.meterName} ${price.productName} ${price.skuName}`,
-          unit,
-        );
-        if (meter === undefined) continue;
-        rates.push({
-          meter,
-          price: price.retailPrice,
-          currency: price.currencyCode,
-          unit,
-          conditions: {
+      for (const price of pricesByMeter.get(cost.meterId) ?? []) {
+        const label = `${cost.name ?? ""} ${price.meterName} ${price.productName} ${price.skuName}`;
+        const fact = retailPriceFact(
+          price,
+          label,
+          {
             region: price.armRegionName || location,
             deployment_scope: sku.name,
-            effective_from: price.effectiveStartDate.slice(0, 10),
           },
-          source_ref: sourceId,
-          derived: false,
-          raw_price: price.retailPrice,
-          raw_unit: price.unitOfMeasure,
-        });
+          sourceId,
+        );
+        if (fact === undefined) continue;
+        rates.push(fact);
       }
     }
   }
@@ -980,17 +1314,13 @@ function pricesFor(
 
 export function parseAzureApi(input: Input): ProviderModel[] {
   const bundle = azureApiBundleSchema.parse(JSON.parse(input.body));
-  const modelResults = bundle.models.map((item) => azureModelSchema.safeParse(item));
-  const priceResults = bundle.prices.map((item) => retailPriceSchema.safeParse(item));
-  if (
-    modelResults.some((result) => !result.success) ||
-    priceResults.some((result) => !result.success)
-  )
-    throw new Error("Azure Models API schema drift");
-  const prices = priceResults.flatMap((result) => (result.success ? [result.data] : []));
-  return modelResults.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
+  const models = z.array(azureModelSchema).safeParse(bundle.models);
+  const prices = z.array(retailPriceSchema).safeParse(bundle.prices);
+  if (!models.success || !prices.success) throw new Error("Azure Models API schema drift");
+  const pricesByMeter = new Map<string, RetailPrice[]>();
+  for (const price of prices.data)
+    pricesByMeter.set(price.meterId, [...(pricesByMeter.get(price.meterId) ?? []), price]);
+  return models.data.map((item) => {
     const raw = new Map(
       Object.entries(item.model.capabilities ?? {}).map(([key, value]) => [
         key.toLowerCase(),
@@ -1007,38 +1337,36 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       tasks.length === 0 ? classified : [...tasks, ...classified],
     );
     const status = apiStatus(item.model.lifecycleStatus);
-    const rates = pricesFor(item, prices, bundle.location, input.source.id);
-    return [
-      {
-        ...base(input, item.model.name, item.model.version),
-        description: item.description,
-        tasks: modelTasksValue,
-        modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelTasksValue),
-        capabilities: {
-          ...unknownCapabilities(),
-          tool_call: booleanCapability(raw, ["toolCalling", "functionCalling"]),
-          structured_output: booleanCapability(raw, ["jsonSchemaResponse", "jsonObjectResponse"]),
-          streaming: booleanCapability(raw, ["streaming"]),
-          batch: booleanCapability(raw, ["batch"]),
-          prompt_cache: booleanCapability(raw, ["promptCaching"]),
-          fine_tuning: booleanCapability(raw, ["fineTune", "globalFineTune"]),
-          reasoning: booleanCapability(raw, ["reasoning"]),
-          computer_use: booleanCapability(raw, ["computerUse"]),
-        },
-        limits: {
-          context_tokens: integerCapability(raw, ["maxContextToken"]),
-          max_output_tokens: integerCapability(raw, ["maxOutputToken"]),
-        },
-        deprecated_at: item.model.deprecation?.inference?.slice(0, 10),
-        ...status,
-        pricing_status: rates.length === 0 ? "unknown" : "published",
-        pricing: rates,
-        availability: (item.model.skus ?? []).map((sku) => ({
-          region: bundle.location,
-          deployment_type: sku.name,
-        })),
-        scope: "runtime_observation",
+    const rates = pricesFor(item, pricesByMeter, bundle.location, input.source.id);
+    return {
+      ...base(input, item.model.name, item.model.version),
+      description: item.description,
+      tasks: modelTasksValue,
+      modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelTasksValue),
+      capabilities: {
+        ...unknownCapabilities(),
+        tool_call: booleanCapability(raw, ["toolCalling", "functionCalling"]),
+        structured_output: booleanCapability(raw, ["jsonSchemaResponse", "jsonObjectResponse"]),
+        streaming: booleanCapability(raw, ["streaming"]),
+        batch: booleanCapability(raw, ["batch"]),
+        prompt_cache: booleanCapability(raw, ["promptCaching"]),
+        fine_tuning: booleanCapability(raw, ["fineTune", "globalFineTune"]),
+        reasoning: booleanCapability(raw, ["reasoning"]),
+        computer_use: booleanCapability(raw, ["computerUse"]),
       },
-    ];
+      limits: {
+        context_tokens: integerCapability(raw, ["maxContextToken"]),
+        max_output_tokens: integerCapability(raw, ["maxOutputToken"]),
+      },
+      deprecated_at: item.model.deprecation?.inference?.slice(0, 10),
+      ...status,
+      pricing_state: rates.length === 0 ? "unknown" : "numeric",
+      price_facts: rates,
+      availability: (item.model.skus ?? []).map((sku) => ({
+        region: bundle.location,
+        deployment_type: sku.name,
+      })),
+      scope: "runtime_observation",
+    };
   });
 }

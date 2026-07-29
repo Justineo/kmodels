@@ -3,7 +3,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { type Provider, type ProviderModel, unknownCapabilities } from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface ParseInput {
   provider: Provider;
@@ -455,7 +456,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       limits: { context_tokens: contextTokens(model) },
       release_date: releaseDate(model, dates, quantizedDate, llama33Date),
       status: "active",
-      pricing_status: "not_applicable",
+      pricing_state: "not_applicable",
     };
   });
 }

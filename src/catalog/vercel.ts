@@ -3,14 +3,8 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
-import {
-  modalitySchema,
-  type ModelTask,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { modalitySchema, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 
 interface Input {
@@ -199,11 +193,11 @@ function tasks(item: Item, modelModalities: ProviderModel["modalities"]): ModelT
 }
 
 function tokenRate(
-  meter: PriceRate["meter"],
+  meter: SourcePriceFact["meter"],
   price: string,
   sourceId: string,
-  conditions: PriceRate["conditions"] = {},
-): PriceRate {
+  conditions: SourcePriceFact["conditions"] = {},
+): SourcePriceFact {
   return {
     meter,
     price: scaleDecimal(price, 6),
@@ -219,12 +213,12 @@ function tokenRate(
 }
 
 function addTokenRates(
-  rates: PriceRate[],
-  meter: PriceRate["meter"],
+  rates: SourcePriceFact[],
+  meter: SourcePriceFact["meter"],
   sourceId: string,
   price: string | undefined,
   tiers: Tier[] | undefined,
-  conditions: PriceRate["conditions"] = {},
+  conditions: SourcePriceFact["conditions"] = {},
 ): void {
   if (tiers !== undefined && tiers.length > 0) {
     for (const tier of tiers)
@@ -241,11 +235,11 @@ function addTokenRates(
 }
 
 function addServiceRates(
-  rates: PriceRate[],
+  rates: SourcePriceFact[],
   serviceTier: string,
   prices: ServicePrice,
   sourceId: string,
-  context: PriceRate["conditions"] = {},
+  context: SourcePriceFact["conditions"] = {},
 ): void {
   const conditions = { service_tier: serviceTier, ...context };
   if (prices.input !== undefined)
@@ -258,8 +252,8 @@ function addServiceRates(
     rates.push(tokenRate("cache_write_text", prices.input_cache_write, sourceId, conditions));
 }
 
-function pricing(item: Item, sourceId: string): PriceRate[] {
-  const rates: PriceRate[] = [];
+function pricing(item: Item, sourceId: string): SourcePriceFact[] {
+  const rates: SourcePriceFact[] = [];
   const value = item.pricing;
   const transcriptionAudioPrice =
     item.type === "transcription" ? value.audio_input_token_cost : undefined;
@@ -267,13 +261,14 @@ function pricing(item: Item, sourceId: string): PriceRate[] {
     value.speech_input_character_cost !== undefined ||
     value.transcription_duration_cost_per_second !== undefined ||
     transcriptionAudioPrice !== undefined;
-  const inputMeter: PriceRate["meter"] =
+  const inputMeter: SourcePriceFact["meter"] =
     item.type === "embedding"
       ? "embedding"
       : item.type === "transcription"
         ? "input_audio"
         : "input_text";
-  const outputMeter: PriceRate["meter"] = item.type === "image" ? "output_image" : "output_text";
+  const outputMeter: SourcePriceFact["meter"] =
+    item.type === "image" ? "output_image" : "output_text";
   if (transcriptionAudioPrice !== undefined)
     rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId));
   if (!specializedInput) addTokenRates(rates, inputMeter, sourceId, value.input, value.input_tiers);
@@ -455,13 +450,8 @@ function model(item: Item, input: Input): ProviderModel {
     deprecated_at: deprecatedAt,
     status: deprecated ? "deprecated" : "active",
     release_stage: preview ? "preview" : "unknown",
-    pricing_status:
-      rates.length === 0
-        ? "not_published"
-        : rates.some((rate) => rate.derived)
-          ? "derived"
-          : "published",
-    pricing: rates,
+    pricing_state: rates.length === 0 ? "not_published" : "numeric",
+    price_facts: rates,
   };
 }
 

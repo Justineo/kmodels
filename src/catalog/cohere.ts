@@ -4,14 +4,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
-import {
-  type Modality,
-  type ModelTask,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import type { SourceManifest } from "./manifests.ts";
 
 interface Input {
@@ -516,10 +510,10 @@ function cardMatchesPath(id: string, pathname: string): boolean {
   return page !== undefined && id.replace(/-\d{2}-\d{4}$/, "") === page;
 }
 
-function addRate(current: ProviderModel, rate: PriceRate): ProviderModel {
-  const key = (item: PriceRate): string =>
+function addRate(current: ProviderModel, rate: SourcePriceFact): ProviderModel {
+  const key = (item: SourcePriceFact): string =>
     JSON.stringify([item.meter, item.unit, item.conditions, item.source_ref]);
-  const existing = current.pricing.find((item) => key(item) === key(rate));
+  const existing = current.price_facts.find((item) => key(item) === key(rate));
   if (existing !== undefined) {
     const decimal = (value: string): string => {
       const [whole = "", fraction = ""] = value.split(".");
@@ -531,7 +525,11 @@ function addRate(current: ProviderModel, rate: PriceRate): ProviderModel {
       throw new Error(`Cohere pricing sources disagree for ${current.model_id}`);
     return current;
   }
-  return { ...current, pricing: [...current.pricing, rate], pricing_status: "published" };
+  return {
+    ...current,
+    price_facts: [...current.price_facts, rate],
+    pricing_state: "numeric",
+  };
 }
 
 function commandCard(
@@ -627,7 +625,7 @@ function commandCard(
       ),
     );
   } else if (/free until rate limits|contact (?:our )?sales|Model Vault/i.test(pricing)) {
-    update(models, id, (current) => ({ ...current, pricing_status: "custom_quote" }));
+    update(models, id, (current) => ({ ...current, pricing_state: "custom_quote" }));
   }
 }
 
@@ -680,7 +678,7 @@ function transcribePage(
         tasks: ["transcription"],
         modalities: { input: ["audio"], output: ["text"] },
         status: "active",
-        pricing_status: customQuote ? "custom_quote" : current.pricing_status,
+        pricing_state: customQuote ? "custom_quote" : current.pricing_state,
       },
       [endpoint.endpoint],
     ),
@@ -845,7 +843,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
     if (product.per === "Free") {
       update(models, current.model_id, (item) => ({
         ...item,
-        pricing_status: "custom_quote",
+        pricing_state: "custom_quote",
       }));
       continue;
     }

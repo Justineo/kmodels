@@ -30,7 +30,7 @@ export function releaseStageFromIdentity(modelId: string, name: string): ModelRe
   return "unknown";
 }
 
-export function normalizeModelReleaseStage(model: ProviderModel): ProviderModel {
+export function normalizeModelReleaseStage<T extends ProviderModel>(model: T): T & ProviderModel {
   if (model.release_stage !== "unknown") return model;
   const releaseStage = releaseStageFromIdentity(model.model_id, model.name);
   return releaseStage === "unknown" ? model : { ...model, release_stage: releaseStage };

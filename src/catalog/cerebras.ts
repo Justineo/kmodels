@@ -4,14 +4,8 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
-import {
-  modalitySchema,
-  type Modality,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -106,7 +100,7 @@ function scaledRate(
   meter: "input_text" | "output_text",
   price: string,
   sourceId: string,
-): PriceRate {
+): SourcePriceFact {
   return {
     ...publishedRate(meter, scaleDecimal(price, 6), "million_tokens", sourceId, "token"),
     derived: true,
@@ -156,8 +150,8 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
       },
       status: item.deprecated ? "deprecated" : "active",
       release_stage: item.preview ? "preview" : "stable",
-      pricing_status: "derived",
-      pricing: [
+      pricing_state: "numeric",
+      price_facts: [
         scaledRate("input_text", item.pricing.prompt, input.source.id),
         scaledRate("output_text", item.pricing.completion, input.source.id),
       ],
@@ -384,7 +378,7 @@ function catalogCard(
     throw new Error(`Cerebras model card omitted a generation endpoint for ${row.id}`);
   const features = new Set(arrayBlock(body, "features"));
   const inputPrice = cardPrice(body, "inputPrice");
-  const rates: PriceRate[] = [
+  const rates: SourcePriceFact[] = [
     publishedRate("input_text", inputPrice, "million_tokens", input.source.id, "million tokens"),
     publishedRate(
       "output_text",
@@ -445,8 +439,8 @@ function catalogCard(
     deprecated_at: deprecatedAt,
     status: deprecated ? "deprecated" : "active",
     release_stage: row.releaseStage,
-    pricing_status: rates.some(({ derived }) => derived) ? "derived" : "published",
-    pricing: rates,
+    pricing_state: "numeric",
+    price_facts: rates,
   };
 }
 

@@ -44,7 +44,9 @@ Status: implemented
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
-- `data/catalog.json` is the sole durable last-known-good input. Raw replay requires a separately configured external artifact system.
+- The accepted `data/catalog.json` and compressed `data/pricing.json.gz` pair is the sole
+  durable last-known-good public-data input. Raw replay requires a separately
+  configured external artifact system.
 
 ## Validation and publication
 
@@ -52,6 +54,13 @@ Status: implemented
 - Quarantine empty successful responses; duplicate IDs, service families, endpoints, routes, or availability pairs; unresolved route provenance; invalid prices; model drops over 10%; service-family, price-rate, endpoint, route, or availability drops over 20%; and non-promotional price changes over 50%.
 - `KMODELS_REBUILD_PROVIDER` may remove the old comparison baseline for one reviewed parser migration. Every other provider still validates against its previous catalog.
 - Publication is failure-closed and provider-atomic. A rejected or suspicious provider keeps its last validated catalog; providers do not block one another.
+- The collector classifies a retained pricing attempt with one finite public
+  code: required source unavailable, reviewed source format changed, pricing
+  validation failed, provider refresh failed, or no complete pricing snapshot
+  observed. Public data retains only the latest attempt time and code. Detailed
+  sanitized diagnostics remain in warnings, quarantine, and refresh summaries;
+  raw responses, exception stacks, account data, and credentials never enter
+  the pricing snapshot.
 - One missing observation never deletes a model.
 - Every run writes `data/refresh-summary.json`, a deterministic semantic diff with provider/model/source counts, changed-field counts, content changes, coverage, and warning codes. It never copies raw data or private unmatched IDs.
 
@@ -61,15 +70,41 @@ Status: implemented
 - Rates are additive by meter, currency, unit, and exact conditions.
 - A higher-priority observation replaces only the same rate identity. It cannot erase a distinct cache, batch, media, regional, or otherwise conditioned rate.
 - An explicit empty non-unknown pricing state may clear rates.
-- The current implemented public shape remains the flat rate model described by the schema. The separate [pricing proposal](pricing.md) is not normative until implemented and adopted.
+- Adapters keep source price facts internal and assemble the sole public
+  [pricing resource](pricing.md) as canonical provider price books. The model
+  catalog does not publish a second flat-price projection.
+- Stage 1 owns public/private admission, exact commercial-container mapping,
+  stable provider atoms, and normalized-versus-raw fallback. Stage 2 validates
+  the closed provider bytes and their proposed catalog slice. A failure retains
+  the prior provider pair when one exists, records the failed attempt on its
+  pricing snapshot, and never publishes a partial fresh partition.
+- The refresh summary reports canonical pricing commercial additions,
+  removals, changes, provenance-only changes, and retention.
+- `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for
+  explicit fresh-empty, provider-removal, emergency pricing withdrawal, and
+  accepted-pair-bound safety findings. Scheduled adapters do not infer or emit
+  those operations.
 
 ## Durable outputs
 
-The only committed generated state is:
+The committed generated state is:
 
 - `data/catalog.json`
+- `data/pricing.json.gz` (the gzip-compressed canonical pricing envelope)
 - `data/fetch-state.json`
 - `data/quarantine.json`
 - `data/refresh-summary.json`
 
-Vite derives `/v1/catalog/index.json` and provider endpoints from `data/catalog.json` in memory during development and writes them only to ignored `dist/` during a production build. Do not commit a duplicate catalog under `public/`.
+Collection commits the catalog and pricing through one accepted-pair boundary: immutable pair
+snapshots and an atomic current pointer are authoritative, and the durable
+mirrors are repaired from that pointer after interruption. A reviewed pricing
+withdrawal may temporarily leave a safe pricing-only source record in the
+catalog; the next
+successful fresh provider publication prunes it.
+
+During development, Vite derives the canonical API endpoints and compact UI
+projections from the accepted mirrors. Production builds recover and revalidate
+the accepted pair before writing those assets to ignored `dist/`. The website
+loads only `/ui/` projections; audit-rich canonical data remains available at
+the explicit `/catalog/` and `/pricing/` endpoints. Do not commit duplicate
+endpoint assets under `public/`.

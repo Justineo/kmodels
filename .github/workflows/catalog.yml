@@ -5,7 +5,7 @@ permissions:
 
 on:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -35,7 +35,7 @@ jobs:
         run: vp install --frozen-lockfile
 
       - name: Collect official sources
-        run: pnpm collect
+        run: vp run collect
         env:
           KMODELS_JITTER_MS: "30000"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -62,11 +62,15 @@ jobs:
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
 
       - name: Verify generated catalog
-        run: pnpm test
+        run: |
+          vp check
+          vp test --run
+          vp run collect:fixtures
+          vp run build
 
       - name: Commit validated changes
         run: |
-          git add data/catalog.json data/fetch-state.json data/quarantine.json data/refresh-summary.json
+          git add data/catalog.json data/pricing.json.gz data/fetch-state.json data/quarantine.json data/refresh-summary.json
           if git diff --cached --quiet; then
             exit 0
           fi

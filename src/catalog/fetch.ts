@@ -165,9 +165,9 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
     "--include",
     "--compressed",
     "--max-time",
-    "20",
+    "60",
     "--connect-timeout",
-    "10",
+    "30",
     "--max-redirs",
     "0",
     "--proto",
@@ -218,8 +218,9 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
       maxBuffer: source.maxResponseBytes + 64 * 1024,
     });
     return curlResponse(result.stdout);
-  } catch {
-    throw new TransientFetchError("Transient transport failure");
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
+    throw new TransientFetchError(`Transient transport failure (${code})`);
   }
 }
 
@@ -299,6 +300,33 @@ function retailPageUrl(raw: string): URL {
   )
     throw new Error("Azure pricing pagination left the reviewed endpoint");
   return url;
+}
+
+async function fetchAzureRetailPages(
+  source: SourceManifest,
+  label: string,
+  first: URL,
+  limits: { items: number; pages: number },
+): Promise<unknown[]> {
+  const prices: unknown[] = [];
+  let next: URL | undefined = first;
+  for (let pageCount = 0; next !== undefined && pageCount < limits.pages; pageCount += 1) {
+    const page = azurePricesPageSchema.parse(
+      JSON.parse(
+        await cloudCurl(label, next, source.maxResponseBytes, ["Accept: application/json"]),
+      ),
+    );
+    prices.push(...page.Items);
+    if (prices.length > limits.items)
+      throw new Error("Azure Retail Prices API exceeded item limit");
+    next =
+      page.NextPageLink === undefined || page.NextPageLink === null
+        ? undefined
+        : retailPageUrl(page.NextPageLink);
+    if (pageCount === limits.pages - 1 && next !== undefined)
+      throw new Error("Azure Retail Prices API exceeded page limit");
+  }
+  return prices;
 }
 
 async function fetchAzureModels(
@@ -382,28 +410,38 @@ async function fetchAzureModels(
     url.searchParams.set("api-version", "2023-01-01-preview");
     url.searchParams.set("currencyCode", "USD");
     url.searchParams.set("$filter", filter);
-    let pricePage: URL | undefined = url;
-    for (let pageCount = 0; pricePage !== undefined && pageCount < 20; pageCount += 1) {
-      const page = azurePricesPageSchema.parse(
-        JSON.parse(
-          await cloudCurl("Azure", pricePage, source.maxResponseBytes, [
-            "Accept: application/json",
-          ]),
-        ),
-      );
-      prices.push(...page.Items);
-      if (prices.length > 20_000) throw new Error("Azure Retail Prices API exceeded item limit");
-      pricePage =
-        page.NextPageLink === undefined || page.NextPageLink === null
-          ? undefined
-          : retailPageUrl(page.NextPageLink);
-      if (pageCount === 19 && pricePage !== undefined)
-        throw new Error("Azure Retail Prices API exceeded page limit");
-    }
+    prices.push(
+      ...(await fetchAzureRetailPages(source, "Azure", url, {
+        items: 20_000 - prices.length,
+        pages: 20,
+      })),
+    );
   }
   const body = JSON.stringify({ location, models, prices });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure inventory bundle exceeded byte limit");
+  return body;
+}
+
+async function fetchAzureRetailPrices(source: SourceManifest, products: string[]): Promise<string> {
+  if (products.length === 0) throw new Error("Azure Retail Prices product filter is empty");
+  const url = new URL(source.url);
+  url.searchParams.set("api-version", "2023-01-01-preview");
+  url.searchParams.set("currencyCode", "USD");
+  url.searchParams.set(
+    "$filter",
+    `serviceName eq 'Foundry Models' and priceType eq 'Consumption' and (${products
+      .map((product) => `productName eq '${product.replaceAll("'", "''")}'`)
+      .join(" or ")})`,
+  );
+  const prices = await fetchAzureRetailPages(source, "Azure Retail Prices", url, {
+    items: 50_000,
+    pages: 50,
+  });
+  if (prices.length === 0) throw new Error("Azure Retail Prices API returned no prices");
+  const body = JSON.stringify({ prices });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Azure Retail Prices bundle exceeded byte limit");
   return body;
 }
 
@@ -610,6 +648,16 @@ function observation(key: string, payload: FetchPayload): FetchObservation {
     contentHash: payload.contentHash,
     etag: payload.etag,
     lastModified: payload.lastModified,
+  };
+}
+
+function generatedFetchResult(body: string): FetchResult {
+  return {
+    body,
+    contentHash: sha256(body),
+    etag: undefined,
+    lastModified: undefined,
+    dependencies: [],
   };
 }
 
@@ -826,18 +874,16 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
 export async function fetchSource(source: SourceManifest): Promise<FetchResult> {
   if (source.transport?.kind === "aws-bedrock") {
     const body = await fetchBedrockInventory(source.transport.region, source.maxResponseBytes);
-    return {
-      body,
-      contentHash: sha256(body),
-      etag: undefined,
-      lastModified: undefined,
-      dependencies: [],
-    };
+    return generatedFetchResult(body);
   }
   if (source.transport?.kind === "databricks") {
     const configured = databricksSource(source, source.transport.hostEnv);
     const payload = await fetchPayload(configured);
     return { ...payload, dependencies: [] };
+  }
+  if (source.transport?.kind === "azure-retail-prices") {
+    const body = await fetchAzureRetailPrices(source, source.transport.products);
+    return generatedFetchResult(body);
   }
   if (source.transport?.kind === "azure-models") {
     const body = await fetchAzureModels(
@@ -845,23 +891,11 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       source.transport.subscriptionEnv,
       source.transport.locationEnv,
     );
-    return {
-      body,
-      contentHash: sha256(body),
-      etag: undefined,
-      lastModified: undefined,
-      dependencies: [],
-    };
+    return generatedFetchResult(body);
   }
   if (source.transport?.kind === "google-model-garden") {
     const body = await fetchGoogleModelGarden(source, source.transport.publishers);
-    return {
-      body,
-      contentHash: sha256(body),
-      etag: undefined,
-      lastModified: undefined,
-      dependencies: [],
-    };
+    return generatedFetchResult(body);
   }
   if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
@@ -905,10 +939,18 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   if (new Set(entries.map((entry) => entry.key)).size !== entries.length)
     throw new Error("Linked document keys must be unique");
   const documents = await batches(entries, crawl.concurrency, async (entry) => {
-    const payload = await fetchPayload(
-      linkedSource(source, entry.key, entry.url, entry.maxResponseBytes),
-    );
-    return { key: entry.key, url: entry.url.href, payload };
+    try {
+      const payload = await fetchPayload(
+        linkedSource(source, entry.key, entry.url, entry.maxResponseBytes),
+      );
+      return { key: entry.key, url: entry.url.href, payload };
+    } catch (error) {
+      throw new Error(
+        `Linked document ${entry.key} failed: ${
+          error instanceof Error ? error.message : "unknown fetch failure"
+        }`,
+      );
+    }
   });
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },

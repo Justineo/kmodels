@@ -7,14 +7,8 @@ import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
-import {
-  type Modality,
-  type ModelTask,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -527,10 +521,14 @@ function modelEndpoints(
   );
 }
 
-function directRate(price: SourcePrice, modelTasks: ModelTask[], sourceId: string): PriceRate {
-  const conditions: PriceRate["conditions"] = {};
-  let unit: PriceRate["unit"];
-  let meter: PriceRate["meter"];
+function directRate(
+  price: SourcePrice,
+  modelTasks: ModelTask[],
+  sourceId: string,
+): SourcePriceFact {
+  const conditions: SourcePriceFact["conditions"] = {};
+  let unit: SourcePriceFact["unit"];
+  let meter: SourcePriceFact["meter"];
   if (price.denominator === "/M Tokens") {
     unit = "million_tokens";
     meter =
@@ -556,9 +554,9 @@ function directRate(price: SourcePrice, modelTasks: ModelTask[], sourceId: strin
   return publishedRate(meter, price.price, unit, sourceId, price.denominator, conditions);
 }
 
-function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): PriceRate[] {
+function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): SourcePriceFact[] {
   const direct = draft.prices.map((price) => directRate(price, modelTasks, sourceId));
-  const derived: PriceRate[] = [];
+  const derived: SourcePriceFact[] = [];
   if (draft.status !== "retired" && draft.features.includes("batching"))
     derived.push(
       ...direct.map((rate) => ({
@@ -576,7 +574,7 @@ function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): Price
     draft.features.some((feature) => feature === "chat-completions" || feature === "fim")
   )
     derived.push(
-      ...direct.flatMap((rate): PriceRate[] =>
+      ...direct.flatMap((rate): SourcePriceFact[] =>
         rate.meter !== "input_text"
           ? []
           : [
@@ -643,8 +641,8 @@ function sourceModel(
     status: draft.status === "preview" ? "active" : draft.status,
     release_stage: draft.status === "preview" ? "preview" : "unknown",
     replacement_model_ids: replacementId === undefined ? [] : [replacementId],
-    pricing_status: rates.length > 0 ? "published" : "unknown",
-    pricing: rates,
+    pricing_state: rates.length > 0 ? "numeric" : "unknown",
+    price_facts: rates,
   };
 }
 

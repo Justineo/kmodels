@@ -22,6 +22,7 @@ export type Extractor =
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
+  | { kind: "azure-retail-prices"; minModels: number; maxModels: number }
   | { kind: "azure-api" }
   | { kind: "gemini-catalog"; minModels: number; maxModels: number }
   | { kind: "gemini-api" }
@@ -130,6 +131,7 @@ export interface SourceManifest {
   transport?:
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
+    | { kind: "azure-retail-prices"; products: string[] }
     | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string }
     | { kind: "google-model-garden"; publishers: string[] }
     | {
@@ -808,6 +810,33 @@ export const manifests = [
               url: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-preview-generated.yaml",
               maxResponseBytes: mebibytes(2),
             },
+          ],
+        },
+      },
+      {
+        id: "azure-retail-prices",
+        url: "https://prices.azure.com/api/retail/prices",
+        type: "api",
+        access: "public",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "azure-retail-prices", minModels: 20, maxModels: 200 },
+        extractorVersion: "azure-retail-prices-v1",
+        fields: ["pricing"],
+        allowedHosts: ["prices.azure.com"],
+        maxResponseBytes: mebibytes(32),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        transport: {
+          kind: "azure-retail-prices",
+          products: [
+            "Azure OpenAI",
+            "Azure OpenAI Embedding",
+            "Azure OpenAI GPT5",
+            "Azure OpenAI Media",
+            "Azure OpenAI OSS Models",
+            "Azure OpenAI Reasoning",
           ],
         },
       },

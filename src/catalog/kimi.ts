@@ -4,12 +4,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import {
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -387,11 +383,11 @@ function decimalPrice(value: string): string {
 }
 
 function priceRate(
-  meter: PriceRate["meter"],
+  meter: SourcePriceFact["meter"],
   value: string,
   sourceId: string,
-  conditions: PriceRate["conditions"],
-): PriceRate {
+  conditions: SourcePriceFact["conditions"],
+): SourcePriceFact {
   return {
     meter,
     price: decimalPrice(value),
@@ -432,7 +428,7 @@ function pricingModel(input: Input, body: string, row: string[], batch: boolean)
   const context = row.at(-1);
   const contextTokens = context === undefined ? undefined : tokenCount(context);
   if (contextTokens === undefined) throw new Error(`Kimi pricing omitted context for ${id}`);
-  const conditions: PriceRate["conditions"] = batch ? { service_tier: "batch" } : {};
+  const conditions: SourcePriceFact["conditions"] = batch ? { service_tier: "batch" } : {};
   const prices =
     row.length === 6
       ? [
@@ -468,8 +464,8 @@ function pricingModel(input: Input, body: string, row: string[], batch: boolean)
       batch: batch ? true : "unknown",
     },
     limits: { context_tokens: contextTokens },
-    pricing_status: "published",
-    pricing: prices,
+    pricing_state: "numeric",
+    price_facts: prices,
   };
 }
 
@@ -491,7 +487,7 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
     throw new Error(`Kimi pricing documents disagree on the name of ${current.model_id}`);
   if (current.limits.context_tokens !== incoming.limits.context_tokens)
     throw new Error(`Kimi pricing documents disagree on the context of ${current.model_id}`);
-  const rates = [...current.pricing, ...incoming.pricing];
+  const rates = [...current.price_facts, ...incoming.price_facts];
   const keys = rates.map(
     (rate) => `${rate.meter}\0${JSON.stringify(rate.conditions)}\0${rate.currency}\0${rate.unit}`,
   );
@@ -515,7 +511,7 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
       ),
       batch: mergeTruth(current.capabilities.batch, incoming.capabilities.batch),
     },
-    pricing: rates,
+    price_facts: rates,
   };
 }
 
@@ -553,7 +549,7 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
     (model): ProviderModel => ({
       ...model,
       capabilities: { ...model.capabilities, prompt_cache: true },
-      pricing: [...model.pricing].sort((left, right) =>
+      price_facts: [...model.price_facts].sort((left, right) =>
         `${left.meter}\0${JSON.stringify(left.conditions)}`.localeCompare(
           `${right.meter}\0${JSON.stringify(right.conditions)}`,
         ),

@@ -1,0 +1,780 @@
+import {
+  assembleProviderPricing,
+  type AtomicBasePricingOffer,
+  type AtomicModelDisposition,
+  type AtomicPriceState,
+  type AtomicProviderPricing,
+  type AtomicRateTerm,
+  type AtomicRawVariant,
+  type ProviderPricingPartition,
+} from "./pricing-assembly.ts";
+import { canonicalJson } from "./canonical-json.ts";
+import { unconditionalApplicability } from "./pricing-canonical.ts";
+import { rationalFromDecimal } from "./pricing-rational.ts";
+import { canonicalizeInstant, isPublishedTime } from "./pricing-time.ts";
+import {
+  canonicalizeSourceUnit,
+  canonicalizeUnitPrice,
+  type CanonicalSourceUnit,
+  type FixedUnitScale,
+} from "./pricing-units.ts";
+import type {
+  PriceApplicability,
+  PriceCondition,
+  PriceDenomination,
+  PriceDimension,
+  PriceSourceLocator,
+  ProviderAtomRegistryEntry,
+  PublishedValidity,
+  RawPriceFact,
+  UnitExpression,
+  UnitPrice,
+} from "./pricing-schema.ts";
+import type { SourceManifest } from "./manifests.ts";
+import {
+  sourcePriceFactSchema,
+  type ParsedProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
+
+export interface ParsedPricingSource {
+  source: SourceManifest;
+  models: ParsedProviderModel[];
+}
+
+export function isPricingSource(source: SourceManifest): boolean {
+  return (
+    source.fields.includes("pricing") &&
+    !["account", "workspace", "runtime"].includes(source.scope ?? "global")
+  );
+}
+
+export function isRequiredPricingSource(source: SourceManifest): boolean {
+  return !source.optional && isPricingSource(source);
+}
+
+interface OfferBuilder {
+  states: AtomicPriceState[];
+  terms: Map<string, AtomicRateTerm>;
+  sourceRefs: Set<string>;
+}
+
+interface AdapterContext {
+  providerId: string;
+  bookKey: string;
+  bookName: string;
+  atoms: Map<string, ProviderAtomRegistryEntry>;
+  scopeBySource: Map<string, Set<string>>;
+  offers: Map<"usage" | "capacity", OfferBuilder>;
+}
+
+export function assembleParsedProviderPricing(
+  providerId: string,
+  observedAt: string,
+  sources: readonly ParsedPricingSource[],
+  publishedModels: readonly Pick<ParsedProviderModel, "model_id" | "uid" | "version">[],
+): ProviderPricingPartition | undefined {
+  const publishedByUid = new Map(publishedModels.map((model) => [model.uid, model]));
+  const publishedByModelId = uniqueModelsById(publishedModels);
+  const atoms = new Map<string, ProviderAtomRegistryEntry>();
+  const contexts = new Map<string, AdapterContext>();
+  const dispositions: AtomicModelDisposition[] = [];
+  for (const { source, models } of sources) {
+    if (!isPricingSource(source)) continue;
+    for (const model of models) {
+      const published =
+        publishedByUid.get(model.uid) ??
+        (model.version === undefined ? publishedByModelId.get(model.model_id) : undefined);
+      if (published === undefined || published === null) continue;
+      const bound =
+        published.uid === model.uid
+          ? model
+          : {
+              ...model,
+              model_id: published.model_id,
+              uid: published.uid,
+              ...(published.version === undefined ? {} : { version: published.version }),
+            };
+      if (bound.pricing_state === "not_applicable") {
+        dispositions.push({
+          model_ref: bound.uid,
+          observation: {
+            source_ref: source.id,
+            locator: { kind: "provider_key", value: "pricing:model-state" },
+            establishes_model_ref: bound.uid,
+            raw: { label: "No public hosted pricing offer" },
+          },
+        });
+        continue;
+      }
+      const context = adapterContext(contexts, providerId, bound.uid, atoms);
+      addModelPricing(context, source, bound);
+    }
+  }
+  const books = [...contexts.values()].flatMap(pricingBooks);
+  if (books.length === 0 && dispositions.length === 0) return undefined;
+  return assembleProviderPricing({
+    provider_id: providerId,
+    observed_at: observedAt,
+    vocabulary: {
+      provider_id: providerId,
+      atoms: [...atoms.values()],
+    },
+    dispositions,
+    books,
+  });
+}
+
+function uniqueModelsById(
+  models: readonly Pick<ParsedProviderModel, "model_id" | "uid" | "version">[],
+): Map<string, Pick<ParsedProviderModel, "model_id" | "uid" | "version"> | null> {
+  const values = new Map<
+    string,
+    Pick<ParsedProviderModel, "model_id" | "uid" | "version"> | null
+  >();
+  for (const model of models) {
+    const current = values.get(model.model_id);
+    values.set(
+      model.model_id,
+      current === undefined ? model : current === null || current.uid !== model.uid ? null : model,
+    );
+  }
+  return values;
+}
+
+function adapterContext(
+  contexts: Map<string, AdapterContext>,
+  providerId: string,
+  modelRef: string,
+  atoms: Map<string, ProviderAtomRegistryEntry>,
+): AdapterContext {
+  const key = `model:${modelRef}`;
+  const current = contexts.get(key);
+  if (current !== undefined) return current;
+  const created: AdapterContext = {
+    providerId,
+    bookKey: key,
+    bookName: `Pricing for ${modelRef}`,
+    atoms,
+    scopeBySource: new Map(),
+    offers: new Map(),
+  };
+  contexts.set(key, created);
+  return created;
+}
+
+function addModelPricing(
+  context: AdapterContext,
+  source: SourceManifest,
+  model: ParsedProviderModel,
+): void {
+  for (const { sourceRate, normalizedRate } of normalizedSourceFacts(
+    context.providerId,
+    model.price_facts,
+  ))
+    addRate(context, source.id, model, sourceRate, normalizedRate);
+  if (
+    model.price_facts.length === 0 &&
+    (model.pricing_state === "custom_quote" || model.pricing_state === "not_published")
+  )
+    addState(context, source.id, model, model.pricing_state);
+}
+
+function addState(
+  context: AdapterContext,
+  sourceRef: string,
+  model: ParsedProviderModel,
+  state: "custom_quote" | "not_published",
+): void {
+  const offer = offerBuilder(context, "usage");
+  const applicability = unconditionalApplicability;
+  addScope(context, sourceRef, model.uid);
+  offer.sourceRefs.add(sourceRef);
+  offer.states.push({
+    state,
+    applicability,
+    observation: normalizedObservation(
+      sourceRef,
+      { kind: "provider_key", value: "pricing:model-state" },
+      { label: state === "custom_quote" ? "Custom quote" : "Price not published" },
+      applicability,
+    ),
+  });
+}
+
+function addRate(
+  context: AdapterContext,
+  sourceRef: string,
+  model: ParsedProviderModel,
+  sourceRate: SourcePriceFact,
+  normalizedRate: SourcePriceFact,
+): void {
+  const mode = rateMode(sourceRate);
+  const offer = offerBuilder(context, mode);
+  const term = rateTerm(offer, sourceRate.meter);
+  const fact = rawFact(sourceRate);
+  const locator = rateLocator(model, sourceRate);
+  const normalized = normalizeRate(context, normalizedRate);
+  addScope(context, sourceRef, model.uid);
+  offer.sourceRefs.add(sourceRef);
+  term.source_refs.push(sourceRef);
+
+  if (normalized.kind === "raw") {
+    term.raw_variants.push({
+      impact: "base_price",
+      reason: normalized.reason,
+      possible_scope: normalized.applicability,
+      ...(normalized.validity === undefined ? {} : { validity: normalized.validity }),
+      observation: { source_ref: sourceRef, locator, raw: fact },
+    });
+    return;
+  }
+
+  const stateFact = { ...fact };
+  delete stateFact.formula;
+  offer.states.push({
+    state: "numeric",
+    applicability: normalized.applicability,
+    ...(normalized.validity === undefined ? {} : { validity: normalized.validity }),
+    observation: normalizedObservation(sourceRef, locator, stateFact, normalized.applicability),
+  });
+  term.variants.push({
+    price: normalized.price,
+    applicability: normalized.applicability,
+    ...(normalized.validity === undefined ? {} : { validity: normalized.validity }),
+    observation: normalizedObservation(sourceRef, locator, fact, normalized.applicability),
+  });
+}
+
+function normalizedSourceFacts(
+  providerId: string,
+  rates: readonly SourcePriceFact[],
+): Array<{ sourceRate: SourcePriceFact; normalizedRate: SourcePriceFact }> {
+  const normalized = rates.map((rate) => sourcePriceFactSchema.parse(rate));
+  const contextGroups = groupRates(normalized, (rate) => {
+    const conditions = { ...rate.conditions };
+    delete conditions.context_min_tokens;
+    delete conditions.context_max_tokens;
+    return canonicalJson([rate.meter, rate.currency, rate.unit, conditions]);
+  });
+  for (const group of contextGroups.values()) {
+    const minimums = new Set(
+      group.flatMap(({ conditions }) =>
+        conditions.context_min_tokens === undefined ? [] : [conditions.context_min_tokens],
+      ),
+    );
+    const maximums = new Set(
+      group.flatMap(({ conditions }) =>
+        conditions.context_max_tokens === undefined ? [] : [conditions.context_max_tokens],
+      ),
+    );
+    const open = group.filter(
+      ({ conditions }) =>
+        conditions.context_min_tokens === undefined && conditions.context_max_tokens === undefined,
+    );
+    if (minimums.size === 1 && maximums.size === 0) {
+      const minimum = [...minimums][0]!;
+      if (Number.isSafeInteger(minimum) && minimum > 0)
+        for (const rate of open) rate.conditions.context_max_tokens = minimum - 1;
+    } else if (maximums.size === 1 && minimums.size === 0) {
+      const maximum = [...maximums][0]!;
+      if (Number.isSafeInteger(maximum) && maximum < Number.MAX_SAFE_INTEGER)
+        for (const rate of open) rate.conditions.context_min_tokens = maximum + 1;
+    }
+  }
+
+  const defaults = [
+    { key: "service_tier", value: "standard" },
+    ...(providerId === "vertex" ? [{ key: "region" as const, value: "default" }] : []),
+  ] as const;
+  for (const { key, value } of defaults) {
+    for (const group of groupRates(normalized, ({ meter }) => meter).values()) {
+      const explicit = group.filter(({ conditions }) => conditions[key] !== undefined);
+      const missing = group.filter(({ conditions }) => conditions[key] === undefined);
+      if (
+        explicit.length === 0 ||
+        missing.length === 0 ||
+        !missing.some((left) =>
+          explicit.some((right) => ratePayloadKey(left) !== ratePayloadKey(right)),
+        )
+      )
+        continue;
+      for (const rate of missing) rate.conditions[key] = value;
+    }
+  }
+
+  return rates.map((sourceRate, index) => ({
+    sourceRate,
+    normalizedRate: normalized[index]!,
+  }));
+}
+
+function groupRates(
+  rates: readonly SourcePriceFact[],
+  key: (rate: SourcePriceFact) => string,
+): Map<string, SourcePriceFact[]> {
+  const groups = new Map<string, SourcePriceFact[]>();
+  for (const rate of rates) {
+    const value = key(rate);
+    const group = groups.get(value) ?? [];
+    group.push(rate);
+    groups.set(value, group);
+  }
+  return groups;
+}
+
+function ratePayloadKey(rate: SourcePriceFact): string {
+  return canonicalJson([rate.price, rate.currency, rate.unit]);
+}
+
+function pricingBooks(context: AdapterContext): AtomicProviderPricing["books"] {
+  const modelRefs = [...new Set([...context.scopeBySource.values()].flatMap((refs) => [...refs]))];
+  if (modelRefs.length === 0) return [];
+  const sourceRefs = [...context.scopeBySource.keys()];
+  return [
+    {
+      book_key: context.bookKey,
+      name: context.bookName,
+      scope: { kind: "models", model_refs: modelRefs },
+      scope_observations: [...context.scopeBySource].map(([sourceRef, refs]) => ({
+        source_ref: sourceRef,
+        locator: { kind: "provider_key", value: "pricing:model-scope" },
+        establishes: { kind: "models", model_refs: [...refs] },
+        raw: { label: "Models with public pricing facts" },
+      })),
+      offers: [...context.offers].map(([mode, value]) => pricingOffer(mode, value)),
+      source_refs: sourceRefs,
+    },
+  ];
+}
+
+function pricingOffer(mode: "usage" | "capacity", value: OfferBuilder): AtomicBasePricingOffer {
+  return {
+    offer_key: mode,
+    name: mode === "usage" ? "Usage pricing" : "Capacity pricing",
+    billing_mode: { namespace: "kmodels", value: mode },
+    role: "base",
+    states: value.states,
+    terms: [...value.terms.values()],
+    source_refs: [...value.sourceRefs],
+  };
+}
+
+function offerBuilder(context: AdapterContext, mode: "usage" | "capacity"): OfferBuilder {
+  const current = context.offers.get(mode);
+  if (current !== undefined) return current;
+  const created: OfferBuilder = {
+    states: [],
+    terms: new Map(),
+    sourceRefs: new Set(),
+  };
+  context.offers.set(mode, created);
+  return created;
+}
+
+function rateTerm(offer: OfferBuilder, meter: SourcePriceFact["meter"]): AtomicRateTerm {
+  const current = offer.terms.get(meter);
+  if (current !== undefined) return current;
+  const created: AtomicRateTerm = {
+    term_key: meter,
+    kind: "rate",
+    meter: { namespace: "kmodels", value: meter },
+    variants: [],
+    raw_variants: [],
+    source_refs: [],
+  };
+  offer.terms.set(meter, created);
+  return created;
+}
+
+type NormalizedRate =
+  | {
+      kind: "normalized";
+      price: UnitPrice;
+      applicability: PriceApplicability;
+      validity?: PublishedValidity;
+    }
+  | {
+      kind: "raw";
+      reason: AtomicRawVariant["reason"];
+      applicability: PriceApplicability;
+      validity?: PublishedValidity;
+    };
+
+function normalizeRate(context: AdapterContext, rate: SourcePriceFact): NormalizedRate {
+  const modelScope = unconditionalApplicability;
+  const validity = publishedValidity(rate.conditions);
+  if (validity === false)
+    return { kind: "raw", reason: "unsupported_structure", applicability: modelScope };
+  const applicability = rateApplicability(context, rate.conditions);
+  const unit = normalizedUnit(context, rate);
+  if (unit === undefined)
+    return {
+      kind: "raw",
+      reason:
+        rate.unit === "thousand_tokens_per_minute_hour"
+          ? "requires_usage_aggregation"
+          : "unknown_unit",
+      applicability,
+      ...(validity === undefined ? {} : { validity }),
+    };
+  const denomination = priceDenomination(context, rate.currency);
+  if (denomination === undefined)
+    return {
+      kind: "raw",
+      reason: "unknown_denomination",
+      applicability,
+      ...(validity === undefined ? {} : { validity }),
+    };
+  try {
+    return {
+      kind: "normalized",
+      price: canonicalizeUnitPrice(rationalFromDecimal(rate.price), denomination, unit),
+      applicability,
+      ...(validity === undefined ? {} : { validity }),
+    };
+  } catch {
+    return {
+      kind: "raw",
+      reason: "unsupported_structure",
+      applicability,
+      ...(validity === undefined ? {} : { validity }),
+    };
+  }
+}
+
+function normalizedUnit(
+  context: AdapterContext,
+  rate: SourcePriceFact,
+): CanonicalSourceUnit | undefined {
+  const standard = (
+    value: "character" | "frame" | "image" | "page" | "request" | "second" | "token" | "video",
+  ) => ({
+    namespace: "kmodels" as const,
+    value,
+  });
+  const one = (value: Parameters<typeof standard>[0], scale?: FixedUnitScale) =>
+    canonicalizeSourceUnit([
+      {
+        unit: standard(value),
+        power: 1,
+        ...(scale === undefined ? {} : { scale }),
+      },
+    ]);
+  switch (rate.unit) {
+    case "token":
+      return one("token");
+    case "thousand_tokens":
+      return one("token", "thousand");
+    case "million_tokens":
+      return one("token", "million");
+    case "character":
+      return one("character");
+    case "thousand_characters":
+      return one("character", "thousand");
+    case "million_characters":
+      return one("character", "million");
+    case "request":
+      return one("request");
+    case "thousand_requests":
+      return one("request", "thousand");
+    case "image":
+      return one("image");
+    case "page":
+      return one("page");
+    case "thousand_pages":
+      return one("page", "thousand");
+    case "second":
+      return one("second");
+    case "minute":
+      return one("second", "minute");
+    case "frame":
+      return one("frame");
+    case "video":
+      return one("video");
+    case "thousand_search_units": {
+      const providerUnit = searchUnit(context);
+      return canonicalizeSourceUnit([{ unit: providerUnit, power: 1, scale: "thousand" }]);
+    }
+    case "search_unit":
+      return canonicalizeSourceUnit([{ unit: searchUnit(context), power: 1 }]);
+    case "million_tokens_per_hour":
+      return canonicalizeSourceUnit([
+        { unit: standard("token"), power: 1, scale: "million" },
+        { unit: standard("second"), power: 1, scale: "hour" },
+      ]);
+    case "gpu_hour":
+      return canonicalizeSourceUnit([
+        { unit: { namespace: "kmodels", value: "gpu" }, power: 1 },
+        { unit: standard("second"), power: 1, scale: "hour" },
+      ]);
+    case "unit_hour":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "unit_hour",
+            "One provider-published capacity or service unit sustained for one hour",
+          ),
+          power: 1,
+        },
+      ]);
+    case "unit_month":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "unit_month",
+            "One provider-published capacity or service unit sustained for one month",
+          ),
+          power: 1,
+        },
+      ]);
+    case "thousand_tokens_per_minute_hour":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "1k_tpm_hour",
+            "One 1,000-tokens-per-minute capacity unit sustained for one hour",
+          ),
+          power: 1,
+        },
+      ]);
+  }
+}
+
+function searchUnit(context: AdapterContext) {
+  return providerUnit(
+    context,
+    "search_unit",
+    "One provider-published search or rerank billing unit",
+  );
+}
+
+function providerUnit(context: AdapterContext, key: string, definition: string) {
+  const unit = {
+    namespace: "provider" as const,
+    provider_id: context.providerId,
+    value: key,
+  };
+  addAtom(context, {
+    kind: "unit",
+    key: unit.value,
+    definition,
+  });
+  return unit;
+}
+
+function priceDenomination(
+  context: AdapterContext,
+  currency: string,
+): PriceDenomination | undefined {
+  if (currency === "DBU") {
+    addAtom(context, {
+      kind: "credit_denomination",
+      key: currency,
+      definition: "Databricks billing unit",
+    });
+    return { kind: "provider_credit", provider_id: context.providerId, code: currency };
+  }
+  return /^[A-Z]{3}$/.test(currency) ? { kind: "fiat", currency } : undefined;
+}
+
+function rateApplicability(
+  context: AdapterContext,
+  conditions: SourcePriceFact["conditions"],
+): PriceApplicability {
+  const predicates: PriceCondition[] = [];
+  const categorical = [
+    "region",
+    "endpoint",
+    "deployment_scope",
+    "service_tier",
+    "inference_geo",
+    "route_provider",
+    "context_tier",
+    "modality",
+    "operation",
+    "resolution",
+    "quality",
+    "style",
+    "capacity",
+  ] as const;
+  for (const key of categorical) {
+    const value = conditions[key];
+    if (value === undefined) continue;
+    const dimension: PriceDimension = { namespace: "kmodels", value: key };
+    const atom = providerCategorical(context, dimension, value);
+    predicates.push({ kind: "categorical", dimension, values: [atom] });
+  }
+  for (const key of ["audio", "voice_control", "video_input", "promotion"] as const) {
+    const value = conditions[key];
+    if (value === undefined) continue;
+    const dimension: PriceDimension = {
+      namespace: "kmodels",
+      value: key === "audio" ? "request_audio" : key,
+    };
+    predicates.push({ kind: "boolean", dimension, value });
+  }
+  const tokenRange = contextTokenRange(
+    conditions.context_min_tokens,
+    conditions.context_max_tokens,
+  );
+  if (tokenRange !== undefined) predicates.push(tokenRange);
+  if (conditions.cache_ttl_seconds !== undefined) {
+    const exact = String(conditions.cache_ttl_seconds);
+    predicates.push({
+      kind: "decimal_range",
+      dimension: { namespace: "kmodels", value: "cache_ttl_seconds" },
+      unit: standardUnit("second"),
+      lower: { value: exact, inclusive: true },
+      upper: { value: exact, inclusive: true },
+    });
+  }
+  return { any_of: [{ all_of: predicates }] };
+}
+
+function contextTokenRange(
+  lower: number | undefined,
+  upper: number | undefined,
+): PriceCondition | undefined {
+  if (lower === undefined && upper === undefined) return undefined;
+  return {
+    kind: "decimal_range",
+    dimension: { namespace: "kmodels", value: "context_tokens" },
+    unit: standardUnit("token"),
+    ...(lower === undefined ? {} : { lower: { value: String(lower), inclusive: true } }),
+    ...(upper === undefined ? {} : { upper: { value: String(upper), inclusive: true } }),
+  };
+}
+
+function publishedValidity(
+  conditions: SourcePriceFact["conditions"],
+): PublishedValidity | undefined | false {
+  const from = timeBoundary(conditions.effective_from);
+  const until = timeBoundary(conditions.effective_until);
+  if (from === false || until === false) return false;
+  if (from === undefined) return until === undefined ? undefined : { until };
+  return until === undefined ? { from } : { from, until };
+}
+
+function timeBoundary(value: string | undefined): PublishedValidity["from"] | undefined | false {
+  if (value === undefined) return undefined;
+  const precision = /^\d{4}$/.test(value)
+    ? "year"
+    : /^\d{4}-(?:0[1-9]|1[0-2])$/.test(value)
+      ? "month"
+      : /^\d{4}-(?:0[1-9]|1[0-2])-\d{2}$/.test(value)
+        ? "date"
+        : /^\d{4}-\d{2}-\d{2}T/.test(value)
+          ? "datetime"
+          : undefined;
+  if (precision === undefined) return false;
+  if (precision !== "datetime")
+    return isPublishedTime(value, precision) ? { value, precision } : false;
+  try {
+    return { value: canonicalizeInstant(value), precision };
+  } catch {
+    return false;
+  }
+}
+
+function providerCategorical(context: AdapterContext, dimension: PriceDimension, rawValue: string) {
+  const key = rawValue.normalize("NFC");
+  addAtom(context, {
+    kind: "categorical_value",
+    key,
+    dimension,
+    definition: `Provider-published ${dimension.value} value ${JSON.stringify(key)}`,
+  });
+  return {
+    namespace: "provider" as const,
+    provider_id: context.providerId,
+    value: key,
+  };
+}
+
+function addAtom(context: AdapterContext, atom: ProviderAtomRegistryEntry): void {
+  const dimension = "dimension" in atom ? canonicalJson(atom.dimension) : "";
+  const identity = `${atom.kind}\0${dimension}\0${atom.key}`;
+  const current = context.atoms.get(identity);
+  if (current !== undefined && canonicalJson(current) !== canonicalJson(atom))
+    throw new Error(`Provider atom ${atom.key} has conflicting definitions`);
+  context.atoms.set(identity, atom);
+}
+
+function standardUnit(value: "second" | "token"): UnitExpression {
+  return {
+    factors: [{ unit: { namespace: "kmodels", value }, power: 1 }],
+  };
+}
+
+function normalizedObservation(
+  sourceRef: string,
+  locator: PriceSourceLocator,
+  raw: RawPriceFact,
+  applicability: PriceApplicability,
+) {
+  return {
+    source_ref: sourceRef,
+    locator,
+    raw,
+    establishes_applicability: applicability,
+  };
+}
+
+function rawFact(rate: SourcePriceFact): RawPriceFact {
+  const rawConditions = Object.entries(rate.conditions)
+    .filter(
+      ([key, value]) =>
+        value !== undefined && key !== "effective_from" && key !== "effective_until",
+    )
+    .map(([dimension, value]) => ({ dimension, value: String(value) }));
+  return {
+    amount: rate.raw_price ?? rate.price,
+    denomination: rate.currency,
+    unit: rate.raw_unit ?? rate.unit,
+    meter: rate.meter,
+    ...(rate.derivation === undefined ? {} : { formula: rate.derivation }),
+    ...(rate.raw_validity === undefined &&
+    rate.conditions.effective_from === undefined &&
+    rate.conditions.effective_until === undefined
+      ? {}
+      : {
+          validity:
+            rate.raw_validity ??
+            [rate.conditions.effective_from, rate.conditions.effective_until]
+              .filter((value) => value !== undefined)
+              .join(" – "),
+        }),
+    ...(rawConditions.length === 0 ? {} : { conditions: rawConditions }),
+  };
+}
+
+function rateLocator(model: ParsedProviderModel, rate: SourcePriceFact): PriceSourceLocator {
+  return {
+    kind: "provider_key",
+    value: JSON.stringify([
+      model.uid,
+      rate.meter,
+      rate.conditions,
+      rate.raw_price ?? rate.price,
+      rate.raw_unit ?? rate.unit,
+      rate.raw_validity,
+    ]),
+  };
+}
+
+function addScope(context: AdapterContext, sourceRef: string, modelRef: string): void {
+  const refs = context.scopeBySource.get(sourceRef) ?? new Set<string>();
+  refs.add(modelRef);
+  context.scopeBySource.set(sourceRef, refs);
+}
+
+function rateMode(rate: SourcePriceFact): "usage" | "capacity" {
+  return ["gpu_hour", "provisioned_throughput"].includes(rate.meter) ||
+    ["unit_hour", "unit_month", "thousand_tokens_per_minute_hour"].includes(rate.unit)
+    ? "capacity"
+    : "usage";
+}

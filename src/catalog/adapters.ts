@@ -1,7 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { parseAnthropicApi, parseAnthropicCatalog } from "./anthropic.ts";
-import { parseAzureApi, parseAzureCatalog } from "./azure.ts";
+import { parseAzureApi, parseAzureCatalog, parseAzureRetailPrices } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import {
   parseCerebrasApi,
@@ -37,6 +37,7 @@ import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { classifyModelTasks } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
@@ -45,8 +46,6 @@ import {
   modalitySchema,
   type Modality,
   type ModelTask,
-  type PriceRate,
-  type ProviderModel,
   type Provider,
   unknownCapabilities,
 } from "./schema.ts";
@@ -254,7 +253,7 @@ function openAiMeter(
   group: string,
   label: string,
   tasks: ModelTask[],
-): PriceRate["meter"] | undefined {
+): SourcePriceFact["meter"] | undefined {
   if (group === "Text tokens") {
     if (label === "Input") return "input_text";
     if (label === "Cached input") return "cache_read_text";
@@ -280,10 +279,10 @@ function openAiMeter(
   }
 }
 
-function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]): PriceRate[] {
+function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]): SourcePriceFact[] {
   const content = sectionContent($, "Pricing");
   if (content.length === 0) return [];
-  const rates: PriceRate[] = [];
+  const rates: SourcePriceFact[] = [];
   const groups = new Set([
     "Text tokens",
     "Audio tokens",
@@ -313,7 +312,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
       const serviceTier = normalizedText(unitNode.parent().text()).includes("Batch API price")
         ? "batch"
         : undefined;
-      const unit: PriceRate["unit"] =
+      const unit: SourcePriceFact["unit"] =
         rawUnit === "Per 1M tokens"
           ? "million_tokens"
           : rawUnit === "Per image"
@@ -340,7 +339,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
         const meter = openAiMeter(group, label, tasks);
         if (meter === undefined)
           throw new Error(`Unsupported OpenAI pricing field: ${group}/${label}`);
-        const conditions: PriceRate["conditions"] = {};
+        const conditions: SourcePriceFact["conditions"] = {};
         if (serviceTier !== undefined) conditions.service_tier = serviceTier;
         if (quality !== undefined) conditions.quality = quality;
         if (group === "Image generation" || group === "Video generation")
@@ -371,13 +370,13 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
         }
       });
       if (useCase === undefined || rawPrice === undefined || rawUnit === undefined) return;
-      const meter: PriceRate["meter"] | undefined =
+      const meter: SourcePriceFact["meter"] | undefined =
         useCase === "Speech generation"
           ? "output_audio"
           : useCase === "Transcription"
             ? "input_audio"
             : undefined;
-      const unit: PriceRate["unit"] | undefined =
+      const unit: SourcePriceFact["unit"] | undefined =
         rawUnit === "1M characters"
           ? "million_characters"
           : rawUnit === "minute"
@@ -400,7 +399,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
   ) {
     const threshold =
       Number(longContext[1].replaceAll(",", "")) * (longContext[2] === "K" ? 1_000 : 1);
-    const additions = rates.flatMap((rate): PriceRate[] => {
+    const additions = rates.flatMap((rate): SourcePriceFact[] => {
       const multiplier =
         rate.meter === "input_text"
           ? longContext[3]
@@ -427,7 +426,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
   if (cacheWrite?.[1] !== undefined) {
     const multiplier = cacheWrite[1];
     rates.push(
-      ...rates.flatMap((rate): PriceRate[] =>
+      ...rates.flatMap((rate): SourcePriceFact[] =>
         rate.meter !== "input_text"
           ? []
           : [
@@ -546,14 +545,14 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
           max_output_tokens: openAiTokenLimit($, "max output tokens"),
         },
         ...lifecycle,
-        pricing_status:
+        pricing_state:
           pricing.length > 0
-            ? "published"
+            ? "numeric"
             : pageText.includes("free models designed to detect harmful content") ||
                 pageText.includes("open-weight model")
               ? "not_applicable"
               : "unknown",
-        pricing,
+        price_facts: pricing,
       } satisfies ProviderModel;
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
@@ -736,6 +735,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseDatabricksApi(input);
     case "azure-catalog":
       return parseAzureCatalog(input);
+    case "azure-retail-prices":
+      return parseAzureRetailPrices(input);
     case "azure-api":
       return parseAzureApi(input);
     case "gemini-catalog":

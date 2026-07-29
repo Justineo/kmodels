@@ -29,3 +29,25 @@ export function calculateVirtualRange({
     paddingAfter: (safeCount - end) * itemSize,
   };
 }
+
+export function nearestItemScrollOffset({
+  index,
+  itemSize,
+  scrollOffset,
+  viewportSize,
+}: {
+  index: number;
+  itemSize: number;
+  scrollOffset: number;
+  viewportSize: number;
+}): number {
+  if (itemSize <= 0) throw new Error("Virtual item size must be positive");
+
+  const top = Math.max(0, Math.floor(index)) * itemSize;
+  const current = Math.max(0, scrollOffset);
+  const viewport = Math.max(0, viewportSize);
+  if (top < current || viewport < itemSize) return top;
+
+  const bottom = top + itemSize;
+  return bottom > current + viewport ? bottom - viewport : current;
+}

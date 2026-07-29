@@ -16,6 +16,7 @@ Status: current
 - Mistral partner cards, unlisted open models, and Live/Realtime Google cards receive no inferred endpoint.
 - Tasks, sibling models, and generic Vertex methods never widen route support.
 - Price joins require one unique official model identity. Preserve tier, context, cache, region, modality, unit, and exact conditions.
+- Treat the published `<=` and `=<` 200K headings as the same closed upper bound. The separate unqualified regional table is the default regional scope when an unequal Global price exists; it is not widened over the Global rate.
 
 ## Kong AI Gateway
 

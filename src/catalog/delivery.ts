@@ -27,7 +27,7 @@ function endpointModes(name: string, path: string): DeliveryMode[] {
   return modes;
 }
 
-export function normalizeDeliveryModes(model: ProviderModel): ProviderModel {
+export function normalizeDeliveryModes<T extends ProviderModel>(model: T): T & ProviderModel {
   const modes = new Set(model.delivery_modes ?? []);
   const evidence = new Map(
     (model.delivery_mode_evidence ?? []).map((item) => [evidenceKey(item), item]),

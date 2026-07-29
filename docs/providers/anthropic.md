@@ -16,7 +16,7 @@ Status: current
 - Message Batches applies only to active rows. Retired rows get no current endpoint.
 - The shared generated SDK model enum is not an operation matrix and never proves legacy `/v1/complete` support.
 - Keep direct, batch, fast-mode, cache-write, and cache-read prices in published units and conditions.
-- Derive cache and US-inference rates only from Anthropic's exact stacking multipliers using decimal-string arithmetic.
+- Derive cache and US-inference rates only from Anthropic's exact stacking multipliers using decimal-string arithmetic; publish the exact result while retaining the multiplier as evidence.
 
 ## Kong AI Gateway
 

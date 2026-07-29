@@ -7,14 +7,8 @@ import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
-import {
-  type Modality,
-  type ModelTask,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -736,7 +730,7 @@ function priceTarget(
   return candidates.length === 1 ? candidates[0]?.model : undefined;
 }
 
-function meters(descriptor: string, cached: boolean): PriceRate["meter"][] {
+function meters(descriptor: string, cached: boolean): SourcePriceFact["meter"][] {
   const value = descriptor.toLowerCase();
   const input = /\binput\b/.test(value);
   const output = /\boutput\b|response|reasoning/.test(value);
@@ -789,16 +783,16 @@ function decimalKey(value: string): string {
   return trimmed === "" ? whole : `${whole}.${trimmed}`;
 }
 
-function addRate(model: ProviderModel, rate: PriceRate): void {
+function addRate(model: ProviderModel, rate: SourcePriceFact): void {
   const key = `${rate.meter}\0${rate.currency}\0${rate.unit}\0${JSON.stringify(rate.conditions)}`;
   if (
-    !model.pricing.some(
+    !model.price_facts.some(
       (item) =>
         `${item.meter}\0${item.currency}\0${item.unit}\0${JSON.stringify(item.conditions)}` ===
           key && decimalKey(item.price) === decimalKey(rate.price),
     )
   )
-    model.pricing.push(rate);
+    model.price_facts.push(rate);
 }
 
 function tier(table: Selection): string | undefined {
@@ -806,6 +800,13 @@ function tier(table: Selection): string | undefined {
   if (value === "standard" || value === "priority") return value;
   if (value === "flex/batch") return "flex_or_batch";
   return undefined;
+}
+
+function contextTokenBounds(header: string): SourcePriceFact["conditions"] {
+  return {
+    ...(/(?:<=|=<)\s*200K/i.test(header) ? { context_max_tokens: 200_000 } : {}),
+    ...(/>\s*200K/i.test(header) ? { context_min_tokens: 200_001 } : {}),
+  };
 }
 
 function tokenTables(models: Map<string, Evidence>, sourceId: string, $: LoadedDocument): void {
@@ -839,10 +840,9 @@ function tokenTables(models: Map<string, Evidence>, sourceId: string, $: LoadedD
           const cached = /cached/i.test(header);
           const rateMeters = meters(descriptor, cached);
           if (rateMeters.length === 0) return;
-          const conditions: PriceRate["conditions"] = {
+          const conditions: SourcePriceFact["conditions"] = {
             service_tier: tier(table),
-            context_max_tokens: /<=\s*200K/i.test(header) ? 200_000 : undefined,
-            context_min_tokens: />\s*200K/i.test(header) ? 200_001 : undefined,
+            ...contextTokenBounds(header),
           };
           for (const item of money(text($(cell).text())))
             for (const rateMeter of rateMeters)
@@ -904,7 +904,7 @@ function labeledTables(models: Map<string, Evidence>, sourceId: string, $: Loade
             )
               continue;
             const lower = label.toLowerCase();
-            const rateMeter: PriceRate["meter"] = lower.includes("cache write")
+            const rateMeter: SourcePriceFact["meter"] = lower.includes("cache write")
               ? "cache_write_text"
               : lower.includes("cache hit")
                 ? "cache_read_text"
@@ -923,8 +923,7 @@ function labeledTables(models: Map<string, Evidence>, sourceId: string, $: Loade
                   ? heading
                   : undefined,
                 service_tier: lower.includes("batch") ? "batch" : undefined,
-                context_max_tokens: /<=\s*200K/i.test(header) ? 200_000 : undefined,
-                context_min_tokens: />\s*200K/i.test(header) ? 200_001 : undefined,
+                ...contextTokenBounds(header),
                 cache_ttl_seconds: lower.startsWith("5m")
                   ? 300
                   : lower.startsWith("1h")
@@ -985,8 +984,7 @@ function storageTables(models: Map<string, Evidence>, sourceId: string, $: Loade
                   raw,
                   {
                     modality,
-                    context_max_tokens: /<=\s*200K/i.test(header) ? 200_000 : undefined,
-                    context_min_tokens: />\s*200K/i.test(header) ? 200_001 : undefined,
+                    ...contextTokenBounds(header),
                   },
                 ),
               );
@@ -1031,7 +1029,7 @@ function mediaTables(models: Map<string, Evidence>, sourceId: string, $: LoadedD
         const raw = text(cells.last().text());
         const price = money(raw)[0]?.price;
         if (price === undefined) return;
-        const unit: PriceRate["unit"] | undefined = /per image|\/image/i.test(raw)
+        const unit: SourcePriceFact["unit"] | undefined = /per image|\/image/i.test(raw)
           ? "image"
           : /second/i.test(raw)
             ? "second"
@@ -1045,7 +1043,7 @@ function mediaTables(models: Map<string, Evidence>, sourceId: string, $: LoadedD
                     ? "request"
                     : undefined;
         if (unit === undefined) return;
-        const rateMeter: PriceRate["meter"] = /Imagen/i.test(section)
+        const rateMeter: SourcePriceFact["meter"] = /Imagen/i.test(section)
           ? "image_generation"
           : /Veo/i.test(section)
             ? "video_generation"
@@ -1084,12 +1082,12 @@ function applyPricing(models: Map<string, Evidence>, sourceId: string, body: str
   storageTables(models, sourceId, $);
   mediaTables(models, sourceId, $);
   for (const { model } of models.values()) {
-    model.pricing.sort((left, right) =>
+    model.price_facts.sort((left, right) =>
       `${left.meter}\0${left.unit}\0${left.price}\0${JSON.stringify(left.conditions)}`.localeCompare(
         `${right.meter}\0${right.unit}\0${right.price}\0${JSON.stringify(right.conditions)}`,
       ),
     );
-    if (model.pricing.length > 0) model.pricing_status = "published";
+    if (model.price_facts.length > 0) model.pricing_state = "numeric";
   }
 }
 

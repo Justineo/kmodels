@@ -4,13 +4,8 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
-import {
-  type Modality,
-  type PriceRate,
-  type Provider,
-  type ProviderModel,
-  unknownCapabilities,
-} from "./schema.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
   provider: Provider;
@@ -337,19 +332,19 @@ function amount(value: string | undefined): string | undefined {
   return value?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \/ MTok$/)?.[1];
 }
 
-function effective(value: string): PriceRate["conditions"] {
+function effective(value: string): SourcePriceFact["conditions"] {
   if (value.includes("through August 31, 2026"))
     return { effective_until: "2026-08-31", promotion: true };
   if (value.includes("starting September 1, 2026")) return { effective_from: "2026-09-01" };
   return {};
 }
 
-function cached(rate: PriceRate): PriceRate[] {
+function cached(rate: SourcePriceFact): SourcePriceFact[] {
   const derive = (
     meter: "cache_write_text" | "cache_read_text",
     multiplier: string,
     cacheTtlSeconds?: number,
-  ): PriceRate => ({
+  ): SourcePriceFact => ({
     ...rate,
     meter,
     price: multiplyDecimal(rate.price, multiplier),
@@ -393,9 +388,9 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
     if (item.name === item.model_id) item.name = label(name);
     return item;
   };
-  const add = (item: ProviderModel, rates: PriceRate[]): void => {
-    item.pricing.push(...rates);
-    item.pricing_status = "published";
+  const add = (item: ProviderModel, rates: SourcePriceFact[]): void => {
+    item.price_facts.push(...rates);
+    item.pricing_state = "numeric";
   };
   const parsedTables = tables(body);
   const base = parsedTables.find((table) => table.headers[1] === "Base Input Tokens");
@@ -413,7 +408,11 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
       throw new Error(`Anthropic base pricing was not machine-readable for ${item.model_id}`);
     const [inputPrice, fiveMinuteWrite, oneHourWrite, cacheRead, outputPrice] = parsed.data;
     const conditions = effective(values[0] ?? "");
-    const rate = (meter: PriceRate["meter"], value: string, cacheTtlSeconds?: number): PriceRate =>
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      value: string,
+      cacheTtlSeconds?: number,
+    ): SourcePriceFact =>
       publishedRate(meter, value, "million_tokens", input.source.id, "MTok", {
         ...conditions,
         ...(cacheTtlSeconds === undefined ? {} : { cache_ttl_seconds: cacheTtlSeconds }),
@@ -504,9 +503,9 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
 
   for (const item of models.values()) {
     if (!supportsUsInference(item.model_id)) continue;
-    item.pricing.push(
-      ...item.pricing.map(
-        (rate): PriceRate => ({
+    item.price_facts.push(
+      ...item.price_facts.map(
+        (rate): SourcePriceFact => ({
           ...rate,
           price: multiplyDecimal(rate.price, "1.1"),
           conditions: { ...rate.conditions, inference_geo: "us" },

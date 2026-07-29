@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { calculateVirtualRange } from "../src/catalog/virtualization.ts";
+import { calculateVirtualRange, nearestItemScrollOffset } from "../src/catalog/virtualization.ts";
 
 describe("fixed-row virtual range", () => {
   it("renders the viewport and bounded overscan", () => {
@@ -76,5 +76,33 @@ describe("fixed-row virtual range", () => {
         viewportSize: 0,
       }),
     ).toThrow("Virtual item size must be positive");
+  });
+});
+
+describe("nearest virtual item scroll offset", () => {
+  it("keeps visible rows still and reveals rows across either viewport edge", () => {
+    const offset = (index: number) =>
+      nearestItemScrollOffset({
+        index,
+        itemSize: 48,
+        scrollOffset: 480,
+        viewportSize: 480,
+      });
+
+    expect(offset(10)).toBe(480);
+    expect(offset(9)).toBe(432);
+    expect(offset(19)).toBe(480);
+    expect(offset(20)).toBe(528);
+  });
+
+  it("aligns to the row start when a full row cannot fit", () => {
+    expect(
+      nearestItemScrollOffset({
+        index: 5,
+        itemSize: 48,
+        scrollOffset: 0,
+        viewportSize: 20,
+      }),
+    ).toBe(240);
   });
 });

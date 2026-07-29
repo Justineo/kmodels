@@ -1,11 +1,7 @@
-import {
-  modelTaskSchema,
-  type ModelTask,
-  type ProviderModel,
-  type TaskEvidence,
-} from "./schema.ts";
+import { modelTasks } from "./catalog-vocabulary.ts";
+import type { ModelTask, ProviderModel, TaskEvidence } from "./schema.ts";
 
-const order = new Map(modelTaskSchema.options.map((task, index) => [task, index]));
+const order = new Map(modelTasks.map((task, index) => [task, index]));
 const providerTaskMappings = new Map<string, readonly ModelTask[]>([
   ["conversational", ["text_generation"]],
   ["text-generation", ["text_generation"]],
@@ -172,7 +168,7 @@ export function classifyModelTasks(input: {
   return orderedTasks(tasks);
 }
 
-export function normalizeModelTasks(model: ProviderModel): ProviderModel {
+export function normalizeModelTasks<T extends ProviderModel>(model: T): T & ProviderModel {
   const tasks =
     model.tasks.length > 0
       ? orderedTasks(model.tasks)

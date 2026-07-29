@@ -6,13 +6,12 @@ import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { scaleDecimal } from "./pricing.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   modalitySchema,
   type Modality,
   type ModelTask,
-  type PriceRate,
   type Provider,
-  type ProviderModel,
   unknownCapabilities,
 } from "./schema.ts";
 import { classifyModelTasks } from "./task.ts";
@@ -622,7 +621,7 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function meter(text: string, tasks: ModelTask[]): PriceRate["meter"] | undefined {
+function meter(text: string, tasks: ModelTask[]): SourcePriceFact["meter"] | undefined {
   if (/provisioned|reserved|model.?units|tokens per minute|tpm/.test(text))
     return "provisioned_throughput";
   if (/cache.?read/.test(text)) {
@@ -683,7 +682,7 @@ function conditions(
   text: string,
   effectiveDate: string | undefined,
   endpoint: string | undefined,
-): PriceRate["conditions"] {
+): SourcePriceFact["conditions"] {
   const lower = text.toLowerCase();
   const deploymentScope = /cross-region-global|[_ -]global(?:[_ -]|$)/.test(lower)
     ? "global_cross_region"
@@ -731,7 +730,7 @@ function rate(
   effectiveDate: string | undefined,
   tasks: ModelTask[],
   sourceId: string,
-): PriceRate | undefined {
+): SourcePriceFact | undefined {
   const usage = attributes.usagetype ?? "";
   const text =
     `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
@@ -744,7 +743,7 @@ function rate(
         ? "bedrock-mantle"
         : "bedrock-runtime";
   const rateConditions = conditions(attributes, text, effectiveDate, endpoint);
-  let normalizedUnit: PriceRate["unit"] | undefined;
+  let normalizedUnit: SourcePriceFact["unit"] | undefined;
   let normalizedPrice = price;
   let derived = false;
   if (unit === "1K tokens") {
@@ -802,7 +801,11 @@ function rate(
   };
 }
 
-function addRate(rates: Map<string, PriceRate>, next: PriceRate, modelId: string): void {
+function addRate(
+  rates: Map<string, SourcePriceFact>,
+  next: SourcePriceFact,
+  modelId: string,
+): void {
   const key = `${next.meter}:${next.currency}:${next.unit}:${JSON.stringify(next.conditions)}`;
   const current = rates.get(key);
   if (current !== undefined && current.price !== next.price)
@@ -855,8 +858,9 @@ function mergeBedrockModels(current: ProviderModel, incoming: ProviderModel): Pr
   const modelId = current.model_id;
   if (current.uid !== incoming.uid || current.name !== incoming.name)
     throw new Error(`Bedrock model ID ${modelId} has conflicting identity`);
-  const rates = new Map<string, PriceRate>();
-  for (const rate of [...current.pricing, ...incoming.pricing]) addRate(rates, rate, modelId);
+  const rates = new Map<string, SourcePriceFact>();
+  for (const rate of [...current.price_facts, ...incoming.price_facts])
+    addRate(rates, rate, modelId);
   const endpoints = new Map(
     [...(current.api_endpoints ?? []), ...(incoming.api_endpoints ?? [])].map((endpoint) => [
       apiEndpointKey(endpoint),
@@ -1038,14 +1042,14 @@ function mergeBedrockModels(current: ProviderModel, incoming: ProviderModel): Pr
       incoming.release_stage,
       "unknown",
     ),
-    pricing_status: mergeKnownFact(
+    pricing_state: mergeKnownFact(
       modelId,
       "pricing status",
-      current.pricing_status,
-      incoming.pricing_status,
+      current.pricing_state,
+      incoming.pricing_state,
       "unknown",
     ),
-    pricing: [...rates.values()].sort((left, right) =>
+    price_facts: [...rates.values()].sort((left, right) =>
       `${left.meter}:${JSON.stringify(left.conditions)}`.localeCompare(
         `${right.meter}:${JSON.stringify(right.conditions)}`,
       ),
@@ -1066,8 +1070,8 @@ function parsePrices(
   documents: z.infer<typeof linkedBundleSchema>["documents"],
   cards: Card[],
   sourceId: string,
-): Map<string, PriceRate[]> {
-  const byId = new Map<string, Map<string, PriceRate>>();
+): Map<string, SourcePriceFact[]> {
+  const byId = new Map<string, Map<string, SourcePriceFact>>();
   for (const document of documents) {
     if (new URL(document.url).hostname !== "pricing.us-east-1.amazonaws.com") continue;
     const list = priceListSchema.parse(JSON.parse(document.body));
@@ -1108,7 +1112,7 @@ function parsePrices(
           );
           if (parsed === undefined) continue;
           for (const [id] of targets) {
-            const rates = byId.get(id) ?? new Map<string, PriceRate>();
+            const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
             addRate(rates, parsed, id);
             byId.set(id, rates);
           }
@@ -1199,8 +1203,8 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         retired_at: card.retiredAt,
         status: card.status,
         release_stage: card.releaseStage,
-        pricing_status: pricing.length > 0 ? "published" : "unknown",
-        pricing,
+        pricing_state: pricing.length > 0 ? "numeric" : "unknown",
+        price_facts: pricing,
         availability,
         scope: "regional_catalog",
       };
