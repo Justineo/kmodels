@@ -17,6 +17,33 @@ The repository ships:
 1. A deterministic collector that produces versioned static JSON without an LLM or inference call.
 2. A static Vue website that reads that JSON.
 
+## Publication profiles
+
+Every consumer profile is a deterministic projection of the same accepted
+catalog. Consumer profiles use `schema_version` for their contract, while
+`catalog_version` identifies the accepted catalog content.
+
+- `/catalog/ids.json` is the lean inventory. It maps each provider ID to sorted,
+  distinct `model_id` strings. It makes no version, lifecycle, callability, or
+  latest-version claim.
+- `/catalog/models.json` is the default semantic catalog. It groups by exact
+  `(provider_id, model_id)` and keeps every exact record in one uniform
+  `variants` array. Variant objects retain normalized model facts and omit
+  collection evidence, raw source fields, observation timestamps, routes with
+  source provenance, and diagnostics. Do not invent a common-field/override
+  encoding.
+- `/catalog/index.json` remains the audit-rich canonical envelope with flat,
+  exact `(provider_id, model_id, version)` rows, source records, coverage, and
+  warnings.
+
+The profiles never infer a latest or default version from version spelling.
+Only an explicit provider fact may establish a preferred version. Pricing
+remains a separately bound resource. Do not publish upstream response bodies or
+collector mirrors as another profile: they are unstable, provider-specific, and
+may contain data outside the reviewed public contract. The canonical audit
+envelope is the deepest public level and contains only validated, bounded facts
+with provenance.
+
 ## Identity and merging
 
 - Provider-model identity is the exact `(provider_id, model_id, version)` tuple.

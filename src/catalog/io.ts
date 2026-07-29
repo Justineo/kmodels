@@ -25,6 +25,10 @@ export function stableJson(value: unknown): string {
   return `${JSON.stringify(canonical(value), null, 2)}\n`;
 }
 
+export function stableCompactJson(value: unknown): string {
+  return JSON.stringify(canonical(value));
+}
+
 export async function readJson(path: string): Promise<unknown> {
   try {
     return JSON.parse(await readFile(path, "utf8"));

@@ -1,13 +1,24 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
+import { afterFirstPaint } from "./after-first-paint.ts";
 import { modelLifecycles, modelReleaseStages } from "./catalog/catalog-vocabulary.ts";
+import {
+  loadWebsiteModelDetail,
+  loadWebsitePricing,
+  preloadWebsiteDetails,
+} from "./catalog/website-loader.ts";
+import {
+  groupModels,
+  modelGroupKey,
+  modelTableRows,
+  type ModelGroup,
+} from "./catalog/model-groups.ts";
 import { formatCount, formatModelTask, versionBadgeModelUids } from "./catalog/presentation.ts";
 import { orderedTasks } from "./catalog/task.ts";
-import {
-  websiteModelDetailSchema,
-  type WebsiteCatalog,
-  type WebsiteModel,
-  type WebsiteModelDetail,
+import type {
+  WebsiteCatalog,
+  WebsiteModel,
+  WebsitePricingSummary,
 } from "./catalog/website-schema.ts";
 import {
   formatRouteSearch,
@@ -20,12 +31,13 @@ import { indexModels, searchModels } from "./catalog/search.ts";
 import { calculateVirtualRange, nearestItemScrollOffset } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
 import IconSprite from "./components/IconSprite.vue";
-import ModelDetails from "./components/ModelDetails.vue";
+import ModelGroupRow from "./components/ModelGroupRow.vue";
 import ModelRow from "./components/ModelRow.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
 import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
+import { detailsState } from "./details-state.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
@@ -37,16 +49,15 @@ const root = document.documentElement;
 const initialRoute = parseRouteSearch(location.search);
 const props = defineProps<{ catalog: WebsiteCatalog }>();
 
-const { models, providers, generated_at: generatedAt } = props.catalog;
-const modelDetail = ref<WebsiteModelDetail>();
-const detailLoading = ref(false);
-const detailError = ref<string>();
+const { providers, generated_at: generatedAt } = props.catalog;
+const models = ref(props.catalog.models);
 const query = ref(initialRoute.query);
 const selectedProvider = ref(initialRoute.provider);
 const selectedTasks = ref(initialRoute.tasks);
 const selectedLifecycles = ref(initialRoute.lifecycles);
 const selectedReleaseStages = ref(initialRoute.releaseStages);
 const selectedModelUid = ref(initialRoute.modelUid);
+const expandedModelGroupKeys = ref<ReadonlySet<string>>(new Set());
 const theme = ref<Theme>(root.dataset.theme === "dark" ? "dark" : "light");
 const sort = ref(initialRoute.sort);
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
@@ -57,7 +68,7 @@ const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
 const tableScrollOffset = ref(0);
 const tableViewportSize = ref(0);
 let tableResizeObserver: ResizeObserver | undefined;
-const detailCache = new Map<string, WebsiteModelDetail>();
+const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let applyingRoute = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
@@ -74,12 +85,13 @@ useOverlayScrollbars(() => ({
 const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
 const selectedModel = computed(() => {
   const uid = selectedModelUid.value;
-  return uid === undefined ? undefined : models.find((model) => model.uid === uid);
+  return uid === undefined ? undefined : models.value.find((model) => model.uid === uid);
 });
 const providerOptions = [...providers].sort((left, right) => left.name.localeCompare(right.name));
-const taskOptions = orderedTasks(models.flatMap((model) => model.tasks));
-const versionBadgeUids = versionBadgeModelUids(models);
-const searchIndex = indexModels(models);
+const taskOptions = orderedTasks(models.value.flatMap((model) => model.tasks));
+const versionBadgeUids = versionBadgeModelUids(models.value);
+const allModelGroups = computed(() => groupModels(models.value));
+const searchIndex = indexModels(models.value);
 const filteredModels = computed(() => {
   const values = searchModels(searchIndex, query.value).filter(
     (model) =>
@@ -94,19 +106,23 @@ const filteredModels = computed(() => {
   if (activeSort) values.sort((left, right) => compareModels(left, right, activeSort));
   return values;
 });
+const filteredModelGroups = computed(() => groupModels(filteredModels.value));
+const tableRows = computed(() =>
+  modelTableRows(filteredModelGroups.value, expandedModelGroupKeys.value),
+);
 const virtualRange = computed(() =>
   calculateVirtualRange({
-    count: filteredModels.value.length,
+    count: tableRows.value.length,
     itemSize: virtualItemSize,
     overscan: OVERSCAN_ROWS,
     scrollOffset: tableScrollOffset.value,
     viewportSize: tableViewportSize.value,
   }),
 );
-const virtualModels = computed(() =>
-  filteredModels.value.slice(virtualRange.value.start, virtualRange.value.end),
+const virtualRows = computed(() =>
+  tableRows.value.slice(virtualRange.value.start, virtualRange.value.end),
 );
-const hasResults = computed(() => filteredModels.value.length > 0);
+const hasResults = computed(() => filteredModelGroups.value.length > 0);
 const hasFilters = computed(
   () =>
     query.value !== "" ||
@@ -129,7 +145,7 @@ const generatedAtLabel = new Intl.DateTimeFormat("en", {
   hour12: false,
 }).format(new Date(generatedAt));
 const resultCountLabel = computed(() => {
-  const count = filteredModels.value.length;
+  const count = filteredModelGroups.value.length;
   return `${formatCount(count)} ${count === 1 ? "result" : "results"}`;
 });
 const themeToggleLabel = computed(() =>
@@ -280,7 +296,7 @@ function reconcileRouteSelections(): void {
   }
   if (
     selectedModelUid.value !== undefined &&
-    !models.some((model) => model.uid === selectedModelUid.value)
+    !models.value.some((model) => model.uid === selectedModelUid.value)
   ) {
     selectedModelUid.value = undefined;
   }
@@ -306,13 +322,20 @@ function applyRoute(): void {
 function selectRelativeModel(offset: -1 | 1): void {
   const current = selectedModel.value;
   if (current === undefined) return;
-  const index = filteredModels.value.findIndex((model) => model.uid === current.uid);
+  const orderedModels = filteredModelGroups.value.flatMap((group) => group.models);
+  const index = orderedModels.findIndex((model) => model.uid === current.uid);
   if (index === -1) return;
   const nextIndex = index + offset;
-  const next = filteredModels.value[nextIndex];
+  const next = orderedModels[nextIndex];
   if (next === undefined) return;
+  ensureModelGroupExpanded(next);
   selectedModelUid.value = next.uid;
-  scrollModelIntoView(nextIndex);
+  void nextTick(() => {
+    const rowIndex = tableRows.value.findIndex(
+      (row) => row.kind === "model" && row.model.uid === next.uid,
+    );
+    if (rowIndex !== -1) scrollModelIntoView(rowIndex);
+  });
 }
 
 function scrollModelIntoView(index: number): void {
@@ -325,6 +348,31 @@ function scrollModelIntoView(index: number): void {
     viewportSize: Math.max(0, element.clientHeight - tableHeaderHeight),
   });
   updateVirtualRange();
+}
+
+function ensureModelGroupExpanded(model: WebsiteModel): void {
+  const key = modelGroupKey(model.provider_id, model.model_id);
+  const group = filteredModelGroups.value.find((candidate) => candidate.key === key);
+  if (group === undefined || group.models.length < 2 || expandedModelGroupKeys.value.has(key))
+    return;
+  expandedModelGroupKeys.value = new Set([...expandedModelGroupKeys.value, key]);
+}
+
+function toggleModelGroup(group: ModelGroup<WebsiteModel>): void {
+  const expanded = expandedModelGroupKeys.value.has(group.key);
+  const next = new Set(expandedModelGroupKeys.value);
+  if (expanded) {
+    next.delete(group.key);
+    const selected = selectedModel.value;
+    if (
+      selected !== undefined &&
+      modelGroupKey(selected.provider_id, selected.model_id) === group.key
+    )
+      selectedModelUid.value = undefined;
+  } else {
+    next.add(group.key);
+  }
+  expandedModelGroupKeys.value = next;
 }
 
 function handleShortcut(event: KeyboardEvent): void {
@@ -347,41 +395,55 @@ function toggleTheme(): void {
 }
 
 async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
-  detailRequest = model?.detail_ref ?? "";
-  modelDetail.value = undefined;
-  detailError.value = undefined;
+  detailRequest = model?.uid ?? "";
+  detailsState.detail = undefined;
+  detailsState.error = undefined;
   if (model === undefined) {
-    detailLoading.value = false;
+    detailsState.loading = false;
     return;
   }
-  const reference = model.detail_ref;
+  const reference = model.uid;
   const cached = detailCache.get(reference);
   if (cached !== undefined) {
-    modelDetail.value = cached;
-    detailLoading.value = false;
+    detailsState.detail = cached;
+    detailsState.loading = false;
     return;
   }
-  detailLoading.value = true;
+  detailsState.loading = true;
   try {
-    const response = await fetch(`/ui/models/${reference}.json`, {
-      cache: "no-cache",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) throw new Error(`Model detail request failed with ${response.status}`);
-    const detail = websiteModelDetailSchema.parse(await response.json());
-    if (detail.model_ref !== model.uid)
-      throw new Error("Model detail response belongs to another model");
+    await afterFirstPaint();
+    const detail = await loadWebsiteModelDetail(props.catalog.data_version, model);
     detailCache.set(reference, detail);
-    if (detailRequest === reference) modelDetail.value = detail;
+    if (detailRequest === reference) detailsState.detail = detail;
   } catch (error) {
     if (detailRequest === reference)
-      detailError.value = error instanceof Error ? error.message : "Model details unavailable";
+      detailsState.error = error instanceof Error ? error.message : "Model details unavailable";
   } finally {
-    if (detailRequest === reference) detailLoading.value = false;
+    if (detailRequest === reference) detailsState.loading = false;
   }
 }
 
-watch(selectedModel, (model) => void loadModelDetail(model), { immediate: true });
+detailsState.close = () => {
+  selectedModelUid.value = undefined;
+};
+detailsState.navigate = selectRelativeModel;
+
+watch(
+  selectedModel,
+  (model) => {
+    detailsState.model = model;
+    detailsState.providerName = model === undefined ? "" : providerName(model.provider_id);
+    void loadModelDetail(model);
+  },
+  { immediate: true },
+);
+watch(
+  [selectedModel, filteredModelGroups],
+  ([model]) => {
+    if (model !== undefined) ensureModelGroupExpanded(model);
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   reconcileRouteSelections();
@@ -396,6 +458,31 @@ onMounted(() => {
   }
   updateVirtualRange();
   syncRoute();
+  void afterFirstPaint().then(() => {
+    void import("./details-app.ts")
+      .then(({ mountDetailsApp }) => mountDetailsApp())
+      .catch((error: unknown) => console.error(error));
+    const pricingRequest = loadWebsitePricing(props.catalog.data_version, models.value.length);
+    preloadWebsiteDetails(models.value);
+    void pricingRequest
+      .then((pricing) => {
+        pricing.forEach((summary, index) => {
+          const model = models.value[index];
+          if (model !== undefined) model.pricing = summary;
+        });
+      })
+      .catch((error: unknown) => {
+        console.error(error);
+        const unavailable: WebsitePricingSummary = {
+          outcome: "unknown",
+          status: {
+            label: "Unknown",
+            description: "Representative pricing could not be loaded.",
+          },
+        };
+        for (const model of models.value) model.pricing = unavailable;
+      });
+  });
 });
 
 onUnmounted(() => {
@@ -414,14 +501,14 @@ onUnmounted(() => {
     </h1>
     <div class="header-actions">
       <span class="catalog-summary" aria-label="Catalog summary">
-        <strong>{{ formatCount(models.length) }}</strong>
+        <strong>{{ formatCount(allModelGroups.length) }}</strong>
         models
         <span aria-hidden="true">·</span>
         <strong>{{ providers.length }}</strong>
         providers
       </span>
       <time class="generated-at" :datetime="generatedAt"> Updated {{ generatedAtLabel }} </time>
-      <a class="json-link" href="/catalog/index.json">
+      <a class="json-link" href="/catalog/models.json">
         Catalog JSON
         <UiIcon name="external-link" />
       </a>
@@ -595,7 +682,7 @@ onUnmounted(() => {
             <p>No observed models match these filters.</p>
             <button v-if="hasFilters" type="button" @click="resetFilters">Clear filters</button>
           </div>
-          <table v-else class="model-table" :aria-rowcount="filteredModels.length + 1">
+          <table v-else class="model-table" :aria-rowcount="tableRows.length + 1">
             <caption class="visually-hidden">
               Observed models and representative published rates
             </caption>
@@ -680,20 +767,34 @@ onUnmounted(() => {
               <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="10" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
               </tr>
-              <ModelRow
-                v-for="(model, index) in virtualModels"
-                :key="model.uid"
-                :model="model"
-                :provider-name="providerName(model.provider_id)"
-                :row-index="virtualRange.start + index + 2"
-                :selected="selectedModelUid === model.uid"
-                :show-version-badge="versionBadgeUids.has(model.uid)"
-                @select="selectedModelUid = $event.uid"
-                @filter-provider="selectedProvider = $event"
-                @filter-task="selectedTasks = [$event]"
-                @filter-lifecycle="selectedLifecycles = [$event]"
-                @filter-release-stage="selectedReleaseStages = [$event]"
-              />
+              <template v-for="(row, index) in virtualRows" :key="row.key">
+                <ModelGroupRow
+                  v-if="row.kind === 'group'"
+                  :group="row.group"
+                  :provider-name="providerName(row.group.provider_id)"
+                  :row-index="virtualRange.start + index + 2"
+                  :expanded="expandedModelGroupKeys.has(row.group.key)"
+                  @toggle="toggleModelGroup(row.group)"
+                  @filter-provider="selectedProvider = $event"
+                  @filter-task="selectedTasks = [$event]"
+                  @filter-lifecycle="selectedLifecycles = [$event]"
+                  @filter-release-stage="selectedReleaseStages = [$event]"
+                />
+                <ModelRow
+                  v-else
+                  :model="row.model"
+                  :provider-name="providerName(row.model.provider_id)"
+                  :row-index="virtualRange.start + index + 2"
+                  :selected="selectedModelUid === row.model.uid"
+                  :show-version-badge="versionBadgeUids.has(row.model.uid)"
+                  :nested="row.nested"
+                  @select="selectedModelUid = $event.uid"
+                  @filter-provider="selectedProvider = $event"
+                  @filter-task="selectedTasks = [$event]"
+                  @filter-lifecycle="selectedLifecycles = [$event]"
+                  @filter-release-stage="selectedReleaseStages = [$event]"
+                />
+              </template>
               <tr v-if="virtualRange.paddingAfter > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="10" :style="{ height: `${virtualRange.paddingAfter}px` }"></td>
               </tr>
@@ -703,14 +804,4 @@ onUnmounted(() => {
       </div>
     </section>
   </main>
-
-  <ModelDetails
-    :model="selectedModel"
-    :provider-name="selectedModel ? providerName(selectedModel.provider_id) : ''"
-    :detail="modelDetail"
-    :loading="detailLoading"
-    :error="detailError"
-    @close="selectedModelUid = undefined"
-    @navigate="selectRelativeModel"
-  />
 </template>

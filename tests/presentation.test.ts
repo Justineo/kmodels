@@ -64,6 +64,7 @@ describe("version presentation", () => {
     const values: ProviderModel[] = [
       { ...base, uid: "azure/model@1", provider_id: "azure", version: "1" },
       { ...base, uid: "azure/model@2", provider_id: "azure", version: "2" },
+      { ...base, uid: "azure/model", provider_id: "azure" },
       { ...base, uid: "openai/model", provider_id: "openai", version: "2026-01-01" },
       {
         ...base,
@@ -74,7 +75,11 @@ describe("version presentation", () => {
       },
     ];
 
-    expect([...versionBadgeModelUids(values)].sort()).toEqual(["azure/model@1", "azure/model@2"]);
+    expect([...versionBadgeModelUids(values)].sort()).toEqual([
+      "azure/model",
+      "azure/model@1",
+      "azure/model@2",
+    ]);
   });
 });
 

@@ -21,7 +21,14 @@ Status: implemented
   when it exactly repeats the display name, while retaining a distinct version.
   Keep task, delivery, limits, dates, availability, modalities, supported
   capabilities, endpoints, and pricing in their respective sections.
-- Show `@version` in a dense row only when the same provider has duplicate exact model IDs. Always show the complete version in details and JSON.
+- Keep single-variant provider models as one ordinary row. When the filtered
+  result contains multiple exact versions of one `(provider_id, model_id)`,
+  show one collapsed parent row with the variant count. A parent cell shows an
+  exact value only when every visible variant agrees; otherwise it says
+  `Varies`. Expanding inserts the exact variants as fixed-height child rows, and
+  selecting a child opens its details. Never infer or label a latest version
+  from version spelling. Always show the complete version in child details and
+  JSON.
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
 - Shared pricing headings stay generic because meter and unit are row-specific.
@@ -133,17 +140,39 @@ Status: implemented
 - Keep historical key `o` for shared URL compatibility even though the field is now `tasks`.
 - Use stable one-character enum/sort codes and omit defaults.
 - Replace the current history entry on state changes; `popstate` restores visited state.
-- Theme is local preference. Popover visibility and scroll positions are transient.
-- The browser loads `/ui/catalog/index.json`, which contains only row, search,
-  filter, sort, and representative-price fields. Opening a model lazily loads
-  one `/ui/models/<model-ref-hash>.json` detail asset. These UI projections exclude
-  source records, observations, locators, raw source values, derivations,
-  evidence arrays, and canonical envelope hashes. They retain only the displayed
-  provider-snapshot freshness label.
-- `/catalog/index.json` and `/pricing/index.json` are explicit download links,
-  not application dependencies. Build-time pair validation establishes their
-  binding before UI assets are emitted; the browser validates only the closed UI
-  schemas it consumes. Revalidate browser caches for UI requests.
+- Theme is local preference. Version-group expansion, popover visibility, and
+  scroll positions are transient.
+- The browser's only first-render data dependency is
+  `/ui/catalog/index.json`. It contains provider labels and only the model
+  fields needed for rows, grouping, search, filters, and sorting. Browser-only
+  UIDs are derived from the exact tuple; representative pricing, `updated_date`,
+  inspector facts, audit fields, and random per-model references do not inflate
+  this payload.
+- Immediately after the first rendered frame, start `/ui/catalog/pricing.json`
+  and every detail-chunk request. Detail assets are provider-scoped,
+  deterministic chunks capped at 2 MiB uncompressed; large providers may own
+  several numbered chunks. Consume each response into a `Blob`, so opening the
+  inspector reuses an already completed or in-flight request without retaining
+  every JSON document as parsed objects. Parsing remains bounded to the selected
+  chunk.
+- Use one `data_version` derived from the accepted catalog/pricing pair on the
+  catalog, pricing-summary, and detail-chunk projections. Reject mismatched
+  deferred assets in the browser.
+- Keep the initial catalog parser small and dependency-free. Load the full
+  closed-schema validator, inspector component, inspector CSS, and
+  OverlayScrollbars runtime/CSS asynchronously after the first frame. Static
+  Vue dependencies are split into a cacheable, module-preloaded chunk; deferred
+  chunks must not be module-preloaded by the HTML shell. Mount the deferred
+  inspector into its dedicated second Vapor root and share only a small reactive
+  state object with the catalog root.
+- All UI projections exclude source records, observations, locators, raw source
+  values, derivations, evidence arrays, and canonical audit-envelope metadata.
+  They retain only displayed semantics and provider-snapshot freshness copy.
+- `/catalog/models.json` is the header's default catalog download.
+  `/catalog/ids.json`, the audit-rich `/catalog/index.json`, and
+  `/pricing/index.json` remain explicit public downloads, not application
+  dependencies. Build-time pair validation establishes their binding before UI
+  assets are emitted. Revalidate browser caches for UI requests.
 
 ## Visual system
 

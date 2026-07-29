@@ -5,10 +5,13 @@ import { readPricingMirrorSource } from "../src/catalog/pricing-publication.ts";
 import { pricingCatalogEnvelopeSchema } from "../src/catalog/pricing-schema.ts";
 import { catalogSchema, migrateCatalogStorage } from "../src/catalog/schema.ts";
 import {
-  websiteCatalog,
+  WEBSITE_DETAIL_CHUNK_MAX_BYTES,
+  hydrateWebsiteCatalog,
   websiteModelDetail,
-  websiteModelDetails,
+  websitePublication,
 } from "../src/catalog/website-data.ts";
+
+const dataVersion = "1".repeat(64);
 
 const auditFields = new Set([
   "atom_contract_hash",
@@ -59,14 +62,37 @@ async function generatedData() {
   };
 }
 
-describe("website data", () => {
-  it("keeps initial catalog data compact and excludes audit fields", async () => {
-    const { catalog, pricing } = await generatedData();
-    const website = websiteCatalog(catalog, pricing);
-    const source = JSON.stringify(website);
+let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefined;
 
-    expect(Buffer.byteLength(source)).toBeLessThan(2 * 1024 * 1024);
-    expect(foundAuditFields(JSON.parse(source))).toEqual([]);
+async function loadGeneratedPublication() {
+  const { catalog, pricing } = await generatedData();
+  return {
+    catalog,
+    publication: websitePublication(catalog, pricing, dataVersion),
+  };
+}
+
+function publicationData() {
+  generatedPublication ??= loadGeneratedPublication();
+  return generatedPublication;
+}
+
+describe("website data", () => {
+  it("keeps the initial catalog minimal and publishes pricing separately", async () => {
+    const { publication } = await publicationData();
+    const catalogSource = JSON.stringify(publication.catalog);
+    const pricingSource = JSON.stringify(publication.pricing);
+    const website = hydrateWebsiteCatalog(publication.catalog, publication.pricing.pricing);
+
+    expect(Buffer.byteLength(catalogSource)).toBeLessThan(1024 * 1024);
+    expect(Buffer.byteLength(pricingSource)).toBeLessThan(1024 * 1024);
+    expect(foundAuditFields(JSON.parse(catalogSource))).toEqual([]);
+    expect(foundAuditFields(JSON.parse(pricingSource))).toEqual([]);
+    expect(publication.catalog.models[0]).not.toHaveProperty("uid");
+    expect(publication.catalog.models[0]).not.toHaveProperty("pricing");
+    expect(publication.catalog.models[0]).not.toHaveProperty("detail_ref");
+    expect(publication.catalog.data_version).toBe(dataVersion);
+    expect(publication.pricing.data_version).toBe(dataVersion);
     expect(
       website.models.find(
         ({ uid }) => uid === "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -79,19 +105,24 @@ describe("website data", () => {
     expect(
       website.models.find(({ uid }) => uid === "openai/gpt-5.2-pro")?.pricing.status,
     ).toBeUndefined();
-  });
+  }, 15_000);
 
-  it("publishes audit-free model details as lazy assets", async () => {
-    const { catalog, pricing } = await generatedData();
-    const details = websiteModelDetails(catalog, pricing);
-    expect(details.size).toBe(catalog.models.length);
-    expect(foundAuditFields([...details.values()])).toEqual([]);
+  it("publishes audit-free details in bounded provider chunks", async () => {
+    const { catalog, publication } = await publicationData();
+    const details = publication.details.flatMap((chunk) => chunk.details);
+    expect(details).toHaveLength(catalog.models.length);
+    expect(publication.details.length).toBeLessThan(catalog.models.length);
     expect(
-      [...details.values()].find(
+      Math.max(...publication.details.map((chunk) => Buffer.byteLength(JSON.stringify(chunk)))),
+    ).toBeLessThanOrEqual(WEBSITE_DETAIL_CHUNK_MAX_BYTES);
+    expect(new Set(details.map(({ model_ref }) => model_ref)).size).toBe(catalog.models.length);
+    expect(foundAuditFields(details)).toEqual([]);
+    expect(
+      details.find(
         ({ model_ref }) => model_ref === "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
       )?.pricing?.offers.length,
     ).toBeGreaterThan(0);
-    const bedrockOffer = [...details.values()].find(
+    const bedrockOffer = details.find(
       ({ model_ref }) => model_ref === "amazon-bedrock/amazon.nova-2-lite-v1:0",
     )?.pricing?.offers[0];
     expect(bedrockOffer).toMatchObject({
@@ -102,11 +133,11 @@ describe("website data", () => {
     expect(Object.keys(bedrockOffer ?? {})).not.toContain("book_title");
     expect(Object.keys(bedrockOffer ?? {})).not.toContain("mode");
     expect(
-      [...details.values()]
+      details
         .find(({ model_ref }) => model_ref === "mistral/codestral-embed-2505@25.05")
         ?.pricing?.offers.flatMap(({ rates }) => rates.map(({ amount }) => amount)),
     ).toContain("$0.075");
-  });
+  }, 15_000);
 
   it("projects a retained provider failure without audit details", () => {
     const verifiedAt = "2026-07-27T00:00:00.000Z";

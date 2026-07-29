@@ -1,5 +1,4 @@
 import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
-import { sha256 } from "./io.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import {
   displayUnitPrice,
@@ -25,54 +24,164 @@ import type {
 } from "./pricing-schema.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
 import {
-  websiteCatalogSchema,
+  websiteCatalogIndexSchema,
+  websiteDetailChunkSchema,
   websiteModelDetailSchema,
   websitePricingDetailSchema,
+  websitePricingSummariesSchema,
   type WebsiteCatalog,
+  type WebsiteCatalogIndex,
+  type WebsiteDetailChunk,
   type WebsiteModelDetail,
   type WebsitePricingDetail,
   type WebsitePricingOffer,
   type WebsitePricingSelector,
+  type WebsitePricingSummaries,
 } from "./website-schema.ts";
 
-export function websiteCatalog(catalog: Catalog, pricing: PricingCatalog): WebsiteCatalog {
-  return websiteCatalogSchema.parse({
-    generated_at: catalog.generated_at,
-    providers: catalog.providers.map(({ id, name }) => ({ id, name })),
-    models: catalog.models.map((model) => ({
-      provider_id: model.provider_id,
-      model_id: model.model_id,
-      ...(model.version === undefined ? {} : { version: model.version }),
-      uid: model.uid,
-      name: model.name,
-      tasks: model.tasks,
-      ...(model.limits.context_tokens === undefined
-        ? {}
-        : { context_tokens: model.limits.context_tokens }),
-      ...(model.release_date === undefined ? {} : { release_date: model.release_date }),
-      ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
-      status: model.status,
-      release_stage: model.release_stage,
-      detail_ref: websiteDetailRef(model.uid),
-      pricing: pricingSummary(pricing, model),
-    })),
-  });
+export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
+const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
+const textEncoder = new TextEncoder();
+
+export interface WebsitePublication {
+  catalog: WebsiteCatalogIndex;
+  pricing: WebsitePricingSummaries;
+  details: WebsiteDetailChunk[];
 }
 
-export function websiteModelDetails(
+export function websitePublication(
   catalog: Catalog,
   pricing: PricingCatalog,
-): Map<string, WebsiteModelDetail> {
-  return new Map(
-    catalog.models.map((model) => [
-      websiteDetailRef(model.uid),
-      websiteModelDetail(pricing, model),
-    ]),
+  dataVersion: string,
+): WebsitePublication {
+  const details = websiteDetailChunks(catalog, pricing, dataVersion);
+  const detailChunkByModel = new Map(
+    details.flatMap(({ chunk, details: chunkDetails }) =>
+      chunkDetails.map((detail): [string, number] => [detail.model_ref, chunk]),
+    ),
   );
+
+  return {
+    catalog: websiteCatalogIndexSchema.parse({
+      schema_version: 1,
+      data_version: dataVersion,
+      generated_at: catalog.generated_at,
+      providers: catalog.providers.map(({ id, name }) => ({ id, name })),
+      models: catalog.models.map((model) => {
+        const detailChunk = detailChunkByModel.get(model.uid);
+        if (detailChunk === undefined)
+          throw new Error(`Missing website detail chunk for ${model.uid}`);
+        return {
+          provider_id: model.provider_id,
+          model_id: model.model_id,
+          ...(model.version === undefined ? {} : { version: model.version }),
+          name: model.name,
+          tasks: model.tasks,
+          ...(model.limits.context_tokens === undefined
+            ? {}
+            : { context_tokens: model.limits.context_tokens }),
+          ...(model.release_date === undefined ? {} : { release_date: model.release_date }),
+          status: model.status,
+          release_stage: model.release_stage,
+          detail_chunk: detailChunk,
+        };
+      }),
+    }),
+    pricing: websitePricingSummariesSchema.parse({
+      schema_version: 1,
+      data_version: dataVersion,
+      pricing: catalog.models.map((model) => pricingSummary(pricing, model)),
+    }),
+    details,
+  };
 }
 
-export function websiteDetailRef(modelRef: string): string {
-  return sha256(modelRef);
+function websiteDetailChunks(
+  catalog: Catalog,
+  pricing: PricingCatalog,
+  dataVersion: string,
+): WebsiteDetailChunk[] {
+  const chunks: WebsiteDetailChunk[] = [];
+
+  for (const provider of catalog.providers) {
+    const providerDetails = catalog.models
+      .filter((model) => model.provider_id === provider.id)
+      .map((model) => {
+        const detail = websiteModelDetail(pricing, model);
+        return {
+          detail,
+          bytes: textEncoder.encode(JSON.stringify(detail)).byteLength,
+        };
+      });
+    let chunkDetails: WebsiteModelDetail[] = [];
+    let payloadBytes = 0;
+    let chunk = 0;
+
+    function emitChunk(): void {
+      if (chunkDetails.length === 0) return;
+      const detailChunk = websiteDetailChunkSchema.parse({
+        schema_version: 1,
+        data_version: dataVersion,
+        provider_id: provider.id,
+        chunk,
+        details: chunkDetails,
+      });
+      const bytes = textEncoder.encode(JSON.stringify(detailChunk)).byteLength;
+      if (bytes > WEBSITE_DETAIL_CHUNK_MAX_BYTES)
+        throw new Error(
+          `Website detail chunk ${provider.id}/${chunk} exceeds ${WEBSITE_DETAIL_CHUNK_MAX_BYTES} bytes`,
+        );
+      chunks.push(detailChunk);
+      chunk += 1;
+      chunkDetails = [];
+      payloadBytes = 0;
+    }
+
+    for (const entry of providerDetails) {
+      const separatorBytes = chunkDetails.length === 0 ? 0 : 1;
+      if (
+        chunkDetails.length > 0 &&
+        payloadBytes + separatorBytes + entry.bytes > WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES
+      )
+        emitChunk();
+      chunkDetails.push(entry.detail);
+      payloadBytes += (chunkDetails.length === 1 ? 0 : 1) + entry.bytes;
+    }
+    emitChunk();
+  }
+
+  return chunks;
+}
+
+export function hydrateWebsiteCatalog(
+  catalog: WebsiteCatalogIndex,
+  pricing: WebsitePricingSummaries["pricing"],
+): WebsiteCatalog {
+  if (catalog.models.length !== pricing.length)
+    throw new Error("Website catalog and pricing row counts do not match");
+  return {
+    ...catalog,
+    models: catalog.models.map((model, index) => {
+      const summary = pricing[index];
+      if (summary === undefined) throw new Error(`Missing website pricing row ${index}`);
+      return {
+        ...model,
+        uid: `${model.provider_id}/${model.model_id}${
+          model.version === undefined ? "" : `@${model.version}`
+        }`,
+        pricing: summary,
+      };
+    }),
+  };
+}
+
+export function websiteCatalog(
+  catalog: Catalog,
+  pricing: PricingCatalog,
+  dataVersion: string,
+): WebsiteCatalog {
+  const publication = websitePublication(catalog, pricing, dataVersion);
+  return hydrateWebsiteCatalog(publication.catalog, publication.pricing.pricing);
 }
 
 function pricingSummary(pricing: PricingCatalog, model: ProviderModel) {
@@ -155,6 +264,7 @@ export function websiteModelDetail(
   const pricingDetail = websitePricingDetail(pricing, model);
   return websiteModelDetailSchema.parse({
     model_ref: model.uid,
+    ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
     ...(model.description === undefined ? {} : { description: model.description }),
     ...(model.delivery_modes === undefined ? {} : { delivery_modes: model.delivery_modes }),
     ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),

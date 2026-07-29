@@ -217,7 +217,7 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
                 </div>
                 <div>
                   <dt>Updated</dt>
-                  <dd>{{ model.updated_date ?? "Unknown" }}</dd>
+                  <dd>{{ detail?.updated_date ?? "Unknown" }}</dd>
                 </div>
                 <div>
                   <dt>Availability</dt>

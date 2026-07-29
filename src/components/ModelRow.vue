@@ -22,6 +22,7 @@ const props = defineProps<{
   rowIndex: number;
   selected: boolean;
   showVersionBadge: boolean;
+  nested?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -55,7 +56,13 @@ function filterStatus(): void {
 </script>
 
 <template>
-  <tr class="model-row" :aria-rowindex="rowIndex" :aria-selected="selected" :data-status="status">
+  <tr
+    class="model-row"
+    :aria-rowindex="rowIndex"
+    :aria-selected="selected"
+    :data-status="status"
+    :data-nested="nested ? 'true' : undefined"
+  >
     <td class="model-col">
       <div class="model-cell">
         <button
@@ -68,14 +75,22 @@ function filterStatus(): void {
           <code>{{ model.model_id }}</code>
         </button>
         <UiTooltip
-          v-if="showVersionBadge && model.version"
+          v-if="showVersionBadge"
           as="button"
           type="button"
           class="version-badge"
-          :content="`Provider model version ${model.version}`"
-          :aria-label="`Provider model version ${model.version}`"
+          :content="
+            model.version === undefined
+              ? 'Provider did not publish a separate version for this record'
+              : `Provider model version ${model.version}`
+          "
+          :aria-label="
+            model.version === undefined
+              ? 'Provider model record without a separate version'
+              : `Provider model version ${model.version}`
+          "
         >
-          @{{ model.version }}
+          {{ model.version === undefined ? "unversioned" : `@${model.version}` }}
         </UiTooltip>
       </div>
     </td>
