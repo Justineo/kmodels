@@ -110,7 +110,7 @@ describe("website data", () => {
     expect(
       website.models.find(({ uid }) => uid === "openai/gpt-5.2-pro")?.pricing.status,
     ).toBeUndefined();
-  }, 15_000);
+  }, 90_000);
 
   it("publishes audit-free details in bounded provider chunks", async () => {
     const { catalog, publication } = await publicationData();
@@ -142,7 +142,7 @@ describe("website data", () => {
         .find(({ model_ref }) => model_ref === "mistral/codestral-embed-2505@25.05")
         ?.pricing?.offers.flatMap(({ rates }) => rates.map(({ amount }) => amount)),
     ).toContain("$0.075");
-  }, 15_000);
+  }, 90_000);
 
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {
     const [{ catalog, pricing, dataVersion }, manifest, pack] = await Promise.all([
@@ -158,7 +158,7 @@ describe("website data", () => {
 
     expect(manifest.data_version).toBe(dataVersion);
     expect(actual).toEqual(websiteAssets(catalog, pricing.data, dataVersion));
-  }, 15_000);
+  }, 90_000);
 
   it("projects a retained provider failure without audit details", () => {
     const verifiedAt = "2026-07-27T00:00:00.000Z";

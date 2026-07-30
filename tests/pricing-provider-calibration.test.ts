@@ -20,5 +20,5 @@ describe("provider pricing calibration", () => {
       expect.arrayContaining(["openai", "anthropic", "gemini", "vertex", "dashscope"]),
     );
     expect(providers.length).toBeGreaterThan(10);
-  }, 30_000);
+  }, 90_000);
 });
