@@ -70,7 +70,7 @@ jobs:
 
       - name: Commit validated changes
         run: |
-          git add data/catalog.json data/pricing.json.gz data/fetch-state.json data/quarantine.json data/refresh-summary.json
+          git add data/catalog.json data/pricing.json.gz data/pricing-inputs.json.gz data/website-assets.json data/website-assets.pack data/export-assets.json data/export-assets.pack data/fetch-state.json data/quarantine.json data/refresh-summary.json
           if git diff --cached --quiet; then
             exit 0
           fi

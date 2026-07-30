@@ -23,7 +23,7 @@ This hierarchy is the minimum needed to preserve distinct offers, billing
 modes, meters, units, conditions, allowances, and unsupported public facts
 without expanding every observed combination into a model-local rate list.
 
-The durable assets are:
+The authoritative durable assets are:
 
 - `data/catalog.json`: providers, models, sources, coverage, and diagnostics;
 - `data/pricing.json.gz`: the gzip-compressed, content-bound canonical pricing envelope.
@@ -31,6 +31,37 @@ The durable assets are:
 They advance as one accepted pair. The canonical pricing endpoint is
 `/pricing/index.json`; catalog publication profiles are defined in
 [Catalog semantics](catalog.md).
+
+Pair publication also refreshes the derived UI and export packs described in
+[Collection](collection.md). They are delivery artifacts, not canonical pricing
+resources; the export-pack pricing entry decodes to the exact canonical
+envelope.
+
+## Local compilation
+
+Canonical pricing is compiled from a bounded intermediate input, not owned by
+the website renderer and not executable only inside a source refresh. A
+successful collection writes `data/pricing-inputs.json.gz` with the minimal
+public parsed facts needed by provider pricing assembly. `vp run
+compile:pricing` reads that input, reassembles every replayable provider,
+validates the complete canonical resource, advances the accepted pair, and
+regenerates its projections without network access.
+
+The canonical compilation input is bound to the exact catalog core, and each
+replay source records its content hash and extractor version. Provider snapshot
+metadata comes from the accepted canonical pair rather than being duplicated.
+The input stores no response bodies, descriptions, credentials,
+authenticated-source facts, or private identifiers. A provider whose complete
+pricing input cannot safely be persisted has no replay entry, so its accepted
+partition is carried through unchanged. Binding, source, extractor, ownership,
+provenance, completeness, or validation failures abort the compilation rather
+than publishing a partial result.
+
+This boundary permits canonical assembly, normalization, and validation changes
+to be evaluated locally at any time. Projection-only presentation changes use
+`vp run prepare:assets` and also need no refresh. A change to source parsing
+still needs a refresh, because Kmodels deliberately does not retain raw
+upstream bodies.
 
 ## Review boundary
 
@@ -110,12 +141,20 @@ The website is built from two closed projections:
 
 - `/ui/catalog/index.json` contains only fields needed to render, search,
   filter, sort, and show representative price cells;
-- `/ui/models/<model-ref-hash>.json` contains one selected model's display
-  details and compact price-book view.
+- `/ui/catalog/pricing.json` contains compact initial pricing summaries;
+- `/ui/details/<provider>/<chunk>.json` contains bounded deferred model details
+  and compact price-book views.
 
 The browser does not fetch the canonical catalog or pricing asset during normal
 application startup or model inspection. The canonical endpoints remain
 explicit download links.
+
+The development server follows the same boundary. A UI request opens only the
+pre-generated UI pack; an explicit catalog or pricing download opens only the
+export pack. Neither path recovers the canonical pair, and every response is an
+already compressed byte slice. Production build performs streaming
+decompression directly to `dist/`, so the 100+ MB decoded pricing resource is
+never materialized in the build heap.
 
 ## Scope
 
@@ -267,6 +306,9 @@ exact rational × denomination per canonical unit expression
 Rationals are non-negative, reduced fractions. Denominations are ISO fiat codes
 or provider-qualified credits. Unit expressions are products of bounded,
 positive-power unit factors.
+Adapters keep source prices as decimal strings. Scaling, multiplication,
+comparison, and canonical rational conversion use digit operations or `BigInt`,
+never binary floating-point arithmetic.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
@@ -381,6 +423,9 @@ pair and are never an input to collection or commercial comparison.
 All public objects are closed; unknown properties are rejected before limits,
 sorting, or hashing. Input must be valid I-JSON, contain only Unicode scalar
 values allowed by I-JSON, and use the schema's lossless numeric rules.
+The parsed-source boundary represents an absent optional pricing condition by
+omitting its property, even when a provider parser supplied it as `undefined`,
+so absent values never enter canonical sorting or hashing.
 
 RFC 8785 canonical JSON is used after semantic canonicalization. Set-like
 arrays have one schema-owned sort key and reject duplicate identities. Source
@@ -419,13 +464,21 @@ offers that can still apply.
 A numeric cell requires:
 
 - exactly one applicable base offer;
-- exactly one unconditional, validity-free `numeric` state after binding the
-  model and any categorical value required by every offer-state clause;
+- exactly one possibly applicable, validity-free `numeric` state after binding
+  the model and any categorical value required by every offer-state clause;
 - no possibly applicable raw `base_price` fact;
 - exactly one logical term for the first present meter in the slot's reviewed
   meter precedence;
-- unconditional, validity-free variants that agree on one exact fiat price;
+- validity-free variants that agree on one exact fiat price and whose combined
+  applicability covers the complete numeric-state scope;
 - a non-empty canonical unit expression.
+
+Unresolved selectors do not by themselves make a price variable. The table may
+project one context-qualified rate when every possible context in the numeric
+offer state is covered by that exact denomination, amount, and unit. Conditions
+remain in canonical pricing and model details; only the representative cell is
+collapsed. Partial coverage, unequal values, or a selector that changes the
+first applicable meter remains detail-only.
 
 If a higher-priority meter is present but ineligible, the slot fails closed
 rather than silently switching commercial meaning. Lower-priority meters remain

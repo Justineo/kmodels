@@ -9,6 +9,8 @@ import {
   parseSource,
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
+import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { decimalsEqual } from "../src/catalog/pricing.ts";
 import {
   curlResponse,
   linkedDocumentUrls,
@@ -565,6 +567,8 @@ describe("decimal normalization", () => {
     expect(scaleDecimal("1.25", 6)).toBe("1250000");
     expect(scaleDecimal("200000000", -10)).toBe("0.02");
     expect(multiplyDecimal("2.50", "1.25")).toBe("3.125");
+    expect(decimalsEqual("0.3000000000", "0.3")).toBe(true);
+    expect(decimalsEqual("0.30000000000000004", "0.3")).toBe(false);
   });
 });
 
@@ -2560,6 +2564,105 @@ describe("xAI adapter", () => {
 });
 
 describe("document adapter", () => {
+  it("reconciles endpoint-equivalent Marketplace and service token prices", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const models = await parsed("amazon-bedrock", "document/bedrock-sonnet-pricing.json");
+    const sonnet = models.find(
+      ({ model_id }) => model_id === "anthropic.claude-sonnet-4-20250514-v1:0",
+    );
+    if (sonnet === undefined) throw new Error("Missing Claude Sonnet 4 fixture model");
+    expect(
+      sonnet.price_facts
+        .filter(({ conditions }) => conditions.service_tier !== "batch")
+        .every(({ conditions }) => conditions.endpoint === undefined),
+    ).toBe(true);
+    expect(
+      sonnet.price_facts
+        .filter(({ conditions }) => conditions.service_tier === "batch")
+        .every(({ conditions }) => conditions.endpoint === "bedrock-runtime"),
+    ).toBe(true);
+
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+    );
+    const usage = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "usage");
+    const terms = usage?.terms ?? [];
+    expect(
+      terms
+        .map((term) => [
+          term.term_key,
+          term.kind === "rate" ? term.variants.length : 0,
+          term.kind === "rate" ? term.raw_variants.length : 0,
+        ])
+        .sort(([left], [right]) => String(left).localeCompare(String(right))),
+    ).toEqual([
+      ["cache_read_text", 2, 0],
+      ["cache_write_text", 2, 0],
+      ["input_text", 3, 0],
+      ["output_text", 3, 0],
+    ]);
+
+    const input = terms.find(({ term_key }) => term_key === "input_text");
+    if (input?.kind !== "rate") throw new Error("Missing input price term");
+    const standard = input.variants.find(({ observations }) =>
+      observations.some(({ raw }) => raw.amount === "0.0030000000"),
+    );
+    const longContext = input.variants.find(({ observations }) =>
+      observations.some(({ raw }) => raw.amount === "0.0060000000"),
+    );
+    const batch = input.variants.find(({ observations }) =>
+      observations.some(({ raw }) => raw.amount === "1.5000000000"),
+    );
+    expect(usage?.states.every(({ validity }) => validity === undefined)).toBe(true);
+    expect(
+      terms.every(
+        (term) =>
+          term.kind === "raw" || term.variants.every(({ validity }) => validity === undefined),
+      ),
+    ).toBe(true);
+    expect(standard?.observations.some(({ raw }) => raw.validity === "2026-07-01T00:00:00Z")).toBe(
+      true,
+    );
+    expect(standard?.applicability.any_of[0]?.all_of).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "decimal_range",
+          dimension: { namespace: "kmodels", value: "context_tokens" },
+          upper: { value: "200000", inclusive: true },
+        }),
+      ]),
+    );
+    expect(longContext?.applicability.any_of[0]?.all_of).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "decimal_range",
+          dimension: { namespace: "kmodels", value: "context_tokens" },
+          lower: { value: "200001", inclusive: true },
+        }),
+      ]),
+    );
+    expect(batch?.applicability.any_of[0]?.all_of).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: "service_tier" },
+          values: [
+            {
+              namespace: "provider",
+              provider_id: "amazon-bedrock",
+              value: "batch",
+            },
+          ],
+        }),
+      ]),
+    );
+  });
+
   it("pairs Bedrock display names with official endpoint model IDs", async () => {
     const models = await parsed("amazon-bedrock", "document/bedrock.json");
     expect(models.map(({ model_id, id_kind, name }) => ({ model_id, id_kind, name }))).toEqual([
@@ -2612,20 +2715,82 @@ describe("document adapter", () => {
     expect(models[0]?.release_date).toBe("2025-10-15");
     expect(models[0]?.capabilities.reasoning).toBe(true);
     expect(models[0]?.capabilities.prompt_cache).toBe(true);
-    expect(runtime?.price_facts).toEqual([
+    expect(runtime?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.8",
+          unit: "million_tokens",
+          raw_validity: "2026-07-01T00:00:00Z",
+          conditions: expect.objectContaining({
+            region: "us-east-1",
+            endpoint: "bedrock-runtime",
+            service_tier: "standard",
+          }),
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "1.0000000000",
+          conditions: expect.objectContaining({
+            deployment_scope: "global_cross_region",
+          }),
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.5000000000",
+          conditions: expect.objectContaining({
+            endpoint: "bedrock-runtime",
+            deployment_scope: "global_cross_region",
+            service_tier: "batch",
+          }),
+        }),
+        expect.objectContaining({
+          meter: "output_text",
+          price: "5.0000000000",
+          conditions: expect.objectContaining({
+            deployment_scope: "in_region",
+          }),
+        }),
+      ]),
+    );
+    expect(
+      runtime?.price_facts.every(({ conditions }) => conditions.effective_from === undefined),
+    ).toBe(true);
+    expect(mantle?.price_facts).toEqual([
       expect.objectContaining({
-        meter: "input_text",
-        price: "0.8",
-        unit: "million_tokens",
+        meter: "output_text",
+        price: "5.0000000000",
         conditions: expect.objectContaining({
-          region: "us-east-1",
-          endpoint: "bedrock-runtime",
-          service_tier: "standard",
+          deployment_scope: "in_region",
         }),
       }),
     ]);
     expect(models[2]?.status).toBe("legacy");
     expect(models[2]?.aliases).toEqual(["us.cohere.command-r-v1:0"]);
+  });
+
+  it("preserves an explicit Mantle endpoint on service token prices", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const input = (await fixture("document/bedrock.json"))
+      .replace('\\"offerCode\\":\\"AmazonBedrock\\"', '\\"offerCode\\":\\"AmazonBedrockService\\"')
+      .replace("USE1-ClaudeHaiku45-input-tokens", "USE1-ClaudeHaiku45-input-tokens-mantle");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: input,
+      observedAt,
+    });
+    const mantle = models.find((model) => model.model_id === "anthropic.claude-haiku-4-5");
+
+    expect(mantle?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "0.8",
+        conditions: expect.objectContaining({ endpoint: "bedrock-mantle" }),
+      }),
+    );
   });
 
   it("keeps API evidence positive and fails closed on unknown labels", async () => {

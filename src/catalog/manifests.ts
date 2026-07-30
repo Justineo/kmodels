@@ -465,7 +465,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v5",
+        extractorVersion: "bedrock-catalog-v6",
         fields: [
           "model_id",
           "name",

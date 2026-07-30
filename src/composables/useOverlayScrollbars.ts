@@ -1,6 +1,9 @@
-import type { OverlayScrollbars as OverlayScrollbarsInstance } from "overlayscrollbars";
+import {
+  OverlayScrollbars,
+  type OverlayScrollbars as OverlayScrollbarsInstance,
+} from "overlayscrollbars";
+import "overlayscrollbars/overlayscrollbars.css";
 import { onMounted, onUnmounted } from "vue";
-import { afterFirstPaint } from "../after-first-paint.ts";
 
 interface ScrollbarElements {
   target: HTMLElement | null;
@@ -9,12 +12,8 @@ interface ScrollbarElements {
 
 export function useOverlayScrollbars(elements: () => ScrollbarElements): () => void {
   let instance: OverlayScrollbarsInstance | undefined;
-  let disposed = false;
 
-  async function syncAsync(): Promise<void> {
-    await afterFirstPaint();
-    const { OverlayScrollbars } = await import("./overlayScrollbarsRuntime.ts");
-    if (disposed) return;
+  function sync(): void {
     const { target, viewport } = elements();
     if (target === null || viewport === null) {
       instance?.destroy();
@@ -43,14 +42,9 @@ export function useOverlayScrollbars(elements: () => ScrollbarElements): () => v
     );
   }
 
-  function sync(): void {
-    void syncAsync();
-  }
-
   onMounted(sync);
 
   onUnmounted(() => {
-    disposed = true;
     instance?.destroy();
   });
 

@@ -33,13 +33,14 @@ import type {
 import type { SourceManifest } from "./manifests.ts";
 import {
   sourcePriceFactSchema,
+  type ParsedPricingModel,
   type ParsedProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
 
 export interface ParsedPricingSource {
   source: SourceManifest;
-  models: ParsedProviderModel[];
+  models: ParsedPricingModel[];
 }
 
 export function isPricingSource(source: SourceManifest): boolean {
@@ -166,7 +167,7 @@ function adapterContext(
 function addModelPricing(
   context: AdapterContext,
   source: SourceManifest,
-  model: ParsedProviderModel,
+  model: ParsedPricingModel,
 ): void {
   for (const { sourceRate, normalizedRate } of normalizedSourceFacts(
     context.providerId,
@@ -183,7 +184,7 @@ function addModelPricing(
 function addState(
   context: AdapterContext,
   sourceRef: string,
-  model: ParsedProviderModel,
+  model: ParsedPricingModel,
   state: "custom_quote" | "not_published",
 ): void {
   const offer = offerBuilder(context, "usage");
@@ -205,7 +206,7 @@ function addState(
 function addRate(
   context: AdapterContext,
   sourceRef: string,
-  model: ParsedProviderModel,
+  model: ParsedPricingModel,
   sourceRate: SourcePriceFact,
   normalizedRate: SourcePriceFact,
 ): void {
@@ -752,7 +753,7 @@ function rawFact(rate: SourcePriceFact): RawPriceFact {
   };
 }
 
-function rateLocator(model: ParsedProviderModel, rate: SourcePriceFact): PriceSourceLocator {
+function rateLocator(model: ParsedPricingModel, rate: SourcePriceFact): PriceSourceLocator {
   return {
     kind: "provider_key",
     value: JSON.stringify([

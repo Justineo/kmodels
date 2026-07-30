@@ -25,6 +25,15 @@ import {
   recoverCatalogPair,
 } from "./pricing-publication.ts";
 import {
+  capturePricingReplaySources,
+  createPricingCompilationSnapshot,
+  readPricingCompilationSnapshot,
+  writePricingCompilationSnapshot,
+  type PricingCompilationSnapshot,
+  type PricingReplayProvider,
+  type PricingReplaySource,
+} from "./pricing-compilation.ts";
+import {
   failedPricingTransition,
   pricingTransitionProviderId,
   providerPartitionSourceRefs,
@@ -63,6 +72,7 @@ interface ProviderResult {
   coverage: Coverage;
   warnings: CatalogWarning[];
   pricing?: ProviderPricingPartition;
+  pricingReplaySources?: PricingReplaySource[];
   pricingFailure?: PricingRefreshFailureCode;
   quarantine?: { provider_id: string; checked_at: string; reason: string };
 }
@@ -638,6 +648,7 @@ async function collectProvider(
     );
     const provider = providerRecord(manifest, models, observedAt);
     let pricing: ProviderPricingPartition | undefined;
+    let pricingReplaySources: PricingReplaySource[] | undefined;
     let pricingFailure: PricingRefreshFailureCode | undefined;
     try {
       const expectedPricingSources = manifest.sources.filter(isRequiredPricingSource);
@@ -653,7 +664,7 @@ async function collectProvider(
         pricingSources,
         models,
       );
-      if (pricing !== undefined)
+      if (pricing !== undefined) {
         validatePricingCatalog(
           {
             provider_vocabularies: [pricing.vocabulary],
@@ -663,6 +674,16 @@ async function collectProvider(
           },
           { providers: [provider], models, sources: [...sourceById.values()] },
         );
+        try {
+          pricingReplaySources = capturePricingReplaySources(pricingSources, sources);
+        } catch (error) {
+          warnings.push({
+            code: "pricing_replay_input_invalid",
+            provider_id: manifest.provider.id,
+            message: message(error),
+          });
+        }
+      }
     } catch (error) {
       warnings.push({
         code: "pricing_invalid",
@@ -701,6 +722,7 @@ async function collectProvider(
       },
       warnings: [...warnings, ...missingFieldWarnings(manifest, candidate)],
       ...(pricing === undefined ? {} : { pricing }),
+      ...(pricingReplaySources === undefined ? {} : { pricingReplaySources }),
       ...(pricingFailure === undefined ? {} : { pricingFailure }),
     };
   } catch (error) {
@@ -733,6 +755,7 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   const acceptedPair = await recoverCatalogPair();
   const acceptedCatalog = acceptedPair?.catalog;
   const acceptedPricing = acceptedPair?.pricing.data ?? emptyPricingCatalog();
+  const previousPricingCompilation = await loadPreviousPricingCompilation(acceptedPair);
   const previous = options.rebuild ? undefined : acceptedCatalog;
   const stateValue = await readJson(join(rootDirectory, "data/fetch-state.json"));
   const stateResult = stateValue === undefined ? undefined : fetchStateSchema.safeParse(stateValue);
@@ -820,7 +843,19 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       safety_findings: options.pricingSafetyFindings ?? [],
     },
   );
-  await commitCatalogPair(prepareCatalogPair(composed.catalog, composed.pricing));
+  const candidate = prepareCatalogPair(composed.catalog, composed.pricing);
+  const pricingCompilation = createPricingCompilationSnapshot(
+    candidate,
+    pricingCompilationEntries(
+      candidate,
+      results,
+      pricingTransitions,
+      explicitProviders,
+      previousPricingCompilation,
+    ),
+  );
+  await writePricingCompilationSnapshot(pricingCompilation);
+  await commitCatalogPair(candidate);
   await writeJson(
     join(rootDirectory, "data/refresh-summary.json"),
     summarizeRefresh(
@@ -831,4 +866,41 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     ),
   );
   return composed.catalog;
+}
+
+async function loadPreviousPricingCompilation(
+  acceptedPair: Awaited<ReturnType<typeof recoverCatalogPair>>,
+): Promise<PricingCompilationSnapshot | undefined> {
+  if (acceptedPair === undefined) return undefined;
+  try {
+    return await readPricingCompilationSnapshot(acceptedPair);
+  } catch {
+    return undefined;
+  }
+}
+
+function pricingCompilationEntries(
+  candidate: ReturnType<typeof prepareCatalogPair>,
+  results: readonly ProviderResult[],
+  transitions: ReadonlyMap<string, ProviderPricingTransition>,
+  explicitProviders: ReadonlySet<string>,
+  previous: PricingCompilationSnapshot | undefined,
+): PricingReplayProvider[] {
+  const replaySources = new Map(
+    results.flatMap(({ provider, pricingReplaySources }) =>
+      pricingReplaySources === undefined ? [] : [[provider.id, pricingReplaySources] as const],
+    ),
+  );
+  const previousProviders = new Map(
+    previous?.providers.map((provider) => [provider.provider_id, provider]),
+  );
+  return candidate.pricing.data.provider_snapshots.flatMap(({ provider_id: providerId }) => {
+    const transition = transitions.get(providerId);
+    const sources = replaySources.get(providerId);
+    if (transition?.kind === "fresh" && !explicitProviders.has(providerId) && sources !== undefined)
+      return [{ provider_id: providerId, sources }];
+
+    const prior = previousProviders.get(providerId);
+    return transition?.kind === "failed" && prior !== undefined ? [prior] : [];
+  });
 }

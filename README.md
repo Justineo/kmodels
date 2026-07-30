@@ -12,10 +12,14 @@ The collector reads only the official hosts reviewed in `src/catalog/manifests.t
 
 ## Commands
 
-- `vp run collect` refreshes the durable catalog, pricing, and semantic summary in `data/`.
+- `vp run collect` refreshes the durable catalog, pricing, consumer projections, and semantic summary in `data/`.
+- `vp run compile:pricing` deterministically recompiles canonical pricing from
+  the latest public parsed pricing inputs without fetching upstream sources.
+- `vp run prepare:assets` regenerates UI and export projections from the
+  accepted catalog/pricing pair without collecting or recompiling canonical data.
 - `vp check` formats, lints and type-checks.
 - `vp test --run` replays adapter fixtures and drift checks.
-- `vp run build` builds the site and derives its static JSON endpoints in `dist/`.
+- `vp run build` builds the site and materializes its validated JSON projections in `dist/`.
 - `vp run deploy` deploys the prebuilt `dist/` directory to Void.
 
 ## Automation

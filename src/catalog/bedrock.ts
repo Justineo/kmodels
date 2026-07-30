@@ -5,7 +5,7 @@ import { modelIdSchema } from "./identity.ts";
 import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, scaleDecimal } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   modalitySchema,
@@ -677,18 +677,26 @@ function tier(attributes: Record<string, string>, text: string): string | undefi
   if (/standard|on-demand/.test(value)) return "standard";
 }
 
+function priceDeploymentType(text: string): DeploymentType {
+  const lower = text.toLowerCase();
+  if (/cross-region-global|[_ -]global(?:[_ -]|$)/.test(lower)) return "global";
+  if (/cross-region-geo|[_ -]geo(?:[_ -]|$)/.test(lower)) return "geo";
+  return "in-region";
+}
+
 function conditions(
   attributes: Record<string, string>,
   text: string,
-  effectiveDate: string | undefined,
   endpoint: string | undefined,
 ): SourcePriceFact["conditions"] {
   const lower = text.toLowerCase();
-  const deploymentScope = /cross-region-global|[_ -]global(?:[_ -]|$)/.test(lower)
-    ? "global_cross_region"
-    : /cross-region-geo|[_ -]geo(?:[_ -]|$)/.test(lower)
-      ? "geo_cross_region"
-      : "in_region";
+  const deploymentType = priceDeploymentType(lower);
+  const deploymentScope =
+    deploymentType === "global"
+      ? "global_cross_region"
+      : deploymentType === "geo"
+        ? "geo_cross_region"
+        : "in_region";
   const serviceTier = tier(attributes, lower);
   const capacity = /input.*(?:tokens per minute|tpm)|inputtpm/.test(lower)
     ? "input_tokens_per_minute"
@@ -717,12 +725,10 @@ function conditions(
     operation,
     resolution,
     quality,
-    effective_from: effectiveDate?.slice(0, 10),
   };
 }
 
 function rate(
-  offerCode: z.infer<typeof priceListSchema>["offerCode"],
   attributes: Record<string, string>,
   description: string,
   unit: string,
@@ -730,19 +736,14 @@ function rate(
   effectiveDate: string | undefined,
   tasks: ModelTask[],
   sourceId: string,
+  endpoint: BedrockModelEndpoint | undefined,
 ): SourcePriceFact | undefined {
   const usage = attributes.usagetype ?? "";
   const text =
     `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
   if (/\bcustom\b|customization|training|storage/.test(text)) return undefined;
   const observedMeter = meter(text, tasks);
-  const endpoint =
-    offerCode === "AmazonBedrockFoundationModels"
-      ? undefined
-      : usage.toLowerCase().includes("mantle")
-        ? "bedrock-mantle"
-        : "bedrock-runtime";
-  const rateConditions = conditions(attributes, text, effectiveDate, endpoint);
+  const rateConditions = conditions(attributes, text, endpoint);
   let normalizedUnit: SourcePriceFact["unit"] | undefined;
   let normalizedPrice = price;
   let derived = false;
@@ -798,7 +799,34 @@ function rate(
     derivation: derived ? "source price per 1K tokens × 1,000" : undefined,
     raw_price: price,
     raw_unit: unit,
+    ...(effectiveDate === undefined ? {} : { raw_validity: effectiveDate }),
   };
+}
+
+function priceTargets(
+  card: Card,
+  offerCode: z.infer<typeof priceListSchema>["offerCode"],
+  usage: string,
+): { ids: string[]; endpoint: BedrockModelEndpoint | undefined } {
+  const deploymentType = priceDeploymentType(usage);
+  const lower = usage.toLowerCase();
+  const onDemandToken = /token/.test(lower) && !/batch|reserved|provisioned|tpm/.test(lower);
+  const marketplaceToken = offerCode === "AmazonBedrockFoundationModels" && onDemandToken;
+  const endpointNeutral =
+    marketplaceToken ||
+    (offerCode === "AmazonBedrockService" && onDemandToken && !lower.includes("mantle"));
+  const endpoint =
+    offerCode === "AmazonBedrockFoundationModels" || !lower.includes("mantle")
+      ? "bedrock-runtime"
+      : "bedrock-mantle";
+  const ids = [...card.ids]
+    .filter(
+      ([, value]) =>
+        value.deploymentTypes.has(deploymentType) &&
+        (marketplaceToken || value.endpoints.has(endpoint)),
+    )
+    .map(([id]) => id);
+  return { ids, endpoint: endpointNeutral ? undefined : endpoint };
 }
 
 function addRate(
@@ -808,7 +836,7 @@ function addRate(
 ): void {
   const key = `${next.meter}:${next.currency}:${next.unit}:${JSON.stringify(next.conditions)}`;
   const current = rates.get(key);
-  if (current !== undefined && current.price !== next.price)
+  if (current !== undefined && !decimalsEqual(current.price, next.price))
     throw new Error(
       `Bedrock price conflict for ${modelId}: ${current.price} and ${next.price} at ${key}`,
     );
@@ -1086,22 +1114,13 @@ function parsePrices(
       if (label === undefined) continue;
       const card = modelForProduct(cards, label, usage);
       if (card === undefined) continue;
-      const endpoint =
-        list.offerCode === "AmazonBedrockFoundationModels"
-          ? undefined
-          : usage.toLowerCase().includes("mantle")
-            ? "bedrock-mantle"
-            : "bedrock-runtime";
-      const targets = [...card.ids].filter(
-        ([, value]) => endpoint === undefined || value.endpoints.has(endpoint),
-      );
-      if (targets.length === 0) continue;
+      const target = priceTargets(card, list.offerCode, usage);
+      if (target.ids.length === 0) continue;
       for (const term of Object.values(list.terms.OnDemand[sku] ?? {})) {
         for (const dimension of Object.values(term.priceDimensions)) {
           const price = dimension.pricePerUnit.USD;
           if (price === undefined) continue;
           const parsed = rate(
-            list.offerCode,
             attributes,
             dimension.description,
             dimension.unit,
@@ -1109,9 +1128,10 @@ function parsePrices(
             term.effectiveDate,
             card.tasks,
             sourceId,
+            target.endpoint,
           );
           if (parsed === undefined) continue;
-          for (const [id] of targets) {
+          for (const id of target.ids) {
             const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
             addRate(rates, parsed, id);
             byId.set(id, rates);

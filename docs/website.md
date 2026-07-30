@@ -39,10 +39,11 @@ Status: implemented
   meters, units, or credits add a price tooltip with namespace-qualified exact
   copy.
 - Representative columns are derived only from canonical price books. A cell
-  shows a number when one unconditional normalized rate is safe to present;
+  shows a number when one normalized rate is proven invariant across the
+  complete applicable offer context;
   otherwise one dotted-underlined text status spans the three pricing columns
   and explains the model-level outcome in a tooltip. Use `Varies` for a
-  context-dependent offer, an offer count for several base offers, and retain
+  context-dependent price, an offer count for several base offers, and retain
   the exact `Free`, `Quote`,
   `Unpublished`, `Incomplete`, `N/A`, `Unknown`, `No base offer`, or `Details`
   distinction. This status is never owned by the input meter. There is no
@@ -73,15 +74,19 @@ Status: implemented
   repeated on each resolved rate, allowance, or state; validity qualifications
   remain visible. A single offer state stays in the offer summary; state detail
   appears only when the offer has multiple possible outcomes.
-- A representative preview requires one unconditional, unqualified,
-  normalized fiat value after model binding and any categorical value required
-  by every offer-state clause. Such an offer-wide singleton is fixed context,
-  not a user choice; this lets a single fixed Batch offer expose its exact table
-  rates. Reviewed provider-qualified units are eligible and retain their native
-  label; the UI never converts or compares them with standard units. Qualified
-  validity, unresolved selectors, ambiguous offers, applicable raw base-price
-  facts, or bounded display-arithmetic failure remain detail-only or show a
-  model-level status. The UI never chooses a provider default.
+- A representative preview requires one validity-free normalized fiat value
+  whose combined applicability covers the complete numeric offer-state scope
+  after model binding and any categorical value required by every offer-state
+  clause. An unresolved selector is allowed only when it cannot change the
+  exact denomination, amount, unit, or first applicable meter. Conditions stay
+  visible in details; the table collapses only their invariant result. An
+  offer-wide singleton is fixed context, not a user choice; this lets a single
+  fixed Batch offer expose its exact table rates. Reviewed provider-qualified
+  units are eligible and retain their native label; the UI never converts or
+  compares them with standard units. Qualified validity, partial scope
+  coverage, ambiguous offers, applicable raw base-price facts, or bounded
+  display-arithmetic failure remain detail-only or show a model-level status.
+  The UI never chooses a provider default.
 - Exact rates calculated by a reviewed provider adapter display their numeric
   result normally. Calculation provenance remains in the canonical audit asset;
   it does not demote an otherwise exact rate to raw.
@@ -158,21 +163,31 @@ Status: implemented
 - Use one `data_version` derived from the accepted catalog/pricing pair on the
   catalog, pricing-summary, and detail-chunk projections. Reject mismatched
   deferred assets in the browser.
-- Keep the initial catalog parser small and dependency-free. Load the full
-  closed-schema validator, inspector component, inspector CSS, and
-  OverlayScrollbars runtime/CSS asynchronously after the first frame. Static
-  Vue dependencies are split into a cacheable, module-preloaded chunk; deferred
-  chunks must not be module-preloaded by the HTML shell. Mount the deferred
-  inspector into its dedicated second Vapor root and share only a small reactive
-  state object with the catalog root.
+- Keep the initial catalog parser small and dependency-free. Load
+  OverlayScrollbars runtime/CSS with the initial application graph so its
+  explicit viewports replace native scrollbars before the first rendered frame.
+  Load the full closed-schema validator, inspector component, and inspector CSS
+  asynchronously after that frame. Static Vue and scrollbar dependencies are
+  split into cacheable, module-preloaded chunks; deferred chunks must not be
+  module-preloaded by the HTML shell. Mount the deferred inspector into its
+  dedicated second Vapor root and share only a small reactive state object with
+  the catalog root.
 - All UI projections exclude source records, observations, locators, raw source
   values, derivations, evidence arrays, and canonical audit-envelope metadata.
   They retain only displayed semantics and provider-snapshot freshness copy.
+- Development serves those projections from the pair-bound,
+  indexed `data/website-assets.pack`; every entry is independently compressed,
+  so Vite can return the requested bytes without decoding the pack. UI requests
+  do not open the separate export pack. Explicit `/catalog/`, `/providers/`, and
+  `/pricing/` requests are served from `data/export-assets.pack`; they do not
+  parse either canonical mirror.
 - `/catalog/models.json` is the header's default catalog download.
   `/catalog/ids.json`, the audit-rich `/catalog/index.json`, and
   `/pricing/index.json` remain explicit public downloads, not application
-  dependencies. Build-time pair validation establishes their binding before UI
-  assets are emitted. Revalidate browser caches for UI requests.
+  dependencies. Build validates both compressed packs and their shared pair
+  identity, then stream-materializes their entries into `dist/` without loading
+  canonical catalog or pricing objects. Revalidate browser caches for UI
+  requests.
 
 ## Visual system
 

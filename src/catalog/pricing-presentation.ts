@@ -1,5 +1,6 @@
 import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
+import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
 import { assertPricingDecimal } from "./pricing-constants.ts";
 import {
   compareRationals,
@@ -186,9 +187,10 @@ export function projectPricingTableCell(
     states.length !== 1 ||
     states[0]?.state !== "numeric" ||
     states[0].validity !== undefined ||
-    evaluateApplicability(states[0].applicability, context).state !== "true"
+    evaluateApplicability(states[0].applicability, context).state === "false"
   )
     return undefined;
+  const numericScope = states[0].applicability;
   if (
     offerRawVariants(offer).some(
       (variant) =>
@@ -225,7 +227,6 @@ export function projectPricingTableCell(
       selected.some(
         (variant) =>
           variant.validity !== undefined ||
-          evaluateApplicability(variant.applicability, context).state !== "true" ||
           variant.price.denomination.kind !== "fiat" ||
           variant.price.per.factors.length === 0,
       )
@@ -233,6 +234,12 @@ export function projectPricingTableCell(
       return undefined;
     const prices = new Map(selected.map(({ price }) => [canonicalJson(price), price]));
     if (prices.size !== 1) return undefined;
+    try {
+      const coveredScope = unionApplicabilities(selected.map(({ applicability }) => applicability));
+      if (!applicabilityContainedIn(numericScope, coveredScope)) return undefined;
+    } catch {
+      return undefined;
+    }
     return tableCell({ namespace: "kmodels", value: meter }, [...prices.values()][0]!);
   }
   return undefined;

@@ -35,7 +35,7 @@ export const publishedModelGroupSchema = z.strictObject({
 
 const publishedCoverageSchema = coverageSchema.omit({ provider_id: true }).strict();
 
-const publishedProviderSchema = providerSchema
+export const publishedProviderMetadataSchema = providerSchema
   .omit({
     id: true,
     source_ids: true,
@@ -43,6 +43,11 @@ const publishedProviderSchema = providerSchema
   })
   .extend({
     coverage: publishedCoverageSchema,
+  })
+  .strict();
+
+const publishedProviderSchema = publishedProviderMetadataSchema
+  .extend({
     models: z.array(publishedModelGroupSchema),
   })
   .strict();
@@ -53,6 +58,14 @@ export const catalogModelsSchema = z.strictObject({
   catalog_version: hash,
   generated_at: dateTime,
   providers: z.record(z.string().min(1), publishedProviderSchema),
+});
+
+export const catalogProvidersSchema = z.strictObject({
+  schema_version: z.literal(1),
+  profile: z.literal("providers"),
+  catalog_version: hash,
+  generated_at: dateTime,
+  providers: z.record(z.string().min(1), publishedProviderMetadataSchema),
 });
 
 export type CatalogIds = z.infer<typeof catalogIdsSchema>;

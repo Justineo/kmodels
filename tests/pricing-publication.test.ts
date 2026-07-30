@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vite-plus/test";
+import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
 import {
   commitCatalogPair,
   prepareCatalogPair,
@@ -10,6 +11,7 @@ import {
   type CatalogPairPaths,
 } from "../src/catalog/pricing-publication.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import type { ProjectionPaths } from "../src/catalog/projection-paths.ts";
 import { catalogSchema, type Catalog } from "../src/catalog/schema.ts";
 
 const directories: string[] = [];
@@ -44,11 +46,30 @@ async function paths(): Promise<CatalogPairPaths> {
     stateDirectory: join(directory, "state"),
     catalogMirror: join(directory, "catalog.json"),
     pricingMirrorGzip: join(directory, "pricing.json.gz"),
+    projections: {
+      uiManifest: join(directory, "website-assets.json"),
+      uiPack: join(directory, "website-assets.pack"),
+      exportManifest: join(directory, "export-assets.json"),
+      exportPack: join(directory, "export-assets.pack"),
+    },
   };
 }
 
 async function pricingMirrorSource(path: string): Promise<string> {
   return gunzipSync(await readFile(path)).toString("utf8");
+}
+
+async function expectProjectionPair(paths: ProjectionPaths, pairId: string): Promise<void> {
+  for (const [profile, manifestPath, packPath] of [
+    ["ui", paths.uiManifest, paths.uiPack],
+    ["exports", paths.exportManifest, paths.exportPack],
+  ] as const) {
+    const manifest = decodeAssetPackManifest(await readFile(manifestPath));
+    const pack = await readFile(packPath);
+    expect(manifest.profile).toBe(profile);
+    expect(manifest.pair_id).toBe(pairId);
+    expect(() => validateAssetPack(manifest, pack)).not.toThrow();
+  }
 }
 
 describe("crash-consistent catalog pair publication", () => {
@@ -61,20 +82,26 @@ describe("crash-consistent catalog pair publication", () => {
     expect(recovered?.pairId).toBe(candidate.pairId);
     expect(recovered?.identity).toEqual(candidate.identity);
     expect(await pricingMirrorSource(output.pricingMirrorGzip)).toBe(candidate.pricingAssetSource);
+    await expectProjectionPair(output.projections, candidate.pairId);
   });
 
-  it("repairs both mirrors from the atomic accepted-pair pointer", async () => {
+  it("repairs all mirrors from the atomic accepted-pair pointer", async () => {
     const output = await paths();
     const candidate = prepareCatalogPair(catalog(), pricing);
     await commitCatalogPair(candidate, output);
     await Promise.all([
       writeFile(output.catalogMirror, "{}"),
       writeFile(output.pricingMirrorGzip, "{}"),
+      writeFile(output.projections.uiManifest, "{}"),
+      writeFile(output.projections.uiPack, "{}"),
+      writeFile(output.projections.exportManifest, "{}"),
+      writeFile(output.projections.exportPack, "{}"),
     ]);
 
     const recovered = await recoverCatalogPair(output);
     expect(await readFile(output.catalogMirror, "utf8")).toBe(recovered?.catalogStorageSource);
     expect(await pricingMirrorSource(output.pricingMirrorGzip)).toBe(recovered?.pricingAssetSource);
+    await expectProjectionPair(output.projections, candidate.pairId);
   });
 
   it("loads a checked-in compressed mirror without local pair state", async () => {
@@ -101,6 +128,29 @@ describe("crash-consistent catalog pair publication", () => {
     expect(recovered?.pairId).toBe(candidate.pairId);
     expect(await readFile(join(snapshot, "catalog.json"), "utf8")).toBe(
       candidate.catalogStorageSource,
+    );
+  });
+
+  it("regenerates corrupt derived snapshot assets from the accepted pair", async () => {
+    const output = await paths();
+    const candidate = prepareCatalogPair(catalog(), pricing);
+    await commitCatalogPair(candidate, output);
+    const snapshot = join(output.stateDirectory, "snapshots", candidate.pairId);
+    await Promise.all([
+      writeFile(join(snapshot, "website-assets.pack"), "corrupt"),
+      writeFile(join(snapshot, "export-assets.json"), "{}"),
+    ]);
+
+    await recoverCatalogPair(output);
+
+    await expectProjectionPair(
+      {
+        uiManifest: join(snapshot, "website-assets.json"),
+        uiPack: join(snapshot, "website-assets.pack"),
+        exportManifest: join(snapshot, "export-assets.json"),
+        exportPack: join(snapshot, "export-assets.pack"),
+      },
+      candidate.pairId,
     );
   });
 
