@@ -44,9 +44,10 @@ Status: implemented
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
-- The accepted `data/catalog.json` and compressed `data/pricing.json.gz` pair is the sole
-  durable last-known-good public-data input. Raw replay requires a separately
-  configured external artifact system.
+- Raw replay requires a separately configured external artifact system. The
+  repository does retain a bounded public-only parsed pricing compilation
+  input; it contains only model identity, pricing state, parsed source price
+  facts, source content hashes, and extractor versions.
 
 ## Validation and publication
 
@@ -78,6 +79,22 @@ Status: implemented
   the closed provider bytes and their proposed catalog slice. A failure retains
   the prior provider pair when one exists, records the failed attempt on its
   pricing snapshot, and never publishes a partial fresh partition.
+- Source parsing and canonical pricing compilation are separate operations.
+  Collection fetches and parses sources, validates provider candidates, and
+  persists the minimal public pricing compiler input. `vp run compile:pricing`
+  can rerun provider pricing assembly, full canonical validation, pair
+  publication, and both consumer projections from that input without network
+  access. Shared pricing assembly changes therefore do not require a source
+  refresh; projection-only changes use `vp run prepare:assets`. Parser or
+  extractor changes still require collection because raw response bodies are
+  intentionally not retained.
+- Compilation input is bound to the accepted catalog core. Provider snapshot
+  metadata comes from the current accepted canonical pair rather than being
+  duplicated in the input. Source IDs, extractor versions, content hashes,
+  ownership, provenance, and required pricing-source completeness are
+  revalidated before use. Any mismatch aborts the entire local compilation.
+  Authenticated or otherwise non-public pricing inputs are never persisted;
+  providers without replay input keep their exact accepted partitions.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for
@@ -87,25 +104,46 @@ Status: implemented
 
 ## Durable outputs
 
+Collection has four data layers:
+
+1. allowlisted upstream response bodies, bounded and process-local;
+2. minimal public parsed pricing inputs for deterministic local compilation;
+3. the normalized, validated, audit-rich accepted catalog/pricing pair;
+4. deterministic, pair-bound UI and JSON-export projections.
+
+Only layers 2 through 4 are durable. Consumer code never reads layers 2 or 3
+during normal development, build, or browser execution.
+
 The committed generated state is:
 
 - `data/catalog.json`
 - `data/pricing.json.gz` (the gzip-compressed canonical pricing envelope)
+- `data/pricing-inputs.json.gz` (catalog-bound, public-only parsed compiler input)
+- `data/website-assets.json` (the pair-bound UI asset index)
+- `data/website-assets.pack` (individually compressed audit-free UI assets)
+- `data/export-assets.json` (the pair-bound public JSON-export index)
+- `data/export-assets.pack` (individually compressed public JSON exports)
 - `data/fetch-state.json`
 - `data/quarantine.json`
 - `data/refresh-summary.json`
 
-Collection commits the catalog and pricing through one accepted-pair boundary: immutable pair
-snapshots and an atomic current pointer are authoritative, and the durable
-mirrors are repaired from that pointer after interruption. A reviewed pricing
-withdrawal may temporarily leave a safe pricing-only source record in the
-catalog; the next
+After candidate validation, one projection stage creates both packs before the
+accepted-pair pointer advances. Immutable pair snapshots and the atomic current
+pointer remain authoritative; canonical and derived mirrors are repaired from
+that pointer after interruption. Derived packs may be regenerated from the
+accepted pair when missing, stale, or corrupt. `vp run prepare:assets` performs
+that explicit projection repair for a checked-out pair. `vp run
+compile:pricing` instead reassembles canonical pricing first and then publishes
+the resulting pair and projections. A reviewed pricing withdrawal may
+temporarily leave a safe pricing-only source record in the catalog; the next
 successful fresh provider publication prunes it.
 
-During development, Vite derives the lean ID inventory, grouped semantic
-catalog, canonical audit endpoints, and compact UI projections from the
-accepted mirrors. Production builds recover and revalidate the accepted pair
-before writing those assets to ignored `dist/`. The website loads only `/ui/`
-projections; the public catalog profiles and audit-rich canonical data remain
-available at the explicit `/catalog/` and `/pricing/` endpoints. Do not commit
-duplicate endpoint assets under `public/`.
+During development, Vite lazily opens only the requested UI or export pack and
+returns its compressed byte slice. It never parses `data/catalog.json` or
+decompresses `data/pricing.json.gz`. Production validates the two small
+manifests and compressed packs, verifies their shared pair identity, and
+stream-decompresses each entry into ignored `dist/`; it never reconstructs the
+canonical pricing object graph. The website loads only `/ui/` projections; the
+public catalog profiles and audit-rich canonical data remain available at the
+explicit `/catalog/` and `/pricing/` endpoints. Do not commit duplicate endpoint
+assets under `public/`.

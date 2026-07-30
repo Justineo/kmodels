@@ -7,18 +7,23 @@ Status: implemented
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.
 - Only native dependencies allowlisted in `pnpm-workspace.yaml` may run install scripts.
-- The scheduled refresh runs hourly with jitter and commits the five
-  validated state files—`catalog.json`, `pricing.json.gz`, `fetch-state.json`,
-  `quarantine.json`, and `refresh-summary.json`—using a `chore(data): ...`
-  commit.
+- The scheduled refresh runs hourly with jitter and commits the validated
+  catalog, public-only parsed pricing compiler input, canonical pricing,
+  derived UI/export asset indexes and packs, fetch state, quarantine, and
+  refresh summary using a `chore(data): ...` commit.
 - The workflow schedules, validates, and commits a collection run; it does not
   interpret provider failures. The collector owns failure classification and
   the safe public status projection. A workflow failure before collection
   commits nothing and is reported only by GitHub Actions.
 - The catalog and canonical pricing advance as one validated accepted pair. Collection
-  stages immutable pair snapshots, advances one atomic pointer, repairs durable
-  mirrors after interruption, and verifies the exact pair again during the
-  production build.
+  creates both consumer projections, stages immutable pair snapshots, advances
+  one atomic pointer, and repairs durable mirrors after interruption. Production
+  verifies the pair-bound projection manifests and encoded entry hashes without
+  parsing the canonical pair.
+- The `compile:pricing` task also makes canonical pricing compilation available
+  independently. It performs no fetch, validates the catalog-bound public
+  parsed input, and republishes the accepted pair and projections. The
+  `prepare:assets` task remains the narrower projection-only repair.
 - `KMODELS_PRICING_RELEASE_INPUT` is an optional reviewed manual-release input
   for explicit absence/removal/withdrawal intents and pair-bound safety
   findings. Scheduled source adapters cannot create it; an unresolved finding

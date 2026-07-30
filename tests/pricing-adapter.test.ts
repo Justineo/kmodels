@@ -41,7 +41,7 @@ function model(): ParsedProviderModel {
         price: "2",
         currency: "USD",
         unit: "million_tokens",
-        conditions: { region: "us-central1" },
+        conditions: { region: "us-central1", endpoint: undefined },
         source_ref: sourceRef,
         derived: false,
         raw_price: "2",
@@ -143,6 +143,12 @@ describe("parsed-source canonical pricing adapter", () => {
       false,
     );
     expect(sourcePriceFactSchema.safeParse({ ...calculated, derived: false }).success).toBe(false);
+  });
+
+  it("omits absent optional conditions before canonicalization", () => {
+    const parsed = sourcePriceFactSchema.parse(model().price_facts[0]);
+    expect(parsed.conditions).toEqual({ region: "us-central1" });
+    expect(Object.hasOwn(parsed.conditions, "endpoint")).toBe(false);
   });
 
   it("normalizes exact calculated rates and fixed/provider units", () => {

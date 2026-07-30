@@ -17,6 +17,10 @@ export function scaleDecimal(value: string, places: number): string {
   return decimals ? `${integer}.${decimals}` : integer;
 }
 
+export function decimalsEqual(left: string, right: string): boolean {
+  return scaleDecimal(left, 0) === scaleDecimal(right, 0);
+}
+
 export function multiplyDecimal(left: string, right: string): string {
   const parts = (value: string): [bigint, number] => {
     if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);

@@ -1,46 +1,24 @@
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite-plus";
-import { catalogApiAssets, catalogAssets, websiteAssets } from "./src/catalog/endpoints.ts";
-import { recoverCatalogPair } from "./src/catalog/pricing-publication.ts";
+import {
+  materializePublishedAssets,
+  readCompressedProfileAsset,
+  readPublishedAssetProfile,
+  readPublishedAssets,
+  type PublishedAssetProfile,
+} from "./src/catalog/published-assets.ts";
 
-let developmentWebsiteData: ReturnType<typeof loadDevelopmentWebsiteData> | undefined;
+let developmentUiAssets: Promise<PublishedAssetProfile> | undefined;
+let developmentExportAssets: Promise<PublishedAssetProfile> | undefined;
 
-async function loadDevelopmentWebsiteData() {
-  const pair = await recoverCatalogPair();
-  if (pair === undefined) throw new Error("No accepted catalog pair is available");
-  return {
-    catalog: pair.catalog,
-    pricingAssetSource: pair.pricingAssetSource,
-    websiteAssetByPath: new Map(
-      websiteAssets(pair.catalog, pair.pricing).map((asset): [string, string] => [
-        `/${asset.fileName}`,
-        asset.source,
-      ]),
-    ),
-  };
-}
-
-async function developmentAsset(path: string): Promise<string | undefined> {
-  if (
-    path !== "/pricing/index.json" &&
-    path !== "/catalog/index.json" &&
-    path !== "/catalog/ids.json" &&
-    path !== "/catalog/models.json" &&
-    !path.startsWith("/providers/") &&
-    !path.startsWith("/ui/")
-  )
-    return undefined;
-
-  developmentWebsiteData ??= loadDevelopmentWebsiteData();
-  const { catalog, pricingAssetSource, websiteAssetByPath } = await developmentWebsiteData;
-  if (path === "/pricing/index.json") return pricingAssetSource;
-  if (path.startsWith("/ui/")) return websiteAssetByPath.get(path);
-  return new Map(
-    catalogApiAssets(catalog).map((asset): [string, string] => [
-      `/${asset.fileName}`,
-      asset.source,
-    ]),
-  ).get(path);
+async function developmentAsset(path: string): Promise<Uint8Array | undefined> {
+  if (path.startsWith("/ui/")) {
+    developmentUiAssets ??= readPublishedAssetProfile("ui");
+    return readCompressedProfileAsset(await developmentUiAssets, path);
+  }
+  if (!/^\/(?:catalog|pricing|providers)\//u.test(path)) return undefined;
+  developmentExportAssets ??= readPublishedAssetProfile("exports");
+  return readCompressedProfileAsset(await developmentExportAssets, path);
 }
 
 function serveCatalog(): Plugin {
@@ -58,6 +36,8 @@ function serveCatalog(): Plugin {
             }
             response.statusCode = 200;
             response.setHeader("Content-Type", "application/json; charset=utf-8");
+            response.setHeader("Content-Encoding", "gzip");
+            response.setHeader("Vary", "Accept-Encoding");
             response.end(source);
           })
           .catch(next);
@@ -67,15 +47,18 @@ function serveCatalog(): Plugin {
 }
 
 function buildCatalog(): Plugin {
+  let published: ReturnType<typeof readPublishedAssets> | undefined;
   return {
     name: "kmodels-catalog-build",
     apply: "build",
     async buildStart() {
-      const pair = await recoverCatalogPair();
-      if (pair === undefined) throw new Error("No accepted catalog pair is available");
-      for (const asset of catalogAssets(pair.catalog, pair.pricing)) {
-        this.emitFile({ type: "asset", fileName: asset.fileName, source: asset.source });
-      }
+      published ??= readPublishedAssets();
+      await published;
+    },
+    async writeBundle({ dir }) {
+      if (dir === undefined) throw new Error("Vite output directory is unavailable");
+      published ??= readPublishedAssets();
+      await materializePublishedAssets(await published, dir);
     },
   };
 }

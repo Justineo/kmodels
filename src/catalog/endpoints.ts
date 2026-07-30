@@ -1,14 +1,10 @@
-import { sha256, stableCompactJson, stableJson } from "./io.ts";
-import { pricingCatalogJson } from "./pricing-envelope.ts";
-import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
+import type { AssetSource } from "./asset-pack.ts";
+import { stableCompactJson, stableJson } from "./io.ts";
 import { catalogIds, catalogModels } from "./publication.ts";
+import { catalogProvidersSchema } from "./publication-schema.ts";
+import type { PricingCatalog } from "./pricing-schema.ts";
 import type { Catalog, CatalogEnvelope } from "./schema.ts";
 import { websitePublication } from "./website-data.ts";
-
-export interface CatalogAsset {
-  fileName: string;
-  source: string;
-}
 
 function catalogEnvelope(catalog: Catalog): CatalogEnvelope {
   const metadata = {
@@ -31,15 +27,28 @@ export function catalogJson(catalog: Catalog): string {
   return stableJson(catalogEnvelope(catalog));
 }
 
-export function catalogApiAssets(catalog: Catalog): CatalogAsset[] {
+export function catalogExportAssets(
+  catalog: Catalog,
+  catalogAssetSource = catalogJson(catalog),
+): AssetSource[] {
+  const models = catalogModels(catalog);
+  const providerEntries = Object.entries(models.providers);
   const metadata = {
     catalog_version: catalog.catalog_version,
     generated_at: catalog.generated_at,
   };
+  const providers = catalogProvidersSchema.parse({
+    schema_version: 1,
+    profile: "providers",
+    ...metadata,
+    providers: Object.fromEntries(
+      providerEntries.map(([id, { models: _, ...provider }]) => [id, provider]),
+    ),
+  });
   return [
     {
       fileName: "catalog/index.json",
-      source: catalogJson(catalog),
+      source: catalogAssetSource,
     },
     {
       fileName: "catalog/ids.json",
@@ -47,51 +56,43 @@ export function catalogApiAssets(catalog: Catalog): CatalogAsset[] {
     },
     {
       fileName: "catalog/models.json",
-      source: stableCompactJson(catalogModels(catalog)),
+      source: stableCompactJson(models),
     },
     {
       fileName: "providers/index.json",
-      source: stableJson({
-        ...metadata,
-        data: catalog.providers,
-        warnings: catalog.warnings,
-      }),
+      source: stableCompactJson(providers),
     },
-    ...catalog.providers.flatMap((provider) => [
+    ...providerEntries.flatMap(([providerId, { models: providerModels, ...provider }]) => [
       {
-        fileName: `providers/${provider.id}/index.json`,
-        source: stableJson({
+        fileName: `providers/${providerId}/index.json`,
+        source: stableCompactJson({
+          schema_version: 1,
+          profile: "provider",
           ...metadata,
-          data: provider,
-          warnings: catalog.warnings,
+          provider_id: providerId,
+          provider,
         }),
       },
       {
-        fileName: `providers/${provider.id}/models/index.json`,
-        source: stableJson({
+        fileName: `providers/${providerId}/models/index.json`,
+        source: stableCompactJson({
+          schema_version: 1,
+          profile: "provider-models",
           ...metadata,
-          data: catalog.models.filter((model) => model.provider_id === provider.id),
-          warnings: catalog.warnings,
+          provider_id: providerId,
+          models: providerModels,
         }),
       },
     ]),
   ];
 }
 
-export function catalogAssets(catalog: Catalog, pricing: PricingCatalogEnvelope): CatalogAsset[] {
-  return [
-    ...catalogApiAssets(catalog),
-    {
-      fileName: "pricing/index.json",
-      source: pricingCatalogJson(pricing, catalog),
-    },
-    ...websiteAssets(catalog, pricing),
-  ];
-}
-
-export function websiteAssets(catalog: Catalog, pricing: PricingCatalogEnvelope): CatalogAsset[] {
-  const dataVersion = sha256(`${catalog.catalog_version}\u0000${pricing.pricing_data_version}`);
-  const website = websitePublication(catalog, pricing.data, dataVersion);
+export function websiteAssets(
+  catalog: Catalog,
+  pricing: PricingCatalog,
+  dataVersion: string,
+): AssetSource[] {
+  const website = websitePublication(catalog, pricing, dataVersion);
   return [
     {
       fileName: "ui/catalog/index.json",

@@ -9,6 +9,8 @@
     "check": "vp check",
     "collect": "node --env-file-if-exists=.env scripts/collect.ts",
     "collect:fixtures": "vp test --run tests/adapters.test.ts",
+    "compile:pricing": "node scripts/compile-pricing.ts",
+    "prepare:assets": "node scripts/prepare-assets.ts",
     "deploy": "void deploy --dir dist --skip-build",
     "preview": "vp preview",
     "test": "vp test --run"

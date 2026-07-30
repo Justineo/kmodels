@@ -141,6 +141,34 @@ function catalog(terms: PriceRateTerm[]): PricingCatalog {
   };
 }
 
+function categoricalScope(
+  dimension: "region" | "service_tier",
+  ...values: string[]
+): PriceApplicability {
+  return {
+    any_of: values.map((value) => ({
+      all_of: [
+        {
+          kind: "categorical",
+          dimension: { namespace: "kmodels", value: dimension },
+          values: [{ namespace: "kmodels", value }],
+        },
+      ],
+    })),
+  };
+}
+
+function setNumericScope(data: PricingCatalog, applicability: PriceApplicability) {
+  const offer = data.books[0]?.offers[0];
+  const state = offer?.states[0];
+  const observation = state?.observations[0];
+  if (offer === undefined || state === undefined || observation === undefined)
+    throw new Error("Missing test offer state");
+  state.applicability = applicability;
+  observation.establishes_applicability = applicability;
+  return offer;
+}
+
 const tokenPrice: UnitPrice = {
   value: { numerator: "1", denominator: "500000" },
   denomination: { kind: "fiat", currency: "USD" },
@@ -275,23 +303,9 @@ describe("canonical pricing presentation", () => {
   });
 
   it("binds a categorical context when the offer has only one possible value", () => {
-    const batch: PriceApplicability = {
-      any_of: [
-        {
-          all_of: [
-            {
-              kind: "categorical",
-              dimension: { namespace: "kmodels", value: "service_tier" },
-              values: [{ namespace: "kmodels", value: "batch" }],
-            },
-          ],
-        },
-      ],
-    };
+    const batch = categoricalScope("service_tier", "batch");
     const data = catalog([term("input", "input_text", tokenPrice, batch)]);
-    const offer = data.books[0]!.offers[0]!;
-    offer.states[0]!.applicability = batch;
-    offer.states[0]!.observations[0]!.establishes_applicability = batch;
+    const offer = setNumericScope(data, batch);
 
     expect(fixedOfferStateSelections(offer, modelRef)).toEqual([
       {
@@ -304,6 +318,58 @@ describe("canonical pricing presentation", () => {
       amount: "$2",
       displayUnit: "1M tokens",
     });
+  });
+
+  it("projects a context-qualified rate when one exact price covers the numeric offer scope", () => {
+    const regional = categoricalScope("region", "US", "EU");
+    const data = catalog([term("input", "input_text", tokenPrice, regional)]);
+    setNumericScope(data, regional);
+
+    expect(projectPricingTableCell(data, model(), "input")).toMatchObject({
+      amount: "$2",
+      displayUnit: "1M tokens",
+    });
+  });
+
+  it("keeps validity-qualified uniform prices out of the representative table", () => {
+    const data = catalog([term("input", "input_text", tokenPrice)]);
+    const offer = data.books[0]!.offers[0]!;
+    const input = offer.terms[0];
+    if (input?.kind !== "rate") throw new Error("Missing input rate");
+    const validity = {
+      from: { value: "2026-07-01", precision: "date" as const },
+    };
+    offer.states[0]!.validity = validity;
+    input.variants[0]!.validity = validity;
+
+    expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+  });
+
+  it("withholds a uniform candidate price that does not cover the numeric offer scope", () => {
+    const us = categoricalScope("region", "US");
+    const data = catalog([term("input", "input_text", tokenPrice, us)]);
+    setNumericScope(data, categoricalScope("region", "US", "EU"));
+
+    expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
+  });
+
+  it("withholds context-qualified variants that disagree on exact price", () => {
+    const us = categoricalScope("region", "US");
+    const eu = categoricalScope("region", "EU");
+    const data = catalog([term("input", "input_text", tokenPrice, us)]);
+    const offer = setNumericScope(data, categoricalScope("region", "US", "EU"));
+    const input = offer.terms[0];
+    if (input?.kind !== "rate") throw new Error("Missing input rate");
+    input.variants.push({
+      price: {
+        ...tokenPrice,
+        value: { numerator: "3", denominator: "1000000" },
+      },
+      applicability: eu,
+      observations: [{ ...source, establishes_applicability: eu }],
+    });
+
+    expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
   });
 
   it("uses exact decimals when finite and fractions only when necessary", () => {

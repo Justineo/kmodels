@@ -35,6 +35,12 @@ catalog. Consumer profiles use `schema_version` for their contract, while
 - `/catalog/index.json` remains the audit-rich canonical envelope with flat,
   exact `(provider_id, model_id, version)` rows, source records, coverage, and
   warnings.
+- `/providers/index.json` is provider metadata and provider-scoped coverage
+  only. `/providers/<provider>/index.json` selects one such record, and
+  `/providers/<provider>/models/index.json` contains only that provider's
+  grouped semantic model projection. These endpoints never copy source IDs,
+  evidence, routes, observation timestamps, raw fields, or catalog-wide
+  warnings.
 
 The profiles never infer a latest or default version from version spelling.
 Only an explicit provider fact may establish a preferred version. Pricing

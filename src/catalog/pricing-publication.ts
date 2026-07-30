@@ -1,11 +1,18 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { gunzipSync, gzipSync } from "node:zlib";
+import { gunzipSync } from "node:zlib";
 import { z } from "zod";
+import {
+  compressedAsset,
+  decodeAssetPack,
+  type AssetPackManifest,
+  type EncodedAssetPack,
+} from "./asset-pack.ts";
 import { assertCanonicalJson, canonicalJson, parseIJson } from "./canonical-json.ts";
 import { assertIJsonValue } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
 import { atomicWrite, rootDirectory, sha256, stableJson } from "./io.ts";
+import { catalogPairId, type CatalogPairIdentity } from "./pair-identity.ts";
 import {
   createPricingCatalogEnvelope,
   decodePricingCatalog,
@@ -19,6 +26,8 @@ import {
   type PricingCatalog,
   type PricingCatalogEnvelope,
 } from "./pricing-schema.ts";
+import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
+import { projectCatalogPair, websiteDataVersion, type PairProjections } from "./projections.ts";
 import { catalogSchema, migrateCatalogStorage, type Catalog } from "./schema.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
@@ -36,12 +45,10 @@ export interface CatalogPairPaths {
   stateDirectory: string;
   catalogMirror: string;
   pricingMirrorGzip: string;
+  projections: ProjectionPaths;
 }
 
-export interface CatalogPairIdentity {
-  catalog_asset_sha256: string;
-  pricing_asset_sha256: string;
-}
+export type { CatalogPairIdentity } from "./pair-identity.ts";
 
 export interface CatalogPairCandidate {
   catalog: Catalog;
@@ -57,6 +64,7 @@ const defaultCatalogPairPaths: CatalogPairPaths = {
   stateDirectory: join(rootDirectory, "data/.catalog-state"),
   catalogMirror: join(rootDirectory, "data/catalog.json"),
   pricingMirrorGzip: join(rootDirectory, "data/pricing.json.gz"),
+  projections: defaultProjectionPaths,
 };
 
 export function prepareCatalogPair(
@@ -90,7 +98,7 @@ export function prepareCatalogPair(
     catalogAssetSource,
     pricingAssetSource,
     identity,
-    pairId: pairId(identity),
+    pairId: catalogPairId(identity),
   };
 }
 
@@ -98,12 +106,17 @@ export async function recoverCatalogPair(
   paths: CatalogPairPaths = defaultCatalogPairPaths,
 ): Promise<CatalogPairCandidate | undefined> {
   const manifestBytes = await optionalRead(manifestPath(paths));
-  if (manifestBytes === undefined) return loadMirrors(paths);
+  if (manifestBytes === undefined) {
+    const candidate = await loadMirrors(paths);
+    if (candidate === undefined) return undefined;
+    await ensurePairProjections(candidate, paths.projections);
+    return candidate;
+  }
 
   const manifest = acceptedPairManifestSchema.parse(
     assertCanonicalJson(manifestBytes, pricingLimits.semanticStringBytes * 4),
   );
-  if (manifest.pair_id !== pairId(manifest))
+  if (manifest.pair_id !== catalogPairId(manifest))
     throw new Error("Accepted catalog pair manifest identity is invalid");
 
   const snapshot = snapshotDirectory(paths, manifest.pair_id);
@@ -126,10 +139,8 @@ export async function recoverCatalogPair(
   if (!bytesEqual(pricingAssetBytes, utf8.encode(candidate.pricingAssetSource)))
     throw new Error("Accepted canonical pricing asset bytes do not match the snapshot envelope");
 
-  await Promise.all([
-    writeIfChanged(paths.catalogMirror, candidate.catalogStorageSource),
-    writePricingMirrorIfChanged(paths.pricingMirrorGzip, candidate.pricingAssetSource),
-  ]);
+  const projections = await ensurePairProjections(candidate, snapshotProjectionPaths(snapshot));
+  await writePairMirrors(candidate, projections, paths);
   return candidate;
 }
 
@@ -146,12 +157,14 @@ export async function commitCatalogPair(
   )
     throw new Error("Catalog pair candidate changed after validation");
 
+  const projections = projectCatalogPair(validated);
   const snapshot = snapshotDirectory(paths, validated.pairId);
   await mkdir(snapshot, { recursive: true });
   await Promise.all([
     writeIfChanged(join(snapshot, "catalog.json"), validated.catalogStorageSource),
     writeIfChanged(join(snapshot, "catalog-asset.json"), validated.catalogAssetSource),
     writeIfChanged(join(snapshot, "pricing.json"), validated.pricingAssetSource),
+    writePairProjections(snapshotProjectionPaths(snapshot), projections),
   ]);
 
   const manifest: AcceptedPairManifest = {
@@ -161,10 +174,7 @@ export async function commitCatalogPair(
   };
   await atomicWrite(manifestPath(paths), canonicalJson(manifest));
 
-  await Promise.all([
-    writeIfChanged(paths.catalogMirror, validated.catalogStorageSource),
-    writePricingMirrorIfChanged(paths.pricingMirrorGzip, validated.pricingAssetSource),
-  ]);
+  await writePairMirrors(validated, projections, paths);
 }
 
 async function loadMirrors(paths: CatalogPairPaths): Promise<CatalogPairCandidate | undefined> {
@@ -191,15 +201,6 @@ function decodePricingCatalogStorage(input: Uint8Array, catalog: Catalog): Prici
   );
   validatePricingCatalogEnvelope(envelope, catalog);
   return envelope;
-}
-
-function pairId(identity: CatalogPairIdentity): string {
-  return sha256(
-    canonicalJson({
-      catalog_asset_sha256: identity.catalog_asset_sha256,
-      pricing_asset_sha256: identity.pricing_asset_sha256,
-    }),
-  );
 }
 
 function manifestPath(paths: CatalogPairPaths): string {
@@ -230,21 +231,107 @@ async function writeBytesIfChanged(path: string, source: Uint8Array): Promise<vo
   await atomicWrite(path, source);
 }
 
-async function writePricingMirrorIfChanged(path: string, source: string): Promise<void> {
-  const sourceBytes = utf8.encode(source);
-  const current = await optionalRead(path);
-  if (current !== undefined) {
+async function ensurePairProjections(
+  candidate: CatalogPairCandidate,
+  paths: ProjectionPaths,
+): Promise<PairProjections> {
+  const [uiManifestBytes, uiPack, exportManifestBytes, exportPack] = await Promise.all([
+    optionalRead(paths.uiManifest),
+    optionalRead(paths.uiPack),
+    optionalRead(paths.exportManifest),
+    optionalRead(paths.exportPack),
+  ]);
+  if (
+    uiManifestBytes !== undefined &&
+    uiPack !== undefined &&
+    exportManifestBytes !== undefined &&
+    exportPack !== undefined
+  )
     try {
-      if (bytesEqual(decompressPricing(current), sourceBytes)) return;
+      const projections = {
+        ui: decodeAssetPack("ui", uiManifestBytes, uiPack),
+        exports: decodeAssetPack("exports", exportManifestBytes, exportPack),
+      };
+      validatePairProjections(projections, candidate);
+      return projections;
     } catch {
-      // A corrupt mirror is repaired from the accepted snapshot below.
+      // Derived assets are regenerated from the authoritative accepted pair below.
     }
-  }
-  await atomicWrite(path, compressPricing(source));
+
+  const projections = projectCatalogPair(candidate);
+  await writePairProjections(paths, projections);
+  return projections;
 }
 
-function compressPricing(source: string): Uint8Array {
-  return gzipSync(source);
+async function writePairMirrors(
+  candidate: CatalogPairCandidate,
+  projections: PairProjections,
+  paths: CatalogPairPaths,
+): Promise<void> {
+  await Promise.all([
+    writeIfChanged(paths.catalogMirror, candidate.catalogStorageSource),
+    writeBytesIfChanged(paths.pricingMirrorGzip, compressedPricingProjection(projections.exports)),
+    writePairProjections(paths.projections, projections),
+  ]);
+}
+
+async function writePairProjections(
+  paths: ProjectionPaths,
+  projections: PairProjections,
+): Promise<void> {
+  await Promise.all([
+    writeIfChanged(paths.uiManifest, projections.ui.manifestSource),
+    writeBytesIfChanged(paths.uiPack, projections.ui.pack),
+    writeIfChanged(paths.exportManifest, projections.exports.manifestSource),
+    writeBytesIfChanged(paths.exportPack, projections.exports.pack),
+  ]);
+}
+
+function snapshotProjectionPaths(snapshot: string): ProjectionPaths {
+  return {
+    uiManifest: join(snapshot, "website-assets.json"),
+    uiPack: join(snapshot, "website-assets.pack"),
+    exportManifest: join(snapshot, "export-assets.json"),
+    exportPack: join(snapshot, "export-assets.pack"),
+  };
+}
+
+function validatePairProjections(
+  projections: PairProjections,
+  candidate: CatalogPairCandidate,
+): void {
+  if (
+    projections.ui.manifest.pair_id !== candidate.pairId ||
+    projections.exports.manifest.pair_id !== candidate.pairId
+  )
+    throw new Error("Projection assets do not match the accepted catalog pair");
+  if (
+    projections.ui.manifest.data_version !==
+    websiteDataVersion(candidate.catalog.catalog_version, candidate.pricing.pricing_data_version)
+  )
+    throw new Error("UI assets have an invalid data version");
+  if (projections.exports.manifest.data_version !== candidate.pairId)
+    throw new Error("Export assets have an invalid data version");
+  const catalog = projectionEntry(projections.exports.manifest, "catalog/index.json");
+  const pricing = projectionEntry(projections.exports.manifest, "pricing/index.json");
+  if (
+    catalog.source_sha256 !== candidate.identity.catalog_asset_sha256 ||
+    pricing.source_sha256 !== candidate.identity.pricing_asset_sha256
+  )
+    throw new Error("Canonical export assets do not match the accepted catalog pair");
+}
+
+function compressedPricingProjection(projections: EncodedAssetPack): Uint8Array {
+  return compressedAsset(
+    projections.pack,
+    projectionEntry(projections.manifest, "pricing/index.json"),
+  );
+}
+
+function projectionEntry(manifest: AssetPackManifest, fileName: string) {
+  const entry = manifest.assets.find(({ file_name }) => file_name === fileName);
+  if (entry === undefined) throw new Error(`Projection assets are missing ${fileName}`);
+  return entry;
 }
 
 function decompressPricing(source: Uint8Array): Uint8Array {

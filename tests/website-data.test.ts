@@ -1,8 +1,13 @@
 import { readFile } from "node:fs/promises";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
+import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
+import { websiteAssets } from "../src/catalog/endpoints.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { readPricingMirrorSource } from "../src/catalog/pricing-publication.ts";
 import { pricingCatalogEnvelopeSchema } from "../src/catalog/pricing-schema.ts";
+import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
+import { websiteDataVersion } from "../src/catalog/projections.ts";
 import { catalogSchema, migrateCatalogStorage } from "../src/catalog/schema.ts";
 import {
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
@@ -10,8 +15,6 @@ import {
   websiteModelDetail,
   websitePublication,
 } from "../src/catalog/website-data.ts";
-
-const dataVersion = "1".repeat(64);
 
 const auditFields = new Set([
   "atom_contract_hash",
@@ -32,8 +35,7 @@ const auditFields = new Set([
   "task_evidence",
   "term_key",
 ]);
-
-function foundAuditFields(value: unknown): string[] {
+function foundAuditFields(value: unknown, fields = auditFields): string[] {
   const found = new Set<string>();
   const pending = [value];
   while (pending.length > 0) {
@@ -44,7 +46,7 @@ function foundAuditFields(value: unknown): string[] {
     }
     if (current === null || typeof current !== "object") continue;
     for (const [field, item] of Object.entries(current)) {
-      if (auditFields.has(field)) found.add(field);
+      if (fields.has(field)) found.add(field);
       pending.push(item);
     }
   }
@@ -58,7 +60,7 @@ async function generatedData() {
   ]);
   return {
     catalog: catalogSchema.parse(migrateCatalogStorage(JSON.parse(catalogSource))),
-    pricing: pricingCatalogEnvelopeSchema.parse(JSON.parse(pricingSource)).data,
+    pricing: pricingCatalogEnvelopeSchema.parse(JSON.parse(pricingSource)),
   };
 }
 
@@ -66,9 +68,12 @@ let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefine
 
 async function loadGeneratedPublication() {
   const { catalog, pricing } = await generatedData();
+  const dataVersion = websiteDataVersion(catalog.catalog_version, pricing.pricing_data_version);
   return {
     catalog,
-    publication: websitePublication(catalog, pricing, dataVersion),
+    pricing,
+    dataVersion,
+    publication: websitePublication(catalog, pricing.data, dataVersion),
   };
 }
 
@@ -79,7 +84,7 @@ function publicationData() {
 
 describe("website data", () => {
   it("keeps the initial catalog minimal and publishes pricing separately", async () => {
-    const { publication } = await publicationData();
+    const { publication, dataVersion } = await publicationData();
     const catalogSource = JSON.stringify(publication.catalog);
     const pricingSource = JSON.stringify(publication.pricing);
     const website = hydrateWebsiteCatalog(publication.catalog, publication.pricing.pricing);
@@ -139,12 +144,28 @@ describe("website data", () => {
     ).toContain("$0.075");
   }, 15_000);
 
+  it("keeps the checked-in development pack bound to the audit-free projection", async () => {
+    const [{ catalog, pricing, dataVersion }, manifest, pack] = await Promise.all([
+      publicationData(),
+      readFile(defaultProjectionPaths.uiManifest).then(decodeAssetPackManifest),
+      readFile(defaultProjectionPaths.uiPack),
+    ]);
+    validateAssetPack(manifest, pack);
+    const actual = manifest.assets.map(({ file_name, offset, length }) => ({
+      fileName: file_name,
+      source: gunzipSync(pack.subarray(offset, offset + length)).toString("utf8"),
+    }));
+
+    expect(manifest.data_version).toBe(dataVersion);
+    expect(actual).toEqual(websiteAssets(catalog, pricing.data, dataVersion));
+  }, 15_000);
+
   it("projects a retained provider failure without audit details", () => {
     const verifiedAt = "2026-07-27T00:00:00.000Z";
     const attemptedAt = "2026-07-28T00:00:00.000Z";
     const detail = websiteModelDetail(
       {
-        provider_vocabularies: [{ provider_id: "test", atoms: [] }],
+        provider_vocabularies: [],
         provider_snapshots: [
           {
             provider_id: "test",
