@@ -5,7 +5,7 @@ export default {
   releaseDate: "2026-06-23",
   version: "4.0",
   type: "Premier",
-  status: "Active",
+  status: "GA",
   contextLength: null,
   pricing: {
     type: "custom",

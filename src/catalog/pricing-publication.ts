@@ -107,7 +107,7 @@ export async function recoverCatalogPair(
 ): Promise<CatalogPairCandidate | undefined> {
   const manifestBytes = await optionalRead(manifestPath(paths));
   if (manifestBytes === undefined) {
-    const candidate = await loadMirrors(paths);
+    const candidate = await readCatalogPairMirrors(paths);
     if (candidate === undefined) return undefined;
     await ensurePairProjections(candidate, paths.projections);
     return candidate;
@@ -177,7 +177,9 @@ export async function commitCatalogPair(
   await writePairMirrors(validated, projections, paths);
 }
 
-async function loadMirrors(paths: CatalogPairPaths): Promise<CatalogPairCandidate | undefined> {
+export async function readCatalogPairMirrors(
+  paths: CatalogPairPaths = defaultCatalogPairPaths,
+): Promise<CatalogPairCandidate | undefined> {
   const catalogBytes = await optionalRead(paths.catalogMirror);
   if (catalogBytes === undefined) return undefined;
   const catalog = decodeCatalogStorage(catalogBytes);

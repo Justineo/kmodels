@@ -975,7 +975,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
               "unit_hour",
               input.source.id,
               "hour / instance",
-              conditions,
+              { ...conditions, billing_period: "hourly" },
             ),
           ),
           publishedRate(
@@ -984,7 +984,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
             "unit_month",
             input.source.id,
             "month / instance",
-            conditions,
+            { ...conditions, billing_period: "monthly" },
           ),
         ),
       );

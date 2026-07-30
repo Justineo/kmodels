@@ -8,6 +8,11 @@ export interface PublishedTimeBoundaryLike {
   inclusive?: boolean | undefined;
 }
 
+interface PublishedValidityLike {
+  from?: PublishedTimeBoundaryLike | undefined;
+  until?: PublishedTimeBoundaryLike | undefined;
+}
+
 export function canonicalizeInstant(value: string): string {
   const match =
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
@@ -98,6 +103,27 @@ export function publishedValidityIsCoherent(
       from.precision === until.precision &&
       from.value === until.value &&
       (from.inclusive === false || until.inclusive === false))
+  );
+}
+
+export function publishedValiditiesOverlap(
+  left: PublishedValidityLike | undefined,
+  right: PublishedValidityLike | undefined,
+): boolean {
+  return !(endsBefore(left?.until, right?.from) || endsBefore(right?.until, left?.from));
+}
+
+function endsBefore(
+  until: PublishedTimeBoundaryLike | undefined,
+  from: PublishedTimeBoundaryLike | undefined,
+): boolean {
+  if (until === undefined || from === undefined) return false;
+  const comparison = comparePublishedTimes(until, from);
+  if (comparison !== 0) return comparison < 0;
+  return (
+    until.precision === from.precision &&
+    until.value === from.value &&
+    (until.inclusive === false || from.inclusive === false)
   );
 }
 

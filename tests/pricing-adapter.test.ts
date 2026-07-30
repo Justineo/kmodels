@@ -115,6 +115,20 @@ function model(): ParsedProviderModel {
   };
 }
 
+function tokenRate(price: string, conditions: SourcePriceFact["conditions"]): SourcePriceFact {
+  return {
+    meter: "input_text",
+    price,
+    currency: "USD",
+    unit: "million_tokens",
+    conditions,
+    source_ref: sourceRef,
+    derived: false,
+    raw_price: price,
+    raw_unit: "1M tokens",
+  };
+}
+
 function source(): SourceRecord {
   return {
     id: sourceRef,
@@ -285,21 +299,10 @@ describe("parsed-source canonical pricing adapter", () => {
     const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
     if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
     const parsedModel = model();
-    const rate = (price: string, conditions: SourcePriceFact["conditions"]): SourcePriceFact => ({
-      meter: "input_text",
-      price,
-      currency: "USD",
-      unit: "million_tokens",
-      conditions,
-      source_ref: sourceRef,
-      derived: false,
-      raw_price: price,
-      raw_unit: "1M tokens",
-    });
     parsedModel.price_facts = [
-      rate("1", {}),
-      rate("2", { context_min_tokens: 200_001 }),
-      rate("0.5", { service_tier: "batch" }),
+      tokenRate("1", {}),
+      tokenRate("2", { context_min_tokens: 200_001 }),
+      tokenRate("0.5", { service_tier: "batch" }),
     ];
 
     const partition = assembleParsedProviderPricing(
@@ -330,6 +333,60 @@ describe("parsed-source canonical pricing adapter", () => {
       ]),
     );
     expect(base?.observations[0]?.raw.conditions).toBeUndefined();
+  });
+
+  it("applies provider defaults only where official alternatives establish them", () => {
+    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
+    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
+    if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
+    const scenarios = [
+      {
+        provider: "anthropic",
+        key: "inference_geo",
+        explicit: "us",
+        expected: "global",
+      },
+      {
+        provider: "azure",
+        key: "context_tier",
+        explicit: "long_context",
+        expected: "standard",
+      },
+      { provider: "databricks", key: "promotion", explicit: true, expected: false },
+      { provider: "vertex", key: "promotion", explicit: true, expected: false },
+    ] as const;
+
+    for (const scenario of scenarios) {
+      const base = model();
+      const parsedModel: ParsedProviderModel = {
+        ...base,
+        provider_id: scenario.provider,
+        uid: `${scenario.provider}/test-model`,
+        price_facts: [tokenRate("1", {}), tokenRate("2", { [scenario.key]: scenario.explicit })],
+      };
+      const partition = assembleParsedProviderPricing(
+        scenario.provider,
+        observedAt,
+        [{ source: pricingSource, models: [parsedModel] }],
+        [parsedModel],
+      );
+      const term = partition?.books[0]?.offers[0]?.terms[0];
+      if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
+      expect(term.raw_variants).toEqual([]);
+      const normalizedBase = term.variants.find(({ observations }) =>
+        observations.some(({ raw }) => raw.amount === "1"),
+      );
+      const condition = normalizedBase?.applicability.any_of[0]?.all_of.find(
+        ({ dimension }) => dimension.value === scenario.key,
+      );
+      expect(
+        condition?.kind === "categorical"
+          ? condition.values[0]?.value
+          : condition?.kind === "boolean"
+            ? condition.value
+            : undefined,
+      ).toBe(scenario.expected);
+    }
   });
 
   it("preserves explicit non-numeric source states", () => {

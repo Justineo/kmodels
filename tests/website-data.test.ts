@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { gunzipSync } from "node:zlib";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
 import { websiteAssets } from "../src/catalog/endpoints.ts";
@@ -11,7 +11,6 @@ import { websiteDataVersion } from "../src/catalog/projections.ts";
 import { catalogSchema, migrateCatalogStorage } from "../src/catalog/schema.ts";
 import {
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
-  hydrateWebsiteCatalog,
   websiteModelDetail,
   websitePublication,
 } from "../src/catalog/website-data.ts";
@@ -83,14 +82,21 @@ function publicationData() {
 }
 
 describe("website data", () => {
-  it("keeps the initial catalog minimal and publishes pricing separately", async () => {
+  it("publishes all core table data in bounded parallel chunks", async () => {
     const { publication, dataVersion } = await publicationData();
     const catalogSource = JSON.stringify(publication.catalog);
     const pricingSource = JSON.stringify(publication.pricing);
-    const website = hydrateWebsiteCatalog(publication.catalog, publication.pricing.pricing);
+    const summary = (providerId: string, modelId: string) => {
+      const index = publication.catalog.models.findIndex(
+        ({ provider_id, model_id }) => provider_id === providerId && model_id === modelId,
+      );
+      return publication.pricing.pricing[index];
+    };
 
     expect(Buffer.byteLength(catalogSource)).toBeLessThan(1024 * 1024);
     expect(Buffer.byteLength(pricingSource)).toBeLessThan(1024 * 1024);
+    expect(gzipSync(catalogSource).byteLength).toBeLessThan(64 * 1024);
+    expect(gzipSync(pricingSource).byteLength).toBeLessThan(32 * 1024);
     expect(foundAuditFields(JSON.parse(catalogSource))).toEqual([]);
     expect(foundAuditFields(JSON.parse(pricingSource))).toEqual([]);
     expect(publication.catalog.models[0]).not.toHaveProperty("uid");
@@ -99,17 +105,13 @@ describe("website data", () => {
     expect(publication.catalog.data_version).toBe(dataVersion);
     expect(publication.pricing.data_version).toBe(dataVersion);
     expect(
-      website.models.find(
-        ({ uid }) => uid === "amazon-bedrock/anthropic.claude-haiku-4-5-20251001-v1:0",
-      )?.pricing.status?.label,
+      summary("amazon-bedrock", "anthropic.claude-haiku-4-5-20251001-v1:0")?.status?.label,
     ).toBe("Varies");
-    expect(website.models.find(({ uid }) => uid === "openai/gpt-5.2-pro")?.pricing).toMatchObject({
+    expect(summary("openai", "gpt-5.2-pro")).toMatchObject({
       input: { amount: "$21" },
       output: { amount: "$168" },
     });
-    expect(
-      website.models.find(({ uid }) => uid === "openai/gpt-5.2-pro")?.pricing.status,
-    ).toBeUndefined();
+    expect(summary("openai", "gpt-5.2-pro")?.status).toBeUndefined();
   }, 90_000);
 
   it("publishes audit-free details in bounded provider chunks", async () => {

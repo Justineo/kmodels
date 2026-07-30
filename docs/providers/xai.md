@@ -14,7 +14,7 @@ Status: current
 
 - Tasks are non-exclusive. Multi-agent behavior stays in Responses/capability evidence; realtime is delivery.
 - Publish an endpoint only when an allowlisted example contains one exact resolvable ID/alias and exact request URL. Never inherit routes from tasks or siblings.
-- Validate each audio operation only against its current required structured price fields and the public pricing table.
+- Parse Speech to Speech prices per documented model ID. Each version keeps its own audio-minute and text-input rates; shared tool rates remain separate. Validate every available structured realtime service against the matching documented model price, or against an identical published rate for an internal service name that is not a request model.
 - Normalize fixed-point prices with decimal shifts. Preserve context, tier, media, duration, message, and tool conditions.
 - Dates require exact ID, alias, or display-name bindings. API `created` is not a model date.
 

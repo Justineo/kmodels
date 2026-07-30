@@ -50,6 +50,10 @@ regenerates its projections without network access.
 The canonical compilation input is bound to the exact catalog core, and each
 replay source records its content hash and extractor version. Provider snapshot
 metadata comes from the accepted canonical pair rather than being duplicated.
+When one source describes the same exact model identity in several
+operation-specific records, compilation coalesces those records and preserves
+the union of distinct price facts; conflicting non-unknown pricing states abort
+capture.
 The input stores no response bodies, descriptions, credentials,
 authenticated-source facts, or private identifiers. A provider whose complete
 pricing input cannot safely be persisted has no replay entry, so its accepted
@@ -137,11 +141,12 @@ The canonical pricing asset retains observations, source references, locators,
 raw source fields, and derivations for validation and audit. Those fields do
 not belong in the website runtime payload.
 
-The website is built from two closed projections:
+The website is built from three closed runtime payloads:
 
 - `/ui/catalog/index.json` contains only fields needed to render, search,
-  filter, sort, and show representative price cells;
-- `/ui/catalog/pricing.json` contains compact initial pricing summaries;
+  filter, and sort;
+- `/ui/catalog/pricing.json` contains build-time representative pricing and is
+  loaded concurrently with the catalog before the application mounts;
 - `/ui/details/<provider>/<chunk>.json` contains bounded deferred model details
   and compact price-book views.
 
@@ -377,6 +382,13 @@ imprecise validity as a historical/current price query. A validity-bearing
 variant is details-only unless a separate source fact establishes currentness.
 Provably empty or reversed intervals are not normalized.
 
+Validity does participate in conflict detection: unequal values conflict only
+when both their applicability and their published validity may overlap.
+Intervals are treated as disjoint only when their precision and endpoint
+inclusivity prove it; mixed or imprecise labels remain conservatively
+overlapping. This preserves consecutive promotional and standard rates without
+pretending that collection time selects either one.
+
 ### Provider-owned atoms
 
 Provider units, meters, dimensions, categorical values, billing modes, credit
@@ -444,8 +456,17 @@ derived from those changing fields.
 Compaction groups equal semantic values and unions their applicability while
 retaining all observations. Canonical output must be maximally compact for the
 declared grouping keys. Unequal overlapping normalized values are not allowed;
-the connected affected component falls back to raw. Equivalent source grouping
-therefore does not cause ID churn or duplicate UI rows.
+only the connected affected component falls back to raw, while disjoint
+variants in the same logical term remain normalized. Equivalent source
+grouping therefore does not cause ID churn or duplicate UI rows.
+
+Adapters may fill a missing applicability dimension only through a reviewed
+provider rule that identifies the source's unqualified base row against an
+explicit unequal alternative, such as standard versus long-context or
+promotion false versus true. This is a source-schema normalization rule, not a
+provider recommendation or a choice of cheapest offer. Without that exact
+evidence, the dimension remains missing and overlapping unequal values fall
+back to raw.
 
 The commercial projection removes observations, names, source refs, snapshot
 freshness, and informational raw facts. It retains every field that can change

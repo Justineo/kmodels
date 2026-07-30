@@ -746,13 +746,21 @@ describe("Cohere adapters", () => {
           meter: "provisioned_throughput",
           price: "4.00",
           unit: "unit_hour",
-          conditions: { endpoint: "Model Vault", capacity: "Small" },
+          conditions: {
+            endpoint: "Model Vault",
+            capacity: "Small",
+            billing_period: "hourly",
+          },
         },
         {
           meter: "provisioned_throughput",
           price: "2500",
           unit: "unit_month",
-          conditions: { endpoint: "Model Vault", capacity: "Small" },
+          conditions: {
+            endpoint: "Model Vault",
+            capacity: "Small",
+            billing_period: "monthly",
+          },
         },
       ],
       embedding_endpoints: [{ name: "Embed", path: "v2/embed" }],
@@ -761,12 +769,20 @@ describe("Cohere adapters", () => {
         {
           price: "10.00",
           unit: "unit_hour",
-          conditions: { endpoint: "Model Vault", capacity: "Large" },
+          conditions: {
+            endpoint: "Model Vault",
+            capacity: "Large",
+            billing_period: "hourly",
+          },
         },
         {
           price: "6500",
           unit: "unit_month",
-          conditions: { endpoint: "Model Vault", capacity: "Large" },
+          conditions: {
+            endpoint: "Model Vault",
+            capacity: "Large",
+            billing_period: "monthly",
+          },
         },
       ],
       retired: {
@@ -913,6 +929,7 @@ describe("Mistral adapters", () => {
       medium: {
         name: medium?.name,
         version: medium?.version,
+        release_stage: medium?.release_stage,
         aliases: medium?.aliases,
         tasks: medium?.tasks,
         api_endpoints: medium?.api_endpoints,
@@ -961,6 +978,7 @@ describe("Mistral adapters", () => {
       medium: {
         name: "Mistral Medium 3.5",
         version: "26.04",
+        release_stage: "stable",
         aliases: ["mistral-medium-3", "mistral-medium-latest"],
         tasks: ["text_generation"],
         api_endpoints: [
@@ -1100,6 +1118,14 @@ describe("Mistral adapters", () => {
     await expect(
       mistralCatalog({ medium: medium.replace("free: false", "free: true") }),
     ).rejects.toThrow("Mistral marked non-zero model pricing as free");
+
+    expect(
+      (
+        await mistralCatalog({
+          medium: medium.replace('status: "GA"', 'status: "PublicPreview"'),
+        })
+      ).find(({ model_id }) => model_id === "mistral-medium-3-5"),
+    ).toMatchObject({ status: "active", release_stage: "preview" });
   });
 
   it("validates structured base models and ignores private fine-tunes", async () => {
@@ -1466,6 +1492,23 @@ describe("OpenAI adapters", () => {
     ]);
   });
 
+  it("binds Realtime translation duration to audio input", async () => {
+    const models = await parsed("openai", "openai/realtime-translation-catalog.json");
+    expect(models.find(({ model_id }) => model_id === "gpt-realtime-translate")).toMatchObject({
+      model_id: "gpt-realtime-translate",
+      tasks: ["translation"],
+      price_facts: [
+        expect.objectContaining({ meter: "input_audio", price: "0.034", unit: "minute" }),
+      ],
+    });
+    expect(models.find(({ model_id }) => model_id === "gpt-transcribe")).toMatchObject({
+      tasks: ["transcription"],
+      price_facts: [
+        expect.objectContaining({ meter: "input_audio", price: "0.0045", unit: "minute" }),
+      ],
+    });
+  });
+
   it("fails closed on an unreviewed endpoint card", async () => {
     const value = manifest("openai");
     const source = value.sources[0];
@@ -1691,7 +1734,9 @@ describe("Azure adapters", () => {
     const gpt = models.find(({ model_id }) => model_id === "gpt-4.1");
     const terra = models.find(({ model_id }) => model_id === "gpt-5.6-terra");
     const audio = models.find(({ model_id }) => model_id === "gpt-audio-1.5");
-    expect(models).toHaveLength(3);
+    const realtime = models.find(({ model_id }) => model_id === "gpt-4o-mini-realtime-preview");
+    const audioPreview = models.find(({ model_id }) => model_id === "gpt-4o-mini-audio-preview");
+    expect(models).toHaveLength(5);
     expect(gpt?.price_facts).toEqual([
       expect.objectContaining({
         meter: "input_text",
@@ -1725,6 +1770,21 @@ describe("Azure adapters", () => {
       expect.objectContaining({ meter: "cache_write_text" }),
     ]);
     expect(audio?.price_facts.map(({ meter }) => meter)).toEqual(["input_text", "input_audio"]);
+    expect(realtime).toMatchObject({
+      uid: "azure/gpt-4o-mini-realtime-preview@2024-12-17",
+      price_facts: [
+        expect.objectContaining({ meter: "input_text", price: "0.0006" }),
+        expect.objectContaining({ meter: "input_audio", price: "0.01" }),
+      ],
+    });
+    expect(audioPreview).toMatchObject({
+      uid: "azure/gpt-4o-mini-audio-preview@2024-12-17",
+      price_facts: [
+        expect.objectContaining({ meter: "input_text", price: "0.00015" }),
+        expect.objectContaining({ meter: "input_audio", price: "0.01" }),
+      ],
+    });
+    expect(models.some(({ model_id }) => model_id === "gpt-5")).toBe(false);
   });
 
   it("preserves ARM Legacy as a callable lifecycle state", async () => {
@@ -1842,7 +1902,7 @@ describe("Gemini adapters", () => {
           recommended_embedding_dimensions: [768, 1536],
         },
         releaseStage: "stable",
-        units: ["image", "million_tokens", "million_tokens"],
+        units: ["million_tokens", "million_tokens"],
       },
       gemma: {
         context: 256_000,
@@ -2398,8 +2458,8 @@ describe("xAI adapter", () => {
       "grok-imagine-image-quality",
       "grok-imagine-video",
       "grok-imagine-video-1.5",
-      "grok-voice-fast-1.0",
       "grok-voice-think-fast-1.0",
+      "grok-voice-think-fast-2.0",
     ]);
     expect(
       models.some(({ model_id }) => ["grok-tts", "grok-stt", "grok-realtime"].includes(model_id)),
@@ -2424,8 +2484,8 @@ describe("xAI adapter", () => {
       "grok-imagine-image-quality",
       "grok-imagine-video",
       "grok-imagine-video-1.5",
-      "grok-voice-fast-1.0",
       "grok-voice-think-fast-1.0",
+      "grok-voice-think-fast-2.0",
     ]);
     expect(models.find(({ model_id }) => model_id === "grok-4.5")).toMatchObject({
       name: "Grok 4.5",
@@ -2483,6 +2543,13 @@ describe("xAI adapter", () => {
         expect.objectContaining({ meter: "input_text", price: "0.004", unit: "request" }),
       ]),
     });
+    expect(
+      models.find(({ model_id }) => model_id === "grok-voice-think-fast-2.0")?.price_facts,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ meter: "input_audio", price: "0.08", unit: "minute" }),
+      ]),
+    );
     expect(models.find(({ model_id }) => model_id === "grok-3")).toMatchObject({
       status: "retired",
       retired_at: "2026-05-15",
@@ -2564,6 +2631,98 @@ describe("xAI adapter", () => {
 });
 
 describe("document adapter", () => {
+  it("keeps embedding input dimensions as distinct commercial meters", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const models = await parsed("amazon-bedrock", "document/bedrock-embedding-pricing.json");
+    const titan = models.find(({ model_id }) => model_id === "amazon.titan-embed-image-v1");
+    if (titan === undefined) throw new Error("Missing Titan embedding fixture model");
+
+    expect(titan.price_facts.every(({ conditions }) => conditions.modality === undefined)).toBe(
+      true,
+    );
+    expect(
+      titan.price_facts.map(({ meter, price, unit, conditions }) => {
+        const { region, endpoint, deployment_scope, service_tier } = conditions;
+        return {
+          meter,
+          price,
+          unit,
+          conditions: { region, endpoint, deployment_scope, service_tier },
+        };
+      }),
+    ).toEqual([
+      {
+        meter: "input_image",
+        price: "0.0000400000",
+        unit: "image",
+        conditions: {
+          region: "eu-west-3",
+          endpoint: "bedrock-runtime",
+          deployment_scope: "in_region",
+          service_tier: "batch",
+        },
+      },
+      {
+        meter: "input_text",
+        price: "0.5",
+        unit: "million_tokens",
+        conditions: {
+          region: "eu-west-3",
+          endpoint: "bedrock-runtime",
+          deployment_scope: "in_region",
+          service_tier: "batch",
+        },
+      },
+      {
+        meter: "provisioned_throughput",
+        price: "10.7300000000",
+        unit: "unit_hour",
+        conditions: {
+          region: "eu-west-3",
+          endpoint: "bedrock-runtime",
+          deployment_scope: "in_region",
+          service_tier: "provisioned_no_commit",
+        },
+      },
+    ]);
+
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+    );
+    expect(
+      partition?.books[0]?.offers
+        .flatMap(({ terms }) =>
+          terms.map((term) => [
+            term.term_key,
+            term.kind === "rate" ? term.variants.length : 0,
+            term.kind === "rate" ? term.raw_variants.length : 0,
+          ]),
+        )
+        .sort(([left], [right]) => String(left).localeCompare(String(right))),
+    ).toEqual([
+      ["input_image", 1, 0],
+      ["input_text", 1, 0],
+      ["provisioned_throughput", 1, 0],
+    ]);
+
+    const marengo = models.find(({ model_id }) => model_id === "twelvelabs.marengo-embed-3-0-v1:0");
+    expect(
+      marengo?.price_facts.map(({ meter, unit, conditions }) => ({
+        meter,
+        unit,
+        modality: conditions.modality,
+      })),
+    ).toEqual([
+      { meter: "input_audio", unit: "second", modality: undefined },
+      { meter: "input_video", unit: "second", modality: undefined },
+    ]);
+  });
+
   it("reconciles endpoint-equivalent Marketplace and service token prices", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -3005,6 +3164,12 @@ describe("Vercel adapter", () => {
           min: rate.conditions.context_min_tokens,
           max: rate.conditions.context_max_tokens,
         })),
+      cacheTiers: model?.price_facts
+        .filter((rate) => rate.meter === "cache_read_text")
+        .map((rate) => ({
+          min: rate.conditions.context_min_tokens,
+          max: rate.conditions.context_max_tokens,
+        })),
       tools: model?.price_facts
         .filter((rate) => rate.meter === "tool_call")
         .map((rate) => ({
@@ -3018,14 +3183,35 @@ describe("Vercel adapter", () => {
       services: [
         { meter: "input_text", min: undefined, max: 200000 },
         { meter: "output_text", min: undefined, max: 200000 },
-        { meter: "input_text", min: 200000, max: undefined },
-        { meter: "output_text", min: 200000, max: undefined },
+        { meter: "input_text", min: 200001, max: undefined },
+        { meter: "output_text", min: 200001, max: undefined },
+      ],
+      cacheTiers: [
+        { min: 0, max: 31999 },
+        { min: 32000, max: undefined },
       ],
       tools: [
         { operation: "web_search", price: "10", unit: "thousand_requests" },
         { operation: "maps_search", price: "14", unit: "thousand_requests" },
       ],
     });
+  });
+
+  it("keeps regional and fast rates as disjoint alternatives", async () => {
+    const model = (await vercelCatalog("vercel/pricing.json")).find(
+      ({ model_id }) => model_id === "acme/regional-fast-1",
+    );
+    expect(
+      model?.price_facts
+        .filter(({ meter }) => meter === "input_text")
+        .map(({ price, conditions }) => ({ price, conditions })),
+    ).toEqual([
+      { price: "1", conditions: { region: "default", service_tier: "standard" } },
+      { price: "2", conditions: { region: "default", service_tier: "fast" } },
+      { price: "1.1", conditions: { region: "eu", service_tier: "standard" } },
+      { price: "1.1", conditions: { region: "us", service_tier: "standard" } },
+      { price: "2.2", conditions: { region: "us", service_tier: "fast" } },
+    ]);
   });
 
   it("normalizes specialized modalities, lifecycle, and native pricing units", async () => {
@@ -3077,7 +3263,7 @@ describe("Vercel adapter", () => {
         meter: "embedding",
       },
       image: [
-        { price: "0.04", conditions: {} },
+        { price: "0.04", conditions: { style: "default" } },
         { price: "0.08", conditions: { operation: undefined, resolution: "4K", style: undefined } },
         {
           price: "0.12",
@@ -3559,6 +3745,7 @@ describe("DeepSeek adapters", () => {
   }
 
   it("reads the current callable catalog without a product-name allowlist", async () => {
+    expect(manifest("deepseek").supersededModelIds).toEqual(["deepseek-chat", "deepseek-reasoner"]);
     expect(source("deepseek-catalog")).toMatchObject({
       fields: expect.arrayContaining(["api_endpoints"]),
       linkedDocuments: {
@@ -3574,8 +3761,6 @@ describe("DeepSeek adapters", () => {
     });
     const models = await deepseekCatalog();
     expect(models.map(({ model_id }) => model_id)).toEqual([
-      "deepseek-chat",
-      "deepseek-reasoner",
       "deepseek-v4-flash",
       "deepseek-v4-pro",
     ]);
@@ -3598,19 +3783,6 @@ describe("DeepSeek adapters", () => {
         expect.objectContaining({ meter: "cache_read_text", price: "0.003625" }),
         expect.objectContaining({ meter: "input_text", price: "0.435" }),
         expect.objectContaining({ meter: "output_text", price: "0.87" }),
-      ],
-    });
-    expect(models.find(({ model_id }) => model_id === "deepseek-chat")).toMatchObject({
-      api_endpoints: [{ name: "Chat Completions", path: "/chat/completions" }],
-      capabilities: { reasoning: false, effort_control: "unknown", streaming: true },
-      deprecated_at: "2026-07-24T15:59:00Z",
-      retired_at: "2026-07-24T15:59:00Z",
-      status: "active",
-      replacement_model_ids: ["deepseek-v4-flash"],
-      price_facts: [
-        expect.objectContaining({ meter: "cache_read_text", price: "0.0028" }),
-        expect.objectContaining({ meter: "input_text", price: "0.14" }),
-        expect.objectContaining({ meter: "output_text", price: "0.28" }),
       ],
     });
   });
@@ -3692,10 +3864,7 @@ describe("DeepSeek adapters", () => {
       "deepseek-updates",
       "deepseek-api",
     ]);
-    expect(models.find(({ model_id }) => model_id === "deepseek-chat")?.source_refs).toEqual([
-      "deepseek-catalog",
-      "deepseek-updates",
-    ]);
+    expect(models.some(({ model_id }) => model_id === "deepseek-chat")).toBe(false);
   });
 });
 

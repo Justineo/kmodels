@@ -924,7 +924,7 @@ const retailModelAliases: RetailModelAlias[] = [
   { id: "gpt-5.1", aliases: ["5.1"], products: ["Azure OpenAI GPT5"] },
   {
     id: "gpt-chat-latest",
-    aliases: ["chat-latest", "gpt-latest"],
+    aliases: ["chat-latest"],
     products: ["Azure OpenAI GPT5", "Azure OpenAI Media"],
   },
   { id: "gpt-5-codex", aliases: ["gpt-5-codex"], products: ["Azure OpenAI GPT5"] },
@@ -1097,7 +1097,77 @@ function retailWords(value: string): string {
 }
 
 function startsWithWords(value: string, prefix: string): boolean {
-  return value === prefix || value.startsWith(`${prefix} `);
+  if (value === prefix || value.startsWith(`${prefix} `)) return true;
+  return value.startsWith(prefix) && /^\d/.test(value.slice(prefix.length));
+}
+
+const retailQualifierWords = new Set([
+  "aud",
+  "audio",
+  "batch",
+  "cache",
+  "cached",
+  "cchd",
+  "cd",
+  "completion",
+  "creation",
+  "data",
+  "datazone",
+  "dzone",
+  "dz",
+  "dzn",
+  "gl",
+  "glbl",
+  "global",
+  "image",
+  "img",
+  "inp",
+  "inpt",
+  "input",
+  "longco",
+  "opt",
+  "out",
+  "outp",
+  "outpt",
+  "output",
+  "pp",
+  "prompt",
+  "regional",
+  "regnl",
+  "rg",
+  "rgnl",
+  "rt",
+  "shortco",
+  "speech",
+  "standard",
+  "std",
+  "text",
+  "tokens",
+  "txt",
+  "video",
+  "wr",
+  "write",
+  "zone",
+]);
+
+function retailQualifierSuffix(id: string, suffix: string): boolean {
+  const markers = Object.keys(retailVersionMarkers[id] ?? {});
+  return suffix
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every(
+      (word) =>
+        retailQualifierWords.has(word) ||
+        markers.some(
+          (marker) =>
+            word === marker ||
+            word === `aud${marker}` ||
+            word === `audio${marker}` ||
+            word === `txt${marker}` ||
+            word === `text${marker}`,
+        ),
+    );
 }
 
 function retailModelIdentity(price: RetailPrice): { id: string; version?: string } | undefined {
@@ -1107,14 +1177,17 @@ function retailModelIdentity(price: RetailPrice): { id: string; version?: string
     .flatMap(({ id, aliases }) =>
       aliases.flatMap((alias) => {
         const normalized = retailWords(alias);
-        return startsWithWords(sku, normalized) ? [{ id, length: normalized.length }] : [];
+        return startsWithWords(sku, normalized) &&
+          retailQualifierSuffix(id, sku.slice(normalized.length))
+          ? [{ id, length: normalized.length }]
+          : [];
       }),
     )
     .sort((left, right) => right.length - left.length);
   const match = matches[0];
   if (match === undefined) return undefined;
   const version = Object.entries(retailVersionMarkers[match.id] ?? {}).find(([marker]) =>
-    ` ${sku} `.includes(` ${marker} `),
+    new RegExp(`(?:^|\\D)${marker}(?:\\D|$)`).test(sku),
   )?.[1];
   return { id: match.id, ...(version === undefined ? {} : { version }) };
 }
@@ -1143,9 +1216,9 @@ function retailMeter(
   const output = /\b(?:opt|out|outp|outpt|output|completion)\b/.test(value);
   const cache = /\b(?:cache|cached|cchd|cd)\b/.test(value);
   const cacheWrite = cache && /\b(?:write|wr|creation)\b/.test(value);
-  const text = /\b(?:text|txt)\b/.test(value);
-  const image = !text && /\b(?:img|image)\b/.test(value);
-  const audio = !text && !image && /\b(?:aud|audio|speech)\b/.test(value);
+  const text = /\b(?:text|txt)(?:\b|(?=\d))/.test(value);
+  const image = !text && /\b(?:img|image)(?:\b|(?=\d))/.test(value);
+  const audio = !text && !image && /\b(?:aud|audio|speech)(?:\b|(?=\d))/.test(value);
   const video = /\bvideo\b/.test(value);
   if (unit === "unit_hour" && /provisioned|\bptu\b/.test(value)) return "provisioned_throughput";
   if (cacheWrite && audio) return "cache_write_audio";

@@ -13,8 +13,10 @@ Status: current
 ## Mapping
 
 - Every used feature must exist and every endpoint key must resolve to a valid relative path. Unknown features, dangling references, invalid paths, or contradictory explicit-free prices reject the provider.
+- Voice cloning is endpoint capability evidence for Audio Speech; it does not create a separate model task or price meter.
+- Separate official definitions may share one exact API ID/version for different operations. Their model evidence and prices coalesce under that identity; minute rates retain `chat_completions` or `transcription` operation conditions so neither price overwrites the other.
 - Batch is endpoint/delivery evidence, not a task. General text rows remain text generation even when retired definitions lose endpoints.
-- Keep lifecycle and preview maturity independent.
+- Parse the repository's closed lifecycle vocabulary directly: `GA` is active/stable, `PublicPreview` is active/preview, and `Deprecated` and `Retired` retain their lifecycle meanings. Unknown values reject the provider.
 - Preserve native token, character, duration, and page rates. Derive batch/cache rates only from published multipliers and explicit feature support with decimal-string arithmetic; publish the exact result while retaining the multiplier as evidence.
 
 ## Kong AI Gateway

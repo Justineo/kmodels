@@ -548,7 +548,11 @@ function priceUnit(
   if (/\/\s*min\b|per minute/.test(value)) return "minute";
   if (/per second/.test(value)) return "second";
   if (/per frame/.test(value)) return "frame";
-  if (/per (?:0\.5k |1k |2k |4k |resolution )?image|per song/.test(value))
+  if (
+    /per (?:(?:0\.5k|1k|2k|4k)(?:\/(?:0\.5k|1k|2k|4k))* )?(?:resolution )?image|per song/.test(
+      value,
+    )
+  )
     return value.includes("song") ? "request" : "image";
   if (
     /1,000 (?:search queries|grounded prompts)|1k (?:search queries|grounded prompts)/.test(value)
@@ -811,38 +815,50 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
           if (cells.length < 3) return;
           const row = text(cells.eq(0).text());
           const paid = segments(cells.eq(2));
-          for (const segment of paid) {
+          const candidates = paid.flatMap((segment) => {
             const matches = [...segment.matchAll(/\$(\d+(?:\.\d+)?)/g)];
-            for (let index = 0; index < matches.length; index += 1) {
-              const match = matches[index];
+            return matches.flatMap((match, index) => {
               const price = match?.[1];
               const start = (match?.index ?? 0) + (match?.[0].length ?? 0);
               const end = matches[index + 1]?.index ?? segment.length;
               const descriptor = text(segment.slice(start, end));
               const unit = price === undefined ? undefined : priceUnit(header, descriptor, row);
-              if (price === undefined || unit === undefined) continue;
-              for (const id of targets(codes, row)) {
-                const model = models.get(id);
-                if (model === undefined) continue;
-                for (const rate of meterRates(
-                  model,
-                  row,
-                  segment,
-                  descriptor,
-                  unit,
-                  conditions(tier, descriptor, row),
-                ))
-                  model.price_facts.push(
-                    publishedRate(
-                      rate.meter,
-                      price,
-                      unit,
-                      sourceId,
-                      `${header}; ${row}; ${descriptor || segment}`,
-                      rate.conditions,
-                    ),
-                  );
-              }
+              return price === undefined || unit === undefined
+                ? []
+                : [{ price, descriptor, segment, unit }];
+            });
+          });
+          const hasTokenPrice = candidates.some(
+            ({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour",
+          );
+          const selected =
+            hasTokenPrice && header.toLowerCase().includes("per 1m tokens")
+              ? candidates.filter(
+                  ({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour",
+                )
+              : candidates;
+          for (const { price, descriptor, segment, unit } of selected) {
+            for (const id of targets(codes, row)) {
+              const model = models.get(id);
+              if (model === undefined) continue;
+              for (const rate of meterRates(
+                model,
+                row,
+                segment,
+                descriptor,
+                unit,
+                conditions(tier, descriptor, row),
+              ))
+                model.price_facts.push(
+                  publishedRate(
+                    rate.meter,
+                    price,
+                    unit,
+                    sourceId,
+                    `${header}; ${row}; ${descriptor || segment}`,
+                    rate.conditions,
+                  ),
+                );
             }
           }
         });

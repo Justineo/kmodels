@@ -295,18 +295,23 @@ function parseDraft(sourceSlug: string, body: string): Draft {
     throw new Error(`Mistral model path and slug disagree for ${sourceSlug}`);
   const catalogType = requiredString(object, "type");
   const rawStatus = requiredString(object, "status");
-  const status: Draft["status"] =
-    rawStatus === "Retired"
-      ? "retired"
-      : rawStatus === "Deprecated"
-        ? "deprecated"
-        : rawStatus === "Active" && catalogType === "Labs"
-          ? "preview"
-          : rawStatus === "Active"
-            ? "active"
-            : (() => {
-                throw new Error(`Mistral published an unknown lifecycle status: ${rawStatus}`);
-              })();
+  let status: Draft["status"];
+  switch (rawStatus) {
+    case "GA":
+      status = "active";
+      break;
+    case "PublicPreview":
+      status = "preview";
+      break;
+    case "Deprecated":
+      status = "deprecated";
+      break;
+    case "Retired":
+      status = "retired";
+      break;
+    default:
+      throw new Error(`Mistral published an unknown lifecycle status: ${rawStatus}`);
+  }
   const identifiers = objectValue(property(object, "identifiers"), "identifiers");
   const capabilities = objectValue(property(object, "capabilities"), "capabilities");
   const metadata = objectValue(property(object, "metadata"), "metadata");
@@ -480,6 +485,7 @@ const featureOperations = new Map<string, ModelTask[]>([
   ["chat-moderations", ["moderation"]],
   ["transcriptions", ["transcription"]],
   ["tts", ["speech_synthesis"]],
+  ["voice-cloning", []],
   ["timestamps", ["transcription"]],
   ["batching", []],
 ]);
@@ -543,6 +549,9 @@ function directRate(
   } else if (price.denominator === "/Min") {
     unit = "minute";
     meter = price.direction === "output" ? "output_audio" : "input_audio";
+    if (modelTasks.includes("transcription") && !modelTasks.includes("text_generation"))
+      conditions.operation = "transcription";
+    else if (modelTasks.includes("text_generation")) conditions.operation = "chat_completions";
   } else if (price.denominator === "/1000 Pages" || price.denominator === "/1000 Annotated Pages") {
     unit = "thousand_pages";
     meter = "input_image";
@@ -639,7 +648,8 @@ function sourceModel(
     ...(draft.deprecatedAt === undefined ? {} : { deprecated_at: draft.deprecatedAt }),
     ...(draft.retiredAt === undefined ? {} : { retired_at: draft.retiredAt }),
     status: draft.status === "preview" ? "active" : draft.status,
-    release_stage: draft.status === "preview" ? "preview" : "unknown",
+    release_stage:
+      draft.status === "preview" ? "preview" : draft.status === "active" ? "stable" : "unknown",
     replacement_model_ids: replacementId === undefined ? [] : [replacementId],
     pricing_state: rates.length > 0 ? "numeric" : "unknown",
     price_facts: rates,

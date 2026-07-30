@@ -3,6 +3,7 @@ import {
   canonicalizeInstant,
   isCanonicalInstant,
   isPublishedTime,
+  publishedValiditiesOverlap,
   publishedValidityIsCoherent,
 } from "../src/catalog/pricing-time.ts";
 
@@ -52,6 +53,27 @@ describe("pricing published time", () => {
       publishedValidityIsCoherent(
         { value: "2026", precision: "year", inclusive: false },
         { value: "2026", precision: "year" },
+      ),
+    ).toBe(false);
+  });
+
+  it("proves only unambiguous validity intervals disjoint", () => {
+    expect(
+      publishedValiditiesOverlap(
+        { until: { value: "2026-08-31", precision: "date" } },
+        { from: { value: "2026-09-01", precision: "date" } },
+      ),
+    ).toBe(false);
+    expect(
+      publishedValiditiesOverlap(
+        { until: { value: "2026", precision: "year" } },
+        { from: { value: "2026-09-01", precision: "date" } },
+      ),
+    ).toBe(true);
+    expect(
+      publishedValiditiesOverlap(
+        { until: { value: "2026-09-01", precision: "date", inclusive: false } },
+        { from: { value: "2026-09-01", precision: "date" } },
       ),
     ).toBe(false);
   });

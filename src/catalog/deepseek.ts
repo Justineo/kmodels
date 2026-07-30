@@ -137,35 +137,6 @@ function chatModelIds(body: string): Set<string> {
   return new Set(ids.data);
 }
 
-function retirement(body: string): {
-  aliases: [string, string];
-  replacement: string;
-  at: string;
-} {
-  const $ = load(body);
-  const paragraph = $("article p")
-    .toArray()
-    .find((element) =>
-      /will be deprecated on .*For compatibility/i.test(htmlText($(element).text())),
-    );
-  if (paragraph === undefined) throw new Error("DeepSeek catalog omitted legacy lifecycle");
-  const ids = $(paragraph)
-    .find("code")
-    .map((_index, element) => exactId(htmlText($(element).text())))
-    .get()
-    .filter((value) => value !== undefined);
-  const date = htmlText($(paragraph).text()).match(/(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2}) UTC/);
-  if (ids.length !== 3 || date === null) throw new Error("DeepSeek legacy lifecycle schema drift");
-  const [first, second, replacement] = ids;
-  if (first === undefined || second === undefined || replacement === undefined)
-    throw new Error("DeepSeek legacy lifecycle schema drift");
-  return {
-    aliases: [first, second],
-    replacement,
-    at: `${date[1]}-${date[2]}-${date[3]}T${date[4]}:${date[5]}:00Z`,
-  };
-}
-
 function model(
   input: Input,
   table: HtmlTable,
@@ -258,29 +229,6 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   for (const id of chatIds)
     if (!models.some(({ model_id }) => model_id === id))
       throw new Error(`DeepSeek Chat Completions reference named unknown catalog model ${id}`);
-  const lifecycle = retirement(bundle.index.body);
-  const replacement = models.find(({ model_id }) => model_id === lifecycle.replacement);
-  if (replacement === undefined)
-    throw new Error("DeepSeek replacement model is not in the catalog");
-  const retired = input.observedAt >= lifecycle.at;
-  for (const [index, id] of lifecycle.aliases.entries()) {
-    models.push({
-      ...replacement,
-      model_id: id,
-      uid: `${input.provider.id}/${id}`,
-      name: id,
-      aliases: [],
-      capabilities: {
-        ...replacement.capabilities,
-        reasoning: index === 1,
-        effort_control: "unknown",
-      },
-      deprecated_at: lifecycle.at,
-      retired_at: lifecycle.at,
-      status: retired ? "retired" : "active",
-      replacement_model_ids: [lifecycle.replacement],
-    });
-  }
   return bounded(input, models);
 }
 

@@ -166,7 +166,7 @@ describe("canonical pricing canonical assembly", () => {
     expect(term.variants[0]!.observations).toHaveLength(2);
   });
 
-  it("downgrades every normalized value after an unequal overlap", () => {
+  it("downgrades every value involved in an unequal overlap", () => {
     const source = input([
       rate(unconditionalApplicability, "standard"),
       rate(unconditionalApplicability, "conflict", "400000"),
@@ -177,6 +177,35 @@ describe("canonical pricing canonical assembly", () => {
     expect(term.raw_variants).toHaveLength(1);
     expect(term.raw_variants[0]!.reason).toBe("conflicting_values");
     expect(term.raw_variants[0]!.observations).toHaveLength(2);
+  });
+
+  it("retains values outside an unequal-overlap component", () => {
+    const source = input([
+      rate(region("US"), "us-standard"),
+      rate(region("US"), "us-conflict", "400000"),
+      rate(region("EU"), "eu"),
+    ]);
+    const term = assemble(source).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]!.observations[0]!.locator.value).toBe("eu");
+    expect(term.raw_variants).toHaveLength(1);
+    expect(term.raw_variants[0]!.reason).toBe("conflicting_values");
+    expect(term.raw_variants[0]!.observations.map(({ locator }) => locator.value)).toEqual([
+      "us-conflict",
+      "us-standard",
+    ]);
+  });
+
+  it("keeps unequal values in disjoint validity intervals", () => {
+    const introductory = rate(unconditionalApplicability, "introductory");
+    introductory.validity = { until: { value: "2026-08-31", precision: "date" } };
+    const standard = rate(unconditionalApplicability, "standard", "400000");
+    standard.validity = { from: { value: "2026-09-01", precision: "date" } };
+    const term = assemble(input([introductory, standard])).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+    expect(term.variants).toHaveLength(2);
+    expect(term.raw_variants).toEqual([]);
   });
 
   it("contains a state/rate conflict in the complete base-price layer", () => {

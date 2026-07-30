@@ -266,7 +266,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v2",
+        extractorVersion: "openai-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -370,7 +370,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v3",
+        extractorVersion: "anthropic-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -465,7 +465,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v6",
+        extractorVersion: "bedrock-catalog-v7",
         fields: [
           "model_id",
           "name",
@@ -696,7 +696,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v4",
+        extractorVersion: "vercel-catalog-v6",
         fields: [
           "model_id",
           "name",
@@ -821,7 +821,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "azure-retail-prices", minModels: 20, maxModels: 200 },
-        extractorVersion: "azure-retail-prices-v1",
+        extractorVersion: "azure-retail-prices-v2",
         fields: ["pricing"],
         allowedHosts: ["prices.azure.com"],
         maxResponseBytes: mebibytes(32),
@@ -912,7 +912,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v2",
+        extractorVersion: "gemini-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -1309,7 +1309,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "cohere-catalog" },
-        extractorVersion: "cohere-catalog-v2",
+        extractorVersion: "cohere-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -1458,7 +1458,7 @@ export const manifests = [
         format: "mixed",
         stability: "documented",
         extractor: { kind: "mistral-catalog", minModels: 50, maxModels: 90 },
-        extractorVersion: "mistral-catalog-v2",
+        extractorVersion: "mistral-catalog-v5",
         fields: [
           "model_id",
           "version",
@@ -1699,7 +1699,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v3",
+        extractorVersion: "xai-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -2176,8 +2176,8 @@ export const manifests = [
         access: "public",
         format: "html",
         stability: "semi_structured",
-        extractor: { kind: "deepseek-catalog", minModels: 4, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v3",
+        extractor: { kind: "deepseek-catalog", minModels: 2, maxModels: 10 },
+        extractorVersion: "deepseek-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -2247,6 +2247,7 @@ export const manifests = [
         auth: { scheme: "bearer", env: "DEEPSEEK_API_KEY" },
       },
     ],
+    supersededModelIds: ["deepseek-chat", "deepseek-reasoner"],
     warnOnMissing: {
       sourceId: "deepseek-catalog",
       fields: ["release_date", "updated_date"],

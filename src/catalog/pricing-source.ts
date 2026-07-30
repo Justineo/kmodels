@@ -21,6 +21,7 @@ const sourcePriceConditionsInputSchema = z.object({
   resolution: z.string().optional(),
   quality: z.string().optional(),
   style: z.string().optional(),
+  billing_period: z.string().optional(),
   audio: z.boolean().optional(),
   voice_control: z.boolean().optional(),
   video_input: z.boolean().optional(),

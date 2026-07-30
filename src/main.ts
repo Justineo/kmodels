@@ -4,14 +4,21 @@ import { parseWebsiteCatalog } from "./catalog/website-runtime.ts";
 import "./tokens.css";
 import "./style.css";
 
-try {
-  const response = await fetch("/ui/catalog/index.json", {
+async function json(path: string, label: string): Promise<unknown> {
+  const response = await fetch(path, {
     cache: "no-cache",
     headers: { Accept: "application/json" },
   });
-  if (!response.ok) throw new Error(`Catalog request failed with ${response.status}`);
-  const value: unknown = await response.json();
-  const catalog = parseWebsiteCatalog(value);
+  if (!response.ok) throw new Error(`${label} request failed with ${response.status}`);
+  return response.json();
+}
+
+try {
+  const [catalogValue, pricingValue] = await Promise.all([
+    json("/ui/catalog/index.json", "Catalog"),
+    json("/ui/catalog/pricing.json", "Pricing summary"),
+  ]);
+  const catalog = parseWebsiteCatalog(catalogValue, pricingValue);
   createVaporApp(App, { catalog }).mount("#app");
 } catch (error) {
   console.error(error);

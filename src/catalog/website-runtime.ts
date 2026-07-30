@@ -3,6 +3,7 @@ import type { ModelLifecycle, ModelReleaseStage, ModelTask } from "./schema.ts";
 import type {
   WebsiteCatalog,
   WebsiteCatalogIndexModel,
+  WebsitePricingSummaries,
   WebsitePricingSummary,
 } from "./website-schema.ts";
 
@@ -20,6 +21,7 @@ const catalogKeys = new Set([
   "models",
 ]);
 const providerKeys = new Set(["id", "name"]);
+const pricingKeys = new Set(["schema_version", "data_version", "pricing"]);
 const modelKeys = new Set([
   "provider_id",
   "model_id",
@@ -32,14 +34,15 @@ const modelKeys = new Set([
   "context_tokens",
   "detail_chunk",
 ]);
-
-const loadingPricing: WebsitePricingSummary = {
-  outcome: "unknown",
-  status: {
-    label: "Loading",
-    description: "Representative pricing is loading.",
-  },
-};
+const pricingSummaryKeys = new Set(["outcome", "status", "input", "cache", "output"]);
+const pricingStatusKeys = new Set(["label", "description"]);
+const pricingCellKeys = new Set([
+  "meter",
+  "amount",
+  "displayUnit",
+  "accessibleText",
+  "showTooltip",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -86,6 +89,59 @@ function optionalNonnegativeInteger(value: unknown, label: string): number | und
   return value === undefined ? undefined : nonnegativeInteger(value, label);
 }
 
+function pricingCell(value: unknown, label: string): WebsitePricingSummary["input"] | undefined {
+  if (value === undefined) return undefined;
+  const item = record(value, label);
+  exactKeys(item, pricingCellKeys, label);
+  if (typeof item.showTooltip !== "boolean")
+    throw new Error(`${label}.showTooltip must be a boolean`);
+  return {
+    meter: nonEmptyString(item.meter, `${label}.meter`),
+    amount: nonEmptyString(item.amount, `${label}.amount`),
+    displayUnit: nonEmptyString(item.displayUnit, `${label}.displayUnit`),
+    accessibleText: nonEmptyString(item.accessibleText, `${label}.accessibleText`),
+    showTooltip: item.showTooltip,
+  };
+}
+
+function pricingOutcome(value: unknown, label: string): WebsitePricingSummary["outcome"] {
+  switch (value) {
+    case "not_applicable":
+    case "unknown":
+    case "offers":
+      return value;
+    default:
+      throw new Error(`${label}.outcome is invalid`);
+  }
+}
+
+function pricingStatus(value: unknown, label: string): WebsitePricingSummary["status"] | undefined {
+  if (value === undefined) return undefined;
+  const item = record(value, label);
+  exactKeys(item, pricingStatusKeys, label);
+  return {
+    label: nonEmptyString(item.label, `${label}.label`),
+    description: nonEmptyString(item.description, `${label}.description`),
+  };
+}
+
+function pricingSummary(value: unknown, label: string): WebsitePricingSummary {
+  const item = record(value, label);
+  exactKeys(item, pricingSummaryKeys, label);
+  const outcome = pricingOutcome(item.outcome, label);
+  const status = pricingStatus(item.status, `${label}.status`);
+  const input = pricingCell(item.input, `${label}.input`);
+  const cache = pricingCell(item.cache, `${label}.cache`);
+  const output = pricingCell(item.output, `${label}.output`);
+  return {
+    outcome,
+    ...(status === undefined ? {} : { status }),
+    ...(input === undefined ? {} : { input }),
+    ...(cache === undefined ? {} : { cache }),
+    ...(output === undefined ? {} : { output }),
+  };
+}
+
 function isModelTask(value: unknown): value is ModelTask {
   return typeof value === "string" && modelTaskSet.has(value);
 }
@@ -129,14 +185,35 @@ function parseModel(value: unknown, index: number): WebsiteCatalogIndexModel {
   };
 }
 
-export function parseWebsiteCatalog(value: unknown): WebsiteCatalog {
-  const catalog = record(value, "catalog");
+function parseWebsitePricing(value: unknown): WebsitePricingSummaries {
+  const pricing = record(value, "pricing");
+  exactKeys(pricing, pricingKeys, "pricing");
+  if (pricing.schema_version !== 1) throw new Error("Unsupported website pricing schema");
+  const dataVersion = nonEmptyString(pricing.data_version, "pricing.data_version");
+  if (!hashPattern.test(dataVersion)) throw new Error("pricing.data_version must be a hash");
+  if (!Array.isArray(pricing.pricing)) throw new Error("pricing.pricing must be an array");
+  return {
+    schema_version: 1,
+    data_version: dataVersion,
+    pricing: pricing.pricing.map((value, index) =>
+      pricingSummary(value, `pricing.pricing[${index}]`),
+    ),
+  };
+}
+
+export function parseWebsiteCatalog(catalogValue: unknown, pricingValue: unknown): WebsiteCatalog {
+  const catalog = record(catalogValue, "catalog");
   exactKeys(catalog, catalogKeys, "catalog");
   if (catalog.schema_version !== 1) throw new Error("Unsupported website catalog schema");
   const dataVersion = nonEmptyString(catalog.data_version, "catalog.data_version");
   if (!hashPattern.test(dataVersion)) throw new Error("catalog.data_version must be a hash");
   if (!Array.isArray(catalog.providers)) throw new Error("catalog.providers must be an array");
   if (!Array.isArray(catalog.models)) throw new Error("catalog.models must be an array");
+  const pricing = parseWebsitePricing(pricingValue);
+  if (pricing.data_version !== dataVersion)
+    throw new Error("Pricing summary does not match the catalog");
+  if (pricing.pricing.length !== catalog.models.length)
+    throw new Error("Pricing summary row count does not match the catalog");
 
   const providers = catalog.providers.map((value, index) => {
     const label = `providers[${index}]`;
@@ -150,6 +227,8 @@ export function parseWebsiteCatalog(value: unknown): WebsiteCatalog {
   const providerIds = new Set(providers.map(({ id }) => id));
   const models = catalog.models.map((value, index) => {
     const model = parseModel(value, index);
+    const summary = pricing.pricing[index];
+    if (summary === undefined) throw new Error(`Missing pricing summary row ${index}`);
     if (!providerIds.has(model.provider_id))
       throw new Error(`models[${index}] references an unknown provider`);
     return {
@@ -157,7 +236,7 @@ export function parseWebsiteCatalog(value: unknown): WebsiteCatalog {
       uid: `${model.provider_id}/${model.model_id}${
         model.version === undefined ? "" : `@${model.version}`
       }`,
-      pricing: loadingPricing,
+      pricing: summary,
     };
   });
 

@@ -7,6 +7,7 @@ import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset
 import {
   commitCatalogPair,
   prepareCatalogPair,
+  readCatalogPairMirrors,
   recoverCatalogPair,
   type CatalogPairPaths,
 } from "../src/catalog/pricing-publication.ts";
@@ -113,6 +114,26 @@ describe("crash-consistent catalog pair publication", () => {
     const recovered = await recoverCatalogPair(output);
     expect(recovered?.pairId).toBe(candidate.pairId);
     expect(recovered?.pricingAssetSource).toBe(candidate.pricingAssetSource);
+  });
+
+  it("reads checked-in mirrors independently of stale local pair state", async () => {
+    const output = await paths();
+    const initial = prepareCatalogPair(catalog(), pricing);
+    await commitCatalogPair(initial, output);
+    const checkedOut = prepareCatalogPair(
+      catalog([{ code: "test", message: "checked-out pair" }]),
+      initial.pricing,
+    );
+    await commitCatalogPair(checkedOut, {
+      ...output,
+      stateDirectory: join(output.stateDirectory, "checked-out"),
+    });
+
+    const mirrors = await readCatalogPairMirrors(output);
+    expect(mirrors?.pairId).toBe(checkedOut.pairId);
+    expect(
+      JSON.parse(await readFile(join(output.stateDirectory, "current.json"), "utf8")),
+    ).toMatchObject({ pair_id: initial.pairId });
   });
 
   it("repairs an interrupted snapshot before advancing the pointer", async () => {

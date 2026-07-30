@@ -5,7 +5,7 @@ export default {
   releaseDate: "2026-04-28",
   version: "26.04",
   type: "Open",
-  status: "Active",
+  status: "GA",
   contextLength: "256k",
   outputTokenLimit: "32k",
   pricing: {

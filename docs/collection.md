@@ -53,6 +53,7 @@ Status: implemented
 
 - Validate candidate catalogs per provider.
 - Quarantine empty successful responses; duplicate IDs, service families, endpoints, routes, or availability pairs; unresolved route provenance; invalid prices; model drops over 10%; service-family, price-rate, endpoint, route, or availability drops over 20%; and non-promotional price changes over 50%.
+- A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has been reviewed. Those rows are excluded from the old comparison baseline and are not preserved, while every unlisted deletion remains protected by the normal drift guard.
 - `KMODELS_REBUILD_PROVIDER` may remove the old comparison baseline for one reviewed parser migration. Every other provider still validates against its previous catalog.
 - Publication is failure-closed and provider-atomic. A rejected or suspicious provider keeps its last validated catalog; providers do not block one another.
 - The collector classifies a retained pricing attempt with one finite public
@@ -62,7 +63,7 @@ Status: implemented
   sanitized diagnostics remain in warnings, quarantine, and refresh summaries;
   raw responses, exception stacks, account data, and credentials never enter
   the pricing snapshot.
-- One missing observation never deletes a model.
+- One missing observation never deletes a model unless the exact row is in that reviewed superseded set.
 - Every run writes `data/refresh-summary.json`, a deterministic semantic diff with provider/model/source counts, changed-field counts, content changes, coverage, and warning codes. It never copies raw data or private unmatched IDs.
 
 ## Pricing
@@ -129,14 +130,15 @@ The committed generated state is:
 
 After candidate validation, one projection stage creates both packs before the
 accepted-pair pointer advances. Immutable pair snapshots and the atomic current
-pointer remain authoritative; canonical and derived mirrors are repaired from
-that pointer after interruption. Derived packs may be regenerated from the
-accepted pair when missing, stale, or corrupt. `vp run prepare:assets` performs
-that explicit projection repair for a checked-out pair. `vp run
-compile:pricing` instead reassembles canonical pricing first and then publishes
-the resulting pair and projections. A reviewed pricing withdrawal may
-temporarily leave a safe pricing-only source record in the catalog; the next
-successful fresh provider publication prunes it.
+pointer remain authoritative during collection and recovery; canonical and
+derived mirrors are repaired from that pointer after interruption. The
+committed mirrors define the pair in a checkout, so `vp run prepare:assets`
+reads them directly and regenerates projections without letting stale ignored
+local state replace newer fetched or pulled data. `vp run compile:pricing`
+instead reassembles canonical pricing first and then publishes the resulting
+pair and projections. A reviewed pricing withdrawal may temporarily leave a
+safe pricing-only source record in the catalog; the next successful fresh
+provider publication prunes it.
 
 During development, Vite lazily opens only the requested UI or export pack and
 returns its compressed byte slice. It never parses `data/catalog.json` or

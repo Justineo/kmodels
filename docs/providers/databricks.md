@@ -15,6 +15,7 @@ Status: current
 - General purpose and Embeddings sets supply task evidence and exact `/serving-endpoints/{name}/invocations` routes. Image-output rows may also remain text generation when listed as General purpose.
 - Display-name joins must resolve uniquely. Release dates require an exact release-feed link to a supported-model label; page metadata is not a model date.
 - Keep prices in DBU. Preserve input, output, cache, embedding, batch, capacity, context, promotion, and effective-date conditions. Never convert DBU to USD or infer shifted columns.
+- When an otherwise identical unequal promotional row is explicit, the unqualified companion row is the reviewed non-promotional base. Promotion validity remains attached to the published rate.
 
 ## Kong AI Gateway
 

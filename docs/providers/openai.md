@@ -14,7 +14,7 @@ Status: current
 
 - Chat, Responses, Completions, and Assistants are `text_generation`; their exact routes remain distinct. Realtime maps to its result semantics, not a task named realtime.
 - Keep enabled endpoint labels and relative paths in `api_endpoints`. Batch and Fine-tuning endpoints do not widen model tasks.
-- Keep direct text, audio, image, embedding, per-image, per-second, and per-minute prices in native units. Batch is a tier condition.
+- Keep direct text, audio, image, embedding, per-image, per-second, and per-minute prices in native units. Explicit transcription-duration pricing is audio input. Realtime audio-duration pricing is input audio for transcription and translation, and output audio for speech synthesis or Speech to Speech. Batch is a tier condition.
 - Derive long-context and cache-write prices only from published multipliers with decimal-string arithmetic.
 - Explicit open-weight and free moderation models use `not_applicable`; absent or unparseable hosted prices remain `unknown`.
 

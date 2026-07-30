@@ -14,6 +14,7 @@ export const standardPriceDimensions = [
   "quality",
   "style",
   "capacity",
+  "billing_period",
   "account_eligibility",
   "request_audio",
   "voice_control",

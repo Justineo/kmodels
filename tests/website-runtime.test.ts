@@ -21,28 +21,58 @@ const catalog = {
     },
   ],
 };
+const pricing = {
+  schema_version: 1,
+  data_version: catalog.data_version,
+  pricing: [
+    {
+      outcome: "offers",
+      input: {
+        meter: "input",
+        amount: "$1",
+        displayUnit: "/ 1M tokens",
+        accessibleText: "$1 per 1 million input tokens",
+        showTooltip: false,
+      },
+    },
+  ],
+};
 
 describe("website runtime catalog parser", () => {
-  it("validates the minimal payload and derives browser-only fields", () => {
-    expect(parseWebsiteCatalog(catalog).models[0]).toMatchObject({
+  it("validates both core chunks and derives browser-only fields", () => {
+    expect(parseWebsiteCatalog(catalog, pricing).models[0]).toMatchObject({
       uid: "test/model@v1",
       detail_chunk: 2,
       pricing: {
-        outcome: "unknown",
-        status: { label: "Loading" },
+        outcome: "offers",
+        input: {
+          amount: "$1",
+        },
       },
     });
   });
 
   it("rejects unknown fields and unresolved provider references", () => {
-    expect(() => parseWebsiteCatalog({ ...catalog, audit: true })).toThrow(
+    expect(() => parseWebsiteCatalog({ ...catalog, audit: true }, pricing)).toThrow(
       "unexpected field audit",
     );
     expect(() =>
-      parseWebsiteCatalog({
-        ...catalog,
-        models: [{ ...catalog.models[0], provider_id: "missing" }],
-      }),
+      parseWebsiteCatalog(
+        {
+          ...catalog,
+          models: [{ ...catalog.models[0], provider_id: "missing" }],
+        },
+        pricing,
+      ),
     ).toThrow("unknown provider");
+  });
+
+  it("rejects pricing that does not match the catalog", () => {
+    expect(() =>
+      parseWebsiteCatalog(catalog, {
+        ...pricing,
+        data_version: "2".repeat(64),
+      }),
+    ).toThrow("does not match");
   });
 });

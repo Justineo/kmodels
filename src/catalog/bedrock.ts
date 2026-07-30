@@ -621,7 +621,12 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-function meter(text: string, tasks: ModelTask[]): SourcePriceFact["meter"] | undefined {
+function meter(
+  text: string,
+  priceText: string,
+  tasks: ModelTask[],
+  unit: SourcePriceFact["unit"],
+): SourcePriceFact["meter"] | undefined {
   if (/provisioned|reserved|model.?units|tokens per minute|tpm/.test(text))
     return "provisioned_throughput";
   if (/cache.?read/.test(text)) {
@@ -635,8 +640,16 @@ function meter(text: string, tasks: ModelTask[]): SourcePriceFact["meter"] | und
     return "cache_write_text";
   }
   if (tasks.includes("reranking") && /search|rerank|request/.test(text)) return "rerank_request";
-  if (tasks.includes("embeddings") && /input|token|second|minute|image|request|page/.test(text))
-    return "embedding";
+  if (tasks.includes("embeddings")) {
+    if (unit === "image") return "input_image";
+    if (unit === "token" || unit === "thousand_tokens" || unit === "million_tokens")
+      return "input_text";
+    if (unit === "second" || unit === "minute") {
+      if (priceText.includes("audio")) return "input_audio";
+      if (priceText.includes("video")) return "input_video";
+    }
+    if (/input|token|second|minute|image|request|page/.test(text)) return "embedding";
+  }
   if (tasks.includes("image_generation") && /output image|created.?image|per image/.test(text))
     return "image_generation";
   if (/output.*video|video.*output/.test(text)) return "output_video";
@@ -687,7 +700,9 @@ function priceDeploymentType(text: string): DeploymentType {
 function conditions(
   attributes: Record<string, string>,
   text: string,
+  priceText: string,
   endpoint: string | undefined,
+  rateMeter: SourcePriceFact["meter"],
 ): SourcePriceFact["conditions"] {
   const lower = text.toLowerCase();
   const deploymentType = priceDeploymentType(lower);
@@ -703,7 +718,10 @@ function conditions(
     : /output.*(?:tokens per minute|tpm)|outputtpm/.test(lower)
       ? "output_tokens_per_minute"
       : undefined;
-  const modality = ["audio", "image", "video"].find((value) => lower.includes(value));
+  const modality =
+    rateMeter === "embedding"
+      ? ["audio", "image", "video"].find((value) => priceText.includes(value))
+      : undefined;
   const ttl = /cache.?write/.test(lower) ? (/1h|1 hour/.test(lower) ? 3_600 : 300) : undefined;
   const inference = attributes.inferenceType ?? "";
   const operation = inference.match(/\b(T2I|I2I|T2V|I2V)\b/i)?.[1]?.toUpperCase();
@@ -741,9 +759,8 @@ function rate(
   const usage = attributes.usagetype ?? "";
   const text =
     `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
+  const priceText = `${attributes.inferenceType ?? ""} ${description}`.toLowerCase();
   if (/\bcustom\b|customization|training|storage/.test(text)) return undefined;
-  const observedMeter = meter(text, tasks);
-  const rateConditions = conditions(attributes, text, endpoint);
   let normalizedUnit: SourcePriceFact["unit"] | undefined;
   let normalizedPrice = price;
   let derived = false;
@@ -780,6 +797,8 @@ function rate(
   } else if ((unit === "hour" || unit === "hours" || unit === "Units") && /hour/.test(text)) {
     normalizedUnit = "unit_hour";
   }
+  if (normalizedUnit === undefined) return undefined;
+  const observedMeter = meter(text, priceText, tasks, normalizedUnit);
   const finalMeter =
     observedMeter ??
     (normalizedUnit === "image" && tasks.includes("image_generation")
@@ -787,7 +806,8 @@ function rate(
       : normalizedUnit === "second" || normalizedUnit === "video"
         ? "video_generation"
         : undefined);
-  if (finalMeter === undefined || normalizedUnit === undefined) return undefined;
+  if (finalMeter === undefined) return undefined;
+  const rateConditions = conditions(attributes, text, priceText, endpoint, finalMeter);
   return {
     meter: finalMeter,
     price: normalizedPrice,

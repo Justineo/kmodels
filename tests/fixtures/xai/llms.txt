@@ -51,12 +51,11 @@ curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video-1.
 
 wss://api.x.ai/v1/realtime?model=grok-voice-latest
 
-| Model | Description | |
-|---|---|---|
-| `grok-voice-think-fast-1.0` | Flagship voice model | |
-| `grok-voice-fast-1.0` | Legacy voice model | deprecated |
-
-> `grok-voice-latest` always points to the newest model (currently `grok-voice-think-fast-1.0`).
+| Model | Description |
+|---|---|
+| `grok-voice-latest` | Alias for `grok-voice-think-fast-1.0`. Updates to `grok-voice-think-fast-2.0` on August 5, 2026. |
+| `grok-voice-think-fast-2.0` | Flagship voice model |
+| `grok-voice-think-fast-1.0` | Previous-generation voice model |
 
 
 ===/developers/pricing===
@@ -83,8 +82,8 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 
 | Mode | Cost |
 |---|---|
-| Realtime | $0.05 / min ($3.00 / hr) |
-| Realtime Text Input | $0.004 / message (every conversation.item.create) |
+| Speech to Speech (grok-voice-think-fast-1.0) | $0.05 / min ($3.00 / hr) audio<br />$0.004 / text input |
+| Speech to Speech (grok-voice-think-fast-2.0) | $0.08 / min ($4.80 / hr) audio<br />$0.004 / text input |
 | Text to Speech | $15.00 / 1M chars |
 | Speech to Text | $0.10 / hr (REST), $0.20 / hr (Streaming) |
 
@@ -131,6 +130,10 @@ Grok 4.5 is now available.
 ### Grok Voice Think Fast 1.0 is available
 
 You can now use `grok-voice-think-fast-1.0`.
+
+### Grok Voice Think Fast 2.0 is available
+
+You can now use `grok-voice-think-fast-2.0`.
 
 ## March
 

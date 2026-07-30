@@ -20,6 +20,7 @@ Status: current
 - Keep exact `{region, deployment_type}` pairs, lifecycle versions, and replacements.
 - Retail SKU parsing is a reviewed provider grammar, not fuzzy matching. The initial grammar covers Azure OpenAI product groups; other Foundry and partner product groups remain unknown until their SKU semantics are reviewed. It may attach a rate only to an exact model/version or to one unambiguous version of an existing public model. Ambiguous or unsupported SKUs remain unmodeled, and pricing evidence never creates catalog rows.
 - Preserve the retail region, deployment class, service tier, context tier, native unit, and effective-start label. The Retail Prices endpoint establishes that returned consumption rows are the current snapshot, so its effective-start label is retained as raw evidence rather than treated as a historical-only validity constraint.
+- When one exact SKU family contains an unequal explicit long-context row, its otherwise identical unqualified row is the standard context tier. This reviewed pair rule does not apply to ambiguous or unmatched retail rows.
 - Optional ARM inventory is subscription/region scoped. It may enrich exact model tuples and provides the strongest meter-ID join for that configured scope, but it cannot define the global catalog or the complete public price book.
 
 ## Kong AI Gateway

@@ -2,11 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { afterFirstPaint } from "./after-first-paint.ts";
 import { modelLifecycles, modelReleaseStages } from "./catalog/catalog-vocabulary.ts";
-import {
-  loadWebsiteModelDetail,
-  loadWebsitePricing,
-  preloadWebsiteDetails,
-} from "./catalog/website-loader.ts";
+import { loadWebsiteModelDetail, preloadWebsiteDetails } from "./catalog/website-loader.ts";
 import {
   groupModels,
   modelGroupKey,
@@ -15,11 +11,7 @@ import {
 } from "./catalog/model-groups.ts";
 import { formatCount, formatModelTask, versionBadgeModelUids } from "./catalog/presentation.ts";
 import { orderedTasks } from "./catalog/task.ts";
-import type {
-  WebsiteCatalog,
-  WebsiteModel,
-  WebsitePricingSummary,
-} from "./catalog/website-schema.ts";
+import type { WebsiteCatalog, WebsiteModel } from "./catalog/website-schema.ts";
 import {
   formatRouteSearch,
   parseRouteSearch,
@@ -35,7 +27,6 @@ import ModelGroupRow from "./components/ModelGroupRow.vue";
 import ModelRow from "./components/ModelRow.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
-import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import { detailsState } from "./details-state.ts";
 
@@ -462,26 +453,7 @@ onMounted(() => {
     void import("./details-app.ts")
       .then(({ mountDetailsApp }) => mountDetailsApp())
       .catch((error: unknown) => console.error(error));
-    const pricingRequest = loadWebsitePricing(props.catalog.data_version, models.value.length);
     preloadWebsiteDetails(models.value);
-    void pricingRequest
-      .then((pricing) => {
-        pricing.forEach((summary, index) => {
-          const model = models.value[index];
-          if (model !== undefined) model.pricing = summary;
-        });
-      })
-      .catch((error: unknown) => {
-        console.error(error);
-        const unavailable: WebsitePricingSummary = {
-          outcome: "unknown",
-          status: {
-            label: "Unknown",
-            description: "Representative pricing could not be loaded.",
-          },
-        };
-        for (const model of models.value) model.pricing = unavailable;
-      });
   });
 });
 
@@ -516,16 +488,14 @@ onUnmounted(() => {
         Pricing JSON
         <UiIcon name="external-link" />
       </a>
-      <UiTooltip
-        as="button"
+      <button
         class="theme-toggle"
         type="button"
         :aria-label="themeToggleLabel"
-        :content="themeToggleLabel"
         @click="toggleTheme"
       >
         <UiIcon :name="theme === 'dark' ? 'sun' : 'moon'" />
-      </UiTooltip>
+      </button>
     </div>
   </header>
 
@@ -564,17 +534,15 @@ onUnmounted(() => {
           </span>
         </button>
 
-        <UiTooltip
-          as="button"
+        <button
           class="clear-button"
           type="button"
           :disabled="!hasFilters"
           aria-label="Clear filters"
-          content="Clear filters"
           @click="resetFilters"
         >
           <UiIcon name="x" />
-        </UiTooltip>
+        </button>
 
         <output class="result-count" aria-live="polite">{{ resultCountLabel }}</output>
 
@@ -724,31 +692,13 @@ onUnmounted(() => {
                   />
                 </th>
                 <th class="input-col numeric" scope="col" aria-label="Representative input rate">
-                  <UiTooltip
-                    class="pricing-header-trigger"
-                    tabindex="0"
-                    content="Representative input price. Token rates use 1M tokens; other meters show their native unit in the cell."
-                  >
-                    Input
-                  </UiTooltip>
+                  Input
                 </th>
                 <th class="cached-col numeric" scope="col" aria-label="Representative cache rate">
-                  <UiTooltip
-                    class="pricing-header-trigger"
-                    tabindex="0"
-                    content="Representative cache price. Token rates use 1M tokens; other meters show their native unit in the cell."
-                  >
-                    Cache
-                  </UiTooltip>
+                  Cache
                 </th>
                 <th class="output-col numeric" scope="col" aria-label="Representative output rate">
-                  <UiTooltip
-                    class="pricing-header-trigger"
-                    tabindex="0"
-                    content="Representative output price. Token rates use 1M tokens; other meters show their native unit in the cell."
-                  >
-                    Output
-                  </UiTooltip>
+                  Output
                 </th>
                 <th class="released-col numeric" scope="col" :aria-sort="ariaSort('released')">
                   <ColumnSortButton

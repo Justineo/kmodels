@@ -338,4 +338,51 @@ describe("local canonical pricing compilation", () => {
       ),
     ).toBeUndefined();
   });
+
+  it("coalesces pricing split across duplicate source identities", () => {
+    const model: ParsedProviderModel = {
+      ...published(),
+      pricing_state: "numeric",
+      price_facts: parsed("1").price_facts,
+    };
+    const alternateFact = parsed("2").price_facts[0];
+    if (alternateFact === undefined) throw new Error("Missing alternate pricing fact");
+    const alternate: ParsedProviderModel = {
+      ...model,
+      price_facts: [
+        {
+          ...alternateFact,
+          conditions: { operation: "transcription" },
+        },
+      ],
+    };
+
+    const captured = capturePricingReplaySources(
+      [{ source: sourceManifest, models: [model, alternate] }],
+      [sourceRecord()],
+    );
+
+    expect(captured?.[0]?.models).toHaveLength(1);
+    expect(captured?.[0]?.models[0]?.price_facts).toHaveLength(2);
+  });
+
+  it("rejects conflicting states for a duplicate source identity", () => {
+    const model: ParsedProviderModel = {
+      ...published(),
+      pricing_state: "numeric",
+      price_facts: parsed("1").price_facts,
+    };
+
+    expect(() =>
+      capturePricingReplaySources(
+        [
+          {
+            source: sourceManifest,
+            models: [model, { ...model, pricing_state: "not_published", price_facts: [] }],
+          },
+        ],
+        [sourceRecord()],
+      ),
+    ).toThrow(`Pricing compilation model ${modelRef} has conflicting states`);
+  });
 });

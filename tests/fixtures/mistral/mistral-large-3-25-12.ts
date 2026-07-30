@@ -5,7 +5,7 @@ export default {
   releaseDate: "2025-12-02",
   version: "25.12",
   type: "Open",
-  status: "Active",
+  status: "GA",
   contextLength: "256k",
   pricing: {
     type: "range",

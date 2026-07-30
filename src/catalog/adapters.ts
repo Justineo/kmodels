@@ -272,8 +272,9 @@ function openAiMeter(
   if (group === "Embeddings" && (label === "Cost" || label === "Price")) return "embedding";
   if (group === "Image generation") return "image_generation";
   if (group === "Video generation") return "video_generation";
+  if (group === "Transcription audio duration" && label === "Price") return "input_audio";
   if (group === "Realtime audio duration" && label === "Price") {
-    if (tasks.includes("transcription")) return "input_audio";
+    if (tasks.includes("transcription") || tasks.includes("translation")) return "input_audio";
     if (tasks.includes("speech_synthesis") || tasks.includes("speech_to_speech"))
       return "output_audio";
   }
@@ -290,6 +291,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
     "Embeddings",
     "Image generation",
     "Video generation",
+    "Transcription audio duration",
     "Realtime audio duration",
   ]);
   content

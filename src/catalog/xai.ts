@@ -638,43 +638,53 @@ function toolRates(pricing: string, sourceId: string): SourcePriceFact[] {
 }
 
 interface VoicePrices {
-  realtime: string;
-  text: string;
+  realtime: Map<string, { audio: string; text: string }>;
   speech: string;
   transcription: string;
   streamingTranscription: string;
 }
 
 function voicePrices(pricing: string): VoicePrices {
-  const realtime = pricing.match(/^\| Realtime \| \$([\d.]+) \/ min/m)?.[1];
-  const text = pricing.match(/^\| Realtime Text Input \| \$([\d.]+) \/ message/m)?.[1];
+  const realtime = new Map(
+    [
+      ...pricing.matchAll(
+        /^\| Speech to Speech \(([^)]+)\) \| \$([\d.]+) \/ min \(\$[\d.]+ \/ hr\) audio<br\s*\/?>\$([\d.]+) \/ text input \|$/gim,
+      ),
+    ].map((match) => {
+      const id = modelIdSchema.parse(match[1]);
+      const audio = match[2];
+      const text = match[3];
+      if (audio === undefined || text === undefined)
+        throw new Error("xAI voice pricing table was incomplete");
+      return [id, { audio: scaleDecimal(audio, 0), text: scaleDecimal(text, 0) }] as const;
+    }),
+  );
   const speech = pricing.match(/^\| Text to Speech \| \$([\d.]+) \/ 1M chars/m)?.[1];
   const transcription = pricing
     .match(/^\| Speech to Text \| \$([\d.]+) \/ hr \(REST\), \$([\d.]+) \/ hr \(Streaming\)/m)
     ?.slice(1);
   if (
-    realtime === undefined ||
-    text === undefined ||
+    realtime.size === 0 ||
     speech === undefined ||
     transcription?.[0] === undefined ||
     transcription[1] === undefined
   )
     throw new Error("xAI voice pricing table was incomplete");
   return {
-    realtime: scaleDecimal(realtime, 0),
-    text: scaleDecimal(text, 0),
+    realtime,
     speech: scaleDecimal(speech, 0),
     transcription: scaleDecimal(transcription[0], 0),
     streamingTranscription: scaleDecimal(transcription[1], 0),
   };
 }
 
-function voiceRates(pricing: string, sourceId: string): SourcePriceFact[] {
-  const { realtime, text } = voicePrices(pricing);
+function voiceRates(prices: VoicePrices, id: string, sourceId: string): SourcePriceFact[] {
+  const rate = prices.realtime.get(id);
+  if (rate === undefined) throw new Error(`xAI voice pricing omitted ${id}`);
   return [
-    publishedRate("input_audio", realtime, "minute", sourceId, "USD / min"),
-    publishedRate("output_audio", realtime, "minute", sourceId, "USD / min"),
-    publishedRate("input_text", text, "request", sourceId, "USD / message", {
+    publishedRate("input_audio", rate.audio, "minute", sourceId, "USD / min"),
+    publishedRate("output_audio", rate.audio, "minute", sourceId, "USD / min"),
+    publishedRate("input_text", rate.text, "request", sourceId, "USD / text input", {
       operation: "conversation.item.create",
     }),
   ];
@@ -685,19 +695,16 @@ function assertVoiceServices(
   services: z.infer<typeof voiceServiceSchema>[],
 ): void {
   const prices = voicePrices(pricing);
-  const endpoints = new Map(
-    services.map((service) => [service.endpoints[0]?.endpoint, service.endpoints[0]]),
-  );
-  const tts = endpoints.get("TTS");
-  const stt = endpoints.get("STT");
-  const realtime = endpoints.get("REALTIME");
-  if (
-    services.length !== 3 ||
-    endpoints.size !== 3 ||
-    tts?.endpoint !== "TTS" ||
-    stt?.endpoint !== "STT" ||
-    realtime?.endpoint !== "REALTIME"
-  )
+  const endpoint = (name: "TTS" | "STT") => {
+    const matches = services.flatMap((service) => {
+      const value = service.endpoints[0];
+      return value?.endpoint === name ? [value] : [];
+    });
+    return matches.length === 1 ? matches[0] : undefined;
+  };
+  const tts = endpoint("TTS");
+  const stt = endpoint("STT");
+  if (tts?.endpoint !== "TTS" || stt?.endpoint !== "STT")
     throw new Error("xAI voice service catalog was incomplete");
   const roundedCents = (ticksPerSecond: string, seconds: bigint): string =>
     ((BigInt(ticksPerSecond) * seconds + 50_000_000n) / 100_000_000n).toString();
@@ -705,12 +712,24 @@ function assertVoiceServices(
     scaleDecimal(tts.pricing.perCharacter, -4) !== prices.speech ||
     roundedCents(stt.pricing.perAudioSecond, 3_600n) !== scaleDecimal(prices.transcription, 2) ||
     roundedCents(stt.pricing.perAudioSecondStreaming, 3_600n) !==
-      scaleDecimal(prices.streamingTranscription, 2) ||
-    roundedCents(realtime.pricing.realtimeAudioSecondPrice, 60n) !==
-      scaleDecimal(prices.realtime, 2) ||
-    scaleDecimal(realtime.pricing.realtimeTextInputPrice, -10) !== prices.text
+      scaleDecimal(prices.streamingTranscription, 2)
   )
     throw new Error("xAI structured and published voice pricing differ");
+  const realtime = services.flatMap((service) => {
+    const value = service.endpoints[0];
+    return value?.endpoint === "REALTIME" ? [{ id: service.name, value }] : [];
+  });
+  if (realtime.length === 0) throw new Error("xAI voice service catalog was incomplete");
+  for (const service of realtime) {
+    const audio = roundedCents(service.value.pricing.realtimeAudioSecondPrice, 60n);
+    const text = scaleDecimal(service.value.pricing.realtimeTextInputPrice, -10);
+    const exact = prices.realtime.get(service.id);
+    const matches = (published: { audio: string; text: string }): boolean =>
+      audio === scaleDecimal(published.audio, 2) && text === published.text;
+    const published = exact === undefined ? [...prices.realtime.values()] : [exact];
+    if (!published.some(matches))
+      throw new Error(`xAI structured and published voice pricing differ for ${service.id}`);
+  }
 }
 
 function preview(id: string, aliases: string[], llms: string, releases: ReleaseSection[]): boolean {
@@ -891,17 +910,11 @@ function currentModels(
 
 function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
   const voice = section(llms, "/developers/model-capabilities/audio/speech-to-speech");
-  const latest = voice
-    .match(/`(grok-voice-latest)` always points to the newest model \(currently `(grok-[^`]+)`\)/)
-    ?.slice(1);
-  const latestAlias = latest?.[0];
-  const latestModel = latest?.[1];
-  if (latestAlias === undefined || latestModel === undefined)
-    throw new Error("xAI voice catalog omitted its latest alias");
   const tableStart = voice.indexOf("| Model | Description | |");
-  const tableEnd = voice.indexOf("\n## ", tableStart);
-  if (tableStart < 0) throw new Error("xAI voice model table was not found");
-  const table = voice.slice(tableStart, tableEnd < 0 ? undefined : tableEnd);
+  const currentTableStart = tableStart < 0 ? voice.indexOf("| Model | Description |") : tableStart;
+  const tableEnd = voice.indexOf("\n## ", currentTableStart);
+  if (currentTableStart < 0) throw new Error("xAI voice model table was not found");
+  const table = voice.slice(currentTableStart, tableEnd < 0 ? undefined : tableEnd);
   const rows = table.split("\n").flatMap((line) => {
     const cells = line
       .split("|")
@@ -918,7 +931,15 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
           },
         ];
   });
-  if (rows.length < 2 || !rows.some(({ id }) => id === latestModel))
+  const latestAlias = "grok-voice-latest";
+  const alias = rows.find(({ id }) => id === latestAlias);
+  const latestModel = alias?.description.match(/Alias for `(grok-[^`]+)`/)?.[1];
+  const models = rows.filter(({ id }) => id !== latestAlias);
+  if (
+    latestModel === undefined ||
+    models.length < 2 ||
+    !models.some(({ id }) => id === latestModel)
+  )
     throw new Error("xAI voice model table was incomplete");
   const endpoint = documentedEndpoint(
     voice,
@@ -928,9 +949,10 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
     `wss://api.x.ai/v1/realtime?model=${latestAlias}`,
   );
   const pricing = section(llms, "/developers/pricing");
-  const rates = [...voiceRates(pricing, input.source.id), ...toolRates(pricing, input.source.id)];
+  const prices = voicePrices(pricing);
+  const tools = toolRates(pricing, input.source.id);
   const releases = releaseSections(section(llms, "/developers/release-notes"));
-  return rows.map((row) => {
+  return models.map((row) => {
     const isLatest = row.id === latestModel;
     return model(input, row.id, {
       description: row.description,
@@ -948,7 +970,7 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
       release_date: releaseDate(releases, row.id, row.id),
       status: row.deprecated ? "deprecated" : "active",
       pricing_state: "numeric",
-      price_facts: rates,
+      price_facts: [...voiceRates(prices, row.id, input.source.id), ...tools],
     });
   });
 }
