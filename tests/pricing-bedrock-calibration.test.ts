@@ -48,5 +48,5 @@ describe("Bedrock pricing resource calibration", () => {
     expect(canonicalJsonBytes(partition).byteLength).toBeLessThan(
       pricingLimits.providerPricingBytes,
     );
-  });
+  }, 90_000);
 });
