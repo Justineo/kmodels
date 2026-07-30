@@ -27,6 +27,7 @@ import ModelGroupRow from "./components/ModelGroupRow.vue";
 import ModelRow from "./components/ModelRow.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
+import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import { detailsState } from "./details-state.ts";
 
@@ -692,13 +693,31 @@ onUnmounted(() => {
                   />
                 </th>
                 <th class="input-col numeric" scope="col" aria-label="Representative input rate">
-                  Input
+                  <UiTooltip
+                    class="pricing-header-trigger"
+                    tabindex="0"
+                    content="Representative input price. Token rates use 1M tokens; other meters show their native unit in the cell."
+                  >
+                    Input
+                  </UiTooltip>
                 </th>
                 <th class="cached-col numeric" scope="col" aria-label="Representative cache rate">
-                  Cache
+                  <UiTooltip
+                    class="pricing-header-trigger"
+                    tabindex="0"
+                    content="Representative cache price. Token rates use 1M tokens; other meters show their native unit in the cell."
+                  >
+                    Cache
+                  </UiTooltip>
                 </th>
                 <th class="output-col numeric" scope="col" aria-label="Representative output rate">
-                  Output
+                  <UiTooltip
+                    class="pricing-header-trigger"
+                    tabindex="0"
+                    content="Representative output price. Token rates use 1M tokens; other meters show their native unit in the cell."
+                  >
+                    Output
+                  </UiTooltip>
                 </th>
                 <th class="released-col numeric" scope="col" :aria-sort="ariaSort('released')">
                   <ColumnSortButton

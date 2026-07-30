@@ -33,12 +33,11 @@ Status: implemented
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
 - Shared pricing headings stay generic because meter and unit are row-specific.
-  `Input`, `Cache`, and `Output` are plain right-aligned labels: the reviewed
-  default meter/unit contract does not need a tooltip. Normalize comparable
-  token rates per million without repeating `/ 1M tokens` in every cell.
-  Non-token rates retain their native unit in the cell. Only provider-owned
-  meters, units, or credits add a price tooltip with namespace-qualified exact
-  copy.
+  `Input`, `Cache`, and `Output` are right-aligned labels whose tooltips explain
+  that the columns show representative prices, normalize comparable token rates
+  per million, and retain other meters' native units in their cells. Do not
+  repeat `/ 1M tokens` in every cell. Only provider-owned meters, units, or
+  credits add a price tooltip with namespace-qualified exact copy.
 - Representative columns are derived only from canonical price books. A cell
   shows a number when one normalized rate is proven invariant across the
   complete applicable offer context;
