@@ -1,5 +1,4 @@
-import { canonicalJson, canonicalJsonHash } from "./canonical-json.ts";
-import { compareUtf8 } from "./canonical-value.ts";
+import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
@@ -15,18 +14,6 @@ export const unconditionalApplicability: PriceApplicability = {
 };
 
 const exactClauseIndexes = new WeakMap<PriceApplicability, ReadonlySet<string>>();
-
-export function pricingBookId(providerId: string, bookKey: string): string {
-  return canonicalJsonHash(["kmodels.pricing.book.v1", providerId, bookKey]);
-}
-
-export function pricingOfferId(bookId: string, offerKey: string): string {
-  return canonicalJsonHash(["kmodels.pricing.offer.v1", bookId, offerKey]);
-}
-
-export function pricingTermId(offerId: string, termKey: string): string {
-  return canonicalJsonHash(["kmodels.pricing.term.v1", offerId, termKey]);
-}
 
 export function normalizeUnitExpression(expression: UnitExpression): UnitExpression {
   const factors = new Map<string, UnitExpression["factors"][number]>();

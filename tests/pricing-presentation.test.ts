@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
+import { unconditionalApplicability } from "../src/catalog/pricing-canonical.ts";
 import {
   pricingBookId,
   pricingOfferId,
   pricingTermId,
-  unconditionalApplicability,
-} from "../src/catalog/pricing-canonical.ts";
+} from "../src/catalog/pricing-identifiers.ts";
 import {
   displayUnitPrice,
   evaluateApplicability,

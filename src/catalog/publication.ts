@@ -3,9 +3,11 @@ import { groupModels } from "./model-groups.ts";
 import {
   catalogIdsSchema,
   catalogModelsSchema,
+  catalogSummarySchema,
   publishedModelVariantSchema,
   type CatalogIds,
   type CatalogModels,
+  type CatalogSummary,
   type PublishedModelVariant,
 } from "./publication-schema.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
@@ -28,6 +30,22 @@ export function catalogIds(catalog: Catalog): CatalogIds {
         ].sort(compareUtf8),
       ]),
     ),
+  });
+}
+
+export function catalogSummary(catalog: Catalog): CatalogSummary {
+  return catalogSummarySchema.parse({
+    schema_version: 1,
+    profile: "summary",
+    catalog_version: catalog.catalog_version,
+    generated_at: catalog.generated_at,
+    models: catalog.models.map((model) => ({
+      model_id: model.model_id,
+      provider: model.provider_id,
+      ...(model.version === undefined ? {} : { version: model.version }),
+      tasks: model.tasks,
+      status: model.status,
+    })),
   });
 }
 

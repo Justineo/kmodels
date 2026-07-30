@@ -26,6 +26,11 @@ catalog. Consumer profiles use `schema_version` for their contract, while
 - `/catalog/ids.json` is the lean inventory. It maps each provider ID to sorted,
   distinct `model_id` strings. It makes no version, lifecycle, callability, or
   latest-version claim.
+- `/catalog/summary.json` is the flat lightweight metadata inventory. Each
+  exact catalog record contains `model_id`, stable provider ID as `provider`,
+  `tasks`, lifecycle `status`, and `version` when the provider publishes it
+  separately. Keeping `version` prevents distinct records from becoming
+  ambiguous; the profile does not infer a latest version.
 - `/catalog/models.json` is the default semantic catalog. It groups by exact
   `(provider_id, model_id)` and keeps every exact record in one uniform
   `variants` array. Variant objects retain normalized model facts and omit

@@ -5,13 +5,11 @@ import {
   applicabilityContainedIn,
   canonicalizeApplicability,
   normalizeUnitExpression,
-  pricingBookId,
-  pricingOfferId,
-  pricingTermId,
   selectorWeight,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
 import { pricingLimits } from "./pricing-constants.ts";
+import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
   type ModelPricingDisposition,
   type NormalizedPriceObservation,

@@ -141,7 +141,7 @@ function filterStatus(): void {
     </template>
     <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
       <UiTooltip
-        class="price-status-trigger"
+        class="table-status-trigger"
         tabindex="0"
         :content="pricingStatus.description"
         :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"

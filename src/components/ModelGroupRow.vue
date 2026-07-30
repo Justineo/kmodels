@@ -4,6 +4,7 @@ import { canonicalJson } from "../catalog/canonical-value.ts";
 import type { ModelGroup } from "../catalog/model-groups.ts";
 import {
   formatModelTask,
+  formatSentenceCase,
   formatTableTask,
   formatTokenCount,
   primaryStatus,
@@ -56,6 +57,12 @@ const firstModel = computed(() => {
 const sharedName = computed(() => sharedBy((model) => model.name));
 const sharedTasks = computed(() => sharedBy((model) => model.tasks));
 const sharedStatus = computed(() => sharedBy((model) => primaryStatus(model)));
+const variedStatusDescription = computed(
+  () =>
+    `Status varies by version: ${[
+      ...new Set(props.group.models.map((model) => formatSentenceCase(primaryStatus(model)))),
+    ].join(", ")}.`,
+);
 const contextLabel = computed(() => {
   const context = sharedBy((model) => model.context_tokens);
   return context.kind === "shared" ? formatTokenCount(context.value) : "Varies";
@@ -143,7 +150,15 @@ function filterStatus(): void {
       </span>
     </td>
     <td class="status-col">
-      <span v-if="sharedStatus.kind === 'varies'" class="group-varies">Varies</span>
+      <UiTooltip
+        v-if="sharedStatus.kind === 'varies'"
+        class="table-status-trigger"
+        tabindex="0"
+        :content="variedStatusDescription"
+        :aria-label="variedStatusDescription"
+      >
+        Varies
+      </UiTooltip>
       <button
         v-else
         class="row-status"
@@ -166,7 +181,7 @@ function filterStatus(): void {
     </td>
     <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
       <UiTooltip
-        class="price-status-trigger"
+        class="table-status-trigger"
         tabindex="0"
         :content="pricingStatus.description"
         :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
