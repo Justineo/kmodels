@@ -1,7 +1,7 @@
 {
-  "catalog_version": "45529a67a7d24e3efd2f87a53729ca40624c3de0afeec9b9627b3b6684dc501a",
-  "generated_at": "2026-07-30T14:56:37.275Z",
-  "previous_catalog_version": "ba601c6e9684f6ce0a37c19efb94cb2aff32ceb6e09791e58d7efc971d91e983",
+  "catalog_version": "57de2c04f0d34e415c8159f868f218c9bf87e7f887b9342fb7a8731ceffaec08",
+  "generated_at": "2026-07-30T15:37:05.766Z",
+  "previous_catalog_version": "45529a67a7d24e3efd2f87a53729ca40624c3de0afeec9b9627b3b6684dc501a",
   "providers": [
     {
       "models": {
@@ -36,8 +36,9 @@
       },
       "status": "fresh",
       "warning_codes": {
+        "catalog_api_set_mismatch": 1,
         "missing_field": 2,
-        "source_fetch_failed": 1
+        "scope_limited": 1
       }
     },
     {
@@ -197,26 +198,28 @@
     {
       "models": {
         "added": 0,
-        "changed": 0,
-        "changed_fields": {},
+        "changed": 1,
+        "changed_fields": {
+          "capabilities": 1
+        },
         "current": 50,
         "previous": 50,
         "removed": 0,
-        "unchanged": 50
+        "unchanged": 49
       },
       "pricing": {
-        "commercial_hash": "a8bfe289e9b548bfd6a6cad83eef41013f18b26eda1b4eddd865cf35b291383a",
-        "outcome": "provenance_only",
+        "commercial_hash": "06f66bf4a28ebcfb68c552bdcc02b7dde3347780e6d1b1c9d1174dd8a09744d7",
+        "outcome": "commercial",
         "previous_commercial_hash": "a8bfe289e9b548bfd6a6cad83eef41013f18b26eda1b4eddd865cf35b291383a"
       },
       "provider_id": "databricks",
       "sources": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "current": 2,
         "previous": 2,
         "removed": 0,
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -258,29 +261,26 @@
     {
       "models": {
         "added": 0,
-        "changed": 1,
-        "changed_fields": {
-          "retired_at": 1,
-          "status": 1
-        },
+        "changed": 0,
+        "changed_fields": {},
         "current": 73,
         "previous": 73,
         "removed": 0,
-        "unchanged": 72
+        "unchanged": 73
       },
       "pricing": {
         "commercial_hash": "7bfe605b5eb82ae2dcf4e45003d6b1e804f500da57ec96913b1e63f8d1b11fc9",
-        "outcome": "commercial",
-        "previous_commercial_hash": "f64d1262115981cf7470158f766993e4c76a8056a24e14b981d6dd0b0d4745dd"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "7bfe605b5eb82ae2dcf4e45003d6b1e804f500da57ec96913b1e63f8d1b11fc9"
       },
       "provider_id": "gemini",
       "sources": {
         "added": 0,
-        "changed": 1,
+        "changed": 2,
         "current": 2,
         "previous": 2,
         "removed": 0,
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -291,29 +291,29 @@
     },
     {
       "models": {
-        "added": 0,
-        "changed": 1,
+        "added": 1,
+        "changed": 2,
         "changed_fields": {
-          "capabilities": 1
+          "capabilities": 2
         },
-        "current": 1594,
+        "current": 1595,
         "previous": 1594,
         "removed": 0,
-        "unchanged": 1593
+        "unchanged": 1592
       },
       "pricing": {
-        "commercial_hash": "88902f026894cecb485a800c5dcb3ed68f68bb06391655ac440a5daee59c88fa",
-        "outcome": "provenance_only",
+        "commercial_hash": "a6d9e0e249c3130ec87f96751fd72f7974df28c0d503dca5428cd90472756525",
+        "outcome": "commercial",
         "previous_commercial_hash": "88902f026894cecb485a800c5dcb3ed68f68bb06391655ac440a5daee59c88fa"
       },
       "provider_id": "huggingface",
       "sources": {
         "added": 0,
-        "changed": 1,
+        "changed": 2,
         "current": 2,
         "previous": 2,
         "removed": 0,
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -338,11 +338,11 @@
       "provider_id": "kimi",
       "sources": {
         "added": 0,
-        "changed": 1,
+        "changed": 2,
         "current": 5,
         "previous": 5,
         "removed": 0,
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -393,8 +393,8 @@
       },
       "pricing": {
         "commercial_hash": "31c14e51ce8cf93f475b9e7d058ba5461ca861d5a215e28deef286d0ce1e8e7c",
-        "outcome": "commercial",
-        "previous_commercial_hash": "7171a4785dc4c713e7cbf49711a2b224b6245616c616c96bfec9fe92fcdc3e6b"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "31c14e51ce8cf93f475b9e7d058ba5461ca861d5a215e28deef286d0ce1e8e7c"
       },
       "provider_id": "mistral",
       "sources": {
@@ -460,11 +460,11 @@
       "provider_id": "openai",
       "sources": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "current": 4,
         "previous": 4,
         "removed": 0,
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
