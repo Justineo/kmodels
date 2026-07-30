@@ -25,10 +25,11 @@ Status: implemented
   result contains multiple exact versions of one `(provider_id, model_id)`,
   show one collapsed parent row with the variant count. A parent cell shows an
   exact value only when every visible variant agrees; otherwise it says
-  `Varies`. Expanding inserts the exact variants as fixed-height child rows, and
-  selecting a child opens its details. Never infer or label a latest version
-  from version spelling. Always show the complete version in child details and
-  JSON.
+  `Varies`. Varying status uses the same dotted tooltip treatment as pricing
+  status and names the distinct values. Expanding inserts the exact variants as
+  fixed-height child rows, and selecting a child opens its details. Never infer
+  or label a latest version from version spelling. Always show the complete
+  version in child details and JSON.
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
 - Shared pricing headings stay generic because meter and unit are row-specific.
@@ -167,8 +168,10 @@ Status: implemented
   OverlayScrollbars runtime/CSS with the initial application graph so its
   explicit viewports replace native scrollbars before the first rendered frame.
   Load the full closed-schema validator, inspector component, and inspector CSS
-  asynchronously after that frame. Static Vue and scrollbar dependencies are
-  split into cacheable, module-preloaded chunks; deferred chunks must not be
+  asynchronously after that frame. Both browser graphs contain only
+  browser-safe modules; canonical hashing and publication I/O remain
+  build/collection concerns. Static Vue and scrollbar dependencies are split
+  into cacheable, module-preloaded chunks; deferred chunks must not be
   module-preloaded by the HTML shell. Mount the deferred inspector into its
   dedicated second Vapor root and share only a small reactive state object with
   the catalog root.

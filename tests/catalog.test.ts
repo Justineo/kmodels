@@ -14,6 +14,7 @@ import {
   catalogIdsSchema,
   catalogModelsSchema,
   catalogProvidersSchema,
+  catalogSummarySchema,
 } from "../src/catalog/publication-schema.ts";
 import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
 import { catalogEnvelopeSchema, catalogSchema } from "../src/catalog/schema.ts";
@@ -113,6 +114,7 @@ describe("generated static catalog", () => {
     const websiteDetailAssets = assets.filter(({ fileName }) => fileName.startsWith("ui/details/"));
     const idsAsset = assets.find(({ fileName }) => fileName === "catalog/ids.json");
     const modelsAsset = assets.find(({ fileName }) => fileName === "catalog/models.json");
+    const summaryAsset = assets.find(({ fileName }) => fileName === "catalog/summary.json");
     const providersAsset = assets.find(({ fileName }) => fileName === "providers/index.json");
     const providerAsset = assets.find(({ fileName }) => fileName === "providers/openai/index.json");
     const providerModelsAsset = assets.find(
@@ -121,6 +123,7 @@ describe("generated static catalog", () => {
     const envelope = catalogEnvelopeSchema.parse(JSON.parse(catalogAsset?.source ?? ""));
     const ids = catalogIdsSchema.parse(JSON.parse(idsAsset?.source ?? ""));
     const published = catalogModelsSchema.parse(JSON.parse(modelsAsset?.source ?? ""));
+    const summary = catalogSummarySchema.parse(JSON.parse(summaryAsset?.source ?? ""));
     catalogProvidersSchema.parse(JSON.parse(providersAsset?.source ?? ""));
     expect(JSON.parse(providerAsset?.source ?? "")).toMatchObject({
       profile: "provider",
@@ -160,6 +163,25 @@ describe("generated static catalog", () => {
     expect(
       published.providers.azure?.models.find(({ model_id }) => model_id === "gpt-4o")?.variants,
     ).toHaveLength(4);
+    expect(summary.models).toHaveLength(catalog.models.length);
+    expect(
+      summary.models.filter(
+        ({ provider, model_id }) => provider === "azure" && model_id === "gpt-4",
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          version: "0125-Preview",
+          tasks: ["text_generation"],
+          status: "unknown",
+        }),
+        expect.objectContaining({
+          version: "turbo-2024-04-09",
+          tasks: ["text_generation"],
+          status: "active",
+        }),
+      ]),
+    );
     expect(modelsAsset?.source).not.toMatch(
       /"(?:task_evidence|delivery_mode_evidence|raw_type|routes|source_refs|observed_at|first_seen_at|last_seen_at|warnings)"/,
     );
@@ -186,7 +208,7 @@ describe("generated static catalog", () => {
     expect(website.models).toHaveLength(catalog.models.length);
     expect(websitePricing.pricing).toHaveLength(catalog.models.length);
     expect(websiteDetails.flatMap(({ details }) => details)).toHaveLength(catalog.models.length);
-    expect(assets).toHaveLength(7 + catalog.providers.length * 2 + websiteDetailAssets.length);
+    expect(assets).toHaveLength(8 + catalog.providers.length * 2 + websiteDetailAssets.length);
   });
 
   it("keeps checked-in catalog exports synchronized with their projection contracts", async () => {

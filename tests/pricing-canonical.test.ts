@@ -4,12 +4,14 @@ import {
   applicabilityContainedIn,
   canonicalizeApplicability,
   normalizeUnitExpression,
-  pricingBookId,
-  pricingOfferId,
-  pricingTermId,
   selectorWeight,
   unionApplicabilities,
 } from "../src/catalog/pricing-canonical.ts";
+import {
+  pricingBookId,
+  pricingOfferId,
+  pricingTermId,
+} from "../src/catalog/pricing-identifiers.ts";
 import {
   divideRationals,
   multiplyRationals,

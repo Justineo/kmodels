@@ -4,12 +4,10 @@ import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
   canonicalizeApplicability,
-  pricingBookId,
-  pricingOfferId,
-  pricingTermId,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
 import { pricingLimits } from "./pricing-constants.ts";
+import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
   type AddOnCompatibility,
   type BillingMode,

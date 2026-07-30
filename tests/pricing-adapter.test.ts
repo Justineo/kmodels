@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import { manifests } from "../src/catalog/manifests.ts";
-import { pricingTermId, pricingOfferId, pricingBookId } from "../src/catalog/pricing-canonical.ts";
 import {
   assembleParsedProviderPricing,
   isRequiredPricingSource,
 } from "../src/catalog/pricing-adapter.ts";
+import {
+  pricingBookId,
+  pricingOfferId,
+  pricingTermId,
+} from "../src/catalog/pricing-identifiers.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import {
   sourcePriceFactSchema,

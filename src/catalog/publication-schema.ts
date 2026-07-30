@@ -12,6 +12,26 @@ export const catalogIdsSchema = z.strictObject({
   providers: z.record(z.string().min(1), z.array(z.string().min(1))),
 });
 
+const catalogSummaryModelSchema = providerModelSchema
+  .pick({
+    model_id: true,
+    version: true,
+    tasks: true,
+    status: true,
+  })
+  .extend({
+    provider: z.string().min(1),
+  })
+  .strict();
+
+export const catalogSummarySchema = z.strictObject({
+  schema_version: z.literal(1),
+  profile: z.literal("summary"),
+  catalog_version: hash,
+  generated_at: dateTime,
+  models: z.array(catalogSummaryModelSchema),
+});
+
 export const publishedModelVariantSchema = providerModelSchema
   .omit({
     provider_id: true,
@@ -69,5 +89,6 @@ export const catalogProvidersSchema = z.strictObject({
 });
 
 export type CatalogIds = z.infer<typeof catalogIdsSchema>;
+export type CatalogSummary = z.infer<typeof catalogSummarySchema>;
 export type CatalogModels = z.infer<typeof catalogModelsSchema>;
 export type PublishedModelVariant = z.infer<typeof publishedModelVariantSchema>;

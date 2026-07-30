@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 import { commercialPricingProjection } from "../src/catalog/pricing-commercial.ts";
+import { unconditionalApplicability } from "../src/catalog/pricing-canonical.ts";
 import {
   pricingBookId,
   pricingOfferId,
   pricingTermId,
-  unconditionalApplicability,
-} from "../src/catalog/pricing-canonical.ts";
+} from "../src/catalog/pricing-identifiers.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 
 const providerId = "test";

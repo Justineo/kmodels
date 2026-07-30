@@ -1032,7 +1032,7 @@ kbd {
 }
 
 .price-tooltip-trigger .price-value,
-.price-status-trigger {
+.table-status-trigger {
   border-bottom: var(--stroke-hairline) dotted currentColor;
 }
 
@@ -1042,13 +1042,13 @@ kbd {
 }
 
 .price-tooltip-trigger:focus-visible,
-.price-status-trigger:focus-visible {
+.table-status-trigger:focus-visible {
   border-radius: var(--radius-xs);
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: var(--space-0-5);
 }
 
-.price-status-trigger {
+.table-status-trigger {
   color: var(--color-text-secondary);
   cursor: help;
   font-size: var(--font-size-caption);
@@ -1323,9 +1323,10 @@ kbd {
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
-  border-left: var(--stroke-hairline) solid var(--color-border-subtle);
+  gap: var(--stroke-hairline);
+  border: var(--stroke-hairline) solid var(--color-border-subtle);
   border-radius: var(--list-surface-radius);
+  background: var(--color-border-subtle);
   overflow: hidden;
 }
 
@@ -1333,8 +1334,11 @@ kbd {
   min-width: 0;
   min-height: var(--layout-detail-cell-height);
   padding: var(--space-2-5) var(--space-3);
-  border-right: var(--stroke-hairline) solid var(--color-border-subtle);
-  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
+  background: var(--color-surface);
+}
+
+.detail-grid > div:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 .detail-grid dt {
@@ -1731,6 +1735,10 @@ kbd {
 
   .detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-grid > div:last-child:nth-child(odd) {
+    grid-column: auto;
   }
 
   .modality-flow {

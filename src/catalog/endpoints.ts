@@ -1,6 +1,6 @@
 import type { AssetSource } from "./asset-pack.ts";
 import { stableCompactJson, stableJson } from "./io.ts";
-import { catalogIds, catalogModels } from "./publication.ts";
+import { catalogIds, catalogModels, catalogSummary } from "./publication.ts";
 import { catalogProvidersSchema } from "./publication-schema.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
 import type { Catalog, CatalogEnvelope } from "./schema.ts";
@@ -57,6 +57,10 @@ export function catalogExportAssets(
     {
       fileName: "catalog/models.json",
       source: stableCompactJson(models),
+    },
+    {
+      fileName: "catalog/summary.json",
+      source: stableCompactJson(catalogSummary(catalog)),
     },
     {
       fileName: "providers/index.json",
