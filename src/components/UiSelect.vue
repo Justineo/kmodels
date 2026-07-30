@@ -60,10 +60,6 @@ const selectedOption = computed(() =>
   font-weight: var(--font-weight-medium);
   line-height: var(--line-height-control);
   text-align: left;
-}
-
-.ui-select,
-.ui-select::picker(select) {
   appearance: base-select;
 }
 
@@ -88,6 +84,7 @@ const selectedOption = computed(() =>
 }
 
 .ui-select::picker(select) {
+  appearance: base-select;
   max-height: min(var(--layout-select-max-height), 52svh);
   padding: var(--space-1);
   border: var(--stroke-hairline) solid var(--color-border-default);

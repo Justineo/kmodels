@@ -134,8 +134,10 @@ Status: implemented
 - The appearance button switches directly between light and dark, labels the destination, and persists the explicit choice. Initial appearance follows the OS.
 - Provider and pricing-context selection reuse one progressively enhanced
   `UiSelect` component using `appearance: base-select`; the browser owns
-  selection, keyboard, focus, placement, and dismissal. The visual value mirror
-  is pointer-transparent.
+  selection, keyboard, focus, placement, and dismissal. Set the appearance
+  directly on both the select and its complete `::picker(select)` rule so
+  production CSS minification preserves the picker enhancement. The visual
+  value mirror is pointer-transparent.
 - The secondary filters use `<dialog popover="auto">` for non-modal top-layer behavior and light dismissal. Keep its title/actions outside its scroll viewport.
 - Do not use modal-dialog `closedby="any"` for light dismissal until it is baseline.
 - Filtering or sorting resets virtual scroll. Clearing filters does not move focus.
