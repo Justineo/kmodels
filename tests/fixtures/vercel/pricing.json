@@ -176,6 +176,39 @@
         "realtime_client_message_cost": "0.004",
         "realtime_session_duration_cost_per_second": "0.000834"
       }
+    },
+    {
+      "id": "acme/regional-fast-1",
+      "object": "model",
+      "created": 1755815280,
+      "released": 1748476800,
+      "owned_by": "acme",
+      "name": "Regional Fast One",
+      "description": "A region- and service-tier-priced model.",
+      "type": "language",
+      "modalities": { "input": ["text"], "output": ["text"] },
+      "pricing": {
+        "input": "0.000001",
+        "output": "0.000005",
+        "fast": {
+          "input": "0.000002",
+          "output": "0.00001"
+        },
+        "regional": {
+          "eu": {
+            "input": "0.0000011",
+            "output": "0.0000055"
+          },
+          "us": {
+            "input": "0.0000011",
+            "output": "0.0000055",
+            "fast": {
+              "input": "0.0000022",
+              "output": "0.000011"
+            }
+          }
+        }
+      }
     }
   ]
 }

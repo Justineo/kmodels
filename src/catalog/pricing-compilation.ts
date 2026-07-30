@@ -115,6 +115,33 @@ export interface PricingCompilationResult {
 
 export const pricingCompilationPath = join(rootDirectory, "data/pricing-inputs.json.gz");
 
+function replayModels(models: ParsedPricingSource["models"]): PricingReplaySource["models"] {
+  const byUid = new Map<string, PricingReplaySource["models"][number]>();
+  for (const input of models) {
+    const model = parsedPricingModel(input);
+    const current = byUid.get(model.uid);
+    if (current === undefined) {
+      byUid.set(model.uid, model);
+      continue;
+    }
+    let pricingState = current.pricing_state;
+    if (pricingState === "unknown") pricingState = model.pricing_state;
+    else if (model.pricing_state !== "unknown" && model.pricing_state !== pricingState)
+      throw new Error(`Pricing compilation model ${model.uid} has conflicting states`);
+    const facts = new Map(
+      [...current.price_facts, ...model.price_facts].map((fact) => [JSON.stringify(fact), fact]),
+    );
+    byUid.set(model.uid, {
+      ...current,
+      pricing_state: pricingState,
+      price_facts: [...facts]
+        .sort(([left], [right]) => compareUtf8(left, right))
+        .map(([, fact]) => fact),
+    });
+  }
+  return [...byUid.values()].sort((left, right) => compareUtf8(left.uid, right.uid));
+}
+
 export function capturePricingReplaySources(
   sources: readonly ParsedPricingSource[],
   sourceRecords: readonly SourceRecord[],
@@ -144,9 +171,7 @@ export function capturePricingReplaySources(
         source_id: source.id,
         extractor_version: source.extractorVersion,
         content_hash: record.content_hash,
-        models: models
-          .map(parsedPricingModel)
-          .sort((left, right) => compareUtf8(left.uid, right.uid)),
+        models: replayModels(models),
       });
     })
     .sort((left, right) => compareUtf8(left.source_id, right.source_id));

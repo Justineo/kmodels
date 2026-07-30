@@ -20,9 +20,10 @@ const tierSchema = z
   .object({
     cost: decimal,
     min: z.number().int().nonnegative().optional(),
-    max: z.number().int().nonnegative().optional(),
+    max: z.number().int().positive().optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ min = 0, max }) => max === undefined || min < max, "Tier range is empty");
 
 const servicePriceSchema = z
   .object({
@@ -32,6 +33,17 @@ const servicePriceSchema = z
     input_cache_write: decimal.optional(),
   })
   .strict();
+
+const tokenPriceSchema = servicePriceSchema.extend({
+  input_tiers: z.array(tierSchema).optional(),
+  output_tiers: z.array(tierSchema).optional(),
+  input_cache_read_tiers: z.array(tierSchema).optional(),
+  input_cache_write_tiers: z.array(tierSchema).optional(),
+});
+
+const regionalPriceSchema = tokenPriceSchema.extend({
+  fast: servicePriceSchema.optional(),
+});
 
 const serviceTierSchema = servicePriceSchema.extend({
   long_context: servicePriceSchema
@@ -61,18 +73,12 @@ const videoPriceSchema = z
 
 const videoTokenTierSchema = z.object({ cost_per_million_tokens: decimal }).strict();
 
-const pricingSchema = z
-  .object({
-    input: decimal.optional(),
-    output: decimal.optional(),
+const pricingSchema = tokenPriceSchema
+  .extend({
     audio_input_token_cost: decimal.optional(),
     audio_output_token_cost: decimal.optional(),
-    input_cache_read: decimal.optional(),
-    input_cache_write: decimal.optional(),
-    input_tiers: z.array(tierSchema).optional(),
-    output_tiers: z.array(tierSchema).optional(),
-    input_cache_read_tiers: z.array(tierSchema).optional(),
-    input_cache_write_tiers: z.array(tierSchema).optional(),
+    fast: servicePriceSchema.optional(),
+    regional: z.partialRecord(z.enum(["eu", "us"]), regionalPriceSchema).optional(),
     service_tiers: z.record(z.string().min(1), serviceTierSchema).optional(),
     image: decimal.optional(),
     image_dimension_quality_pricing: z.array(imagePriceSchema).optional(),
@@ -145,6 +151,7 @@ const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown
 type Item = z.infer<typeof itemSchema>;
 type Tier = z.infer<typeof tierSchema>;
 type ServicePrice = z.infer<typeof servicePriceSchema>;
+type TokenPrice = z.infer<typeof tokenPriceSchema>;
 
 function date(timestamp: number | undefined, milliseconds = false): string | undefined {
   if (timestamp === undefined) return undefined;
@@ -226,7 +233,7 @@ function addTokenRates(
         tokenRate(meter, tier.cost, sourceId, {
           ...conditions,
           context_min_tokens: tier.min,
-          context_max_tokens: tier.max,
+          context_max_tokens: tier.max === undefined ? undefined : tier.max - 1,
         }),
       );
     return;
@@ -252,6 +259,36 @@ function addServiceRates(
     rates.push(tokenRate("cache_write_text", prices.input_cache_write, sourceId, conditions));
 }
 
+function addUsageRates(
+  rates: SourcePriceFact[],
+  prices: TokenPrice,
+  sourceId: string,
+  inputMeter: SourcePriceFact["meter"],
+  outputMeter: SourcePriceFact["meter"],
+  conditions: SourcePriceFact["conditions"],
+  includeInput = true,
+): void {
+  if (includeInput)
+    addTokenRates(rates, inputMeter, sourceId, prices.input, prices.input_tiers, conditions);
+  addTokenRates(rates, outputMeter, sourceId, prices.output, prices.output_tiers, conditions);
+  addTokenRates(
+    rates,
+    "cache_read_text",
+    sourceId,
+    prices.input_cache_read,
+    prices.input_cache_read_tiers,
+    conditions,
+  );
+  addTokenRates(
+    rates,
+    "cache_write_text",
+    sourceId,
+    prices.input_cache_write,
+    prices.input_cache_write_tiers,
+    conditions,
+  );
+}
+
 function pricing(item: Item, sourceId: string): SourcePriceFact[] {
   const rates: SourcePriceFact[] = [];
   const value = item.pricing;
@@ -269,28 +306,37 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
         : "input_text";
   const outputMeter: SourcePriceFact["meter"] =
     item.type === "image" ? "output_image" : "output_text";
+  const regional = Object.entries(value.regional ?? {});
+  const hasFast =
+    value.fast !== undefined || regional.some(([, prices]) => prices.fast !== undefined);
+  const baseConditions: SourcePriceFact["conditions"] = {
+    region: regional.length === 0 ? undefined : "default",
+    service_tier: hasFast ? "standard" : undefined,
+  };
   if (transcriptionAudioPrice !== undefined)
-    rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId));
-  if (!specializedInput) addTokenRates(rates, inputMeter, sourceId, value.input, value.input_tiers);
-  addTokenRates(rates, outputMeter, sourceId, value.output, value.output_tiers);
+    rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId, baseConditions));
+  addUsageRates(rates, value, sourceId, inputMeter, outputMeter, baseConditions, !specializedInput);
   if (value.audio_input_token_cost !== undefined && transcriptionAudioPrice === undefined)
-    rates.push(tokenRate("input_audio", value.audio_input_token_cost, sourceId));
+    rates.push(tokenRate("input_audio", value.audio_input_token_cost, sourceId, baseConditions));
   if (value.audio_output_token_cost !== undefined)
-    rates.push(tokenRate("output_audio", value.audio_output_token_cost, sourceId));
-  addTokenRates(
-    rates,
-    "cache_read_text",
-    sourceId,
-    value.input_cache_read,
-    value.input_cache_read_tiers,
-  );
-  addTokenRates(
-    rates,
-    "cache_write_text",
-    sourceId,
-    value.input_cache_write,
-    value.input_cache_write_tiers,
-  );
+    rates.push(tokenRate("output_audio", value.audio_output_token_cost, sourceId, baseConditions));
+
+  if (value.fast !== undefined)
+    addUsageRates(rates, value.fast, sourceId, inputMeter, outputMeter, {
+      region: regional.length === 0 ? undefined : "default",
+      service_tier: "fast",
+    });
+  for (const [region, prices] of regional) {
+    addUsageRates(rates, prices, sourceId, inputMeter, outputMeter, {
+      region,
+      service_tier: hasFast ? "standard" : undefined,
+    });
+    if (prices.fast !== undefined)
+      addUsageRates(rates, prices.fast, sourceId, inputMeter, outputMeter, {
+        region,
+        service_tier: "fast",
+      });
+  }
 
   for (const [serviceTier, tier] of Object.entries(value.service_tiers ?? {})) {
     const contextMax = tier.long_context?.threshold;
@@ -303,27 +349,42 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
     );
     if (tier.long_context !== undefined)
       addServiceRates(rates, serviceTier, tier.long_context, sourceId, {
-        context_min_tokens: tier.long_context.threshold,
+        context_min_tokens: tier.long_context.threshold + 1,
       });
   }
 
+  const imageBaseConditions =
+    value.image_dimension_quality_pricing?.some(({ style }) => style !== undefined) === true
+      ? { style: "default" }
+      : {};
   if (value.image !== undefined)
-    rates.push(publishedRate("image_generation", value.image, "image", sourceId, "image"));
+    rates.push(
+      publishedRate(
+        "image_generation",
+        value.image,
+        "image",
+        sourceId,
+        "image",
+        imageBaseConditions,
+      ),
+    );
   for (const variant of value.image_dimension_quality_pricing ?? [])
     rates.push(
       publishedRate("image_generation", variant.cost, "image", sourceId, "image", {
         operation: variant.operation,
-        resolution: variant.size === "default" ? undefined : variant.size,
+        resolution: variant.size,
         style: variant.style,
       }),
     );
+  const hasVoiceControl =
+    value.video_duration_pricing?.some(({ voice_control }) => voice_control !== undefined) === true;
   for (const variant of value.video_duration_pricing ?? [])
     rates.push(
       publishedRate("video_generation", variant.cost_per_second, "second", sourceId, "second", {
         resolution: variant.resolution,
         quality: variant.mode,
         audio: variant.audio,
-        voice_control: variant.voice_control,
+        voice_control: hasVoiceControl ? (variant.voice_control ?? false) : undefined,
       }),
     );
   if (value.video_token_pricing !== undefined) {

@@ -9,10 +9,9 @@
 | Claude Sonnet 5 through August 31, 2026    | $2 / MTok         | $2.50 / MTok    | $4 / MTok       | $0.20 / MTok           | $10 / MTok    |
 | Claude Sonnet 5 starting September 1, 2026 | $3 / MTok         | $3.75 / MTok    | $6 / MTok       | $0.30 / MTok           | $15 / MTok    |
 
-| Model           | Input      | Output      |
-| --------------- | ---------- | ----------- |
-| Claude Opus 4.8 | $10 / MTok | $50 / MTok  |
-| Claude Opus 4.7 | $30 / MTok | $150 / MTok |
+| Model                             | Input      | Output     |
+| --------------------------------- | ---------- | ---------- |
+| Claude Opus 4.8 / Claude Opus 4.7 | $10 / MTok | $50 / MTok |
 
 | Model                                      | Batch input  | Batch output  |
 | ------------------------------------------ | ------------ | ------------- |

@@ -16,6 +16,7 @@ export const AVAILABLE_FEATURES = {
   "chat-moderations": { endpoints: ["chat-moderations"] },
   transcriptions: { endpoints: ["audio-transcriptions"] },
   tts: { endpoints: ["audio-speech"] },
+  "voice-cloning": { endpoints: ["audio-speech"] },
   timestamps: { endpoints: ["audio-transcriptions"] },
   batching: { endpoints: ["batch"] },
 } as const;

@@ -17,6 +17,7 @@ Status: current
 - Preserve exact Chat V1/V2, OpenAI compatibility, Embed, Embed Jobs, Rerank, Audio Transcriptions, and legacy Generate routes. Limit Embed Jobs to its explicit request-model list.
 - Generic account inventory values such as chat/embed/rerank add tasks but not API versions. Zero context on image-only embeddings is unknown, not a zero-token limit.
 - Pricing joins require one unique non-retired model. Responsive copies must agree. Preserve token, embedding, search, hourly, monthly, and capacity units/conditions.
+- Normalize published billing-period labels into the shared period condition before conflict analysis; unsupported period wording still fails closed.
 - Conflicting duplicate prices reject the provider. Free experiments plus negotiated production are `custom_quote`.
 
 ## Kong AI Gateway

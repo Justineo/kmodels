@@ -5,7 +5,7 @@ export default {
   releaseDate: "2026-03-23",
   version: "26.03",
   type: "Open",
-  status: "Active",
+  status: "GA",
   contextLength: null,
   pricing: {
     type: "custom",
@@ -14,6 +14,10 @@ export default {
     output: [{ type: "range", price: 16.0, denominator: "/M Chars" }],
   },
   identifiers: { apiNames: ["voxtral-mini-tts-2603", "voxtral-mini-tts-latest"] },
-  capabilities: { input: ["text", "audio"], output: ["audio"], features: ["tts"] },
+  capabilities: {
+    input: ["text", "audio"],
+    output: ["audio"],
+    features: ["tts", "voice-cloning"],
+  },
   metadata: {},
 };

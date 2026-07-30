@@ -35,6 +35,7 @@ import {
   type AllowanceReset,
   type PriceDispositionObservation,
 } from "./pricing-schema.ts";
+import { publishedValiditiesOverlap } from "./pricing-time.ts";
 
 export interface AtomicProviderPricing {
   provider_id: string;
@@ -257,7 +258,6 @@ function assembleOffer(prepared: PreparedOffer): PricingOffer {
     ));
   } else {
     terms = applyRateContainment(states, terms);
-    terms = terms.map(applyValueConflict);
     terms = applyAllowanceFallback(terms);
   }
   terms = terms.map(finalizeTerm).sort((left, right) => compareUtf8(left.id, right.id));
@@ -356,13 +356,23 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
 } {
   const grouped = new Map<string, AtomicRateVariant[]>();
   const raw: AtomicRawVariant[] = [];
+  const normalizedVariants: AtomicRateVariant[] = [];
   for (const variant of variants) {
     const normalized = normalizeAtomicApplicability(variant);
     if (normalized === undefined) {
       raw.push(toRawAtomic(variant, "base_price", "selector_limit"));
       continue;
     }
-    const item = { ...variant, ...normalized };
+    normalizedVariants.push({ ...variant, ...normalized });
+  }
+  const conflicts = unequalOverlapIndexes(normalizedVariants, (variant) =>
+    canonicalJson(variant.price),
+  );
+  for (const [index, item] of normalizedVariants.entries()) {
+    if (conflicts.has(index)) {
+      raw.push(toRawAtomic(item, "base_price", "conflicting_values", item.applicability));
+      continue;
+    }
     append(grouped, canonicalJson([item.price, ...optionalValue(item.validity)]), item);
   }
   const result: PriceRateVariant[] = [];
@@ -397,13 +407,14 @@ function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
 } {
   const grouped = new Map<string, AtomicAllowanceVariant[]>();
   const raw: AtomicRawVariant[] = [];
+  const normalizedVariants: AtomicAllowanceVariant[] = [];
   for (const variant of variants) {
     const normalized = normalizeAtomicApplicability(variant);
     if (normalized === undefined) {
       raw.push(toRawAtomic(variant, "allowance", "selector_limit"));
       continue;
     }
-    const item = {
+    normalizedVariants.push({
       ...variant,
       target:
         variant.target.kind === "usage_rate_terms"
@@ -413,7 +424,16 @@ function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
             }
           : variant.target,
       ...normalized,
-    };
+    });
+  }
+  const conflicts = unequalOverlapIndexes(normalizedVariants, (variant) =>
+    canonicalJson([variant.benefit, variant.target, variant.reset]),
+  );
+  for (const [index, item] of normalizedVariants.entries()) {
+    if (conflicts.has(index)) {
+      raw.push(toRawAtomic(item, "allowance", "conflicting_values", item.applicability));
+      continue;
+    }
     append(
       grouped,
       canonicalJson([item.benefit, item.target, item.reset, ...optionalValue(item.validity)]),
@@ -511,55 +531,28 @@ function applyRateContainment(states: PriceStateVariant[], terms: PricingTerm[])
   });
 }
 
-function applyValueConflict(term: PricingTerm): PricingTerm {
-  if (term.kind === "raw" || term.variants.length < 2) return term;
-  if (term.kind === "rate") {
-    if (!hasUnequalOverlap(term.variants, (variant) => canonicalJson(variant.price))) return term;
-    return {
-      ...term,
-      variants: [],
-      raw_variants: conflictingRaw(term.raw_variants, term.variants, "base_price"),
-    };
+function unequalOverlapIndexes<
+  T extends {
+    applicability: PriceApplicability;
+    validity?: PublishedValidity | undefined;
+  },
+>(variants: T[], payload: (variant: T) => string): Set<number> {
+  const conflicts = new Set<number>();
+  for (let left = 0; left < variants.length; left++) {
+    for (let right = left + 1; right < variants.length; right++) {
+      const leftVariant = variants[left]!;
+      const rightVariant = variants[right]!;
+      if (
+        payload(leftVariant) !== payload(rightVariant) &&
+        applicabilitiesOverlap(leftVariant.applicability, rightVariant.applicability) &&
+        publishedValiditiesOverlap(leftVariant.validity, rightVariant.validity)
+      ) {
+        conflicts.add(left);
+        conflicts.add(right);
+      }
+    }
   }
-  if (
-    !hasUnequalOverlap(term.variants, (variant) =>
-      canonicalJson([variant.benefit, variant.target, variant.reset]),
-    )
-  )
-    return term;
-  return {
-    ...term,
-    variants: [],
-    raw_variants: conflictingRaw(term.raw_variants, term.variants, "allowance"),
-  };
-}
-
-function hasUnequalOverlap<T extends { applicability: PriceApplicability }>(
-  variants: T[],
-  payload: (variant: T) => string,
-): boolean {
-  return variants.some((left, index) =>
-    variants
-      .slice(index + 1)
-      .some(
-        (right) =>
-          payload(left) !== payload(right) &&
-          applicabilitiesOverlap(left.applicability, right.applicability),
-      ),
-  );
-}
-
-function conflictingRaw(
-  raw: RawPricingVariant[],
-  variants: Array<PriceRateVariant | PriceAllowanceVariant>,
-  impact: "base_price" | "allowance",
-): RawPricingVariant[] {
-  return groupRaw([
-    ...raw.flatMap(expandRaw),
-    ...variants.flatMap((variant) =>
-      expandRaw(normalizedVariantToRaw(variant, impact, "conflicting_values")),
-    ),
-  ]);
+  return conflicts;
 }
 
 function applyAllowanceFallback(terms: PricingTerm[]): PricingTerm[] {
@@ -667,13 +660,18 @@ function hasBaseConflict(states: PriceStateVariant[], terms: PricingTerm[]): boo
     for (let right = left + 1; right < states.length; right += 1)
       if (
         states[left]!.state !== states[right]!.state &&
-        applicabilitiesOverlap(states[left]!.applicability, states[right]!.applicability)
+        applicabilitiesOverlap(states[left]!.applicability, states[right]!.applicability) &&
+        publishedValiditiesOverlap(states[left]!.validity, states[right]!.validity)
       )
         return true;
   const free = states.filter(({ state }) => state === "free");
   const rates = terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
   return free.some((state) =>
-    rates.some((rate) => applicabilitiesOverlap(state.applicability, rate.applicability)),
+    rates.some(
+      (rate) =>
+        applicabilitiesOverlap(state.applicability, rate.applicability) &&
+        publishedValiditiesOverlap(state.validity, rate.validity),
+    ),
   );
 }
 

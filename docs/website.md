@@ -54,10 +54,11 @@ Status: implemented
   and add-ons are stable parent choices; a sole base offer is fixed and shown as
   a summary rather than a one-item selector. Offer choices show one reviewed
   title; they omit generated book labels, a second billing-mode paraphrase,
-  repeated default `Metered pricing` copy, and explanatory prose already implied
-  by the control. Multiple offer choices form a compact wrapping radio group;
-  its native keyboard behavior owns arrow keys and must not navigate between
-  models. Fresh pricing shows its verification time. A retained partition
+  repeated default `Metered pricing` copy, and `Incomplete`, which belongs to
+  the selected offer's warning. They also omit explanatory prose already
+  implied by the control. Multiple offer choices form a compact wrapping radio
+  group; its native keyboard behavior owns arrow keys and must not navigate
+  between models. Fresh pricing shows its verification time. A retained partition
   instead shows one provider-level status note with both the preserved
   verification time and the latest rejected-attempt time plus a reviewed
   explanation. For an unknown model it says that the last verified provider
@@ -107,6 +108,9 @@ Status: implemented
   distinct detail field rather than being mixed into a generically labeled
   table date.
 - All explanatory hover text uses `UiTooltip`; do not use native `title`.
+  Reserve tooltips for terse or abbreviated values that need additional
+  explanation. Do not repeat the self-evident action of controls such as clear
+  filters, appearance switching, disclosure, or close buttons.
   Pointer hover waits for a 700ms warm-up. After an open tooltip closes, every
   tooltip shares a 400ms cooldown during which moving to another trigger opens
   it immediately; once that window expires, warm-up is required again. Keyboard
@@ -148,33 +152,34 @@ Status: implemented
 - Replace the current history entry on state changes; `popstate` restores visited state.
 - Theme is local preference. Version-group expansion, popover visibility, and
   scroll positions are transient.
-- The browser's only first-render data dependency is
-  `/ui/catalog/index.json`. It contains provider labels and only the model
-  fields needed for rows, grouping, search, filters, and sorting. Browser-only
-  UIDs are derived from the exact tuple; representative pricing, `updated_date`,
-  inspector facts, audit fields, and random per-model references do not inflate
-  this payload.
-- Immediately after the first rendered frame, start `/ui/catalog/pricing.json`
-  and every detail-chunk request. Detail assets are provider-scoped,
-  deterministic chunks capped at 2 MiB uncompressed; large providers may own
-  several numbered chunks. Consume each response into a `Blob`, so opening the
-  inspector reuses an already completed or in-flight request without retaining
-  every JSON document as parsed objects. Parsing remains bounded to the selected
-  chunk.
+- The browser's first-render data dependencies are `/ui/catalog/index.json` and
+  `/ui/catalog/pricing.json`. Request both concurrently and await both before
+  mounting the application; core table data never has a deferred loading state.
+  The catalog chunk contains provider labels and only the model fields needed
+  for rows, grouping, search, filters, and sorting. The pricing chunk contains
+  build-time representative pricing in matching model order. Browser-only UIDs
+  are derived from the exact tuple; `updated_date`, inspector facts, audit
+  fields, and random per-model references do not inflate either payload.
+- Immediately after the first rendered frame, start every detail-chunk request.
+  Detail assets are provider-scoped, deterministic chunks capped at 2 MiB
+  uncompressed; large providers may own several numbered chunks. Consume each
+  response into a `Blob`, so opening the inspector reuses an already completed
+  or in-flight request without retaining every JSON document as parsed objects.
+  Parsing remains bounded to the selected chunk.
 - Use one `data_version` derived from the accepted catalog/pricing pair on the
-  catalog, pricing-summary, and detail-chunk projections. Reject mismatched
-  deferred assets in the browser.
+  catalog, pricing-summary, and detail-chunk projections. Reject mismatched core
+  chunks before mounting and mismatched deferred details before rendering them.
 - Keep the initial catalog parser small and dependency-free. Load
   OverlayScrollbars runtime/CSS with the initial application graph so its
   explicit viewports replace native scrollbars before the first rendered frame.
   Load the full closed-schema validator, inspector component, and inspector CSS
-  asynchronously after that frame. Both browser graphs contain only
-  browser-safe modules; canonical hashing and publication I/O remain
-  build/collection concerns. Static Vue and scrollbar dependencies are split
-  into cacheable, module-preloaded chunks; deferred chunks must not be
-  module-preloaded by the HTML shell. Mount the deferred inspector into its
-  dedicated second Vapor root and share only a small reactive state object with
-  the catalog root.
+  asynchronously after that frame. Split non-core code instead of deferring core
+  table data. Both browser graphs contain only browser-safe modules; canonical
+  hashing and publication I/O remain build/collection concerns. Static Vue and
+  scrollbar dependencies are split into cacheable, module-preloaded chunks;
+  deferred chunks must not be module-preloaded by the HTML shell. Mount the
+  deferred inspector into its dedicated second Vapor root and share only a
+  small reactive state object with the catalog root.
 - All UI projections exclude source records, observations, locators, raw source
   values, derivations, evidence arrays, and canonical audit-envelope metadata.
   They retain only displayed semantics and provider-snapshot freshness copy.

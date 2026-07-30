@@ -214,7 +214,8 @@ function clearSelections(): void {
 }
 
 function offerState(offer: WebsitePricingOffer): string | undefined {
-  return offer.state_summary === "Metered pricing" ? undefined : offer.state_summary;
+  const summary = offer.state_summary;
+  return summary === "Metered pricing" || summary === "Incomplete" ? undefined : summary;
 }
 
 function isFixedSelector(selector: WebsitePricingSelector): selector is CategoricalSelector {

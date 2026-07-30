@@ -1,9 +1,4 @@
-import type {
-  WebsiteDetailChunk,
-  WebsiteModel,
-  WebsiteModelDetail,
-  WebsitePricingSummary,
-} from "./website-schema.ts";
+import type { WebsiteDetailChunk, WebsiteModel, WebsiteModelDetail } from "./website-schema.ts";
 
 interface DetailTarget {
   providerId: string;
@@ -13,7 +8,6 @@ interface DetailTarget {
 const detailSources = new Map<string, Promise<Blob>>();
 const parsedDetailChunks = new Map<string, Promise<WebsiteDetailChunk>>();
 const detailsByModel = new Map<string, WebsiteModelDetail>();
-let pricingRequest: Promise<WebsitePricingSummary[]> | undefined;
 let schemaModule: Promise<typeof import("./website-schema.ts")> | undefined;
 
 function websiteSchemas(): Promise<typeof import("./website-schema.ts")> {
@@ -27,11 +21,6 @@ function detailKey({ providerId, chunk }: DetailTarget): string {
 
 function detailUrl({ providerId, chunk }: DetailTarget): string {
   return `/ui/details/${encodeURIComponent(providerId)}/${chunk}.json`;
-}
-
-async function responseText(response: Response, label: string): Promise<string> {
-  if (!response.ok) throw new Error(`${label} request failed with ${response.status}`);
-  return response.text();
 }
 
 async function responseBlob(response: Response): Promise<Blob> {
@@ -86,28 +75,6 @@ function detailTargets(models: readonly WebsiteModel[]): DetailTarget[] {
     targets.push(target);
   }
   return targets;
-}
-
-export async function loadWebsitePricing(
-  dataVersion: string,
-  modelCount: number,
-): Promise<WebsitePricingSummary[]> {
-  pricingRequest ??= Promise.all([
-    fetch("/ui/catalog/pricing.json", {
-      cache: "no-cache",
-      headers: { Accept: "application/json" },
-    }).then((response) => responseText(response, "Pricing summary")),
-    websiteSchemas(),
-  ]).then(([source, { websitePricingSummariesSchema }]) => {
-    const value: unknown = JSON.parse(source);
-    const pricing = websitePricingSummariesSchema.parse(value);
-    if (pricing.data_version !== dataVersion)
-      throw new Error("Pricing summary does not match the catalog");
-    if (pricing.pricing.length !== modelCount)
-      throw new Error("Pricing summary row count does not match the catalog");
-    return pricing.pricing;
-  });
-  return pricingRequest;
 }
 
 export function preloadWebsiteDetails(models: readonly WebsiteModel[]): void {

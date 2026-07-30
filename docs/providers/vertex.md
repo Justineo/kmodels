@@ -17,6 +17,7 @@ Status: current
 - Tasks, sibling models, and generic Vertex methods never widen route support.
 - Price joins require one unique official model identity. Preserve tier, context, cache, region, modality, unit, and exact conditions.
 - Treat the published `<=` and `=<` 200K headings as the same closed upper bound. The separate unqualified regional table is the default regional scope when an unequal Global price exists; it is not widened over the Global rate.
+- When an otherwise identical unequal promotional row is explicit, the unqualified companion row is non-promotional. Unqualified regional prices without such a paired distinction stay unmodified.
 
 ## Kong AI Gateway
 

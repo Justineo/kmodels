@@ -29,7 +29,6 @@ import {
   websiteModelDetailSchema,
   websitePricingDetailSchema,
   websitePricingSummariesSchema,
-  type WebsiteCatalog,
   type WebsiteCatalogIndex,
   type WebsiteDetailChunk,
   type WebsiteModelDetail,
@@ -151,37 +150,6 @@ function websiteDetailChunks(
   }
 
   return chunks;
-}
-
-export function hydrateWebsiteCatalog(
-  catalog: WebsiteCatalogIndex,
-  pricing: WebsitePricingSummaries["pricing"],
-): WebsiteCatalog {
-  if (catalog.models.length !== pricing.length)
-    throw new Error("Website catalog and pricing row counts do not match");
-  return {
-    ...catalog,
-    models: catalog.models.map((model, index) => {
-      const summary = pricing[index];
-      if (summary === undefined) throw new Error(`Missing website pricing row ${index}`);
-      return {
-        ...model,
-        uid: `${model.provider_id}/${model.model_id}${
-          model.version === undefined ? "" : `@${model.version}`
-        }`,
-        pricing: summary,
-      };
-    }),
-  };
-}
-
-export function websiteCatalog(
-  catalog: Catalog,
-  pricing: PricingCatalog,
-  dataVersion: string,
-): WebsiteCatalog {
-  const publication = websitePublication(catalog, pricing, dataVersion);
-  return hydrateWebsiteCatalog(publication.catalog, publication.pricing.pricing);
 }
 
 function pricingSummary(pricing: PricingCatalog, model: ProviderModel) {

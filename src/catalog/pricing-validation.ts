@@ -29,7 +29,7 @@ import {
   type RawPricingVariant,
   type UnitExpression,
 } from "./pricing-schema.ts";
-import { publishedValidityIsCoherent } from "./pricing-time.ts";
+import { publishedValiditiesOverlap, publishedValidityIsCoherent } from "./pricing-time.ts";
 import type { Catalog } from "./schema.ts";
 
 type Core = Pick<Catalog, "models" | "providers" | "sources">;
@@ -413,11 +413,7 @@ function validateRateTerm(
   });
   validateVariantConflicts(term.variants, (variant) => canonicalJson(variant.price), path);
   validateTermRelationPairs(term.variants, context);
-  if (
-    term.raw_variants.some(({ reason }) => reason === "conflicting_values") &&
-    term.variants.length > 0
-  )
-    fail(path, "conflicting-values fallback must cover the whole term");
+  validateConflictFallback(term.variants, term.raw_variants, path);
 }
 
 function validateAllowanceTerm(
@@ -457,16 +453,37 @@ function validateAllowanceTerm(
     path,
   );
   validateTermRelationPairs(term.variants, context);
-  if (
-    term.raw_variants.some(({ reason }) => reason === "conflicting_values") &&
-    term.variants.length > 0
-  )
-    fail(path, "conflicting-values fallback must cover the whole term");
+  validateConflictFallback(term.variants, term.raw_variants, path);
   if (
     term.raw_variants.some(({ reason }) => reason === "target_rate_not_normalized") &&
     term.variants.length > 0
   )
     fail(path, "target-rate fallback must cover the whole allowance term");
+}
+
+function validateConflictFallback(
+  normalized: Array<{
+    applicability: PriceApplicability;
+    validity?: PublishedValidity | undefined;
+  }>,
+  raw: RawPricingVariant[],
+  path: string,
+): void {
+  if (normalized.length === 0) return;
+  for (const variant of raw) {
+    if (variant.reason !== "conflicting_values") continue;
+    const scope = variant.possible_scope;
+    if (scope === undefined)
+      fail(path, "localized conflicting-values fallback requires a possible scope");
+    if (
+      normalized.some(
+        ({ applicability, validity }) =>
+          applicabilitiesOverlap(applicability, scope) &&
+          publishedValiditiesOverlap(validity, variant.validity),
+      )
+    )
+      fail(path, "localized conflicting-values fallback overlaps a normalized value");
+  }
 }
 
 function validateNormalizedVariant(
@@ -544,7 +561,8 @@ function validateOfferSemantics(
       const second = offer.states[right]!;
       if (
         first.state !== second.state &&
-        applicabilitiesOverlap(first.applicability, second.applicability)
+        applicabilitiesOverlap(first.applicability, second.applicability) &&
+        publishedValiditiesOverlap(first.validity, second.validity)
       )
         fail(path, "different offer states overlap");
     }
@@ -552,7 +570,11 @@ function validateOfferSemantics(
   for (const state of offer.states) {
     for (const rate of rates) {
       context.relationPairs.push([state.applicability, rate.applicability]);
-      if (state.state === "free" && applicabilitiesOverlap(state.applicability, rate.applicability))
+      if (
+        state.state === "free" &&
+        applicabilitiesOverlap(state.applicability, rate.applicability) &&
+        publishedValiditiesOverlap(state.validity, rate.validity)
+      )
         fail(path, "a free state overlaps a normalized rate");
     }
     for (const raw of baseRaw) {
@@ -571,11 +593,16 @@ function validateOfferSemantics(
   }
   for (const state of offer.states.filter(({ state }) => state === "numeric")) {
     const covered =
-      rates.some((rate) => applicabilitiesOverlap(state.applicability, rate.applicability)) ||
+      rates.some(
+        (rate) =>
+          applicabilitiesOverlap(state.applicability, rate.applicability) &&
+          publishedValiditiesOverlap(state.validity, rate.validity),
+      ) ||
       baseRaw.some(
         (raw) =>
           raw.possible_scope === undefined ||
-          applicabilitiesOverlap(state.applicability, raw.possible_scope),
+          (applicabilitiesOverlap(state.applicability, raw.possible_scope) &&
+            publishedValiditiesOverlap(state.validity, raw.validity)),
       );
     if (!covered) fail(path, "numeric state has no possible charge coverage");
   }
@@ -849,16 +876,18 @@ function validateValidity(validity: PublishedValidity | undefined, path: string)
     fail(path, "published validity is provably reversed or empty");
 }
 
-function validateVariantConflicts<T extends { applicability: PriceApplicability }>(
-  variants: T[],
-  payload: (variant: T) => string,
-  path: string,
-): void {
+function validateVariantConflicts<
+  T extends {
+    applicability: PriceApplicability;
+    validity?: PublishedValidity | undefined;
+  },
+>(variants: T[], payload: (variant: T) => string, path: string): void {
   for (let left = 0; left < variants.length; left += 1)
     for (let right = left + 1; right < variants.length; right += 1)
       if (
         payload(variants[left]!) !== payload(variants[right]!) &&
-        applicabilitiesOverlap(variants[left]!.applicability, variants[right]!.applicability)
+        applicabilitiesOverlap(variants[left]!.applicability, variants[right]!.applicability) &&
+        publishedValiditiesOverlap(variants[left]!.validity, variants[right]!.validity)
       )
         fail(path, "overlapping normalized variants have unequal values");
 }

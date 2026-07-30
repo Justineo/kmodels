@@ -16,6 +16,7 @@ Status: current
 - Interactions and every supported method require exact listed IDs plus fixed method/route references. Names, modalities, spelling, and neighboring tasks never imply an endpoint.
 - Only reviewed `supportedGenerationMethods` with pinned REST/WebSocket routes add endpoint or delivery facts. Missing or unknown methods remain unknown.
 - Preserve native pricing units and conditions. A storage price stated “per million tokens per hour” is a token-hour denominator, not token throughput. Explicit free tiers are zero rates; missing or unparseable prices remain unknown.
+- Interpret each paid table cell under its published billing header as one commercial value. Under a token header, a token price is primary and adjacent per-image figures are equivalent usage examples, even across line breaks; they are not additional charges. A per-image value is used only when the cell has no token price.
 
 ## Kong AI Gateway
 

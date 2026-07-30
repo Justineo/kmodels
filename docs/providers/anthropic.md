@@ -17,6 +17,7 @@ Status: current
 - The shared generated SDK model enum is not an operation matrix and never proves legacy `/v1/complete` support.
 - Keep direct, batch, fast-mode, cache-write, and cache-read prices in published units and conditions.
 - Derive cache and US-inference rates only from Anthropic's exact stacking multipliers using decimal-string arithmetic; publish the exact result while retaining the multiplier as evidence.
+- A fast-mode row may name one model or an explicit combined model list; every named model receives the same published rate. When a model has an unequal US-only inference alternative, an otherwise unqualified rate is the reviewed global base. Consecutive promotion and standard validity intervals remain distinct normalized variants.
 
 ## Kong AI Gateway
 

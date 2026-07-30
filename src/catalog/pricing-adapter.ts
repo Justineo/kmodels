@@ -284,30 +284,37 @@ function normalizedSourceFacts(
     }
   }
 
-  const defaults = [
-    { key: "service_tier", value: "standard" },
-    ...(providerId === "vertex" ? [{ key: "region" as const, value: "default" }] : []),
-  ] as const;
-  for (const { key, value } of defaults) {
-    for (const group of groupRates(normalized, ({ meter }) => meter).values()) {
-      const explicit = group.filter(({ conditions }) => conditions[key] !== undefined);
-      const missing = group.filter(({ conditions }) => conditions[key] === undefined);
-      if (
-        explicit.length === 0 ||
-        missing.length === 0 ||
-        !missing.some((left) =>
-          explicit.some((right) => ratePayloadKey(left) !== ratePayloadKey(right)),
-        )
-      )
-        continue;
-      for (const rate of missing) rate.conditions[key] = value;
-    }
-  }
+  completeReviewedDefault(normalized, "service_tier", "standard");
+  if (providerId === "anthropic") completeReviewedDefault(normalized, "inference_geo", "global");
+  if (providerId === "azure") completeReviewedDefault(normalized, "context_tier", "standard");
+  if (providerId === "vertex") completeReviewedDefault(normalized, "region", "default");
+  if (providerId === "databricks" || providerId === "vertex")
+    completeReviewedDefault(normalized, "promotion", false);
 
   return rates.map((sourceRate, index) => ({
     sourceRate,
     normalizedRate: normalized[index]!,
   }));
+}
+
+function completeReviewedDefault<K extends keyof SourcePriceFact["conditions"]>(
+  rates: SourcePriceFact[],
+  key: K,
+  value: NonNullable<SourcePriceFact["conditions"][K]>,
+): void {
+  for (const group of groupRates(rates, ({ meter }) => meter).values()) {
+    const explicit = group.filter(({ conditions }) => conditions[key] !== undefined);
+    const missing = group.filter(({ conditions }) => conditions[key] === undefined);
+    if (
+      explicit.length === 0 ||
+      missing.length === 0 ||
+      !missing.some((left) =>
+        explicit.some((right) => ratePayloadKey(left) !== ratePayloadKey(right)),
+      )
+    )
+      continue;
+    for (const rate of missing) rate.conditions[key] = value;
+  }
 }
 
 function groupRates(
@@ -601,6 +608,7 @@ function rateApplicability(
     "quality",
     "style",
     "capacity",
+    "billing_period",
   ] as const;
   for (const key of categorical) {
     const value = conditions[key];

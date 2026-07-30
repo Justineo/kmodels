@@ -395,10 +395,17 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
   const parsedTables = tables(body);
   const base = parsedTables.find((table) => table.headers[1] === "Base Input Tokens");
   const batch = parsedTables.find((table) => table.headers[1] === "Batch input");
-  const fast = parsedTables.find(
-    (table) => table.headers.join("|") === "Model|Input|Output" && table.rows.length === 2,
+  const fastTables = parsedTables.filter(
+    (table) => table.headers.join("|") === "Model|Input|Output",
   );
-  if (base === undefined || batch === undefined || fast === undefined)
+  const fast = fastTables[0];
+  if (
+    base === undefined ||
+    batch === undefined ||
+    fastTables.length !== 1 ||
+    fast === undefined ||
+    fast.rows.length === 0
+  )
     throw new Error("Anthropic pricing page omitted a reviewed price table");
 
   for (const values of base.rows) {
@@ -458,32 +465,36 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
   }
 
   for (const values of fast.rows) {
-    const item = resolve(values[0] ?? "");
     const inputPrice = amount(values[1]);
     const outputPrice = amount(values[2]);
     if (inputPrice === undefined || outputPrice === undefined)
-      throw new Error(`Anthropic fast pricing was not machine-readable for ${item.model_id}`);
-    const conditions = { service_tier: "fast" };
-    const inputRate = publishedRate(
-      "input_text",
-      inputPrice,
-      "million_tokens",
-      input.source.id,
-      "MTok",
-      conditions,
-    );
-    add(item, [
-      inputRate,
-      ...cached(inputRate),
-      publishedRate(
-        "output_text",
-        outputPrice,
+      throw new Error(`Anthropic fast pricing was not machine-readable for ${values[0] ?? ""}`);
+    const names = (values[0] ?? "").split(/\s+\/\s+/).filter(Boolean);
+    if (names.length === 0) throw new Error("Anthropic fast pricing omitted its model");
+    for (const name of names) {
+      const item = resolve(name);
+      const conditions = { service_tier: "fast" };
+      const inputRate = publishedRate(
+        "input_text",
+        inputPrice,
         "million_tokens",
         input.source.id,
         "MTok",
         conditions,
-      ),
-    ]);
+      );
+      add(item, [
+        inputRate,
+        ...cached(inputRate),
+        publishedRate(
+          "output_text",
+          outputPrice,
+          "million_tokens",
+          input.source.id,
+          "MTok",
+          conditions,
+        ),
+      ]);
+    }
   }
 
   const tools = parsedTables.find((table) => table.headers.includes("Tool choice"));
