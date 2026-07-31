@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
-import { normalizeDeliveryModes } from "./delivery.ts";
+import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import { fetchSource, fetchStateSchema, type FetchState, type SourceState } from "./fetch.ts";
 import {
   manifests,
@@ -44,6 +44,7 @@ import {
   publishedModel,
   type ParsedProviderModel,
   type SourcePriceFact,
+  type SourceRawPricingFact,
 } from "./pricing-source.ts";
 import { validatePricingCatalog } from "./pricing-validation.ts";
 import { emptyPricingCatalog, type PricingRefreshFailureCode } from "./pricing-schema.ts";
@@ -56,7 +57,7 @@ import {
   type ProviderModel,
   type SourceRecord,
 } from "./schema.ts";
-import { preserveMissing, validateProvider } from "./validation.ts";
+import { reconcileCatalog, validateProvider } from "./validation.ts";
 import { normalizeModelTasks } from "./task.ts";
 import { summarizeRefresh } from "./summary.ts";
 
@@ -135,8 +136,16 @@ export interface SourceGroup {
   models: ParsedProviderModel[];
 }
 
-function known<T extends boolean | "unknown">(current: T, incoming: T): T {
-  return incoming === "unknown" ? current : incoming;
+function known<T extends string | boolean>(current: T, incoming: T, fillOnly: boolean): T {
+  return incoming === "unknown" || (fillOnly && current !== "unknown") ? current : incoming;
+}
+
+function optional<T>(
+  current: T | undefined,
+  incoming: T | undefined,
+  fillOnly: boolean,
+): T | undefined {
+  return incoming === undefined || (fillOnly && current !== undefined) ? current : incoming;
 }
 
 function priceFactKey(fact: SourcePriceFact): string {
@@ -155,16 +164,37 @@ function mergePriceFacts(
   ].sort((left, right) => priceFactKey(left).localeCompare(priceFactKey(right)));
 }
 
+function mergeRawPriceFacts(
+  current: ParsedProviderModel,
+  incoming: ParsedProviderModel,
+): SourceRawPricingFact[] {
+  if (incoming.raw_price_facts.length === 0) return incoming.raw_price_facts;
+  return [
+    ...new Map(
+      [...current.raw_price_facts, ...incoming.raw_price_facts].map((fact) => [
+        JSON.stringify(fact),
+        fact,
+      ]),
+    ).values(),
+  ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
 function applyFields(
   current: ParsedProviderModel,
   incoming: ParsedProviderModel,
   source: SourceManifest,
 ): ParsedProviderModel {
   const fields = new Set(source.fields);
+  const fillOnly = source.role === "inventory";
   const incomingModalities =
     incoming.modalities.input.length + incoming.modalities.output.length > 0;
   const incomingOperations = incoming.tasks.length > 0;
-  const incomingPricing = incoming.price_facts.length > 0 || incoming.pricing_state !== "unknown";
+  const incomingPricing =
+    incoming.price_facts.length > 0 ||
+    incoming.raw_price_facts.length > 0 ||
+    incoming.pricing_state !== "unknown";
+  const applyPricing =
+    fields.has("pricing") && incomingPricing && (!fillOnly || current.pricing_state === "unknown");
   const serviceFamilies = [
     ...new Set([...(current.service_families ?? []), ...(incoming.service_families ?? [])]),
   ].sort();
@@ -172,13 +202,13 @@ function applyFields(
     ...current,
     name:
       fields.has("name") &&
-      (incoming.name !== incoming.model_id || current.name === current.model_id)
+      (incoming.name !== incoming.model_id || current.name === current.model_id) &&
+      (!fillOnly || current.name === current.model_id)
         ? incoming.name
         : current.name,
-    description:
-      fields.has("description") && incoming.description !== undefined
-        ? incoming.description
-        : current.description,
+    description: fields.has("description")
+      ? optional(current.description, incoming.description, fillOnly)
+      : current.description,
     aliases: fields.has("aliases")
       ? [...new Set([...current.aliases, ...incoming.aliases])]
       : current.aliases,
@@ -186,8 +216,22 @@ function applyFields(
       fields.has("tasks") && incomingOperations
         ? [...new Set([...current.tasks, ...incoming.tasks])]
         : current.tasks,
-    raw_type:
-      fields.has("tasks") && incoming.raw_type !== undefined ? incoming.raw_type : current.raw_type,
+    delivery_modes: fields.has("delivery_modes")
+      ? [...new Set([...(current.delivery_modes ?? []), ...(incoming.delivery_modes ?? [])])]
+      : current.delivery_modes,
+    delivery_mode_evidence: fields.has("delivery_modes")
+      ? [
+          ...new Map(
+            [
+              ...(current.delivery_mode_evidence ?? []),
+              ...(incoming.delivery_mode_evidence ?? []),
+            ].map((evidence) => [deliveryModeEvidenceKey(evidence), evidence]),
+          ).values(),
+        ]
+      : current.delivery_mode_evidence,
+    raw_type: fields.has("tasks")
+      ? optional(current.raw_type, incoming.raw_type, fillOnly)
+      : current.raw_type,
     service_families: fields.has("service_families")
       ? serviceFamilies.length === 0
         ? undefined
@@ -221,70 +265,93 @@ function applyFields(
         : current.modalities,
     capabilities: fields.has("capabilities")
       ? {
-          reasoning: known(current.capabilities.reasoning, incoming.capabilities.reasoning),
-          tool_call: known(current.capabilities.tool_call, incoming.capabilities.tool_call),
+          reasoning: known(
+            current.capabilities.reasoning,
+            incoming.capabilities.reasoning,
+            fillOnly,
+          ),
+          tool_call: known(
+            current.capabilities.tool_call,
+            incoming.capabilities.tool_call,
+            fillOnly,
+          ),
           structured_output: known(
             current.capabilities.structured_output,
             incoming.capabilities.structured_output,
+            fillOnly,
           ),
-          streaming: known(current.capabilities.streaming, incoming.capabilities.streaming),
-          batch: known(current.capabilities.batch, incoming.capabilities.batch),
+          streaming: known(
+            current.capabilities.streaming,
+            incoming.capabilities.streaming,
+            fillOnly,
+          ),
+          batch: known(current.capabilities.batch, incoming.capabilities.batch, fillOnly),
           prompt_cache: known(
             current.capabilities.prompt_cache,
             incoming.capabilities.prompt_cache,
+            fillOnly,
           ),
-          fine_tuning: known(current.capabilities.fine_tuning, incoming.capabilities.fine_tuning),
-          citations: known(current.capabilities.citations, incoming.capabilities.citations),
+          fine_tuning: known(
+            current.capabilities.fine_tuning,
+            incoming.capabilities.fine_tuning,
+            fillOnly,
+          ),
+          citations: known(
+            current.capabilities.citations,
+            incoming.capabilities.citations,
+            fillOnly,
+          ),
           code_execution: known(
             current.capabilities.code_execution,
             incoming.capabilities.code_execution,
+            fillOnly,
           ),
           context_management: known(
             current.capabilities.context_management,
             incoming.capabilities.context_management,
+            fillOnly,
           ),
           effort_control: known(
             current.capabilities.effort_control,
             incoming.capabilities.effort_control,
+            fillOnly,
           ),
           computer_use: known(
             current.capabilities.computer_use,
             incoming.capabilities.computer_use,
+            fillOnly,
           ),
         }
       : current.capabilities,
-    limits: fields.has("limits") ? { ...current.limits, ...incoming.limits } : current.limits,
-    release_date:
-      fields.has("release_date") && incoming.release_date !== undefined
-        ? incoming.release_date
-        : current.release_date,
-    updated_date:
-      fields.has("updated_date") && incoming.updated_date !== undefined
-        ? incoming.updated_date
-        : current.updated_date,
-    deprecated_at:
-      fields.has("deprecated_at") && incoming.deprecated_at !== undefined
-        ? incoming.deprecated_at
-        : current.deprecated_at,
-    retired_at:
-      fields.has("retired_at") && incoming.retired_at !== undefined
-        ? incoming.retired_at
-        : current.retired_at,
-    status:
-      fields.has("status") && incoming.status !== "unknown" ? incoming.status : current.status,
-    release_stage:
-      fields.has("release_stage") && incoming.release_stage !== "unknown"
-        ? incoming.release_stage
-        : current.release_stage,
+    limits: fields.has("limits")
+      ? fillOnly
+        ? { ...incoming.limits, ...current.limits }
+        : { ...current.limits, ...incoming.limits }
+      : current.limits,
+    release_date: fields.has("release_date")
+      ? optional(current.release_date, incoming.release_date, fillOnly)
+      : current.release_date,
+    updated_date: fields.has("updated_date")
+      ? optional(current.updated_date, incoming.updated_date, fillOnly)
+      : current.updated_date,
+    deprecated_at: fields.has("deprecated_at")
+      ? optional(current.deprecated_at, incoming.deprecated_at, fillOnly)
+      : current.deprecated_at,
+    retired_at: fields.has("retired_at")
+      ? optional(current.retired_at, incoming.retired_at, fillOnly)
+      : current.retired_at,
+    status: fields.has("status")
+      ? known(current.status, incoming.status, fillOnly)
+      : current.status,
+    release_stage: fields.has("release_stage")
+      ? known(current.release_stage, incoming.release_stage, fillOnly)
+      : current.release_stage,
     replacement_model_ids: fields.has("replacement_model_ids")
       ? [...new Set([...current.replacement_model_ids, ...incoming.replacement_model_ids])]
       : current.replacement_model_ids,
-    pricing_state:
-      fields.has("pricing") && incomingPricing ? incoming.pricing_state : current.pricing_state,
-    price_facts:
-      fields.has("pricing") && incomingPricing
-        ? mergePriceFacts(current, incoming)
-        : current.price_facts,
+    pricing_state: applyPricing ? incoming.pricing_state : current.pricing_state,
+    price_facts: applyPricing ? mergePriceFacts(current, incoming) : current.price_facts,
+    raw_price_facts: applyPricing ? mergeRawPriceFacts(current, incoming) : current.raw_price_facts,
     availability: fields.has("availability")
       ? [
           ...new Map(
@@ -504,6 +571,9 @@ async function collectProvider(
       : [];
   });
   const oldSources = previousSources(previous, manifest.provider.id);
+  const oldExtractorVersions = new Map(
+    oldSources.map(({ id, extractor_version }) => [id, extractor_version]),
+  );
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
   const warnings: CatalogWarning[] = [];
   let providerFailure: PricingRefreshFailureCode = "provider_refresh_failed";
@@ -556,6 +626,7 @@ async function collectProvider(
           source,
           body: result.body,
           observedAt,
+          ...(source.role === "overlay" ? { catalogModels: applyGroups([], groups, true) } : {}),
         });
       } catch (error) {
         const oldState = state.sources[source.id];
@@ -640,7 +711,29 @@ async function collectProvider(
     const freshModels = candidate.map(publishedModel);
     const validation = validateProvider(freshModels, comparableOldModels);
     if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
-    const models = preserveMissing(freshModels, comparableOldModels);
+    const reconciliationSources = {
+      catalog: new Set(
+        manifest.sources
+          .filter(({ role }) => (role ?? "catalog") === "catalog")
+          .map(({ id }) => id),
+      ),
+      exhaustive: new Set(
+        groups
+          .filter(
+            ({ source }) => source.exhaustive === true && (source.scope ?? "global") === "global",
+          )
+          .map(({ source }) => source.id),
+      ),
+      recomputed: new Set(
+        sources
+          .filter(
+            ({ id, extractor_version }) =>
+              oldExtractorVersions.has(id) && oldExtractorVersions.get(id) !== extractor_version,
+          )
+          .map(({ id }) => id),
+      ),
+    };
+    const models = reconcileCatalog(freshModels, comparableOldModels, reconciliationSources);
     const sourceById = new Map(
       [...oldSources.filter((source) => currentSourceIds.has(source.id)), ...sources].map(
         (source) => [source.id, source],

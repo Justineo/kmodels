@@ -76,12 +76,25 @@ export function validateProvider(
   return { ok: true };
 }
 
-export function preserveMissing(
+interface ReconciliationSources {
+  catalog: ReadonlySet<string>;
+  exhaustive: ReadonlySet<string>;
+  recomputed: ReadonlySet<string>;
+}
+
+export function reconcileCatalog(
   candidate: ProviderModel[],
   previous: ProviderModel[],
+  sources: ReconciliationSources,
 ): ProviderModel[] {
   const candidateByUid = new Map(candidate.map((model) => [model.uid, model]));
   const previousByUid = new Map(previous.map((model) => [model.uid, model]));
+  const sourceRefs = (model: ProviderModel): string[] =>
+    model.source_refs.filter(
+      (sourceId) =>
+        (!sources.exhaustive.has(sourceId) && !sources.recomputed.has(sourceId)) ||
+        candidateByUid.get(model.uid)?.source_refs.includes(sourceId),
+    );
   const observed = candidate.map((model) => {
     const old = previousByUid.get(model.uid);
     return old === undefined
@@ -89,9 +102,21 @@ export function preserveMissing(
       : {
           ...model,
           first_seen_at: old.first_seen_at,
-          source_refs: [...new Set([...old.source_refs, ...model.source_refs])],
+          source_refs: [...new Set([...sourceRefs(old), ...model.source_refs])],
         };
   });
-  const missing = previous.filter((model) => !candidateByUid.has(model.uid));
+  const missing = previous.flatMap((model) => {
+    if (candidateByUid.has(model.uid)) return [];
+    const refs = sourceRefs(model);
+    return refs.some((sourceId) => sources.catalog.has(sourceId))
+      ? [
+          {
+            ...model,
+            source_refs: refs,
+            routes: model.routes?.filter((route) => refs.includes(route.source_ref)),
+          },
+        ]
+      : [];
+  });
   return [...observed, ...missing].sort((left, right) => left.uid.localeCompare(right.uid));
 }

@@ -481,13 +481,12 @@ onUnmounted(() => {
         providers
       </span>
       <time class="generated-at" :datetime="generatedAt"> Updated {{ generatedAtLabel }} </time>
-      <a class="json-link" href="/catalog/models.json">
-        Catalog JSON
-        <UiIcon name="external-link" />
-      </a>
-      <a class="json-link" href="/pricing/index.json">
-        Pricing JSON
-        <UiIcon name="external-link" />
+      <a
+        class="header-link"
+        href="https://github.com/Justineo/kmodels"
+        aria-label="Kmodels on GitHub"
+      >
+        <UiIcon name="github" />
       </a>
       <button
         class="theme-toggle"

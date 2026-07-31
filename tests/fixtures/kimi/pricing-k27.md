@@ -1,6 +1,15 @@
 # 编程模型 Kimi K2.7 Code 定价
 
-<DocTable rows={[
+<DocTable
+columns={[
+{ title: "模型" },
+{ title: "计费单位" },
+{ title: "输入价格（缓存命中）" },
+{ title: "输入价格（缓存未命中）" },
+{ title: "输出价格" },
+{ title: "上下文窗口" },
+]}
+rows={[
 ["kimi-k2.7-code", "1M tokens", "¥1.30", "¥6.50", "¥27.00", "262,144 tokens"],
 ["kimi-k2.7-code-highspeed", "1M tokens", "¥2.60", "¥13.00", "¥54.00", "262,144 tokens"],
 ]} />

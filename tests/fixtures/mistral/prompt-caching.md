@@ -1,0 +1,1 @@
+Cached prompt tokens are billed at 10% of the standard input token price.

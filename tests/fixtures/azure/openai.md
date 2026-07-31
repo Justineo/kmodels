@@ -31,6 +31,6 @@
 
 ## Assistants (preview)
 
-| Region | gpt-multi, 2026-01-01 |
-| ------ | --------------------- |
-| eastus | ✅                    |
+| Region | gpt-multi, 2026-01-01 | gpt-assistant, 1 | gpt-archive, 0613 |
+| ------ | --------------------- | ---------------- | ----------------- |
+| eastus | ✅                    | ✅               | ✅                |

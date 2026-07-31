@@ -9,4 +9,8 @@ def prompt_guard_model_skus():
             model_id="Prompt-Guard-86M",
             huggingface_repo="meta-llama/Prompt-Guard-86M",
         ),
+        PromptGuardModel(
+            model_id="Llama-Prompt-Guard-2-22M",
+            huggingface_repo="meta-llama/Llama-Prompt-Guard-2-22M",
+        ),
     ]

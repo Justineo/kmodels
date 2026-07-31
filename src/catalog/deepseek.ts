@@ -30,14 +30,28 @@ const listSchema = z.object({
 });
 
 const chatEndpoint = { name: "Chat Completions", path: "/chat/completions" };
+const responsesEndpoint = { name: "Responses", path: "/responses" };
+const baseUrls = [
+  ["BASE URL (OpenAI Format)", "https://api.deepseek.com"],
+  ["BASE URL (Anthropic Format)", "https://api.deepseek.com/anthropic"],
+] as const;
+const priceRows = [
+  ["cache_read_text", "1M INPUT TOKENS (CACHE HIT)"],
+  ["input_text", "1M INPUT TOKENS (CACHE MISS)"],
+  ["output_text", "1M OUTPUT TOKENS"],
+] as const;
 
 function exactId(value: string): string | undefined {
   const parsed = modelIdSchema.safeParse(value.trim());
   return parsed.success ? parsed.data : undefined;
 }
 
+function withoutFootnote(value: string): string {
+  return value.replace(/\(\d+\)$/, "");
+}
+
 function catalogId(value: string): string | undefined {
-  return exactId(value.replace(/\(\d+\)$/, ""));
+  return exactId(withoutFootnote(value));
 }
 
 function tokenCount(value: string): number {
@@ -55,10 +69,14 @@ function price(value: string): string {
   return match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
 }
 
+function rowLabel(value: HtmlTable["rows"][number]): string {
+  return withoutFootnote(value[1]?.text ?? value[0]?.text ?? "");
+}
+
 function row(table: HtmlTable, label: string): string[] {
-  const match = table.rows.find((item) => item[1]?.text === label || item[0]?.text === label);
-  if (match === undefined) throw new Error(`DeepSeek catalog omitted ${label}`);
-  return match.map((cell) => cell.text);
+  const matches = table.rows.filter((item) => rowLabel(item) === label);
+  if (matches.length !== 1) throw new Error(`DeepSeek catalog omitted or duplicated ${label}`);
+  return matches[0]?.map((cell) => cell.text) ?? [];
 }
 
 function cells(table: HtmlTable, label: string, columns: number[]): string[] {
@@ -85,17 +103,24 @@ function thinking(table: HtmlTable, column: number): boolean {
   throw new Error(`Unknown DeepSeek thinking mode: ${value}`);
 }
 
-function chatModelIds(body: string): Set<string> {
+function endpointEvidence(
+  body: string,
+  endpoint: NonNullable<ProviderModel["api_endpoints"]>[number],
+): {
+  modelIds: Set<string>;
+  propertyValues: (name: string) => string[] | undefined;
+  propertyText: (name: string) => string[];
+} {
   const $ = load(body);
   const article = $("article");
-  const operation = article.find("pre.openapi__method-endpoint").first();
+  const operations = article.find("pre.openapi__method-endpoint");
+  const operation = operations.first();
   if (
-    htmlText(article.find("h1.openapi__heading").first().text()) !== "Create Chat Completion" ||
+    operations.length !== 1 ||
     htmlText(operation.find(".badge").first().text()) !== "POST" ||
-    htmlText(operation.find("h2.openapi__method-endpoint-path").first().text()) !==
-      chatEndpoint.path
+    htmlText(operation.find("h2.openapi__method-endpoint-path").first().text()) !== endpoint.path
   )
-    throw new Error("DeepSeek Chat Completions reference changed operation");
+    throw new Error(`DeepSeek ${endpoint.name} reference changed operation`);
   const schemaItems = article.find(".openapi-schema__list-item").toArray();
   const propertyValues = (name: string): string[] | undefined => {
     const values = schemaItems
@@ -103,23 +128,41 @@ function chatModelIds(body: string): Set<string> {
         (element) =>
           htmlText($(element).find("strong.openapi-schema__property").first().text()) === name,
       )
-      .map((element) =>
+      .flatMap((element) =>
         $(element)
-          .find("code")
-          .map((_index, code) => htmlText($(code).text()))
-          .get(),
+          .find("p")
+          .toArray()
+          .filter((paragraph) => /^Possible values:/i.test(htmlText($(paragraph).text())))
+          .map((paragraph) =>
+            $(paragraph)
+              .find("code")
+              .map((_index, code) => htmlText($(code).text()))
+              .get(),
+          ),
       )
       .filter((items) => items.length > 0);
     return values.length === 1 ? values[0] : undefined;
   };
+  const propertyText = (name: string): string[] =>
+    schemaItems
+      .filter(
+        (element) =>
+          htmlText($(element).find("strong.openapi-schema__property").first().text()) === name,
+      )
+      .map((element) => htmlText($(element).text()));
   const modelValues = propertyValues("model");
   if (modelValues === undefined)
-    throw new Error("DeepSeek Chat Completions reference changed model schema");
+    throw new Error(`DeepSeek ${endpoint.name} reference changed model schema`);
   const ids = z.array(modelIdSchema).min(1).safeParse(modelValues);
   if (!ids.success || new Set(ids.data).size !== ids.data.length)
-    throw new Error("DeepSeek Chat Completions reference returned invalid model IDs");
-  const thinkingValues = propertyValues("thinking");
-  const effortValues = propertyValues("reasoning_effort");
+    throw new Error(`DeepSeek ${endpoint.name} reference returned invalid model IDs`);
+  return { modelIds: new Set(ids.data), propertyValues, propertyText };
+}
+
+function chatModelIds(body: string): Set<string> {
+  const evidence = endpointEvidence(body, chatEndpoint);
+  const thinkingValues = evidence.propertyValues("thinking");
+  const effortValues = evidence.propertyValues("reasoning_effort");
   if (
     thinkingValues === undefined ||
     !["enabled", "disabled"].every((value) => thinkingValues.includes(value)) ||
@@ -127,14 +170,56 @@ function chatModelIds(body: string): Set<string> {
     !["high", "max"].every((value) => effortValues.includes(value))
   )
     throw new Error("DeepSeek Chat Completions reference changed reasoning controls");
-  const streaming = schemaItems.filter(
-    (element) =>
-      htmlText($(element).find("strong.openapi-schema__property").first().text()) === "stream" &&
-      /partial message deltas will be sent/.test(htmlText($(element).text())),
-  );
+  const outputValues = evidence.propertyValues("response_format");
+  if (
+    outputValues === undefined ||
+    !["text", "json_object"].every((value) => outputValues.includes(value))
+  )
+    throw new Error("DeepSeek Chat Completions reference changed structured-output schema");
+  const toolValues = evidence.propertyValues("tools");
+  if (toolValues === undefined || !toolValues.includes("function"))
+    throw new Error("DeepSeek Chat Completions reference changed tool schema");
+  const streaming = evidence
+    .propertyText("stream")
+    .filter((value) => /partial message deltas will be sent/.test(value));
   if (streaming.length !== 1)
     throw new Error("DeepSeek Chat Completions reference changed streaming schema");
-  return new Set(ids.data);
+  return evidence.modelIds;
+}
+
+const catalogRows = new Set([
+  ...baseUrls.map(([label]) => label),
+  "MODEL VERSION",
+  "THINKING MODE",
+  "CONTEXT LENGTH",
+  "MAX OUTPUT",
+  "Json Output",
+  "Tool Calls",
+  "Responses API",
+  "Anthropic API",
+  "Chat Prefix Completion（Beta）",
+  "FIM Completion（Beta）",
+  ...priceRows.map(([, label]) => label),
+  "Concurrency Limit",
+]);
+
+function validateCatalogTable(table: HtmlTable, columns: number[]): void {
+  const unhandled = table.rows.map(rowLabel).filter((label) => !catalogRows.has(label));
+  if (unhandled.length > 0)
+    throw new Error(`DeepSeek catalog has unhandled rows: ${unhandled.join(", ")}`);
+  for (const label of catalogRows) row(table, label);
+  for (const [label, expected] of baseUrls)
+    if (cells(table, label, columns).some((value) => value !== expected))
+      throw new Error(`DeepSeek catalog changed ${label} base URL`);
+  support(table, "Chat Prefix Completion（Beta）", columns);
+  support(table, "FIM Completion（Beta）", columns);
+  support(table, "Anthropic API", columns);
+  if (
+    cells(table, "Concurrency Limit", columns).some(
+      (value) => !/^[1-9]\d*$/.test(value.replace(/,/g, "")),
+    )
+  )
+    throw new Error("DeepSeek catalog changed concurrency limits");
 }
 
 function model(
@@ -144,6 +229,7 @@ function model(
   id: string,
   name: string,
   hasChatEndpoint: boolean,
+  hasResponsesEndpoint: boolean,
 ): ProviderModel {
   const context = tokenCount(cells(table, "CONTEXT LENGTH", [column])[0] ?? "");
   const output = tokenCount(cells(table, "MAX OUTPUT", [column])[0] ?? "");
@@ -151,11 +237,10 @@ function model(
   const [tools] = support(table, "Tool Calls", [column]);
   if (structured === undefined || tools === undefined)
     throw new Error("DeepSeek feature table schema drift");
-  const prices = [
-    ["cache_read_text", "1M INPUT TOKENS (CACHE HIT)"],
-    ["input_text", "1M INPUT TOKENS (CACHE MISS)"],
-    ["output_text", "1M OUTPUT TOKENS"],
-  ] as const;
+  const apiEndpoints = [
+    ...(hasChatEndpoint ? [chatEndpoint] : []),
+    ...(hasResponsesEndpoint ? [responsesEndpoint] : []),
+  ];
   return {
     ...baseModel({
       providerId: input.provider.id,
@@ -165,7 +250,7 @@ function model(
       observedAt: input.observedAt,
     }),
     tasks: ["text_generation"],
-    ...(hasChatEndpoint ? { api_endpoints: [chatEndpoint] } : {}),
+    ...(apiEndpoints.length === 0 ? {} : { api_endpoints: apiEndpoints }),
     modalities: { input: ["text"], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
@@ -178,7 +263,7 @@ function model(
     limits: { context_tokens: context, max_output_tokens: output },
     status: "active",
     pricing_state: "numeric",
-    price_facts: prices.map(([meter, label]) =>
+    price_facts: priceRows.map(([meter, label]) =>
       publishedRate(
         meter,
         price(cells(table, label, [column])[0] ?? ""),
@@ -201,30 +286,53 @@ function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
 
 export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const chatDocuments = bundle.documents.filter(
-    ({ url }) => new URL(url).pathname === "/api/create-chat-completion",
+  const document = (path: string, label: string): string => {
+    const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === path);
+    const [match] = matches;
+    if (matches.length !== 1 || match === undefined)
+      throw new Error(`DeepSeek catalog omitted the ${label} reference`);
+    return match.body;
+  };
+  const chatDocument = document("/api/create-chat-completion", "Chat Completions");
+  const responsesDocument = document("/api/create-response", "Responses");
+  const chatIds = chatModelIds(chatDocument);
+  const responseIds = endpointEvidence(responsesDocument, responsesEndpoint).modelIds;
+  const modelTables = htmlTables(bundle.index.body).filter(
+    (item) => item.headers[0] === "MODEL" && item.headers[1] === "MODEL",
   );
-  const [chatDocument] = chatDocuments;
-  if (chatDocuments.length !== 1 || chatDocument === undefined)
-    throw new Error("DeepSeek catalog omitted the Chat Completions reference");
-  const chatIds = chatModelIds(chatDocument.body);
-  const table = htmlTables(bundle.index.body).find(
-    (item) => item.headers[0] === "MODEL" && item.headers.slice(2).some(catalogId),
-  );
-  if (table === undefined) throw new Error("DeepSeek model table not found");
-  const columns = table.headers.flatMap((header, column) => {
-    if (column < 2) return [];
+  const [table] = modelTables;
+  if (modelTables.length !== 1 || table === undefined)
+    throw new Error("DeepSeek model table not found or ambiguous");
+  const columns = table.headers.slice(2).map((header, index) => {
     const id = catalogId(header);
-    return id === undefined ? [] : [{ column, id }];
+    if (id === undefined)
+      throw new Error(`DeepSeek catalog returned invalid model header: ${header}`);
+    return { column: index + 2, id };
   });
   if (columns.length < 1) throw new Error("DeepSeek catalog returned no model IDs");
+  if (new Set(columns.map(({ id }) => id)).size !== columns.length)
+    throw new Error("DeepSeek catalog returned duplicate model IDs");
+  validateCatalogTable(
+    table,
+    columns.map(({ column }) => column),
+  );
   const names = cells(
     table,
     "MODEL VERSION",
     columns.map(({ column }) => column),
   );
+  const tableResponseIds = new Set(
+    columns.flatMap(({ column, id }) =>
+      support(table, "Responses API", [column])[0] === true ? [id] : [],
+    ),
+  );
+  if (
+    responseIds.size !== tableResponseIds.size ||
+    [...responseIds].some((id) => !tableResponseIds.has(id))
+  )
+    throw new Error("DeepSeek Responses reference disagrees with the model table");
   const models = columns.map(({ column, id }, index) =>
-    model(input, table, column, id, names[index] ?? id, chatIds.has(id)),
+    model(input, table, column, id, names[index] ?? id, chatIds.has(id), responseIds.has(id)),
   );
   for (const id of chatIds)
     if (!models.some(({ model_id }) => model_id === id))
@@ -251,8 +359,11 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
   const $ = load(input.body);
   const dates = new Map<string, Dates>();
   $("article h2").each((_index, heading) => {
-    const date = htmlText($(heading).text()).match(/^Date: (\d{4}-\d{2}-\d{2})$/)?.[1];
-    if (date === undefined) return;
+    const label = htmlText($(heading).text());
+    if (!label.startsWith("Date:")) return;
+    const parsedDate = z.iso.date().safeParse(label.slice(5).trim());
+    if (!parsedDate.success) throw new Error(`DeepSeek update has invalid date: ${label}`);
+    const date = parsedDate.data;
     $(heading)
       .nextUntil("h2")
       .filter("p,li")
@@ -265,7 +376,9 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
           )
         )
           return;
-        const release = /(?:now supports|new model)/i.test(prose);
+        const release =
+          !/backward compatibility/i.test(prose) &&
+          /(?:\bAPI now supports\b|\bis our new model\b)/i.test(prose);
         $(paragraph)
           .find("code")
           .each((_codeIndex, code) => {
@@ -287,7 +400,6 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      tasks: ["text_generation"],
       ...(observed.release === undefined ? {} : { release_date: observed.release }),
       ...(observed.update === undefined || observed.update === observed.release
         ? {}
@@ -318,6 +430,5 @@ export function parseDeepseekApi(input: Input): ProviderModel[] {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    tasks: ["text_generation"],
   }));
 }

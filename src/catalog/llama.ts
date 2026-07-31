@@ -1,5 +1,7 @@
+import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -16,6 +18,7 @@ interface ParseInput {
 interface RegisteredModel {
   key: string;
   id: string;
+  family: string;
   description: string;
   huggingFaceRepo: string;
   variant?: string;
@@ -59,7 +62,52 @@ const hostedSpecs: {
   },
 ];
 
-const llama3Key = /^llama3_(?:8b|70b)(?:_|$)/;
+interface ContextRules {
+  byFamily: Map<string, number>;
+  byId: Map<string, number>;
+  byQuantization: Map<string, Map<string, number>>;
+}
+
+interface SafetyEvidence {
+  releaseDate: string;
+  inputImage: boolean;
+  moderation: boolean;
+}
+
+const safetyReleaseSpecs: {
+  suffix: string;
+  title: string;
+  claims: string[];
+  models: { pattern: RegExp; inputImage?: boolean; moderation?: boolean }[];
+}[] = [
+  {
+    suffix: "/blog/meta-llama-3/",
+    title: "Introducing Meta Llama 3: The most capable openly available LLM to date",
+    claims: ["Llama Guard 2"],
+    models: [{ pattern: /^Llama-Guard-2-/ }],
+  },
+  {
+    suffix: "/blog/meta-llama-3-1/",
+    title: "Introducing Llama 3.1: Our most capable models to date",
+    claims: ["Llama Guard 3", "Prompt Guard"],
+    models: [{ pattern: /^Llama-Guard-3-8B(?:$|:)/ }, { pattern: /^Prompt-Guard-/ }],
+  },
+  {
+    suffix: "/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/",
+    title: "Llama 3.2: Revolutionizing edge AI and vision with open, customizable models",
+    claims: ["Llama Guard 3 11B Vision", "Llama Guard 3 1B"],
+    models: [{ pattern: /^Llama-Guard-3-(?:1B|11B-Vision)(?:$|:)/ }],
+  },
+  {
+    suffix: "/blog/ai-defenders-program-llama-protection-tools/",
+    title: "Sharing new open source protection tools and advancements in AI privacy and security",
+    claims: ["Llama Guard 4", "Llama API", "Prompt Guard 2"],
+    models: [
+      { pattern: /^Llama-Guard-4-/, inputImage: true, moderation: true },
+      { pattern: /^Llama-Prompt-Guard-2-/ },
+    ],
+  },
+];
 
 const llamaApiItemSchema = z.object({
   id: modelIdSchema,
@@ -150,7 +198,111 @@ function coreIds(body: string): Map<string, string> {
   return ids;
 }
 
-function registeredModels(body: string, ids: Map<string, string>): RegisteredModel[] {
+function modelFamilies(body: string, ids: Map<string, string>): Map<string, string> {
+  const start = body.indexOf("def model_family(model_id)");
+  const end = body.indexOf("\n\nclass Model(", start);
+  if (start < 0 || end < 0) throw new Error("Llama model_family function was not found");
+  const families = new Map<string, string>();
+  const branches = [
+    ...body
+      .slice(start, end)
+      .matchAll(/(?:if|elif) model_id in \[([\s\S]*?)\]:\s*return ModelFamily\.([a-z0-9_]+)/g),
+  ];
+  for (const branch of branches) {
+    const family = branch[2];
+    if (family === undefined) throw new Error("Invalid Llama model family");
+    const keys = [...(branch[1] ?? "").matchAll(/CoreModelId\.([a-z0-9_]+)/g)].map(
+      (match) => match[1],
+    );
+    if (keys.length === 0 || keys.some((key) => key === undefined || !ids.has(key)))
+      throw new Error(`Invalid Llama ${family} family`);
+    for (const key of keys) {
+      if (key === undefined || families.has(key))
+        throw new Error("Llama CoreModelId belonged to multiple families");
+      families.set(key, family);
+    }
+  }
+  if (families.size !== ids.size)
+    throw new Error("Llama model_family did not classify every CoreModelId");
+  return families;
+}
+
+function setRule(rules: Map<string, number>, key: string, raw: string): void {
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0 || rules.has(key))
+    throw new Error("Invalid Llama context rule");
+  rules.set(key, value);
+}
+
+function contextRules(body: string): ContextRules {
+  const start = body.indexOf("    def max_seq_length(self) -> int:");
+  if (start < 0) throw new Error("Llama max_seq_length function was not found");
+  const compact = body.slice(start).replace(/\s+/g, " ");
+  const byFamily = new Map<string, number>();
+  const byId = new Map<string, number>();
+  const byQuantization = new Map<string, Map<string, number>>();
+  let returns = 0;
+
+  for (const match of compact.matchAll(
+    /(?:if|elif) self\.model_family == ModelFamily\.([a-z0-9_]+): return (\d+)(?= (?:if|elif|else|return|raise)|$)/g,
+  )) {
+    setRule(byFamily, required(match[1], "context family"), required(match[2], "context value"));
+    returns += 1;
+  }
+  for (const match of compact.matchAll(
+    /(?:if|elif) self\.model_family in \[([^\]]+)\]: return (\d+)(?= (?:if|elif|else|return|raise)|$)/g,
+  )) {
+    const value = required(match[2], "context value");
+    const families = [...(match[1] ?? "").matchAll(/ModelFamily\.([a-z0-9_]+)/g)].map(
+      (item) => item[1],
+    );
+    if (families.length === 0 || families.some((family) => family === undefined))
+      throw new Error("Invalid Llama context family list");
+    for (const family of families) setRule(byFamily, required(family, "context family"), value);
+    returns += 1;
+  }
+  for (const match of compact.matchAll(
+    /(?:if|elif) self\.core_model_id == CoreModelId\.([a-z0-9_]+): return (\d+)(?= (?:if|elif|else|return|raise)|$)/g,
+  )) {
+    setRule(byId, required(match[1], "context model"), required(match[2], "context value"));
+    returns += 1;
+  }
+  for (const match of compact.matchAll(
+    /(?:if|elif) self\.core_model_id in [[{]([^\]}]+)[\]}]: return (\d+)(?= (?:if|elif|else|return|raise)|$)/g,
+  )) {
+    const value = required(match[2], "context value");
+    const keys = [...(match[1] ?? "").matchAll(/CoreModelId\.([a-z0-9_]+)/g)].map(
+      (item) => item[1],
+    );
+    if (keys.length === 0 || keys.some((key) => key === undefined))
+      throw new Error("Invalid Llama context model list");
+    for (const key of keys) setRule(byId, required(key, "context model"), value);
+    returns += 1;
+  }
+  for (const match of compact.matchAll(
+    /(?:if|elif) self\.model_family == ModelFamily\.([a-z0-9_]+): if self\.quantization_format == CheckpointQuantizationFormat\.([a-z0-9_]+): return (\d+) return (\d+)(?= (?:if|elif|else|return|raise)|$)/g,
+  )) {
+    const family = required(match[1], "context family");
+    const quantization = required(match[2], "context quantization");
+    const quantized = new Map<string, number>();
+    setRule(quantized, quantization, required(match[3], "context value"));
+    if (byQuantization.has(family)) throw new Error("Duplicate Llama quantized context rule");
+    byQuantization.set(family, quantized);
+    setRule(byFamily, family, required(match[4], "context value"));
+    returns += 2;
+  }
+
+  const publishedReturns = [...compact.matchAll(/\breturn\b/g)].length;
+  if (returns === 0 || returns !== publishedReturns)
+    throw new Error("Llama max_seq_length function changed shape");
+  return { byFamily, byId, byQuantization };
+}
+
+function registeredModels(
+  body: string,
+  ids: Map<string, string>,
+  families: Map<string, string>,
+): RegisteredModel[] {
   const models = calls(body, "Model").map((call) => {
     if (!call.includes("arch_args=") || !call.includes("pth_file_count="))
       throw new Error("Llama Model constructor omitted required registry fields");
@@ -161,6 +313,7 @@ function registeredModels(body: string, ids: Map<string, string>): RegisteredMod
     return {
       key,
       id: modelIdSchema.parse(variant === undefined ? id : `${id}:${variant}`),
+      family: required(families.get(key), "model family"),
       description: required(argument(call, "description"), "description"),
       huggingFaceRepo: modelIdSchema.parse(
         required(argument(call, "huggingface_repo"), "huggingface_repo"),
@@ -190,6 +343,7 @@ function promptGuardModels(body: string): RegisteredModel[] {
     return {
       key: "prompt_guard",
       id,
+      family: "safety",
       description: pythonString(defaultDescription),
       huggingFaceRepo: modelIdSchema.parse(
         required(argument(call, "huggingface_repo"), "huggingface_repo"),
@@ -247,30 +401,72 @@ function launchDates(readme: string): Map<string, string> {
   return dates;
 }
 
-function family(key: string): string | undefined {
-  if (key.startsWith("llama2_")) return "Llama 2";
-  if (key.startsWith("llama3_1_")) return "Llama 3.1";
-  if (key.startsWith("llama3_2_") && key.includes("vision")) return "Llama 3.2-Vision";
-  if (key.startsWith("llama3_2_")) return "Llama 3.2";
-  if (key.startsWith("llama3_3_")) return "Llama 3.3";
-  if (llama3Key.test(key)) return "Llama 3";
-  if (key.startsWith("llama4_")) return "Llama 4";
-  return undefined;
+function announcementDate(body: string, title: string, claims: string[]): string {
+  const $ = load(body);
+  const headings = $("h1")
+    .toArray()
+    .filter((heading) => htmlText($(heading).text()) === title);
+  const heading = headings[0];
+  if (headings.length !== 1 || heading === undefined)
+    throw new Error(`Llama announcement omitted ${title}`);
+  const dates = [
+    ...htmlText($(heading).parent().text()).matchAll(
+      /(January|February|March|April|May|June|July|August|Sept(?:ember)?|Oct(?:ober)?|November|December)\s+(\d{1,2}),?\s+(\d{4})\b/gi,
+    ),
+  ];
+  const date = dates[0];
+  if (
+    dates.length !== 1 ||
+    date?.[1] === undefined ||
+    date[2] === undefined ||
+    date[3] === undefined
+  )
+    throw new Error(`Llama announcement ${title} omitted its publication date`);
+  const page = htmlText($("body").text());
+  if (claims.some((claim) => !page.includes(claim)))
+    throw new Error(`Llama announcement ${title} omitted reviewed model evidence`);
+  return calendarDate(date[1], date[2], date[3]);
 }
 
-function contextTokens(model: RegisteredModel): number {
-  const key = model.key;
-  if (key === "prompt_guard") return 512;
-  if (key.startsWith("llama2_") || key === "llama_guard_2_8b") return 4_096;
-  if (llama3Key.test(key)) return 8_192;
-  if (key.startsWith("llama3_1_") || key.startsWith("llama3_3_")) return 131_072;
-  if (key.startsWith("llama3_2_")) return model.quantization === "int4" ? 8_192 : 131_072;
-  if (key === "llama4_scout_17b_16e" || key === "llama4_maverick_17b_128e") return 262_144;
-  if (key === "llama4_scout_17b_16e_instruct") return 10_485_760;
-  if (key === "llama4_maverick_17b_128e_instruct") return 1_048_576;
-  if (key.startsWith("llama_guard_3_")) return 131_072;
-  if (key === "llama_guard_4_12b") return 8_192;
-  throw new Error(`No reviewed context rule for ${key}`);
+function safetyEvidence(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  models: RegisteredModel[],
+): Map<string, SafetyEvidence> {
+  const safetyModels = models.filter(({ family }) => family === "safety");
+  const result = new Map<string, SafetyEvidence>();
+  for (const spec of safetyReleaseSpecs) {
+    const releaseDate = announcementDate(document(bundle, spec.suffix), spec.title, spec.claims);
+    for (const model of safetyModels) {
+      const match = spec.models.find(({ pattern }) => pattern.test(model.id));
+      if (match === undefined) continue;
+      if (result.has(model.id))
+        throw new Error(`Llama safety model had conflicting release evidence: ${model.id}`);
+      result.set(model.id, {
+        releaseDate,
+        inputImage: match.inputImage === true,
+        moderation: match.moderation === true,
+      });
+    }
+  }
+  if (result.size !== safetyModels.length)
+    throw new Error("Llama safety release evidence did not cover every safety model");
+  return result;
+}
+
+function launchFamily(model: RegisteredModel): string {
+  const match = model.family.match(/^llama(\d+)(?:_(\d+))?$/);
+  if (match?.[1] === undefined) throw new Error(`No Llama launch family for ${model.family}`);
+  return `Llama ${match[1]}${match[2] === undefined ? "" : `.${match[2]}`}${
+    model.key.includes("vision") ? "-Vision" : ""
+  }`;
+}
+
+function contextTokens(model: RegisteredModel, rules: ContextRules): number {
+  if (model.key === "prompt_guard") return 512;
+  const quantized = rules.byQuantization.get(model.family)?.get(model.quantization);
+  const value = quantized ?? rules.byId.get(model.key) ?? rules.byFamily.get(model.family);
+  if (value === undefined) throw new Error(`No published context rule for ${model.key}`);
+  return value;
 }
 
 function apiModelIds(body: string): string[] {
@@ -299,21 +495,13 @@ function resolveHostedModel(models: RegisteredModel[], id: string, label: string
   return model;
 }
 
-function hostedChatEndpoint(client: string, completions: string): ApiEndpoint {
+function hostedApiBase(client: string): string {
   const baseUrls = unique(
     [...client.matchAll(/\bbase_url\s*=\s*f?("(?:[^"\\]|\\.)*")/g)].map((match) =>
       pythonString(required(match[1], "API base URL")),
     ),
   );
   if (baseUrls.length !== 1) throw new Error("Llama API client did not publish one base URL");
-  const paths = unique(
-    [...completions.matchAll(/\bself\._post\(\s*("(?:[^"\\]|\\.)*")/g)].map((match) =>
-      pythonString(required(match[1], "API chat path")),
-    ),
-  );
-  if (paths.length !== 1) throw new Error("Llama API client did not publish one chat path");
-  const resource = required(paths[0], "API chat path");
-  if (!/^\/(?!\/)[^?#\s]+$/.test(resource)) throw new Error("Llama API chat path was not relative");
   const base = new URL(required(baseUrls[0], "API base URL"));
   if (
     base.protocol !== "https:" ||
@@ -323,9 +511,22 @@ function hostedChatEndpoint(client: string, completions: string): ApiEndpoint {
     base.hash !== ""
   )
     throw new Error("Llama API base URL was invalid");
-  const path = `${base.pathname.replace(/\/+$/, "")}${resource}`;
-  if (!/^\/(?!\/)[^?#\s]+$/.test(path)) throw new Error("Llama API chat path was invalid");
-  return { name: "Chat Completions", path };
+  return base.pathname.replace(/\/+$/, "");
+}
+
+function hostedEndpoint(base: string, resourceBody: string, name: string): ApiEndpoint {
+  const paths = unique(
+    [...resourceBody.matchAll(/\bself\._post\(\s*("(?:[^"\\]|\\.)*")/g)].map((match) =>
+      pythonString(required(match[1], `${name} path`)),
+    ),
+  );
+  if (paths.length !== 1) throw new Error(`Llama API did not publish one ${name} path`);
+  const resource = required(paths[0], `${name} path`);
+  if (!/^\/(?!\/)[^?#\s]+$/.test(resource))
+    throw new Error(`Llama API ${name} path was not relative`);
+  const path = `${base}${resource}`;
+  if (!/^\/(?!\/)[^?#\s]+$/.test(path)) throw new Error(`Llama API ${name} path was invalid`);
+  return { name, path };
 }
 
 function hostedEvidence(
@@ -352,13 +553,17 @@ function releaseDate(
   dates: Map<string, string>,
   quantizedDate: string,
   llama33Date: string,
-): string | undefined {
-  if (model.key.startsWith("llama_guard_") || model.key === "prompt_guard") return undefined;
-  if (model.key.startsWith("llama3_2_") && model.quantization === "int4") return quantizedDate;
-  if (model.key.startsWith("llama3_3_")) return llama33Date;
-  const name = family(model.key);
-  const date = name === undefined ? undefined : dates.get(name);
-  if (date === undefined) throw new Error(`Llama launch table omitted ${name ?? model.key}`);
+  safety: SafetyEvidence | undefined,
+): string {
+  if (model.family === "safety") {
+    if (safety === undefined) throw new Error(`Llama safety model omitted a release: ${model.id}`);
+    return safety.releaseDate;
+  }
+  if (model.family === "llama3_2" && model.quantization === "int4") return quantizedDate;
+  if (model.family === "llama3_3") return llama33Date;
+  const name = launchFamily(model);
+  const date = dates.get(name);
+  if (date === undefined) throw new Error(`Llama launch table omitted ${name}`);
   return date;
 }
 
@@ -367,17 +572,18 @@ function toolCall(
   text32Card: string,
   llama31Card: string,
   llama33Card: string,
-  hosted: boolean,
+  hostedTool: boolean,
 ): true | "unknown" {
-  if (hosted) return true;
+  if (hostedTool) return true;
   if (!model.id.toLowerCase().includes("instruct")) return "unknown";
-  const evidence = model.key.startsWith("llama3_1_")
-    ? llama31Card
-    : model.key.startsWith("llama3_2_") && !model.key.includes("vision")
-      ? text32Card
-      : model.key.startsWith("llama3_3_")
-        ? llama33Card
-        : undefined;
+  const evidence =
+    model.family === "llama3_1"
+      ? llama31Card
+      : model.family === "llama3_2" && !model.key.includes("vision")
+        ? text32Card
+        : model.family === "llama3_3"
+          ? llama33Card
+          : undefined;
   if (evidence !== undefined && /Tool Use|Tool-use/i.test(evidence)) return true;
   return "unknown";
 }
@@ -396,8 +602,10 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const structuredExample = document(bundle, "/examples/structured.py");
   const apiClient = document(bundle, "/src/llama_api_client/_client.py");
   const chatCompletions = document(bundle, "/src/llama_api_client/resources/chat/completions.py");
+  const moderations = document(bundle, "/src/llama_api_client/resources/moderations.py");
+  const ids = coreIds(skuTypes);
   const models = [
-    ...registeredModels(bundle.index.body, coreIds(skuTypes)),
+    ...registeredModels(bundle.index.body, ids, modelFamilies(skuTypes, ids)),
     ...promptGuardModels(safety),
   ];
   const bounds = input.source.extractor;
@@ -412,7 +620,13 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const llama33Date = cardDate(llama33Card);
   if (cardDate(llama4Card) !== dates.get("Llama 4"))
     throw new Error("Llama 4 release sources disagree");
-  const endpoint = hostedChatEndpoint(apiClient, chatCompletions);
+  if (!/Multilingual text and image/i.test(llama4Card))
+    throw new Error("Llama 4 model card omitted multimodal input");
+  const contexts = contextRules(skuTypes);
+  const releases = safetyEvidence(bundle, models);
+  const apiBase = hostedApiBase(apiClient);
+  const chatEndpoint = hostedEndpoint(apiBase, chatCompletions, "Chat Completions");
+  const moderationEndpoint = hostedEndpoint(apiBase, moderations, "Moderations");
   const hosted = hostedEvidence(models, {
     chat: chatExample,
     structured: structuredExample,
@@ -420,12 +634,20 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   });
   return models.map((model) => {
     const evidence = hosted.get(model.id);
+    const safetyRelease = releases.get(model.id);
     const capability = (name: HostedCapability): true | "unknown" =>
       evidence?.capabilities.has(name) === true ? true : "unknown";
     const aliases = unique([model.huggingFaceRepo, ...(evidence?.aliases ?? [])]).filter(
       (alias) => alias !== model.id,
     );
-    const vision = model.key.includes("vision") || model.key.startsWith("llama4_");
+    const endpoints = [
+      ...(evidence === undefined ? [] : [chatEndpoint]),
+      ...(safetyRelease?.moderation === true ? [moderationEndpoint] : []),
+    ];
+    const vision =
+      model.key.includes("vision") ||
+      model.family === "llama4" ||
+      safetyRelease?.inputImage === true;
     const guard = model.key.startsWith("llama_guard_");
     const promptGuard = model.key === "prompt_guard";
     return {
@@ -439,7 +661,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       description: model.description,
       aliases,
       tasks: guard ? ["moderation"] : promptGuard ? ["classification"] : ["text_generation"],
-      ...(evidence === undefined ? {} : { api_endpoints: [endpoint] }),
+      ...(endpoints.length === 0 ? {} : { api_endpoints: endpoints }),
       modalities: { input: vision ? ["text", "image"] : ["text"], output: ["text"] },
       capabilities: {
         ...unknownCapabilities(),
@@ -453,10 +675,10 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
         structured_output: capability("structured_output"),
         streaming: capability("streaming"),
       },
-      limits: { context_tokens: contextTokens(model) },
-      release_date: releaseDate(model, dates, quantizedDate, llama33Date),
+      limits: { context_tokens: contextTokens(model, contexts) },
+      release_date: releaseDate(model, dates, quantizedDate, llama33Date, safetyRelease),
       status: "active",
-      pricing_state: "not_applicable",
+      pricing_state: endpoints.length === 0 ? "not_applicable" : "not_published",
     };
   });
 }

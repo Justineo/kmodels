@@ -170,15 +170,13 @@ function pricingSummary(pricing: PricingCatalog, model: ProviderModel) {
 function pricingStatus(view: ReturnType<typeof modelPricingView>, modelRef: string) {
   if (view.outcome === "not_applicable")
     return {
-      label: "N/A",
-      description:
-        "This provider explicitly has no public pricing offer for this model. This is not a service-availability claim.",
+      label: "No offer",
+      description: "No public hosted pricing offer applies to this model.",
     };
   if (view.outcome === "unknown")
     return {
       label: "Unknown",
-      description:
-        "No reliable public pricing information is currently available. This does not mean the model is unavailable.",
+      description: "Available sources do not establish whether pricing applies.",
     };
   if (view.baseOffers.length === 0)
     return {
@@ -207,7 +205,7 @@ function pricingStatus(view: ReturnType<typeof modelPricingView>, modelRef: stri
   if (summary === "Price not published")
     return {
       label: "Unpublished",
-      description: "The provider confirms this offer but does not publish its numeric price.",
+      description: "A hosted offer exists, but its price is not publicly available.",
     };
   if (summary === "Incomplete")
     return {

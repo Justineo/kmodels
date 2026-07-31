@@ -20,6 +20,7 @@ const batchApiDocument = "/docs/api/batch-create";
 const cacheDocument = "/docs/guide/use-context-caching-feature-of-kimi-api";
 const refSchema = z.string().regex(/^#\/components\/schemas\/[A-Za-z0-9]+$/);
 const openApiSchema = z.object({
+  servers: z.array(z.object({ url: z.url() })).length(1),
   paths: z.object({
     [chatPath]: z.object({
       post: z.object({
@@ -44,7 +45,29 @@ const allOfSchema = z.object({ allOf: z.array(z.unknown()).min(1) });
 const propertiesSchema = z.object({ properties: z.record(z.string(), z.unknown()) });
 const referenceSchema = z.object({ $ref: refSchema });
 const modelPropertySchema = z.object({ enum: z.array(modelIdSchema).min(1) });
+const enumSchema = z.object({ enum: z.array(z.string()).min(1) });
+const maxCompletionSchema = z.object({
+  type: z.literal("integer"),
+  description: z.string().min(1),
+});
 const priceRowsSchema = z.array(z.array(z.string()).min(5).max(6)).min(1);
+type PriceColumn = "model" | "unit" | "cache" | "input" | "output" | "context";
+const priceColumns = new Map<string, PriceColumn>([
+  ["模型", "model"],
+  ["Model", "model"],
+  ["计费单位", "unit"],
+  ["Unit", "unit"],
+  ["输入价格（缓存命中）", "cache"],
+  ["Input Price (Cache Hit)", "cache"],
+  ["输入价格（缓存未命中）", "input"],
+  ["Input Price (Cache Miss)", "input"],
+  ["输入价格", "input"],
+  ["Input Price", "input"],
+  ["输出价格", "output"],
+  ["Output Price", "output"],
+  ["上下文窗口", "context"],
+  ["Context Window", "context"],
+]);
 const apiSchema = z.object({
   object: z.literal("list"),
   data: z
@@ -87,10 +110,40 @@ function componentName(ref: string): string {
   return name;
 }
 
+function outputLimits(value: unknown): { name: string; max: number }[] {
+  const { description } = maxCompletionSchema.parse(value);
+  const matches = [
+    ...description.matchAll(
+      /(?:^|[.;:]\s+)for (.+?) it defaults to ([\d,]+) and can be set up to ([\d,]+)/gi,
+    ),
+  ];
+  if (matches.length === 0) throw new Error("Kimi OpenAPI changed output limit descriptions");
+  return matches.map((match) => {
+    const name = match[1]?.trim();
+    const initial = Number(match[2]?.replaceAll(",", ""));
+    const max = Number(match[3]?.replaceAll(",", ""));
+    if (
+      name === undefined ||
+      name === "" ||
+      !Number.isSafeInteger(initial) ||
+      !Number.isSafeInteger(max) ||
+      initial <= 0 ||
+      max < initial
+    )
+      throw new Error("Kimi OpenAPI published an invalid output limit");
+    return { name, max };
+  });
+}
+
 function requestFacts(
   ref: string,
   schemas: Record<string, unknown>,
-): { ids: string[]; reasoning: boolean; effort: boolean } {
+): {
+  ids: string[];
+  reasoning: boolean;
+  effort: boolean;
+  outputLimits: { name: string; max: number }[];
+} {
   const component = schemas[componentName(ref)];
   const parts = allOfSchema.parse(component).allOf;
   const own = parts.flatMap((part) => {
@@ -110,17 +163,46 @@ function requestFacts(
   const commonRef = commonRefs[0];
   if (commonRef === undefined) throw new Error(`Kimi OpenAPI request ${ref} omitted its base`);
   const common = properties(schemas[componentName(commonRef)]);
-  for (const field of ["response_format", "stream", "tools", "tool_choice", "prompt_cache_key"])
-    if (common[field] === undefined) throw new Error(`Kimi OpenAPI request base omitted ${field}`);
+  const responseFormat = properties(common.response_format);
+  const formats = enumSchema.parse(responseFormat.type).enum;
+  if (!["text", "json_object", "json_schema"].every((value) => formats.includes(value)))
+    throw new Error("Kimi OpenAPI changed structured output");
+  if (z.object({ type: z.literal("boolean") }).safeParse(common.stream).success === false)
+    throw new Error("Kimi OpenAPI changed streaming schema");
+  const toolRef = z.object({ items: referenceSchema }).parse(common.tools).items.$ref;
+  const toolType = properties(schemas[componentName(toolRef)]).type;
+  if (!enumSchema.parse(toolType).enum.includes("function"))
+    throw new Error("Kimi OpenAPI changed tool schema");
+  if (common.tool_choice === undefined)
+    throw new Error("Kimi OpenAPI request base omitted tool_choice");
+  if (z.object({ type: z.literal("string") }).safeParse(common.prompt_cache_key).success === false)
+    throw new Error("Kimi OpenAPI changed prompt cache schema");
+  const efforts =
+    ownProperties.reasoning_effort === undefined
+      ? undefined
+      : enumSchema.parse(ownProperties.reasoning_effort).enum;
+  if (efforts !== undefined && !["low", "high", "max"].every((value) => efforts.includes(value)))
+    throw new Error(`Kimi OpenAPI request ${ref} changed reasoning effort`);
+  const reasoning =
+    ownProperties.thinking === undefined
+      ? efforts !== undefined
+      : enumSchema.parse(properties(ownProperties.thinking).type).enum.includes("enabled");
+  if (ownProperties.thinking !== undefined && !reasoning)
+    throw new Error(`Kimi OpenAPI request ${ref} changed thinking schema`);
   return {
     ids,
-    reasoning: ownProperties.reasoning_effort !== undefined || ownProperties.thinking !== undefined,
-    effort: ownProperties.reasoning_effort !== undefined,
+    reasoning,
+    effort: efforts !== undefined,
+    outputLimits: outputLimits(common.max_completion_tokens),
   };
 }
 
 export function parseKimiOpenApi(input: Input): ProviderModel[] {
   const spec = openApiSchema.parse(JSON.parse(input.body));
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "kimi-openapi") throw new Error("Wrong kimi-openapi extractor");
+  if (spec.servers[0]?.url !== extractor.baseUrl)
+    throw new Error("Kimi OpenAPI changed its server");
   const mapping =
     spec.paths[chatPath].post.requestBody.content["application/json"].schema.discriminator.mapping;
   const entries = Object.entries(mapping);
@@ -134,6 +216,25 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
       .sort();
     if (mapped.join("\0") !== [...observed.ids].sort().join("\0"))
       throw new Error(`Kimi OpenAPI mapping disagrees with ${ref}`);
+  }
+  const describedLimits = new Map<string, { name: string; max: number }>();
+  for (const observed of facts.values()) {
+    for (const limit of observed.outputLimits) {
+      const key = identity(limit.name);
+      const current = describedLimits.get(key);
+      if (current !== undefined && current.max !== limit.max)
+        throw new Error(`Kimi OpenAPI output limits disagree for ${limit.name}`);
+      describedLimits.set(key, limit);
+    }
+  }
+  const maxOutputs = new Map<string, number>();
+  for (const limit of describedLimits.values()) {
+    const matches = entries.map(([id]) => id).filter((id) => identity(id) === identity(limit.name));
+    if (matches.length !== 1)
+      throw new Error(`Kimi OpenAPI output limit identity is ambiguous: ${limit.name}`);
+    const id = matches[0];
+    if (id === undefined) throw new Error(`Kimi OpenAPI omitted ${limit.name}`);
+    maxOutputs.set(id, limit.max);
   }
   const models = entries.map(([id, ref]) => {
     const observed = facts.get(ref);
@@ -149,6 +250,7 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
       tasks: ["text_generation"],
       modalities: { input: ["text"], output: ["text"] },
       api_endpoints: [{ name: "Chat Completions", path: chatPath }],
+      limits: { max_output_tokens: maxOutputs.get(id) },
       capabilities: {
         ...unknownCapabilities(),
         reasoning: observed.reasoning ? true : "unknown",
@@ -158,6 +260,7 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
         prompt_cache: true,
         effort_control: observed.effort ? true : "unknown",
       },
+      status: "active",
     } satisfies ProviderModel;
   });
   return bounded(input, "kimi-openapi", models);
@@ -211,7 +314,9 @@ function exactCode(value: string): string {
 }
 
 function modelDate(year: string, month: string, day: string): string {
-  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  const value = `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  if (!z.iso.date().safeParse(value).success) throw new Error(`Invalid Kimi date: ${value}`);
+  return value;
 }
 
 function tokenCount(value: string): number | undefined {
@@ -271,25 +376,39 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
     (table) => table.headers[0] === "模型名称" && table.headers[1] === "描述",
   );
   if (tables.length !== 3) throw new Error("Kimi model catalog table structure changed");
-  const retiredDate = input.body.match(
-    /系列模型已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*/,
+  const restriction = input.body
+    .split(/\r?\n/)
+    .find((line) => line.includes("已停止向新注册用户开放"));
+  if (restriction === undefined) throw new Error("Kimi restricted-model notice is missing");
+  const restricted = [...restriction.matchAll(/`([^`]+)`(\s*系列模型)?/g)].map((match) => ({
+    id: modelIdSchema.parse(match[1]),
+    series: match[2] !== undefined,
+  }));
+  if (restricted.length === 0) throw new Error("Kimi restricted-model notice omitted model IDs");
+  const retiredNotice = input.body.match(
+    /`([^`]+)` 系列模型已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
   );
   if (
-    retiredDate?.[1] === undefined ||
-    retiredDate[2] === undefined ||
-    retiredDate[3] === undefined
+    retiredNotice?.[1] === undefined ||
+    retiredNotice[2] === undefined ||
+    retiredNotice[3] === undefined ||
+    retiredNotice[4] === undefined ||
+    retiredNotice[5] === undefined
   )
     throw new Error("Kimi retired-series date is missing");
-  const retiredAt = modelDate(retiredDate[1], retiredDate[2], retiredDate[3]);
-  const restricted = input.body.includes(
-    "`kimi-k2.5` 和 `moonshot-v1` 系列模型已停止向新注册用户开放",
-  );
+  const retiredSeries = modelIdSchema.parse(retiredNotice[1]);
+  const retiredAt = modelDate(retiredNotice[2], retiredNotice[3], retiredNotice[4]);
+  const retiredReplacement = modelIdSchema.parse(retiredNotice[5]);
   const models = tables.flatMap((table) =>
     table.rows.map((row) => {
       const id = exactCode(row[0] ?? "");
       const description = row[1]?.trim() || undefined;
       const retired = table.section === "已下线模型";
-      const legacy = restricted && (id === "kimi-k2.5" || id.startsWith("moonshot-v1-"));
+      if (retired && id !== retiredSeries && !id.startsWith(`${retiredSeries}-`))
+        throw new Error(`Kimi retired table contains ${id} outside ${retiredSeries}`);
+      const legacy = restricted.some(({ id: restrictedId, series }) =>
+        series ? id === restrictedId || id.startsWith(`${restrictedId}-`) : id === restrictedId,
+      );
       const status: ProviderModel["status"] = retired ? "retired" : legacy ? "legacy" : "active";
       return catalogModel(
         input,
@@ -297,12 +416,17 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
         description,
         status,
         retired ? retiredAt : undefined,
-        retired ? ["kimi-k3"] : [],
+        retired ? [retiredReplacement] : [],
         id.includes("preview") ? "preview" : "unknown",
       );
     }),
   );
-  for (const line of input.body.split(/\r?\n/)) {
+  const retiredLines = input.body
+    .split(/\r?\n/)
+    .filter(
+      (line) => line.startsWith(">") && !line.includes("系列模型") && /已于.*下线/.test(line),
+    );
+  for (const line of retiredLines) {
     const retired = line.match(
       /^>\s*`([^`]+)` 已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
     );
@@ -313,7 +437,7 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
       retired[4] === undefined ||
       retired[5] === undefined
     )
-      continue;
+      throw new Error(`Kimi retired-model notice changed: ${line}`);
     const id = modelIdSchema.parse(retired[1]);
     const replacement = modelIdSchema.parse(retired[5]);
     models.push(
@@ -346,7 +470,15 @@ function jsonArrayAfter(body: string, marker: string): unknown {
     if (character === "[") depth += 1;
     if (character === "]") {
       depth -= 1;
-      if (depth === 0) return JSON.parse(withoutTrailingCommas(body.slice(start, index + 1)));
+      if (depth === 0) {
+        const json = body
+          .slice(start, index + 1)
+          .replace(
+            /<>\{"([^"]+)"\}((?:0|[1-9]\d*)(?:\.\d+)?)<\/>/g,
+            (_match, symbol: string, amount: string) => JSON.stringify(`${symbol}${amount}`),
+          );
+        return JSON.parse(withoutTrailingCommas(json));
+      }
     }
   }
   throw new Error(`Kimi document contains an unterminated ${marker}`);
@@ -376,10 +508,27 @@ function withoutTrailingCommas(value: string): string {
   return result;
 }
 
-function decimalPrice(value: string): string {
-  const match = value.match(/^¥(0|[1-9]\d*)(?:\.(\d+))?$/);
-  if (match?.[1] === undefined) throw new Error(`Invalid Kimi price: ${value}`);
-  return match[2] === undefined ? match[1] : `${match[1]}.${match[2]}`;
+function hasCachePrices(body: string): boolean {
+  const rows = body.indexOf("rows={");
+  const start = body.lastIndexOf("<DocTable", rows);
+  if (start < 0 || rows < 0) throw new Error("Kimi pricing table is missing");
+  const columns = [...body.slice(start, rows).matchAll(/\{\s*title:\s*"([^"]+)"/g)].map((match) =>
+    priceColumns.get(match[1] ?? ""),
+  );
+  if (columns.some((column) => column === undefined))
+    throw new Error("Kimi pricing table has an unknown column");
+  const signature = columns.join(",");
+  if (signature === "model,unit,cache,input,output,context") return true;
+  if (signature === "model,unit,input,output,context") return false;
+  throw new Error(`Kimi pricing table has unsupported columns: ${signature}`);
+}
+
+type PricingExtractor = Extract<SourceManifest["extractor"], { kind: "kimi-pricing" }>;
+
+function decimalPrice(value: string, symbol: PricingExtractor["symbol"]): string {
+  const amount = value.startsWith(symbol) ? value.slice(symbol.length) : "";
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount)) throw new Error(`Invalid Kimi price: ${value}`);
+  return amount;
 }
 
 function priceRate(
@@ -387,11 +536,12 @@ function priceRate(
   value: string,
   sourceId: string,
   conditions: SourcePriceFact["conditions"],
+  extractor: PricingExtractor,
 ): SourcePriceFact {
   return {
     meter,
-    price: decimalPrice(value),
-    currency: "CNY",
+    price: decimalPrice(value, extractor.symbol),
+    currency: extractor.currency,
     unit: "million_tokens",
     conditions,
     source_ref: sourceId,
@@ -408,41 +558,59 @@ function identity(value: string): string {
 function displayNames(body: string): string[] {
   const names: string[] = [];
   for (const line of body.split(/\r?\n/)) {
-    const heading = line.match(/^#\s+(.+?)(?:\s+模型)?定价\s*$/)?.[1];
+    const heading = line.match(/^#\s+(.+?)(?:\s+模型)?(?:定价|Pricing)\s*$/i)?.[1];
     if (heading !== undefined)
-      names.push(heading.replace(/^(?:旗舰模型|编程模型|多模态模型|生成模型)\s+/, "").trim());
-    const bullet = line.match(/^[-*]\s+(.+?)\s+是/)?.[1];
+      names.push(
+        heading
+          .replace(
+            /^(?:(?:旗舰|编程|多模态|生成)模型|(?:Flagship|Coding|Multi-modal|Generation) Model)\s+/i,
+            "",
+          )
+          .trim(),
+      );
+    const bullet = line.match(/^[-*]\s+(.+?)\s+(?:是|is)\s+/i)?.[1];
     if (bullet !== undefined) names.push(bullet.trim());
   }
   return [...new Set(names)];
 }
 
-function pricingModel(input: Input, body: string, row: string[], batch: boolean): ProviderModel {
-  const suffix = "（Batch）";
+function pricingModel(
+  input: Input,
+  extractor: PricingExtractor,
+  body: string,
+  row: string[],
+  batch: boolean,
+  cached: boolean,
+): ProviderModel {
   const rawId = row[0];
   const rawUnit = row[1];
   if (rawId === undefined || rawUnit !== "1M tokens")
     throw new Error("Kimi pricing row omitted its model or unit");
-  if (batch !== rawId.endsWith(suffix)) throw new Error("Kimi Batch label disagrees with its page");
-  const id = modelIdSchema.parse(batch ? rawId.slice(0, -suffix.length) : rawId);
+  const suffix = rawId.match(/\s*[（(]Batch[）)]$/)?.[0];
+  if (batch !== (suffix !== undefined)) throw new Error("Kimi Batch label disagrees with its page");
+  const id = modelIdSchema.parse(suffix === undefined ? rawId : rawId.slice(0, -suffix.length));
+  if (row.length !== (cached ? 6 : 5))
+    throw new Error(`Kimi pricing columns disagree with the row for ${id}`);
   const context = row.at(-1);
   const contextTokens = context === undefined ? undefined : tokenCount(context);
   if (contextTokens === undefined) throw new Error(`Kimi pricing omitted context for ${id}`);
-  const conditions: SourcePriceFact["conditions"] = batch ? { service_tier: "batch" } : {};
-  const prices =
-    row.length === 6
-      ? [
-          priceRate("cache_read_text", row[2] ?? "", input.source.id, conditions),
-          priceRate("input_text", row[3] ?? "", input.source.id, conditions),
-          priceRate("output_text", row[4] ?? "", input.source.id, conditions),
-        ]
-      : [
-          priceRate("input_text", row[2] ?? "", input.source.id, conditions),
-          priceRate("output_text", row[3] ?? "", input.source.id, conditions),
-        ];
+  const conditions: SourcePriceFact["conditions"] = {
+    region: extractor.region,
+    ...(batch ? { service_tier: "batch" } : {}),
+  };
+  const prices = cached
+    ? [
+        priceRate("cache_read_text", row[2] ?? "", input.source.id, conditions, extractor),
+        priceRate("input_text", row[3] ?? "", input.source.id, conditions, extractor),
+        priceRate("output_text", row[4] ?? "", input.source.id, conditions, extractor),
+      ]
+    : [
+        priceRate("input_text", row[2] ?? "", input.source.id, conditions, extractor),
+        priceRate("output_text", row[3] ?? "", input.source.id, conditions, extractor),
+      ];
   const names = displayNames(body).filter((name) => identity(name) === identity(id));
   if (names.length > 1) throw new Error(`Kimi pricing display name for ${id} is ambiguous`);
-  const multimedia = /支持文本、图片与视频输入/.test(body);
+  const multimedia = /支持文本、图片与视频输入|supports text, image, and video input/i.test(body);
   const image = multimedia || id.includes("-vision-") ? ["image" as const] : [];
   const video = multimedia ? ["video" as const] : [];
   return {
@@ -458,7 +626,7 @@ function pricingModel(input: Input, body: string, row: string[], batch: boolean)
     api_endpoints: batch ? [{ name: "Batch", path: batchPath }] : undefined,
     capabilities: {
       ...unknownCapabilities(),
-      reasoning: /思考|推理/.test(body) ? true : "unknown",
+      reasoning: /思考|推理|reason|thinking/i.test(body) ? true : "unknown",
       tool_call: /ToolCalls|工具调用/.test(body) ? true : "unknown",
       structured_output: /JSON Mode|结构化输出/.test(body) ? true : "unknown",
       batch: batch ? true : "unknown",
@@ -516,16 +684,23 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
 }
 
 export function parseKimiPricing(input: Input): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "kimi-pricing") throw new Error("Wrong kimi-pricing extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const documents = [bundle.index, ...bundle.documents];
   const cache = documents.find(({ url }) => new URL(url).pathname === cacheDocument);
-  if (cache === undefined || !/对所有模型请求自动启用/.test(cache.body))
+  if (
+    cache === undefined ||
+    !/对所有模型请求自动启用|automatically enabled for all model requests/i.test(cache.body)
+  )
     throw new Error("Kimi automatic cache documentation changed");
   const batchApi = documents.find(({ url }) => new URL(url).pathname === batchApiDocument);
   if (
     batchApi === undefined ||
     !/^`{3,4}yaml POST \/v1\/batches$/m.test(batchApi.body) ||
-    !batchApi.body.includes("目前仅支持 /v1/chat/completions")
+    !/目前仅支持 \/v1\/chat\/completions|currently only \/v1\/chat\/completions is supported/i.test(
+      batchApi.body,
+    )
   )
     throw new Error("Kimi Batch API reference changed");
   const models = new Map<string, ProviderModel>();
@@ -536,8 +711,9 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
       throw new Error(`Unexpected Kimi pricing page: ${path}`);
     const rows = priceRowsSchema.parse(jsonArrayAfter(document.body, "rows={"));
     const batch = path === "/docs/pricing/batch";
+    const cached = hasCachePrices(document.body);
     for (const row of rows) {
-      const incoming = pricingModel(input, document.body, row, batch);
+      const incoming = pricingModel(input, extractor, document.body, row, batch, cached);
       const current = models.get(incoming.model_id);
       models.set(
         incoming.model_id,
@@ -558,13 +734,6 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   );
   return bounded(input, "kimi-pricing", result);
 }
-
-const releaseIds = new Map([
-  ["Kimi K3", "kimi-k3"],
-  ["Kimi K2.7 Code", "kimi-k2.7-code"],
-  ["Kimi K2.6", "kimi-k2.6"],
-  ["Kimi K2.5", "kimi-k2.5"],
-]);
 
 function htmlText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -589,7 +758,7 @@ function englishDate(value: string): string | undefined {
   const month = match?.[1] === undefined ? undefined : months.get(match[1]);
   return month === undefined || match?.[2] === undefined || match[3] === undefined
     ? undefined
-    : `${match[3]}-${month}-${match[2].padStart(2, "0")}`;
+    : modelDate(match[3], month, match[2]);
 }
 
 function releaseModel(input: Input, id: string, date: string): ProviderModel {
@@ -601,13 +770,27 @@ function releaseModel(input: Input, id: string, date: string): ProviderModel {
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    tasks: ["text_generation"],
     release_date: date,
   };
 }
 
 export function parseKimiReleases(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const catalog = bundle.documents.find(
+    ({ url }) =>
+      new URL(url).hostname === "platform.kimi.com" && new URL(url).pathname === "/docs/models",
+  );
+  if (catalog === undefined) throw new Error("Kimi releases omitted the model catalog");
+  const candidates = new Set(
+    markdownTables(catalog.body)
+      .filter((table) => table.headers[0] === "模型名称")
+      .flatMap((table) => table.rows.map((row) => exactCode(row[0] ?? ""))),
+  );
+  const displayId = (name: string): string | undefined => {
+    const matches = [...candidates].filter((id) => identity(id) === identity(name));
+    if (matches.length > 1) throw new Error(`Kimi release identity is ambiguous: ${name}`);
+    return matches[0];
+  };
   const dates = new Map<string, string>();
   const add = (id: string, date: string): void => {
     const parsed = modelIdSchema.parse(id);
@@ -634,11 +817,12 @@ export function parseKimiReleases(input: Input): ProviderModel[] {
   });
   for (const document of bundle.documents) {
     const url = new URL(document.url);
+    if (document === catalog) continue;
     const $ = load(document.body);
     if (url.hostname === "www.kimi.com" && url.pathname === "/blog/") {
       $(".menu-card").each((_index, card) => {
         const name = htmlText($(card).find("h4").first().text());
-        const id = releaseIds.get(name);
+        const id = displayId(name);
         const date = htmlText($(card).text())
           .match(/(\d{4})\/(\d{2})\/(\d{2})/)
           ?.slice(1);
@@ -648,7 +832,7 @@ export function parseKimiReleases(input: Input): ProviderModel[] {
           date[1] !== undefined &&
           date[2] !== undefined
         )
-          add(id, `${date[0]}-${date[1]}-${date[2]}`);
+          add(id, modelDate(date[0], date[1], date[2]));
       });
       continue;
     }
@@ -656,7 +840,7 @@ export function parseKimiReleases(input: Input): ProviderModel[] {
       $(".wn-entry .wn-meta").each((_index, meta) => {
         const name = htmlText($(meta).find(".ignore-header").first().text());
         const rawDate = htmlText($(meta).find(".wn-date").first().text());
-        const id = releaseIds.get(name);
+        const id = displayId(name);
         const date = englishDate(rawDate);
         if (id !== undefined && date !== undefined) add(id, date);
       });
@@ -684,7 +868,6 @@ export function parseKimiApi(input: Input): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       }),
-      tasks: ["text_generation"],
       modalities: {
         input: [
           "text",

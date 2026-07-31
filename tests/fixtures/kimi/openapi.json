@@ -1,4 +1,5 @@
 {
+  "servers": [{ "url": "https://api.moonshot.ai" }],
   "paths": {
     "/v1/chat/completions": {
       "post": {
@@ -32,19 +33,39 @@
   },
   "components": {
     "schemas": {
+      "ToolDefinition": {
+        "properties": {
+          "type": { "enum": ["function"] }
+        }
+      },
       "Common": {
         "properties": {
-          "response_format": {},
-          "stream": {},
-          "tools": {},
+          "response_format": {
+            "properties": {
+              "type": { "enum": ["text", "json_object", "json_schema"] }
+            }
+          },
+          "stream": { "type": "boolean" },
+          "tools": {
+            "items": { "$ref": "#/components/schemas/ToolDefinition" }
+          },
           "tool_choice": {},
-          "prompt_cache_key": {}
+          "prompt_cache_key": { "type": "string" },
+          "max_completion_tokens": {
+            "type": "integer",
+            "description": "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576."
+          }
         }
       },
       "K3": {
         "allOf": [
           { "$ref": "#/components/schemas/Common" },
-          { "properties": { "model": { "enum": ["kimi-k3"] }, "reasoning_effort": {} } }
+          {
+            "properties": {
+              "model": { "enum": ["kimi-k3"] },
+              "reasoning_effort": { "enum": ["low", "high", "max"] }
+            }
+          }
         ]
       },
       "K27": {
@@ -53,7 +74,11 @@
           {
             "properties": {
               "model": { "enum": ["kimi-k2.7-code", "kimi-k2.7-code-highspeed"] },
-              "thinking": {}
+              "thinking": {
+                "properties": {
+                  "type": { "enum": ["enabled"] }
+                }
+              }
             }
           }
         ]
@@ -61,13 +86,31 @@
       "K26": {
         "allOf": [
           { "$ref": "#/components/schemas/Common" },
-          { "properties": { "model": { "enum": ["kimi-k2.6"] }, "thinking": {} } }
+          {
+            "properties": {
+              "model": { "enum": ["kimi-k2.6"] },
+              "thinking": {
+                "properties": {
+                  "type": { "enum": ["enabled", "disabled"] }
+                }
+              }
+            }
+          }
         ]
       },
       "K25": {
         "allOf": [
           { "$ref": "#/components/schemas/Common" },
-          { "properties": { "model": { "enum": ["kimi-k2.5"] }, "thinking": {} } }
+          {
+            "properties": {
+              "model": { "enum": ["kimi-k2.5"] },
+              "thinking": {
+                "properties": {
+                  "type": { "enum": ["enabled", "disabled"] }
+                }
+              }
+            }
+          }
         ]
       },
       "V1": {

@@ -66,6 +66,14 @@ const routerItemSchema = z.object({
   providers: z.array(routeSchema).min(1),
 });
 const routerSchema = z.object({ data: z.array(routerItemSchema) });
+const hubSchema = z.object({
+  models: z.array(
+    z.object({
+      id: hubIdSchema,
+      lastModified: z.iso.datetime({ offset: true }),
+    }),
+  ),
+});
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
@@ -249,6 +257,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   const ids = new Set<string>();
   const models: ProviderModel[] = [];
   for (const item of items) {
+    if (isCredentialLikeIdentifier(item.id)) continue;
     if (ids.has(item.id)) throw new Error(`Duplicate Hugging Face router model ${item.id}`);
     ids.add(item.id);
     const providers = new Set<string>();
@@ -279,6 +288,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
       capabilities: {
         ...unknownCapabilities(),
+        streaming: true,
         tool_call: availability(routes.map((route) => route.supports_tools)),
         structured_output: availability(routes.map((route) => route.supports_structured_output)),
       },
@@ -287,9 +297,37 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       },
       pricing_state: pricing.length === 0 ? "unknown" : "numeric",
       price_facts: pricing,
+      status: "active",
     });
   }
   if (models.length < config.minModels || models.length > config.maxModels)
     throw new Error("Hugging Face router count outside reviewed bounds");
   return models;
+}
+
+export function parseHuggingFaceHub(input: Input): ProviderModel[] {
+  const config = input.source.extractor;
+  if (config.kind !== "huggingface-hub") throw new Error("Invalid Hugging Face Hub extractor");
+  const items = hubSchema.parse(JSON.parse(input.body)).models;
+  const ids = new Set<string>();
+  const models = items.flatMap((item) => {
+    if (isCredentialLikeIdentifier(item.id)) return [];
+    if (ids.has(item.id)) throw new Error(`Duplicate Hugging Face Hub model ${item.id}`);
+    ids.add(item.id);
+    return [
+      {
+        ...baseModel({
+          providerId: input.provider.id,
+          id: item.id,
+          name: item.id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        updated_date: item.lastModified.slice(0, 10),
+      },
+    ];
+  });
+  if (models.length < config.minModels || models.length > config.maxModels)
+    throw new Error("Hugging Face Hub model count outside reviewed bounds");
+  return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }

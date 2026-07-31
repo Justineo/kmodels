@@ -19,9 +19,14 @@ import {
   parseDashscopeLifecycle,
   parseDashscopePricing,
   parseDashscopeRecommended,
+  parseDashscopeReleases,
 } from "./dashscope.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
-import { parseHuggingFaceMapping, parseHuggingFaceRouter } from "./huggingface.ts";
+import {
+  parseHuggingFaceHub,
+  parseHuggingFaceMapping,
+  parseHuggingFaceRouter,
+} from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
 import {
   parseKimiApi,
@@ -36,8 +41,12 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { multiplyDecimal, publishedRate } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
+import {
+  sourcePriceFactKey,
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
 import { classifyModelTasks } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
@@ -71,6 +80,10 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  catalogModels?: readonly Pick<
+    ProviderModel,
+    "aliases" | "model_id" | "price_facts" | "tasks" | "version"
+  >[];
 }
 
 type LoadedDocument = ReturnType<typeof load>;
@@ -123,25 +136,33 @@ function openAiModalities($: LoadedDocument): ProviderModel["modalities"] {
   return { input: unique(input), output: unique(output) };
 }
 
-function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
+function openAiSupport($: LoadedDocument, section: string): Map<string, boolean> {
   const values = new Map<string, boolean>();
-  const content = sectionContent($, "Features");
+  const content = sectionContent($, section);
   content
     .find("div")
-    .filter(
-      (_index, element) =>
-        $(element).children().length === 0 &&
-        ["Streaming", "Function calling", "Structured outputs", "Fine-tuning"].includes(
-          normalizedText($(element).text()),
-        ),
-    )
+    .filter((_index, element) => $(element).children().length === 0)
     .each((_index, element) => {
       const label = normalizedText($(element).text());
       const support = normalizedText($(element).parent().children().eq(1).text());
       if (support === "Supported") values.set(label, true);
       if (support === "Not supported") values.set(label, false);
     });
-  const value = (label: string): boolean | "unknown" => values.get(label) ?? "unknown";
+  return values;
+}
+
+function openAiSupportValue(values: Map<string, boolean>, labels: string[]): boolean | "unknown" {
+  const observed = labels.flatMap((label) => {
+    const value = values.get(label);
+    return value === undefined ? [] : [value];
+  });
+  if (observed.includes(true)) return true;
+  return observed.length === labels.length ? false : "unknown";
+}
+
+function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
+  const values = openAiSupport($, "Features");
+  const value = (label: string): boolean | "unknown" => openAiSupportValue(values, [label]);
   return {
     ...unknownCapabilities(),
     reasoning: "unknown",
@@ -280,6 +301,28 @@ function openAiMeter(
   }
 }
 
+function openAiCardTier(
+  $: LoadedDocument,
+  header: ReturnType<LoadedDocument>,
+  group: string,
+): "standard" | "batch" {
+  const headers = header
+    .parent()
+    .children()
+    .filter((_index, element) => normalizedText($(element).children().first().text()) === group);
+  const toggleHeaders = headers.filter(
+    (_index, element) => $(element).find('button[role="switch"]').length > 0,
+  );
+  if (toggleHeaders.length === 0) return "standard";
+  if (toggleHeaders.length !== 1 || headers.length > 2)
+    throw new Error(`Unsupported OpenAI ${group} price-tier selector`);
+  const toggle = toggleHeaders.first().find('button[role="switch"]').attr("aria-checked");
+  if (toggle !== "true" && toggle !== "false")
+    throw new Error(`OpenAI ${group} price-tier selector omitted its state`);
+  const primary = header.get(0) === toggleHeaders.get(0);
+  return primary === (toggle === "true") ? "batch" : "standard";
+}
+
 function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]): SourcePriceFact[] {
   const content = sectionContent($, "Pricing");
   if (content.length === 0) return [];
@@ -311,9 +354,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
         .first();
       const group = normalizedText(header.children().first().text());
       const rawUnit = normalizedText(unitNode.text());
-      const serviceTier = normalizedText(unitNode.parent().text()).includes("Batch API price")
-        ? "batch"
-        : undefined;
+      const serviceTier = openAiCardTier($, header, group);
       const unit: SourcePriceFact["unit"] =
         rawUnit === "Per 1M tokens"
           ? "million_tokens"
@@ -341,8 +382,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
         const meter = openAiMeter(group, label, tasks);
         if (meter === undefined)
           throw new Error(`Unsupported OpenAI pricing field: ${group}/${label}`);
-        const conditions: SourcePriceFact["conditions"] = {};
-        if (serviceTier !== undefined) conditions.service_tier = serviceTier;
+        const conditions: SourcePriceFact["conditions"] = { service_tier: serviceTier };
         if (quality !== undefined) conditions.quality = quality;
         if (group === "Image generation" || group === "Video generation")
           conditions.resolution = label;
@@ -386,13 +426,17 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
             : undefined;
       if (meter === undefined || unit === undefined)
         throw new Error(`Unsupported OpenAI pricing use case: ${useCase}/${rawUnit}`);
-      rates.push(publishedRate(meter, rawPrice, unit, sourceId, `per ${rawUnit}`));
+      rates.push(
+        publishedRate(meter, rawPrice, unit, sourceId, `per ${rawUnit}`, {
+          service_tier: "standard",
+        }),
+      );
     });
   if (rates.length === 0) throw new Error("OpenAI Pricing section contained no rates");
 
   const pageText = normalizedText($("main").text());
   const longContext = pageText.match(
-    /Prompts with >([\d,]+)(K)? input tokens are priced at ([\d.]+)x input and ([\d.]+)x output/,
+    /prompts with >([\d,]+)(K)? input tokens are priced at ([\d.]+)x input and ([\d.]+)x output/i,
   );
   if (
     longContext?.[1] !== undefined &&
@@ -403,7 +447,7 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
       Number(longContext[1].replaceAll(",", "")) * (longContext[2] === "K" ? 1_000 : 1);
     const additions = rates.flatMap((rate): SourcePriceFact[] => {
       const multiplier =
-        rate.meter === "input_text"
+        rate.meter === "input_text" || rate.meter === "cache_read_text"
           ? longContext[3]
           : rate.meter === "output_text"
             ? longContext[4]
@@ -446,6 +490,393 @@ function openAiPricing($: LoadedDocument, sourceId: string, tasks: ModelTask[]):
     );
   }
   return rates;
+}
+
+type OpenAiPricingTier = "standard" | "batch" | "flex" | "fast";
+
+interface OpenAiPricingTable {
+  section: string;
+  tier?: OpenAiPricingTier;
+  headers: string[];
+  rows: string[][];
+}
+
+const openAiPricingSections = new Set([
+  "Flagship models",
+  "Realtime and audio generation models",
+  "Image generation models",
+  "Video generation models",
+  "Transcription models",
+  "Tools",
+  "Specialized models",
+  "Finetuning",
+]);
+
+const openAiPricingTiers = new Map<string, OpenAiPricingTier>([
+  ["Standard", "standard"],
+  ["Batch", "batch"],
+  ["Flex", "flex"],
+  ["Fast mode", "fast"],
+]);
+
+function markdownCells(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((cell) => normalizedText(cell));
+}
+
+function openAiPricingTables(body: string): OpenAiPricingTable[] {
+  const lines = body.split(/\r?\n/);
+  const tables: OpenAiPricingTable[] = [];
+  let section: string | undefined;
+  let tier: OpenAiPricingTier | undefined;
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    const line = normalizedText(lines[index] ?? "");
+    if (openAiPricingSections.has(line)) {
+      section = line;
+      tier = undefined;
+      continue;
+    }
+    const observedTier = openAiPricingTiers.get(line);
+    if (observedTier !== undefined) {
+      tier = observedTier;
+      continue;
+    }
+    if (!line.startsWith("|") || !normalizedText(lines[index + 1] ?? "").startsWith("|")) continue;
+    const headers = markdownCells(line);
+    const separators = markdownCells(lines[index + 1] ?? "");
+    if (
+      section === undefined ||
+      headers.length !== separators.length ||
+      !separators.every((cell) => /^:?-{3,}:?$/.test(cell))
+    )
+      continue;
+    const rows: string[][] = [];
+    index += 2;
+    while (index < lines.length && normalizedText(lines[index] ?? "").startsWith("|")) {
+      const row = markdownCells(lines[index] ?? "");
+      if (row.length !== headers.length)
+        throw new Error("OpenAI pricing table contained an irregular row");
+      rows.push(row);
+      index += 1;
+    }
+    index -= 1;
+    tables.push({
+      section,
+      ...(tier === undefined ? {} : { tier }),
+      headers,
+      rows,
+    });
+  }
+  return tables;
+}
+
+type OpenAiAmount =
+  | {
+      price: string;
+      unit: SourcePriceFact["unit"];
+      rawUnit: string;
+    }
+  | "free"
+  | undefined;
+
+function openAiAmount(value: string, defaultUnit: SourcePriceFact["unit"]): OpenAiAmount {
+  if (value === "-") return undefined;
+  if (value === "Free") return "free";
+  const match = value.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)(?: \/ (minute|1M characters))?$/);
+  if (match?.[1] === undefined) throw new Error(`Unsupported OpenAI global price: ${value}`);
+  const rawUnit = match[2] ?? (defaultUnit === "second" ? "second" : "1M tokens");
+  return {
+    price: match[1],
+    unit:
+      match[2] === "minute"
+        ? "minute"
+        : match[2] === "1M characters"
+          ? "million_characters"
+          : defaultUnit,
+    rawUnit: `per ${rawUnit}`,
+  };
+}
+
+function openAiTierConditions(tier: OpenAiPricingTier | undefined): SourcePriceFact["conditions"] {
+  return { service_tier: tier ?? "standard" };
+}
+
+function openAiModalityMeter(
+  modality: string,
+  column: "input" | "cached" | "output",
+): SourcePriceFact["meter"] | undefined {
+  if (modality === "Text")
+    return column === "input"
+      ? "input_text"
+      : column === "cached"
+        ? "cache_read_text"
+        : "output_text";
+  if (modality === "Audio")
+    return column === "input"
+      ? "input_audio"
+      : column === "cached"
+        ? "cache_read_audio"
+        : "output_audio";
+  if (modality === "Image")
+    return column === "input"
+      ? "input_image"
+      : column === "cached"
+        ? "cache_read_image"
+        : "output_image";
+}
+
+function openAiGlobalRate(
+  meter: SourcePriceFact["meter"],
+  amount: Exclude<OpenAiAmount, "free" | undefined>,
+  sourceId: string,
+  conditions: SourcePriceFact["conditions"],
+): SourcePriceFact {
+  return publishedRate(meter, amount.price, amount.unit, sourceId, amount.rawUnit, conditions);
+}
+
+function openAiTokenTableRates(
+  table: OpenAiPricingTable,
+  row: string[],
+  sourceId: string,
+): SourcePriceFact[] {
+  const hasLongContext = table.headers.some(
+    (header, index) => header.startsWith("Long context") && row[index] !== "-",
+  );
+  const explicitShortContext = (row[0] ?? "").includes("(<272K context length)");
+  return table.headers.flatMap((header, index): SourcePriceFact[] => {
+    if (index === 0) return [];
+    const match = header.match(
+      /^(?:(Short|Long) context )?(input|cached input|cache writes|output)$/,
+    );
+    if (match?.[2] === undefined) return [];
+    const amount = openAiAmount(row[index] ?? "", "million_tokens");
+    if (amount === undefined || amount === "free") return [];
+    const meter: SourcePriceFact["meter"] =
+      match[2] === "input"
+        ? "input_text"
+        : match[2] === "cached input"
+          ? "cache_read_text"
+          : match[2] === "cache writes"
+            ? "cache_write_text"
+            : "output_text";
+    const context =
+      match[1] === undefined || (!hasLongContext && !explicitShortContext)
+        ? {}
+        : match[1] === "Short"
+          ? { context_max_tokens: 272_000 }
+          : { context_min_tokens: 272_001 };
+    return [
+      openAiGlobalRate(meter, amount, sourceId, {
+        ...openAiTierConditions(table.tier),
+        ...context,
+      }),
+    ];
+  });
+}
+
+function openAiModalityTableRates(
+  table: OpenAiPricingTable,
+  row: string[],
+  tasks: ModelTask[],
+  sourceId: string,
+): SourcePriceFact[] {
+  const modality = row[table.headers.indexOf("Modality")] ?? "";
+  return table.headers.flatMap((header, index): SourcePriceFact[] => {
+    const column =
+      header === "Input"
+        ? "input"
+        : header === "Cached input"
+          ? "cached"
+          : header === "Output" || header === "Output / cost"
+            ? "output"
+            : undefined;
+    if (column === undefined) return [];
+    const amount = openAiAmount(row[index] ?? "", "million_tokens");
+    if (amount === undefined || amount === "free") return [];
+    const meter =
+      amount.unit === "minute"
+        ? tasks.includes("transcription") || tasks.includes("translation")
+          ? "input_audio"
+          : "output_audio"
+        : amount.unit === "million_characters"
+          ? "output_audio"
+          : openAiModalityMeter(modality, column);
+    if (meter === undefined)
+      throw new Error(`Unsupported OpenAI pricing modality: ${modality}/${header}`);
+    return [openAiGlobalRate(meter, amount, sourceId, openAiTierConditions(table.tier))];
+  });
+}
+
+function openAiVideoTableRates(
+  table: OpenAiPricingTable,
+  row: string[],
+  sourceId: string,
+): SourcePriceFact[] {
+  const amount = openAiAmount(row[table.headers.indexOf("Price per second")] ?? "", "second");
+  if (amount === undefined || amount === "free") return [];
+  const resolution = row[table.headers.indexOf("Size")];
+  if (resolution === undefined) throw new Error("OpenAI video pricing omitted resolution");
+  return [
+    openAiGlobalRate("video_generation", amount, sourceId, {
+      ...openAiTierConditions(table.tier),
+      resolution,
+    }),
+  ];
+}
+
+function openAiTranscriptionTableRates(
+  table: OpenAiPricingTable,
+  row: string[],
+  sourceId: string,
+): SourcePriceFact[] {
+  const columns: Array<{ header: string; meter: SourcePriceFact["meter"] }> = [
+    { header: "Input", meter: "input_audio" },
+    { header: "Output", meter: "output_audio" },
+  ];
+  const tokenRates = columns.flatMap(({ header, meter }): SourcePriceFact[] => {
+    const amount = openAiAmount(row[table.headers.indexOf(header)] ?? "", "million_tokens");
+    return amount === undefined || amount === "free"
+      ? []
+      : [openAiGlobalRate(meter, amount, sourceId, openAiTierConditions(table.tier))];
+  });
+  if (tokenRates.length > 0) return tokenRates;
+  const amount = openAiAmount(row[table.headers.indexOf("Estimated cost")] ?? "", "minute");
+  return amount === undefined || amount === "free"
+    ? []
+    : [openAiGlobalRate("input_audio", amount, sourceId, openAiTierConditions(table.tier))];
+}
+
+function openAiSpecializedTableRates(
+  table: OpenAiPricingTable,
+  row: string[],
+  sourceId: string,
+): SourcePriceFact[] {
+  const category = row[table.headers.indexOf("Category")];
+  return table.headers.flatMap((header, index): SourcePriceFact[] => {
+    const meter: SourcePriceFact["meter"] | undefined =
+      category === "Embedding" && header === "Input"
+        ? "embedding"
+        : header === "Input"
+          ? "input_text"
+          : header === "Cached input"
+            ? "cache_read_text"
+            : header === "Output"
+              ? "output_text"
+              : undefined;
+    if (meter === undefined) return [];
+    const amount = openAiAmount(row[index] ?? "", "million_tokens");
+    return amount === undefined || amount === "free"
+      ? []
+      : [openAiGlobalRate(meter, amount, sourceId, openAiTierConditions(table.tier))];
+  });
+}
+
+function openAiGlobalRates(
+  table: OpenAiPricingTable,
+  row: string[],
+  tasks: ModelTask[],
+  sourceId: string,
+): SourcePriceFact[] | undefined {
+  const headers = table.headers.join("|");
+  if (headers.startsWith("Model|Short context input|"))
+    return openAiTokenTableRates(table, row, sourceId);
+  if (
+    headers === "Model|Modality|Input|Cached input|Output / cost" ||
+    headers === "Model|Modality|Input|Cached input|Output"
+  )
+    return openAiModalityTableRates(table, row, tasks, sourceId);
+  if (headers === "Model|Size|Portrait|Landscape|Price per second")
+    return openAiVideoTableRates(table, row, sourceId);
+  if (headers === "Model|Use case|Input|Output|Estimated cost")
+    return openAiTranscriptionTableRates(table, row, sourceId);
+  if (headers === "Category|Model|Input|Cached input|Output")
+    return openAiSpecializedTableRates(table, row, sourceId);
+}
+
+function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
+  if (input.catalogModels === undefined)
+    throw new Error("OpenAI pricing requires the collected catalog");
+  const exact = new Map(input.catalogModels.map((model) => [model.model_id, model]));
+  const aliases = new Map<string, (typeof input.catalogModels)[number] | null>();
+  for (const model of input.catalogModels)
+    for (const alias of model.aliases) {
+      const current = aliases.get(alias);
+      aliases.set(
+        alias,
+        current === undefined
+          ? model
+          : current === null || current.model_id !== model.model_id
+            ? null
+            : current,
+      );
+    }
+  const rates = new Map<string, Map<string, SourcePriceFact>>();
+  for (const table of openAiPricingTables(input.body)) {
+    const modelIndex = table.headers.indexOf("Model");
+    if (modelIndex < 0 || table.section === "Finetuning" || table.section === "Tools") continue;
+    for (const row of table.rows) {
+      const rawId = (row[modelIndex] ?? "").replace(
+        / \((?:<272K context length|legacy|data sharing)\)$/,
+        "",
+      );
+      if (!modelIdSchema.safeParse(rawId).success) continue;
+      const target = exact.get(rawId) ?? aliases.get(rawId);
+      if (target === undefined || target === null) continue;
+      const candidates = openAiGlobalRates(table, row, target.tasks, input.source.id);
+      if (candidates === undefined)
+        throw new Error(`Unsupported OpenAI pricing table: ${table.headers.join("|")}`);
+      if (candidates.length === 0) continue;
+      const existing = new Map(target.price_facts.map((fact) => [sourcePriceFactKey(fact), fact]));
+      const supplemental = candidates.filter((fact) => {
+        const current = existing.get(sourcePriceFactKey(fact));
+        if (current !== undefined && !decimalsEqual(current.price, fact.price))
+          throw new Error(`OpenAI pricing sources disagree for ${target.model_id}`);
+        if (
+          target.price_facts.length > 0 &&
+          (table.tier === undefined || table.tier === "standard")
+        )
+          return false;
+        return current === undefined;
+      });
+      if (supplemental.length === 0) continue;
+      const modelRates = rates.get(target.model_id) ?? new Map<string, SourcePriceFact>();
+      for (const fact of supplemental) {
+        const key = sourcePriceFactKey(fact);
+        const current = modelRates.get(key);
+        if (current !== undefined && !decimalsEqual(current.price, fact.price))
+          throw new Error(`OpenAI pricing table conflicts for ${target.model_id}`);
+        modelRates.set(key, fact);
+      }
+      rates.set(target.model_id, modelRates);
+    }
+  }
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "openai-pricing") throw new Error("Invalid OpenAI pricing extractor");
+  const { minModels, maxModels } = extractor;
+  if (rates.size < minModels || rates.size > maxModels)
+    throw new Error("OpenAI pricing model count outside reviewed bounds");
+  return [...rates]
+    .map(([modelId, modelRates]): ProviderModel => {
+      const target = exact.get(modelId);
+      if (target === undefined) throw new Error("OpenAI pricing lost its catalog binding");
+      return {
+        ...baseModel({
+          providerId: input.provider.id,
+          id: modelId,
+          ...(target.version === undefined ? {} : { version: target.version }),
+          name: modelId,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        pricing_state: "numeric",
+        price_facts: [...modelRates.values()],
+      };
+    })
+    .sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 function openAiTokenLimit(
@@ -512,8 +943,10 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
         : observedModalities;
       const pricing = openAiPricing($, input.source.id, tasks);
       const features = openAiFeatures($);
+      const tools = openAiSupport($, "Tools");
       const pageText = normalizedText($("main").text());
       const aliases = openAiAliases($, id);
+      const computerUse = openAiSupportValue(tools, ["Computer use"]);
       return {
         ...baseModel({
           providerId: input.provider.id,
@@ -533,14 +966,24 @@ function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
           prompt_cache: pricing.some((rate) => rate.meter.startsWith("cache_"))
             ? true
             : features.prompt_cache,
-          batch:
-            endpointEvidence.endpoints.some(({ path }) => path === "v1/batch") ||
-            pricing.some((rate) => rate.conditions.service_tier === "batch")
-              ? true
-              : features.batch,
+          batch: endpointEvidence.endpoints.some(({ path }) => path === "v1/batch")
+            ? true
+            : features.batch,
           fine_tuning: endpointEvidence.endpoints.some(({ path }) => path === "v1/fine-tuning")
             ? true
             : features.fine_tuning,
+          code_execution: openAiSupportValue(tools, ["Code interpreter", "Hosted shell"]),
+          effort_control: /reasoning[._]effort supports:/i.test(pageText)
+            ? true
+            : features.effort_control,
+          computer_use:
+            computerUse !== "unknown"
+              ? computerUse
+              : /specialized model for the computer use tool|trained to understand and execute computer tasks/i.test(
+                    pageText,
+                  )
+                ? true
+                : features.computer_use,
         },
         limits: {
           context_tokens: openAiTokenLimit($, "context window"),
@@ -703,6 +1146,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseOpenAiApi(input);
     case "openai-deprecations":
       return parseOpenAiDeprecations(input);
+    case "openai-pricing":
+      return parseOpenAiPricing(input);
     case "anthropic-catalog":
       return parseAnthropicCatalog(input);
     case "anthropic-api":
@@ -723,6 +1168,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseHuggingFaceMapping(input);
     case "huggingface-router":
       return parseHuggingFaceRouter(input);
+    case "huggingface-hub":
+      return parseHuggingFaceHub(input);
     case "ollama-library":
       return parseOllamaLibrary(input);
     case "ollama-cloud":
@@ -773,6 +1220,8 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseDashscopeRecommended(input);
     case "dashscope-lifecycle":
       return parseDashscopeLifecycle(input);
+    case "dashscope-releases":
+      return parseDashscopeReleases(input);
     case "dashscope-api":
       return parseDashscopeApi(input);
     case "deepseek-catalog":

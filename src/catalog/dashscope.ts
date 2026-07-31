@@ -57,7 +57,14 @@ function exactId(value: string): string | undefined {
 
 function cellIds(cell: Cell | undefined): string[] {
   if (cell === undefined) return [];
-  return unique([...cell.parts, cell.text].flatMap((item) => exactId(item) ?? []));
+  return unique(
+    [...cell.parts, cell.text].flatMap((part) =>
+      part
+        .split(",")
+        .map((candidate) => candidate.replace(/\s*\(Snapshot\)\s*$/i, ""))
+        .flatMap((candidate) => exactId(candidate) ?? []),
+    ),
+  );
 }
 
 function equivalentIds(cell: Cell | undefined): string[] {
@@ -66,11 +73,6 @@ function equivalentIds(cell: Cell | undefined): string[] {
       .map((quote) => quote.match(/^Currently equivalent to ([a-z0-9][a-z0-9._:/-]*)$/i)?.[1])
       .flatMap((item) => (item === undefined ? [] : (exactId(item) ?? []))),
   );
-}
-
-function ids(table: Table, row: Cell[]): string[] {
-  const index = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
-  return index === undefined ? [] : cellIds(row[index]);
 }
 
 function tokenCount(raw: string | undefined): number | undefined {
@@ -187,6 +189,25 @@ function rateKey(rate: SourcePriceFact): string {
   return `${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`;
 }
 
+const statusRank: Record<ProviderModel["status"], number> = {
+  unknown: 0,
+  retired: 1,
+  deprecated: 2,
+  legacy: 3,
+  active: 4,
+};
+
+function mergedPricingState(
+  left: ProviderModel["pricing_state"],
+  right: ProviderModel["pricing_state"],
+  hasRates: boolean,
+): ProviderModel["pricing_state"] {
+  if (hasRates) return "numeric";
+  if (left === "unknown") return right;
+  if (right === "unknown" || left === right) return left;
+  throw new Error(`Conflicting DashScope pricing states: ${left} and ${right}`);
+}
+
 function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
   const pricing = new Map(left.price_facts.map((item) => [rateKey(item), item]));
   for (const item of right.price_facts) pricing.set(rateKey(item), item);
@@ -253,10 +274,10 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
         Math.max(left.limits.max_output_tokens ?? 0, right.limits.max_output_tokens ?? 0) ||
         undefined,
     },
-    status: right.status === "unknown" ? left.status : right.status,
+    status: statusRank[right.status] > statusRank[left.status] ? right.status : left.status,
     release_stage: right.release_stage === "unknown" ? left.release_stage : right.release_stage,
     replacement_model_ids: unique([...left.replacement_model_ids, ...right.replacement_model_ids]),
-    pricing_state: pricing.size === 0 ? left.pricing_state : "numeric",
+    pricing_state: mergedPricingState(left.pricing_state, right.pricing_state, pricing.size > 0),
     price_facts: [...pricing.values()],
     availability: availability.size === 0 ? undefined : [...availability.values()],
   };
@@ -283,10 +304,22 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
   if (extractor.kind !== "dashscope-catalog") throw new Error("Wrong DashScope catalog extractor");
   const models = new Map<string, ProviderModel>();
   for (const table of tables(input.body)) {
+    if (
+      !table.headings.some((heading) =>
+        /^(?:Recommended models|All models|Legacy models)$/.test(heading),
+      )
+    )
+      continue;
+    const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
+    if (idIndex === undefined) continue;
     for (const row of table.rows) {
+      if (row.every((cell) => cell === row[0])) continue;
       const rawType = value(table, row, /^(?:Type|Mode)(?:$| \/)/i);
       const api = value(table, row, /^API(?:$| \/)/i);
-      for (const id of ids(table, row)) {
+      const rowIds = cellIds(row[idIndex]);
+      if (rowIds.length === 0)
+        throw new Error(`DashScope ${extractor.category} model cell changed shape`);
+      for (const id of rowIds) {
         const context = tokenCount(value(table, row, /^Context(?:$| \/)/i));
         const output = tokenCount(value(table, row, /^Max output(?:$| \/)/i));
         const dimensionLimits = dimensions(value(table, row, /^Dimension(?:$| \/)/i));
@@ -477,8 +510,18 @@ function meter(
   headings: string[],
   tasks: ModelTask[],
   rateUnit: SourcePriceFact["unit"],
+  conditions: SourcePriceFact["conditions"],
 ): SourcePriceFact["meter"] {
   const evidence = `${header} ${headings.join(" ")}`.toLowerCase();
+  const direction = /output/.test(header.toLowerCase()) ? "output" : "input";
+  const modality = conditions.modality;
+  if (tasks.includes("embeddings")) return "embedding";
+  if (tasks.includes("reranking") || /\b(?:input|output)\b/i.test(header)) {
+    if (modality === "text") return direction === "output" ? "output_text" : "input_text";
+    if (modality === "audio") return direction === "output" ? "output_audio" : "input_audio";
+    if (modality === "image") return direction === "output" ? "output_image" : "input_image";
+    if (modality === "video") return direction === "output" ? "output_video" : "input_video";
+  }
   if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
   if (tasks.includes("video_generation")) return "video_generation";
   if (tasks.includes("audio_generation")) return "output_audio";
@@ -493,16 +536,21 @@ function meter(
   if (/image/.test(header.toLowerCase())) return "input_image";
   if (/video/.test(header.toLowerCase())) return "input_video";
   if (/voice clone/.test(evidence)) return "tool_call";
-  return tasks.includes("embeddings") ? "embedding" : "input_text";
+  return "input_text";
+}
+
+function dashscopeRegion(raw: string): string | undefined {
+  if (
+    !/^(?:Singapore|China \(Beijing\)|Hong Kong \(China\)|China \(Hong Kong\)|Germany \(Frankfurt\)|Japan \(Tokyo\)|US \(Virginia\))$/.test(
+      raw,
+    )
+  )
+    return undefined;
+  return raw === "China (Hong Kong)" ? "Hong Kong (China)" : raw;
 }
 
 function priceConditions(table: Table, row: Cell[], header: string): SourcePriceFact["conditions"] {
-  const observedRegion = table.headings.find((heading) =>
-    /^(?:Singapore|China \(Beijing\)|Hong Kong \(China\)|China \(Hong Kong\)|Germany \(Frankfurt\)|Japan \(Tokyo\)|US \(Virginia\))$/.test(
-      heading,
-    ),
-  );
-  const region = observedRegion === "China (Hong Kong)" ? "Hong Kong (China)" : observedRegion;
+  const region = table.headings.map(dashscopeRegion).find((item) => item !== undefined);
   const deployment = value(table, row, /^Deployment (?:scope|region)|^Service deployment scope/i);
   const tier = value(table, row, /^Input token(?:s| range) per request/i);
   const range = tier
@@ -531,13 +579,25 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
 interface PriceSegment {
   price: string;
   label?: string;
+  promotion?: boolean;
+  accountEligibility?: string;
 }
 
 function priceSegments(cell: Cell): PriceSegment[] {
   const parts = cell.parts.length === 0 ? [cell.text] : cell.parts;
-  const pricedParts = parts.filter((part) => /\$[\d,.]+|^Free$/i.test(part.trim()));
-  return pricedParts.flatMap((raw) => {
-    if (/^Free$/i.test(raw.trim())) return [{ price: "0" }];
+  const pricedParts = parts.filter((part) =>
+    /\$[\d,.]+|^(?:Free|Free trial|Limited-time free)$/i.test(part.trim()),
+  );
+  return pricedParts.flatMap((raw): PriceSegment[] => {
+    const free = raw.trim().match(/^(Free|Free trial|Limited-time free)$/i)?.[1];
+    if (free !== undefined)
+      return [
+        {
+          price: "0",
+          promotion: !/^Free$/i.test(free),
+          ...(/^Free trial$/i.test(free) ? { accountEligibility: "free_trial" } : {}),
+        },
+      ];
     const matches = [...raw.matchAll(/\$([\d,.]+)/g)];
     return matches.flatMap((match, index) => {
       const price = match[1] === undefined ? undefined : decimal(match[1]);
@@ -559,19 +619,28 @@ function segmentConditions(label: string | undefined): SourcePriceFact["conditio
   if (label === undefined) return {};
   const resolution = label.match(/\b\d{3,4}P\b/i)?.[0];
   const promptExtend = label.match(/prompt_extend=(true|false)/i)?.[0];
-  const modality = label.match(/(?:Image\/video|Text|Audio|Image|Video)\s*:?[\s]*$/i)?.[0];
+  const modality = label.match(
+    /(?:Image\/video|Text|Audio|Image|Video)(?:\s+input)?\s*:?[\s]*$/i,
+  )?.[0];
   const normalized = text(label.replace(/^(?:List price|Output video):\s*/i, "")).replace(
     /[:：]+$/,
     "",
   );
   const operation =
-    normalized === "" || /^(?:Image\/video|Text|Audio|Image|Video)$/i.test(normalized)
+    normalized === "" || /^(?:Image\/video|Text|Audio|Image|Video)(?:\s+input)?$/i.test(normalized)
       ? undefined
       : normalized;
   return {
     ...(resolution === undefined ? {} : { resolution }),
     ...(promptExtend === undefined ? {} : { operation: promptExtend }),
-    ...(modality === undefined ? {} : { modality: modality.replace(/[:\s]+$/g, "").toLowerCase() }),
+    ...(modality === undefined
+      ? {}
+      : {
+          modality: modality
+            .replace(/\s+input\s*:?\s*$/i, "")
+            .replace(/[:\s]+$/g, "")
+            .toLowerCase(),
+        }),
     ...(resolution === undefined && promptExtend === undefined && operation !== undefined
       ? { operation: operation.toLowerCase().replace(/\W+/g, "_") }
       : {}),
@@ -602,52 +671,66 @@ function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string):
     if (rateUnit === undefined) continue;
     const baseConditions = priceConditions(table, row, effectiveHeader);
     for (const segment of priceSegments(cell)) {
-      const base: SourcePriceFact = {
-        meter: meter(effectiveHeader, table.headings, tasks, rateUnit),
-        price: normalizedPrice(segment.price, rateUnit),
-        currency: "USD",
-        unit: rateUnit,
-        conditions: { ...baseConditions, ...segmentConditions(segment.label) },
-        source_ref: sourceId,
-        derived: rateUnit === "million_characters",
-        derivation:
-          rateUnit === "million_characters"
-            ? "source price per 10,000 characters × 100"
-            : undefined,
-        raw_price: segment.price,
-        raw_unit: header,
+      const conditions = {
+        ...baseConditions,
+        ...segmentConditions(segment.label),
+        ...(segment.promotion === true ? { promotion: true } : {}),
+        ...(segment.accountEligibility === undefined
+          ? {}
+          : { account_eligibility: segment.accountEligibility }),
       };
-      result.push(base);
-      for (const match of raw.matchAll(/(?:(night|daytime)\s+)?(\d+)% off/gi)) {
-        const percent = Number(match[2]);
-        if (!Number.isInteger(percent) || percent < 0 || percent > 100) continue;
-        const remainder = 100 - percent;
-        const factor =
-          remainder === 100
-            ? "1"
-            : remainder === 0
-              ? "0"
-              : `0.${String(remainder).padStart(2, "0")}`;
-        result.push({
-          ...base,
-          price: multiplyDecimal(base.price, factor),
-          conditions: {
-            ...base.conditions,
-            service_tier: match[1]?.toLowerCase() ?? `limited_time_${percent}_percent_off`,
-            promotion: true,
-          },
-          derived: true,
-          derivation: `source list price × ${factor}`,
-        });
+      const meters =
+        tasks.includes("video_generation") && /input and output/i.test(effectiveHeader)
+          ? (["input_video", "video_generation"] as const)
+          : [meter(effectiveHeader, table.headings, tasks, rateUnit, conditions)];
+      for (const meterName of meters) {
+        const base: SourcePriceFact = {
+          meter: meterName,
+          price: normalizedPrice(segment.price, rateUnit),
+          currency: "USD",
+          unit: rateUnit,
+          conditions,
+          source_ref: sourceId,
+          derived: rateUnit === "million_characters",
+          derivation:
+            rateUnit === "million_characters"
+              ? "source price per 10,000 characters × 100"
+              : undefined,
+          raw_price: segment.price,
+          raw_unit: header,
+        };
+        result.push(base);
+        for (const match of raw.matchAll(/(?:(night|daytime)\s+)?(\d+)% off/gi)) {
+          const percent = Number(match[2]);
+          if (!Number.isInteger(percent) || percent < 0 || percent > 100) continue;
+          const remainder = 100 - percent;
+          const factor =
+            remainder === 100
+              ? "1"
+              : remainder === 0
+                ? "0"
+                : `0.${String(remainder).padStart(2, "0")}`;
+          result.push({
+            ...base,
+            price: multiplyDecimal(base.price, factor),
+            conditions: {
+              ...base.conditions,
+              service_tier: match[1]?.toLowerCase() ?? `limited_time_${percent}_percent_off`,
+              promotion: true,
+            },
+            derived: true,
+            derivation: `source list price × ${factor}`,
+          });
+        }
+        if (/50%\s+batch inference discount/i.test(idCell?.text ?? ""))
+          result.push({
+            ...base,
+            price: multiplyDecimal(base.price, "0.5"),
+            conditions: { ...base.conditions, service_tier: "batch" },
+            derived: true,
+            derivation: "source real-time price × 0.5",
+          });
       }
-      if (/50%\s+batch inference discount/i.test(idCell?.text ?? ""))
-        result.push({
-          ...base,
-          price: multiplyDecimal(base.price, "0.5"),
-          conditions: { ...base.conditions, service_tier: "batch" },
-          derived: true,
-          derivation: "source real-time price × 0.5",
-        });
     }
   }
   return result;
@@ -655,16 +738,18 @@ function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string):
 
 function priceOperations(id: string, headings: string[]): ModelTask[] {
   const evidence = `${id} ${headings.join(" ")}`.toLowerCase();
+  const section = headings.find((heading) => dashscopeRegion(heading) === undefined);
   const result: ModelTask[] = [];
   if (/embedding/.test(evidence)) result.push("embeddings");
   if (/rerank/.test(evidence)) result.push("reranking");
-  if (/image generation|image processing|text-to-image/.test(evidence))
+  if (/image generation|image processing|text-to-image|image translation/.test(evidence))
     result.push("image_generation");
   if (/video generation|video processing/.test(evidence)) result.push("video_generation");
   if (/music generation/.test(evidence)) result.push("audio_generation");
   if (/speech synthesis|tts|cosyvoice|voice (?:clone|design|enrollment)/.test(evidence))
     result.push("speech_synthesis");
-  if (/livetranslate|speech translation/.test(evidence)) result.push("translation");
+  if (/livetranslate/.test(evidence) || /translation/i.test(section ?? ""))
+    result.push("translation");
   if (/speech recognition|(?:^|[ -])asr|paraformer/.test(evidence)) result.push("transcription");
   if (
     /speech[- ]to[- ]speech|(?:audio|omni)[\s\S]*realtime|realtime[\s\S]*(?:audio|omni)/.test(
@@ -681,10 +766,28 @@ function priceOperations(id: string, headings: string[]): ModelTask[] {
 function priceModalities(
   tasks: ModelTask[],
   modelRates: SourcePriceFact[],
+  headings: string[],
 ): ProviderModel["modalities"] {
   const input: Modality[] = [];
   const output: Modality[] = [];
   for (const item of modelRates) {
+    if (
+      item.meter === "embedding" ||
+      item.meter === "input_text" ||
+      item.meter === "input_image" ||
+      item.meter === "input_audio" ||
+      item.meter === "input_video"
+    ) {
+      for (const modality of item.conditions.modality?.split("/") ?? []) {
+        if (
+          modality === "text" ||
+          modality === "image" ||
+          modality === "audio" ||
+          modality === "video"
+        )
+          input.push(modality);
+      }
+    }
     if (item.meter === "input_text" || item.meter === "embedding") input.push("text");
     if (item.meter === "input_image") input.push("image");
     if (item.meter === "input_audio") input.push("audio");
@@ -694,6 +797,8 @@ function priceModalities(
     if (item.meter === "output_audio") output.push("audio");
     if (item.meter === "output_video" || item.meter === "video_generation") output.push("video");
   }
+  if (tasks.includes("embeddings") && /multimodal embedding/i.test(headings.join(" ")))
+    input.push("text", "image", "video");
   if (tasks.includes("embeddings")) output.push("embedding");
   if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
     output.push("audio");
@@ -717,13 +822,8 @@ function cacheModels(body: string): Map<string, Set<string>> {
       .find("h2")
       .filter((_index, element) => text($(element).text()) !== mode)
       .each((_index, heading) => {
-        const region = text($(heading).text());
-        if (
-          !/^(?:Singapore|China \(Beijing\)|Germany \(Frankfurt\)|Hong Kong \(China\)|China \(Hong Kong\)|Japan \(Tokyo\)|US \(Virginia\))$/.test(
-            region,
-          )
-        )
-          return;
+        const region = dashscopeRegion(text($(heading).text()));
+        if (region === undefined) return;
         $(heading)
           .parent("section")
           .find("p")
@@ -733,8 +833,7 @@ function cacheModels(body: string): Map<string, Set<string>> {
             for (const candidate of suffix.split(",")) {
               const id = exactId(candidate);
               if (id === undefined) continue;
-              const canonicalRegion = region === "China (Hong Kong)" ? "Hong Kong (China)" : region;
-              const key = `${mode}\0${canonicalRegion}`;
+              const key = `${mode}\0${region}`;
               const values = result.get(key) ?? new Set<string>();
               values.add(id);
               result.set(key, values);
@@ -781,30 +880,38 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     if (idIndex === undefined) continue;
     for (const row of table.rows) {
       const idCell = row[idIndex];
-      const id = cellIds(idCell)[0];
-      if (id === undefined) continue;
-      const tasks = priceOperations(id, table.headings);
-      const modelRates = rates(table, row, tasks, input.source.id);
-      const model = baseModel({
-        providerId: input.provider.id,
-        id,
-        name: id,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      });
-      const region = modelRates[0]?.conditions.region;
-      add(models, {
-        ...model,
-        aliases: equivalentIds(idCell),
-        tasks,
-        modalities: priceModalities(tasks, modelRates),
-        status: "active",
-        release_stage: /preview/i.test(id) ? "preview" : "unknown",
-        pricing_state: modelRates.length === 0 ? "unknown" : "numeric",
-        price_facts: modelRates,
-        availability: region === undefined ? undefined : [{ region, deployment_type: "model_api" }],
-        scope: "regional_catalog",
-      });
+      const rowIds = cellIds(idCell);
+      if (rowIds.length === 0) throw new Error("DashScope pricing model cell changed shape");
+      const discontinued = row.some((cell) => /\bDiscontinued\b/i.test(cell.text));
+      for (const id of rowIds) {
+        const tasks = priceOperations(id, table.headings);
+        const modelRates = rates(table, row, tasks, input.source.id);
+        if (discontinued && modelRates.length > 0)
+          throw new Error(`DashScope pricing contradicts discontinued model ${id}`);
+        if (!discontinued && modelRates.length === 0)
+          throw new Error(`DashScope pricing omitted a supported price or disposition for ${id}`);
+        const model = baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        });
+        const region = modelRates[0]?.conditions.region;
+        add(models, {
+          ...model,
+          aliases: equivalentIds(idCell),
+          tasks,
+          modalities: priceModalities(tasks, modelRates, table.headings),
+          status: discontinued ? "retired" : "active",
+          release_stage: /preview/i.test(id) ? "preview" : "unknown",
+          pricing_state: discontinued ? "not_applicable" : "numeric",
+          price_facts: modelRates,
+          availability:
+            region === undefined ? undefined : [{ region, deployment_type: "model_api" }],
+          scope: "regional_catalog",
+        });
+      }
     }
   }
   for (const [key, idsForRegion] of cache) {
@@ -900,7 +1007,9 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
     for (const row of table.rows) {
       const category = value(table, row, /^Category$/i) ?? "";
       const retiredAt = modelDate(value(table, row, /^Deprecation time$/i));
-      for (const id of cellIds(row[modelColumn])) {
+      const rowIds = cellIds(row[modelColumn]);
+      if (rowIds.length === 0) throw new Error("DashScope lifecycle model cell changed shape");
+      for (const id of rowIds) {
         const model = baseModel({
           providerId: input.provider.id,
           id,
@@ -925,6 +1034,44 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
     }
   }
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope lifecycle");
+}
+
+export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "dashscope-releases")
+    throw new Error("Wrong DashScope releases extractor");
+  const dates = new Map<string, string>();
+  for (const table of tables(input.body)) {
+    const timeColumn = column(table.headers, /^Time$/i);
+    const modelColumn = column(table.headers, /^Model$/i);
+    if (timeColumn === undefined || modelColumn === undefined) continue;
+    for (const row of table.rows) {
+      const parsedDate = z.iso.date().safeParse(row[timeColumn]?.text);
+      if (!parsedDate.success) throw new Error("DashScope release date changed shape");
+      const rowIds = cellIds(row[modelColumn]);
+      if (rowIds.length === 0) throw new Error("DashScope release model cell changed shape");
+      for (const id of rowIds) {
+        const current = dates.get(id);
+        if (current === undefined || parsedDate.data < current) dates.set(id, parsedDate.data);
+      }
+    }
+  }
+  const models = new Map<string, ProviderModel>();
+  for (const [id, releaseDate] of dates) {
+    const model = baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    });
+    models.set(id, {
+      ...model,
+      release_date: releaseDate,
+      scope: "regional_catalog",
+    });
+  }
+  return bounded(models, extractor.minModels, extractor.maxModels, "DashScope releases");
 }
 
 export function parseDashscopeApi(input: ParseInput): ProviderModel[] {

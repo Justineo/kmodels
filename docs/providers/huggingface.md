@@ -4,8 +4,13 @@ Status: current
 
 ## Sources and identity
 
-- Global rows come only from Hugging Face-operated public listings: OpenAI-compatible router models and concrete `live` `hf-inference` mappings.
+- Global rows come only from Hugging Face-operated public listings: OpenAI-compatible router models
+  and concrete `live` `hf-inference` mappings. Each listing is authoritative for current presence
+  within that reviewed scope; a successful omission removes only that listing's provenance.
 - Both use the exact `namespace/repository` ID. Do not import third-party partner mappings, all Hub repositories, provider-internal IDs, private/staging rows, or router rows without a live backend.
+- A paginated Hub query filtered to `hf-inference` overlays the exact repository artifact
+  `lastModified` date onto matching current rows. It cannot create presence, and repository creation
+  or router `created` timestamps do not become model release dates.
 - Parameterized tag filters are dynamic routing contracts, not model rows. Validate the reviewed LoRA contract without flattening it.
 - Exclude credential-like identifiers. Mapping/router responses are not snapshotted; malformed data or count drift rejects the source.
 - Do not request an HF token for global collection; authenticated inventory would expose private/account data without improving presence.
@@ -14,11 +19,15 @@ Status: current
 
 - Preserve each exact live mapping's provider model ID, raw task, and state in `routes`.
 - Union reviewed task registrations. Unknown tasks remain raw route evidence; an empty task list stays unknown.
-- Router rows carry exact `/v1/chat/completions` evidence. Only live backends contribute presence, route-conditioned pricing, maximum advertised context, and conservative capability aggregates.
+- Router rows with a live backend are active and carry exact `/v1/chat/completions` and streaming
+  evidence. Only live backends contribute route-conditioned pricing, maximum advertised context,
+  and capability aggregates.
 - Validate documented error routes but publish no facts from them.
 - An explicitly free route cannot also have a nonzero price. Keep every backend rate as a separate route condition.
+- `hf-inference` billing depends on request compute time and the underlying hardware rate. Without an
+  exact public model-to-hardware execution binding, do not invent a representative numeric price.
 - The router publishes no provider model ID; never invent one or reconstruct removed partner joins.
-- Router/repository timestamps and volatile latency/throughput are not stable model facts.
+- Volatile latency and throughput probes are not stable model facts.
 
 ## Kong AI Gateway
 

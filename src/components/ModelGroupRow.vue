@@ -177,19 +177,25 @@ function filterStatus(): void {
       <ModelPriceCell class="output-col" :price="sharedPricing?.output" />
     </template>
     <td v-else-if="sharedPricing === undefined" class="price-status-cell" colspan="3">
-      <span class="group-varies">Varies</span>
+      <span class="price-status-band">
+        <span class="group-varies">Varies</span>
+      </span>
     </td>
     <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
-      <UiTooltip
-        class="table-status-trigger"
-        tabindex="0"
-        :content="pricingStatus.description"
-        :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
-      >
-        {{ pricingStatus.label }}
-      </UiTooltip>
+      <span class="price-status-band">
+        <UiTooltip
+          class="table-status-trigger"
+          tabindex="0"
+          :content="pricingStatus.description"
+          :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
+        >
+          {{ pricingStatus.label }}
+        </UiTooltip>
+      </span>
     </td>
-    <td v-else class="price-status-cell" colspan="3">—</td>
+    <td v-else class="price-status-cell" colspan="3">
+      <span class="price-status-band">—</span>
+    </td>
     <td class="released-col numeric">{{ releasedLabel }}</td>
     <td class="disclosure-col">
       <button

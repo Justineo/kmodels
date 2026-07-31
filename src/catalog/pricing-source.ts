@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { standardPriceMeters } from "./pricing-vocabulary.ts";
+import { rawPriceFactSchema, rawPricingReasonSchema } from "./pricing-schema.ts";
+import { rawPricingImpacts, standardPriceMeters } from "./pricing-vocabulary.ts";
 import { providerModelSchema, type ProviderModel } from "./schema.ts";
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
@@ -22,6 +23,7 @@ const sourcePriceConditionsInputSchema = z.object({
   quality: z.string().optional(),
   style: z.string().optional(),
   billing_period: z.string().optional(),
+  account_eligibility: z.string().optional(),
   audio: z.boolean().optional(),
   voice_control: z.boolean().optional(),
   video_input: z.boolean().optional(),
@@ -84,8 +86,18 @@ export const sourcePriceFactSchema = z
       });
   });
 
+export const sourceRawPricingFactSchema = z.strictObject({
+  term_key: z.string().min(1),
+  impact: z.enum(rawPricingImpacts),
+  reason: rawPricingReasonSchema,
+  conditions: sourcePriceConditionsSchema,
+  source_ref: z.string().min(1),
+  raw: rawPriceFactSchema,
+});
+
 export const parsedPricingStateSchema = z.enum([
   "numeric",
+  "free",
   "not_published",
   "not_applicable",
   "custom_quote",
@@ -96,16 +108,27 @@ export const parsedPricingModelSchema = providerModelSchema
   .extend({
     pricing_state: parsedPricingStateSchema,
     price_facts: z.array(sourcePriceFactSchema),
+    raw_price_facts: z.array(sourceRawPricingFactSchema),
   })
   .strict();
 
 export type SourcePriceFact = z.infer<typeof sourcePriceFactSchema>;
+export type SourceRawPricingFact = z.infer<typeof sourceRawPricingFactSchema>;
 export type ParsedPricingState = z.infer<typeof parsedPricingStateSchema>;
 export type ParsedPricingModel = z.infer<typeof parsedPricingModelSchema>;
 export type ParsedProviderModel = ProviderModel & {
   pricing_state: ParsedPricingState;
   price_facts: SourcePriceFact[];
+  raw_price_facts: SourceRawPricingFact[];
 };
+
+export function sourcePriceFactKey(fact: SourcePriceFact): string {
+  return `${fact.meter}\0${fact.currency}\0${fact.unit}\0${JSON.stringify(fact.conditions)}`;
+}
+
+export function sourceRawPricingFactKey(fact: SourceRawPricingFact): string {
+  return `${fact.term_key}\0${JSON.stringify(fact.conditions)}\0${JSON.stringify(fact.raw)}`;
+}
 
 function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {
   const { derivation, raw_price, raw_unit, raw_validity, ...required } = fact;
@@ -126,10 +149,16 @@ export function parsedPricingModel(model: ParsedPricingModel): ParsedPricingMode
     uid: model.uid,
     pricing_state: model.pricing_state,
     price_facts: model.price_facts.map(parsedPriceFact),
+    raw_price_facts: model.raw_price_facts.map((fact) => sourceRawPricingFactSchema.parse(fact)),
   });
 }
 
 export function publishedModel(model: ParsedProviderModel): ProviderModel {
-  const { pricing_state: _pricingState, price_facts: _priceFacts, ...published } = model;
+  const {
+    pricing_state: _pricingState,
+    price_facts: _priceFacts,
+    raw_price_facts: _rawPriceFacts,
+    ...published
+  } = model;
   return providerModelSchema.parse(published);
 }

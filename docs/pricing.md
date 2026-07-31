@@ -52,8 +52,8 @@ replay source records its content hash and extractor version. Provider snapshot
 metadata comes from the accepted canonical pair rather than being duplicated.
 When one source describes the same exact model identity in several
 operation-specific records, compilation coalesces those records and preserves
-the union of distinct price facts; conflicting non-unknown pricing states abort
-capture.
+the union of distinct normalized rate facts and bounded source-native raw
+facts; conflicting non-unknown pricing states abort capture.
 The input stores no response bodies, descriptions, credentials,
 authenticated-source facts, or private identifiers. A provider whose complete
 pricing input cannot safely be persisted has no replay entry, so its accepted
@@ -420,6 +420,13 @@ public commercial fields and are bounded before assembly. Private account
 state, negotiated prices, credentials, and user-controlled identifiers are
 discarded or trigger quarantine.
 
+The parsed-source boundary accepts both normalized source rate facts and
+source-native raw facts. A raw fact must name a stable logical term, commercial
+impact, reviewed fallback reason, applicability conditions, provenance, and a
+closed raw commercial fragment. This lets deterministic provider parsers retain
+published formulas or shared allowances that cannot safely become a numeric
+model-local rate; it is not permission to persist response bodies.
+
 The canonical API retains audit evidence. UI projections deliberately remove:
 
 - source and observation references;
@@ -521,7 +528,8 @@ all three price columns and exposes its explanation through the shared tooltip:
 - `Free`, `Quote`, `Unpublished`, `Incomplete`, or `Details` for one
   non-representative base offer;
 - `No base offer` when pricing detail exists but no base offer applies;
-- `N/A`: an exact `not_applicable` disposition exists;
+- `No offer`: an exact `not_applicable` disposition establishes that no public
+  hosted pricing offer applies;
 - `Unknown`: no reliable public book or disposition exists.
 
 This is a model-level summary, not an input-price badge or an action request.

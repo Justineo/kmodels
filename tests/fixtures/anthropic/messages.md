@@ -21,3 +21,7 @@
     - `"claude-opus-4-7"`
 
 - `max_tokens: number`
+
+- `stream: optional boolean`
+
+  Whether to incrementally stream the response using server-sent events.

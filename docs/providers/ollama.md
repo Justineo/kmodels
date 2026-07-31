@@ -15,7 +15,9 @@ Status: current
 - Library and Cloud lifecycle are separate. A current Library family remains globally active even if its Cloud channel retires.
 - Publish Cloud lifecycle only for an exact ID without current Library evidence. A channel-scoped lifecycle resource is required before exposing suppressed Cloud retirement history completely.
 - Sort the unordered Cloud list and remove only the request-specific retired-response UUID before hashing. Retain every fact-bearing field in memory only.
-- Library weights use `not_applicable` pricing. Direct Cloud rows use `not_published` because subscriptions/usage levels do not provide a stable per-model monetary rate.
+- Library-only weights use `not_applicable` pricing. A Library family carrying the official
+  Cloud badge and every direct Cloud row use `not_published`: the badge establishes a hosted
+  offer, while subscriptions and usage levels do not publish a stable per-model monetary rate.
 - Explicit Library/API update fields become `updated_date`, not release.
 
 ## Kong AI Gateway

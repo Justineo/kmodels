@@ -7,7 +7,7 @@ import {
 
 const order = new Map(deliveryModeSchema.options.map((mode, index) => [mode, index]));
 
-function evidenceKey(evidence: DeliveryModeEvidence): string {
+export function deliveryModeEvidenceKey(evidence: DeliveryModeEvidence): string {
   return [
     evidence.mode,
     evidence.source_ref,
@@ -30,7 +30,7 @@ function endpointModes(name: string, path: string): DeliveryMode[] {
 export function normalizeDeliveryModes<T extends ProviderModel>(model: T): T & ProviderModel {
   const modes = new Set(model.delivery_modes ?? []);
   const evidence = new Map(
-    (model.delivery_mode_evidence ?? []).map((item) => [evidenceKey(item), item]),
+    (model.delivery_mode_evidence ?? []).map((item) => [deliveryModeEvidenceKey(item), item]),
   );
   if (model.capabilities.streaming === true) modes.add("streaming");
   if (model.capabilities.batch === true) modes.add("batch");
@@ -49,7 +49,7 @@ export function normalizeDeliveryModes<T extends ProviderModel>(model: T): T & P
       raw_value: model.raw_type,
       kind: "provider_type",
     };
-    evidence.set(evidenceKey(item), item);
+    evidence.set(deliveryModeEvidenceKey(item), item);
   }
 
   for (const endpoint of model.api_endpoints ?? []) {
@@ -63,7 +63,7 @@ export function normalizeDeliveryModes<T extends ProviderModel>(model: T): T & P
         raw_value: endpoint.name,
         kind: "endpoint",
       };
-      evidence.set(evidenceKey(item), item);
+      evidence.set(deliveryModeEvidenceKey(item), item);
     }
   }
 
@@ -79,7 +79,7 @@ export function normalizeDeliveryModes<T extends ProviderModel>(model: T): T & P
         : [...evidence.values()].sort(
             (left, right) =>
               (order.get(left.mode) ?? 0) - (order.get(right.mode) ?? 0) ||
-              evidenceKey(left).localeCompare(evidenceKey(right)),
+              deliveryModeEvidenceKey(left).localeCompare(deliveryModeEvidenceKey(right)),
           ),
   };
 }

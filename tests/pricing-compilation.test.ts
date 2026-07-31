@@ -103,6 +103,7 @@ function parsed(price: string): ParsedPricingModel {
         derived: false,
       },
     ],
+    raw_price_facts: [],
   };
 }
 
@@ -313,6 +314,7 @@ describe("local canonical pricing compilation", () => {
         ...fact,
         raw_price: undefined,
       })),
+      raw_price_facts: [],
     };
     const captured = capturePricingReplaySources(
       [{ source: sourceManifest, models: [model] }],
@@ -344,6 +346,7 @@ describe("local canonical pricing compilation", () => {
       ...published(),
       pricing_state: "numeric",
       price_facts: parsed("1").price_facts,
+      raw_price_facts: [],
     };
     const alternateFact = parsed("2").price_facts[0];
     if (alternateFact === undefined) throw new Error("Missing alternate pricing fact");
@@ -371,6 +374,7 @@ describe("local canonical pricing compilation", () => {
       ...published(),
       pricing_state: "numeric",
       price_facts: parsed("1").price_facts,
+      raw_price_facts: [],
     };
 
     expect(() =>

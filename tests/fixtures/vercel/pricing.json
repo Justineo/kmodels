@@ -13,6 +13,7 @@
       "tags": ["reasoning", "tool-use", "implicit-caching", "websocket-realtime"],
       "modalities": { "input": ["text", "image"], "output": ["text"] },
       "supported_parameters": ["tools", "reasoning"],
+      "supported_specifications": ["v2", "v3", "v4"],
       "reasoning_options": [{ "type": "effort", "values": ["low", "high"] }],
       "pricing": {
         "input": "0.00000012",
@@ -48,6 +49,7 @@
       "max_tokens": 8192,
       "type": "embedding",
       "modalities": { "input": ["text"], "output": ["text"] },
+      "supported_specifications": ["v2", "v3", "v4"],
       "pricing": { "input": "0.00000002" }
     },
     {
@@ -61,6 +63,8 @@
       "type": "image",
       "tags": ["image-generation"],
       "modalities": { "input": ["text"], "output": ["image"] },
+      "supported_specifications": ["v2", "v3", "v4"],
+      "max_tokens": 67300,
       "pricing": {
         "image": "0.04",
         "image_dimension_quality_pricing": [
@@ -80,6 +84,21 @@
       "type": "video",
       "tags": ["video-generation"],
       "modalities": { "input": ["text", "image"], "output": ["video"] },
+      "supported_specifications": ["v2", "v3", "v4"],
+      "video_capabilities": {
+        "supported_operations": ["image-to-video", "reference-to-video"],
+        "supported_resolutions": ["1080p"],
+        "supported_aspect_ratios": ["16:9"],
+        "supported_durations_seconds": [5],
+        "generate_audio": true,
+        "supported_fps": [24],
+        "input_limits": {
+          "text": { "max_chars": 1500 },
+          "image": { "max_count": 1 },
+          "video": { "max_count": 1 },
+          "audio": { "max_duration_seconds": 30 }
+        }
+      },
       "pricing": {
         "video_duration_pricing": [
           {
@@ -102,6 +121,7 @@
       "description": "A token-priced video model.",
       "type": "video",
       "modalities": { "input": ["text", "video"], "output": ["video"] },
+      "supported_specifications": ["v2", "v3", "v4"],
       "pricing": {
         "video_token_pricing": {
           "no_video_input": { "cost_per_million_tokens": "7" },
@@ -120,6 +140,7 @@
       "description": "A speech model.",
       "type": "speech",
       "modalities": { "input": ["text"], "output": ["audio"] },
+      "supported_specifications": ["v2", "v3", "v4"],
       "pricing": {
         "input": "0.000015",
         "speech_input_character_cost": "0.000015"
@@ -136,6 +157,7 @@
       "type": "transcription",
       "tags": ["websocket-transcription"],
       "modalities": { "input": ["audio"], "output": ["text"] },
+      "supported_specifications": ["v2", "v3", "v4"],
       "deprecated_at": 1751328000000,
       "pricing": {
         "input": "0.0000000001",
@@ -152,6 +174,7 @@
       "description": "A token-priced transcription model.",
       "type": "transcription",
       "modalities": { "input": ["audio"], "output": ["text"] },
+      "supported_specifications": ["v2", "v3", "v4"],
       "pricing": {
         "input": "0.00000125",
         "output": "0.000005",
@@ -168,6 +191,8 @@
       "description": "A realtime audio model.",
       "type": "realtime",
       "modalities": { "input": ["text", "audio"], "output": ["text", "audio"] },
+      "supported_parameters": ["max_tokens", "stop"],
+      "supported_specifications": ["v2", "v3", "v4"],
       "pricing": {
         "input": "0.000004",
         "output": "0.000016",
@@ -187,6 +212,9 @@
       "description": "A region- and service-tier-priced model.",
       "type": "language",
       "modalities": { "input": ["text"], "output": ["text"] },
+      "supported_parameters": ["max_tokens", "stop"],
+      "supported_specifications": ["v2", "v3", "v4"],
+      "regions": ["eu", "us"],
       "pricing": {
         "input": "0.000001",
         "output": "0.000005",

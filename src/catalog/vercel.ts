@@ -100,53 +100,121 @@ const pricingSchema = tokenPriceSchema
   })
   .strict();
 
-const reasoningOptionSchema = z.object({
-  type: z.enum(["toggle", "effort", "budget_tokens"]),
-  values: z.array(z.string().min(1)).optional(),
-  min: z.number().int().nonnegative().optional(),
-  max: z.number().int().nonnegative().optional(),
-});
+const reasoningOptionSchema = z
+  .object({
+    type: z.enum(["toggle", "effort", "budget_tokens"]),
+    values: z.array(z.string().min(1)).optional(),
+    min: z.number().int().nonnegative().optional(),
+    max: z.number().int().nonnegative().optional(),
+  })
+  .strict();
 
-const itemSchema = z.object({
-  id: modelIdSchema.refine((value) => value.split("/").length === 2),
-  object: z.literal("model"),
-  created: z.number().int().nonnegative(),
-  released: z.number().int().nonnegative(),
-  owned_by: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string(),
-  context_window: z.number().int().nonnegative().optional(),
-  max_tokens: z.number().int().nonnegative().optional(),
-  type: z.enum([
-    "language",
-    "embedding",
-    "image",
-    "video",
-    "realtime",
-    "reranking",
-    "speech",
-    "transcription",
-  ]),
-  tags: z.array(z.string().min(1)).optional(),
-  modalities: z.object({
-    input: z.array(modalitySchema),
-    output: z.array(modalitySchema),
-  }),
-  supported_parameters: z.array(z.string().min(1)).optional(),
-  deprecated_at: z.number().int().nonnegative().optional(),
-  interleaved: z.boolean().optional(),
-  knowledge: z
-    .string()
-    .regex(/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/)
-    .optional(),
-  reasoning_options: z.array(reasoningOptionSchema).optional(),
-  regions: z.array(z.string().min(1)).optional(),
-  temperature: z.boolean().optional(),
-  video_capabilities: z.unknown().optional(),
-  pricing: pricingSchema,
-});
+const videoOperationSchema = z.enum([
+  "text-to-video",
+  "image-to-video",
+  "first-last-frame",
+  "reference-to-video",
+  "extend-video",
+  "motion-control",
+  "video-editing",
+]);
 
-const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) });
+const videoInputLimitSchema = z.record(z.string(), z.unknown());
+
+const videoCapabilitiesSchema = z
+  .object({
+    supported_operations: z.array(videoOperationSchema).min(1),
+    supported_resolutions: z.array(z.string().min(1)).min(1),
+    supported_aspect_ratios: z.array(z.string().min(1)).min(1),
+    supported_durations_seconds: z.array(z.number().positive()).min(1),
+    generate_audio: z.boolean(),
+    supported_fps: z.array(z.number().positive()).min(1),
+    max_sample_count: z.number().int().positive().optional(),
+    input_limits: z
+      .object({
+        text: videoInputLimitSchema.optional(),
+        image: videoInputLimitSchema.optional(),
+        video: videoInputLimitSchema.optional(),
+        audio: videoInputLimitSchema.optional(),
+        max_total_inputs: z.number().int().positive().optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const tagSchema = z.enum([
+  "explicit-caching",
+  "fast",
+  "file-input",
+  "image-generation",
+  "implicit-caching",
+  "reasoning",
+  "tool-use",
+  "video-generation",
+  "vision",
+  "web-search",
+  "websocket-realtime",
+  "websocket-transcription",
+]);
+
+const supportedParameterSchema = z.enum([
+  "include_reasoning",
+  "max_tokens",
+  "reasoning",
+  "stop",
+  "temperature",
+  "tool_choice",
+  "tools",
+]);
+
+const itemSchema = z
+  .object({
+    id: modelIdSchema.refine((value) => value.split("/").length === 2),
+    object: z.literal("model"),
+    created: z.number().int().nonnegative(),
+    released: z.number().int().nonnegative(),
+    owned_by: z.string().min(1),
+    name: z.string().min(1),
+    description: z.string(),
+    context_window: z.number().int().nonnegative().optional(),
+    max_tokens: z.number().int().nonnegative().optional(),
+    type: z.enum([
+      "language",
+      "embedding",
+      "image",
+      "video",
+      "realtime",
+      "reranking",
+      "speech",
+      "transcription",
+    ]),
+    tags: z.array(tagSchema).optional(),
+    modalities: z
+      .object({
+        input: z.array(modalitySchema),
+        output: z.array(modalitySchema),
+      })
+      .strict(),
+    supported_parameters: z.array(supportedParameterSchema).optional(),
+    supported_specifications: z.array(z.enum(["v2", "v3", "v4"])).min(1),
+    deprecated_at: z.number().int().nonnegative().optional(),
+    interleaved: z.boolean().optional(),
+    knowledge: z
+      .string()
+      .regex(/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/)
+      .optional(),
+    reasoning_options: z.array(reasoningOptionSchema).optional(),
+    regions: z
+      .array(z.enum(["eu", "us"]))
+      .min(1)
+      .optional(),
+    temperature: z.boolean().optional(),
+    video_capabilities: videoCapabilitiesSchema.optional(),
+    pricing: pricingSchema,
+  })
+  .strict();
+
+const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) }).strict();
 
 type Item = z.infer<typeof itemSchema>;
 type Tier = z.infer<typeof tierSchema>;
@@ -167,9 +235,19 @@ function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
+function supports<T>(values: readonly T[] | undefined, value: T): boolean | "unknown" {
+  return values === undefined ? "unknown" : values.includes(value);
+}
+
 function modalities(item: Item): ProviderModel["modalities"] {
+  const input = [...item.modalities.input];
+  const limits = item.video_capabilities?.input_limits;
+  if (limits?.text !== undefined) input.push("text");
+  if (limits?.image !== undefined) input.push("image");
+  if (limits?.video !== undefined) input.push("video");
+  if (limits?.audio !== undefined) input.push("audio");
   return {
-    input: unique(item.modalities.input),
+    input: unique(input),
     output: item.type === "embedding" ? ["embedding"] : unique(item.modalities.output),
   };
 }
@@ -467,8 +545,16 @@ function model(item: Item, input: Input): ProviderModel {
   if (creator !== item.owned_by) throw new Error(`Vercel owner mismatch for ${item.id}`);
   const modelModalities = modalities(item);
   const tags = item.tags ?? [];
-  const parameters = item.supported_parameters ?? [];
-  const reasoning = tags.includes("reasoning") || (item.reasoning_options?.length ?? 0) > 0;
+  const parameters = item.supported_parameters;
+  const reasoning =
+    tags.includes("reasoning") ||
+    parameters?.includes("reasoning") === true ||
+    (item.reasoning_options?.length ?? 0) > 0
+      ? true
+      : supports(parameters, "reasoning");
+  const realtimeTag = tags.find(
+    (tag) => tag === "websocket-realtime" || tag === "websocket-transcription",
+  );
   const rates = pricing(item, input.source.id);
   const deprecatedAt = date(item.deprecated_at, true);
   const deprecated = deprecatedAt !== undefined && deprecatedAt <= input.observedAt.slice(0, 10);
@@ -483,34 +569,56 @@ function model(item: Item, input: Input): ProviderModel {
     }),
     description: item.description || undefined,
     tasks: tasks(item, modelModalities),
+    delivery_modes: realtimeTag === undefined ? undefined : ["realtime"],
+    delivery_mode_evidence:
+      realtimeTag === undefined
+        ? undefined
+        : [
+            {
+              mode: "realtime",
+              source_ref: input.source.id,
+              namespace: "vercel.tag",
+              raw_value: realtimeTag,
+              kind: "capability",
+            },
+          ],
     raw_type: item.type,
     modalities: modelModalities,
     capabilities: {
       ...unknownCapabilities(),
-      reasoning: reasoning ? true : "unknown",
-      tool_call: tags.includes("tool-use") || parameters.includes("tools") ? true : "unknown",
-      structured_output: parameters.includes("response_format") ? true : "unknown",
+      reasoning,
+      tool_call:
+        tags.includes("tool-use") || parameters?.includes("tools") === true
+          ? true
+          : supports(parameters, "tools"),
       prompt_cache:
         tags.includes("implicit-caching") ||
         tags.includes("explicit-caching") ||
         rates.some((rate) => rate.meter === "cache_read_text" || rate.meter === "cache_write_text")
           ? true
           : "unknown",
-      effort_control: item.reasoning_options?.some((option) => option.type === "effort")
-        ? true
-        : "unknown",
+      effort_control:
+        item.reasoning_options?.some((option) => option.type === "effort") === true
+          ? true
+          : item.reasoning_options !== undefined || reasoning === false
+            ? false
+            : "unknown",
     },
     limits: {
       context_tokens: positive(item.context_window),
       max_output_tokens:
-        item.type === "embedding" || item.type === "reranking"
-          ? undefined
-          : positive(item.max_tokens),
+        item.type === "language" || item.type === "realtime"
+          ? positive(item.max_tokens)
+          : undefined,
     },
     release_date: date(item.released),
     deprecated_at: deprecatedAt,
     status: deprecated ? "deprecated" : "active",
     release_stage: preview ? "preview" : "unknown",
+    availability: item.regions?.map((region) => ({
+      region,
+      deployment_type: "regional_inference",
+    })),
     pricing_state: rates.length === 0 ? "not_published" : "numeric",
     price_facts: rates,
   };

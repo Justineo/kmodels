@@ -42,6 +42,7 @@ export function baseModel(input: BaseModelInput): ParsedProviderModel {
     replacement_model_ids: [],
     pricing_state: "unknown",
     price_facts: [],
+    raw_price_facts: [],
     scope: "global_catalog",
     account_availability: "unknown",
     first_seen_at: input.observedAt,

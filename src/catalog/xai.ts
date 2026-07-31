@@ -45,7 +45,6 @@ const languageModelSchema = z.object({
   completionTokenPriceLongContext: integerString,
   maxPromptLength: z.number().int().positive(),
   longContextThreshold: integerString.default("0"),
-  batchDiscountPercent: z.number().int().min(0).max(100).default(0),
   features: z
     .object({
       functionCalling: z.boolean().optional(),
@@ -134,6 +133,16 @@ const clusterSchema = z.object({
   videoGenerationModels: z.array(videoModelSchema).default([]),
 });
 const publicModelsSchema = z.object({ clusterConfigs: z.array(clusterSchema).min(1) });
+const publicModelsEnvelopeSchema = z.object({
+  clusterConfigs: z.array(z.record(z.string(), z.unknown())).min(1),
+});
+const modelCategoryKeys = new Set([
+  "languageModels",
+  "embeddingModels",
+  "imageGenerationModels",
+  "audioModels",
+  "videoGenerationModels",
+]);
 
 const apiPriceSchema = z.number().int().nonnegative();
 const apiItemSchema = z.object({
@@ -210,6 +219,7 @@ function model(input: ParseInput, id: string, values: Partial<ProviderModel>): P
     ...baseModel({
       providerId: input.provider.id,
       id,
+      ...(values.version === undefined ? {} : { version: values.version }),
       name: values.name ?? id,
       sourceId: input.source.id,
       observedAt: input.observedAt,
@@ -251,6 +261,8 @@ function tierRate(
 function textRates(
   value: z.infer<typeof languageModelSchema>,
   sourceId: string,
+  batchMultiplier: string | undefined,
+  priorityMultiplier: string,
 ): SourcePriceFact[] {
   const threshold = Number(value.longContextThreshold);
   const standard = threshold > 0 ? { context_max_tokens: threshold - 1 } : {};
@@ -274,12 +286,13 @@ function textRates(
       rate("cache_read_text", value.cachedPromptTokenPriceLongContext, long),
       rate("output_text", value.completionTokenPriceLongContext, long),
     );
-  const priority = rates.map((item) => tierRate(item, "2", "priority", "standard token price"));
-  const multiplier = scaleDecimal(String(100 - value.batchDiscountPercent), -2);
+  const priority = rates.map((item) =>
+    tierRate(item, priorityMultiplier, "priority", "standard token price"),
+  );
   const batch =
-    value.batchDiscountPercent === 0
+    batchMultiplier === undefined
       ? []
-      : rates.map((item) => tierRate(item, multiplier, "batch", "standard token price"));
+      : rates.map((item) => tierRate(item, batchMultiplier, "batch", "standard token price"));
   return [...rates, ...batch, ...priority];
 }
 
@@ -304,7 +317,16 @@ function embeddedModels(body: string): z.infer<typeof publicModelsSchema> {
   const script = scripts[0];
   if (script === undefined || !script.endsWith(";"))
     throw new Error("xAI public models payload was malformed");
-  return publicModelsSchema.parse(JSON.parse(script.slice(prefix.length, -1)));
+  const value: unknown = JSON.parse(script.slice(prefix.length, -1));
+  const envelope = publicModelsEnvelopeSchema.parse(value);
+  const unknownCategories = unique(
+    envelope.clusterConfigs.flatMap((cluster) =>
+      Object.keys(cluster).filter((key) => key.endsWith("Models") && !modelCategoryKeys.has(key)),
+    ),
+  );
+  if (unknownCategories.length > 0)
+    throw new Error(`xAI public models payload added categories: ${unknownCategories.join(", ")}`);
+  return publicModelsSchema.parse(value);
 }
 
 function distinct<T extends { name: string }>(values: T[], category: string): T[] {
@@ -333,77 +355,87 @@ function section(body: string, pathname: string): string {
   return body.slice(start + marker.length, end < 0 ? undefined : end).trim();
 }
 
-function documentedEndpoint(
-  body: string,
-  modelId: string,
-  name: string,
-  path: string,
-  requestUrl = `https://api.x.ai${path}`,
-): ApiEndpoint {
-  const quoted = [`"${modelId}"`, `'${modelId}'`, `\`${modelId}\``];
-  if (!quoted.some((value) => body.includes(value)) || !body.includes(requestUrl))
-    throw new Error(`xAI ${name} evidence changed for ${modelId}`);
-  return { name, path };
-}
-
 const endpointEvidence = [
-  ["/developers/model-capabilities/text/generate-text", "grok-4.5", "Responses", "/v1/responses"],
+  ["/developers/model-capabilities/text/generate-text", "Responses", "/v1/responses"],
   [
     "/developers/model-capabilities/legacy/chat-completions",
-    "grok-4.5",
     "Chat Completions",
     "/v1/chat/completions",
   ],
-  [
-    "/developers/model-capabilities/text/multi-agent",
-    "grok-4.20-multi-agent",
-    "Responses",
-    "/v1/responses",
-  ],
+  ["/developers/model-capabilities/text/multi-agent", "Responses", "/v1/responses"],
   [
     "/developers/model-capabilities/images/generation",
-    "grok-imagine-image-quality",
     "Image Generations",
     "/v1/images/generations",
   ],
-  [
-    "/developers/model-capabilities/images/editing",
-    "grok-imagine-image-quality",
-    "Image Edits",
-    "/v1/images/edits",
-  ],
+  ["/developers/model-capabilities/images/editing", "Image Edits", "/v1/images/edits"],
   [
     "/developers/model-capabilities/video/generation",
-    "grok-imagine-video",
     "Video Generations",
     "/v1/videos/generations",
   ],
-  [
-    "/developers/model-capabilities/imagine",
-    "grok-imagine-video-1.5",
-    "Video Generations",
-    "/v1/videos/generations",
-  ],
+  ["/developers/model-capabilities/imagine", "Video Generations", "/v1/videos/generations"],
 ] as const;
+
+function requestModels(body: string, requestUrl: string): string[] {
+  const ids = unique(
+    [...body.matchAll(/```[^\n]*\n([\s\S]*?)```/g)]
+      .flatMap((match) => (match[1]?.includes(requestUrl) ? [match[1]] : []))
+      .flatMap((block) =>
+        [...block.matchAll(/(?:"model"|model)\s*[:=]\s*["'](grok-[a-z0-9._-]+)["']/gi)].flatMap(
+          (match) => (match[1] === undefined ? [] : [modelIdSchema.parse(match[1])]),
+        ),
+      ),
+  );
+  if (ids.length === 0) throw new Error(`xAI request example omitted a model for ${requestUrl}`);
+  return ids;
+}
+
+function resolveModel(
+  id: string,
+  models: { name: string; aliases: string[] }[],
+  evidence: string,
+): string {
+  const matches = models.filter((value) => value.name === id || value.aliases.includes(id));
+  const value = matches[0];
+  if (value === undefined || matches.length > 1)
+    throw new Error(`xAI ${evidence} model ${id} did not resolve exactly once`);
+  return value.name;
+}
 
 function endpointFacts(
   llms: string,
   models: { name: string; aliases: string[] }[],
 ): Map<string, ApiEndpoint[]> {
   const endpoints = new Map<string, ApiEndpoint[]>();
-  for (const [pathname, modelId, name, path] of endpointEvidence) {
-    const matches = models.filter(
-      (model) => model.name === modelId || model.aliases.includes(modelId),
-    );
-    const model = matches[0];
-    if (model === undefined || matches.length > 1)
-      throw new Error(`xAI endpoint model ${modelId} did not resolve exactly once`);
-    const endpoint = documentedEndpoint(section(llms, pathname), modelId, name, path);
-    endpoints.set(model.name, [...(endpoints.get(model.name) ?? []), endpoint]);
+  for (const [pathname, name, path] of endpointEvidence) {
+    for (const modelId of requestModels(section(llms, pathname), `https://api.x.ai${path}`)) {
+      const id = resolveModel(modelId, models, "endpoint");
+      endpoints.set(id, [...(endpoints.get(id) ?? []), { name, path }]);
+    }
   }
-  for (const values of endpoints.values())
-    values.sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+  for (const [id, values] of endpoints)
+    endpoints.set(
+      id,
+      [...new Map(values.map((value) => [apiEndpointKey(value), value])).values()].sort(
+        (left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+      ),
+    );
   return endpoints;
+}
+
+function multiAgentModels(
+  llms: string,
+  models: { name: string; aliases: string[] }[],
+): Set<string> {
+  const body = section(llms, "/developers/model-capabilities/text/multi-agent");
+  if (!body.includes("currently in **beta**"))
+    throw new Error("xAI Multi-agent release-stage evidence changed");
+  return new Set(
+    requestModels(body, "https://api.x.ai/v1/responses").map((id) =>
+      resolveModel(id, models, "Multi-agent"),
+    ),
+  );
 }
 
 function displayNames(html: string): Map<string, string> {
@@ -485,16 +517,23 @@ function releaseDate(
   name: string,
   aliases: string[] = [],
 ): string | undefined {
+  const family = id.replace(/-\d{4}-(?:non-)?reasoning$/, "").replace(/-\d{4}$/, "");
+  const ids = new Set([id, ...aliases]);
+  const names = unique([name, family])
+    .filter((value) => value !== id)
+    .map((value) => value.toLowerCase().replaceAll("-", " "));
   const matches = releases.filter(({ body }) =>
     body
       .split(/^### /m)
       .slice(1)
-      .some(
-        (entry) =>
-          entry.includes(id) ||
-          (name !== id && entry.includes(name)) ||
-          aliases.some((alias) => entry.includes(alias)),
-      ),
+      .some((entry) => {
+        const heading = entry.split("\n", 1)[0]?.toLowerCase().replaceAll("-", " ") ?? "";
+        const codes = new Set([...entry.matchAll(/`([^`]+)`/g)].map((match) => match[1]));
+        return (
+          [...ids].some((value) => codes.has(value)) ||
+          names.some((value) => heading.includes(value))
+        );
+      }),
   );
   return matches.map(({ date }) => date).sort()[0];
 }
@@ -557,6 +596,87 @@ function textPriceRows(pricing: string): TextPrice[] {
       output: scaleDecimal(output, 0),
     };
   });
+}
+
+interface PricingTerms {
+  batchMultipliers: Map<string, string>;
+  priorityMultiplier: string;
+}
+
+function pricingTerms(
+  pricing: string,
+  models: { name: string; aliases: string[] }[],
+): PricingTerms {
+  const batch = pricing.slice(
+    pricing.indexOf("## Batch API Pricing"),
+    pricing.indexOf("## Priority Processing Pricing"),
+  );
+  const groups = [...batch.matchAll(/^\*\*(\d+)% off standard rates\*\*\n+((?:- [^\n]+\n?)+)/gm)];
+  const batchMultipliers = new Map<string, string>();
+  for (const match of groups) {
+    const percent = match[1];
+    const rows = match[2];
+    if (percent === undefined || rows === undefined) continue;
+    const value = Number(percent);
+    if (!Number.isInteger(value) || value <= 0 || value >= 100)
+      throw new Error("xAI batch discount was invalid");
+    const multiplier = scaleDecimal(String(100 - value), -2);
+    for (const row of rows.matchAll(/^- ([a-z0-9._-]+)$/gm)) {
+      const rawId = row[1];
+      if (rawId === undefined) throw new Error("xAI batch discount model was missing");
+      const id = resolveModel(modelIdSchema.parse(rawId), models, "batch pricing");
+      if (batchMultipliers.has(id)) throw new Error("xAI batch discount model was duplicated");
+      batchMultipliers.set(id, multiplier);
+    }
+  }
+  if (
+    batchMultipliers.size === 0 ||
+    !batch.includes("Models not listed above have no batch discount.") ||
+    !batch.includes("The batch discount applies to all token types") ||
+    !batch.includes(
+      "Image and video generation are supported in the Batch API but are billed at standard rates.",
+    )
+  )
+    throw new Error("xAI batch pricing terms were incomplete");
+
+  const priority = pricing.slice(pricing.indexOf("## Priority Processing Pricing"));
+  const multiplier = priority.match(/billed at a \*\*([\d.]+)x\*\* premium/)?.[1];
+  if (
+    multiplier === undefined ||
+    !priority.includes(`| Token pricing | Standard rates | **${multiplier}x** standard rates |`) ||
+    !priority.includes(`The ${multiplier}x multiplier applies to all token types`)
+  )
+    throw new Error("xAI priority pricing terms were incomplete");
+  return { batchMultipliers, priorityMultiplier: scaleDecimal(multiplier, 0) };
+}
+
+function batchExclusions(llms: string, models: { name: string; aliases: string[] }[]): Set<string> {
+  const body = section(llms, "/developers/advanced-api-usage/batch-api");
+  const supported = [
+    "/v1/chat/completions",
+    "/v1/responses",
+    "/v1/images/generations",
+    "/v1/images/edits",
+    "/v1/videos/generations",
+    "/v1/videos/edits",
+    "/v1/videos/extensions",
+  ];
+  if (supported.some((path) => !body.includes(`\`${path}\``)))
+    throw new Error("xAI Batch API endpoint support changed");
+  const ids = [
+    ...body.matchAll(/`([^`]+)` is not currently supported for Batch API requests/g),
+  ].flatMap((match) => (match[1] === undefined ? [] : [modelIdSchema.parse(match[1])]));
+  if (ids.length === 0) throw new Error("xAI Batch API model exclusions changed");
+  return new Set(ids.map((id) => resolveModel(id, models, "Batch API exclusion")));
+}
+
+function assertStreaming(llms: string): void {
+  const body = section(llms, "/developers/model-capabilities/text/streaming");
+  if (
+    !body.includes("supported by all models with text output capability") ||
+    !body.includes("not supported by models with image output capability")
+  )
+    throw new Error("xAI streaming support evidence changed");
 }
 
 function assertPublicPricing(
@@ -691,10 +811,9 @@ function voiceRates(prices: VoicePrices, id: string, sourceId: string): SourcePr
 }
 
 function assertVoiceServices(
-  pricing: string,
+  prices: VoicePrices,
   services: z.infer<typeof voiceServiceSchema>[],
 ): void {
-  const prices = voicePrices(pricing);
   const endpoint = (name: "TTS" | "STT") => {
     const matches = services.flatMap((service) => {
       const value = service.endpoints[0];
@@ -732,14 +851,20 @@ function assertVoiceServices(
   }
 }
 
-function preview(id: string, aliases: string[], llms: string, releases: ReleaseSection[]): boolean {
-  const multiAgent = section(llms, "/developers/model-capabilities/text/multi-agent");
-  if (
-    multiAgent.includes("currently in **beta**") &&
-    [id, ...aliases].some((value) => multiAgent.includes(`\`${value}\``))
-  )
-    return true;
-  return releases.some(({ body }) => body.includes(id) && /currently in early access/i.test(body));
+function preview(
+  id: string,
+  aliases: string[],
+  releases: ReleaseSection[],
+  documentedBeta: boolean,
+): boolean {
+  return (
+    documentedBeta ||
+    releases.some(
+      ({ body }) =>
+        [id, ...aliases].some((value) => body.includes(value)) &&
+        /currently in early access/i.test(body),
+    )
+  );
 }
 
 function currentModels(
@@ -768,7 +893,11 @@ function currentModels(
     catalog.clusterConfigs.flatMap(({ videoGenerationModels }) => videoGenerationModels),
     "video",
   );
-  const endpoints = endpointFacts(llms, [...language, ...embeddings, ...images, ...videos]);
+  const routable = [...language, ...embeddings, ...images, ...videos];
+  const endpoints = endpointFacts(llms, routable);
+  const multiAgent = multiAgentModels(llms, language);
+  const excludedFromBatch = batchExclusions(llms, routable);
+  assertStreaming(llms);
   const count = language.length + embeddings.length + images.length + voice.length + videos.length;
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-catalog") throw new Error("Invalid xAI catalog extractor");
@@ -776,7 +905,9 @@ function currentModels(
     throw new Error("xAI structured model count outside reviewed bounds");
   const pricing = section(llms, "/developers/pricing");
   assertPublicPricing(pricing, language, images, videos);
-  if (voice.length > 0) assertVoiceServices(pricing, voice);
+  const prices = voicePrices(pricing);
+  if (voice.length > 0) assertVoiceServices(prices, voice);
+  const terms = pricingTerms(pricing, language);
   const tools = toolRates(pricing, input.source.id);
   const names = displayNames(html);
   const releases = releaseSections(section(llms, "/developers/release-notes"));
@@ -792,10 +923,13 @@ function currentModels(
     };
   };
   const languageModels = language.map((value) => {
-    const multiAgent = value.aliases.includes("grok-4.20-multi-agent");
-    const releaseStage = preview(value.name, value.aliases, llms, releases) ? "preview" : "unknown";
+    const isMultiAgent = multiAgent.has(value.name);
+    const releaseStage = preview(value.name, value.aliases, releases, isMultiAgent)
+      ? "preview"
+      : "unknown";
     return model(input, value.name, {
       ...details(value.name, value.aliases),
+      version: value.version,
       aliases: value.aliases,
       tasks: ["text_generation"],
       api_endpoints: endpoints.get(value.name),
@@ -811,18 +945,26 @@ function currentModels(
         tool_call: value.features.functionCalling ?? "unknown",
         structured_output: value.features.structuredOutputs ?? "unknown",
         streaming: true,
-        batch: true,
+        batch: !excludedFromBatch.has(value.name),
         prompt_cache: true,
-        citations: multiAgent ? true : "unknown",
-        code_execution: multiAgent ? true : "unknown",
+        citations: isMultiAgent ? true : "unknown",
+        code_execution: isMultiAgent ? true : "unknown",
         effort_control:
-          multiAgent || value.features.reasoningEffortOptions !== undefined ? true : "unknown",
+          isMultiAgent || value.features.reasoningEffortOptions !== undefined ? true : "unknown",
       },
       limits: { context_tokens: value.maxPromptLength },
       status: "active",
       release_stage: releaseStage,
       pricing_state: "numeric",
-      price_facts: [...textRates(value, input.source.id), ...tools],
+      price_facts: [
+        ...textRates(
+          value,
+          input.source.id,
+          terms.batchMultipliers.get(value.name),
+          terms.priorityMultiplier,
+        ),
+        ...tools,
+      ],
     });
   });
   const embeddingModels = embeddings.map((value) => {
@@ -846,6 +988,7 @@ function currentModels(
     ].filter(({ price }) => price !== "0");
     return model(input, value.name, {
       ...details(value.name, value.aliases),
+      version: value.version,
       aliases: value.aliases,
       tasks: ["embeddings"],
       api_endpoints: endpoints.get(value.name),
@@ -865,6 +1008,7 @@ function currentModels(
       rates.push(mediaRate("input_image", value.pricePerInputImage, "image", input.source.id));
     return model(input, value.name, {
       ...details(value.name, value.aliases),
+      version: value.version,
       aliases: value.aliases,
       tasks: ["image_generation"],
       api_endpoints: endpoints.get(value.name),
@@ -872,7 +1016,7 @@ function currentModels(
         input: upperModalities(value.inputModalities),
         output: upperModalities(value.outputModalities),
       },
-      capabilities: { ...unknownCapabilities(), batch: true },
+      capabilities: { ...unknownCapabilities(), streaming: false, batch: true },
       status: "active",
       pricing_state: "numeric",
       price_facts: rates,
@@ -892,6 +1036,7 @@ function currentModels(
       );
     return model(input, value.name, {
       ...details(value.name, value.aliases),
+      version: value.version,
       aliases: value.aliases,
       tasks: ["video_generation"],
       api_endpoints: endpoints.get(value.name),
@@ -905,10 +1050,23 @@ function currentModels(
       price_facts: rates,
     });
   });
-  return [...languageModels, ...embeddingModels, ...imageModels, ...videoModels];
+  return [
+    ...languageModels,
+    ...embeddingModels,
+    ...imageModels,
+    ...videoModels,
+    ...voiceModels(input, llms, voice, prices, tools, releases),
+  ];
 }
 
-function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
+function voiceModels(
+  input: ParseInput,
+  llms: string,
+  services: z.infer<typeof voiceServiceSchema>[],
+  prices: VoicePrices,
+  tools: SourcePriceFact[],
+  releases: ReleaseSection[],
+): ProviderModel[] {
   const voice = section(llms, "/developers/model-capabilities/audio/speech-to-speech");
   const tableStart = voice.indexOf("| Model | Description | |");
   const currentTableStart = tableStart < 0 ? voice.indexOf("| Model | Description |") : tableStart;
@@ -931,7 +1089,10 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
           },
         ];
   });
-  const latestAlias = "grok-voice-latest";
+  const latestAlias = voice.match(
+    /wss:\/\/api\.x\.ai\/v1\/realtime\?model=(grok-[a-z0-9._-]+)/i,
+  )?.[1];
+  if (latestAlias === undefined) throw new Error("xAI Realtime endpoint evidence changed");
   const alias = rows.find(({ id }) => id === latestAlias);
   const latestModel = alias?.description.match(/Alias for `(grok-[^`]+)`/)?.[1];
   const models = rows.filter(({ id }) => id !== latestAlias);
@@ -941,31 +1102,35 @@ function voiceModels(input: ParseInput, llms: string): ProviderModel[] {
     !models.some(({ id }) => id === latestModel)
   )
     throw new Error("xAI voice model table was incomplete");
-  const endpoint = documentedEndpoint(
-    voice,
-    latestAlias,
-    "Realtime",
-    "/v1/realtime",
-    `wss://api.x.ai/v1/realtime?model=${latestAlias}`,
-  );
-  const pricing = section(llms, "/developers/pricing");
-  const prices = voicePrices(pricing);
-  const tools = toolRates(pricing, input.source.id);
-  const releases = releaseSections(section(llms, "/developers/release-notes"));
+  const latestServices = services.filter(({ aliases }) => aliases.includes(latestAlias));
+  if (latestServices.length !== 1 || latestServices[0]?.name !== latestModel)
+    throw new Error("xAI structured and documented voice aliases differ");
+  const endpoint: ApiEndpoint = { name: "Realtime", path: "/v1/realtime" };
   return models.map((row) => {
-    const isLatest = row.id === latestModel;
+    const matches = services.filter(({ name }) => name === row.id);
+    const service = matches[0];
+    if (
+      service === undefined ||
+      matches.length > 1 ||
+      service.endpoints[0]?.endpoint !== "REALTIME"
+    )
+      throw new Error(`xAI structured voice model ${row.id} did not resolve exactly once`);
     return model(input, row.id, {
+      version: service.version,
       description: row.description,
-      aliases: isLatest ? [latestAlias] : [],
+      aliases: service.aliases,
       tasks: ["text_generation", "speech_to_speech"],
       api_endpoints: [endpoint],
-      modalities: { input: ["text", "audio"], output: ["text", "audio"] },
+      modalities: {
+        input: upperModalities(service.inputModalities),
+        output: upperModalities(service.outputModalities),
+      },
       capabilities: {
         ...unknownCapabilities(),
-        reasoning: isLatest,
+        reasoning: true,
         tool_call: true,
         streaming: true,
-        effort_control: isLatest,
+        effort_control: true,
       },
       release_date: releaseDate(releases, row.id, row.id),
       status: row.deprecated ? "deprecated" : "active",
@@ -982,7 +1147,7 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
     throw new Error("xAI retirement date was not found");
   const date = `${dateMatch[3]}-05-${dateMatch[2].padStart(2, "0")}`;
   const intro = lifecycle.slice(0, lifecycle.indexOf("### How the redirects work"));
-  const retired = [...intro.matchAll(/^\* `([^`]+)`$/gm)].map((match) =>
+  const redirected = [...intro.matchAll(/^\* `([^`]+)`$/gm)].map((match) =>
     modelIdSchema.parse(match[1]),
   );
   const replacements = new Map(
@@ -992,24 +1157,23 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
     ]),
   );
   if (
-    retired.length === 0 ||
-    replacements.size !== retired.length ||
-    retired.some((id) => !replacements.has(id))
+    redirected.length === 0 ||
+    replacements.size !== redirected.length ||
+    redirected.some((id) => !replacements.has(id)) ||
+    !/continue to resolve/i.test(lifecycle) ||
+    !/automatically redirect/i.test(lifecycle)
   )
-    throw new Error("xAI retirement model and replacement sets differ");
-  const isRetired = input.observedAt.slice(0, 10) >= date;
+    throw new Error("xAI redirect model and replacement evidence changed");
+  const isLegacy = input.observedAt.slice(0, 10) >= date;
   const releases = releaseSections(section(llms, "/developers/release-notes"));
-  return retired.map((id) => {
-    const image = id === "grok-imagine-image-pro";
-    return model(input, id, {
-      tasks: image ? ["image_generation"] : ["text_generation"],
+  return redirected.map((id) =>
+    model(input, id, {
       release_date: releaseDate(releases, id, id),
       deprecated_at: date,
-      retired_at: date,
-      status: isRetired ? "retired" : "deprecated",
+      status: isLegacy ? "legacy" : "deprecated",
       replacement_model_ids: [replacements.get(id) ?? ""].filter(Boolean),
-    });
-  });
+    }),
+  );
 }
 
 function combine(models: ProviderModel[]): ProviderModel[] {
@@ -1095,14 +1259,56 @@ function combine(models: ProviderModel[]): ProviderModel[] {
   return [...values.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
+function redirectedModels(models: ProviderModel[]): ProviderModel[] {
+  const byId = new Map<string, ProviderModel[]>();
+  for (const value of models)
+    byId.set(value.model_id, [...(byId.get(value.model_id) ?? []), value]);
+  return models.map((value) => {
+    const replacement = value.replacement_model_ids[0];
+    if (
+      value.status !== "legacy" ||
+      replacement === undefined ||
+      value.replacement_model_ids.length !== 1
+    )
+      return value;
+    const targets = byId.get(replacement) ?? [];
+    const target = targets[0];
+    if (
+      target === undefined ||
+      targets.length !== 1 ||
+      target.pricing_state !== "numeric" ||
+      target.price_facts.length === 0 ||
+      value.deprecated_at === undefined
+    )
+      throw new Error(`xAI redirect target ${replacement} did not resolve to one priced model`);
+    return {
+      ...value,
+      tasks: target.tasks,
+      modalities: target.modalities,
+      capabilities: target.capabilities,
+      limits: target.limits,
+      pricing_state: "numeric",
+      price_facts: target.price_facts.map((rate) => ({
+        ...rate,
+        conditions: { ...rate.conditions, effective_from: value.deprecated_at },
+        derived: true,
+        derivation: `Redirects to ${replacement} from ${value.deprecated_at}; ${
+          rate.derivation ?? "published target rate"
+        }`,
+      })),
+    };
+  });
+}
+
 export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const llms = companion(bundle, "/llms.txt");
-  return combine([
-    ...currentModels(input, embeddedModels(bundle.index.body), bundle.index.body, llms),
-    ...voiceModels(input, llms),
-    ...lifecycleModels(input, llms),
-  ]);
+  return redirectedModels(
+    combine([
+      ...currentModels(input, embeddedModels(bundle.index.body), bundle.index.body, llms),
+      ...lifecycleModels(input, llms),
+    ]),
+  );
 }
 
 export function parseXaiApi(input: ParseInput): ProviderModel[] {
@@ -1131,6 +1337,7 @@ export function parseXaiApi(input: ParseInput): ProviderModel[] {
         : "video_generation";
   return values.map((value) =>
     model(input, value.id, {
+      version: value.version,
       aliases: value.aliases,
       tasks: [type],
       modalities: { input: value.input_modalities, output: value.output_modalities },

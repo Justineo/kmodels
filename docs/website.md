@@ -5,7 +5,7 @@ Status: implemented
 ## Product shape
 
 - The site is a full-width, full-height precision workspace, not a centered marketing page.
-- One compact header shows Kmodels, model/provider totals, generation time, the JSON entry point, and a light/dark toggle.
+- One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle.
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
 - One toolbar keeps model-ID/name search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
@@ -41,11 +41,11 @@ Status: implemented
 - Representative columns are derived only from canonical price books. A cell
   shows a number when one normalized rate is proven invariant across the
   complete applicable offer context;
-  otherwise one dotted-underlined text status spans the three pricing columns
-  and explains the model-level outcome in a tooltip. Use `Varies` for a
-  context-dependent price, an offer count for several base offers, and retain
-  the exact `Free`, `Quote`,
-  `Unpublished`, `Incomplete`, `N/A`, `Unknown`, `No base offer`, or `Details`
+  otherwise one dotted-underlined text status sits between flanking hairlines
+  across the three pricing columns and explains the model-level outcome in a
+  tooltip. Use `Varies` for a context-dependent price, an offer count for
+  several base offers, and retain the exact `Free`, `Quote`,
+  `Unpublished`, `Incomplete`, `No offer`, `Unknown`, `No base offer`, or `Details`
   distinction. This status is never owned by the input meter. There is no
   secondary flat-price path.
 - The detail flow is `offer → context → commercial structure`. It never
@@ -190,13 +190,13 @@ Status: implemented
   do not open the separate export pack. Explicit `/catalog/`, `/providers/`, and
   `/pricing/` requests are served from `data/export-assets.pack`; they do not
   parse either canonical mirror.
-- `/catalog/models.json` is the header's default catalog download.
-  `/catalog/ids.json`, the audit-rich `/catalog/index.json`, and
-  `/pricing/index.json` remain explicit public downloads, not application
-  dependencies. Build validates both compressed packs and their shared pair
-  identity, then stream-materializes their entries into `dist/` without loading
-  canonical catalog or pricing objects. Revalidate browser caches for UI
-  requests.
+- `/catalog/models.json`, `/catalog/summary.json`, `/catalog/ids.json`, the
+  audit-rich `/catalog/index.json`, provider-scoped profiles, and
+  `/pricing/index.json` remain explicit public downloads documented in the
+  repository, not application dependencies. Build validates both compressed
+  packs and their shared pair identity, then stream-materializes their entries
+  into `dist/` without loading canonical catalog or pricing objects. Revalidate
+  browser caches for UI requests.
 
 ## Visual system
 

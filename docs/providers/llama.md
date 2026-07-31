@@ -4,18 +4,20 @@ Status: current
 
 ## Sources and identity
 
-- The exhaustive public catalog statically parses the official `llama-models` registry used by `llama-model list --show-all`; never import remote Python.
+- The exhaustive public catalog statically parses the official `llama-models` registry used by `llama-model list --show-all`; never import or execute remote Python.
 - Every core ID must have one descriptor. The exact CLI descriptor, including variants, is `model_id`; the exact Hugging Face repository is an alias. Never slugify.
-- Registry context semantics and reviewed family shapes own artifact limits. Unknown family shapes fail closed.
-- Fixed README/model cards may add dates, modalities, and tool evidence. Model-specific evidence wins; repository commits are not update dates.
+- Parse the registry's complete `CoreModelId` → `ModelFamily` mapping. Statically interpret the closed numeric forms used by `Model.max_seq_length`; unknown expressions, incomplete family classification, and descriptors without a context rule fail closed.
+- The README launch table, exact model cards, and official Meta release announcements establish release dates. Every registry identity must resolve once; model-specific dates win when a family table and card differ. Repository commits are not model update dates.
+- Official API examples and generated resources establish exact hosted identities, capabilities, and relative routes. Official release evidence establishes Llama Guard 4 multimodality and its Moderations API availability.
 - Optional `/v1/models` is account-scoped and non-creating; API `created` is not artifact release.
 - Enable the optional inventory with `LLAMA_API_KEY`.
 
 ## Mapping
 
 - Generative weights are text generation, Llama Guard is moderation, and Prompt Guard is classification.
-- Downloadable weights have `not_applicable` pricing. Registry presence is active evidence, not a deprecation inference.
-- Hosted aliases, Chat Completions, streaming, tool use, and structured output apply only when an exact example names one uniquely resolvable artifact. Never copy them to siblings.
+- Downloadable-only weights have `not_applicable` pricing. A Meta-hosted API identity with no published public amount is `not_published`, never free or not applicable.
+- Registry presence is active artifact evidence, including entries shown only by `--show-all`; it is not release-stage or deprecation evidence.
+- Hosted aliases, routes, streaming, tool use, structured output, and multimodality apply only to the exact identity or release family supported by official evidence. Never copy them to siblings.
 
 ## Kong AI Gateway
 
