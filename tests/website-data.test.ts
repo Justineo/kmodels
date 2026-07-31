@@ -106,12 +106,25 @@ describe("website data", () => {
     expect(publication.pricing.data_version).toBe(dataVersion);
     expect(
       summary("amazon-bedrock", "anthropic.claude-haiku-4-5-20251001-v1:0")?.status?.label,
-    ).toBe("Varies");
-    expect(summary("openai", "gpt-5.2-pro")).toMatchObject({
-      input: { amount: "$21" },
-      output: { amount: "$168" },
+    ).toBe("2 offers");
+    expect(summary("openai", "gpt-5.2-pro")?.status?.label).toBe("Varies");
+    expect(summary("openai", "chat-latest")).toMatchObject({
+      input: { amount: "$5" },
+      output: { amount: "$30" },
     });
-    expect(summary("openai", "gpt-5.2-pro")?.status).toBeUndefined();
+    expect(summary("openai", "chat-latest")?.status).toBeUndefined();
+    expect(summary("openai", "omni-moderation-latest")?.status).toEqual({
+      label: "No offer",
+      description: "No public hosted pricing offer applies to this model.",
+    });
+    expect(summary("amazon-bedrock", "amazon.titan-embed-g1-text-02")?.status).toEqual({
+      label: "Unknown",
+      description: "Available sources do not establish whether pricing applies.",
+    });
+    expect(summary("vercel", "bfl/flux-2-flex")?.status).toEqual({
+      label: "Unpublished",
+      description: "A hosted offer exists, but its price is not publicly available.",
+    });
   }, 90_000);
 
   it("publishes audit-free details in bounded provider chunks", async () => {

@@ -5,6 +5,7 @@ import {
   type AtomicPriceState,
   type AtomicProviderPricing,
   type AtomicRateTerm,
+  type AtomicRawTerm,
   type AtomicRawVariant,
   type ProviderPricingPartition,
 } from "./pricing-assembly.ts";
@@ -36,6 +37,7 @@ import {
   type ParsedPricingModel,
   type ParsedProviderModel,
   type SourcePriceFact,
+  type SourceRawPricingFact,
 } from "./pricing-source.ts";
 
 export interface ParsedPricingSource {
@@ -56,7 +58,7 @@ export function isRequiredPricingSource(source: SourceManifest): boolean {
 
 interface OfferBuilder {
   states: AtomicPriceState[];
-  terms: Map<string, AtomicRateTerm>;
+  terms: Map<string, AtomicRateTerm | AtomicRawTerm>;
   sourceRefs: Set<string>;
 }
 
@@ -174,18 +176,46 @@ function addModelPricing(
     model.price_facts,
   ))
     addRate(context, source.id, model, sourceRate, normalizedRate);
-  if (
-    model.price_facts.length === 0 &&
-    (model.pricing_state === "custom_quote" || model.pricing_state === "not_published")
-  )
-    addState(context, source.id, model, model.pricing_state);
+  for (const fact of model.raw_price_facts) addRaw(context, source.id, model, fact);
+  const hasUsageRate = model.price_facts.some((rate) => rateMode(rate) === "usage");
+  const state = model.pricing_state;
+  if (!hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published"))
+    addState(context, source.id, model, state);
+}
+
+function addRaw(
+  context: AdapterContext,
+  sourceRef: string,
+  model: ParsedPricingModel,
+  fact: SourceRawPricingFact,
+): void {
+  const offer = offerBuilder(context, "usage");
+  const term = rawTerm(offer, fact.term_key);
+  const validity = publishedValidity(fact.conditions);
+  addScope(context, sourceRef, model.uid);
+  offer.sourceRefs.add(sourceRef);
+  term.source_refs.push(sourceRef);
+  term.variants.push({
+    impact: fact.impact,
+    reason: validity === false ? "unsupported_structure" : fact.reason,
+    possible_scope: rateApplicability(context, fact.conditions),
+    ...(validity === undefined || validity === false ? {} : { validity }),
+    observation: {
+      source_ref: sourceRef,
+      locator: {
+        kind: "provider_key",
+        value: JSON.stringify([model.uid, fact.term_key, fact.conditions, fact.raw]),
+      },
+      raw: fact.raw,
+    },
+  });
 }
 
 function addState(
   context: AdapterContext,
   sourceRef: string,
   model: ParsedPricingModel,
-  state: "custom_quote" | "not_published",
+  state: "free" | "custom_quote" | "not_published",
 ): void {
   const offer = offerBuilder(context, "usage");
   const applicability = unconditionalApplicability;
@@ -197,7 +227,14 @@ function addState(
     observation: normalizedObservation(
       sourceRef,
       { kind: "provider_key", value: "pricing:model-state" },
-      { label: state === "custom_quote" ? "Custom quote" : "Price not published" },
+      {
+        label:
+          state === "free"
+            ? "Free"
+            : state === "custom_quote"
+              ? "Custom quote"
+              : "Price not published",
+      },
       applicability,
     ),
   });
@@ -382,7 +419,10 @@ function offerBuilder(context: AdapterContext, mode: "usage" | "capacity"): Offe
 
 function rateTerm(offer: OfferBuilder, meter: SourcePriceFact["meter"]): AtomicRateTerm {
   const current = offer.terms.get(meter);
-  if (current !== undefined) return current;
+  if (current !== undefined) {
+    if (current.kind !== "rate") throw new Error(`Pricing term ${meter} changed kind`);
+    return current;
+  }
   const created: AtomicRateTerm = {
     term_key: meter,
     kind: "rate",
@@ -392,6 +432,22 @@ function rateTerm(offer: OfferBuilder, meter: SourcePriceFact["meter"]): AtomicR
     source_refs: [],
   };
   offer.terms.set(meter, created);
+  return created;
+}
+
+function rawTerm(offer: OfferBuilder, key: string): AtomicRawTerm {
+  const current = offer.terms.get(key);
+  if (current !== undefined) {
+    if (current.kind !== "raw") throw new Error(`Pricing term ${key} changed kind`);
+    return current;
+  }
+  const created: AtomicRawTerm = {
+    term_key: key,
+    kind: "raw",
+    variants: [],
+    source_refs: [],
+  };
+  offer.terms.set(key, created);
   return created;
 }
 
@@ -609,6 +665,7 @@ function rateApplicability(
     "style",
     "capacity",
     "billing_period",
+    "account_eligibility",
   ] as const;
   for (const key of categorical) {
     const value = conditions[key];

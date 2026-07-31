@@ -1,5 +1,5 @@
 <article>
-  <h1 class="openapi__heading">Create Chat Completion</h1>
+  <h1 class="openapi__heading">Chat Completions API</h1>
   <pre class="openapi__method-endpoint">
     <span class="badge badge--success">POST</span>
     <h2 class="openapi__method-endpoint-path">/chat/completions</h2>
@@ -34,5 +34,15 @@
     <span class="openapi-schema__name">string</span>
     <p>Controls the reasoning effort of the model.</p>
     <p>Possible values: [<code>high</code>, <code>max</code>]</p>
+  </div>
+  <div class="openapi-schema__list-item">
+    <strong class="openapi-schema__property">response_format</strong>
+    <span class="openapi-schema__name">object</span>
+    <p>Possible values: [<code>text</code>, <code>json_object</code>]</p>
+  </div>
+  <div class="openapi-schema__list-item">
+    <strong class="openapi-schema__property">tools</strong>
+    <span class="openapi-schema__name">object[]</span>
+    <p>Possible values: [<code>function</code>]</p>
   </div>
 </article>

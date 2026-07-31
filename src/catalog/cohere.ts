@@ -7,6 +7,7 @@ import { publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import type { SourceManifest } from "./manifests.ts";
+import { classifyModelTasks } from "./task.ts";
 
 interface Input {
   provider: Provider;
@@ -207,6 +208,13 @@ function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
+function validModelIds(values: string[]): string[] {
+  return values.flatMap((value) => {
+    const parsed = modelIdSchema.safeParse(value);
+    return parsed.success ? [parsed.data] : [];
+  });
+}
+
 function date(value: string): string | undefined {
   const iso = value.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
   if (iso !== undefined) return iso;
@@ -221,11 +229,15 @@ function date(value: string): string | undefined {
 }
 
 function tokens(value: string): number | undefined {
-  const match = value.replace(/,/g, "").match(/(\d+(?:\.\d+)?)\s*([km])?\b/i);
+  const match = value
+    .replaceAll(",", "")
+    .trim()
+    .match(/^(\d+(?:\.\d+)?)\s*([km])?(?:\s*tokens?)?$/i);
   if (match?.[1] === undefined) return undefined;
   const number = Number(match[1]);
   const multiplier = match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2] ? 1_000 : 1;
-  return Number.isSafeInteger(number * multiplier) ? number * multiplier : undefined;
+  const result = number * multiplier;
+  return Number.isSafeInteger(result) && result > 0 ? result : undefined;
 }
 
 function operationsFromEndpointLabels(
@@ -370,7 +382,7 @@ function rootTables(
 ): void {
   const $ = load(body);
   let sectionOperations: ModelTask[] | undefined;
-  $("h2,table").each((_tableIndex, table) => {
+  $("main h2,main table").each((_tableIndex, table) => {
     if ($(table).is("h2")) {
       sectionOperations = operationsBySection.get(text($(table).text()));
       return;
@@ -430,12 +442,12 @@ function rootTables(
             .map((match) => Number(match[0]?.replace(/,/g, "")))
             .filter((item) => Number.isSafeInteger(item) && item > 0),
         );
-        const modelTasks = unique([
+        const observedTasks = unique([
           ...defaultOperations,
           ...operationsFromEndpointLabels(endpointLabels, references),
         ]);
-        const isEmbedding = modelTasks.includes("embeddings");
-        const isTranscription = modelTasks.includes("transcription");
+        const isEmbedding = observedTasks.includes("embeddings");
+        const isTranscription = observedTasks.includes("transcription");
         const inputModalities: Modality[] = [];
         if (modality.toLowerCase().includes("text")) inputModalities.push("text");
         if (modality.toLowerCase().includes("image")) inputModalities.push("image");
@@ -443,11 +455,20 @@ function rootTables(
         if (isTranscription) inputModalities.push("audio");
         const outputModalities: Modality[] = [];
         if (isEmbedding) outputModalities.push("embedding");
-        if (isTranscription || modelTasks.includes("text_generation"))
+        if (isTranscription || observedTasks.includes("text_generation"))
           outputModalities.push("text");
+        const modelTasks = unique([
+          ...observedTasks,
+          ...classifyModelTasks({
+            modelId: id,
+            name: id,
+            rawType: undefined,
+            modalities: { input: inputModalities, output: outputModalities },
+          }),
+        ]);
         const deprecated = statusText?.startsWith("Deprecated") ?? false;
         const retired = statusText?.startsWith("Retired") ?? false;
-        const active = statusText === "Live";
+        const active = statusText === undefined || statusText === "Live";
         update(models, id, (current) =>
           withEndpoints(
             {
@@ -507,7 +528,12 @@ function cardId($: Document): string | undefined {
 
 function cardMatchesPath(id: string, pathname: string): boolean {
   const page = pathname.split("/").filter(Boolean).at(-1);
-  return page !== undefined && id.replace(/-\d{2}-\d{4}$/, "") === page;
+  const normalized = (value: string): string =>
+    value
+      .replace(/-\d{2}-\d{4}$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+  return page !== undefined && normalized(id) === normalized(page);
 }
 
 function addRate(current: ProviderModel, rate: SourcePriceFact): ProviderModel {
@@ -528,11 +554,14 @@ function addRate(current: ProviderModel, rate: SourcePriceFact): ProviderModel {
   return {
     ...current,
     price_facts: [...current.price_facts, rate],
-    pricing_state: "numeric",
+    pricing_state:
+      current.pricing_state === "free" && rate.meter === "provisioned_throughput"
+        ? "free"
+        : "numeric",
   };
 }
 
-function commandCard(
+function modelCard(
   input: Input,
   models: Map<string, ProviderModel>,
   url: URL,
@@ -543,6 +572,13 @@ function commandCard(
   const id = cardId($);
   if (id === undefined || !cardMatchesPath(id, url.pathname)) return;
   const title = cardTitle($);
+  const description = text(
+    $("h2")
+      .filter((_index, heading) => text($(heading).text()) === "Description")
+      .first()
+      .next("p")
+      .text(),
+  );
   const capabilities = { ...unknownCapabilities() };
   const capabilityCard = $(".fern-card").filter((_index, card) =>
     text($(card).text()).startsWith("Capabilities"),
@@ -565,8 +601,12 @@ function commandCard(
       .filter((_index, card) => text($(card).text()).startsWith("Specifications"))
       .text(),
   );
-  const context = tokens(specification.match(/Context Window:\s*([\d,]+\s*tokens)/i)?.[1] ?? "");
-  const output = tokens(specification.match(/Max Output Tokens:\s*([\d,]+\s*tokens)/i)?.[1] ?? "");
+  const context = tokens(
+    specification.match(/Context Window:\s*([\d,.]+\s*[km]?(?:\s*tokens)?)/i)?.[1] ?? "",
+  );
+  const output = tokens(
+    specification.match(/Max Output Tokens:\s*([\d,.]+\s*[km]?(?:\s*tokens)?)/i)?.[1] ?? "",
+  );
   const endpointCard = $(".fern-card").filter((_index, card) =>
     text($(card).text()).startsWith("API Endpoints"),
   );
@@ -576,23 +616,31 @@ function commandCard(
     .map((_index, element) => text($(element).text()))
     .get();
   if (endpointLabels.length === 0) throw new Error(`Cohere endpoint card drifted for ${id}`);
-  const tasks = operationsFromEndpointLabels(endpointLabels, references);
+  const endpointTasks = operationsFromEndpointLabels(endpointLabels, references);
   const apiEndpoints = endpointLabels.map((label) => {
     const reference = references.byLabel.get(label);
     if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
     return reference.endpoint;
   });
-  const inputModalities = [...model(models, input, id, tasks).modalities.input];
+  const current = model(models, input, id, endpointTasks);
+  const tasks = unique([...current.tasks, ...endpointTasks]);
+  const inputModalities = [...current.modalities.input];
+  const outputModalities = [...current.modalities.output];
+  if (tasks.includes("text_generation")) {
+    inputModalities.push("text");
+    outputModalities.push("text");
+  }
   if (capability.get("Image Inputs") === true) inputModalities.push("image");
   update(models, id, (current) =>
     withEndpoints(
       {
         ...current,
         name: title ?? current.name,
+        description: description || current.description,
         tasks,
         modalities: {
           input: unique(inputModalities),
-          output: current.modalities.output,
+          output: unique(outputModalities),
         },
         capabilities: { ...current.capabilities, ...capabilities },
         limits: {
@@ -600,6 +648,15 @@ function commandCard(
           ...(context === undefined ? {} : { context_tokens: context }),
           ...(output === undefined ? {} : { max_output_tokens: output }),
         },
+        release_date:
+          date(
+            $("strong")
+              .filter((_index, element) => /^Release Date:?$/i.test(text($(element).text())))
+              .first()
+              .parent()
+              .text(),
+          ) ?? current.release_date,
+        status: "active",
       },
       apiEndpoints,
     ),
@@ -624,7 +681,9 @@ function commandCard(
         publishedRate("output_text", outputPrice, "million_tokens", input.source.id, "1M tokens"),
       ),
     );
-  } else if (/free until rate limits|contact (?:our )?sales|Model Vault/i.test(pricing)) {
+  } else if (/free until rate limits/i.test(pricing)) {
+    update(models, id, (current) => ({ ...current, pricing_state: "free" }));
+  } else if (/contact (?:our )?sales|Model Vault/i.test(pricing)) {
     update(models, id, (current) => ({ ...current, pricing_state: "custom_quote" }));
   }
 }
@@ -667,7 +726,7 @@ function transcribePage(
       : undefined;
   if (endpoint?.endpoint.name !== "Audio Transcriptions")
     throw new Error("Cohere transcription endpoint link drifted");
-  const customQuote = /via our API for free[\s\S]*Model Vault/i.test(text($(".fern-prose").text()));
+  const free = /via our API for free[\s\S]*Model Vault/i.test(text($(".fern-prose").text()));
   model(models, input, parsed.data, ["transcription"]);
   update(models, parsed.data, (current) =>
     withEndpoints(
@@ -678,7 +737,7 @@ function transcribePage(
         tasks: ["transcription"],
         modalities: { input: ["audio"], output: ["text"] },
         status: "active",
-        pricing_state: customQuote ? "custom_quote" : current.pricing_state,
+        pricing_state: free ? "free" : current.pricing_state,
       },
       [endpoint.endpoint],
     ),
@@ -687,70 +746,163 @@ function transcribePage(
 
 function lifecycle(input: Input, models: Map<string, ProviderModel>, body: string): void {
   const $ = load(body);
-  const applyList = (heading: string, status: "deprecated" | "retired", at: string): void => {
-    const section = $("h3").filter((_index, element) =>
-      text($(element).text()).startsWith(heading),
-    );
-    const ids = section
-      .nextAll("ul")
-      .first()
-      .find("code")
-      .map((_index, element) => text($(element).text()))
-      .get()
-      .filter((value) => modelIdSchema.safeParse(value).success);
-    if (ids.length === 0)
-      throw new Error(`Cohere lifecycle section ${heading} contained no model IDs`);
+  const observedDate = input.observedAt.slice(0, 10);
+  let factCount = 0;
+  const lifecycleTask = (value: string): ModelTask | undefined =>
+    /embed/i.test(value)
+      ? "embeddings"
+      : /chat|command/i.test(value)
+        ? "text_generation"
+        : /rerank/i.test(value)
+          ? "reranking"
+          : /audio|transcri/i.test(value)
+            ? "transcription"
+            : undefined;
+  const replacements = (ids: string[], operation: ModelTask, replacementIds: string[]): void => {
+    const valid = unique(replacementIds).filter((id) => models.has(id));
+    if (valid.length === 0) return;
     for (const id of ids) {
-      const tasks: ModelTask[] =
-        heading === "2026-04-04:" && id.startsWith("embed-") ? ["embeddings"] : ["text_generation"];
-      model(models, input, id, tasks);
-      update(models, id, (current) => ({
-        ...current,
-        status,
-        deprecated_at: status === "deprecated" ? at : current.deprecated_at,
-        retired_at: status === "retired" ? at : current.retired_at,
+      const current = models.get(id);
+      if (current === undefined || !current.tasks.includes(operation)) continue;
+      update(models, id, (item) => ({
+        ...item,
+        replacement_model_ids: unique([...item.replacement_model_ids, ...valid]),
       }));
     }
   };
-  applyList("2026-04-04:", "retired", "2026-04-04");
-  applyList("2025-09-15:", "deprecated", "2025-09-15");
-  const table = $("table").filter((_index, element) =>
-    text($(element).find("tr").first().text()).includes("Deprecated Model"),
-  );
-  table
-    .find("tr")
-    .slice(1)
-    .each((_index, row) => {
-      const cells = $(row)
-        .find("td")
-        .map((_cellIndex, cell) => text($(cell).text()))
-        .get();
-      const id = modelIdSchema.safeParse(cells[1]);
-      const replacement = modelIdSchema.safeParse(cells[3]);
-      if (!id.success || !replacement.success || cells[0] === undefined) return;
-      model(models, input, id.data, ["reranking"]);
-      update(models, id.data, (current) => ({
+
+  $("main h3").each((_headingIndex, heading) => {
+    const at = date(text($(heading).text()));
+    if (at === undefined) return;
+    const section = $(heading).nextUntil("h3");
+    const lists = section.filter("ul").add(section.find("ul"));
+    const statusList = lists
+      .filter((_listIndex, list) =>
+        /(?:models?.*(?:will be )?retired|retired models?|deprecated models?)/i.test(
+          text($(list).prevAll("p,h4").first().text()),
+        ),
+      )
+      .first();
+    if (statusList.length === 0) return;
+    const statusText = text(statusList.prevAll("p,h4").first().text());
+    const validIds = validModelIds(
+      statusList
+        .children("li")
+        .children("code")
+        .map((_index, element) => text($(element).text()))
+        .get(),
+    );
+    if (validIds.length === 0)
+      throw new Error(`Cohere lifecycle section ${text($(heading).text())} contained no model IDs`);
+    const retirement = /\bretir(?:e|ed)\b/i.test(statusText);
+    const status = retirement && at <= observedDate ? "retired" : "deprecated";
+    for (const id of validIds) {
+      model(models, input, id, []);
+      update(models, id, (current) => ({
         ...current,
-        tasks: ["reranking"],
-        status: "retired",
-        retired_at: cells[0],
-        replacement_model_ids: unique([...current.replacement_model_ids, replacement.data]),
+        status,
+        deprecated_at: retirement ? current.deprecated_at : at,
+        retired_at: retirement ? at : current.retired_at,
       }));
-      const price = cells[2]?.match(/\$([\d.]+)\s*\/\s*1K searches/i)?.[1];
-      if (price !== undefined)
-        update(models, id.data, (current) =>
-          addRate(
-            current,
-            publishedRate(
-              "rerank_request",
-              price,
-              "thousand_search_units",
-              input.source.id,
-              "1K searches",
-            ),
+    }
+    factCount += validIds.length;
+
+    section.find("li").each((_itemIndex, item) => {
+      const nested = $(item).children("ul");
+      if (nested.length === 0) return;
+      const label = text($(item).clone().children("ul").remove().end().text());
+      const operation = lifecycleTask(label);
+      if (operation === undefined) return;
+      replacements(
+        validIds,
+        operation,
+        validModelIds(
+          nested
+            .find("code")
+            .map((_index, element) => text($(element).text()))
+            .get(),
+        ),
+      );
+    });
+    section
+      .filter("p")
+      .add(section.find("p"))
+      .filter((_paragraphIndex, paragraph) =>
+        /replacements?.*recommend/i.test(text($(paragraph).text())),
+      )
+      .each((_paragraphIndex, paragraph) => {
+        const label = text($(paragraph).text());
+        const operation = lifecycleTask(label);
+        if (operation === undefined) return;
+        replacements(
+          validIds,
+          operation,
+          validModelIds(
+            $(paragraph)
+              .find("code")
+              .map((_index, element) => text($(element).text()))
+              .get(),
           ),
         );
-    });
+      });
+  });
+
+  $("main table").each((_tableIndex, table) => {
+    const headers = $(table)
+      .find("tr")
+      .first()
+      .find("th,td")
+      .map((_index, cell) => text($(cell).text()))
+      .get();
+    const shutdownIndex = headers.indexOf("Shutdown Date");
+    const modelIndex = headers.indexOf("Deprecated Model");
+    const priceIndex = headers.indexOf("Deprecated Model Price");
+    const replacementIndex = headers.indexOf("Recommended Replacement");
+    if (shutdownIndex < 0 || modelIndex < 0 || replacementIndex < 0) return;
+    $(table)
+      .find("tr")
+      .slice(1)
+      .each((_rowIndex, row) => {
+        const elements = $(row).find("td");
+        const cells = elements.map((_cellIndex, cell) => text($(cell).text())).get();
+        const at = date(cells[shutdownIndex] ?? "");
+        const id = modelIdSchema.safeParse(cells[modelIndex]);
+        if (at === undefined || !id.success) return;
+        const replacementIds = elements
+          .eq(replacementIndex)
+          .find("code")
+          .map((_index, element) => text($(element).text()))
+          .get();
+        const fallbackReplacement = modelIdSchema.safeParse(cells[replacementIndex]);
+        if (fallbackReplacement.success) replacementIds.push(fallbackReplacement.data);
+        model(models, input, id.data, []);
+        update(models, id.data, (current) => ({
+          ...current,
+          status: at <= observedDate ? "retired" : "deprecated",
+          retired_at: at,
+          replacement_model_ids: unique([
+            ...current.replacement_model_ids,
+            ...validModelIds(replacementIds),
+          ]),
+        }));
+        factCount += 1;
+        const price = cells[priceIndex]?.match(/\$([\d.]+)\s*\/\s*1K searches/i)?.[1];
+        if (price !== undefined)
+          update(models, id.data, (current) =>
+            addRate(
+              current,
+              publishedRate(
+                "rerank_request",
+                price,
+                "thousand_search_units",
+                input.source.id,
+                "1K searches",
+              ),
+            ),
+          );
+      });
+  });
+  if (factCount === 0) throw new Error("Cohere lifecycle structure drifted");
 }
 
 function key(value: string, keepDate: boolean): string {
@@ -826,16 +978,7 @@ function nestedText(value: unknown): string {
 function applyPricing(input: Input, models: Map<string, ProviderModel>, body: string): void {
   const $ = load(body);
   const products = pricingModels($);
-  const required = [
-    "Command A+",
-    "Command R",
-    "Command R7B",
-    "Transcribe",
-    "Embed 4",
-    "Rerank 4 Fast",
-    "Rerank 4 Pro",
-  ];
-  if (required.some((name) => !products.some((item) => item.modelName === name)))
+  if (products.length < 5 || products.length > 20)
     throw new Error("Cohere pricing model structure drifted");
   for (const product of products) {
     const current = matchProduct(models, product.modelName);
@@ -843,10 +986,12 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
     if (product.per === "Free") {
       update(models, current.model_id, (item) => ({
         ...item,
-        pricing_state: "custom_quote",
+        pricing_state: "free",
       }));
       continue;
     }
+    if (product.per !== "1M tokens")
+      throw new Error(`Unsupported Cohere pricing unit: ${product.per}`);
     for (const item of product.pricings ?? []) {
       const unit = item.overridePer ?? product.per;
       const add = (label: string, price: number): void => {
@@ -991,6 +1136,52 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
     });
 }
 
+function applyAliasPricing(models: Map<string, ProviderModel>): void {
+  for (const current of models.values()) {
+    const targetId = current.description?.match(
+      /^Alias for ([a-z0-9](?:[a-z0-9._:/-]*[a-z0-9])?)\.?$/i,
+    )?.[1];
+    const parsed = modelIdSchema.safeParse(targetId);
+    const target = parsed.success ? models.get(parsed.data) : undefined;
+    if (
+      target === undefined ||
+      current.pricing_state !== "unknown" ||
+      (target.pricing_state === "unknown" && target.price_facts.length === 0)
+    )
+      continue;
+    models.set(current.model_id, {
+      ...current,
+      pricing_state: target.pricing_state,
+      price_facts: [...target.price_facts],
+      raw_price_facts: [...target.raw_price_facts],
+    });
+  }
+}
+
+function finalizeRetiredPricing(models: Map<string, ProviderModel>): void {
+  for (const current of models.values())
+    if (current.status === "retired")
+      models.set(current.model_id, {
+        ...current,
+        pricing_state: "not_applicable",
+        price_facts: [],
+        raw_price_facts: [],
+      });
+}
+
+function validatePricingCoverage(models: Map<string, ProviderModel>, minimum: number): void {
+  if (minimum < 0 || minimum > 1) throw new Error("Invalid Cohere pricing coverage threshold");
+  const current = [...models.values()].filter(({ status }) =>
+    ["active", "deprecated"].includes(status),
+  );
+  const covered = current.filter(
+    ({ pricing_state, price_facts, raw_price_facts }) =>
+      pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
+  ).length;
+  if (current.length === 0 || covered / current.length < minimum)
+    throw new Error("Cohere pricing coverage fell below the reviewed threshold");
+}
+
 function includesId(value: string, id: string): boolean {
   return [...value.matchAll(/[a-z0-9][a-z0-9._:/-]*/gi)].some(
     (match) => match[0].replace(/[.,;:]+$/, "").toLowerCase() === id.toLowerCase(),
@@ -1067,17 +1258,75 @@ function applyGenerateEndpoint(
   }
 }
 
+function exactDocument(documents: LinkedDocument[], pathname: string): LinkedDocument {
+  const matches = documents.filter(({ url }) => new URL(url).pathname === pathname);
+  const document = matches[0];
+  if (matches.length !== 1 || document === undefined)
+    throw new Error(`Cohere companion document is missing: ${pathname}`);
+  return document;
+}
+
+function indexedModelDocuments(
+  index: LinkedDocument,
+  documents: LinkedDocument[],
+  minimum: number,
+  maximum: number,
+): LinkedDocument[] {
+  const paths = new Set<string>();
+  const origin = new URL(index.url).origin;
+  for (const match of index.body.matchAll(/\[[^\]]+\]\(([^)\s]+)\)/g)) {
+    const target = match[1];
+    if (target === undefined) continue;
+    let url: URL;
+    try {
+      url = new URL(target, index.url);
+    } catch {
+      continue;
+    }
+    if (url.origin !== origin || !/^\/docs\/[a-z0-9.-]+\.md$/.test(url.pathname)) continue;
+    paths.add(url.pathname.slice(0, -".md".length));
+  }
+  if (paths.size < minimum || paths.size > maximum)
+    throw new Error("Cohere model document count outside reviewed bounds");
+  const byPath = new Map<string, LinkedDocument>();
+  for (const document of documents) {
+    const pathname = new URL(document.url).pathname;
+    if (!paths.has(pathname)) continue;
+    if (byPath.has(pathname)) throw new Error(`Duplicate Cohere model document: ${pathname}`);
+    byPath.set(pathname, document);
+  }
+  return [...paths].map((pathname) => {
+    const document = byPath.get(pathname);
+    if (document === undefined)
+      throw new Error(`Cohere model index document is missing: ${pathname}`);
+    return document;
+  });
+}
+
 export function parseCohereCatalog(input: Input): ProviderModel[] {
+  if (input.source.extractor.kind !== "cohere-catalog")
+    throw new Error("Invalid Cohere catalog extractor");
+  const configuration = input.source.extractor;
+  const linkedDocuments = input.source.linkedDocuments;
+  if (linkedDocuments === undefined) throw new Error("Cohere catalog requires linked documents");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
   const references = endpointReferences(bundle.documents);
-  rootTables(input, models, bundle.index.body, references);
-  for (const document of bundle.documents) {
+  const modelDocuments = indexedModelDocuments(
+    bundle.index,
+    bundle.documents,
+    linkedDocuments.minDocuments,
+    linkedDocuments.maxDocuments,
+  );
+  rootTables(input, models, exactDocument(bundle.documents, "/docs/models").body, references);
+  for (const document of modelDocuments) {
     const url = new URL(document.url);
-    if (url.pathname.startsWith("/docs/command-"))
-      commandCard(input, models, url, document.body, references);
+    modelCard(input, models, url, document.body, references);
     if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
       transcribePage(input, models, url, document.body, references);
+  }
+  for (const document of bundle.documents) {
+    const url = new URL(document.url);
     if (url.pathname === "/docs/deprecations") lifecycle(input, models, document.body);
     if (url.hostname === "cohere.com" && url.pathname === "/pricing")
       applyPricing(input, models, document.body);
@@ -1088,7 +1337,10 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
     if (url.pathname.includes("/changelog"))
       releases(models, document.body, url.pathname === "/v2/changelog");
   }
-  if (models.size < 35 || models.size > 60)
+  applyAliasPricing(models);
+  finalizeRetiredPricing(models);
+  validatePricingCoverage(models, configuration.minPricingCoverage);
+  if (models.size < configuration.minModels || models.size > configuration.maxModels)
     throw new Error("Cohere model count outside reviewed bounds");
   return [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id));
 }

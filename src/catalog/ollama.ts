@@ -177,7 +177,7 @@ function libraryModel(input: ParseInput, item: LibraryItem): ProviderModel {
       observedAt: input.observedAt,
     }),
     ...facts(item),
-    pricing_state: "not_applicable",
+    pricing_state: item.badges.includes("cloud") ? "not_published" : "not_applicable",
     status: "active",
   };
 }

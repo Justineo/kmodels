@@ -2,6 +2,8 @@
 
 > A fast reasoning model.
 
+Use the `reasoning_effort` parameter to control reasoning.
+
 <ModelInfo
 modelId="gpt-oss-120b"
 contextLength={{

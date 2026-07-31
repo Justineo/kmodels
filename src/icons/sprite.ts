@@ -15,6 +15,7 @@ import openAi from "@lobehub/icons-static-svg/icons/openai.svg?raw";
 import vercel from "@lobehub/icons-static-svg/icons/vercel.svg?raw";
 import vertex from "@lobehub/icons-static-svg/icons/vertexai-color.svg?raw";
 import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
+import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
 import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
 import arrowUp from "lucide-static/icons/arrow-up.svg?raw";
 import chevronDown from "lucide-static/icons/chevron-down.svg?raw";
@@ -36,6 +37,7 @@ const uiSources = {
   "chevron-down": chevronDown,
   "chevron-right": chevronRight,
   "external-link": externalLink,
+  github,
   "list-filter": listFilter,
   "loader-circle": loaderCircle,
   moon,

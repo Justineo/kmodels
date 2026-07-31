@@ -23,6 +23,14 @@ const sourceRef = "gemini-models";
 const modelRef = "gemini/test-model";
 const observedAt = "2026-07-28T00:00:00.000Z";
 
+function pricingManifest() {
+  const provider = manifests.find((manifest) => manifest.provider.id === providerId);
+  const source = provider?.sources.find(({ id }) => id === sourceRef);
+  if (provider === undefined || source === undefined)
+    throw new Error("Gemini pricing manifest is missing");
+  return { provider, source };
+}
+
 function model(): ParsedProviderModel {
   return {
     provider_id: providerId,
@@ -106,6 +114,7 @@ function model(): ParsedProviderModel {
         derived: false,
       },
     ],
+    raw_price_facts: [],
     scope: "global_catalog",
     account_availability: "unknown",
     first_seen_at: observedAt,
@@ -170,10 +179,7 @@ describe("parsed-source canonical pricing adapter", () => {
   });
 
   it("normalizes exact calculated rates and fixed/provider units", () => {
-    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
-    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
-    if (providerManifest === undefined || pricingSource === undefined)
-      throw new Error("Gemini pricing manifest is missing");
+    const { provider: providerManifest, source: pricingSource } = pricingManifest();
     const parsedModel = model();
     const partition = assembleParsedProviderPricing(
       providerId,
@@ -250,10 +256,89 @@ describe("parsed-source canonical pricing adapter", () => {
     ).toBe("unsupported_structure");
   });
 
+  it("preserves source-native pricing formulas as raw terms", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.pricing_state = "unknown";
+    parsedModel.price_facts = [];
+    parsedModel.raw_price_facts = [
+      {
+        term_key: "agent_usage_formula",
+        impact: "base_price",
+        reason: "requires_usage_aggregation",
+        conditions: {},
+        source_ref: sourceRef,
+        raw: {
+          label: "Agent usage pricing",
+          formula: "Underlying model inference plus tool usage",
+        },
+      },
+    ];
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    const term = partition?.books[0]?.offers[0]?.terms[0];
+    expect(term).toMatchObject({
+      kind: "raw",
+      term_key: "agent_usage_formula",
+      variants: [
+        {
+          impact: "base_price",
+          reason: "requires_usage_aggregation",
+          observations: [
+            {
+              raw: {
+                label: "Agent usage pricing",
+                formula: "Underlying model inference plus tool usage",
+              },
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("keeps account eligibility independent from inference service tiers", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.price_facts = [
+      tokenRate("0", { account_eligibility: "free_tier" }),
+      tokenRate("1", { account_eligibility: "paid_tier" }),
+      tokenRate("0.5", {
+        account_eligibility: "paid_tier",
+        service_tier: "batch",
+      }),
+    ];
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    const term = partition?.books[0]?.offers[0]?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
+    const dimensions = (amount: string) =>
+      term.variants
+        .find(({ observations }) => observations[0]?.raw.amount === amount)
+        ?.applicability.any_of[0]?.all_of.flatMap((condition) =>
+          condition.kind === "categorical"
+            ? [[condition.dimension.value, condition.values[0]?.value]]
+            : [],
+        );
+    expect(dimensions("0")).toContainEqual(["account_eligibility", "free_tier"]);
+    expect(dimensions("0.5")).toEqual(
+      expect.arrayContaining([
+        ["account_eligibility", "paid_tier"],
+        ["service_tier", "batch"],
+      ]),
+    );
+  });
+
   it("keeps exact provider capacity units normalized", () => {
-    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
-    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
-    if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
+    const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [
       {
@@ -295,9 +380,7 @@ describe("parsed-source canonical pricing adapter", () => {
   });
 
   it("makes reviewed defaults and context tiers independently selectable", () => {
-    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
-    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
-    if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
+    const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [
       tokenRate("1", {}),
@@ -336,9 +419,7 @@ describe("parsed-source canonical pricing adapter", () => {
   });
 
   it("applies provider defaults only where official alternatives establish them", () => {
-    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
-    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
-    if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
+    const { source: pricingSource } = pricingManifest();
     const scenarios = [
       {
         provider: "anthropic",
@@ -390,9 +471,7 @@ describe("parsed-source canonical pricing adapter", () => {
   });
 
   it("preserves explicit non-numeric source states", () => {
-    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
-    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
-    if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
+    const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [];
     parsedModel.pricing_state = "not_published";
@@ -407,10 +486,42 @@ describe("parsed-source canonical pricing adapter", () => {
     ]);
   });
 
+  it("keeps a free usage offer alongside numeric capacity pricing", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.pricing_state = "free";
+    parsedModel.price_facts = [
+      {
+        meter: "provisioned_throughput",
+        price: "3.75",
+        currency: "USD",
+        unit: "unit_hour",
+        conditions: { endpoint: "Model Vault" },
+        source_ref: sourceRef,
+        derived: false,
+      },
+    ];
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    expect(
+      partition?.books[0]?.offers
+        .map(({ billing_mode, states }) => ({
+          billing_mode: billing_mode.value,
+          states: states.map(({ state }) => state),
+        }))
+        .sort((left, right) => left.billing_mode.localeCompare(right.billing_mode)),
+    ).toEqual([
+      { billing_mode: "capacity", states: ["numeric"] },
+      { billing_mode: "usage", states: ["free"] },
+    ]);
+  });
+
   it("binds versionless pricing evidence only to one unambiguous model", () => {
-    const providerManifest = manifests.find(({ provider }) => provider.id === providerId);
-    const pricingSource = providerManifest?.sources.find(({ id }) => id === sourceRef);
-    if (pricingSource === undefined) throw new Error("Gemini pricing manifest is missing");
+    const { source: pricingSource } = pricingManifest();
     const sourceModel = model();
     const published = {
       ...sourceModel,

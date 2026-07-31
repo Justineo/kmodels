@@ -36,6 +36,7 @@ describe("generated static catalog", () => {
     expect(catalog.models.length).toBeGreaterThan(0);
 
     const sourceIds = new Set(catalog.sources.map((source) => source.id));
+    const sourceRoles = new Map(catalog.sources.map((source) => [source.id, source.role]));
     const referencedSourceIds = new Set(catalog.models.flatMap((model) => model.source_refs));
     const modelIds = new Set<string>();
     const manifestsByProvider = new Map(
@@ -49,6 +50,7 @@ describe("generated static catalog", () => {
       modelIds.add(model.uid);
       expect(model.uid).toBe(modelUid(model.provider_id, model.model_id, model.version));
       expect(model.source_refs.every((source) => sourceIds.has(source))).toBe(true);
+      expect(model.source_refs.some((source) => sourceRoles.get(source) === "catalog")).toBe(true);
       expect(
         model.task_evidence?.every(
           (evidence) => sourceIds.has(evidence.source_ref) && model.tasks.includes(evidence.task),
@@ -173,7 +175,7 @@ describe("generated static catalog", () => {
         expect.objectContaining({
           version: "0125-Preview",
           tasks: ["text_generation"],
-          status: "unknown",
+          status: "active",
         }),
         expect.objectContaining({
           version: "turbo-2024-04-09",
@@ -228,7 +230,11 @@ describe("generated static catalog", () => {
     const sources = new Set(models.flatMap(({ source_refs }) => source_refs));
     expect(models.length).toBeGreaterThan(500);
     expect(models.length).toBeLessThan(3_000);
-    expect([...sources].sort()).toEqual(["huggingface-hf-inference", "huggingface-router"]);
+    expect([...sources].sort()).toEqual([
+      "huggingface-hf-inference",
+      "huggingface-hub",
+      "huggingface-router",
+    ]);
   });
 
   it("publishes Bedrock route evidence without duplicating shared endpoint facts", async () => {

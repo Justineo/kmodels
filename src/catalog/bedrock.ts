@@ -452,7 +452,7 @@ function mantleRegions(documents: z.infer<typeof linkedBundleSchema>["documents"
   return regions;
 }
 
-function identityKey(value: string, publisher = ""): string {
+function identityTokens(value: string, publisher = ""): string[] {
   const ignored = new Set([
     "amazon",
     "bedrock",
@@ -493,7 +493,22 @@ function identityKey(value: string, publisher = ""): string {
         !ignored.has(part) &&
         !publisherTokens.has(part),
     );
-  return parts.sort().join(":");
+  const tokens: string[] = [];
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index];
+    if (part === undefined) continue;
+    if (part === "multi" && parts[index + 1] === "modal") {
+      tokens.push("multimodal");
+      index++;
+    } else {
+      tokens.push(part);
+    }
+  }
+  return tokens;
+}
+
+function identityKey(value: string, publisher = ""): string {
+  return identityTokens(value, publisher).sort().join(":");
 }
 
 function cardIdentityKeys(
@@ -508,7 +523,7 @@ function cardIdentityKeys(
         identityKey(id.replace(/:\d+$/, ""), publisher),
         identityKey(id.replace(/-v\d+:\d+$/i, ""), publisher),
       ]),
-    ].filter((value) => value !== ""),
+    ].filter(Boolean),
   );
 }
 
@@ -597,12 +612,27 @@ function parseCard(body: string): Card {
   };
 }
 
+function oneModel(cards: Card[]): Card | undefined {
+  const first = cards[0];
+  if (first === undefined) return undefined;
+  const key = (card: Card) =>
+    [...card.ids]
+      .map(
+        ([id, access]) =>
+          `${id}:${[...access.endpoints].sort().join(",")}:${[...access.deploymentTypes].sort().join(",")}`,
+      )
+      .sort()
+      .join("\0");
+  const identity = key(first);
+  return cards.every((card) => key(card) === identity) ? first : undefined;
+}
+
 function modelForProduct(cards: Card[], label: string, usage: string): Card | undefined {
   const displayMatches = cards.filter((card) => {
     const labelKey = identityKey(label, card.publisher);
     return labelKey !== "" && labelKey === identityKey(card.name, card.publisher);
   });
-  if (displayMatches.length > 0) return displayMatches.length === 1 ? displayMatches[0] : undefined;
+  if (displayMatches.length > 0) return oneModel(displayMatches);
   const matches = cards.filter((card) => {
     const labelKey = identityKey(label, card.publisher);
     if (labelKey !== "" && card.identityKeys.has(labelKey)) return true;
@@ -618,7 +648,14 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
       );
     });
   });
-  return matches.length === 1 ? matches[0] : undefined;
+  if (matches.length > 0) return oneModel(matches);
+  if (identityKey(label) !== "") return undefined;
+  const familyMatches = cards.filter((card) => {
+    const source = new Set(identityTokens(`${label} ${usage}`, card.publisher));
+    const family = new Set(identityTokens(card.name, card.publisher));
+    return family.size >= 2 && [...family].every((token) => source.has(token));
+  });
+  return oneModel(familyMatches);
 }
 
 function meter(
@@ -640,6 +677,8 @@ function meter(
     return "cache_write_text";
   }
   if (tasks.includes("reranking") && /search|rerank|request/.test(text)) return "rerank_request";
+  if ((unit === "request" || unit === "thousand_requests") && /grounding|tool/.test(text))
+    return "tool_call";
   if (tasks.includes("embeddings")) {
     if (unit === "image") return "input_image";
     if (unit === "token" || unit === "thousand_tokens" || unit === "million_tokens")
@@ -720,11 +759,21 @@ function conditions(
       : undefined;
   const modality =
     rateMeter === "embedding"
-      ? ["audio", "image", "video"].find((value) => priceText.includes(value))
+      ? ["audio", "image", "video", "text"].find((value) => priceText.includes(value))
       : undefined;
   const ttl = /cache.?write/.test(lower) ? (/1h|1 hour/.test(lower) ? 3_600 : 300) : undefined;
   const inference = attributes.inferenceType ?? "";
-  const operation = inference.match(/\b(T2I|I2I|T2V|I2V)\b/i)?.[1]?.toUpperCase();
+  const sourceModality = attributes.modality
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_");
+  const operation =
+    inference.match(/\b(T2I|I2I|T2V|I2V)\b/i)?.[1]?.toUpperCase() ??
+    (rateMeter === "input_image" && sourceModality !== "image"
+      ? sourceModality
+      : /grounding/.test(lower)
+        ? "grounding"
+        : undefined);
   const resolution =
     inference.match(/\b(512|1024|2048)\b/)?.[1] ??
     inference.match(/\b(SD|HD|FHD)\s+Resolution\b/i)?.[1]?.toUpperCase() ??
@@ -746,6 +795,10 @@ function conditions(
   };
 }
 
+function pricingText(attributes: Record<string, string>, description: string): string {
+  return `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${attributes.usagetype ?? ""} ${description}`.toLowerCase();
+}
+
 function rate(
   attributes: Record<string, string>,
   description: string,
@@ -756,21 +809,18 @@ function rate(
   sourceId: string,
   endpoint: BedrockModelEndpoint | undefined,
 ): SourcePriceFact | undefined {
-  const usage = attributes.usagetype ?? "";
-  const text =
-    `${attributes.inferenceType ?? ""} ${attributes.feature ?? ""} ${usage} ${description}`.toLowerCase();
+  const text = pricingText(attributes, description);
   const priceText = `${attributes.inferenceType ?? ""} ${description}`.toLowerCase();
-  if (/\bcustom\b|customization|training|storage/.test(text)) return undefined;
   let normalizedUnit: SourcePriceFact["unit"] | undefined;
   let normalizedPrice = price;
-  let derived = false;
+  let derivation: string | undefined;
   if (unit === "1K tokens") {
     normalizedUnit = "million_tokens";
     normalizedPrice = scaleDecimal(price, 3);
-    derived = true;
+    derivation = "source price per 1K tokens × 1,000";
   } else if (unit === "1M tokens" || (unit === "Units" && /million .*tokens?/.test(text))) {
     normalizedUnit = "million_tokens";
-  } else if (unit === "Units" && /search.?units?/.test(text)) {
+  } else if (/^search units?$/i.test(unit) || (unit === "Units" && /search.?units?/.test(text))) {
     normalizedUnit = "search_unit";
   } else if (unit === "Units" && /seconds?/.test(text)) {
     normalizedUnit = "second";
@@ -778,7 +828,7 @@ function rate(
     normalizedUnit = "image";
   } else if (unit === "Units" && /requests?/.test(text)) {
     normalizedUnit = "request";
-  } else if (unit === "image" || /images processed/i.test(unit)) {
+  } else if (/^(?:image|images processed|input images)$/i.test(unit)) {
     normalizedUnit = "image";
   } else if (unit === "seconds" || unit === "Second") {
     normalizedUnit = "second";
@@ -788,13 +838,21 @@ function rate(
     normalizedUnit = "minute";
   } else if (unit === "Pages Processed") {
     normalizedUnit = "page";
-  } else if (unit === "Requests") {
+  } else if (unit === "Requests" || unit === "Text Requests") {
     normalizedUnit = "request";
   } else if (unit === "Per 1000 requests") {
     normalizedUnit = "thousand_requests";
-  } else if (unit === "1K TPM Hour") {
+  } else if (
+    unit === "1K TPM Hour" ||
+    (unit === "1M TPM Hour" && /per hour per 1k .*tpm/.test(text))
+  ) {
     normalizedUnit = "thousand_tokens_per_minute_hour";
-  } else if ((unit === "hour" || unit === "hours" || unit === "Units") && /hour/.test(text)) {
+    if (unit === "1M TPM Hour")
+      derivation = "source dimension description identifies a 1K TPM-hour capacity unit";
+  } else if (unit === "Embeddings" && /input.?token.?count/.test(text)) {
+    normalizedUnit = "token";
+    derivation = "source dimension description identifies an input-token unit";
+  } else if (unit === "hour" || unit === "hours" || (unit === "Units" && /hour/.test(text))) {
     normalizedUnit = "unit_hour";
   }
   if (normalizedUnit === undefined) return undefined;
@@ -815,8 +873,8 @@ function rate(
     unit: normalizedUnit,
     conditions: rateConditions,
     source_ref: sourceId,
-    derived,
-    derivation: derived ? "source price per 1K tokens × 1,000" : undefined,
+    derived: derivation !== undefined,
+    derivation,
     raw_price: price,
     raw_unit: unit,
     ...(effectiveDate === undefined ? {} : { raw_validity: effectiveDate }),
@@ -1120,46 +1178,86 @@ function parsePrices(
   sourceId: string,
 ): Map<string, SourcePriceFact[]> {
   const byId = new Map<string, Map<string, SourcePriceFact>>();
+  let requiredDimensions = 0;
+  let handledDimensions = 0;
+  const unbound = new Set<string>();
+  const unsupported = new Set<string>();
   for (const document of documents) {
     if (new URL(document.url).hostname !== "pricing.us-east-1.amazonaws.com") continue;
     const list = priceListSchema.parse(JSON.parse(document.body));
     for (const [sku, product] of Object.entries(list.products)) {
       const attributes = product.attributes;
+      const explicitLabel = attributes.model ?? attributes.titanModel ?? attributes.titanModelUnit;
+      const inferredFromUsage =
+        explicitLabel === undefined &&
+        list.offerCode === "AmazonBedrock" &&
+        attributes.batch !== undefined &&
+        attributes.modality !== undefined;
       const label =
-        attributes.model ??
-        attributes.titanModel ??
-        attributes.titanModelUnit ??
-        attributes.servicename;
+        explicitLabel ??
+        (list.offerCode === "AmazonBedrockFoundationModels" || inferredFromUsage
+          ? attributes.servicename
+          : undefined);
       const usage = attributes.usagetype ?? "";
       if (label === undefined) continue;
+      const dimensions = Object.values(list.terms.OnDemand[sku] ?? {}).flatMap((term) =>
+        Object.values(term.priceDimensions).map((dimension) => ({ dimension, term })),
+      );
       const card = modelForProduct(cards, label, usage);
-      if (card === undefined) continue;
+      if (card === undefined) {
+        if (inferredFromUsage) {
+          requiredDimensions += dimensions.length;
+          unbound.add(label);
+        }
+        continue;
+      }
+      requiredDimensions += dimensions.length;
       const target = priceTargets(card, list.offerCode, usage);
-      if (target.ids.length === 0) continue;
-      for (const term of Object.values(list.terms.OnDemand[sku] ?? {})) {
-        for (const dimension of Object.values(term.priceDimensions)) {
-          const price = dimension.pricePerUnit.USD;
-          if (price === undefined) continue;
-          const parsed = rate(
-            attributes,
-            dimension.description,
-            dimension.unit,
-            price,
-            term.effectiveDate,
-            card.tasks,
-            sourceId,
-            target.endpoint,
-          );
-          if (parsed === undefined) continue;
-          for (const id of target.ids) {
-            const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
-            addRate(rates, parsed, id);
-            byId.set(id, rates);
-          }
+      if (target.ids.length === 0) {
+        unbound.add(`${label} (${usage})`);
+        continue;
+      }
+      for (const { dimension, term } of dimensions) {
+        const price = dimension.pricePerUnit.USD;
+        if (price === undefined) {
+          unsupported.add(`${label}: ${dimension.unit}`);
+          continue;
+        }
+        if (
+          /\bcustom\b|customization|training|storage/.test(
+            pricingText(attributes, dimension.description),
+          )
+        ) {
+          handledDimensions++;
+          continue;
+        }
+        const parsed = rate(
+          attributes,
+          dimension.description,
+          dimension.unit,
+          price,
+          term.effectiveDate,
+          card.tasks,
+          sourceId,
+          target.endpoint,
+        );
+        if (parsed === undefined) {
+          unsupported.add(`${label}: ${dimension.unit}`);
+          continue;
+        }
+        handledDimensions++;
+        for (const id of target.ids) {
+          const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
+          addRate(rates, parsed, id);
+          byId.set(id, rates);
         }
       }
     }
   }
+  if (requiredDimensions === 0 || handledDimensions !== requiredDimensions)
+    throw new Error(
+      `Bedrock model-price interpretation coverage incomplete (${handledDimensions}/${requiredDimensions}; unbound: ${[...unbound].slice(0, 5).join(", ") || "none"}; unsupported: ${[...unsupported].slice(0, 5).join(", ") || "none"})`,
+    );
   return new Map(
     [...byId].map(([id, rates]) => [
       id,
@@ -1173,6 +1271,8 @@ function parsePrices(
 }
 
 export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
+  if (input.source.extractor.kind !== "bedrock-catalog")
+    throw new Error("Bedrock catalog parser received the wrong extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const supportedMantleRegions = mantleRegions(bundle.documents);
   const cards = bundle.documents

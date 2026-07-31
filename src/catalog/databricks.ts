@@ -4,8 +4,12 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import { multiplyDecimal } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { decimalsEqual, multiplyDecimal, scaleDecimal } from "./pricing.ts";
+import {
+  sourcePriceFactKey,
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 
@@ -25,20 +29,28 @@ const endpointSchema = z.object({
 });
 const endpointListSchema = z.object({ endpoints: z.array(z.unknown()).min(1) });
 
-const months = new Map([
-  ["January", "01"],
-  ["February", "02"],
-  ["March", "03"],
-  ["April", "04"],
-  ["May", "05"],
-  ["June", "06"],
-  ["July", "07"],
-  ["August", "08"],
-  ["September", "09"],
-  ["October", "10"],
-  ["November", "11"],
-  ["December", "12"],
-]);
+const months = new Map<string, string>(
+  [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ].flatMap((name, index) => {
+    const value = String(index + 1).padStart(2, "0");
+    return [
+      [name, value],
+      [name.slice(0, 3), value],
+    ];
+  }),
+);
 
 function text(value: string): string {
   return value
@@ -482,20 +494,20 @@ function rate(
   rawUnit: string,
   conditions: SourcePriceFact["conditions"],
 ): SourcePriceFact | undefined {
+  if (rawPrice === "" || /^(?:n\/a|coming soon)$/i.test(rawPrice)) return undefined;
   const price = decimal(rawPrice);
-  return price === undefined
-    ? undefined
-    : {
-        meter,
-        price,
-        currency: "DBU",
-        unit,
-        conditions,
-        source_ref: sourceId,
-        derived: false,
-        raw_price: rawPrice,
-        raw_unit: rawUnit,
-      };
+  if (price === undefined) throw new Error(`Databricks invalid DBU price: ${rawPrice}`);
+  return {
+    meter,
+    price,
+    currency: "DBU",
+    unit,
+    conditions,
+    source_ref: sourceId,
+    derived: false,
+    raw_price: rawPrice,
+    raw_unit: rawUnit,
+  };
 }
 
 function add(
@@ -504,10 +516,11 @@ function add(
   value: SourcePriceFact,
 ): void {
   const modelRates = rates.get(id) ?? new Map<string, SourcePriceFact>();
-  modelRates.set(
-    `${value.meter}:${value.currency}:${value.unit}:${JSON.stringify(value.conditions)}`,
-    value,
-  );
+  const key = sourcePriceFactKey(value);
+  const current = modelRates.get(key);
+  if (current !== undefined && !decimalsEqual(current.price, value.price))
+    throw new Error(`Databricks conflicting prices for ${id}`);
+  modelRates.set(key, value);
   rates.set(id, modelRates);
 }
 
@@ -628,6 +641,127 @@ function promotional(
   };
 }
 
+function nextDate(value: string): string {
+  const result = new Date(`${value}T00:00:00Z`);
+  result.setUTCDate(result.getUTCDate() + 1);
+  return result.toISOString().slice(0, 10);
+}
+
+function equalRates(
+  left: Map<string, SourcePriceFact>,
+  right: Map<string, SourcePriceFact>,
+): boolean {
+  return (
+    left.size === right.size &&
+    [...left].every(([key, value]) => {
+      const other = right.get(key);
+      return other !== undefined && decimalsEqual(value.price, other.price);
+    })
+  );
+}
+
+function applyPriceNotes(
+  $: Document,
+  models: ProviderModel[],
+  rates: Map<string, Map<string, SourcePriceFact>>,
+  pricedModels: Set<string>,
+  starred: Set<string>,
+): void {
+  const notes = $("main p, main li")
+    .map((_index, element) => text($(element).text()))
+    .get()
+    .join("\n");
+  const covered = new Set<string>();
+  const launch = notes.match(
+    /The (.+?) DBU rates shown here reflect .*? pricing, in effect through ([A-Z][a-z]+ \d{1,2}, \d{4})\. Afterwards, the standard .*? equivalent to (.+?) DBU rates/i,
+  );
+  if (launch !== null) {
+    const targetLabel = launch[1];
+    const until = date(launch[2] ?? "");
+    const standardLabel = launch[3];
+    if (targetLabel === undefined || until === undefined || standardLabel === undefined)
+      throw new Error("Databricks launch-pricing note changed");
+    const targets = matched(models, targetLabel, true);
+    const standards = matched(models, standardLabel, true);
+    const standardRates = standards.map((model) => rates.get(model.model_id));
+    const standard = standardRates[0];
+    if (
+      targets.length === 0 ||
+      standards.length === 0 ||
+      standard === undefined ||
+      standardRates.some((values) => values === undefined || !equalRates(values, standard))
+    )
+      throw new Error(
+        `Databricks launch-pricing models or rates changed for ${targetLabel} or ${standardLabel}`,
+      );
+    for (const target of targets) {
+      const launchRates = rates.get(target.model_id);
+      if (launchRates === undefined)
+        throw new Error("Databricks launch-pricing target omitted rates");
+      rates.delete(target.model_id);
+      for (const value of launchRates.values())
+        add(rates, target.model_id, {
+          ...value,
+          conditions: { ...value.conditions, effective_until: until, promotion: true },
+        });
+      for (const value of standard.values())
+        add(rates, target.model_id, {
+          ...value,
+          conditions: { ...value.conditions, effective_from: nextDate(until) },
+          derived: true,
+          derivation: `${targetLabel} standard rate = published ${standardLabel} rate`,
+        });
+      covered.add(target.model_id);
+    }
+  }
+
+  const discount = notes.match(
+    /DBU rates for these (.+?) models do not include a promotional discount of (\d+)%.*?promotion expires on ([A-Z][a-z]+ \d{1,2}, \d{4})/i,
+  );
+  if (discount !== null) {
+    const family = identity(discount[1] ?? "");
+    const percent = Number(discount[2]);
+    const until = date(discount[3] ?? "");
+    if (
+      family.length === 0 ||
+      !Number.isInteger(percent) ||
+      percent <= 0 ||
+      percent >= 100 ||
+      until === undefined
+    )
+      throw new Error("Databricks promotional-pricing note changed");
+    const promoted = models.filter(
+      (model) =>
+        pricedModels.has(model.model_id) &&
+        family.every((token) => identity(model.name).includes(token)),
+    );
+    if (promoted.length === 0) throw new Error("Databricks promotional-pricing models changed");
+    const factor = scaleDecimal(String(100 - percent), -2);
+    for (const model of promoted) {
+      const published = rates.get(model.model_id);
+      if (published === undefined)
+        throw new Error("Databricks promotional-pricing model omitted rates");
+      rates.delete(model.model_id);
+      for (const value of published.values()) {
+        add(rates, model.model_id, {
+          ...value,
+          conditions: { ...value.conditions, effective_from: nextDate(until) },
+        });
+        add(
+          rates,
+          model.model_id,
+          promotional(value, factor, until, `${value.meter} = published DBU rate × ${factor}`),
+        );
+      }
+      covered.add(model.model_id);
+    }
+  }
+
+  const uncovered = [...starred].filter((id) => !covered.has(id));
+  if (uncovered.length > 0)
+    throw new Error(`Databricks pricing notes omitted starred models: ${uncovered.join(", ")}`);
+}
+
 function partnerPrices(
   models: ProviderModel[],
   body: string,
@@ -638,6 +772,8 @@ function partnerPrices(
   const tables = $("main table");
   if (tables.length !== 3) throw new Error("Databricks partner pricing tables changed shape");
   const providers = new Set<string>();
+  const pricedModels = new Set<string>();
+  const starred = new Set<string>();
   tables.each((_tableIndex, tableElement) => {
     const tableRows = rows($, $(tableElement));
     const provider = tableRows[0]?.[0];
@@ -652,6 +788,8 @@ function partnerPrices(
       const label = row[0];
       if (label === undefined) continue;
       for (const model of matched(models, label, true)) {
+        pricedModels.add(model.model_id);
+        if (label.includes("*")) starred.add(model.model_id);
         const common = {
           endpoint: endpoint(row[1] ?? ""),
           service_tier: "pay_per_token",
@@ -681,43 +819,13 @@ function partnerPrices(
             service_tier: "batch",
           }),
         ].flatMap((value) => (value === undefined ? [] : [value]));
-        for (const value of valuesToAdd) {
-          if (provider === "Google") {
-            add(rates, model.model_id, {
-              ...value,
-              conditions: { ...value.conditions, effective_from: "2026-08-01" },
-            });
-            add(
-              rates,
-              model.model_id,
-              promotional(value, "0.8", "2026-07-31", `${value.meter} = published DBU rate * 0.8`),
-            );
-          } else if (model.model_id === "databricks-claude-sonnet-5") {
-            add(rates, model.model_id, {
-              ...value,
-              conditions: {
-                ...value.conditions,
-                effective_until: "2026-08-31",
-                promotion: true,
-              },
-            });
-          } else add(rates, model.model_id, value);
-        }
+        for (const value of valuesToAdd) add(rates, model.model_id, value);
       }
     }
   });
   if (providers.size !== tables.length)
     throw new Error("Databricks partner pricing groups changed");
-
-  const standard = rates.get("databricks-claude-sonnet-4-6");
-  if (standard !== undefined)
-    for (const value of standard.values())
-      add(rates, "databricks-claude-sonnet-5", {
-        ...value,
-        conditions: { ...value.conditions, effective_from: "2026-09-01" },
-        derived: true,
-        derivation: "Claude Sonnet 5 standard rate = Claude Sonnet 4.5 / 4.6 rate",
-      });
+  applyPriceNotes($, models, rates, pricedModels, starred);
 }
 
 function applyLifecycle(models: ProviderModel[], body: string, observedAt: string): void {
@@ -844,6 +952,10 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     input.source.id,
     rates,
   );
+  const current = models.filter((model) => model.status !== "retired");
+  const priced = current.filter((model) => rates.has(model.model_id));
+  if (current.length === 0 || priced.length / current.length < 0.8)
+    throw new Error(`Databricks pricing coverage fell below reviewed bounds`);
   return models.map((model) => {
     const pricing = [...(rates.get(model.model_id)?.values() ?? [])].sort((left, right) =>
       `${left.meter}:${JSON.stringify(left.conditions)}`.localeCompare(

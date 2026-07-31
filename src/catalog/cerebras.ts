@@ -334,7 +334,18 @@ function cardModalities(body: string, field: "inputFormats" | "outputFormats"): 
 interface CatalogRow {
   id: string;
   name: string;
+  path: string;
   releaseStage: "stable" | "preview";
+}
+
+function modelLink(value: string): { name: string; path: string } {
+  const match = value.match(/^\[([^\]]+)]\((\/models\/[a-z0-9-]+)\)$/);
+  if (match?.[1] === undefined || match[2] === undefined)
+    throw new Error(`Cerebras model cell is not an exact model link: ${value}`);
+  return {
+    name: text(match[1]),
+    path: match[2],
+  };
 }
 
 function catalogRows(body: string): CatalogRow[] {
@@ -354,7 +365,7 @@ function catalogRows(body: string): CatalogRow[] {
       const rawId = row[idIndex];
       if (rawName === undefined || rawId === undefined)
         throw new Error("Cerebras model table omitted a value");
-      return { id: exactCode(rawId), name: text(rawName), releaseStage };
+      return { id: exactCode(rawId), ...modelLink(rawName), releaseStage };
     });
   });
 }
@@ -431,6 +442,7 @@ function catalogCard(
       structured_output: features.has("Structured Outputs"),
       streaming: features.has("Streaming"),
       prompt_cache: features.has("Prompt Caching"),
+      effort_control: /\breasoning_effort\b/.test(body) ? true : "unknown",
     },
     limits: {
       context_tokens: largestTokenCount(objectBlock(body, "contextLength")),
@@ -446,7 +458,7 @@ function catalogCard(
 
 function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): string {
   const item = bundle.documents.find(({ url }) => new URL(url).pathname.endsWith(suffix));
-  if (item === undefined) throw new Error(`Cerebras catalog omitted ${suffix}`);
+  if (item === undefined) throw new Error(`Cerebras source bundle omitted ${suffix}`);
   return item.body;
 }
 
@@ -468,9 +480,19 @@ function validateApiReferences(bundle: z.infer<typeof linkedBundleSchema>): void
     throw new Error("Cerebras Completions API reference drift");
 }
 
+function validateServiceTierPricing(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const body = document(bundle, "/capabilities/service-tiers.md");
+  if (
+    !/Are priority, flex, or auto billed differently than default\?/.test(body) ||
+    !/No, during the preview launch all service tiers are billed equally\./.test(body)
+  )
+    throw new Error("Cerebras service-tier pricing policy drift");
+}
+
 export function parseCerebrasCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   validateApiReferences(bundle);
+  validateServiceTierPricing(bundle);
   const rows = catalogRows(bundle.index.body);
   const cardEntries = bundle.documents.flatMap((item) => {
     const pathname = new URL(item.url).pathname.replace(/\.md$/, "");
@@ -516,15 +538,95 @@ function deprecatedIds(body: string): string[] {
   return sentence === undefined ? [] : [modelIdSchema.parse(sentence)];
 }
 
+function bind(map: Map<string, string>, key: string, id: string): void {
+  const current = map.get(key);
+  if (current !== undefined && current !== id)
+    throw new Error(`Cerebras model reference ${key} maps to multiple IDs`);
+  map.set(key, id);
+}
+
+function namedReleaseIds(body: string): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const match of body.matchAll(
+    /Added (?:(?:preview|production) )?support for ([^:\n]{1,160}):\s*`([^`]+)`/gi,
+  )) {
+    if (match[1] === undefined || match[2] === undefined) continue;
+    bind(result, text(match[1]), modelIdSchema.parse(match[2]));
+  }
+  for (const match of body.matchAll(
+    /\[([^\]]+)]\(\/models\/[a-z0-9-]+\)\s+\(`([^`]+)`\) is now available in preview/gi,
+  )) {
+    if (match[1] === undefined || match[2] === undefined) continue;
+    bind(result, text(match[1]), modelIdSchema.parse(match[2]));
+  }
+  const heading = body.match(/\*\*Support for ([^*\n]+)\*\*/)?.[1];
+  if (heading !== undefined) {
+    const ids = [...body.matchAll(/`([^`]+)`/g)].flatMap((match) => {
+      const parsed = modelIdSchema.safeParse(match[1]);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (ids.length !== 1) throw new Error("Cerebras model-support release has ambiguous IDs");
+    const id = ids[0];
+    if (id === undefined) throw new Error("Cerebras model-support release omitted its ID");
+    bind(result, text(heading), id);
+  }
+  return result;
+}
+
+function modelReferences(
+  catalog: string,
+  releases: string,
+): { names: Map<string, string>; paths: Map<string, string> } {
+  const names = new Map<string, string>();
+  const paths = new Map<string, string>();
+  for (const row of catalogRows(catalog)) {
+    bind(names, row.name, row.id);
+    bind(paths, row.path, row.id);
+  }
+  for (const update of updates(releases))
+    for (const [name, id] of namedReleaseIds(update.body)) bind(names, name, id);
+  return { names, paths };
+}
+
+function replacements(
+  body: string,
+  deprecated: string[],
+  references: ReturnType<typeof modelReferences>,
+): string[] {
+  const recommendation = body.match(/We recommend[\s\S]*?(?:\n\n|$)/)?.[0];
+  if (recommendation === undefined) return [];
+  const result: string[] = [];
+  for (const match of recommendation.matchAll(/\[([^\]]+)]\((\/models\/[a-z0-9-]+)\)/g)) {
+    if (match[1] === undefined || match[2] === undefined) continue;
+    const path = match[2];
+    const pathId = references.paths.get(path);
+    const nameId = references.names.get(text(match[1]));
+    if (pathId !== undefined && nameId !== undefined && pathId !== nameId)
+      throw new Error(`Cerebras replacement link ${path} has conflicting model IDs`);
+    const id = pathId ?? nameId;
+    if (id === undefined) throw new Error(`Unresolved Cerebras replacement model link: ${path}`);
+    result.push(id);
+  }
+  for (const match of recommendation.matchAll(/`([^`]+)`/g)) {
+    const parsed = modelIdSchema.safeParse(match[1]);
+    if (parsed.success) result.push(parsed.data);
+  }
+  const unique = [...new Set(result.filter((id) => !deprecated.includes(id)))];
+  if (unique.length === 0)
+    throw new Error("Cerebras model recommendation omitted a replacement ID");
+  return unique;
+}
+
 export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
-  const models = updates(input.body).flatMap((update): ProviderModel[] => {
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const references = modelReferences(
+    document(bundle, "/models/overview.md"),
+    document(bundle, "/support/change-log.md"),
+  );
+  const models = updates(bundle.index.body).flatMap((update): ProviderModel[] => {
     const ids = deprecatedIds(update.body);
     if (ids.length === 0) return [];
-    const recommendation = update.body.match(/We recommend[\s\S]*?(?:\n\n|$)/)?.[0] ?? "";
-    const replacements = [...recommendation.matchAll(/`([^`]+)`/g)].flatMap((match) => {
-      const parsed = modelIdSchema.safeParse(match[1]);
-      return parsed.success && !ids.includes(parsed.data) ? [parsed.data] : [];
-    });
+    const replacementIds = replacements(update.body, ids, references);
     return ids.map(
       (id): ProviderModel => ({
         ...baseModel({
@@ -538,26 +640,23 @@ export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
         modalities: { input: ["text"], output: ["text"] },
         deprecated_at: update.date,
         status: "deprecated",
-        replacement_model_ids: replacements,
+        replacement_model_ids: replacementIds,
       }),
     );
   });
+  const known = new Set([...models.map(({ model_id }) => model_id), ...references.paths.values()]);
+  for (const model of models)
+    for (const replacement of model.replacement_model_ids)
+      if (!known.has(replacement))
+        throw new Error(`Unknown Cerebras replacement model ID: ${replacement}`);
   return bounded(input, "cerebras-lifecycle", models);
 }
 
 function releaseIds(body: string): string[] {
-  const ids = [
-    ...body.matchAll(/Added (?:(?:preview|production) )?support for [^:\n]{1,160}:\s*`([^`]+)`/gi),
-    ...body.matchAll(/\(`([^`]+)`\) is now available in preview/gi),
-  ].flatMap((match) => (match[1] === undefined ? [] : [modelIdSchema.parse(match[1])]));
-  if (/\*\*Support for [^*\n]+\*\*/.test(body)) {
-    const codes = [...body.matchAll(/`([^`]+)`/g)].flatMap((match) => {
-      const parsed = modelIdSchema.safeParse(match[1]);
-      return parsed.success ? [parsed.data] : [];
-    });
-    if (codes.length !== 1) throw new Error("Cerebras model-support release has ambiguous IDs");
-    ids.push(...codes);
-  }
+  const ids = [...body.matchAll(/\(`([^`]+)`\) is now available in preview/gi)].flatMap((match) =>
+    match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
+  );
+  ids.push(...namedReleaseIds(body).values());
   return [...new Set(ids)];
 }
 

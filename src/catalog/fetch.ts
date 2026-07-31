@@ -44,6 +44,7 @@ const googleModelsPageSchema = z.object({
   publisherModels: z.array(z.unknown()).default([]),
   nextPageToken: z.string().min(1).optional(),
 });
+const huggingFaceModelsPageSchema = z.array(z.unknown());
 const ollamaListSchema = z
   .object({
     models: z.array(z.object({ model: modelIdSchema }).passthrough()),
@@ -230,20 +231,20 @@ function environment(name: string): string {
   return value;
 }
 
-async function cloudCurl(
+async function cloudJson(
   label: string,
   url: URL,
   maxResponseBytes: number,
   headers: string[],
   form: { name: string; value: string }[] = [],
-): Promise<string> {
+): Promise<unknown> {
   const args = [
     "--silent",
     "--show-error",
     "--compressed",
     "--fail-with-body",
     "--max-time",
-    "30",
+    "60",
     "--connect-timeout",
     "10",
     "--max-redirs",
@@ -251,27 +252,38 @@ async function cloudCurl(
     "--proto",
     "=https",
     "--retry",
-    "2",
+    "5",
     "--retry-all-errors",
     "--retry-max-time",
-    "30",
+    "180",
     "--user-agent",
     "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
   ];
   for (const header of headers) args.push("--header", header);
   for (const field of form) args.push("--data-urlencode", `${field.name}=${field.value}`);
   args.push(url.href);
-  try {
-    const result = await execute("curl", args, {
-      encoding: "utf8",
-      maxBuffer: maxResponseBytes + 64 * 1024,
-    });
-    if (Buffer.byteLength(result.stdout) > maxResponseBytes)
-      throw new Error("Azure response exceeded byte limit");
-    return result.stdout;
-  } catch {
-    throw new TransientFetchError(`${label} transport failure`);
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    let body: string;
+    try {
+      const result = await execute("curl", args, {
+        encoding: "utf8",
+        maxBuffer: maxResponseBytes + 64 * 1024,
+      });
+      body = result.stdout;
+      if (Buffer.byteLength(body) > maxResponseBytes)
+        throw new Error("Cloud response exceeded byte limit");
+    } catch {
+      throw new TransientFetchError(`${label} transport failure`);
+    }
+    try {
+      return JSON.parse(body);
+    } catch {
+      if (!/^Too many requests\b/i.test(body.trim()) || attempt === 4)
+        throw new Error(`${label} returned invalid JSON`);
+      await wait(30_000 * (attempt + 1));
+    }
   }
+  throw new Error(`${label} returned invalid JSON`);
 }
 
 function azurePageUrl(raw: string, pathPrefix: string): URL {
@@ -312,9 +324,7 @@ async function fetchAzureRetailPages(
   let next: URL | undefined = first;
   for (let pageCount = 0; next !== undefined && pageCount < limits.pages; pageCount += 1) {
     const page = azurePricesPageSchema.parse(
-      JSON.parse(
-        await cloudCurl(label, next, source.maxResponseBytes, ["Accept: application/json"]),
-      ),
+      await cloudJson(label, next, source.maxResponseBytes, ["Accept: application/json"]),
     );
     prices.push(...page.Items);
     if (prices.length > limits.items)
@@ -349,19 +359,17 @@ async function fetchAzureModels(
 
   const tokenUrl = new URL(`/${tenant}/oauth2/v2.0/token`, "https://login.microsoftonline.com");
   const token = azureTokenSchema.parse(
-    JSON.parse(
-      await cloudCurl(
-        "Azure",
-        tokenUrl,
-        1024 * 1024,
-        ["Accept: application/json"],
-        [
-          { name: "client_id", value: client },
-          { name: "client_secret", value: secret },
-          { name: "grant_type", value: "client_credentials" },
-          { name: "scope", value: "https://management.azure.com/.default" },
-        ],
-      ),
+    await cloudJson(
+      "Azure",
+      tokenUrl,
+      1024 * 1024,
+      ["Accept: application/json"],
+      [
+        { name: "client_id", value: client },
+        { name: "client_secret", value: secret },
+        { name: "grant_type", value: "client_credentials" },
+        { name: "scope", value: "https://management.azure.com/.default" },
+      ],
     ),
   );
   const path = `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/locations/${location}/models`;
@@ -372,12 +380,10 @@ async function fetchAzureModels(
   const models: unknown[] = [];
   for (let pageCount = 0; next !== undefined && pageCount < 20; pageCount += 1) {
     const page = azureModelsPageSchema.parse(
-      JSON.parse(
-        await cloudCurl("Azure", next, source.maxResponseBytes, [
-          "Accept: application/json",
-          `Authorization: Bearer ${token.access_token}`,
-        ]),
-      ),
+      await cloudJson("Azure", next, source.maxResponseBytes, [
+        "Accept: application/json",
+        `Authorization: Bearer ${token.access_token}`,
+      ]),
     );
     models.push(...page.value);
     if (models.length > 5_000) throw new Error("Azure Models API exceeded item limit");
@@ -483,17 +489,15 @@ async function googleAccessToken(
   const signature = createSign("RSA-SHA256").update(unsigned).end().sign(account.private_key);
   const assertion = `${unsigned}.${signature.toString("base64url")}`;
   const token = googleTokenSchema.parse(
-    JSON.parse(
-      await cloudCurl(
-        "Google",
-        new URL(account.token_uri),
-        1024 * 1024,
-        ["Accept: application/json"],
-        [
-          { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
-          { name: "assertion", value: assertion },
-        ],
-      ),
+    await cloudJson(
+      "Google",
+      new URL(account.token_uri),
+      1024 * 1024,
+      ["Accept: application/json"],
+      [
+        { name: "grant_type", value: "urn:ietf:params:oauth:grant-type:jwt-bearer" },
+        { name: "assertion", value: assertion },
+      ],
     ),
   );
   return { token: token.access_token, project: account.project_id };
@@ -518,13 +522,11 @@ async function fetchGoogleModelGarden(
         url.searchParams.set("view", "PUBLISHER_MODEL_VIEW_BASIC");
         if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
         const page = googleModelsPageSchema.parse(
-          JSON.parse(
-            await cloudCurl("Google", url, source.maxResponseBytes, [
-              "Accept: application/json",
-              `Authorization: Bearer ${credential.token}`,
-              `x-goog-user-project: ${credential.project}`,
-            ]),
-          ),
+          await cloudJson("Google", url, source.maxResponseBytes, [
+            "Accept: application/json",
+            `Authorization: Bearer ${credential.token}`,
+            `x-goog-user-project: ${credential.project}`,
+          ]),
         );
         models.push(...page.publisherModels);
         if (models.length > 5_000) throw new Error("Model Garden publisher exceeded item limit");
@@ -583,7 +585,9 @@ async function readLimited(response: Response, limit: number): Promise<string> {
   return Buffer.concat(chunks, total).toString("utf8");
 }
 
-async function attemptFetch(source: SourceManifest): Promise<FetchPayload> {
+async function attemptFetch(
+  source: SourceManifest,
+): Promise<{ payload: FetchPayload; link: string | undefined }> {
   const response = await request(source);
   if (response.status === 429 || response.status >= 500)
     throw new TransientFetchError(`Transient HTTP ${response.status}`, retryDelay(response));
@@ -591,10 +595,13 @@ async function attemptFetch(source: SourceManifest): Promise<FetchPayload> {
   const body = await readLimited(response, source.maxResponseBytes);
   if (body.trim() === "") throw new Error("Source returned an empty body");
   return {
-    body,
-    contentHash: sha256(body),
-    etag: response.headers.get("etag") ?? undefined,
-    lastModified: response.headers.get("last-modified") ?? undefined,
+    payload: {
+      body,
+      contentHash: sha256(body),
+      etag: response.headers.get("etag") ?? undefined,
+      lastModified: response.headers.get("last-modified") ?? undefined,
+    },
+    link: response.headers.get("link") ?? undefined,
   };
 }
 
@@ -628,7 +635,9 @@ async function fetchPost(source: SourceManifest, body: string): Promise<StatusPa
   throw lastError;
 }
 
-async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
+async function fetchResponse(
+  source: SourceManifest,
+): Promise<{ payload: FetchPayload; link: string | undefined }> {
   let lastError: Error = new Error("Source fetch failed");
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -640,6 +649,10 @@ async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
     }
   }
   throw lastError;
+}
+
+async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
+  return (await fetchResponse(source)).payload;
 }
 
 function observation(key: string, payload: FetchPayload): FetchObservation {
@@ -670,25 +683,21 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
     try {
       const url = new URL(target, source.url);
       if (
-        url.protocol === "https:" &&
-        source.allowedHosts.includes(url.hostname) &&
-        url.port === "" &&
-        url.username === "" &&
-        url.password === "" &&
-        url.search === "" &&
-        url.hash === "" &&
-        (() => {
-          const path =
-            crawl.pathSuffix !== undefined && url.pathname.endsWith(crawl.pathSuffix)
-              ? url.pathname.slice(0, -crawl.pathSuffix.length)
-              : url.pathname;
-          if (!crawl.path.test(path)) return false;
-          if (crawl.pathSuffix !== undefined) url.pathname = `${path}${crawl.pathSuffix}`;
-          return true;
-        })()
-      ) {
-        urls.set(url.href, url);
-      }
+        url.protocol !== "https:" ||
+        !source.allowedHosts.includes(url.hostname) ||
+        url.port !== "" ||
+        url.username !== "" ||
+        url.password !== "" ||
+        url.search !== "" ||
+        url.hash !== ""
+      )
+        return;
+      const suffix = crawl.discoverySuffix;
+      if (suffix !== undefined && !url.pathname.endsWith(suffix)) return;
+      const path = suffix === undefined ? url.pathname : url.pathname.slice(0, -suffix.length);
+      if (!crawl.path.test(path)) return;
+      url.pathname = `${path}${crawl.requestSuffix ?? ""}`;
+      urls.set(url.href, url);
     } catch {
       return;
     }
@@ -736,8 +745,9 @@ function linkedSource(
   key: string,
   url: URL,
   maxResponseBytes = source.linkedDocuments?.maxDocumentBytes ?? source.maxResponseBytes,
+  format = source.format,
 ): SourceManifest {
-  return requestSource(source, key, url, source.format, maxResponseBytes);
+  return requestSource(source, key, url, format, maxResponseBytes);
 }
 
 async function batches<T, R>(
@@ -749,6 +759,74 @@ async function batches<T, R>(
   for (let index = 0; index < values.length; index += concurrency)
     results.push(...(await Promise.all(values.slice(index, index + concurrency).map(task))));
   return results;
+}
+
+function huggingFaceModelsUrl(raw: string, source: SourceManifest): URL {
+  const url = checkedUrl(raw, source);
+  const allowed = new Set(["inference_provider", "limit", "sort", "expand", "cursor"]);
+  if (
+    url.hostname !== "huggingface.co" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/api/models" ||
+    url.hash !== "" ||
+    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+    url.searchParams.get("inference_provider") !== "hf-inference" ||
+    url.searchParams.get("limit") !== "1000" ||
+    url.searchParams.get("sort") !== "createdAt" ||
+    url.searchParams.getAll("expand").join("\0") !== "lastModified" ||
+    url.searchParams.getAll("cursor").length > 1
+  )
+    throw new Error("Hugging Face Hub pagination left the reviewed query");
+  return url;
+}
+
+async function fetchHuggingFacePage(
+  source: SourceManifest,
+  key: string,
+  url: URL,
+): Promise<{ payload: FetchPayload; next: URL | undefined }> {
+  const pageSource = requestSource(source, key, url, "json", source.maxResponseBytes);
+  const { payload, link } = await fetchResponse(pageSource);
+  const nextLinks = [...(link ?? "").matchAll(/<([^>]+)>;\s*rel="?next"?/g)];
+  if (nextLinks.length > 1) throw new Error("Hugging Face Hub returned duplicate next links");
+  const nextRaw = nextLinks[0]?.[1];
+  return {
+    payload,
+    next: nextRaw === undefined ? undefined : huggingFaceModelsUrl(nextRaw, source),
+  };
+}
+
+async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  if (transport?.kind !== "huggingface-models")
+    throw new Error("Invalid Hugging Face Hub transport");
+  const models: unknown[] = [];
+  const pages: { key: string; payload: FetchPayload }[] = [];
+  let next: URL | undefined = huggingFaceModelsUrl(source.url, source);
+  for (let index = 0; next !== undefined && index < transport.maxPages; index += 1) {
+    const key = `${source.id}/page-${index + 1}`;
+    const page = await fetchHuggingFacePage(source, key, next);
+    models.push(...huggingFaceModelsPageSchema.parse(JSON.parse(page.payload.body)));
+    if (models.length > transport.maxModels)
+      throw new Error("Hugging Face Hub exceeded model limit");
+    pages.push({ key, payload: page.payload });
+    next = page.next;
+    if (index === transport.maxPages - 1 && next !== undefined)
+      throw new Error("Hugging Face Hub exceeded page limit");
+  }
+  if (models.length === 0) throw new Error("Hugging Face Hub returned no models");
+  const body = JSON.stringify({ models });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Hugging Face Hub bundle exceeded byte limit");
+  return {
+    body,
+    contentHash: sha256(body),
+    etag: pages[0]?.payload.etag,
+    lastModified: pages[0]?.payload.lastModified,
+    dependencies: pages.map(({ key, payload }) => observation(key, payload)),
+  };
 }
 
 function ollamaCloudIds(body: string): string[] {
@@ -897,6 +975,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     const body = await fetchGoogleModelGarden(source, source.transport.publishers);
     return generatedFetchResult(body);
   }
+  if (source.transport?.kind === "huggingface-models") return fetchHuggingFaceModels(source);
   if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
   const crawl = source.linkedDocuments;
@@ -916,6 +995,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     return {
       key: `${source.id}/${stem}`,
       url,
+      format: source.format,
       maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
     };
   });
@@ -932,6 +1012,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     return {
       key: `${source.id}/${document.id}`,
       url,
+      format: document.format ?? source.format,
       maxResponseBytes: document.maxResponseBytes,
     };
   });
@@ -941,7 +1022,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   const documents = await batches(entries, crawl.concurrency, async (entry) => {
     try {
       const payload = await fetchPayload(
-        linkedSource(source, entry.key, entry.url, entry.maxResponseBytes),
+        linkedSource(source, entry.key, entry.url, entry.maxResponseBytes, entry.format),
       );
       return { key: entry.key, url: entry.url.href, payload };
     } catch (error) {

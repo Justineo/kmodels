@@ -7,11 +7,17 @@ import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pr
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
+type RetailCatalogModel = Pick<
+  ProviderModel,
+  "aliases" | "model_id" | "service_families" | "tasks" | "version"
+>;
+
 interface Input {
   provider: Provider;
   source: SourceManifest;
   body: string;
   observedAt: string;
+  catalogModels?: readonly RetailCatalogModel[];
 }
 
 interface MarkdownTable {
@@ -260,14 +266,30 @@ function modelReferences(cell: string): { id: string; version: string | undefine
   return matches.flatMap((match, index) => {
     const id = match[1]?.trim();
     if (id === undefined || !modelIdSchema.safeParse(id).success) return [];
+    const previousEnd =
+      index === 0 ? 0 : (matches[index - 1]?.index ?? 0) + (matches[index - 1]?.[0].length ?? 0);
+    if (/\bversion\s*:?\s*$/i.test(plain(cell.slice(previousEnd, match.index)))) return [];
     const start = (match.index ?? 0) + match[0].length;
     const end = matches[index + 1]?.index ?? cell.length;
     const tail = plain(cell.slice(start, end));
-    const rawVersion = tail.match(/\((?:version\s+)?([a-z0-9][a-z0-9._-]*)\)/i)?.[1];
+    const rawVersion =
+      tail.match(/\((?:version\s+)?([a-z0-9][a-z0-9._-]*)\)/i)?.[1] ??
+      (/\bversion\s*:?\s*$/i.test(tail) ? matches[index + 1]?.[1]?.trim() : undefined);
     const version =
       rawVersion === undefined || /^(?:preview|ga|new)$/i.test(rawVersion) ? undefined : rawVersion;
     return [{ id, version }];
   });
+}
+
+function modelIds(cell: string): string[] {
+  const references = modelReferences(cell).map(({ id }) => id);
+  if (references.length > 0) return unique(references);
+  return unique(
+    cell.split(/<br\s*\/?>|,|\bor\b/gi).flatMap((value) => {
+      const id = modelId(value.replace(/\s+version\s*:.*$/i, ""));
+      return id === undefined ? [] : [id];
+    }),
+  );
 }
 
 function count(value: string | undefined): number | undefined {
@@ -672,10 +694,7 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
             ? "stable"
             : "unknown";
       const retiredAt = plain(row[retirementIndex] ?? "");
-      const replacements = plain(row[replacementIndex] ?? "")
-        .split(",")
-        .map((value) => value.replace(/\s+\([^)]*\)$/, "").trim())
-        .filter((value) => modelIdSchema.safeParse(value).success);
+      const replacements = modelIds(row[replacementIndex] ?? "");
       const existing = models.get(modelUid(input.provider.id, id, version));
       const tasks = modelTasks(id, table.section, "");
       const incoming = {
@@ -698,6 +717,40 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
           retired_at: incoming.retired_at,
           replacement_model_ids: incoming.replacement_model_ids,
         });
+    }
+  }
+}
+
+function retiredHistory(models: Map<string, ProviderModel>, input: Input, body: string): void {
+  for (const table of tables(body)) {
+    const modelIndex = headerIndex(table, /^Model$/i);
+    const versionIndex = headerIndex(table, /^Version$/i);
+    const retirementIndex = headerIndex(table, /^Retirement date$/i);
+    const replacementIndex = headerIndex(table, /^Suggested replacement$/i);
+    if (modelIndex < 0 || retirementIndex < 0 || replacementIndex < 0) continue;
+    for (const row of table.rows) {
+      const ids = modelIds(row[modelIndex] ?? "");
+      const rawVersion = versionIndex < 0 ? undefined : plain(row[versionIndex] ?? "");
+      const version =
+        rawVersion === undefined || rawVersion === "—" || rawVersion === "-"
+          ? undefined
+          : rawVersion;
+      const retiredAt = plain(row[retirementIndex] ?? "");
+      const replacements = modelIds(row[replacementIndex] ?? "");
+      for (const id of ids) {
+        let current: ProviderModel | undefined;
+        if (version === undefined) {
+          const candidates = [...models.values()].filter((model) => model.model_id === id);
+          current = candidates.length === 1 ? candidates[0] : undefined;
+        } else current = models.get(modelUid(input.provider.id, id, version));
+        if (current === undefined) continue;
+        models.set(current.uid, {
+          ...current,
+          status: "retired",
+          retired_at: retiredAt,
+          replacement_model_ids: unique(replacements),
+        });
+      }
     }
   }
 }
@@ -765,6 +818,7 @@ function assistants(models: Map<string, ProviderModel>, input: Input, body: stri
         tasks: orderedTasks([...modelTasks(id, "Assistants", ""), "text_generation"]),
         service_families: [serviceFamilies.openAi],
         availability: regions.map((region) => ({ region, deployment_type: "Standard/Regional" })),
+        status: "active",
       });
     }
   }
@@ -845,6 +899,7 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
     });
   }
   assistants(models, input, openAi);
+  retiredHistory(models, input, document(bundle, "/concepts-retired-models-content.md"));
 
   const values = [...models.values()].map((model) => ({
     ...model,
@@ -888,207 +943,6 @@ function apiStatus(
   return { status: "unknown", release_stage: "unknown" };
 }
 
-interface RetailModelAlias {
-  id: string;
-  aliases: string[];
-  products: string[];
-}
-
-const openAiProducts = [
-  "Azure OpenAI",
-  "Azure OpenAI Embedding",
-  "Azure OpenAI GPT5",
-  "Azure OpenAI Media",
-  "Azure OpenAI OSS Models",
-  "Azure OpenAI Reasoning",
-];
-
-const retailModelAliases: RetailModelAlias[] = [
-  { id: "gpt-5.6-luna", aliases: ["5.6 luna"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.6-sol", aliases: ["5.6 sol"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.6-terra", aliases: ["5.6 terra"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.5", aliases: ["5.5"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.4-mini", aliases: ["5.4 mini"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.4-nano", aliases: ["5.4 nano"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.4-pro", aliases: ["5.4 pro"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.4", aliases: ["5.4"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.3-codex", aliases: ["5.3 codex"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.3-chat", aliases: ["5.3 chat"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.2-codex", aliases: ["5.2 codex"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.2-chat", aliases: ["5.2 chat"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.2", aliases: ["5.2"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.1-codex-max", aliases: ["5.1 codex max"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.1-codex-mini", aliases: ["5.1 codex mini"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.1-codex", aliases: ["5.1 codex"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.1-chat", aliases: ["5.1 chat"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5.1", aliases: ["5.1"], products: ["Azure OpenAI GPT5"] },
-  {
-    id: "gpt-chat-latest",
-    aliases: ["chat-latest"],
-    products: ["Azure OpenAI GPT5", "Azure OpenAI Media"],
-  },
-  { id: "gpt-5-codex", aliases: ["gpt-5-codex"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5-mini", aliases: ["gpt 5 mini", "5 mini"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5-nano", aliases: ["gpt 5 nano", "5 nano"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5-pro", aliases: ["gpt 5 pro", "5 pro"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5-chat", aliases: ["gpt 5 chat", "5 chat"], products: ["Azure OpenAI GPT5"] },
-  { id: "gpt-5", aliases: ["gpt 5", "5"], products: ["Azure OpenAI GPT5"] },
-  {
-    id: "gpt-4.1-mini",
-    aliases: ["gpt 4.1 mini", "gpt-4.1-mini"],
-    products: openAiProducts,
-  },
-  {
-    id: "gpt-4.1-nano",
-    aliases: ["gpt 4.1 nano", "gpt-4.1-nano"],
-    products: openAiProducts,
-  },
-  { id: "gpt-4.1", aliases: ["gpt 4.1", "gpt-4.1"], products: openAiProducts },
-  {
-    id: "gpt-4o-mini-realtime-preview",
-    aliases: ["gpt4omini rt", "gpt 4o mini realtime", "gpt-4o-mini-realtime"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-realtime-preview",
-    aliases: ["gpt4o rt", "gpt 4o realtime", "gpt-4o-rt"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-mini-audio-preview",
-    aliases: ["gpt4omini aud", "gpt 4o mini audio"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-audio-preview",
-    aliases: ["gpt 4o audio", "gpt-4o-aud"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-mini-transcribe",
-    aliases: ["gpt-4o-mini-transcribe"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-transcribe",
-    aliases: ["gpt-4o-transcribe"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-mini-tts",
-    aliases: ["gpt4o mn tts", "gpt-4o-mini-tts"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-4o-mini",
-    aliases: ["gpt 4o mini", "gpt-4o-mini", "gpt4omini"],
-    products: ["Azure OpenAI"],
-  },
-  { id: "gpt-4o", aliases: ["gpt 4o", "gpt-4o", "gpt4o"], products: ["Azure OpenAI"] },
-  { id: "gpt-4-32k", aliases: ["gpt-4-32k"], products: ["Azure OpenAI"] },
-  { id: "gpt-4", aliases: ["gpt-4"], products: ["Azure OpenAI"] },
-  {
-    id: "gpt-audio-1.5",
-    aliases: ["gpt aud 1.5", "gpt audio 1.5"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-audio-mini",
-    aliases: ["gpt aud mini", "gpt audio mini"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-audio",
-    aliases: ["gpt aud 0828", "gpt audio 0828"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-realtime-1.5",
-    aliases: ["gpt rt 1.5", "gpt realtime 1.5"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-realtime-mini",
-    aliases: ["gpt rt mini", "gpt rt txt mn", "gpt rt aud mn"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-realtime",
-    aliases: ["gpt rt txt 0828", "gpt rt aud 0828"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-image-1-mini",
-    aliases: ["gpt img 1 mini", "gpt-image-1-mini"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-image-1.5",
-    aliases: ["gpt img 1.5", "gpt-image-1.5"],
-    products: ["Azure OpenAI Media"],
-  },
-  {
-    id: "gpt-image-1",
-    aliases: ["gpt img 1", "gpt-image-1"],
-    products: ["Azure OpenAI", "Azure OpenAI Media"],
-  },
-  { id: "gpt-image-2", aliases: ["image 2"], products: ["Azure OpenAI Media"] },
-  { id: "o3-deep-research", aliases: ["o3 deep research"], products: openAiProducts },
-  { id: "o3-mini", aliases: ["o3 mini"], products: openAiProducts },
-  { id: "o3-pro", aliases: ["o3 pro"], products: openAiProducts },
-  { id: "o3", aliases: ["o3"], products: openAiProducts },
-  { id: "o4-mini", aliases: ["o4 mini"], products: openAiProducts },
-  { id: "o1-mini", aliases: ["o1 mini"], products: openAiProducts },
-  { id: "o1-pro", aliases: ["o1 pro"], products: openAiProducts },
-  { id: "o1", aliases: ["o1"], products: openAiProducts },
-  {
-    id: "text-embedding-3-large",
-    aliases: ["text-embedding-3-large", "text embedding 3 large"],
-    products: openAiProducts,
-  },
-  {
-    id: "text-embedding-3-small",
-    aliases: ["text-embedding-3-small", "text embedding 3 small"],
-    products: openAiProducts,
-  },
-  {
-    id: "text-embedding-ada-002",
-    aliases: ["text-embedding-ada-002", "embedding ada"],
-    products: openAiProducts,
-  },
-  { id: "gpt-oss-120b", aliases: ["gpt-oss-120b", "oss-120b"], products: openAiProducts },
-  { id: "gpt-oss-20b", aliases: ["gpt-oss-20b", "oss-20b"], products: openAiProducts },
-];
-
-const retailVersionMarkers: Partial<Record<string, Record<string, string>>> = {
-  "gpt-4o": {
-    "0513": "2024-05-13",
-    "0806": "2024-08-06",
-    "1120": "2024-11-20",
-  },
-  "gpt-4o-mini": { "0718": "2024-07-18" },
-  "gpt-4o-audio-preview": {
-    "1217": "2024-12-17",
-    "0603": "2025-06-03",
-  },
-  "gpt-4o-mini-audio-preview": { "1217": "2024-12-17" },
-  "gpt-4o-realtime-preview": {
-    "1217": "2024-12-17",
-    "0603": "2025-06-03",
-  },
-  "gpt-4o-mini-realtime-preview": { "1217": "2024-12-17" },
-  "gpt-5.2-chat": { "0210": "2026-02-10" },
-  "gpt-chat-latest": {
-    "05052026": "2026-05-05",
-    "05282026": "2026-05-28",
-    "06242026": "2026-06-24",
-  },
-  o1: { "1217": "2024-12-17" },
-  "o3-mini": { "0131": "2025-01-31" },
-  o3: { "0416": "2025-04-16" },
-  "o4-mini": { "0416": "2025-04-16" },
-};
-
 function retailWords(value: string): string {
   return value
     .toLowerCase()
@@ -1096,13 +950,8 @@ function retailWords(value: string): string {
     .trim();
 }
 
-function startsWithWords(value: string, prefix: string): boolean {
-  if (value === prefix || value.startsWith(`${prefix} `)) return true;
-  return value.startsWith(prefix) && /^\d/.test(value.slice(prefix.length));
-}
-
-const retailQualifierWords = new Set([
-  "aud",
+const retailQualifierTokens = new Set([
+  "az",
   "audio",
   "batch",
   "cache",
@@ -1116,32 +965,40 @@ const retailQualifierWords = new Set([
   "dzone",
   "dz",
   "dzn",
+  "diarization",
   "gl",
   "glbl",
   "global",
   "image",
-  "img",
+  "in",
   "inp",
   "inpt",
   "input",
   "longco",
+  "million",
+  "minute",
+  "minutes",
   "opt",
   "out",
   "outp",
   "outpt",
   "output",
   "pp",
+  "preview",
   "prompt",
   "regional",
   "regnl",
   "rg",
   "rgnl",
-  "rt",
+  "second",
+  "seconds",
   "shortco",
   "speech",
   "standard",
   "std",
   "text",
+  "thousand",
+  "token",
   "tokens",
   "txt",
   "video",
@@ -1150,46 +1007,169 @@ const retailQualifierWords = new Set([
   "zone",
 ]);
 
-function retailQualifierSuffix(id: string, suffix: string): boolean {
-  const markers = Object.keys(retailVersionMarkers[id] ?? {});
-  return suffix
-    .trim()
+const retailIdentityTokenAliases: Readonly<Record<string, string>> = {
+  aud: "audio",
+  img: "image",
+  mn: "mini",
+  prvw: "preview",
+  rt: "realtime",
+  tcrb: "transcribe",
+  trb: "turbo",
+  trscb: "transcribe",
+};
+
+function retailIdentityTokens(value: string): string[] {
+  const expanded = value
+    .toLowerCase()
+    .replace(/\bgpt[- ]?3[.]5\b/g, "gpt35")
+    .replace(/\bgpt4omini\b/g, "gpt 4o mini")
+    .replace(/\bgpt4o\b/g, "gpt 4o")
+    .replace(/\bgpt35\b/g, "gpt 35")
+    .replace(/\bturbo(?=\d)/g, "turbo ")
+    .replace(/\b(?:aud|audio|text|txt)(?=\d{4,8}\b)/g, "$& ");
+  const tokens = retailWords(expanded)
     .split(/\s+/)
     .filter(Boolean)
-    .every(
-      (word) =>
-        retailQualifierWords.has(word) ||
-        markers.some(
-          (marker) =>
-            word === marker ||
-            word === `aud${marker}` ||
-            word === `audio${marker}` ||
-            word === `txt${marker}` ||
-            word === `text${marker}`,
-        ),
-    );
+    .map((token) => retailIdentityTokenAliases[token] ?? token);
+  return tokens.map((token, index) =>
+    token === "d" && tokens[index - 1] === "transcribe" ? "diarize" : token,
+  );
 }
 
-function retailModelIdentity(price: RetailPrice): { id: string; version?: string } | undefined {
-  const sku = retailWords(price.skuName);
-  const matches = retailModelAliases
-    .filter(({ products }) => products.includes(price.productName))
-    .flatMap(({ id, aliases }) =>
-      aliases.flatMap((alias) => {
-        const normalized = retailWords(alias);
-        return startsWithWords(sku, normalized) &&
-          retailQualifierSuffix(id, sku.slice(normalized.length))
-          ? [{ id, length: normalized.length }]
-          : [];
-      }),
+function versionMarkers(version: string | undefined): string[] {
+  if (version === undefined) return [];
+  const normalized = retailWords(version);
+  const digits = version.replace(/\D/g, "");
+  const date = version.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const semantic = version.match(/^[a-z]+(?=[-_])/i)?.[0]?.toLowerCase();
+  return unique([
+    ...(normalized === "" ? [] : [normalized]),
+    ...(digits.length >= 4 ? [digits, digits.slice(-4)] : []),
+    ...(date === null ? [] : [`${date[2]}${date[3]}${date[1]}`]),
+    ...(semantic === undefined || semantic === "preview" ? [] : [semantic]),
+  ]);
+}
+
+function markerPresent(tokens: readonly string[], marker: string): boolean {
+  const markerTokens = marker.split(/\s+/);
+  if (markerTokens.length === 1) return tokens.includes(marker);
+  return tokens.join(" ").includes(marker);
+}
+
+function retailCatalogQualifier(token: string): boolean {
+  return (
+    retailQualifierTokens.has(token) || /^\d+(?:k|m|p|s)$/.test(token) || /^\d{4,8}$/.test(token)
+  );
+}
+
+function identityWeight(token: string): number {
+  if (["gpt", "mini", "preview"].includes(token)) return 1;
+  if (["audio", "image", "text"].includes(token)) return 2;
+  if (/^\d/.test(token)) return 3;
+  return 4;
+}
+
+interface CatalogIdentityMatch {
+  model: RetailCatalogModel;
+  score: number;
+  markers: string[];
+}
+
+function isOpenAiRetailModel(model: RetailCatalogModel): boolean {
+  return model.service_families?.includes(serviceFamilies.openAi) === true;
+}
+
+function signatureMatch(
+  signature: readonly string[],
+  sku: readonly string[],
+  markers: readonly string[],
+): number | undefined {
+  const matched = new Set<number>();
+  let cursor = 0;
+  let skipped = 0;
+  let score = 0;
+  for (const token of signature) {
+    const index = sku.indexOf(token, cursor);
+    if (index < 0) return;
+    skipped += index - cursor;
+    matched.add(index);
+    cursor = index + 1;
+    score += identityWeight(token);
+  }
+  const markerTokens = new Set(markers.flatMap((marker) => marker.split(/\s+/)));
+  if (
+    sku.some(
+      (token, index) =>
+        !matched.has(index) && !markerTokens.has(token) && !retailCatalogQualifier(token),
     )
-    .sort((left, right) => right.length - left.length);
-  const match = matches[0];
-  if (match === undefined) return undefined;
-  const version = Object.entries(retailVersionMarkers[match.id] ?? {}).find(([marker]) =>
-    new RegExp(`(?:^|\\D)${marker}(?:\\D|$)`).test(sku),
-  )?.[1];
-  return { id: match.id, ...(version === undefined ? {} : { version }) };
+  )
+    return;
+  return score * 100 + signature.length * 10 - skipped;
+}
+
+function modelSignatures(model: RetailCatalogModel): string[][] {
+  const signatures = [model.model_id, ...model.aliases].flatMap((value) => {
+    const tokens = retailIdentityTokens(value);
+    const withoutPreview = tokens.at(-1) === "preview" ? [tokens.slice(0, -1)] : [];
+    return [tokens, ...withoutPreview];
+  });
+  signatures.push(
+    ...signatures.flatMap((tokens) => (tokens[0] === "gpt" ? [tokens.slice(1)] : [])),
+  );
+  return [
+    ...new Map(
+      signatures.filter((tokens) => tokens.length > 0).map((tokens) => [tokens.join("\0"), tokens]),
+    ).values(),
+  ];
+}
+
+function catalogRetailModelIdentity(
+  price: RetailPrice,
+  catalogModels: readonly RetailCatalogModel[],
+): { id: string; version?: string } | undefined {
+  const sku = retailIdentityTokens(price.skuName);
+  const matches = catalogModels
+    .filter(isOpenAiRetailModel)
+    .flatMap((model): CatalogIdentityMatch[] => {
+      const markers = versionMarkers(model.version);
+      const score = Math.max(
+        ...modelSignatures(model).map(
+          (signature) => signatureMatch(signature, sku, markers) ?? Number.NEGATIVE_INFINITY,
+        ),
+      );
+      return Number.isFinite(score) ? [{ model, score, markers }] : [];
+    });
+  const explicitlyVersioned = matches.filter(({ markers }) =>
+    markers.some((marker) => markerPresent(sku, marker)),
+  );
+  const eligible = explicitlyVersioned.length > 0 ? explicitlyVersioned : matches;
+  const bestScore = Math.max(...eligible.map(({ score }) => score));
+  const best = eligible.filter(({ score }) => score === bestScore);
+  const modelIds = unique(best.map(({ model }) => model.model_id));
+  if (modelIds.length !== 1) return;
+  const id = modelIds[0];
+  if (id === undefined) return;
+  const versions = unique(best.map(({ model }) => model.version));
+  return versions.length === 1 && versions[0] !== undefined ? { id, version: versions[0] } : { id };
+}
+
+function bindRetailModelIdentity(
+  identity: { id: string; version?: string },
+  catalogModels: readonly RetailCatalogModel[],
+): { id: string; version?: string } | undefined {
+  const candidates = catalogModels.filter(
+    (model) => model.model_id === identity.id && isOpenAiRetailModel(model),
+  );
+  if (identity.version !== undefined)
+    return candidates.some(({ version }) => version === identity.version) ? identity : undefined;
+  if (candidates.some(({ version }) => version === undefined)) return identity;
+  const candidate = candidates.length === 1 ? candidates[0] : undefined;
+  return candidate === undefined
+    ? undefined
+    : {
+        id: candidate.model_id,
+        ...(candidate.version === undefined ? {} : { version: candidate.version }),
+      };
 }
 
 function retailUnit(value: string, label = value): SourcePriceFact["unit"] | undefined {
@@ -1212,7 +1192,7 @@ function retailMeter(
   unit: SourcePriceFact["unit"],
 ): SourcePriceFact["meter"] | undefined {
   const value = ` ${retailWords(label)} `;
-  const input = /\b(?:inp|inpt|input|prompt)\b/.test(value);
+  const input = /\b(?:in|inp|inpt|input|prompt)\b/.test(value);
   const output = /\b(?:opt|out|outp|outpt|output|completion)\b/.test(value);
   const cache = /\b(?:cache|cached|cchd|cd)\b/.test(value);
   const cacheWrite = cache && /\b(?:write|wr|creation)\b/.test(value);
@@ -1286,10 +1266,11 @@ function retailPriceFact(
   label: string,
   conditions: SourcePriceFact["conditions"],
   sourceRef: string,
+  defaultMeter?: SourcePriceFact["meter"],
 ): SourcePriceFact | undefined {
   const unit = retailUnit(price.unitOfMeasure, label);
   if (unit === undefined) return;
-  const meter = retailMeter(label, unit);
+  const meter = retailMeter(label, unit) ?? defaultMeter;
   if (meter === undefined) return;
   const rawValidity = retailValidity(price);
   return {
@@ -1306,6 +1287,42 @@ function retailPriceFact(
   };
 }
 
+function retailDefaultMeter(
+  identity: { id: string; version?: string },
+  catalogModels: readonly RetailCatalogModel[],
+): SourcePriceFact["meter"] | undefined {
+  const candidates = catalogModels.filter(
+    (model) =>
+      model.model_id === identity.id &&
+      isOpenAiRetailModel(model) &&
+      (identity.version === undefined || model.version === identity.version),
+  );
+  const meters = unique(
+    candidates.flatMap(({ tasks }) =>
+      tasks.flatMap((task): SourcePriceFact["meter"][] => {
+        switch (task) {
+          case "embeddings":
+            return ["embedding"];
+          case "image_generation":
+            return ["image_generation"];
+          case "reranking":
+            return ["rerank_request"];
+          case "speech_synthesis":
+            return ["output_audio"];
+          case "transcription":
+          case "translation":
+            return ["input_audio"];
+          case "video_generation":
+            return ["video_generation"];
+          default:
+            return [];
+        }
+      }),
+    ),
+  );
+  return meters.length === 1 ? meters[0] : undefined;
+}
+
 export function parseAzureRetailPrices(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-retail-prices")
@@ -1313,15 +1330,38 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
   const bundle = azureRetailBundleSchema.parse(JSON.parse(input.body));
   const parsed = z.array(retailPriceSchema).safeParse(bundle.prices);
   if (!parsed.success) throw new Error("Azure Retail Prices API schema drift");
+  const catalogModels = input.catalogModels;
+  if (catalogModels === undefined || catalogModels.length === 0)
+    throw new Error("Azure Retail Prices require the public catalog");
 
   const models = new Map<string, ProviderModel>();
+  const unboundSkus = new Set<string>();
+  const unsupportedSkus = new Set<string>();
+  let baseRows = 0;
+  let handledRows = 0;
   for (const price of parsed.data) {
     if (!isBaseRetailPrice(price)) continue;
-    const identity = retailModelIdentity(price);
-    if (identity === undefined) continue;
+    baseRows += 1;
+    const parsedIdentity = catalogRetailModelIdentity(price, catalogModels);
+    if (parsedIdentity === undefined) continue;
     const label = `${price.meterName} ${price.skuName}`;
-    const fact = retailPriceFact(price, label, retailConditions(price), input.source.id);
-    if (fact === undefined) continue;
+    const fact = retailPriceFact(
+      price,
+      label,
+      retailConditions(price),
+      input.source.id,
+      retailDefaultMeter(parsedIdentity, catalogModels),
+    );
+    if (fact === undefined) {
+      unsupportedSkus.add(`${price.skuName} [${price.meterName}; ${price.unitOfMeasure}]`);
+      continue;
+    }
+    handledRows += 1;
+    const identity = bindRetailModelIdentity(parsedIdentity, catalogModels);
+    if (identity === undefined) {
+      unboundSkus.add(price.skuName);
+      continue;
+    }
     const uid = modelUid(input.provider.id, identity.id, identity.version);
     const current =
       models.get(uid) ??
@@ -1347,6 +1387,10 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
   }));
   if (values.length < extractor.minModels || values.length > extractor.maxModels)
     throw new Error("Azure retail-priced model count outside reviewed bounds");
+  if (baseRows === 0 || handledRows / baseRows < extractor.minHandledRatio)
+    throw new Error(
+      `Azure retail-price interpretation coverage fell below the reviewed bound (${handledRows}/${baseRows}; unbound: ${[...unboundSkus].slice(0, 5).join(", ") || "none"}; unsupported: ${[...unsupportedSkus].slice(0, 5).join(", ") || "none"})`,
+    );
   return values.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 

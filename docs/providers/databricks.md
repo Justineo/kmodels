@@ -15,7 +15,9 @@ Status: current
 - General purpose and Embeddings sets supply task evidence and exact `/serving-endpoints/{name}/invocations` routes. Image-output rows may also remain text generation when listed as General purpose.
 - Display-name joins must resolve uniquely. Release dates require an exact release-feed link to a supported-model label; page metadata is not a model date.
 - Keep prices in DBU. Preserve input, output, cache, embedding, batch, capacity, context, promotion, and effective-date conditions. Never convert DBU to USD or infer shifted columns.
-- When an otherwise identical unequal promotional row is explicit, the unqualified companion row is the reviewed non-promotional base. Promotion validity remains attached to the published rate.
+- Pricing rows join only to unique normalized catalog labels; rows for models outside the reviewed regional catalog do not create model identities. Blank, `n/a`, and `Coming soon` cells mean that no rate is published. Any other non-decimal value or unequal rate for the same commercial scope rejects the source.
+- Promotion percentages, validity dates, launch targets, and referenced standard-rate families come from the pricing footnotes. Every matched starred row must be explained by a parsed footnote; the adapter does not hard-code model IDs or dates.
+- At least 80% of non-retired catalog models must retain a price after the joins. The threshold allows models that Databricks lists without a price while rejecting broad table or identity drift. A model absent from the official pricing tables remains unknown.
 
 ## Kong AI Gateway
 

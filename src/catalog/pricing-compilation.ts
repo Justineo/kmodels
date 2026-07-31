@@ -98,6 +98,23 @@ export const pricingCompilationSnapshotSchema = z
                 ],
                 message: "Pricing compilation fact provenance mismatch",
               });
+          for (const [factIndex, fact] of model.raw_price_facts.entries())
+            if (fact.source_ref !== source.source_id)
+              context.addIssue({
+                code: "custom",
+                path: [
+                  "providers",
+                  providerIndex,
+                  "sources",
+                  sourceIndex,
+                  "models",
+                  modelIndex,
+                  "raw_price_facts",
+                  factIndex,
+                  "source_ref",
+                ],
+                message: "Pricing compilation raw fact provenance mismatch",
+              });
         }
       }
     }
@@ -131,10 +148,19 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
     const facts = new Map(
       [...current.price_facts, ...model.price_facts].map((fact) => [JSON.stringify(fact), fact]),
     );
+    const rawFacts = new Map(
+      [...current.raw_price_facts, ...model.raw_price_facts].map((fact) => [
+        JSON.stringify(fact),
+        fact,
+      ]),
+    );
     byUid.set(model.uid, {
       ...current,
       pricing_state: pricingState,
       price_facts: [...facts]
+        .sort(([left], [right]) => compareUtf8(left, right))
+        .map(([, fact]) => fact),
+      raw_price_facts: [...rawFacts]
         .sort(([left], [right]) => compareUtf8(left, right))
         .map(([, fact]) => fact),
     });
@@ -162,8 +188,10 @@ export function capturePricingReplaySources(
       if (models.some(({ provider_id }) => provider_id !== record.provider_id))
         throw new Error(`Pricing compilation source ${source.id} has mixed provider ownership`);
       if (
-        models.some(({ price_facts }) =>
-          price_facts.some(({ source_ref }) => source_ref !== source.id),
+        models.some(
+          ({ price_facts, raw_price_facts }) =>
+            price_facts.some(({ source_ref }) => source_ref !== source.id) ||
+            raw_price_facts.some(({ source_ref }) => source_ref !== source.id),
         )
       )
         throw new Error(`Pricing compilation source ${source.id} has mismatched provenance`);
@@ -315,7 +343,8 @@ function replaySources(
       throw new Error(`Pricing replay source ${source.source_id} uses a stale extractor`);
     const catalogSource = catalogSources.get(source.source_id);
     const hasClaims = source.models.some(
-      ({ pricing_state, price_facts }) => pricing_state !== "unknown" || price_facts.length > 0,
+      ({ pricing_state, price_facts, raw_price_facts }) =>
+        pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
     );
     if (catalogSource === undefined) {
       if (hasClaims)

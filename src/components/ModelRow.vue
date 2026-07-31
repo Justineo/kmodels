@@ -140,16 +140,20 @@ function filterStatus(): void {
       <ModelPriceCell class="output-col" :price="model.pricing.output" />
     </template>
     <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
-      <UiTooltip
-        class="table-status-trigger"
-        tabindex="0"
-        :content="pricingStatus.description"
-        :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
-      >
-        {{ pricingStatus.label }}
-      </UiTooltip>
+      <span class="price-status-band">
+        <UiTooltip
+          class="table-status-trigger"
+          tabindex="0"
+          :content="pricingStatus.description"
+          :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
+        >
+          {{ pricingStatus.label }}
+        </UiTooltip>
+      </span>
     </td>
-    <td v-else class="price-status-cell" colspan="3">—</td>
+    <td v-else class="price-status-cell" colspan="3">
+      <span class="price-status-band">—</span>
+    </td>
     <td class="released-col numeric">{{ model.release_date ?? "—" }}</td>
     <td class="disclosure-col">
       <button

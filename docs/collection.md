@@ -5,7 +5,7 @@ Status: implemented
 ## Source trust
 
 - `src/catalog/manifests.ts` is the reviewed provider registry and source allowlist. Requests never choose root URLs.
-- Discovered documents must match an exact same-host path policy. Fixed companions require reviewed hosts, keys, and byte limits.
+- Discovered documents must match an exact same-host path policy. Fixed companions require reviewed hosts, keys, byte limits, and an explicit format when content negotiation differs from the parent source.
 - Prefer documented structured sources. Parse official catalogs only for facts structured sources do not provide.
 - Provider adapters accept IDs only from labeled ID fields or reviewed structured properties and validate a provider-neutral grammar. Do not use product-name prefix lists or generic document extraction.
 - Operator-defined local runtimes are configuration, not public providers.
@@ -15,7 +15,7 @@ Status: implemented
 
 - Each source declares `scope`, `exhaustive`, and `role`.
 - Catalog sources may create rows. Overlays may replace only declared fields on existing rows.
-- Account, region, workspace, and runtime inventories are scoped validation. They may enrich exact public matches but cannot create or remove global rows.
+- Account, region, workspace, and runtime inventories are scoped validation. They may fill fields the public catalog leaves undisclosed and add positive set-valued facts to exact public matches, but never override a known global fact or create or remove a global row.
 - Only an exhaustive global catalog supports a completeness claim.
 - Optional authenticated sources use named environment variables. Collection loads ignored `.env` values without overriding the process environment.
 - Missing credentials or an optional-source failure emits a structured warning and does not weaken a successful global refresh.
@@ -33,6 +33,7 @@ Status: implemented
 
 - Public origin values are only `api`, `website`, and `repository`; a source may have more than one. Access method and wire format stay internal. Runtime is a scope, not an origin.
 - Provenance is additive. Every successful allowlisted source that exactly matches a published model remains in `source_refs`.
+- A successfully fetched new extractor version recomputes that source's observations. Rows and provenance omitted by the new interpretation are not retained as if the obsolete extractor had still observed them; ordinary omissions from an unchanged non-exhaustive extractor remain protected.
 - Publish the latest successful record for each referenced source. If an optional source is skipped, retain its last validated record.
 - Omit sources that match no published model.
 - After a replacement source succeeds, remove rows and references backed only by source IDs no longer present in the manifest.
@@ -40,18 +41,21 @@ Status: implemented
 ## Fetching and raw data
 
 - Every response is size-limited, time-limited, fetched in full, and redirected only to reviewed hosts.
-- Invoke `curl` without a shell for the common HTTP transport. Retry only transient failures.
+- Invoke `curl` without a shell for HTTP transport. Retry transient HTTP failures and reviewed
+  cloud throttling responses, including rate-limit bodies returned with a successful status.
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
 - Raw replay requires a separately configured external artifact system. The
   repository does retain a bounded public-only parsed pricing compilation
   input; it contains only model identity, pricing state, parsed source price
-  facts, source content hashes, and extractor versions.
+  facts, bounded source-native raw pricing facts, source content hashes, and
+  extractor versions.
 
 ## Validation and publication
 
 - Validate candidate catalogs per provider.
+- A lossy source grammar must validate the admitted share of its in-scope rows; a plausible output-model count alone is not a completeness check.
 - Quarantine empty successful responses; duplicate IDs, service families, endpoints, routes, or availability pairs; unresolved route provenance; invalid prices; model drops over 10%; service-family, price-rate, endpoint, route, or availability drops over 20%; and non-promotional price changes over 50%.
 - A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has been reviewed. Those rows are excluded from the old comparison baseline and are not preserved, while every unlisted deletion remains protected by the normal drift guard.
 - `KMODELS_REBUILD_PROVIDER` may remove the old comparison baseline for one reviewed parser migration. Every other provider still validates against its previous catalog.
@@ -63,7 +67,11 @@ Status: implemented
   sanitized diagnostics remain in warnings, quarantine, and refresh summaries;
   raw responses, exception stacks, account data, and credentials never enter
   the pricing snapshot.
-- One missing observation never deletes a model unless the exact row is in that reviewed superseded set.
+- A successful exhaustive global catalog refresh authoritatively removes that source's stale
+  provenance and routes. A missing row is retained only while another catalog source still backs
+  its presence; overlay and inventory provenance can never keep a row alive. Missing observations
+  from non-exhaustive catalogs remain protected. Reviewed superseded rows may still be removed
+  explicitly.
 - Every run writes `data/refresh-summary.json`, a deterministic semantic diff with provider/model/source counts, changed-field counts, content changes, coverage, and warning codes. It never copies raw data or private unmatched IDs.
 
 ## Pricing

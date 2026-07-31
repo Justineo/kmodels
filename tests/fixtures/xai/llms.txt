@@ -3,7 +3,9 @@
 
 > This feature is currently in **beta**.
 
+```sh
 curl https://api.x.ai/v1/responses -d '{"model": "grok-4.20-multi-agent"}'
+```
 
 ### Supported Models
 
@@ -13,37 +15,72 @@ curl https://api.x.ai/v1/responses -d '{"model": "grok-4.20-multi-agent"}'
 ===/developers/model-capabilities/text/generate-text===
 # Generate Text
 
+```sh
 curl https://api.x.ai/v1/responses -d '{"model": "grok-4.5"}'
+```
 
 
 ===/developers/model-capabilities/legacy/chat-completions===
 # Chat Completions
 
+```sh
 curl https://api.x.ai/v1/chat/completions -d '{"model": "grok-4.5"}'
+```
 
 
 ===/developers/model-capabilities/images/generation===
 # Image Generation
 
+```sh
 curl https://api.x.ai/v1/images/generations -d '{"model": "grok-imagine-image-quality"}'
+```
 
 
 ===/developers/model-capabilities/images/editing===
 # Image Editing
 
+```sh
 curl https://api.x.ai/v1/images/edits -d '{"model": "grok-imagine-image-quality"}'
+```
 
 
 ===/developers/model-capabilities/video/generation===
 # Video Generation
 
+```sh
 curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video"}'
+```
 
 
 ===/developers/model-capabilities/imagine===
 # Imagine
 
+```sh
 curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video-1.5"}'
+```
+
+
+===/developers/advanced-api-usage/batch-api===
+# Batch API
+
+`grok-4.5` is not currently supported for Batch API requests.
+
+| Endpoint |
+|---|
+| `/v1/chat/completions` |
+| `/v1/responses` |
+| `/v1/images/generations` |
+| `/v1/images/edits` |
+| `/v1/videos/generations` |
+| `/v1/videos/edits` |
+| `/v1/videos/extensions` |
+
+
+===/developers/model-capabilities/text/streaming===
+# Streaming
+
+Streaming is supported by all models with text output capability.
+Streaming is not supported by models with image output capability.
 
 
 ===/developers/model-capabilities/audio/speech-to-speech===
@@ -67,6 +104,10 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 |---|---|---|---|---|
 | grok-4.5 (< 200k prompt tokens) | 500k | $2.00 | $0.30 | $6.00 |
 | grok-4.5 (≥ 200k prompt tokens) | 500k | $4.00 | $0.60 | $12.00 |
+| grok-4.3 (< 200k prompt tokens) | 1M | $1.25 | $0.20 | $2.50 |
+| grok-4.3 (≥ 200k prompt tokens) | 1M | $2.50 | $0.40 | $5.00 |
+| grok-build-0.1 (< 200k prompt tokens) | 256k | $1.00 | $0.20 | $2.00 |
+| grok-build-0.1 (≥ 200k prompt tokens) | 256k | $2.00 | $0.40 | $4.00 |
 | grok-4.20-multi-agent-0309 (< 200k prompt tokens) | 1M | $1.25 | $0.20 | $2.50 |
 | grok-4.20-multi-agent-0309 (≥ 200k prompt tokens) | 1M | $2.50 | $0.40 | $5.00 |
 
@@ -97,6 +138,26 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 | File Attachments | `attachment_search` | Search attachments | $10 |
 | Collections Search | `collections_search`, `file_search` | Search collections | $2.50 |
 
+## Batch API Pricing
+
+**20% off standard rates**
+- grok-4.3
+- grok-4.20-multi-agent-0309
+
+Models not listed above have no batch discount.
+The batch discount applies to all token types.
+Image and video generation are supported in the Batch API but are billed at standard rates.
+
+## Priority Processing Pricing
+
+Priority processing is billed at a **2x** premium.
+
+| | Standard | Priority |
+|---|---|---|
+| Token pricing | Standard rates | **2x** standard rates |
+
+The 2x multiplier applies to all token types.
+
 
 ===/developers/migration/may-15-retirement===
 # Grok Model Retirement on May 15, 2026
@@ -107,6 +168,9 @@ Effective May 15, 2026 at 12:00 PM PT, the following models will be retired:
 * `grok-imagine-image-pro`
 
 ### How the redirects work
+
+Requests using these retired model slugs will continue to resolve and automatically redirect to
+the replacement model.
 
 ## Recommended Replacements
 
@@ -124,6 +188,12 @@ Effective May 15, 2026 at 12:00 PM PT, the following models will be retired:
 ### Grok 4.5
 
 Grok 4.5 is now available.
+
+## May
+
+### Grok Build is available
+
+Use `grok-build-0.1` for coding.
 
 ## April
 

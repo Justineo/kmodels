@@ -33,6 +33,43 @@
       "deprecated": false,
       "preview": false,
       "quantization": "FP16"
+    },
+    {
+      "id": "gemma-4-31b",
+      "object": "model",
+      "created": 1782691200,
+      "owned_by": "Google",
+      "name": "Gemma 4 31B",
+      "description": "A multimodal reasoning model.",
+      "hugging_face_id": "google/gemma-4-31b-it",
+      "pricing": { "prompt": "0.00000099", "completion": "0.00000149" },
+      "capabilities": {
+        "streaming": true,
+        "function_calling": true,
+        "structured_outputs": true,
+        "vision": true,
+        "json_mode": true,
+        "tools": true,
+        "tool_choice": true,
+        "parallel_tool_calls": true,
+        "response_format": true,
+        "reasoning": true
+      },
+      "supported_parameters": { "temperature": true },
+      "architecture": {
+        "modality": "text+vision",
+        "tokenizer": "Gemini",
+        "instruct_type": "gemma"
+      },
+      "limits": {
+        "max_context_length": 131072,
+        "max_completion_tokens": 40960,
+        "requests_per_minute": null,
+        "tokens_per_minute": null
+      },
+      "deprecated": false,
+      "preview": false,
+      "quantization": "FP16"
     }
   ]
 }

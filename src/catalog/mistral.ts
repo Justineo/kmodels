@@ -1,4 +1,3 @@
-import { load } from "cheerio";
 import * as ts from "typescript";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
@@ -25,6 +24,11 @@ interface SourcePrice {
   denominator: string;
 }
 
+interface SourcePricing {
+  free: boolean;
+  prices: SourcePrice[];
+}
+
 interface Draft {
   sourceSlug: string;
   name: string;
@@ -39,7 +43,7 @@ interface Draft {
   features: string[];
   contextTokens?: number;
   maxOutputTokens?: number;
-  prices: SourcePrice[];
+  pricing: SourcePricing;
   deprecatedAt?: string;
   retiredAt?: string;
   replacement?: string;
@@ -232,17 +236,17 @@ function description(object: ts.ObjectLiteralExpression): string | undefined {
   return stringValue(value);
 }
 
-function sourcePrices(object: ts.ObjectLiteralExpression): SourcePrice[] {
+function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
   const pricing = objectValue(property(object, "pricing"), "pricing");
   const type = requiredString(pricing, "type");
   const free = booleanValue(property(pricing, "free"), "pricing.free");
-  const checked = (prices: SourcePrice[]): SourcePrice[] => {
+  const result = (prices: SourcePrice[]): SourcePricing => {
     if (free && prices.some(({ price }) => price !== "0"))
       throw new Error("Mistral marked non-zero model pricing as free");
-    return prices;
+    return { free, prices };
   };
   if (type === "flat")
-    return checked([
+    return result([
       {
         direction: "input",
         price: numberText(property(pricing, "price"), "pricing.price"),
@@ -250,7 +254,7 @@ function sourcePrices(object: ts.ObjectLiteralExpression): SourcePrice[] {
       },
     ]);
   if (type === "range")
-    return checked(
+    return result(
       (["input", "output"] as const).map((direction) => ({
         direction,
         price: numberText(property(pricing, direction), `pricing.${direction}`),
@@ -258,7 +262,7 @@ function sourcePrices(object: ts.ObjectLiteralExpression): SourcePrice[] {
       })),
     );
   if (type !== "custom") throw new Error(`Mistral published an unknown pricing type: ${type}`);
-  return checked(
+  return result(
     (["input", "output"] as const).flatMap((direction) => {
       const expression = property(pricing, direction);
       const value = expression === undefined ? undefined : unwrap(expression);
@@ -326,6 +330,7 @@ function parseDraft(sourceSlug: string, body: string): Draft {
   const deprecatedAt = normalizeDate(stringValue(property(metadata, "deprecationDate")));
   const retiredAt = normalizeDate(stringValue(property(metadata, "retirementDate")));
   const replacement = stringValue(property(metadata, "replacement"));
+  const pricing = sourcePricing(object);
   return {
     sourceSlug,
     name: requiredString(object, "name"),
@@ -340,7 +345,7 @@ function parseDraft(sourceSlug: string, body: string): Draft {
     features: stringArray(property(capabilities, "features"), "capabilities.features"),
     ...(contextTokens === undefined ? {} : { contextTokens }),
     ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }),
-    prices: sourcePrices(object),
+    pricing,
     ...(deprecatedAt === undefined ? {} : { deprecatedAt }),
     ...(retiredAt === undefined ? {} : { retiredAt }),
     ...(replacement === undefined ? {} : { replacement }),
@@ -564,9 +569,10 @@ function directRate(
 }
 
 function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): SourcePriceFact[] {
-  const direct = draft.prices.map((price) => directRate(price, modelTasks, sourceId));
+  if (draft.status === "retired") return [];
+  const direct = draft.pricing.prices.map((price) => directRate(price, modelTasks, sourceId));
   const derived: SourcePriceFact[] = [];
-  if (draft.status !== "retired" && draft.features.includes("batching"))
+  if (draft.features.includes("batching"))
     derived.push(
       ...direct.map((rate) => ({
         ...rate,
@@ -578,10 +584,7 @@ function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): Sourc
         raw_unit: "published 50% Batch API discount",
       })),
     );
-  if (
-    draft.status !== "retired" &&
-    draft.features.some((feature) => feature === "chat-completions" || feature === "fim")
-  )
+  if (draft.features.some((feature) => feature === "chat-completions" || feature === "fim"))
     derived.push(
       ...direct.flatMap((rate): SourcePriceFact[] =>
         rate.meter !== "input_text"
@@ -651,9 +654,31 @@ function sourceModel(
     release_stage:
       draft.status === "preview" ? "preview" : draft.status === "active" ? "stable" : "unknown",
     replacement_model_ids: replacementId === undefined ? [] : [replacementId],
-    pricing_state: rates.length > 0 ? "numeric" : "unknown",
+    pricing_state:
+      draft.status === "retired"
+        ? "not_applicable"
+        : rates.length > 0
+          ? "numeric"
+          : draft.pricing.free
+            ? "free"
+            : "not_published",
     price_facts: rates,
   };
+}
+
+function validatePricingCoverage(models: ProviderModel[], minimum: number): void {
+  if (minimum < 0 || minimum > 1) throw new Error("Invalid Mistral pricing coverage threshold");
+  const current = new Map<string, boolean>();
+  for (const model of models)
+    if (model.status !== "retired")
+      current.set(
+        model.uid,
+        (current.get(model.uid) ?? false) ||
+          model.pricing_state === "free" ||
+          model.price_facts.length > 0,
+      );
+  if (current.size === 0 || [...current.values()].filter(Boolean).length / current.size < minimum)
+    throw new Error("Mistral pricing coverage fell below reviewed bounds");
 }
 
 export function parseMistralCatalog(input: Input): ProviderModel[] {
@@ -671,25 +696,26 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   if (drafts.length !== expected.size || [...expected].some((slug) => !observed.has(slug)))
     throw new Error("Mistral index and model documents disagree");
   const document = (path: string): string => {
-    const body = bundle.documents.find(
+    const matches = bundle.documents.filter(
       (candidate) => new URL(candidate.url).pathname === path,
-    )?.body;
-    if (body === undefined) throw new Error(`Mistral bundle omitted ${path}`);
-    return body;
+    );
+    const match = matches[0];
+    if (matches.length !== 1 || match === undefined)
+      throw new Error(`Mistral bundle did not contain exactly one ${path}`);
+    return match.body;
   };
   const endpointsByFeature = featureEndpoints(
     document("/mistralai/platform-docs-public/main/src/schema/models/schema.ts"),
     document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
   );
-  const companion = (path: string): string =>
-    load(document(path))("main").text().replace(/\s+/g, " ");
+  const companion = (path: string): string => document(path).replace(/\s+/g, " ");
   if (
-    !companion("/studio-api/conversations/advanced/prompt-caching").includes(
+    !companion("/studio-api/conversations/advanced/prompt-caching.md").includes(
       "Cached prompt tokens are billed at 10% of the standard input token price",
     )
   )
     throw new Error("Mistral prompt-cache pricing semantics changed");
-  if (!/50% discount/i.test(companion("/studio-api/batch-processing")))
+  if (!/50% discount/i.test(companion("/studio-api/batch-processing.md")))
     throw new Error("Mistral Batch API pricing semantics changed");
 
   const currentByName = new Map<string, string | null>();
@@ -707,11 +733,13 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     const model = sourceModel(input, draft, replacement, endpointsByFeature);
     return model === undefined ? [] : [model];
   });
+  const modelCount = new Set(models.map((model) => model.uid)).size;
   if (
-    models.length < input.source.extractor.minModels ||
-    models.length > input.source.extractor.maxModels
+    modelCount < input.source.extractor.minModels ||
+    modelCount > input.source.extractor.maxModels
   )
     throw new Error("Mistral callable model count outside reviewed bounds");
+  validatePricingCoverage(models, input.source.extractor.minPricingCoverage);
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
@@ -799,7 +827,7 @@ export function parseMistralApi(input: Input): ProviderModel[] {
             ? {}
             : { context_tokens: value.max_context_length },
         ...(deprecation === undefined ? {} : { deprecated_at: deprecation }),
-        status: value.deprecation === null ? "active" : deprecated ? "deprecated" : "unknown",
+        status: value.deprecation === undefined ? "unknown" : deprecated ? "deprecated" : "active",
         replacement_model_ids:
           value.deprecation_replacement_model == null ? [] : [value.deprecation_replacement_model],
       },

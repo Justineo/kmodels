@@ -95,7 +95,9 @@ function tables(body: string): MarkdownTable[] {
 }
 
 function row(table: MarkdownTable, label: string): string[] | undefined {
-  return table.rows.find((values) => values[0] === label);
+  return table.rows.find(
+    (values) => values[0] === label || values[0]?.startsWith(`${label} (`) === true,
+  );
 }
 
 function tokenCount(value: string | undefined): number | undefined {
@@ -185,16 +187,27 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
   }
 
   for (const match of body.matchAll(
-    /Claude (Fable 5|Mythos 5|Mythos Preview) \(`([a-z0-9._:/-]+)`\)/g,
+    /Claude ([A-Z][A-Za-z]+(?: (?:[A-Z][A-Za-z]+|\d+(?:\.\d+)?))*) \(`([a-z0-9._:/-]+)`\)/g,
   )) {
     if (match[1] === undefined || match[2] === undefined) continue;
     const item = model(models, input, match[2]);
     item.name = `Claude ${match[1]}`;
     item.modalities = { input: ["text", "image"], output: ["text"] };
-    if (match[1] === "Mythos Preview") {
+    if (/(?:^|-)preview(?:-|$)/.test(item.model_id)) item.release_stage = "preview";
+  }
+
+  for (const item of models.values()) {
+    if (
+      body.includes(`${item.name} is generally available`) ||
+      body.includes(`${item.name} (\`${item.model_id}\`) is generally available`)
+    ) {
       item.status = "active";
-      item.release_stage = "preview";
-    } else {
+      item.release_stage = "stable";
+    } else if (
+      body.includes(
+        `${item.name} is not generally available: it is offered in limited availability`,
+      )
+    ) {
       item.status = "active";
     }
   }
@@ -226,10 +239,11 @@ function launch(body: string, input: Input, models: Map<string, ProviderModel>):
 }
 
 function status(value: string): ProviderModel["status"] | undefined {
-  if (value === "Active") return "active";
-  if (value === "Legacy") return "legacy";
-  if (value === "Deprecated") return "deprecated";
-  if (value === "Retired") return "retired";
+  const normalized = value.toLowerCase();
+  if (normalized === "active") return "active";
+  if (normalized === "legacy") return "legacy";
+  if (normalized === "deprecated") return "deprecated";
+  if (normalized === "retired") return "retired";
   return undefined;
 }
 
@@ -275,15 +289,31 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
     }
   }
 
-  const mythos = body.match(
-    /`(claude-mythos-preview)`\) will be retired on ([A-Z][a-z]+ \d{1,2}, \d{4}).*?`(claude-mythos-5)`/s,
-  );
-  const retiredAt = mythos?.[2] === undefined ? undefined : date(mythos[2]);
-  if (mythos?.[1] !== undefined && mythos[3] !== undefined && retiredAt !== undefined) {
-    const item = model(models, input, mythos[1]);
+  for (const match of body.matchAll(
+    /`(claude-[a-z0-9._:/-]+)`\) is (active|legacy|deprecated|retired)\b/gi,
+  )) {
+    const state = status(match[2] ?? "");
+    if (match[1] !== undefined && state !== undefined)
+      model(models, input, match[1]).status = state;
+  }
+
+  for (const match of body.matchAll(
+    /`(claude-[a-z0-9._:/-]+)`\) is deprecated\.[^\n]*?`(claude-[a-z0-9._:/-]+)`/gi,
+  )) {
+    if (match[1] === undefined || match[2] === undefined) continue;
+    const item = model(models, input, match[1]);
+    item.replacement_model_ids = [...new Set([...item.replacement_model_ids, match[2]])];
+  }
+
+  for (const match of body.matchAll(
+    /`(claude-[a-z0-9._:/-]+)`\) will be retired on ([A-Z][a-z]+ \d{1,2}, \d{4})\.[^\n]*?`(claude-[a-z0-9._:/-]+)`/g,
+  )) {
+    const retiredAt = match[2] === undefined ? undefined : date(match[2]);
+    if (match[1] === undefined || match[3] === undefined || retiredAt === undefined) continue;
+    const item = model(models, input, match[1]);
     item.retired_at = retiredAt;
     item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
-    item.replacement_model_ids = [mythos[3]];
+    item.replacement_model_ids = [...new Set([...item.replacement_model_ids, match[3]])];
   }
 }
 
@@ -301,12 +331,24 @@ function applyEndpoints(
 ): void {
   validateEndpoint(messagesBody, messagesEndpoint);
   validateEndpoint(batchesBody, batchEndpoint);
+  if (
+    !/- `stream: optional boolean`\r?\n\r?\n\s+Whether to incrementally stream the response using server-sent events\./.test(
+      messagesBody,
+    )
+  )
+    throw new Error("Anthropic Messages streaming contract drifted");
   if (!/^All \[active models]\([^)]*\) support the Message Batches API\.$/m.test(batchGuide))
     throw new Error("Anthropic batch model coverage drifted");
   for (const item of models.values()) {
-    if (item.status === "active") item.api_endpoints = [messagesEndpoint, batchEndpoint];
-    else if (item.status === "legacy" || item.status === "deprecated")
+    if (item.status === "active") {
+      item.api_endpoints = [messagesEndpoint, batchEndpoint];
+      item.capabilities.batch = true;
+      item.capabilities.streaming = true;
+    } else if (item.status === "legacy" || item.status === "deprecated") {
       item.api_endpoints = [messagesEndpoint];
+      item.capabilities.batch = false;
+      item.capabilities.streaming = true;
+    }
   }
 }
 
@@ -326,6 +368,174 @@ function key(value: string): string {
       .sort()
       .join("-") ?? ""
   );
+}
+
+function resolver(models: Map<string, ProviderModel>): (value: string) => ProviderModel {
+  const identities = new Map<string, string[]>();
+  for (const item of models.values()) {
+    for (const value of [item.model_id, item.name, ...item.aliases]) {
+      const identity = key(value);
+      identities.set(identity, [...(identities.get(identity) ?? []), item.model_id]);
+    }
+  }
+  return (value: string): ProviderModel => {
+    const ids = [...new Set(identities.get(key(value)) ?? [])];
+    if (ids.length !== 1 || ids[0] === undefined)
+      throw new Error(`Anthropic model label did not match one official ID: ${label(value)}`);
+    const item = models.get(ids[0]);
+    if (item === undefined) throw new Error("Anthropic identity index drifted");
+    if (item.name === item.model_id) item.name = label(value);
+    return item;
+  };
+}
+
+function mentioned(value: string, models: Map<string, ProviderModel>): ProviderModel[] {
+  const result: ProviderModel[] = [];
+  for (const item of models.values()) {
+    if (item.name === item.model_id) continue;
+    const escaped = item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (new RegExp(`(?:^|[^\\w.])${escaped}(?![\\w.])`).test(value)) result.push(item);
+  }
+  return result;
+}
+
+function callable(item: ProviderModel): boolean {
+  return item.api_endpoints?.some(({ path }) => path === messagesEndpoint.path) === true;
+}
+
+function generation(item: ProviderModel): [number, number] | undefined {
+  const match = item.model_id.match(/^claude-[a-z]+-(\d+)(?:-(\d+))?(?:-|$)/);
+  return match?.[1] === undefined ? undefined : [Number(match[1]), Number(match[2] ?? 0)];
+}
+
+function atLeast(item: ProviderModel, major: number, minor: number): boolean {
+  const value = generation(item);
+  return value !== undefined && (value[0] > major || (value[0] === major && value[1] >= minor));
+}
+
+function requireMentions(
+  value: string | undefined,
+  models: Map<string, ProviderModel>,
+  message: string,
+): ProviderModel[] {
+  const matches = value === undefined ? [] : mentioned(value, models);
+  if (matches.length === 0) throw new Error(message);
+  return matches;
+}
+
+function capabilities(
+  bodies: {
+    citations: string;
+    pdf: string;
+    contextEditing: string;
+    structuredOutputs: string;
+    codeExecution: string;
+    computerUse: string;
+    effort: string;
+    promptCaching: string;
+    glossary: string;
+    thinking: string;
+    toolUse: string;
+  },
+  models: Map<string, ProviderModel>,
+): void {
+  const current = [...models.values()].filter(({ status }) => status === "active");
+  const supported = [...models.values()].filter(callable);
+
+  if (!/^All \[active models]\([^)]*\) support citations\.$/m.test(bodies.citations))
+    throw new Error("Anthropic citation coverage drifted");
+  for (const item of current) item.capabilities.citations = true;
+
+  if (!/All \[active models]\([^)]*\) support PDF processing\./.test(bodies.pdf))
+    throw new Error("Anthropic PDF coverage drifted");
+  for (const item of current)
+    item.modalities.input = [...new Set<Modality>([...item.modalities.input, "pdf"])];
+
+  if (
+    !/^Context editing is available on all supported Claude models\.$/m.test(bodies.contextEditing)
+  )
+    throw new Error("Anthropic context-editing coverage drifted");
+  for (const item of supported) item.capabilities.context_management = true;
+
+  const structuredLine = bodies.structuredOutputs
+    .split(/\r?\n/)
+    .find((line) =>
+      line.includes("Structured outputs are generally available on the Claude API for"),
+    );
+  const structuredText = structuredLine === undefined ? undefined : text(structuredLine);
+  if (
+    structuredText === undefined ||
+    !structuredText.includes(
+      "Structured outputs are generally available on the Claude API for Claude 4.5 and later models and Claude Mythos Preview.",
+    )
+  )
+    throw new Error("Anthropic structured-output coverage drifted");
+  for (const item of supported)
+    item.capabilities.structured_output =
+      atLeast(item, 4, 5) || mentioned(structuredText, models).includes(item);
+
+  const codeTable = tables(bodies.codeExecution).find(
+    (table) => table.headers.join("|") === "Model|Tool versions",
+  );
+  if (codeTable === undefined || codeTable.rows.length === 0)
+    throw new Error("Anthropic code-execution coverage drifted");
+  for (const item of supported) item.capabilities.code_execution = false;
+  const resolve = resolver(models);
+  for (const values of codeTable.rows) {
+    const item = resolve(values[0] ?? "");
+    if (callable(item)) item.capabilities.code_execution = true;
+  }
+  const previewCode = bodies.codeExecution
+    .split(/\r?\n/)
+    .find((line) => line.includes("code execution is supported on the Claude API"));
+  for (const item of requireMentions(
+    previewCode,
+    models,
+    "Anthropic code-execution exception drifted",
+  ))
+    if (callable(item)) item.capabilities.code_execution = true;
+
+  const computerSection = bodies.computerUse.match(
+    /Computer use is in beta and requires .*?:\s*([\s\S]*?)\n\s*Reach out through/,
+  )?.[1];
+  const computerModels = requireMentions(
+    computerSection,
+    models,
+    "Anthropic computer-use coverage drifted",
+  );
+  for (const item of supported) item.capabilities.computer_use = false;
+  for (const item of computerModels) if (callable(item)) item.capabilities.computer_use = true;
+
+  const effortLine = bodies.effort
+    .split(/\r?\n/)
+    .find((line) => line.includes("The effort parameter is supported by"));
+  const effortModels = requireMentions(effortLine, models, "Anthropic effort coverage drifted");
+  for (const item of supported) item.capabilities.effort_control = false;
+  for (const item of effortModels) if (callable(item)) item.capabilities.effort_control = true;
+
+  if (
+    !/^Prompt caching \(both automatic and explicit\) is supported on all \[active Claude models]\([^)]*\)\.$/m.test(
+      bodies.promptCaching,
+    )
+  )
+    throw new Error("Anthropic prompt-cache coverage drifted");
+  for (const item of current) item.capabilities.prompt_cache = true;
+
+  if (!/The Claude API does not currently offer fine-tuning/.test(bodies.glossary))
+    throw new Error("Anthropic fine-tuning coverage drifted");
+  for (const item of supported) item.capabilities.fine_tuning = false;
+
+  const thinkingLine = bodies.thinking
+    .split(/\r?\n/)
+    .find((line) => line.includes("thinking cannot be turned off on these models"));
+  for (const item of requireMentions(thinkingLine, models, "Anthropic thinking coverage drifted"))
+    if (callable(item)) item.capabilities.reasoning = true;
+
+  const toolLine = bodies.toolUse
+    .split(/\r?\n/)
+    .find((line) => line.includes("does not support forced tool use"));
+  for (const item of requireMentions(toolLine, models, "Anthropic tool-use coverage drifted"))
+    if (callable(item)) item.capabilities.tool_call = true;
 }
 
 function amount(value: string | undefined): string | undefined {
@@ -374,20 +584,7 @@ function supportsUsInference(id: string): boolean {
 }
 
 function pricing(body: string, input: Input, models: Map<string, ProviderModel>): void {
-  const identities = new Map<string, string[]>();
-  for (const item of models.values()) {
-    const identity = key(item.model_id);
-    identities.set(identity, [...(identities.get(identity) ?? []), item.model_id]);
-  }
-  const resolve = (name: string): ProviderModel => {
-    const ids = identities.get(key(name)) ?? [];
-    if (ids.length !== 1 || ids[0] === undefined)
-      throw new Error(`Anthropic pricing model did not match one official ID: ${label(name)}`);
-    const item = models.get(ids[0]);
-    if (item === undefined) throw new Error("Anthropic identity index drifted");
-    if (item.name === item.model_id) item.name = label(name);
-    return item;
-  };
+  const resolve = resolver(models);
   const add = (item: ProviderModel, rates: SourcePriceFact[]): void => {
     item.price_facts.push(...rates);
     item.pricing_state = "numeric";
@@ -546,6 +743,22 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     document("/api/messages/create.md"),
     document("/api/messages/batches/create.md"),
     document("/build-with-claude/batch-processing.md"),
+    models,
+  );
+  capabilities(
+    {
+      citations: document("/build-with-claude/citations.md"),
+      pdf: document("/build-with-claude/pdf-support.md"),
+      contextEditing: document("/build-with-claude/context-editing.md"),
+      structuredOutputs: document("/build-with-claude/structured-outputs.md"),
+      codeExecution: document("/agents-and-tools/tool-use/code-execution-tool.md"),
+      computerUse: document("/agents-and-tools/tool-use/computer-use-tool.md"),
+      effort: document("/build-with-claude/effort.md"),
+      promptCaching: document("/build-with-claude/prompt-caching.md"),
+      glossary: document("/about-claude/glossary.md"),
+      thinking: document("/build-with-claude/thinking.md"),
+      toolUse: document("/agents-and-tools/tool-use/implement-tool-use.md"),
+    },
     models,
   );
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));

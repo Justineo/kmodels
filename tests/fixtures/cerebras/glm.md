@@ -2,6 +2,8 @@
 
 > A tool-using reasoning model.
 
+Use the `reasoning_effort` parameter to control reasoning.
+
 <Callout>
   **Z.ai GLM 4.7** is scheduled for deprecation on August 17, 2026.
 </Callout>

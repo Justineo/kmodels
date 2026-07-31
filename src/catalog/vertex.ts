@@ -6,8 +6,13 @@ import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
-import { publishedRate } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { decimalsEqual, publishedRate } from "./pricing.ts";
+import {
+  sourceRawPricingFactKey,
+  sourcePriceFactKey,
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -83,6 +88,11 @@ const endpointReferences: Readonly<
       "Vertex embedContent reference drifted",
     ],
     [
+      "/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
+      [/publishers\/google\/models\/\$\{MODEL_ID\}:predict/],
+      "Vertex text embedding reference drifted",
+    ],
+    [
       "/vertex-ai/generative-ai/docs/image/generate-images",
       [/publishers\/google\/models\/MODEL_VERSION:predict/],
       "Vertex image predict reference drifted",
@@ -126,22 +136,27 @@ const endpointReferences: Readonly<
       [/\/v1\/projects\/PROJECT_ID\/locations\/LOCATION\/endpoints\/openapi\/chat\/completions/],
       "Vertex open-model Chat Completions reference drifted",
     ],
+    [
+      "/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
+      [/publishers\/google\/models\/\$\{MODEL_ID\}:predict/],
+      "Vertex text embedding reference drifted",
+    ],
   ],
 };
 
 const months = new Map([
-  ["January", "01"],
-  ["February", "02"],
-  ["March", "03"],
-  ["April", "04"],
+  ["Jan", "01"],
+  ["Feb", "02"],
+  ["Mar", "03"],
+  ["Apr", "04"],
   ["May", "05"],
-  ["June", "06"],
-  ["July", "07"],
-  ["August", "08"],
-  ["September", "09"],
-  ["October", "10"],
-  ["November", "11"],
-  ["December", "12"],
+  ["Jun", "06"],
+  ["Jul", "07"],
+  ["Aug", "08"],
+  ["Sep", "09"],
+  ["Oct", "10"],
+  ["Nov", "11"],
+  ["Dec", "12"],
 ]);
 const apiItemSchema = z.object({
   name: z.string().regex(/^publishers\/[a-z0-9-]+\/models\/[a-z0-9][a-z0-9._:/@-]*$/i),
@@ -161,6 +176,20 @@ const apiBundleSchema = z.object({
 
 function text(value: string): string {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function cellText(cell: Selection): string {
+  const clone = cell.clone();
+  clone.find("br").replaceWith(" ");
+  return text(clone.text());
+}
+
+function texts($: LoadedDocument, selection: Selection): string[] {
+  return selection.map((_index, element) => text($(element).text())).get();
+}
+
+function tableHeaders($: LoadedDocument, table: Selection): string[] {
+  return texts($, table.find("tr").first().find("th,td"));
 }
 
 function unique<T>(values: T[]): T[] {
@@ -187,8 +216,8 @@ function validateEndpointReferences(sourceId: string, documents: LinkedDocument[
 function modelDate(value: string): string | undefined {
   const iso = value.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
   if (iso !== undefined) return iso;
-  const match = value.match(/\b([A-Z][a-z]+) (\d{1,2}), (\d{4})\b/);
-  const month = match?.[1] === undefined ? undefined : months.get(match[1]);
+  const match = value.match(/\b([A-Z][a-z]{2,8}) (\d{1,2}), (\d{4})\b/);
+  const month = match?.[1] === undefined ? undefined : months.get(match[1].slice(0, 3));
   return month === undefined || match?.[2] === undefined || match[3] === undefined
     ? undefined
     : `${match[3]}-${month}-${match[2].padStart(2, "0")}`;
@@ -202,6 +231,15 @@ function rowCell($: LoadedDocument, table: Selection, label: RegExp): Selection 
       result = cells.slice(1);
   });
   return result;
+}
+
+function section($: LoadedDocument, heading: Selection): Selection {
+  if (heading.length === 0) return $(".devsite-article-body");
+  const level = Number(heading.prop("tagName")?.slice(1));
+  const boundary = Number.isInteger(level)
+    ? Array.from({ length: Math.max(level - 1, 1) }, (_value, index) => `h${index + 2}`).join(",")
+    : "h2";
+  return heading.add(heading.nextUntil(boundary));
 }
 
 function media(value: string): Modality[] {
@@ -249,9 +287,15 @@ function number(value: string, pattern: RegExp): number | undefined {
 
 function tokens(value: string, pattern: RegExp): number | undefined {
   const match = value.match(pattern);
-  const raw = match?.[1];
+  if (match === null) return undefined;
+  const raw = match[1];
   if (raw === undefined) return undefined;
-  const unit = match?.[2]?.toLowerCase();
+  const capturedUnit = match[2]?.toLowerCase();
+  const next = value[(match.index ?? 0) + match[0].length];
+  const unit =
+    capturedUnit?.length === 1 && next !== undefined && /[a-z]/i.test(next)
+      ? undefined
+      : capturedUnit;
   const scale =
     unit === "k" || unit === "thousand"
       ? 1_000
@@ -264,11 +308,12 @@ function tokens(value: string, pattern: RegExp): number | undefined {
 
 function limits($: LoadedDocument, table: Selection): ProviderModel["limits"] {
   const outputCell = rowCell($, table, /^Maximum output tokens$/i);
+  const sequenceCell = rowCell($, table, /^Maximum sequence length$/i);
   const value = text(
     [
       rowCell($, table, /^Token limits$/i),
-      rowCell($, table, /^Quotas?$/i),
-      rowCell($, table, /^Maximum sequence length$/i),
+      rowCell($, table, /^Quotas?(?: limits?)?$/i),
+      sequenceCell,
       outputCell,
       rowCell($, table, /^Output dimensions$/i),
     ]
@@ -276,6 +321,7 @@ function limits($: LoadedDocument, table: Selection): ProviderModel["limits"] {
       .join(" "),
   );
   const context =
+    tokens(text(sequenceCell?.text() ?? ""), /([\d,.]+)\s*(K|M|thousand|million)?/i) ??
     tokens(
       value,
       /([\d,.]+)\s*(K|M|thousand|million)?\s+(?:context length|maximum input tokens)/i,
@@ -292,11 +338,11 @@ function limits($: LoadedDocument, table: Selection): ProviderModel["limits"] {
     tokens(text(outputCell?.text() ?? ""), /([\d,.]+)\s*(K|M|thousand|million)?/i) ??
     tokens(
       value,
-      /([\d,.]+)\s*(K|M|thousand|million)?\s+(?:maximum output tokens|maximum output|max output)/i,
+      /(?:Maximum output tokens|Max output)\s*(?:is|of|:|-)?\s*([\d,.]+)\s*(K|M|thousand|million)?/i,
     ) ??
     tokens(
       value,
-      /(?:Maximum output tokens|Max output)\s*(?:is|of|:|-)?\s*([\d,.]+)\s*(K|M|thousand|million)?/i,
+      /([\d,.]+)\s*(K|M|thousand|million)?\s+(?:maximum output tokens|maximum output|max output)/i,
     );
   const dimensions = number(value, /Output dimensions?\D*([\d,]+)/i);
   return {
@@ -394,17 +440,40 @@ function modelTasks(
 }
 
 function regions($: LoadedDocument, table: Selection): ProviderModel["availability"] {
-  const cell = rowCell($, table, /^Supported regions$/i);
-  const values = unique(
-    cell
-      ?.find("code")
-      .map((_index, element) => text($(element).text()))
-      .get()
-      .filter((value) => /^(?:global|us|eu|[a-z]+-[a-z]+\d)$/i.test(value)) ?? [],
-  );
-  return values.length === 0
+  const values: string[] = [];
+  table.find("tr").each((_index, row) => {
+    const cells = $(row).find("th,td");
+    if (
+      cells.length < 2 ||
+      !/^(?:Supported regions|Model availability)(?:\s*\(.*\))?$/i.test(text(cells.eq(0).text()))
+    )
+      return;
+    const cell = cells.slice(1);
+    const groups = cell.find(".geap-region");
+    if (groups.length > 0) {
+      groups.each((_groupIndex, group) => {
+        const item = $(group);
+        const area = text(item.children("li").first().text()).toLowerCase();
+        item.find("code").each((_codeIndex, code) => {
+          const value = text($(code).text());
+          if (/^global endpoint$/i.test(value)) values.push("global");
+          else if (/^multi-region$/i.test(value) && area === "united states") values.push("us");
+          else if (/^multi-region$/i.test(value) && area === "europe") values.push("eu");
+          else if (/^(?:global|us|eu|[a-z]+-[a-z]+\d)$/i.test(value)) values.push(value);
+        });
+      });
+      return;
+    }
+    cell.find("code").each((_codeIndex, code) => {
+      const value = text($(code).text());
+      if (/^global endpoint$/i.test(value)) values.push("global");
+      else if (/^(?:global|us|eu|[a-z]+-[a-z]+\d)$/i.test(value)) values.push(value);
+    });
+  });
+  const observed = unique(values);
+  return observed.length === 0
     ? undefined
-    : values.map((region) => ({ region, deployment_type: "managed_api" }));
+    : observed.map((region) => ({ region, deployment_type: "managed_api" }));
 }
 
 function pageName(title: string, heading: string, count: number): string {
@@ -415,18 +484,21 @@ function pageName(title: string, heading: string, count: number): string {
 }
 
 function description($: LoadedDocument, heading: Selection): string | undefined {
-  const scoped =
-    heading.length === 0
-      ? $(".devsite-article-body > p").first()
-      : heading.nextUntil("h2").filter("p").first();
+  const scoped = section($, heading).filter("p").first();
   const value = text(scoped.text()) || text($(".devsite-article-body > p").first().text());
   return value || undefined;
 }
 
-function publisherFamily($: LoadedDocument, sourceId: string): ProviderModel["service_families"] {
+function publisherFamily(
+  $: LoadedDocument,
+  sourceId: string,
+  scope: Selection,
+): ProviderModel["service_families"] {
   if (sourceId === "vertex-google-models") return ["publishers/google"];
   const publishers = unique(
-    $(".devsite-article-body a[href]")
+    scope
+      .find("a[href]")
+      .addBack("a[href]")
       .map(
         (_index, element) =>
           ($(element).attr("href") ?? "").match(
@@ -465,6 +537,28 @@ function modelEndpoints(
     if (/\/partner-models\/llama\//.test(path)) return [endpoints.llama];
   }
   return undefined;
+}
+
+function mergeEndpoints(...values: ProviderModel["api_endpoints"][]): ApiEndpoint[] {
+  return [
+    ...new Map(
+      values
+        .flatMap((value) => value ?? [])
+        .map((endpoint) => [apiEndpointKey(endpoint), endpoint]),
+    ).values(),
+  ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+}
+
+function mergeAvailability(
+  ...values: ProviderModel["availability"][]
+): NonNullable<ProviderModel["availability"]> {
+  return [
+    ...new Map(
+      values
+        .flatMap((value) => value ?? [])
+        .map((item) => [`${item.region}\0${item.deployment_type}`, item]),
+    ).values(),
+  ];
 }
 
 function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evidence {
@@ -519,23 +613,9 @@ function mergeEvidence(current: Evidence | undefined, incoming: Evidence): Evide
     ...(next.service_families ?? []),
   ]).sort();
   model.service_families = families.length === 0 ? undefined : families;
-  const endpointValues = [
-    ...new Map(
-      [...(model.api_endpoints ?? []), ...(next.api_endpoints ?? [])].map((endpoint) => [
-        apiEndpointKey(endpoint),
-        endpoint,
-      ]),
-    ).values(),
-  ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
+  const endpointValues = mergeEndpoints(model.api_endpoints, next.api_endpoints);
   model.api_endpoints = endpointValues.length === 0 ? undefined : endpointValues;
-  model.availability = [
-    ...new Map(
-      [...(model.availability ?? []), ...(next.availability ?? [])].map((item) => [
-        `${item.region}\0${item.deployment_type}`,
-        item,
-      ]),
-    ).values(),
-  ];
+  model.availability = mergeAvailability(model.availability, next.availability);
   return { model, names: new Set([...current.names, ...incoming.names]) };
 }
 
@@ -543,18 +623,107 @@ function add(models: Map<string, Evidence>, evidence: Evidence): void {
   models.set(evidence.model.model_id, mergeEvidence(models.get(evidence.model.model_id), evidence));
 }
 
+function parseIndexInventory(models: Map<string, Evidence>, input: Input, body: string): void {
+  if (input.source.id === "vertex-google-models") return;
+  const $ = load(body);
+  const rows = new Map<
+    string,
+    { publisher: string; name: string; cells: string[]; headers: string[] }[]
+  >();
+  $(".devsite-article-body a[href]").each((_index, element) => {
+    const match = ($(element).attr("href") ?? "").match(
+      /^https:\/\/console\.cloud\.google\.com\/agent-platform\/publishers\/([a-z0-9-]+)\/model-garden\/([a-z0-9][a-z0-9._@-]*)$/,
+    );
+    const publisher = match?.[1];
+    const id = match?.[2];
+    if (publisher === undefined || id === undefined || !modelIdSchema.safeParse(id).success) return;
+    const row = $(element).closest("tr");
+    const cells = texts($, row.find("th,td"));
+    const name = cells[0];
+    if (name === undefined || name === "") return;
+    const headers = tableHeaders($, row.closest("table"));
+    const current = rows.get(id) ?? [];
+    current.push({ publisher, name, cells, headers });
+    rows.set(id, current);
+  });
+  for (const [id, candidates] of rows) {
+    const identities = unique(candidates.map(({ publisher, name }) => `${publisher}\0${name}`));
+    if (identities.length !== 1) continue;
+    const candidate = candidates[0];
+    if (candidate === undefined) continue;
+    const modalityIndex = candidate.headers.findIndex((value) => /^Modality$/i.test(value));
+    const type = modalityIndex < 0 ? "" : (candidate.cells[modalityIndex] ?? "");
+    const isEmbedding = candidate.headers.some((value) => /^Output dimensions$/i.test(value));
+    const modelInput: Modality[] = [];
+    if (/\bLanguage\b|\bCode\b/i.test(type) || isEmbedding) modelInput.push("text");
+    if (/\bVision\b/i.test(type)) modelInput.push("image");
+    const observedModalities: ProviderModel["modalities"] = {
+      input: modelInput,
+      output: isEmbedding ? ["embedding"] : /\bLanguage\b|\bCode\b/i.test(type) ? ["text"] : [],
+    };
+    const observedCapabilities = unknownCapabilities();
+    const descriptionIndex = candidate.headers.findIndex((value) => /^Description$/i.test(value));
+    const model = {
+      ...baseModel({
+        providerId: input.provider.id,
+        id,
+        name: candidate.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      description:
+        descriptionIndex < 0 ? undefined : candidate.cells[descriptionIndex] || undefined,
+      tasks: modelTasks(id, candidate.name, observedModalities, observedCapabilities),
+      service_families: [`publishers/${candidate.publisher}`],
+      modalities: observedModalities,
+      capabilities: observedCapabilities,
+      scope: "regional_catalog",
+    } satisfies ProviderModel;
+    add(models, { model, names: new Set([id, candidate.name]) });
+  }
+}
+
+function applyReplacementTables(models: Map<string, Evidence>, $: LoadedDocument): void {
+  $(".devsite-article-body table").each((_index, tableElement) => {
+    const table = $(tableElement);
+    const headers = tableHeaders($, table);
+    if (
+      !/^Discontinued (?:model )?endpoints?$/i.test(headers[0] ?? "") ||
+      !/^(?:Recommended )?(?:endpoint )?(?:migration|replacement)$/i.test(headers[1] ?? "")
+    )
+      return;
+    table
+      .find("tr")
+      .slice(1)
+      .each((_rowIndex, row) => {
+        const cells = $(row).find("th,td");
+        const id = text(cells.eq(0).find("code").first().text());
+        const replacement = text(cells.eq(1).find("code").first().text());
+        const model = models.get(id)?.model;
+        if (
+          model === undefined ||
+          replacement === id ||
+          !modelIdSchema.safeParse(replacement).success
+        )
+          return;
+        model.replacement_model_ids = unique([...model.replacement_model_ids, replacement]);
+      });
+  });
+}
+
 function parseModelTables(
   models: Map<string, Evidence>,
   input: Input,
   path: string,
   body: string,
-): void {
+): boolean {
   const $ = load(body);
   const tables = $(".devsite-article-body table").filter((_index, table) => {
     const cells = $(table).find("tr").first().find("th,td");
     return /^Model ID$/i.test(text(cells.eq(0).text()));
   });
   const title = text($("h1").first().clone().children().remove().end().text());
+  let parsed = false;
   tables.each((_index, tableElement) => {
     const table = $(tableElement);
     const idCell = rowCell($, table, /^Model ID$/i);
@@ -562,6 +731,7 @@ function parseModelTables(
     if (!modelIdSchema.safeParse(id).success) return;
     const heading = table.prevAll("h2,h3,h4").first();
     const headingText = text(heading.clone().children().remove().end().text());
+    const publisherScope = tables.length === 1 ? $(".devsite-article-body") : section($, heading);
     const name = pageName(title || id, headingText, tables.length);
     const observedModalities = modalities($, table);
     const observedCapabilities = capabilities($, table);
@@ -578,7 +748,7 @@ function parseModelTables(
       }),
       description: description($, heading),
       tasks: modelTasks(id, name, observedModalities, observedCapabilities),
-      service_families: publisherFamily($, input.source.id),
+      service_families: publisherFamily($, input.source.id, publisherScope),
       modalities: observedModalities,
       capabilities: observedCapabilities,
       limits: limits($, table),
@@ -588,19 +758,34 @@ function parseModelTables(
       scope: "regional_catalog",
     } satisfies ProviderModel;
     model.api_endpoints = modelEndpoints(input.source.id, path, $, model);
-    const section = text(heading.nextUntil("h2").text());
-    const deprecated = section.match(/deprecated as of ([A-Z][a-z]+ \d{1,2}, \d{4})/i)?.[1];
-    const shutdown = section.match(/(?:shut down|shutdown) on ([A-Z][a-z]+ \d{1,2}, \d{4})/i)?.[1];
+    const sectionText = text(section($, heading).text());
+    const deprecated =
+      versionText.match(/Deprecation date\s*:?\s*([A-Z][a-z]{2,8} \d{1,2}, \d{4})/i)?.[1] ??
+      sectionText.match(/deprecated as of ([A-Z][a-z]{2,8} \d{1,2}, \d{4})/i)?.[1];
+    const retired =
+      versionText.match(
+        /(?:Discontinuation|Retirement|Shutdown) date\s*:?\s*([A-Z][a-z]{2,8} \d{1,2}, \d{4})/i,
+      )?.[1] ??
+      sectionText.match(
+        /(?:shut down|shutdown|discontinued) (?:on|as of) ([A-Z][a-z]{2,8} \d{1,2}, \d{4})/i,
+      )?.[1];
     if (deprecated !== undefined) model.deprecated_at = modelDate(deprecated);
-    if (shutdown !== undefined) model.retired_at = modelDate(shutdown);
-    if (model.deprecated_at !== undefined) {
-      model.status =
-        model.retired_at !== undefined && model.retired_at <= input.observedAt.slice(0, 10)
-          ? "retired"
-          : "deprecated";
-    }
-    add(models, { model, names: new Set([name]) });
+    if (retired !== undefined) model.retired_at = modelDate(retired);
+    if (model.retired_at !== undefined && model.retired_at <= input.observedAt.slice(0, 10))
+      model.status = "retired";
+    else if (model.deprecated_at !== undefined) model.status = "deprecated";
+    const versionNames = versionText
+      ? (rowCell($, table, /^Versions$/i)
+          ?.find("code")
+          .map((_codeIndex, code) => text($(code).text()))
+          .get()
+          .filter((value) => modelIdSchema.safeParse(value).success) ?? [])
+      : [];
+    add(models, { model, names: new Set([name, ...versionNames]) });
+    parsed = true;
   });
+  applyReplacementTables(models, $);
+  return parsed;
 }
 
 function lifecycleOperations(section: string): ModelTask[] {
@@ -641,12 +826,7 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
   const $ = load(body);
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
-    const headers = table
-      .find("tr")
-      .first()
-      .find("th,td")
-      .map((_cellIndex, cell) => text($(cell).text()))
-      .get();
+    const headers = tableHeaders($, table);
     if (headers[0] !== "Model ID") return;
     const releaseIndex = headers.findIndex((value) => /^Release date$/i.test(value));
     const retirementIndex = headers.findIndex((value) =>
@@ -699,35 +879,128 @@ function applyLifecycle(models: Map<string, Evidence>, input: Input, body: strin
 
 function priceName(value: string): string {
   return value
-    .replace(/\((?:Promotional|Standard Price|Deprecated|Preview|Nano Banana)[^)]*\)/gi, " ")
+    .replace(/\((?:Promotional Price|Standard Price|Deprecated)[^)]*\)/gi, " ")
     .replace(/\bon Google Cloud\b/gi, " ")
     .replace(/\bwith Gemini Live API\b/gi, "Live API")
-    .replace(/\bpreview\b/gi, " ")
-    .replace(/\b(?:generate|generation)\b/gi, " ")
     .replace(/\b(\d+)\.0\b/g, "$1")
-    .replace(/\b001\b/g, " ")
-    .replace(/\b\d+[BEM](?:-\d+[A-Z0-9]+)*\b/gi, " ")
     .replace(/[^a-z0-9]+/gi, "")
     .toLowerCase();
 }
 
-function priceTarget(
-  models: Map<string, Evidence>,
-  label: string,
-  hint = "",
-): ProviderModel | undefined {
-  const key = priceName(label);
-  if (key === "") return undefined;
-  let candidates = [...models.values()].filter((item) =>
-    [...item.names].some((name) => priceName(name) === key),
-  );
-  if (candidates.length > 1 && hint !== "") {
-    const hinted = candidates.filter((item) =>
-      priceName(`${item.model.name} ${item.model.model_id}`).includes(priceName(hint)),
+function priceNames(value: string): string[] {
+  return unique([
+    priceName(value),
+    priceName(
+      value.replace(/\(([^)]*)\)/g, (match, inner: string) => (/\d/.test(inner) ? match : " ")),
+    ),
+  ]).filter((item) => item !== "");
+}
+
+function priceKeys(item: Evidence): Set<string> {
+  const values = new Set(item.names);
+  let id = item.model.model_id;
+  values.add(id);
+  id = id.replace(/-maas$/, "");
+  values.add(id);
+  while (/(?:-\d{3}|-preview|-generate)$/.test(id)) {
+    id = id.replace(/(?:-\d{3}|-preview|-generate)$/, "");
+    values.add(id);
+  }
+  return new Set([...values].flatMap(priceNames));
+}
+
+function priceTargets(models: Map<string, Evidence>, label: string, hint = ""): ProviderModel[] {
+  const labelKeys = priceNames(label);
+  if (labelKeys.length === 0) return [];
+  const entries = [...models.values()].map((item) => ({ item, keys: priceKeys(item) }));
+  let candidates = entries.filter(({ keys }) => labelKeys.some((key) => keys.has(key)));
+  const exact = candidates.length > 0;
+  if (!exact) {
+    const related = entries
+      .map((entry) => ({
+        ...entry,
+        score: Math.max(
+          0,
+          ...[...entry.keys]
+            .filter((candidate) =>
+              labelKeys.some(
+                (key) => /\d/.test(key) && (candidate.startsWith(key) || candidate.endsWith(key)),
+              ),
+            )
+            .map((candidate) => candidate.length),
+        ),
+      }))
+      .filter(({ score }) => score > 0);
+    const best = Math.max(0, ...related.map(({ score }) => score));
+    candidates = related.filter(({ score }) => score === best);
+  }
+  const hintKey =
+    priceName(hint) ||
+    ["fast", "ultra", "lite", "clip", "pro"].find((variant) =>
+      new RegExp(`\\b${variant}\\b`, "i").test(label),
+    ) ||
+    "";
+  if (hintKey !== "" && candidates.length > 1) {
+    const hinted = candidates.filter(({ keys }) =>
+      [...keys].some((candidate) => candidate.includes(hintKey)),
     );
     if (hinted.length > 0) candidates = hinted;
+  } else if (candidates.length > 1) {
+    const base = candidates.filter(
+      ({ item }) => !/(?:^|-)(?:fast|ultra|lite|clip)(?:-|$)/.test(item.model.model_id),
+    );
+    if (base.length > 0) candidates = base;
   }
-  return candidates.length === 1 ? candidates[0]?.model : undefined;
+  return exact || candidates.length === 1 ? candidates.map(({ item }) => item.model) : [];
+}
+
+function applyEmbeddingReference(models: Map<string, Evidence>, body: string): void {
+  const $ = load(body);
+  $(".devsite-article-body table").each((_index, tableElement) => {
+    const table = $(tableElement);
+    const headers = tableHeaders($, table);
+    const sequenceIndex = headers.findIndex((value) =>
+      /^Max(?:imum)? sequence length$/i.test(value),
+    );
+    if (!/^Model name$/i.test(headers[0] ?? "") || sequenceIndex < 0) return;
+    table
+      .find("tr")
+      .slice(1)
+      .each((_rowIndex, row) => {
+        const cells = $(row).find("th,td");
+        const label = text(cells.eq(0).find("code").first().text() || cells.eq(0).text());
+        const targets = priceTargets(models, label).filter((model) =>
+          model.tasks.includes("embeddings"),
+        );
+        if (targets.length === 0) return;
+        const context = tokens(
+          text(cells.eq(sequenceIndex).text()),
+          /([\d,.]+)\s*(K|M|thousand|million)?/i,
+        );
+        for (const model of targets) {
+          if (context !== undefined) {
+            model.limits.context_tokens ??= context;
+            model.limits.max_input_tokens ??= context;
+          }
+          model.api_endpoints = mergeEndpoints(model.api_endpoints, [endpoints.predict]);
+        }
+      });
+  });
+  $(".devsite-article-body pre").each((_index, element) => {
+    const value = text($(element).text());
+    for (const match of value.matchAll(
+      /https:\/\/[a-z0-9-]*aiplatform\.googleapis\.com\/v1\/projects\/[^/]+\/locations\/(global|[a-z]+-[a-z]+\d)\/publishers\/google\/models\/([a-z0-9][a-z0-9._@-]*):predict/gi,
+    )) {
+      const region = match[1];
+      const id = match[2];
+      const model = id === undefined ? undefined : models.get(id)?.model;
+      if (region === undefined || model === undefined || !model.tasks.includes("embeddings"))
+        continue;
+      model.availability = mergeAvailability(model.availability, [
+        { region, deployment_type: "managed_api" },
+      ]);
+    }
+  });
 }
 
 function meters(descriptor: string, cached: boolean): SourcePriceFact["meter"][] {
@@ -761,12 +1034,16 @@ function meters(descriptor: string, cached: boolean): SourcePriceFact["meter"][]
 
 function money(value: string): { price: string; scope?: string; serviceTier?: string }[] {
   const results: { price: string; scope?: string; serviceTier?: string }[] = [];
-  let serviceTier: string | undefined;
   for (const match of value.matchAll(
-    /(?:(Batch|Flex):\s*)?\$(\d+(?:\.\d+)?)(?:\s*\((Global|Non-global)\))?/gi,
+    /(?:(Batch|Flex|Online)(?: requests?)?:\s*)?\$(\d+(?:\.\d+)?)(?:\s*\((Global|Non-global)\))?/gi,
   )) {
-    if (match[1] !== undefined) serviceTier = match[1].toLowerCase();
     if (match[2] === undefined) continue;
+    const serviceTier =
+      match[1] === undefined
+        ? undefined
+        : match[1].toLowerCase() === "online"
+          ? "standard"
+          : match[1].toLowerCase();
     results.push({
       price: match[2],
       ...(match[3] === undefined ? {} : { scope: match[3].toLowerCase() }),
@@ -776,30 +1053,24 @@ function money(value: string): { price: string; scope?: string; serviceTier?: st
   return results;
 }
 
-function decimalKey(value: string): string {
-  const [whole = "0", fraction] = value.split(".");
-  if (fraction === undefined) return whole;
-  const trimmed = fraction.replace(/0+$/, "");
-  return trimmed === "" ? whole : `${whole}.${trimmed}`;
-}
-
 function addRate(model: ProviderModel, rate: SourcePriceFact): void {
-  const key = `${rate.meter}\0${rate.currency}\0${rate.unit}\0${JSON.stringify(rate.conditions)}`;
+  const key = sourcePriceFactKey(rate);
   if (
     !model.price_facts.some(
-      (item) =>
-        `${item.meter}\0${item.currency}\0${item.unit}\0${JSON.stringify(item.conditions)}` ===
-          key && decimalKey(item.price) === decimalKey(rate.price),
+      (item) => sourcePriceFactKey(item) === key && decimalsEqual(item.price, rate.price),
     )
   )
     model.price_facts.push(rate);
 }
 
-function tier(table: Selection): string | undefined {
+function tiers(table: Selection, header: string, headers: string[]): (string | undefined)[] {
+  if (/Batch API/i.test(header)) return ["batch"];
+  if (headers.some((value) => /Batch API/i.test(value)) && /^Price$/i.test(header))
+    return ["standard"];
   const value = text(table.prevAll("h3,h4").first().text()).toLowerCase();
-  if (value === "standard" || value === "priority") return value;
-  if (value === "flex/batch") return "flex_or_batch";
-  return undefined;
+  if (value === "standard" || value === "priority") return [value];
+  if (value === "flex/batch") return ["flex", "batch"];
+  return [undefined];
 }
 
 function contextTokenBounds(header: string): SourcePriceFact["conditions"] {
@@ -809,101 +1080,134 @@ function contextTokenBounds(header: string): SourcePriceFact["conditions"] {
   };
 }
 
+function excludedPricingTable(table: Selection, headers: string[]): boolean {
+  const section = text(table.prevAll("h2,h3,h4").first().text());
+  return (
+    /^(?:Agents|CodeMender|Model Tuning|AlphaEvolve|Agent Platform Model Optimizer)/i.test(
+      section,
+    ) || headers.some((header) => /training/i.test(header))
+  );
+}
+
 function tokenTables(models: Map<string, Evidence>, sourceId: string, $: LoadedDocument): void {
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
-    const headers = table
-      .find("tr")
-      .first()
-      .find("th,td")
-      .map((_cellIndex, cell) => text($(cell).text()))
-      .get();
-    if (!headers.some((value) => /1M tokens|million tokens/i.test(value))) return;
-    let current: ProviderModel | undefined;
+    const headers = tableHeaders($, table);
+    const value = text(table.text());
+    if (
+      excludedPricingTable(table, headers) ||
+      headers.some((header) => /storage/i.test(header)) ||
+      (!headers.some((header) => /1M tokens|million tokens/i.test(header)) &&
+        !/\b1M (?:input|output).*\btokens\b/i.test(value))
+    )
+      return;
+    let current: ProviderModel[] = [];
     table
       .find("tr")
       .slice(1)
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
         if (cells.length === 1) {
-          current = priceTarget(models, text(cells.eq(0).text()));
+          current = priceTargets(models, text(cells.eq(0).text()));
           return;
         }
-        const direct = priceTarget(models, text(cells.eq(0).text()));
-        if (direct !== undefined) current = direct;
-        if (current === undefined) return;
-        const target = current;
+        const direct = priceTargets(models, text(cells.eq(0).text()));
+        if (direct.length > 0) current = direct;
+        if (current.length === 0) return;
         const offset = headers.length - cells.length;
-        const descriptor = direct === undefined ? text(cells.eq(0).text()) : "";
-        cells.slice(direct === undefined ? 1 : 1).each((cellIndex, cell) => {
+        const descriptor = direct.length === 0 ? text(cells.eq(0).text()) : "";
+        cells.slice(1).each((cellIndex, cell) => {
           const header = headers[cellIndex + 1 + offset] ?? "";
           const cached = /cached/i.test(header);
           const rateMeters = meters(descriptor, cached);
           if (rateMeters.length === 0) return;
-          const conditions: SourcePriceFact["conditions"] = {
-            service_tier: tier(table),
-            ...contextTokenBounds(header),
-          };
-          for (const item of money(text($(cell).text())))
-            for (const rateMeter of rateMeters)
-              addRate(
-                target,
-                publishedRate(
-                  rateMeter,
-                  item.price,
-                  "million_tokens",
-                  sourceId,
-                  `${header}; ${descriptor}; ${text($(cell).text())}`,
-                  {
-                    ...conditions,
-                    service_tier: item.serviceTier ?? conditions.service_tier,
-                    deployment_scope: item.scope,
-                  },
-                ),
-              );
+          const raw = cellText($(cell));
+          for (const item of money(raw))
+            for (const serviceTier of item.serviceTier === undefined
+              ? tiers(table, header, headers)
+              : [item.serviceTier])
+              for (const target of current)
+                for (const rateMeter of rateMeters)
+                  addRate(
+                    target,
+                    publishedRate(
+                      rateMeter,
+                      item.price,
+                      "million_tokens",
+                      sourceId,
+                      `${header}; ${descriptor}; ${raw}`,
+                      {
+                        service_tier: serviceTier,
+                        deployment_scope: item.scope,
+                        ...contextTokenBounds(header),
+                      },
+                    ),
+                  );
         });
       });
   });
 }
 
+function rawRate(
+  model: ProviderModel,
+  sourceId: string,
+  label: string,
+  fragment: string,
+  conditions: SourcePriceFact["conditions"],
+): void {
+  model.raw_price_facts.push({
+    term_key: "unparsed_base_rate",
+    impact: "base_price",
+    reason: "unknown_applicability",
+    conditions,
+    source_ref: sourceId,
+    raw: { label, fragment },
+  });
+}
+
 function labeledTables(models: Map<string, Evidence>, sourceId: string, $: LoadedDocument): void {
   const pattern =
-    /(5m Batch Cache Write|1h Batch Cache Write|Batch Cache Hit|Batch Input|Batch Output|5m Cache Write|1h Cache Write|Cache Hit|Input|Output):\s*\$(\d+(?:\.\d+)?)/gi;
+    /(5m Batch Cache Write|1h Batch Cache Write|Batch Cache Write|Batch Cache Hit|Batch Input|Batch Output|5m Cache Write|1h Cache Write|Cache Write|Cache Hit|Input|Output):\s*\$(\d+(?:\.\d+)?)/gi;
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
-    const headers = table
-      .find("tr")
-      .first()
-      .find("th,td")
-      .map((_cellIndex, cell) => text($(cell).text()))
-      .get();
-    if (headers[0] !== "Model" || headers.length > 3) return;
+    const headers = tableHeaders($, table);
+    if (headers[0] !== "Model" || headers.length > 3 || excludedPricingTable(table, headers))
+      return;
     const heading = text(table.prevAll("h2,h3,h4").first().text());
+    const region = /^(?:Global|US Multi-Region|EU Multi-Region|[a-z]+-[a-z]+\d)$/i.test(heading)
+      ? heading
+      : undefined;
     table
       .find("tr")
       .slice(1)
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
-        const model = priceTarget(models, text(cells.eq(0).text()));
-        if (model === undefined) return;
+        const modelLabel = text(cells.eq(0).text());
+        const targets = priceTargets(models, modelLabel);
+        if (targets.length === 0) return;
+        const effective = modelLabel
+          .match(/(?:through|beginning) ([A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4})/i)?.[1]
+          ?.replace(/(\d)(?:st|nd|rd|th)/, "$1");
         cells.slice(1).each((cellIndex, cell) => {
           const header = headers[cellIndex + 1] ?? "";
-          const matches = [...text($(cell).text()).matchAll(pattern)];
+          const fragment = cellText($(cell));
+          const matches = [...fragment.matchAll(pattern)];
           const counts = new Map<string, number>();
           for (const match of matches) {
             const label = match[1]?.toLowerCase();
             if (label !== undefined) counts.set(label, (counts.get(label) ?? 0) + 1);
           }
           for (const match of matches) {
-            const label = match[1];
+            const rateLabel = match[1];
             const price = match[2];
             if (
-              label === undefined ||
+              rateLabel === undefined ||
               price === undefined ||
-              (counts.get(label.toLowerCase()) ?? 0) > 1
+              (/^Cache Write$/i.test(rateLabel) && /\b(?:5m|1h) Cache Write:/i.test(fragment)) ||
+              (counts.get(rateLabel.toLowerCase()) ?? 0) > 1
             )
               continue;
-            const lower = label.toLowerCase();
+            const lower = rateLabel.toLowerCase();
             const rateMeter: SourcePriceFact["meter"] = lower.includes("cache write")
               ? "cache_write_text"
               : lower.includes("cache hit")
@@ -911,36 +1215,48 @@ function labeledTables(models: Map<string, Evidence>, sourceId: string, $: Loade
                 : lower.includes("output")
                   ? "output_text"
                   : "input_text";
-            const effective = text(cells.eq(0).text())
-              .match(/(?:through|beginning) ([A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4})/i)?.[1]
-              ?.replace(/(\d)(?:st|nd|rd|th)/, "$1");
-            addRate(
-              model,
-              publishedRate(rateMeter, price, "million_tokens", sourceId, `${header}; ${label}`, {
-                region: /^(?:Global|US Multi-Region|EU Multi-Region|[a-z]+-[a-z]+\d)$/i.test(
-                  heading,
-                )
-                  ? heading
-                  : undefined,
-                service_tier: lower.includes("batch") ? "batch" : undefined,
-                ...contextTokenBounds(header),
-                cache_ttl_seconds: lower.startsWith("5m")
-                  ? 300
-                  : lower.startsWith("1h")
-                    ? 3600
-                    : undefined,
-                effective_from:
-                  /beginning/i.test(text(cells.eq(0).text())) && effective !== undefined
-                    ? modelDate(effective)
-                    : undefined,
-                effective_until:
-                  /through/i.test(text(cells.eq(0).text())) && effective !== undefined
-                    ? modelDate(effective)
-                    : undefined,
-                promotion: /promotional/i.test(text(cells.eq(0).text())) || undefined,
-              }),
-            );
+            for (const model of targets)
+              addRate(
+                model,
+                publishedRate(
+                  rateMeter,
+                  price,
+                  "million_tokens",
+                  sourceId,
+                  `${header}; ${rateLabel}`,
+                  {
+                    region,
+                    service_tier: lower.includes("batch") ? "batch" : undefined,
+                    ...contextTokenBounds(header),
+                    cache_ttl_seconds: lower.startsWith("5m")
+                      ? 300
+                      : lower.startsWith("1h")
+                        ? 3600
+                        : undefined,
+                    effective_from:
+                      /beginning/i.test(modelLabel) && effective !== undefined
+                        ? modelDate(effective)
+                        : undefined,
+                    effective_until:
+                      /through/i.test(modelLabel) && effective !== undefined
+                        ? modelDate(effective)
+                        : undefined,
+                    promotion: /promotional/i.test(modelLabel) || undefined,
+                  },
+                ),
+              );
           }
+          const incomplete =
+            [...counts.values()].some((count) => count > 1) ||
+            (matches.some((match) => /^Cache Write$/i.test(match[1] ?? "")) &&
+              /\b(?:5m|1h) Cache Write:/i.test(fragment));
+          if (!incomplete && matches.length === (fragment.match(/\$/g) ?? []).length) return;
+          const conditions = {
+            region,
+            ...contextTokenBounds(header),
+          };
+          for (const model of targets)
+            rawRate(model, sourceId, `${modelLabel}; ${header}`, fragment, conditions);
         });
       });
   });
@@ -949,12 +1265,7 @@ function labeledTables(models: Map<string, Evidence>, sourceId: string, $: Loade
 function storageTables(models: Map<string, Evidence>, sourceId: string, $: LoadedDocument): void {
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
-    const headers = table
-      .find("tr")
-      .first()
-      .find("th,td")
-      .map((_cellIndex, cell) => text($(cell).text()))
-      .get();
+    const headers = tableHeaders($, table);
     const featureIndex = headers.findIndex((value) => /^Feature$/i.test(value));
     const typeIndex = headers.findIndex((value) => /^Type$/i.test(value));
     if (headers[0] !== "Model" || featureIndex < 0 || typeIndex < 0) return;
@@ -964,30 +1275,31 @@ function storageTables(models: Map<string, Evidence>, sourceId: string, $: Loade
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
         if (!/Context Cache Storage/i.test(text(cells.eq(featureIndex).text()))) return;
-        const model = priceTarget(models, text(cells.eq(0).text()));
-        if (model === undefined) return;
+        const targets = priceTargets(models, text(cells.eq(0).text()));
+        if (targets.length === 0) return;
         const modalities = media(text(cells.eq(typeIndex).text())).filter(
           (modality) => modality !== "pdf" && modality !== "embedding",
         );
         for (let index = typeIndex + 1; index < cells.length; index += 1) {
           const header = headers[index] ?? "";
-          const raw = text(cells.eq(index).text());
+          const raw = cellText(cells.eq(index));
           for (const item of money(raw))
             for (const modality of modalities.length === 0 ? [undefined] : modalities)
-              addRate(
-                model,
-                publishedRate(
-                  "cache_storage",
-                  item.price,
-                  "million_tokens_per_hour",
-                  sourceId,
-                  raw,
-                  {
-                    modality,
-                    ...contextTokenBounds(header),
-                  },
-                ),
-              );
+              for (const model of targets)
+                addRate(
+                  model,
+                  publishedRate(
+                    "cache_storage",
+                    item.price,
+                    "million_tokens_per_hour",
+                    sourceId,
+                    raw,
+                    {
+                      modality,
+                      ...contextTokenBounds(header),
+                    },
+                  ),
+                );
         }
       });
   });
@@ -996,15 +1308,14 @@ function storageTables(models: Map<string, Evidence>, sourceId: string, $: Loade
 function mediaTables(models: Map<string, Evidence>, sourceId: string, $: LoadedDocument): void {
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
-    const headers = table
-      .find("tr")
-      .first()
-      .find("th,td")
-      .map((_cellIndex, cell) => text($(cell).text()))
-      .get();
+    const headers = tableHeaders($, table);
     const section = text(table.prevAll("h2,h3,h4").first().text());
-    if (headers[0] !== "Model" || !/(Imagen|Veo|Lyria|Embedding)/i.test(section)) return;
-    let current: ProviderModel | undefined;
+    if (
+      !/^(?:Model|Open Source Model)$/.test(headers[0] ?? "") ||
+      !/(Imagen|Veo|Lyria|Embedding)/i.test(section)
+    )
+      return;
+    let current: ProviderModel[] = [];
     let operation = "";
     table
       .find("tr")
@@ -1013,35 +1324,47 @@ function mediaTables(models: Map<string, Evidence>, sourceId: string, $: LoadedD
         const cells = $(row).find("th,td");
         if (cells.length < 2) return;
         const label = text(cells.eq(0).text());
-        const featureIndex = headers.findIndex((value) => /^(?:Feature|Type)$/i.test(value));
+        const featureIndex = headers.findIndex((value) => /^Feature$/i.test(value));
+        const regionIndex = headers.findIndex((value) => /^Region$/i.test(value));
         const resolutionIndex = headers.findIndex((value) => /^Output Resolution$/i.test(value));
         const fullRow = cells.length === headers.length;
         const feature = featureIndex >= 0 && fullRow ? text(cells.eq(featureIndex).text()) : "";
         const hinted = /30 second|clip/i.test(`${feature} ${text($(row).text())}`) ? "clip" : "";
-        const target = priceTarget(models, label, hinted);
-        if (target !== undefined) current = target;
-        else if (fullRow) current = undefined;
         const rowOperation =
           feature ||
           (/generation|upscal|editing|caption|q&a|recontext|try-on/i.test(label) ? label : "");
+        const targets = /Embeddings for Text\s*\(Excluding Gemini Embedding\)/i.test(label)
+          ? [...models.values()]
+              .map(({ model }) => model)
+              .filter(
+                (model) =>
+                  model.tasks.includes("embeddings") &&
+                  model.service_families?.includes("publishers/google") === true &&
+                  !model.model_id.startsWith("gemini-embedding"),
+              )
+          : priceTargets(models, label, hinted);
+        if (targets.length > 0) current = targets;
+        else if (fullRow) current = [];
         if (rowOperation !== "") operation = rowOperation;
-        if (current === undefined) return;
-        const raw = text(cells.last().text());
-        const price = money(raw)[0]?.price;
-        if (price === undefined) return;
-        const unit: SourcePriceFact["unit"] | undefined = /per image|\/image/i.test(raw)
+        if (current.length === 0) return;
+        const raw = cellText(cells.last());
+        const rowText = text($(row).text());
+        const unit: SourcePriceFact["unit"] | undefined = /per image|\/image/i.test(rowText)
           ? "image"
-          : /second/i.test(raw)
-            ? "second"
-            : /frame/i.test(`${raw} ${text($(row).text())}`)
-              ? "frame"
-              : /1M tokens/i.test(`${raw} ${text($(row).text())}`)
-                ? "million_tokens"
-                : /1,000 input tokens/i.test(headers.at(-1) ?? "")
-                  ? "thousand_tokens"
-                  : /song/i.test(raw)
-                    ? "request"
-                    : undefined;
+          : /\bsong\b/i.test(rowText) || /per \d+ seconds?/i.test(rowText)
+            ? "request"
+            : /(?:second|\/sec\b)/i.test(rowText)
+              ? "second"
+              : /frame/i.test(rowText)
+                ? "frame"
+                : /1M tokens/i.test(rowText)
+                  ? "million_tokens"
+                  : /1,000 input tokens/i.test(headers.at(-1) ?? "")
+                    ? "thousand_tokens"
+                    : /1,000 characters/i.test(headers.at(-1) ?? "") ||
+                        /1k characters/i.test(rowText)
+                      ? "thousand_characters"
+                      : undefined;
         if (unit === undefined) return;
         const rateMeter: SourcePriceFact["meter"] = /Imagen/i.test(section)
           ? "image_generation"
@@ -1059,18 +1382,69 @@ function mediaTables(models: Map<string, Evidence>, sourceId: string, $: LoadedD
             match[1] === undefined ? [] : [match[1].toLowerCase()],
           ),
         );
-        for (const resolution of resolutions.length === 0 ? [undefined] : resolutions)
-          addRate(
-            current,
-            publishedRate(rateMeter, price, unit, sourceId, raw, {
-              operation: operation || undefined,
-              resolution,
-              audio: /video \+ audio/i.test(operation) || undefined,
-              modality: /input (text|image|video|audio)/i
-                .exec(text($(row).text()))?.[1]
-                ?.toLowerCase(),
-            }),
-          );
+        for (const item of money(raw))
+          for (const resolution of resolutions.length === 0 ? [undefined] : resolutions)
+            for (const model of current)
+              addRate(
+                model,
+                publishedRate(rateMeter, item.price, unit, sourceId, raw, {
+                  operation: operation || undefined,
+                  resolution,
+                  region:
+                    regionIndex >= 0 && fullRow
+                      ? text(cells.eq(regionIndex).text()) || undefined
+                      : undefined,
+                  service_tier: item.serviceTier,
+                  audio: /video \+ audio/i.test(operation) || undefined,
+                  modality:
+                    /input (text|image|video|audio)/i.exec(rowText)?.[1]?.toLowerCase() ??
+                    (/Embeddings for Text/i.test(label) ? "text" : undefined),
+                }),
+              );
+      });
+  });
+}
+
+function inlineUnitTables(
+  models: Map<string, Evidence>,
+  sourceId: string,
+  $: LoadedDocument,
+): void {
+  $(".devsite-article-body table").each((_index, tableElement) => {
+    const table = $(tableElement);
+    const headers = tableHeaders($, table);
+    if (headers.join("\0") !== "Model\0Type\0Price") return;
+    let current: ProviderModel[] = [];
+    table
+      .find("tr")
+      .slice(1)
+      .each((_rowIndex, row) => {
+        const cells = $(row).find("th,td");
+        if (cells.length === 1) {
+          current = priceTargets(models, text(cells.eq(0).text()));
+          return;
+        }
+        if (current.length === 0) return;
+        const descriptor = text(cells.eq(0).text());
+        const rateMeters = meters(descriptor, false);
+        if (rateMeters.length === 0) return;
+        const raw = cellText(cells.last());
+        const matches = [...raw.matchAll(/\$(\d+(?:\.\d+)?)/g)];
+        for (const [index, match] of matches.entries()) {
+          const price = match[1];
+          if (price === undefined) continue;
+          const start = (match.index ?? 0) + match[0].length;
+          const unitText = raw.slice(start, matches[index + 1]?.index ?? raw.length);
+          const unit: SourcePriceFact["unit"] | undefined = /1M .*tokens/i.test(unitText)
+            ? "million_tokens"
+            : /second/i.test(unitText)
+              ? "second"
+              : undefined;
+          if (unit === undefined) continue;
+          for (const model of current)
+            for (const meter of rateMeters)
+              addRate(model, publishedRate(meter, price, unit, sourceId, raw));
+        }
       });
   });
 }
@@ -1081,11 +1455,19 @@ function applyPricing(models: Map<string, Evidence>, sourceId: string, body: str
   labeledTables(models, sourceId, $);
   storageTables(models, sourceId, $);
   mediaTables(models, sourceId, $);
+  inlineUnitTables(models, sourceId, $);
   for (const { model } of models.values()) {
     model.price_facts.sort((left, right) =>
       `${left.meter}\0${left.unit}\0${left.price}\0${JSON.stringify(left.conditions)}`.localeCompare(
         `${right.meter}\0${right.unit}\0${right.price}\0${JSON.stringify(right.conditions)}`,
       ),
+    );
+    model.raw_price_facts = [
+      ...new Map(
+        model.raw_price_facts.map((fact) => [sourceRawPricingFactKey(fact), fact]),
+      ).values(),
+    ].sort((left, right) =>
+      sourceRawPricingFactKey(left).localeCompare(sourceRawPricingFactKey(right)),
     );
     if (model.price_facts.length > 0) model.pricing_state = "numeric";
   }
@@ -1120,10 +1502,16 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   validateEndpointReferences(input.source.id, bundle.documents);
   const models = new Map<string, Evidence>();
+  parseIndexInventory(models, input, bundle.index.body);
+  const configured = new Set(
+    input.source.linkedDocuments?.documents?.map(({ url }) => new URL(url).href) ?? [],
+  );
+  let modelDocuments = 0;
   for (const document of bundle.documents) {
     const path = new URL(document.url).pathname;
     if (path.endsWith("/generative-ai/pricing")) continue;
-    parseModelTables(models, input, path, document.body);
+    const hasModelCard = parseModelTables(models, input, path, document.body);
+    if (!configured.has(new URL(document.url).href) && hasModelCard) modelDocuments += 1;
     if (/model-versions|\/deprecations\//.test(path)) applyLifecycle(models, input, document.body);
   }
   if (input.source.id === "vertex-open-models") applyOpenExamples(models, bundle.documents);
@@ -1131,11 +1519,23 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
     new URL(document.url).pathname.endsWith("/generative-ai/pricing"),
   );
   if (pricing !== undefined) applyPricing(models, input.source.id, pricing.body);
+  const embedding = bundle.documents.find(
+    (document) =>
+      new URL(document.url).pathname ===
+      "/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
+  );
+  if (embedding !== undefined) applyEmbeddingReference(models, embedding.body);
   const values = [...models.values()]
     .map((item) => item.model)
     .sort((left, right) => left.model_id.localeCompare(right.model_id));
   if (values.length < extractor.minModels || values.length > extractor.maxModels)
     throw new Error("Vertex model count outside reviewed bounds");
+  if (modelDocuments < extractor.minModelDocuments || modelDocuments > extractor.maxModelDocuments)
+    throw new Error("Vertex model-card document count outside reviewed bounds");
+  const current = values.filter((model) => model.status !== "retired");
+  const priced = current.filter((model) => model.price_facts.length > 0);
+  if (current.length === 0 || priced.length / current.length < extractor.minPricingCoverage)
+    throw new Error("Vertex pricing coverage fell below reviewed bounds");
   return values;
 }
 

@@ -5,6 +5,7 @@ export type Extractor =
   | { kind: "openai-overview" }
   | { kind: "openai-api" }
   | { kind: "openai-deprecations" }
+  | { kind: "openai-pricing"; minModels: number; maxModels: number }
   | { kind: "anthropic-catalog" }
   | { kind: "anthropic-api" }
   | { kind: "vercel-catalog"; minModels: number; maxModels: number }
@@ -15,6 +16,7 @@ export type Extractor =
   | { kind: "cerebras-api"; minModels: number; maxModels: number }
   | { kind: "huggingface-mapping"; provider: string; minModels: number; maxModels: number }
   | { kind: "huggingface-router"; minModels: number; maxModels: number }
+  | { kind: "huggingface-hub"; minModels: number; maxModels: number }
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
   | { kind: "bedrock-catalog" }
@@ -22,15 +24,37 @@ export type Extractor =
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
-  | { kind: "azure-retail-prices"; minModels: number; maxModels: number }
+  | {
+      kind: "azure-retail-prices";
+      minModels: number;
+      maxModels: number;
+      minHandledRatio: number;
+    }
   | { kind: "azure-api" }
   | { kind: "gemini-catalog"; minModels: number; maxModels: number }
   | { kind: "gemini-api" }
-  | { kind: "vertex-catalog"; minModels: number; maxModels: number }
+  | {
+      kind: "vertex-catalog";
+      minModels: number;
+      maxModels: number;
+      minModelDocuments: number;
+      maxModelDocuments: number;
+      minPricingCoverage: number;
+    }
   | { kind: "vertex-api" }
-  | { kind: "cohere-catalog" }
+  | {
+      kind: "cohere-catalog";
+      minModels: number;
+      maxModels: number;
+      minPricingCoverage: number;
+    }
   | { kind: "cohere-api" }
-  | { kind: "mistral-catalog"; minModels: number; maxModels: number }
+  | {
+      kind: "mistral-catalog";
+      minModels: number;
+      maxModels: number;
+      minPricingCoverage: number;
+    }
   | { kind: "mistral-api" }
   | { kind: "llama-catalog"; minModels: number; maxModels: number }
   | { kind: "llama-api" }
@@ -54,13 +78,21 @@ export type Extractor =
   | { kind: "dashscope-pricing"; minModels: number; maxModels: number }
   | { kind: "dashscope-recommended"; minModels: number; maxModels: number }
   | { kind: "dashscope-lifecycle"; minModels: number; maxModels: number }
+  | { kind: "dashscope-releases"; minModels: number; maxModels: number }
   | { kind: "dashscope-api"; minModels: number; maxModels: number }
   | { kind: "deepseek-catalog"; minModels: number; maxModels: number }
   | { kind: "deepseek-updates"; minModels: number; maxModels: number }
   | { kind: "deepseek-api"; minModels: number; maxModels: number }
-  | { kind: "kimi-openapi"; minModels: number; maxModels: number }
+  | { kind: "kimi-openapi"; baseUrl: string; minModels: number; maxModels: number }
   | { kind: "kimi-catalog"; minModels: number; maxModels: number }
-  | { kind: "kimi-pricing"; minModels: number; maxModels: number }
+  | {
+      kind: "kimi-pricing";
+      region: string;
+      currency: "CNY" | "USD";
+      symbol: "¥" | "$";
+      minModels: number;
+      maxModels: number;
+    }
   | { kind: "kimi-releases"; minModels: number; maxModels: number }
   | { kind: "kimi-api"; minModels: number; maxModels: number };
 
@@ -71,10 +103,12 @@ export interface LinkedDocuments {
   maxDocuments: number;
   concurrency: number;
   maxDocumentBytes?: number;
-  pathSuffix?: ".md" | ".ts";
+  discoverySuffix?: ".md" | ".ts";
+  requestSuffix?: ".md" | ".ts";
   documents?: {
     id: string;
     url: string;
+    format?: SourceFormat;
     maxResponseBytes: number;
   }[];
 }
@@ -86,6 +120,7 @@ export type SourceField =
   | "description"
   | "aliases"
   | "tasks"
+  | "delivery_modes"
   | "service_families"
   | "api_endpoints"
   | "routes"
@@ -134,6 +169,7 @@ export interface SourceManifest {
     | { kind: "azure-retail-prices"; products: string[] }
     | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string }
     | { kind: "google-model-garden"; publishers: string[] }
+    | { kind: "huggingface-models"; maxPages: number; maxModels: number }
     | {
         kind: "ollama-cloud";
         catalogUrl: string;
@@ -207,7 +243,7 @@ const huggingFaceInferenceSource: SourceManifest = {
     maxModels: 3_000,
   },
   extractorVersion: "huggingface-mapping-v2",
-  fields: ["model_id", "routes", "tasks", "modalities", "status", "release_stage"],
+  fields: ["model_id", "routes", "tasks", "modalities", "status"],
   allowedHosts: ["huggingface.co"],
   maxResponseBytes: mebibytes(8),
   scope: "global",
@@ -229,7 +265,7 @@ const dashscopeCatalogSource = (
   format: "html",
   stability: "semi_structured",
   extractor: { kind: "dashscope-catalog", category, minModels, maxModels },
-  extractorVersion: "dashscope-catalog-v1",
+  extractorVersion: "dashscope-catalog-v2",
   fields: [
     "model_id",
     "description",
@@ -245,6 +281,61 @@ const dashscopeCatalogSource = (
   scope: "region",
   exhaustive: false,
   role: "catalog",
+});
+
+const kimiPricingSource = (
+  id: string,
+  origin: string,
+  region: "China" | "International",
+  currency: "CNY" | "USD",
+  symbol: "¥" | "$",
+): SourceManifest => ({
+  id,
+  url: `${origin}/docs/pricing/chat-k3`,
+  type: "website",
+  access: "public",
+  format: "markdown",
+  stability: "semi_structured",
+  extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 8, maxModels: 20 },
+  extractorVersion: "kimi-pricing-v3",
+  fields: [
+    "model_id",
+    "name",
+    "tasks",
+    "modalities",
+    "api_endpoints",
+    "capabilities",
+    "limits",
+    "pricing",
+  ],
+  allowedHosts: [new URL(origin).hostname],
+  maxResponseBytes: mebibytes(8),
+  scope: "region",
+  exhaustive: false,
+  role: "catalog",
+  linkedDocuments: {
+    indexFormat: "markdown",
+    path: /^$/,
+    minDocuments: 0,
+    maxDocuments: 0,
+    concurrency: 6,
+    maxDocumentBytes: mebibytes(1),
+    documents: (
+      [
+        ["k27", "/docs/pricing/chat-k27-code"],
+        ["k26", "/docs/pricing/chat-k26"],
+        ["k25", "/docs/pricing/chat-k25"],
+        ["v1", "/docs/pricing/chat-v1"],
+        ["batch", "/docs/pricing/batch"],
+        ["batch-api", "/docs/api/batch-create"],
+        ["cache", "/docs/guide/use-context-caching-feature-of-kimi-api"],
+      ] as const
+    ).map(([id, path]) => ({
+      id,
+      url: `${origin}${path}`,
+      maxResponseBytes: mebibytes(1),
+    })),
+  },
 });
 
 export const manifests = [
@@ -266,7 +357,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v4",
+        extractorVersion: "openai-catalog-v5",
         fields: [
           "model_id",
           "name",
@@ -329,6 +420,22 @@ export const manifests = [
         optional: true,
       },
       {
+        id: "openai-pricing",
+        url: "https://developers.openai.com/api/docs/pricing.md",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "openai-pricing", minModels: 30, maxModels: 100 },
+        extractorVersion: "openai-pricing-v1",
+        fields: ["pricing"],
+        allowedHosts: ["developers.openai.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+      },
+      {
         id: "openai-api",
         url: "https://api.openai.com/v1/models",
         type: "api",
@@ -370,7 +477,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v4",
+        extractorVersion: "anthropic-catalog-v5",
         fields: [
           "model_id",
           "name",
@@ -400,7 +507,7 @@ export const manifests = [
           maxDocuments: 3,
           concurrency: 3,
           maxDocumentBytes: mebibytes(2),
-          pathSuffix: ".md",
+          requestSuffix: ".md",
           documents: [
             {
               id: "messages-create",
@@ -416,6 +523,61 @@ export const manifests = [
               id: "batch-processing",
               url: "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
               maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "citations",
+              url: "https://platform.claude.com/docs/en/build-with-claude/citations.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "pdf-support",
+              url: "https://platform.claude.com/docs/en/build-with-claude/pdf-support.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "context-editing",
+              url: "https://platform.claude.com/docs/en/build-with-claude/context-editing.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "structured-outputs",
+              url: "https://platform.claude.com/docs/en/build-with-claude/structured-outputs.md",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "code-execution",
+              url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "computer-use",
+              url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "effort",
+              url: "https://platform.claude.com/docs/en/build-with-claude/effort.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "prompt-caching",
+              url: "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "glossary",
+              url: "https://platform.claude.com/docs/en/about-claude/glossary.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "thinking",
+              url: "https://platform.claude.com/docs/en/build-with-claude/thinking.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "tool-use",
+              url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use.md",
+              maxResponseBytes: mebibytes(2),
             },
           ],
         },
@@ -465,7 +627,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v7",
+        extractorVersion: "bedrock-catalog-v8",
         fields: [
           "model_id",
           "name",
@@ -578,7 +740,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v2",
+        extractorVersion: "databricks-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -696,12 +858,13 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v6",
+        extractorVersion: "vercel-catalog-v7",
         fields: [
           "model_id",
           "name",
           "description",
           "tasks",
+          "delivery_modes",
           "modalities",
           "capabilities",
           "limits",
@@ -710,6 +873,7 @@ export const manifests = [
           "status",
           "release_stage",
           "deprecated_at",
+          "availability",
         ],
         allowedHosts: ["ai-gateway.vercel.sh"],
         maxResponseBytes: mebibytes(16),
@@ -743,7 +907,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
-        extractorVersion: "azure-catalog-v2",
+        extractorVersion: "azure-catalog-v3",
         fields: [
           "model_id",
           "version",
@@ -786,6 +950,11 @@ export const manifests = [
               maxResponseBytes: mebibytes(1),
             },
             {
+              id: "retired",
+              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-retired-models-content.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
               id: "standard",
               url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-standard.md",
               maxResponseBytes: mebibytes(1),
@@ -820,8 +989,13 @@ export const manifests = [
         access: "public",
         format: "json",
         stability: "documented",
-        extractor: { kind: "azure-retail-prices", minModels: 20, maxModels: 200 },
-        extractorVersion: "azure-retail-prices-v2",
+        extractor: {
+          kind: "azure-retail-prices",
+          minModels: 20,
+          maxModels: 200,
+          minHandledRatio: 0.9,
+        },
+        extractorVersion: "azure-retail-prices-v3",
         fields: ["pricing"],
         allowedHosts: ["prices.azure.com"],
         maxResponseBytes: mebibytes(32),
@@ -912,7 +1086,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v4",
+        extractorVersion: "gemini-catalog-v5",
         fields: [
           "model_id",
           "name",
@@ -938,7 +1112,7 @@ export const manifests = [
         exhaustive: true,
         role: "catalog",
         linkedDocuments: {
-          path: /^\/gemini-api\/docs\/models\/[a-z0-9.-]+$/,
+          path: /^\/gemini-api\/docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/,
           minDocuments: 30,
           maxDocuments: 60,
           concurrency: 8,
@@ -1043,8 +1217,15 @@ export const manifests = [
         access: "public",
         format: "mixed",
         stability: "semi_structured",
-        extractor: { kind: "vertex-catalog", minModels: 25, maxModels: 90 },
-        extractorVersion: "vertex-catalog-v2",
+        extractor: {
+          kind: "vertex-catalog",
+          minModels: 25,
+          maxModels: 90,
+          minModelDocuments: 20,
+          maxModelDocuments: 40,
+          minPricingCoverage: 0.8,
+        },
+        extractorVersion: "vertex-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -1098,6 +1279,11 @@ export const manifests = [
               maxResponseBytes: mebibytes(2),
             },
             {
+              id: "text-embedding-api",
+              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
               id: "image-api",
               url: "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/generate-images",
               maxResponseBytes: mebibytes(2),
@@ -1127,8 +1313,15 @@ export const manifests = [
         access: "public",
         format: "mixed",
         stability: "semi_structured",
-        extractor: { kind: "vertex-catalog", minModels: 20, maxModels: 80 },
-        extractorVersion: "vertex-catalog-v2",
+        extractor: {
+          kind: "vertex-catalog",
+          minModels: 20,
+          maxModels: 80,
+          minModelDocuments: 20,
+          maxModelDocuments: 45,
+          minPricingCoverage: 0.9,
+        },
+        extractorVersion: "vertex-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -1192,13 +1385,20 @@ export const manifests = [
       },
       {
         id: "vertex-open-models",
-        url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/open-models/choose-serving-option",
+        url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/use-open-models",
         type: "website",
         access: "public",
         format: "mixed",
         stability: "semi_structured",
-        extractor: { kind: "vertex-catalog", minModels: 15, maxModels: 60 },
-        extractorVersion: "vertex-catalog-v2",
+        extractor: {
+          kind: "vertex-catalog",
+          minModels: 15,
+          maxModels: 60,
+          minModelDocuments: 15,
+          maxModelDocuments: 40,
+          minPricingCoverage: 0.9,
+        },
+        extractorVersion: "vertex-catalog-v3",
         fields: [
           "model_id",
           "name",
@@ -1234,6 +1434,11 @@ export const manifests = [
             {
               id: "open-api",
               url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "text-embedding-api",
+              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
               maxResponseBytes: mebibytes(2),
             },
             {
@@ -1303,18 +1508,22 @@ export const manifests = [
     sources: [
       {
         id: "cohere-models",
-        url: "https://docs.cohere.com/docs/models",
+        url: "https://docs.cohere.com/docs/models/llms.txt",
         type: "website",
         access: "public",
-        format: "html",
+        format: "mixed",
         stability: "semi_structured",
-        extractor: { kind: "cohere-catalog" },
-        extractorVersion: "cohere-catalog-v3",
+        extractor: {
+          kind: "cohere-catalog",
+          minModels: 40,
+          maxModels: 70,
+          minPricingCoverage: 0.6,
+        },
+        extractorVersion: "cohere-catalog-v4",
         fields: [
           "model_id",
           "name",
           "description",
-          "aliases",
           "tasks",
           "api_endpoints",
           "modalities",
@@ -1323,7 +1532,6 @@ export const manifests = [
           "release_date",
           "pricing",
           "status",
-          "release_stage",
           "deprecated_at",
           "retired_at",
           "replacement_model_ids",
@@ -1334,12 +1542,24 @@ export const manifests = [
         exhaustive: false,
         role: "catalog",
         linkedDocuments: {
-          path: /^\/docs\/(?:aya|aya-expanse|aya-vision|cohere-embed|command-(?:a(?:-plus|-reasoning|-translate|-vision)?|r|r-plus|r7b)|deprecations|rerank|tiny-aya|transcribe|transcribe-arabic)$/,
-          minDocuments: 17,
-          maxDocuments: 24,
+          path: /^\/docs\/[a-z0-9.-]+$/,
+          indexFormat: "markdown",
+          discoverySuffix: ".md",
+          minDocuments: 15,
+          maxDocuments: 30,
           concurrency: 6,
           maxDocumentBytes: mebibytes(2),
           documents: [
+            {
+              id: "overview",
+              url: "https://docs.cohere.com/docs/models",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "deprecations",
+              url: "https://docs.cohere.com/docs/deprecations",
+              maxResponseBytes: mebibytes(2),
+            },
             {
               id: "pricing",
               url: "https://cohere.com/pricing",
@@ -1422,7 +1642,7 @@ export const manifests = [
         stability: "documented",
         extractor: { kind: "cohere-api" },
         extractorVersion: "cohere-api-v2",
-        fields: ["model_id", "tasks", "api_endpoints", "limits", "status", "release_stage"],
+        fields: ["model_id", "tasks", "api_endpoints", "limits", "status"],
         allowedHosts: ["api.cohere.com"],
         maxResponseBytes: mebibytes(8),
         scope: "account",
@@ -1457,8 +1677,13 @@ export const manifests = [
         access: "public",
         format: "mixed",
         stability: "documented",
-        extractor: { kind: "mistral-catalog", minModels: 50, maxModels: 90 },
-        extractorVersion: "mistral-catalog-v5",
+        extractor: {
+          kind: "mistral-catalog",
+          minModels: 50,
+          maxModels: 90,
+          minPricingCoverage: 0.9,
+        },
+        extractorVersion: "mistral-catalog-v6",
         fields: [
           "model_id",
           "version",
@@ -1486,7 +1711,7 @@ export const manifests = [
         linkedDocuments: {
           path: /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/[a-z0-9-]+$/,
           indexFormat: "typescript",
-          pathSuffix: ".ts",
+          requestSuffix: ".ts",
           minDocuments: 55,
           maxDocuments: 90,
           concurrency: 8,
@@ -1504,13 +1729,13 @@ export const manifests = [
             },
             {
               id: "prompt-caching",
-              url: "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching",
-              maxResponseBytes: mebibytes(2),
+              url: "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching.md",
+              maxResponseBytes: mebibytes(1),
             },
             {
               id: "batch-processing",
-              url: "https://docs.mistral.ai/studio-api/batch-processing",
-              maxResponseBytes: mebibytes(4),
+              url: "https://docs.mistral.ai/studio-api/batch-processing.md",
+              maxResponseBytes: mebibytes(1),
             },
           ],
         },
@@ -1523,7 +1748,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "mistral-api" },
-        extractorVersion: "mistral-api-v1",
+        extractorVersion: "mistral-api-v2",
         fields: [
           "name",
           "description",
@@ -1533,7 +1758,6 @@ export const manifests = [
           "capabilities",
           "limits",
           "status",
-          "release_stage",
           "deprecated_at",
           "replacement_model_ids",
         ],
@@ -1567,11 +1791,12 @@ export const manifests = [
         id: "llama-models",
         url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/sku_list.py",
         type: "repository",
+        source: ["repository", "website"],
         access: "public",
         format: "mixed",
         stability: "documented",
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
-        extractorVersion: "llama-catalog-v2",
+        extractorVersion: "llama-catalog-v3",
         fields: [
           "model_id",
           "description",
@@ -1584,9 +1809,8 @@ export const manifests = [
           "release_date",
           "pricing",
           "status",
-          "release_stage",
         ],
-        allowedHosts: ["raw.githubusercontent.com"],
+        allowedHosts: ["raw.githubusercontent.com", "ai.meta.com"],
         maxResponseBytes: mebibytes(12),
         scope: "global",
         exhaustive: true,
@@ -1614,11 +1838,8 @@ export const manifests = [
               maxResponseBytes: mebibytes(1),
             },
             ...[
-              "llama2/MODEL_CARD.md",
-              "llama3/MODEL_CARD.md",
               "llama3_1/MODEL_CARD.md",
               "llama3_2/MODEL_CARD.md",
-              "llama3_2/MODEL_CARD_VISION.md",
               "llama3_3/MODEL_CARD.md",
               "llama4/MODEL_CARD.md",
             ].map((path) => ({
@@ -1651,6 +1872,31 @@ export const manifests = [
               url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/resources/chat/completions.py",
               maxResponseBytes: mebibytes(1),
             },
+            {
+              id: "llama-api-moderations",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/resources/moderations.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-3-release",
+              url: "https://ai.meta.com/blog/meta-llama-3/",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-3-1-release",
+              url: "https://ai.meta.com/blog/meta-llama-3-1/",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-3-2-release",
+              url: "https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-protections-release",
+              url: "https://ai.meta.com/blog/ai-defenders-program-llama-protection-tools/",
+              maxResponseBytes: mebibytes(1),
+            },
           ],
         },
       },
@@ -1663,7 +1909,7 @@ export const manifests = [
         stability: "documented",
         extractor: { kind: "llama-api" },
         extractorVersion: "llama-api-v1",
-        fields: ["model_id", "status", "release_stage"],
+        fields: ["model_id", "status"],
         allowedHosts: ["api.llama.com"],
         maxResponseBytes: mebibytes(4),
         scope: "account",
@@ -1675,11 +1921,6 @@ export const manifests = [
     ],
     supersededIdKinds: ["display_name", "source_generated"],
     supersededModelIds: ["llama3", "llama4"],
-    warnOnMissing: {
-      sourceId: "llama-models",
-      fields: ["release_date", "updated_date"],
-      statuses: ["active"],
-    },
   },
   {
     provider: {
@@ -1699,9 +1940,10 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v4",
+        extractorVersion: "xai-catalog-v5",
         fields: [
           "model_id",
+          "version",
           "name",
           "description",
           "aliases",
@@ -1716,7 +1958,6 @@ export const manifests = [
           "status",
           "release_stage",
           "deprecated_at",
-          "retired_at",
           "replacement_model_ids",
         ],
         allowedHosts: ["docs.x.ai"],
@@ -1741,18 +1982,21 @@ export const manifests = [
       xaiApiSource("xai-api", "models", "all", ["model_id", "aliases", "limits"]),
       xaiApiSource("xai-language-api", "language-models", "language", [
         "model_id",
+        "version",
         "aliases",
         "tasks",
         "modalities",
       ]),
       xaiApiSource("xai-image-api", "image-generation-models", "image", [
         "model_id",
+        "version",
         "aliases",
         "tasks",
         "modalities",
       ]),
       xaiApiSource("xai-video-api", "video-generation-models", "video", [
         "model_id",
+        "version",
         "aliases",
         "tasks",
         "modalities",
@@ -1762,7 +2006,7 @@ export const manifests = [
     supersededModelIds: ["grok-4.20"],
     warnOnMissing: {
       sourceId: "xai-models",
-      fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
+      fields: ["pricing", "release_date"],
       statuses: ["active", "deprecated"],
     },
   },
@@ -1785,13 +2029,38 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "huggingface-router", minModels: 50, maxModels: 500 },
-        extractorVersion: "huggingface-router-v2",
-        fields: ["tasks", "modalities", "api_endpoints", "capabilities", "limits", "pricing"],
+        extractorVersion: "huggingface-router-v3",
+        fields: [
+          "tasks",
+          "modalities",
+          "api_endpoints",
+          "capabilities",
+          "limits",
+          "pricing",
+          "status",
+        ],
         allowedHosts: ["router.huggingface.co"],
         maxResponseBytes: mebibytes(16),
         scope: "global",
-        exhaustive: false,
+        exhaustive: true,
         role: "catalog",
+      },
+      {
+        id: "huggingface-hub",
+        url: "https://huggingface.co/api/models?inference_provider=hf-inference&limit=1000&sort=createdAt&expand=lastModified",
+        type: "api",
+        access: "public",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "huggingface-hub", minModels: 500, maxModels: 3_000 },
+        extractorVersion: "huggingface-hub-v1",
+        fields: ["updated_date"],
+        allowedHosts: ["huggingface.co"],
+        maxResponseBytes: mebibytes(4),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        transport: { kind: "huggingface-models", maxPages: 5, maxModels: 3_000 },
       },
     ],
     warnOnMissing: {
@@ -1843,7 +2112,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v2",
+        extractorVersion: "dashscope-pricing-v3",
         fields: [
           "model_id",
           "aliases",
@@ -1898,6 +2167,22 @@ export const manifests = [
         role: "catalog",
       },
       {
+        id: "dashscope-releases",
+        url: "https://www.alibabacloud.com/help/en/model-studio/newly-released-models",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "dashscope-releases", minModels: 150, maxModels: 500 },
+        extractorVersion: "dashscope-releases-v1",
+        fields: ["release_date"],
+        allowedHosts: ["www.alibabacloud.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "region",
+        exhaustive: false,
+        role: "overlay",
+      },
+      {
         id: "dashscope-deployable-api",
         url: "https://dashscope-intl.aliyuncs.com/api/v1/deployments/models?page_no=1&page_size=100&version=v1.0&model_source=base",
         type: "api",
@@ -1940,7 +2225,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-catalog-v3",
+        extractorVersion: "cerebras-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -1963,7 +2248,7 @@ export const manifests = [
         linkedDocuments: {
           indexFormat: "markdown",
           path: /^\/models\/[a-z0-9-]+$/,
-          pathSuffix: ".md",
+          requestSuffix: ".md",
           minDocuments: 2,
           maxDocuments: 20,
           concurrency: 6,
@@ -1982,6 +2267,11 @@ export const manifests = [
             {
               id: "completions",
               url: "https://inference-docs.cerebras.ai/api-reference/completions.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "service-tiers",
+              url: "https://inference-docs.cerebras.ai/capabilities/service-tiers.md",
               maxResponseBytes: mebibytes(1),
             },
           ],
@@ -2020,7 +2310,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-lifecycle", minModels: 10, maxModels: 30 },
-        extractorVersion: "cerebras-lifecycle-v1",
+        extractorVersion: "cerebras-lifecycle-v2",
         fields: [
           "model_id",
           "tasks",
@@ -2035,6 +2325,25 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "catalog",
+        linkedDocuments: {
+          indexFormat: "markdown",
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          documents: [
+            {
+              id: "model-catalog",
+              url: "https://inference-docs.cerebras.ai/models/overview.md",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "change-log",
+              url: "https://inference-docs.cerebras.ai/support/change-log.md",
+              maxResponseBytes: mebibytes(1),
+            },
+          ],
+        },
       },
       {
         id: "cerebras-releases",
@@ -2095,7 +2404,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "ollama-library", minModels: 200, maxModels: 350 },
-        extractorVersion: "ollama-library-v2",
+        extractorVersion: "ollama-library-v3",
         fields: [
           "model_id",
           "description",
@@ -2177,7 +2486,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 2, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v4",
+        extractorVersion: "deepseek-catalog-v6",
         fields: [
           "model_id",
           "name",
@@ -2209,6 +2518,11 @@ export const manifests = [
               url: "https://api-docs.deepseek.com/api/create-chat-completion",
               maxResponseBytes: mebibytes(1),
             },
+            {
+              id: "responses",
+              url: "https://api-docs.deepseek.com/api/create-response",
+              maxResponseBytes: mebibytes(1),
+            },
           ],
         },
       },
@@ -2220,7 +2534,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-updates", minModels: 4, maxModels: 10 },
-        extractorVersion: "deepseek-updates-v1",
+        extractorVersion: "deepseek-updates-v2",
         fields: ["release_date", "updated_date"],
         allowedHosts: ["api-docs.deepseek.com"],
         maxResponseBytes: mebibytes(1),
@@ -2247,7 +2561,6 @@ export const manifests = [
         auth: { scheme: "bearer", env: "DEEPSEEK_API_KEY" },
       },
     ],
-    supersededModelIds: ["deepseek-chat", "deepseek-reasoner"],
     warnOnMissing: {
       sourceId: "deepseek-catalog",
       fields: ["release_date", "updated_date"],
@@ -2260,21 +2573,27 @@ export const manifests = [
       name: "Kimi",
       kind: "hosted",
       homepage: "https://www.kimi.com/",
-      docs_url: "https://platform.kimi.com/docs/models",
-      catalog_scope: "global",
+      docs_url: "https://platform.kimi.ai/docs/models",
+      catalog_scope: "mixed",
+      regions: ["China", "International"],
     },
     sources: [
       {
         id: "kimi-openapi",
-        url: "https://platform.kimi.com/docs/openapi.json",
+        url: "https://platform.kimi.ai/docs/openapi.json",
         type: "website",
         access: "public",
         format: "json",
         stability: "documented",
-        extractor: { kind: "kimi-openapi", minModels: 8, maxModels: 30 },
-        extractorVersion: "kimi-openapi-v2",
-        fields: ["model_id", "tasks", "modalities", "api_endpoints", "capabilities"],
-        allowedHosts: ["platform.kimi.com"],
+        extractor: {
+          kind: "kimi-openapi",
+          baseUrl: "https://api.moonshot.ai",
+          minModels: 8,
+          maxModels: 30,
+        },
+        extractorVersion: "kimi-openapi-v3",
+        fields: ["model_id", "tasks", "modalities", "api_endpoints", "capabilities", "limits"],
+        allowedHosts: ["platform.kimi.ai"],
         maxResponseBytes: mebibytes(2),
         scope: "global",
         exhaustive: false,
@@ -2288,7 +2607,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v1",
+        extractorVersion: "kimi-catalog-v2",
         fields: [
           "model_id",
           "description",
@@ -2307,76 +2626,14 @@ export const manifests = [
         exhaustive: false,
         role: "catalog",
       },
-      {
-        id: "kimi-pricing",
-        url: "https://platform.kimi.com/docs/pricing/chat-k3",
-        type: "website",
-        access: "public",
-        format: "markdown",
-        stability: "semi_structured",
-        extractor: { kind: "kimi-pricing", minModels: 8, maxModels: 20 },
-        extractorVersion: "kimi-pricing-v2",
-        fields: [
-          "model_id",
-          "name",
-          "tasks",
-          "modalities",
-          "api_endpoints",
-          "capabilities",
-          "limits",
-          "pricing",
-        ],
-        allowedHosts: ["platform.kimi.com"],
-        maxResponseBytes: mebibytes(8),
-        scope: "global",
-        exhaustive: false,
-        role: "catalog",
-        linkedDocuments: {
-          indexFormat: "markdown",
-          path: /^$/,
-          minDocuments: 0,
-          maxDocuments: 0,
-          concurrency: 6,
-          maxDocumentBytes: mebibytes(1),
-          documents: [
-            {
-              id: "k27",
-              url: "https://platform.kimi.com/docs/pricing/chat-k27-code",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "k26",
-              url: "https://platform.kimi.com/docs/pricing/chat-k26",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "k25",
-              url: "https://platform.kimi.com/docs/pricing/chat-k25",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "v1",
-              url: "https://platform.kimi.com/docs/pricing/chat-v1",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "batch",
-              url: "https://platform.kimi.com/docs/pricing/batch",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "batch-api",
-              url: "https://platform.kimi.com/docs/api/batch-create",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "cache",
-              url: "https://platform.kimi.com/docs/guide/use-context-caching-feature-of-kimi-api",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
-        },
-      },
+      kimiPricingSource("kimi-pricing", "https://platform.kimi.com", "China", "CNY", "¥"),
+      kimiPricingSource(
+        "kimi-international-pricing",
+        "https://platform.kimi.ai",
+        "International",
+        "USD",
+        "$",
+      ),
       {
         id: "kimi-releases",
         url: "https://platform.kimi.com/blog/posts/changelog",
@@ -2385,7 +2642,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "kimi-releases", minModels: 8, maxModels: 25 },
-        extractorVersion: "kimi-releases-v1",
+        extractorVersion: "kimi-releases-v2",
         fields: ["release_date"],
         allowedHosts: ["platform.kimi.com", "www.kimi.com"],
         maxResponseBytes: mebibytes(6),
@@ -2409,6 +2666,12 @@ export const manifests = [
               id: "code",
               url: "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html",
               maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "catalog",
+              url: "https://platform.kimi.com/docs/models",
+              format: "markdown",
+              maxResponseBytes: mebibytes(1),
             },
           ],
         },
@@ -2435,7 +2698,7 @@ export const manifests = [
     warnOnMissing: {
       sourceId: "kimi-catalog",
       fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
-      statuses: ["active", "deprecated", "unknown"],
+      statuses: ["active", "legacy", "deprecated", "unknown"],
     },
   },
 ] satisfies ProviderManifest[];

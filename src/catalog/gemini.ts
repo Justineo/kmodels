@@ -7,7 +7,11 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import {
+  sourceRawPricingFactKey,
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
 import {
   modalitySchema,
   type Modality,
@@ -39,6 +43,18 @@ interface MethodFact {
   tasks?: ModelTask[];
   streaming?: true;
   batch?: true;
+}
+
+interface PageModel {
+  model: ProviderModel;
+  versionIds: string[];
+}
+
+interface PriceCandidate {
+  price: string;
+  descriptor: string;
+  segment: string;
+  unit: SourcePriceFact["unit"];
 }
 
 const months = new Map([
@@ -136,9 +152,9 @@ function media(value: string): Modality[] {
   return modalities(values);
 }
 
-function property($: LoadedDocument, label: RegExp): Selection | undefined {
+function property($: LoadedDocument, table: Selection, label: RegExp): Selection | undefined {
   let result: Selection | undefined;
-  $(".devsite-article-body table tr").each((_index, element) => {
+  table.find("tr").each((_index, element) => {
     const cells = $(element).find("th,td");
     if (result === undefined && cells.length >= 2 && label.test(text(cells.eq(0).text())))
       result = cells.eq(1);
@@ -281,38 +297,41 @@ function pageOperations(
 function cards(body: string): Map<string, Card> {
   const $ = load(body);
   const result = new Map<string, Card>();
-  $(".devsite-article-body a[href^='/gemini-api/docs/models/']").each((_index, element) => {
-    const anchor = $(element);
-    const href = anchor.attr("href");
-    if (href === undefined) return;
-    const container = anchor.hasClass("gemini-card-centered")
-      ? anchor
-      : anchor.closest(".gemini-model-row");
-    if (container.length === 0) return;
-    const heading = container.find("h3").first().clone();
-    heading.find(".model-status").remove();
-    const name = text(heading.text());
-    if (name === "") return;
-    const description =
-      text(container.find(".description-centered,.gemini-model-desc").first().text()) || undefined;
-    const stage =
-      text(container.find(".status-subtext").first().text()) ||
-      text(container.find(".model-status").first().text());
-    const modelStatus = modelStateFromLabel(stage);
-    const current = result.get(href);
-    result.set(href, {
-      name: current?.name ?? name,
-      description: current?.description ?? description,
-      status:
-        current?.status === undefined || current.status === "unknown"
-          ? modelStatus.status
-          : current.status,
-      releaseStage:
-        current?.releaseStage === undefined || current.releaseStage === "unknown"
-          ? modelStatus.release_stage
-          : current.releaseStage,
-    });
-  });
+  $(".devsite-article-body a.gemini-card-centered[href], .gemini-model-row a[href]").each(
+    (_index, element) => {
+      const anchor = $(element);
+      const href = anchor.attr("href");
+      if (href === undefined) return;
+      const container = anchor.hasClass("gemini-card-centered")
+        ? anchor
+        : anchor.closest(".gemini-model-row");
+      if (container.length === 0) return;
+      const heading = container.find("h3").first().clone();
+      heading.find(".model-status").remove();
+      const name = text(heading.text());
+      if (name === "") return;
+      const description =
+        text(container.find(".description-centered,.gemini-model-desc").first().text()) ||
+        undefined;
+      const stage =
+        text(container.find(".status-subtext").first().text()) ||
+        text(container.find(".model-status").first().text());
+      const modelStatus = modelStateFromLabel(stage);
+      const current = result.get(href);
+      result.set(href, {
+        name: current?.name ?? name,
+        description: current?.description ?? description,
+        status:
+          current?.status === undefined || current.status === "unknown"
+            ? modelStatus.status
+            : current.status,
+        releaseStage:
+          current?.releaseStage === undefined || current.releaseStage === "unknown"
+            ? modelStatus.release_stage
+            : current.releaseStage,
+      });
+    },
+  );
   return result;
 }
 
@@ -325,44 +344,50 @@ function description($: LoadedDocument): string | undefined {
   return result;
 }
 
-function primaryPageModel(
-  input: Input,
-  body: string,
-  card: Card | undefined,
-): { models: ProviderModel[]; versionIds: string[] } {
+function pageModels(input: Input, body: string, card: Card | undefined): PageModel[] {
   const $ = load(body);
-  const codeCell = property($, /(?:Model|Agent) code$/i);
-  if (codeCell === undefined) throw new Error("Gemini model page omitted its labeled code");
-  const codeLabel = text(codeCell.parent().find("th,td").first().text());
-  const ids = unique(
-    codeCell
-      .find("code")
-      .map((_index, element) => text($(element).text()))
-      .get()
-      .filter((id) => modelIdSchema.safeParse(id).success),
+  const tables = $(".devsite-article-body table").filter(
+    (_index, table) => property($, $(table), /(?:Model|Agent) code$/i) !== undefined,
   );
-  if (ids.length === 0) throw new Error("Gemini model page published no valid model code");
-  const title = text($("h1.devsite-page-title").first().text());
-  const modelModalities = supportedData($, property($, /Supported data types$/i));
-  const limits = modelLimits(property($, /(?:Token|Streaming )?limits/i));
-  const capabilityCell = property($, /Capabilities$/i);
-  const capabilities = modelCapabilities($, capabilityCell, property($, /Consumption options$/i));
-  const updated = modelDate(text(property($, /Latest update$/i)?.text() ?? ""));
-  const versionIds = unique(
-    property($, /Versions$/i)
-      ?.find("code")
-      .map((_index, element) => text($(element).text()))
-      .get()
-      .filter((id) => modelIdSchema.safeParse(id).success) ?? [],
-  );
-  return {
-    models: ids.map((id) => {
-      const modelStatus = card?.status ?? "unknown";
-      return {
+  if (tables.length === 0) throw new Error("Gemini model page omitted its labeled code");
+  const pageTitle = text($("h1.devsite-page-title").first().text());
+  return tables.toArray().flatMap((element): PageModel[] => {
+    const table = $(element);
+    const codeCell = property($, table, /(?:Model|Agent) code$/i);
+    if (codeCell === undefined) return [];
+    const codeLabel = text(codeCell.parent().find("th,td").first().text());
+    const ids = unique(
+      codeCell
+        .find("code")
+        .map((_index, code) => text($(code).text()))
+        .get()
+        .filter((id) => modelIdSchema.safeParse(id).success),
+    );
+    if (ids.length === 0) throw new Error("Gemini model page published no valid model code");
+    const sectionTitle = text(table.closest("section").find("h2,h3").first().text());
+    const title = sectionTitle || pageTitle;
+    const modelModalities = supportedData($, property($, table, /Supported data types$/i));
+    const limits = modelLimits(property($, table, /(?:Token|Streaming )?limits/i));
+    const capabilityCell = property($, table, /Capabilities$/i);
+    const capabilities = modelCapabilities(
+      $,
+      capabilityCell,
+      property($, table, /Consumption options$/i),
+    );
+    const updated = modelDate(text(property($, table, /Latest update$/i)?.text() ?? ""));
+    const versionIds = unique(
+      property($, table, /Versions$/i)
+        ?.find("code")
+        .map((_index, code) => text($(code).text()))
+        .get()
+        .filter((id) => modelIdSchema.safeParse(id).success) ?? [],
+    );
+    return ids.map((id) => ({
+      model: {
         ...baseModel({
           providerId: input.provider.id,
           id,
-          name: card?.name ?? title,
+          name: tables.length === 1 ? (card?.name ?? title) : title,
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
@@ -372,12 +397,12 @@ function primaryPageModel(
         capabilities,
         limits,
         updated_date: updated,
-        status: modelStatus,
+        status: card?.status ?? "unknown",
         release_stage: card?.releaseStage ?? "unknown",
-      } satisfies ProviderModel;
-    }),
-    versionIds,
-  };
+      },
+      versionIds,
+    }));
+  });
 }
 
 function sectionOperations(section: string, id: string): ModelTask[] {
@@ -558,6 +583,7 @@ function priceUnit(
     /1,000 (?:search queries|grounded prompts)|1k (?:search queries|grounded prompts)/.test(value)
   )
     return "thousand_requests";
+  if (/(?:1,000|1k) requests/.test(value)) return "thousand_requests";
   const lower = header.toLowerCase();
   if (lower.includes("per image")) return "image";
   if (lower.includes("per second")) return "second";
@@ -609,7 +635,7 @@ function applyGemmaFreePricing(
           "million_tokens",
           sourceId,
           "Gemma 4 Free Tier: Input price; Free of charge",
-          { service_tier: "free" },
+          { account_eligibility: "free_tier" },
         ),
         publishedRate(
           suffix === "image" ? "cache_read_image" : "cache_read_text",
@@ -617,7 +643,7 @@ function applyGemmaFreePricing(
           "million_tokens",
           sourceId,
           "Gemma 4 Free Tier: Context caching price; Free of charge",
-          { service_tier: "free" },
+          { account_eligibility: "free_tier" },
         ),
         publishedRate(
           "cache_storage",
@@ -625,7 +651,7 @@ function applyGemmaFreePricing(
           "million_tokens_per_hour",
           sourceId,
           "Gemma 4 Free Tier: Context caching (storage); Free of charge",
-          { service_tier: "free", modality },
+          { account_eligibility: "free_tier", modality },
         ),
       );
     }
@@ -636,7 +662,7 @@ function applyGemmaFreePricing(
         "million_tokens",
         sourceId,
         "Gemma 4 Free Tier: Output price; Free of charge",
-        { service_tier: "free" },
+        { account_eligibility: "free_tier" },
       ),
     );
   }
@@ -660,8 +686,15 @@ function priceModalities(
   return rowModalities.length > 0 ? rowModalities : fallback.filter((value) => value !== "pdf");
 }
 
-function conditions(tier: string, descriptor: string, row: string): SourcePriceFact["conditions"] {
-  const result: SourcePriceFact["conditions"] = {};
+function conditions(
+  tier: string,
+  accountEligibility: "free_tier" | "paid_tier",
+  descriptor: string,
+  row: string,
+): SourcePriceFact["conditions"] {
+  const result: SourcePriceFact["conditions"] = {
+    account_eligibility: accountEligibility,
+  };
   const normalizedTier = tier.toLowerCase();
   if (normalizedTier !== "" && normalizedTier !== "standard") result.service_tier = normalizedTier;
   if (/prompts?\s*(?:<=|≤)\s*200k/i.test(descriptor)) result.context_max_tokens = 200_000;
@@ -792,7 +825,154 @@ function targets(codes: string[], row: string): string[] {
   return codes;
 }
 
-function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body: string): void {
+function candidates(header: string, row: string, cell: Selection): PriceCandidate[] {
+  return segments(cell).flatMap((segment) => {
+    const matches = [...segment.matchAll(/\$(\d+(?:\.\d+)?)/g)];
+    return matches.map((match, index) => {
+      const price = match[1];
+      if (price === undefined) throw new Error("Gemini pricing amount changed");
+      const start = (match.index ?? 0) + match[0].length;
+      const descriptor = text(segment.slice(start, matches[index + 1]?.index ?? segment.length));
+      const unit = priceUnit(header, descriptor, row);
+      if (unit === undefined) throw new Error(`Gemini pricing unit changed: ${row}`);
+      return { price, descriptor, segment, unit };
+    });
+  });
+}
+
+function selectedCandidates(header: string, values: PriceCandidate[]): PriceCandidate[] {
+  const hasTokenPrice = values.some(
+    ({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour",
+  );
+  return hasTokenPrice && header.toLowerCase().includes("per 1m tokens")
+    ? values.filter(({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour")
+    : values;
+}
+
+function pricingModel(models: Map<string, ProviderModel>, id: string): ProviderModel {
+  const exact = models.get(id);
+  if (exact !== undefined) return exact;
+  const aliases = [...models.values()].filter((model) => model.aliases.includes(id));
+  const match = aliases[0];
+  if (aliases.length !== 1 || match === undefined)
+    throw new Error(`Gemini pricing references unknown model: ${id}`);
+  return match;
+}
+
+function addRates(
+  model: ProviderModel,
+  sourceId: string,
+  header: string,
+  tier: string,
+  row: string,
+  accountEligibility: "free_tier" | "paid_tier",
+  values: PriceCandidate[],
+): void {
+  for (const { price, descriptor, segment, unit } of values) {
+    const rates = meterRates(
+      model,
+      row,
+      segment,
+      descriptor,
+      unit,
+      conditions(tier, accountEligibility, descriptor, row),
+    );
+    if (rates.length === 0) throw new Error(`Gemini pricing row changed: ${row}`);
+    for (const rate of rates)
+      model.price_facts.push(
+        publishedRate(
+          rate.meter,
+          price,
+          unit,
+          sourceId,
+          accountEligibility === "free_tier"
+            ? `Free Tier; ${row}; Free of charge`
+            : `${header}; ${row}; ${descriptor || segment}`,
+          rate.conditions,
+        ),
+      );
+  }
+}
+
+function addSearchAllowance(
+  model: ProviderModel,
+  sourceId: string,
+  tier: string,
+  row: string,
+  value: string,
+): void {
+  if (
+    !/grounding with google .*search/i.test(row) ||
+    !/free search requests per month/i.test(value)
+  )
+    return;
+  if (!/shared across all .*models.*then \$\d+(?:\.\d+)? per 1,000 requests/i.test(value))
+    throw new Error("Gemini search allowance changed");
+  model.raw_price_facts.push({
+    term_key: "google_search_allowance",
+    impact: "allowance",
+    reason: "unsupported_structure",
+    conditions: conditions(tier, "paid_tier", "", row),
+    source_ref: sourceId,
+    raw: {
+      label: row,
+      fragment: value,
+    },
+  });
+}
+
+function applyAgentPricing(
+  $: LoadedDocument,
+  models: Map<string, ProviderModel>,
+  sourceId: string,
+  agentIds: string[],
+): void {
+  if (agentIds.length === 0) return;
+  const tables = $(".pricing-table").filter((_index, table) => {
+    const headers = $(table)
+      .find("thead th")
+      .map((_headerIndex, element) => text($(element).text()))
+      .get();
+    return headers.join("|") === "|Model|Tools";
+  });
+  if (tables.length !== 1) throw new Error("Gemini agent pricing table changed");
+  const rows = tables
+    .first()
+    .find("tbody tr")
+    .map((_index, row) => {
+      const cells = $(row)
+        .find("td")
+        .map((_cellIndex, cell) => text($(cell).text()))
+        .get();
+      if (cells.length !== 3 || cells.some((cell) => cell === ""))
+        throw new Error("Gemini agent pricing row changed");
+      return cells.join(" | ");
+    })
+    .get();
+  if (rows.length === 0) throw new Error("Gemini agent pricing table is empty");
+  for (const id of agentIds) {
+    const model = models.get(id);
+    if (model === undefined) throw new Error(`Gemini pricing references unknown agent: ${id}`);
+    model.raw_price_facts.push({
+      term_key: "agent_usage_formula",
+      impact: "base_price",
+      reason: "requires_usage_aggregation",
+      conditions: {},
+      source_ref: sourceId,
+      raw: {
+        label: "Agent usage pricing",
+        formula: rows.join("\n"),
+      },
+    });
+  }
+}
+
+function applyPricing(
+  models: Map<string, ProviderModel>,
+  sourceId: string,
+  body: string,
+  agentIds: string[],
+): void {
   const $ = load(body);
   $(".devsite-article-body .models-section").each((_index, section) => {
     const codes = unique(
@@ -803,10 +983,20 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
         .filter((id) => modelIdSchema.safeParse(id).success),
     );
     if (codes.length === 0) return;
+    for (const code of codes) pricingModel(models, code);
     const siblings = $(section).nextUntil(".models-section");
     const tables = siblings.filter("table.pricing-table").add(siblings.find("table.pricing-table"));
     tables.each((_tableIndex, table) => {
-      const header = text($(table).find("thead tr").first().find("th").last().text());
+      const headers = $(table)
+        .find("thead tr")
+        .first()
+        .find("th")
+        .map((_headerIndex, element) => text($(element).text()))
+        .get();
+      if (headers.join("|") === "|Model|Tools") return;
+      const header = headers[2];
+      if (headers[1] !== "Free Tier" || header === undefined || !header.startsWith("Paid Tier"))
+        throw new Error("Gemini pricing table headers changed");
       const tier = text($(table).closest("section").children("h3").first().text()) || "standard";
       $(table)
         .find("tbody tr")
@@ -814,57 +1004,27 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
           const cells = $(rowElement).find("td");
           if (cells.length < 3) return;
           const row = text(cells.eq(0).text());
-          const paid = segments(cells.eq(2));
-          const candidates = paid.flatMap((segment) => {
-            const matches = [...segment.matchAll(/\$(\d+(?:\.\d+)?)/g)];
-            return matches.flatMap((match, index) => {
-              const price = match?.[1];
-              const start = (match?.index ?? 0) + (match?.[0].length ?? 0);
-              const end = matches[index + 1]?.index ?? segment.length;
-              const descriptor = text(segment.slice(start, end));
-              const unit = price === undefined ? undefined : priceUnit(header, descriptor, row);
-              return price === undefined || unit === undefined
-                ? []
-                : [{ price, descriptor, segment, unit }];
-            });
-          });
-          const hasTokenPrice = candidates.some(
-            ({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour",
-          );
-          const selected =
-            hasTokenPrice && header.toLowerCase().includes("per 1m tokens")
-              ? candidates.filter(
-                  ({ unit }) => unit === "million_tokens" || unit === "million_tokens_per_hour",
-                )
-              : candidates;
-          for (const { price, descriptor, segment, unit } of selected) {
-            for (const id of targets(codes, row)) {
-              const model = models.get(id);
-              if (model === undefined) continue;
-              for (const rate of meterRates(
-                model,
-                row,
-                segment,
-                descriptor,
-                unit,
-                conditions(tier, descriptor, row),
-              ))
-                model.price_facts.push(
-                  publishedRate(
-                    rate.meter,
-                    price,
-                    unit,
-                    sourceId,
-                    `${header}; ${row}; ${descriptor || segment}`,
-                    rate.conditions,
-                  ),
-                );
+          const paid = selectedCandidates(header, candidates(header, row, cells.eq(2)));
+          const paidText = text(cells.eq(2).text());
+          const selectedModels = targets(codes, row).map((id) => pricingModel(models, id));
+          for (const model of selectedModels) {
+            addRates(model, sourceId, header, tier, row, "paid_tier", paid);
+            addSearchAllowance(model, sourceId, tier, row, paidText);
+            if (text(cells.eq(1).text()) !== "Free of charge") continue;
+            const free = paid.map((candidate) => ({ ...candidate, price: "0" }));
+            if (free.length === 0) {
+              const unit = priceUnit(header, "", row);
+              if (unit === undefined)
+                throw new Error(`Gemini free-tier pricing unit changed: ${row}`);
+              free.push({ price: "0", descriptor: "", segment: row, unit });
             }
+            addRates(model, sourceId, header, tier, row, "free_tier", free);
           }
         });
     });
   });
   applyGemmaFreePricing(models, sourceId, body);
+  applyAgentPricing($, models, sourceId, agentIds);
   for (const item of models.values()) {
     item.price_facts = [
       ...new Map(
@@ -878,8 +1038,19 @@ function applyPricing(models: Map<string, ProviderModel>, sourceId: string, body
         `${right.meter}\u0000${right.unit}\u0000${right.price}\u0000${JSON.stringify(right.conditions)}`,
       ),
     );
+    item.raw_price_facts = [
+      ...new Map(
+        item.raw_price_facts.map((fact) => [sourceRawPricingFactKey(fact), fact]),
+      ).values(),
+    ].sort((left, right) =>
+      sourceRawPricingFactKey(left).localeCompare(sourceRawPricingFactKey(right)),
+    );
     if (item.price_facts.length > 0) item.pricing_state = "numeric";
   }
+  const current = [...models.values()].filter((model) => model.status !== "retired");
+  const priced = current.filter((model) => model.price_facts.length > 0);
+  if (current.length === 0 || priced.length / current.length < 0.8)
+    throw new Error("Gemini pricing coverage fell below reviewed bounds");
 }
 
 function applyChangelog(models: Map<string, ProviderModel>, body: string): void {
@@ -901,7 +1072,7 @@ function applyChangelog(models: Map<string, ProviderModel>, body: string): void 
             .get()
             .filter((id) => modelIdSchema.safeParse(id).success),
         );
-        if (/^(?:Released|Launched|Introduced)\b/i.test(value))
+        if (/\b(?:Released|Launched|Introduced)\b/i.test(value))
           for (const id of codes) {
             const model = models.get(id);
             if (model !== undefined && model.release_date === undefined)
@@ -973,7 +1144,7 @@ function applyInteractions(
   models: Map<string, ProviderModel>,
   overviewBody: string,
   apiBody: string,
-): void {
+): string[] {
   const $ = load(overviewBody);
   const heading = exactHeading($, "h2", "Supported models & agents");
   const siblings = heading.nextUntil("h2");
@@ -1004,13 +1175,16 @@ function applyInteractions(
     name: "interactions.create",
     path: interactionPath(apiBody),
   } satisfies ApiEndpoint;
+  const agents: string[] = [];
   for (const [id, kind] of supported) {
     const model = models.get(id);
     if (model === undefined) throw new Error(`Gemini Interactions references unknown model: ${id}`);
     if (kind === "Agent" && !model.tasks.includes("text_generation"))
       throw new Error(`Gemini Interactions agent classification changed: ${id}`);
+    if (kind === "Agent") agents.push(id);
     model.api_endpoints = [endpoint];
   }
+  return agents.sort();
 }
 
 export function parseGeminiCatalog(input: Input): ProviderModel[] {
@@ -1021,15 +1195,22 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const models = new Map<string, ProviderModel>();
   const versionIds = new Map<string, string[]>();
   const modelDocuments = bundle.documents
-    .filter((item) => /^\/gemini-api\/docs\/models\/[a-z0-9.-]+$/.test(new URL(item.url).pathname))
+    .filter((item) =>
+      /^\/gemini-api\/docs\/(?:models\/[a-z0-9.-]+|robotics-overview)$/.test(
+        new URL(item.url).pathname,
+      ),
+    )
     .sort((left, right) => left.url.localeCompare(right.url));
   for (const page of modelDocuments) {
     const path = new URL(page.url).pathname;
-    const parsed = primaryPageModel(input, page.body, indexCards.get(path));
-    for (const item of parsed.models) {
-      if (models.has(item.model_id)) continue;
-      models.set(item.model_id, item);
-      versionIds.set(item.model_id, parsed.versionIds);
+    for (const { model, versionIds: aliases } of pageModels(
+      input,
+      page.body,
+      indexCards.get(path),
+    )) {
+      if (models.has(model.model_id)) continue;
+      models.set(model.model_id, model);
+      versionIds.set(model.model_id, aliases);
     }
   }
   applyGemma(
@@ -1045,14 +1226,14 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
       item.aliases = unique(aliases.filter((alias) => alias !== id && !models.has(alias)));
   }
   applyChangelog(models, document(bundle, "/gemini-api/docs/changelog"));
-  applyPricing(models, input.source.id, document(bundle, "/gemini-api/docs/pricing"));
   validateMethodDocumentation(document(bundle, "/api/all-methods"));
   validateLiveDocumentation(document(bundle, "/api/live"));
-  applyInteractions(
+  const agents = applyInteractions(
     models,
     document(bundle, "/gemini-api/docs/interactions-overview"),
     document(bundle, "/api/interactions-api"),
   );
+  applyPricing(models, input.source.id, document(bundle, "/gemini-api/docs/pricing"), agents);
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );

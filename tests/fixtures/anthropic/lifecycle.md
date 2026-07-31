@@ -1,5 +1,7 @@
 # Model deprecations
 
+Claude Mythos Preview (`claude-mythos-preview`) is deprecated. To migrate to Claude Mythos 5 (`claude-mythos-5`), follow the guide.
+
 [Claude Mythos Preview](https://example.test) (`claude-mythos-preview`) will be retired on July 21, 2026. To migrate to Claude Mythos 5 (`claude-mythos-5`), follow the guide.
 
 | API model name           | Current state | Deprecated   | Tentative retirement date      |

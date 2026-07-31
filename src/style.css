@@ -104,8 +104,7 @@ kbd {
 }
 
 .header-actions,
-.catalog-summary,
-.json-link {
+.catalog-summary {
   display: flex;
   align-items: center;
 }
@@ -151,21 +150,7 @@ kbd {
   color: var(--color-text-muted);
 }
 
-.json-link {
-  gap: var(--space-1);
-  color: var(--color-text-primary);
-  font-weight: var(--font-weight-medium);
-}
-
-.json-link .ui-icon {
-  width: var(--icon-size-xs);
-  height: var(--icon-size-xs);
-}
-
-.json-link:hover {
-  color: var(--color-accent);
-}
-
+.header-link,
 .theme-toggle {
   display: grid;
   width: var(--control-height-default);
@@ -179,11 +164,13 @@ kbd {
     background-color var(--duration-standard) var(--easing-standard);
 }
 
+.header-link:hover,
 .theme-toggle:hover {
   color: var(--color-text-primary);
   background: var(--color-control-hover);
 }
 
+.header-link .ui-icon,
 .theme-toggle .ui-icon {
   width: var(--icon-size-sm);
   height: var(--icon-size-sm);
@@ -1011,6 +998,20 @@ kbd {
 
 .price-status-cell {
   text-align: center;
+}
+
+.price-status-band {
+  display: grid;
+  width: 100%;
+  align-items: center;
+  grid-template-columns: minmax(var(--space-2), 1fr) auto minmax(var(--space-2), 1fr);
+  gap: var(--space-2);
+}
+
+.price-status-band::before,
+.price-status-band::after {
+  border-top: var(--stroke-hairline) dashed var(--color-border-subtle);
+  content: "";
 }
 
 .pricing-header-trigger {
