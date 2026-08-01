@@ -18,11 +18,13 @@ const props = defineProps<{
   detail: WebsiteModelDetail | undefined;
   loading: boolean;
   error: string | undefined;
+  pricingTarget: string | undefined;
 }>();
 
 const emit = defineEmits<{
   close: [];
   navigate: [offset: -1 | 1];
+  pricingTargetReached: [];
 }>();
 
 const dialog = useTemplateRef<HTMLDialogElement>("dialog");
@@ -86,6 +88,20 @@ watch(
     updateScrollbars();
   },
   { immediate: true },
+);
+
+watch(
+  [() => props.pricingTarget, () => props.loading, () => props.model?.uid],
+  async ([target, loading, modelUid]) => {
+    if (target === undefined || target !== modelUid || loading) return;
+    await nextTick();
+    if (props.pricingTarget !== target) return;
+    scrollViewport.value
+      ?.querySelector<HTMLElement>(".pricing-section")
+      ?.scrollIntoView({ block: "start" });
+    emit("pricingTargetReached");
+  },
+  { flush: "post" },
 );
 
 function requestClose(): void {

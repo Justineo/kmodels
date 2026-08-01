@@ -1,5 +1,6 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
+import { scaleDecimal } from "./pricing.ts";
 import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
 import { assertPricingDecimal } from "./pricing-constants.ts";
 import {
@@ -519,7 +520,7 @@ function sourceDisplay(
     });
     const unit = matching[0];
     if (matching.length !== 1 || unit === undefined) return undefined;
-    const display = { amount: raw.amount, unit, approximate: false };
+    const display = { amount: scaleDecimal(raw.amount, 0), unit, approximate: false };
     candidates.set(`${display.amount}\0${display.unit.display}`, display);
   }
   return candidates.size === 1 ? [...candidates.values()][0] : undefined;

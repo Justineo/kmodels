@@ -80,6 +80,10 @@ function handleKeydown(event: KeyboardEvent): void {
   focused.value = false;
   tooltipCoordinator.release(client);
 }
+
+function handleClick(): void {
+  tooltipCoordinator.release(client);
+}
 </script>
 
 <template>
@@ -95,6 +99,7 @@ function handleKeydown(event: KeyboardEvent): void {
     @focusin="handleFocusIn"
     @focusout="handleFocusOut"
     @keydown="handleKeydown"
+    @click.capture="handleClick"
   >
     <slot></slot>
   </component>

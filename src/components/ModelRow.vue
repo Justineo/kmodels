@@ -27,6 +27,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [model: WebsiteModel];
+  selectPricing: [model: WebsiteModel];
   filterProvider: [providerId: string];
   filterTask: [task: ModelTask];
   filterLifecycle: [lifecycle: ModelLifecycle];
@@ -142,10 +143,12 @@ function filterStatus(): void {
     <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
       <span class="price-status-band">
         <UiTooltip
+          as="button"
+          type="button"
           class="table-status-trigger"
-          tabindex="0"
           :content="pricingStatus.description"
-          :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
+          :aria-label="`View ${model.name} pricing details. ${pricingStatus.description}`"
+          @click="emit('selectPricing', model)"
         >
           {{ pricingStatus.label }}
         </UiTooltip>

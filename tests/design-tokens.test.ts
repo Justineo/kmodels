@@ -99,4 +99,13 @@ describe("design token contract", () => {
     expect(components).toMatch(/\.table-scroll-host\s*\{[^}]*min-width:\s*0;/s);
     expect(components).toMatch(/\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow:\s*auto;/s);
   });
+
+  it("separates mobile table scrolling by axis", () => {
+    expect(components).toMatch(
+      /\.table-shell\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;[^}]*overscroll-behavior:\s*none;/s,
+    );
+    expect(components).toMatch(
+      /\.model-table tbody\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*none;/s,
+    );
+  });
 });
