@@ -1,8 +1,8 @@
 {
-  "catalog_version": "8ddca26a9b761d74903e1455f9e8372de1ed22559e2d7b9e08f25ed5f95e4d62",
-  "generated_at": "2026-08-01T12:19:06.848Z",
+  "catalog_version": "0dd8d39715c3a014ce2acfca3c328abec9796ec6dd62ea18b5de1e0e8953bd0e",
+  "generated_at": "2026-08-01T13:29:55.697Z",
   "outcome": "changed",
-  "previous_catalog_version": "fa03fc939257645412068a25cc565ce0184df37f09b414e2faaa56f576e99092",
+  "previous_catalog_version": "8ddca26a9b761d74903e1455f9e8372de1ed22559e2d7b9e08f25ed5f95e4d62",
   "providers": [
     {
       "attempt": {
@@ -2153,21 +2153,21 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1403,
+            "parsed_models": 1402,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 128,
+            "parsed_models": 129,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1403,
+            "parsed_models": 1402,
             "source_id": "huggingface-hub"
           }
         ]
@@ -2175,11 +2175,11 @@
       "models": {
         "added": 1,
         "added_model_refs": [
-          "huggingface/chendelong/DirectSAM-1800px-0424"
+          "huggingface/zai-org/GLM-4.5"
         ],
         "changed": 29,
         "changed_fields": {
-          "capabilities": 1,
+          "capabilities": 2,
           "limits": 28
         },
         "changed_models": [
@@ -2257,12 +2257,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
@@ -2287,6 +2281,12 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2305,6 +2305,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
@@ -2359,14 +2360,16 @@
           }
         ],
         "current": 1531,
-        "previous": 1530,
-        "removed": 0,
-        "removed_model_refs": [],
+        "previous": 1531,
+        "removed": 1,
+        "removed_model_refs": [
+          "huggingface/YituTech/conv-bert-base"
+        ],
         "unchanged": 1501
       },
       "pricing": {
-        "commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64",
-        "outcome": "provenance_only",
+        "commercial_hash": "6cd13810aabb99411b3b78294a5174c59f3ec616e394ab0353253bd91bca8565",
+        "outcome": "commercial",
         "previous_commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64"
       },
       "provider_id": "huggingface",
@@ -2854,9 +2857,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3014,20 +3017,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -3299,10 +3295,10 @@
     "added_models": 1,
     "added_sources": 0,
     "changed_models": 298,
-    "changed_sources": 29,
+    "changed_sources": 28,
     "models": 3364,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
