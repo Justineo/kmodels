@@ -1,8 +1,8 @@
 {
-  "catalog_version": "feae3c557d123fcfa7594c30d1745e7845a7f9318be38d20d2b80ca5dafb9e42",
-  "generated_at": "2026-08-01T19:25:23.029Z",
+  "catalog_version": "31294f6f6c5303ccdb2aa45c2dc83cd45e21111a21ecd5563d03f6102b97b405",
+  "generated_at": "2026-08-01T20:18:10.339Z",
   "outcome": "changed",
-  "previous_catalog_version": "06c022bc1a3ec138620a5598de5d18c3f4a913c1cbcc34015ddc543c7c6472b1",
+  "previous_catalog_version": "feae3c557d123fcfa7594c30d1745e7845a7f9318be38d20d2b80ca5dafb9e42",
   "providers": [
     {
       "attempt": {
@@ -2150,34 +2150,36 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1403,
+            "outcome": "changed",
+            "parsed_models": 1402,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 128,
+            "parsed_models": 129,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1403,
+            "parsed_models": 1402,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/Qwen/Qwen2.5-7B-Instruct"
+        ],
         "changed": 31,
         "changed_fields": {
-          "capabilities": 2,
+          "capabilities": 3,
           "limits": 29
         },
         "changed_models": [
@@ -2255,15 +2257,21 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen2.5-Coder-3B-Instruct"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-Next-80B-A3B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
           },
           {
             "fields": [
@@ -2285,12 +2293,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2303,6 +2305,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
@@ -2369,18 +2372,17 @@
           }
         ],
         "current": 1531,
-        "previous": 1533,
-        "removed": 2,
+        "previous": 1531,
+        "removed": 1,
         "removed_model_refs": [
-          "huggingface/Qwen/Qwen2.5-7B-Instruct",
-          "huggingface/zai-org/GLM-4.5"
+          "huggingface/sshleifer/distilbart-xsum-12-6"
         ],
-        "unchanged": 1500
+        "unchanged": 1499
       },
       "pricing": {
-        "commercial_hash": "6bdbd1a37fd1af5ff5b8597947d319448723ed796a1e7024c44adc5be0ca9392",
+        "commercial_hash": "a7b10f8f6c80a61f30127e5f4b7968c85d58992940cccdde4a1090d28ee2a8b8",
         "outcome": "commercial",
-        "previous_commercial_hash": "b1321fab5f67aae15a322722d5310d22dcd6aa0368081c5cbc8a5a47f9872de6"
+        "previous_commercial_hash": "6bdbd1a37fd1af5ff5b8597947d319448723ed796a1e7024c44adc5be0ca9392"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2388,8 +2390,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hf-inference"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2407,7 +2415,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3296,13 +3304,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 0,
+    "added_models": 1,
     "added_sources": 0,
     "changed_models": 300,
-    "changed_sources": 27,
+    "changed_sources": 28,
     "models": 3364,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
