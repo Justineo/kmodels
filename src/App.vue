@@ -30,23 +30,31 @@ import UiIcon from "./components/UiIcon.vue";
 import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import { detailsState } from "./details-state.ts";
-import { clampScrollPosition, dominantScrollAxis, type ScrollAxis } from "./scroll-direction.ts";
+import {
+  clampScrollPosition,
+  dominantScrollAxis,
+  recentScrollVelocity,
+  type ScrollAxis,
+  type ScrollSample,
+} from "./scroll-direction.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 const COARSE_TOUCH_QUERY = "(any-hover: none) and (any-pointer: coarse)";
 const TOUCH_DIRECTION_THRESHOLD = 8;
-const TOUCH_MOMENTUM_PROJECTION = 180;
-const TOUCH_MOMENTUM_MAX_AGE = 80;
+const TOUCH_VELOCITY_SAMPLE_WINDOW = 100;
+const TOUCH_MOMENTUM_DECELERATION = 0.998;
+const TOUCH_MOMENTUM_MIN_VELOCITY = 0.02;
+const TOUCH_MOMENTUM_MAX_FRAME_DURATION = 32;
+const TOUCH_CLICK_SUPPRESSION_DURATION = 400;
 
-interface TableTouchGesture {
+interface TableHorizontalGesture {
+  pointerId: number;
   axis: ScrollAxis | undefined;
-  lastEventTime: number;
   startClientX: number;
   startClientY: number;
   startScrollLeft: number;
-  startScrollTop: number;
-  velocity: number;
+  samples: ScrollSample[];
 }
 
 type Theme = "light" | "dark";
@@ -78,7 +86,10 @@ const tableViewportSize = ref(0);
 const usesNestedTableScroll = ref(window.matchMedia(COARSE_TOUCH_QUERY).matches);
 let tableResizeObserver: ResizeObserver | undefined;
 let tableScrollMedia: MediaQueryList | undefined;
-let tableTouchGesture: TableTouchGesture | undefined;
+let tableHorizontalGesture: TableHorizontalGesture | undefined;
+let tableHorizontalMomentumFrame: number | undefined;
+let suppressTableClick = false;
+let suppressTableClickTimer: number | undefined;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let applyingRoute = false;
@@ -272,89 +283,154 @@ function updateVirtualRange(): void {
   tableViewportSize.value = Math.max(0, (element?.clientHeight ?? 0) - headerOffset);
 }
 
-function resetTableTouchGesture(): void {
-  tableTouchGesture = undefined;
+function stopTableHorizontalMomentum(): void {
+  if (tableHorizontalMomentumFrame !== undefined)
+    cancelAnimationFrame(tableHorizontalMomentumFrame);
+  tableHorizontalMomentumFrame = undefined;
 }
 
-function handleTableTouchStart(event: TouchEvent): void {
-  if (!usesNestedTableScroll.value || event.touches.length !== 1) {
-    resetTableTouchGesture();
+function resetTableHorizontalGesture(): void {
+  tableHorizontalGesture = undefined;
+}
+
+function clearTableClickSuppression(): void {
+  if (suppressTableClickTimer !== undefined) window.clearTimeout(suppressTableClickTimer);
+  suppressTableClickTimer = undefined;
+  suppressTableClick = false;
+}
+
+function scheduleTableClickSuppressionClear(): void {
+  if (!suppressTableClick) return;
+  if (suppressTableClickTimer !== undefined) window.clearTimeout(suppressTableClickTimer);
+  suppressTableClickTimer = window.setTimeout(
+    clearTableClickSuppression,
+    TOUCH_CLICK_SUPPRESSION_DURATION,
+  );
+}
+
+function handleTableClickCapture(event: MouseEvent): void {
+  if (!suppressTableClick) return;
+  event.preventDefault();
+  event.stopPropagation();
+  clearTableClickSuppression();
+}
+
+function handleTablePointerStart(event: PointerEvent): void {
+  if (
+    !usesNestedTableScroll.value ||
+    !event.isPrimary ||
+    event.pointerType !== "touch" ||
+    event.button !== 0
+  ) {
+    resetTableHorizontalGesture();
     return;
   }
-  const touch = event.touches.item(0);
   const shell = tableShell.value;
-  const body = tableBody.value;
-  if (touch === null || shell === null || body === null) return;
-  shell.scrollTo(shell.scrollLeft, shell.scrollTop);
-  body.scrollTo(body.scrollLeft, body.scrollTop);
-  tableTouchGesture = {
+  if (shell === null) return;
+  stopTableHorizontalMomentum();
+  clearTableClickSuppression();
+  tableHorizontalGesture = {
+    pointerId: event.pointerId,
     axis: undefined,
-    lastEventTime: event.timeStamp,
-    startClientX: touch.clientX,
-    startClientY: touch.clientY,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
     startScrollLeft: shell.scrollLeft,
-    startScrollTop: body.scrollTop,
-    velocity: 0,
+    samples: [{ position: shell.scrollLeft, time: event.timeStamp }],
   };
 }
 
-function handleTableTouchMove(event: TouchEvent): void {
-  const gesture = tableTouchGesture;
-  const touch = event.touches.item(0);
-  if (gesture === undefined || touch === null || event.touches.length !== 1) {
-    resetTableTouchGesture();
-    return;
-  }
-  const deltaX = touch.clientX - gesture.startClientX;
-  const deltaY = touch.clientY - gesture.startClientY;
+function handleTablePointerMove(event: PointerEvent): void {
+  const gesture = tableHorizontalGesture;
+  if (gesture === undefined || event.pointerId !== gesture.pointerId) return;
+  const deltaX = event.clientX - gesture.startClientX;
+  const deltaY = event.clientY - gesture.startClientY;
   const nextAxis = dominantScrollAxis(deltaX, deltaY, TOUCH_DIRECTION_THRESHOLD);
   if (gesture.axis === undefined && nextAxis !== undefined) {
+    if (nextAxis === "vertical") {
+      resetTableHorizontalGesture();
+      return;
+    }
     gesture.axis = nextAxis;
-    gesture.lastEventTime = event.timeStamp;
+    suppressTableClick = true;
+    tableBody.value?.setPointerCapture(event.pointerId);
   }
   if (gesture.axis === undefined) return;
 
-  const element = gesture.axis === "horizontal" ? tableShell.value : tableBody.value;
-  if (element === null) {
-    resetTableTouchGesture();
+  const shell = tableShell.value;
+  if (shell === null) {
+    resetTableHorizontalGesture();
     return;
   }
-  const scrollPosition = gesture.axis === "horizontal" ? element.scrollLeft : element.scrollTop;
-  if (gesture.axis === "horizontal") element.scrollLeft = gesture.startScrollLeft - deltaX;
-  else element.scrollTop = gesture.startScrollTop - deltaY;
-
-  const elapsed = event.timeStamp - gesture.lastEventTime;
-  if (elapsed > 0) {
-    const nextScrollPosition =
-      gesture.axis === "horizontal" ? element.scrollLeft : element.scrollTop;
-    gesture.velocity = (nextScrollPosition - scrollPosition) / elapsed;
+  const coalescedEvents = event.getCoalescedEvents?.() ?? [];
+  const pointerEvents = coalescedEvents.length === 0 ? [event] : coalescedEvents;
+  let nextPosition = shell.scrollLeft;
+  for (const pointerEvent of pointerEvents) {
+    nextPosition = clampScrollPosition(
+      gesture.startScrollLeft - (pointerEvent.clientX - gesture.startClientX),
+      shell.scrollWidth,
+      shell.clientWidth,
+    );
+    gesture.samples.push({ position: nextPosition, time: pointerEvent.timeStamp });
   }
-  gesture.lastEventTime = event.timeStamp;
+  shell.scrollLeft = nextPosition;
+  const cutoff = event.timeStamp - TOUCH_VELOCITY_SAMPLE_WINDOW;
+  while (gesture.samples.length > 1 && (gesture.samples[0]?.time ?? cutoff) < cutoff)
+    gesture.samples.shift();
 }
 
-function handleTableTouchEnd(event: TouchEvent): void {
-  const gesture = tableTouchGesture;
-  resetTableTouchGesture();
-  if (
-    gesture?.axis === undefined ||
-    event.timeStamp - gesture.lastEventTime > TOUCH_MOMENTUM_MAX_AGE
-  )
-    return;
-  const element = gesture.axis === "horizontal" ? tableShell.value : tableBody.value;
-  if (element === null) return;
-  const distance = gesture.velocity * TOUCH_MOMENTUM_PROJECTION;
-  const horizontal = gesture.axis === "horizontal";
-  const currentPosition = horizontal ? element.scrollLeft : element.scrollTop;
-  const targetPosition = clampScrollPosition(
-    currentPosition + distance,
-    horizontal ? element.scrollWidth : element.scrollHeight,
-    horizontal ? element.clientWidth : element.clientHeight,
-  );
-  element.scrollTo({
-    behavior: "smooth",
-    left: horizontal ? targetPosition : element.scrollLeft,
-    top: horizontal ? element.scrollTop : targetPosition,
-  });
+function startTableHorizontalMomentum(initialVelocity: number): void {
+  const shell = tableShell.value;
+  if (shell === null || Math.abs(initialVelocity) < TOUCH_MOMENTUM_MIN_VELOCITY) return;
+  let position = shell.scrollLeft;
+  let velocity = initialVelocity;
+  let previousTime = performance.now();
+  const step = (time: number): void => {
+    const elapsed = Math.min(time - previousTime, TOUCH_MOMENTUM_MAX_FRAME_DURATION);
+    previousTime = time;
+    const nextPosition = clampScrollPosition(
+      position + velocity * elapsed,
+      shell.scrollWidth,
+      shell.clientWidth,
+    );
+    const maximum = Math.max(0, shell.scrollWidth - shell.clientWidth);
+    shell.scrollLeft = nextPosition;
+    position = shell.scrollLeft;
+    velocity *= Math.pow(TOUCH_MOMENTUM_DECELERATION, elapsed);
+    const reachedBoundary =
+      (position <= 0 && velocity < 0) || (position >= maximum && velocity > 0);
+    if (reachedBoundary || Math.abs(velocity) < TOUCH_MOMENTUM_MIN_VELOCITY) {
+      tableHorizontalMomentumFrame = undefined;
+      return;
+    }
+    tableHorizontalMomentumFrame = requestAnimationFrame(step);
+  };
+  tableHorizontalMomentumFrame = requestAnimationFrame(step);
+}
+
+function handleTablePointerEnd(event: PointerEvent): void {
+  const gesture = tableHorizontalGesture;
+  if (gesture === undefined || event.pointerId !== gesture.pointerId) return;
+  const shell = tableShell.value;
+  if (gesture.axis === "horizontal" && shell !== null) {
+    const position = clampScrollPosition(
+      gesture.startScrollLeft - (event.clientX - gesture.startClientX),
+      shell.scrollWidth,
+      shell.clientWidth,
+    );
+    shell.scrollLeft = position;
+    gesture.samples.push({ position, time: event.timeStamp });
+    startTableHorizontalMomentum(
+      recentScrollVelocity(gesture.samples, event.timeStamp, TOUCH_VELOCITY_SAMPLE_WINDOW),
+    );
+    scheduleTableClickSuppressionClear();
+  }
+  resetTableHorizontalGesture();
+}
+
+function handleTablePointerCancel(event: PointerEvent): void {
+  if (event.pointerId !== tableHorizontalGesture?.pointerId) return;
+  resetTableHorizontalGesture();
+  scheduleTableClickSuppressionClear();
 }
 
 function handleTableBodyScroll(): void {
@@ -592,12 +668,16 @@ onUnmounted(() => {
   window.removeEventListener("popstate", applyRoute);
   tableScrollMedia?.removeEventListener("change", handleTableScrollModeChange);
   tableResizeObserver?.disconnect();
-  resetTableTouchGesture();
+  resetTableHorizontalGesture();
+  stopTableHorizontalMomentum();
+  clearTableClickSuppression();
 });
 
 function handleTableScrollModeChange(event: MediaQueryListEvent): void {
   usesNestedTableScroll.value = event.matches;
-  resetTableTouchGesture();
+  resetTableHorizontalGesture();
+  stopTableHorizontalMomentum();
+  clearTableClickSuppression();
   void nextTick(resetVirtualScroll);
 }
 </script>
@@ -782,6 +862,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
           :aria-label="`Model results, ${resultCountLabel}`"
           tabindex="0"
           @scroll.passive="updateVirtualRange"
+          @pointerdown.passive="stopTableHorizontalMomentum"
         >
           <div v-if="!hasResults" class="table-state">
             <p>No observed models match these filters.</p>
@@ -871,10 +952,12 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
             <tbody
               ref="tableBody"
               @scroll.passive="handleTableBodyScroll"
-              @touchstart.passive="handleTableTouchStart"
-              @touchmove.prevent="handleTableTouchMove"
-              @touchend.passive="handleTableTouchEnd"
-              @touchcancel.passive="resetTableTouchGesture"
+              @click.capture="handleTableClickCapture"
+              @pointerdown.passive="handleTablePointerStart"
+              @pointermove.passive="handleTablePointerMove"
+              @pointerup.passive="handleTablePointerEnd"
+              @pointercancel.passive="handleTablePointerCancel"
+              @lostpointercapture.passive="handleTablePointerCancel"
             >
               <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="10" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>

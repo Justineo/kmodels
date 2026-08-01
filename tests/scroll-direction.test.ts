@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import { clampScrollPosition, dominantScrollAxis } from "../src/scroll-direction.ts";
+import {
+  clampScrollPosition,
+  dominantScrollAxis,
+  recentScrollVelocity,
+} from "../src/scroll-direction.ts";
 
 describe("touch scroll direction", () => {
   it("waits for the gesture threshold", () => {
@@ -27,5 +31,30 @@ describe("touch scroll bounds", () => {
   it("stays at zero when the viewport does not overflow", () => {
     expect(clampScrollPosition(120, 390, 390)).toBe(0);
     expect(clampScrollPosition(120, 320, 390)).toBe(0);
+  });
+});
+
+describe("touch scroll velocity", () => {
+  it("uses the recent movement window instead of one noisy event", () => {
+    expect(
+      recentScrollVelocity(
+        [
+          { position: 0, time: 0 },
+          { position: 20, time: 100 },
+          { position: 60, time: 140 },
+          { position: 100, time: 180 },
+        ],
+        180,
+        100,
+      ),
+    ).toBe(1);
+  });
+
+  it("returns zero without two current samples", () => {
+    expect(recentScrollVelocity([{ position: 20, time: 20 }], 200, 100)).toBe(0);
+  });
+
+  it("rejects invalid sample windows", () => {
+    expect(() => recentScrollVelocity([], 0, 0)).toThrow("positive number");
   });
 });
