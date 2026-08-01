@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
+import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { sha256 } from "./io.ts";
@@ -92,6 +93,21 @@ class TransientFetchError extends Error {
     super(message);
     this.retryAfter = retryAfter;
   }
+}
+
+async function retryTransient<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: Error = new Error("Source fetch failed");
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Unknown source fetch failure");
+      if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
+      const delay = lastError.retryAfter || Math.floor(Math.random() * (500 * 2 ** attempt));
+      await wait(delay);
+    }
+  }
+  throw lastError;
 }
 
 function retryDelay(response: Response): number {
@@ -241,8 +257,8 @@ async function cloudJson(
   const args = [
     "--silent",
     "--show-error",
+    "--include",
     "--compressed",
-    "--fail-with-body",
     "--max-time",
     "60",
     "--connect-timeout",
@@ -251,39 +267,37 @@ async function cloudJson(
     "0",
     "--proto",
     "=https",
-    "--retry",
-    "5",
-    "--retry-all-errors",
-    "--retry-max-time",
-    "180",
     "--user-agent",
     "kmodels/0.1 (+https://github.com/Justineo/kmodels)",
   ];
   for (const header of headers) args.push("--header", header);
   for (const field of form) args.push("--data-urlencode", `${field.name}=${field.value}`);
   args.push(url.href);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    let body: string;
+  return retryTransient(async () => {
+    let response: Response;
     try {
       const result = await execute("curl", args, {
         encoding: "utf8",
         maxBuffer: maxResponseBytes + 64 * 1024,
       });
-      body = result.stdout;
-      if (Buffer.byteLength(body) > maxResponseBytes)
-        throw new Error("Cloud response exceeded byte limit");
+      response = curlResponse(result.stdout);
     } catch {
       throw new TransientFetchError(`${label} transport failure`);
     }
+    if (response.status === 429 || response.status >= 500)
+      throw new TransientFetchError(`${label} HTTP ${response.status}`, retryDelay(response));
+    if (!response.ok) throw new Error(`${label} HTTP ${response.status}`);
+    const body = await response.text();
+    if (Buffer.byteLength(body) > maxResponseBytes)
+      throw new Error("Cloud response exceeded byte limit");
     try {
       return JSON.parse(body);
     } catch {
-      if (!/^Too many requests\b/i.test(body.trim()) || attempt === 4)
-        throw new Error(`${label} returned invalid JSON`);
-      await wait(30_000 * (attempt + 1));
+      if (/^Too many requests\b/i.test(body.trim()))
+        throw new TransientFetchError(`${label} was throttled`);
+      throw new Error(`${label} returned invalid JSON`);
     }
-  }
-  throw new Error(`${label} returned invalid JSON`);
+  });
 }
 
 function azurePageUrl(raw: string, pathPrefix: string): URL {
@@ -622,33 +636,13 @@ async function attemptPost(source: SourceManifest, body: string): Promise<Status
 }
 
 async function fetchPost(source: SourceManifest, body: string): Promise<StatusPayload> {
-  let lastError: Error = new Error("Source fetch failed");
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await attemptPost(source, body);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Unknown collection failure");
-      if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
-      await wait(lastError.retryAfter || 500 * 2 ** attempt + Math.floor(Math.random() * 250));
-    }
-  }
-  throw lastError;
+  return retryTransient(() => attemptPost(source, body));
 }
 
 async function fetchResponse(
   source: SourceManifest,
 ): Promise<{ payload: FetchPayload; link: string | undefined }> {
-  let lastError: Error = new Error("Source fetch failed");
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await attemptFetch(source);
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error("Unknown source fetch failure");
-      if (!(lastError instanceof TransientFetchError) || attempt === 2) break;
-      await wait(lastError.retryAfter || 500 * 2 ** attempt + Math.floor(Math.random() * 250));
-    }
-  }
-  throw lastError;
+  return retryTransient(() => attemptFetch(source));
 }
 
 async function fetchPayload(source: SourceManifest): Promise<FetchPayload> {
@@ -748,17 +742,6 @@ function linkedSource(
   format = source.format,
 ): SourceManifest {
   return requestSource(source, key, url, format, maxResponseBytes);
-}
-
-async function batches<T, R>(
-  values: T[],
-  concurrency: number,
-  task: (value: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = [];
-  for (let index = 0; index < values.length; index += concurrency)
-    results.push(...(await Promise.all(values.slice(index, index + concurrency).map(task))));
-  return results;
 }
 
 function huggingFaceModelsUrl(raw: string, source: SourceManifest): URL {
@@ -914,7 +897,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   if (catalogIds.length < transport.minModels || catalogIds.length > transport.maxModels)
     throw new Error("Ollama cloud catalog count outside reviewed bounds");
   const modelIds = [...new Set([...listed, ...catalogIds])].sort();
-  const documents = await batches(modelIds, transport.concurrency, async (model) => {
+  const documents = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
     const key = `${source.id}/show/${sha256(model)}`;
     const showSource = {
       ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
@@ -1019,7 +1002,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   const entries = [...discovered, ...configured];
   if (new Set(entries.map((entry) => entry.key)).size !== entries.length)
     throw new Error("Linked document keys must be unique");
-  const documents = await batches(entries, crawl.concurrency, async (entry) => {
+  const documents = await mapConcurrent(entries, crawl.concurrency, async (entry) => {
     try {
       const payload = await fetchPayload(
         linkedSource(source, entry.key, entry.url, entry.maxResponseBytes, entry.format),

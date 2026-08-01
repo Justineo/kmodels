@@ -6726,7 +6726,13 @@ describe("provider drift validation", () => {
     };
     expect(validateProvider([model], [model, second])).toEqual({
       ok: false,
-      reason: "model count dropped by more than 10%",
+      issue: {
+        code: "model_count_drop",
+        message: "model count dropped by more than 10%",
+        previous: 2,
+        current: 1,
+        minimum_ratio: 0.9,
+      },
     });
   });
 
@@ -6736,17 +6742,17 @@ describe("provider drift validation", () => {
     );
     const route = model?.routes?.[0];
     if (model === undefined || route === undefined) throw new Error("Missing routed fixture model");
-    expect(validateProvider([{ ...model, routes: [route, route] }], []).reason).toContain(
-      "duplicate route",
+    expect(validateProvider([{ ...model, routes: [route, route] }], []).issue?.code).toBe(
+      "duplicate_route",
     );
     expect(
       validateProvider(
         [{ ...model, routes: [{ ...route, source_ref: "unreferenced-source" }] }],
         [],
-      ).reason,
-    ).toContain("route source is missing");
-    expect(validateProvider([{ ...model, routes: [] }], [model]).reason).toContain(
-      "route count dropped by more than 20%",
+      ).issue?.code,
+    ).toBe("missing_route_source");
+    expect(validateProvider([{ ...model, routes: [] }], [model]).issue?.code).toBe(
+      "route_count_drop",
     );
 
     const bedrock = (await parsed("amazon-bedrock", "document/bedrock.json")).find(
@@ -6757,16 +6763,17 @@ describe("provider drift validation", () => {
     if (bedrock === undefined || endpoint === undefined || availability === undefined)
       throw new Error("Missing Bedrock route evidence");
     expect(
-      validateProvider([{ ...bedrock, api_endpoints: [endpoint, endpoint] }], []).reason,
-    ).toContain("duplicate API endpoint");
+      validateProvider([{ ...bedrock, api_endpoints: [endpoint, endpoint] }], []).issue?.code,
+    ).toBe("duplicate_api_endpoint");
     expect(
-      validateProvider([{ ...bedrock, availability: [availability, availability] }], []).reason,
-    ).toContain("duplicate availability");
-    expect(validateProvider([{ ...bedrock, api_endpoints: [] }], [bedrock]).reason).toContain(
-      "API endpoint count dropped by more than 20%",
+      validateProvider([{ ...bedrock, availability: [availability, availability] }], []).issue
+        ?.code,
+    ).toBe("duplicate_availability");
+    expect(validateProvider([{ ...bedrock, api_endpoints: [] }], [bedrock]).issue?.code).toBe(
+      "api_endpoint_count_drop",
     );
-    expect(validateProvider([{ ...bedrock, availability: [] }], [bedrock]).reason).toContain(
-      "availability count dropped by more than 20%",
+    expect(validateProvider([{ ...bedrock, availability: [] }], [bedrock]).issue?.code).toBe(
+      "availability_count_drop",
     );
 
     const azure = (await azureCatalog()).find(
@@ -6776,10 +6783,10 @@ describe("provider drift validation", () => {
     if (azure === undefined || family === undefined)
       throw new Error("Missing Azure service-family evidence");
     expect(
-      validateProvider([{ ...azure, service_families: [family, family] }], []).reason,
-    ).toContain("duplicate service family");
-    expect(validateProvider([{ ...azure, service_families: undefined }], [azure]).reason).toContain(
-      "service-family count dropped by more than 20%",
+      validateProvider([{ ...azure, service_families: [family, family] }], []).issue?.code,
+    ).toBe("duplicate_service_family");
+    expect(validateProvider([{ ...azure, service_families: undefined }], [azure]).issue?.code).toBe(
+      "service_family_count_drop",
     );
   });
 });

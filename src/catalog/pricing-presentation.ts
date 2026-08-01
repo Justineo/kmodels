@@ -1,4 +1,4 @@
-import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
+import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
 import { assertPricingDecimal } from "./pricing-constants.ts";
@@ -22,6 +22,7 @@ import type {
   PricingBook,
   PricingCatalog,
   PricingOffer,
+  NormalizedPriceObservation,
   ProviderPricingSnapshot,
   Rational,
   RawPricingVariant,
@@ -55,12 +56,18 @@ export type PricingSelection =
       unit: UnitExpression;
     };
 
-interface ModelPricingView {
+export interface ModelPricingView {
   outcome: "not_applicable" | "unknown" | "offers";
   books: PricingBook[];
   baseOffers: PricingOffer[];
   addOns: PricingOffer[];
   snapshot?: ProviderPricingSnapshot;
+}
+
+interface PricingViewIndex {
+  snapshots: ReadonlyMap<string, ProviderPricingSnapshot>;
+  dispositions: ReadonlySet<string>;
+  books: ReadonlyMap<string, PricingBook[]>;
 }
 
 interface PricingTableCell {
@@ -99,6 +106,7 @@ const outputMeters = [
   "gpu_hour",
   "provisioned_throughput",
 ] as const;
+const modelDimension: PriceDimension = { namespace: "kmodels", value: "model" };
 
 export function evaluateApplicability(
   applicability: PriceApplicability,
@@ -149,15 +157,36 @@ export function modelPricingView(
   model: PricingModel,
   selections: readonly PricingSelection[] = [],
 ): ModelPricingView {
-  const snapshot = data.provider_snapshots.find(
-    ({ provider_id }) => provider_id === model.provider_id,
-  );
+  return modelPricingViewFromIndex(pricingViewIndex(data), model, selections);
+}
+
+export function pricingViewIndex(data: PricingCatalog): PricingViewIndex {
+  const books = new Map<string, PricingBook[]>();
+  for (const book of data.books)
+    for (const modelRef of book.scope.model_refs) {
+      const current = books.get(modelRef);
+      if (current === undefined) books.set(modelRef, [book]);
+      else current.push(book);
+    }
+  return {
+    snapshots: new Map(data.provider_snapshots.map((snapshot) => [snapshot.provider_id, snapshot])),
+    dispositions: new Set(data.model_dispositions.map(({ model_ref }) => model_ref)),
+    books,
+  };
+}
+
+export function modelPricingViewFromIndex(
+  index: PricingViewIndex,
+  model: PricingModel,
+  selections: readonly PricingSelection[] = [],
+): ModelPricingView {
+  const snapshot = index.snapshots.get(model.provider_id);
   const metadata = snapshot === undefined ? {} : { snapshot };
-  if (data.model_dispositions.some(({ model_ref }) => model_ref === model.uid))
+  if (index.dispositions.has(model.uid))
     return { outcome: "not_applicable", books: [], baseOffers: [], addOns: [], ...metadata };
 
-  const books = data.books.filter(
-    (book) => book.provider_id === model.provider_id && book.scope.model_refs.includes(model.uid),
+  const books = (index.books.get(model.uid) ?? []).filter(
+    ({ provider_id }) => provider_id === model.provider_id,
   );
   if (books.length === 0)
     return { outcome: "unknown", books: [], baseOffers: [], addOns: [], ...metadata };
@@ -176,7 +205,14 @@ export function projectPricingTableCell(
   model: PricingModel,
   slot: "input" | "cache" | "output",
 ): PricingTableCell | undefined {
-  const view = modelPricingView(data, model);
+  return projectPricingTableCellFromView(modelPricingView(data, model), model, slot);
+}
+
+export function projectPricingTableCellFromView(
+  view: ModelPricingView,
+  model: PricingModel,
+  slot: "input" | "cache" | "output",
+): PricingTableCell | undefined {
   if (view.outcome !== "offers" || view.baseOffers.length !== 1) return undefined;
   const offer = view.baseOffers[0]!;
   const context = withModelSelection(fixedOfferStateSelections(offer, model.uid), model.uid);
@@ -232,7 +268,7 @@ export function projectPricingTableCell(
       )
     )
       return undefined;
-    const prices = new Map(selected.map(({ price }) => [canonicalJson(price), price]));
+    const prices = new Map(selected.map(({ price }) => [canonicalJsonKey(price), price]));
     if (prices.size !== 1) return undefined;
     try {
       const coveredScope = unionApplicabilities(selected.map(({ applicability }) => applicability));
@@ -240,7 +276,11 @@ export function projectPricingTableCell(
     } catch {
       return undefined;
     }
-    return tableCell({ namespace: "kmodels", value: meter }, [...prices.values()][0]!);
+    return tableCell(
+      { namespace: "kmodels", value: meter },
+      [...prices.values()][0]!,
+      selected.flatMap(({ observations }) => observations),
+    );
   }
   return undefined;
 }
@@ -294,7 +334,7 @@ export function fixedOfferStateSelections(
         )
           return [];
         const value = condition.values[0]!;
-        values.set(canonicalJson(value), value);
+        values.set(canonicalJsonKey(value), value);
       }
       if (values.size !== 1) return [];
       return [
@@ -307,8 +347,25 @@ export function fixedOfferStateSelections(
     });
 }
 
-function formatRational(value: Rational): string {
-  return rationalToFiniteDecimal(value) ?? `${value.numerator}/${value.denominator}`;
+function formatRational(value: Rational): { text: string; approximate: boolean } {
+  const exact = rationalToFiniteDecimal(value);
+  return exact === undefined
+    ? { text: approximateDecimal(value), approximate: true }
+    : { text: exact, approximate: false };
+}
+
+function approximateDecimal(value: Rational): string {
+  const denominator = BigInt(value.denominator);
+  const numerator = BigInt(value.numerator);
+  const whole = numerator / denominator;
+  let remainder = numerator % denominator;
+  let fraction = "";
+  for (let index = 0; index < 12 && remainder !== 0n; index += 1) {
+    remainder *= 10n;
+    fraction += String(remainder / denominator);
+    remainder %= denominator;
+  }
+  return fraction === "" ? String(whole) : `${whole}.${fraction}`;
 }
 
 export function formatDenomination(value: PriceDenomination): string {
@@ -367,45 +424,171 @@ function displayProviderUnit(value: string): string {
   }
 }
 
-export function displayUnitPrice(price: UnitPrice) {
-  let value = price.value;
-  let displayUnit = displayUnitExpression(price.per);
-  let accessibleUnit = formatUnitExpression(price.per);
-  if (
-    price.per.factors.length === 1 &&
-    price.per.factors[0]?.power === 1 &&
-    price.per.factors[0].unit.namespace === "kmodels" &&
-    price.per.factors[0].unit.value === "token"
-  ) {
-    try {
-      value = multiplyRationals(value, { numerator: "1000000", denominator: "1" });
-      displayUnit = "1M tokens";
-      accessibleUnit = displayUnit;
-    } catch {
-      // Display scaling is optional; the exact canonical per-token rate remains valid.
+interface DisplayUnit {
+  scale: Rational;
+  display: string;
+  accessible: string;
+}
+
+interface DisplayValue {
+  amount: string;
+  unit: DisplayUnit;
+  approximate: boolean;
+}
+
+const unitScale = (value: string): Rational => ({ numerator: value, denominator: "1" });
+
+function displayUnits(value: UnitExpression): DisplayUnit[] {
+  const base = {
+    scale: unitScale("1"),
+    display: displayUnitExpression(value),
+    accessible: formatUnitExpression(value),
+  };
+  const scaled = (scale: string, display: string): DisplayUnit => ({
+    scale: unitScale(scale),
+    display,
+    accessible: display,
+  });
+  const single = value.factors.length === 1 ? value.factors[0] : undefined;
+  if (single?.power === 1 && single.unit.namespace === "kmodels") {
+    switch (single.unit.value) {
+      case "token": {
+        const million = scaled("1000000", "1M tokens");
+        return [million, base, scaled("1000", "1K tokens")];
+      }
+      case "character":
+        return [base, scaled("1000", "1K characters"), scaled("1000000", "1M characters")];
+      case "request":
+        return [base, scaled("1000", "1K requests")];
+      case "page":
+        return [base, scaled("1000", "1K pages")];
+      case "second":
+        return [base, scaled("60", "minute"), scaled("3600", "hour")];
     }
   }
-  const valueText = formatRational(value);
+  if (standardUnitProduct(value, "second", "token"))
+    return [base, scaled("3600000000", "1M tokens·hour")];
+  if (standardUnitProduct(value, "gpu", "second")) return [base, scaled("3600", "GPU·hour")];
+  if (
+    single?.power === 1 &&
+    single.unit.namespace === "provider" &&
+    single.unit.value === "search_unit"
+  )
+    return [base, scaled("1000", "1K search units")];
+  return [base];
+}
+
+function standardUnitProduct(value: UnitExpression, ...units: string[]): boolean {
+  if (value.factors.length !== units.length) return false;
+  const actual = value.factors.flatMap(({ unit, power }) =>
+    power === 1 && unit.namespace === "kmodels" ? [unit.value] : [],
+  );
+  return (
+    actual.length === units.length && actual.sort().join("\0") === [...units].sort().join("\0")
+  );
+}
+
+function sourceDisplay(
+  price: UnitPrice,
+  observations: readonly NormalizedPriceObservation[],
+  units: readonly DisplayUnit[],
+): DisplayValue | undefined {
+  if (observations.length === 0) return undefined;
+  const candidates = new Map<string, DisplayValue>();
+  for (const { raw } of observations) {
+    if (
+      raw.amount === undefined ||
+      raw.denomination === undefined ||
+      raw.unit === undefined ||
+      raw.formula !== undefined ||
+      !denominationMatches(price.denomination, raw.denomination)
+    )
+      return undefined;
+    let amount: Rational;
+    try {
+      amount = rationalFromDecimal(raw.amount);
+    } catch {
+      return undefined;
+    }
+    const matching = units.filter(({ scale }) => {
+      try {
+        return compareRationals(multiplyRationals(price.value, scale), amount) === 0;
+      } catch {
+        return false;
+      }
+    });
+    const unit = matching[0];
+    if (matching.length !== 1 || unit === undefined) return undefined;
+    const display = { amount: raw.amount, unit, approximate: false };
+    candidates.set(`${display.amount}\0${display.unit.display}`, display);
+  }
+  return candidates.size === 1 ? [...candidates.values()][0] : undefined;
+}
+
+function denominationMatches(value: PriceDenomination, source: string): boolean {
+  return value.kind === "fiat" ? value.currency === source : value.code === source;
+}
+
+function exactDisplay(price: UnitPrice, units: readonly DisplayUnit[]): DisplayValue | undefined {
+  for (const unit of units) {
+    try {
+      const amount = rationalToFiniteDecimal(multiplyRationals(price.value, unit.scale));
+      if (amount !== undefined) return { amount, unit, approximate: false };
+    } catch {
+      // Try the next reviewed display scale.
+    }
+  }
+  return undefined;
+}
+
+export function displayUnitPrice(
+  price: UnitPrice,
+  observations: readonly NormalizedPriceObservation[] = [],
+  options: { tokenDisplay?: "million" | "source" } = {},
+) {
+  const tokenDisplay = options.tokenDisplay ?? "million";
+  const units = displayUnits(price.per);
+  const fallbackUnit = units[0];
+  if (fallbackUnit === undefined) throw new Error("Price display has no unit");
+  const source =
+    tokenDisplay === "million" && units[0]?.display === "1M tokens"
+      ? undefined
+      : sourceDisplay(price, observations, units);
+  const display = source ??
+    exactDisplay(price, units) ?? {
+      amount: approximateDecimal(price.value),
+      unit: fallbackUnit,
+      approximate: true,
+    };
   const denomination = formatDenomination(price.denomination);
   return {
-    amount: formatDisplayAmount(price.denomination, value),
-    displayUnit,
-    accessibleText: `${denomination} ${valueText} per ${accessibleUnit}`,
+    amount: formatDisplayAmountText(price.denomination, display.amount, display.approximate),
+    displayUnit: display.unit.display,
+    accessibleText: `${display.approximate ? "approximately " : ""}${denomination} ${display.amount} per ${display.unit.accessible}`,
   };
 }
 
 export function formatAllowanceBenefit(value: PriceAllowanceBenefit): string {
-  return value.kind === "credit"
-    ? formatDisplayAmount(value.denomination, value.amount)
-    : `${formatRational(value.quantity.value)} ${formatUnitExpression(value.quantity.unit)}`;
+  if (value.kind === "credit") return formatDisplayAmount(value.denomination, value.amount);
+  const quantity = formatRational(value.quantity.value);
+  return `${quantity.text}${quantity.approximate ? "…" : ""} ${formatUnitExpression(value.quantity.unit)}`;
 }
 
 function formatDisplayAmount(denomination: PriceDenomination, value: Rational): string {
+  const formatted = formatRational(value);
+  return formatDisplayAmountText(denomination, formatted.text, formatted.approximate);
+}
+
+function formatDisplayAmountText(
+  denomination: PriceDenomination,
+  value: string,
+  approximate: boolean,
+): string {
   const label =
     denomination.kind === "fiat" && denomination.currency === "USD"
       ? "$"
       : formatDenomination(denomination);
-  return `${label}${label === "$" ? "" : " "}${formatRational(value)}`;
+  return `${label}${label === "$" ? "" : " "}${value}${approximate ? "…" : ""}`;
 }
 
 export function formatDimension(value: PriceDimension): string {
@@ -459,7 +642,6 @@ function withModelSelection(
   selections: readonly PricingSelection[],
   modelRef: string,
 ): PricingSelection[] {
-  const modelDimension: PriceDimension = { namespace: "kmodels", value: "model" };
   const withoutModel = selections.filter(
     ({ dimension }) => dimensionKey(dimension) !== dimensionKey(modelDimension),
   );
@@ -471,6 +653,18 @@ function withModelSelection(
       value: { namespace: "kmodels", value: modelRef },
     },
   ];
+}
+
+function categoricalValuesEqual(
+  left: PriceCategoricalValue,
+  right: PriceCategoricalValue,
+): boolean {
+  return (
+    left.namespace === right.namespace &&
+    left.value === right.value &&
+    (left.namespace !== "provider" ||
+      (right.namespace === "provider" && left.provider_id === right.provider_id))
+  );
 }
 
 function selectionMap(selections: readonly PricingSelection[]): Map<string, PricingSelection> {
@@ -492,12 +686,15 @@ function evaluateCondition(
   if (selected === undefined) return "missing";
   if (condition.kind === "categorical")
     return selected.kind === "categorical" &&
-      condition.values.some((value) => canonicalJson(value) === canonicalJson(selected.value))
+      condition.values.some((value) => categoricalValuesEqual(value, selected.value))
       ? "true"
       : "false";
   if (condition.kind === "boolean")
     return selected.kind === "boolean" && condition.value === selected.value ? "true" : "false";
-  if (selected.kind !== "decimal" || canonicalJson(selected.unit) !== canonicalJson(condition.unit))
+  if (
+    selected.kind !== "decimal" ||
+    canonicalJsonKey(selected.unit) !== canonicalJsonKey(condition.unit)
+  )
     return "false";
   const value = rationalFromDecimal(selected.value);
   if (
@@ -561,8 +758,12 @@ function slotMeters(
   return [...new Set([...prefix, ...outputMeters])];
 }
 
-function tableCell(meter: PriceMeter, price: UnitPrice): PricingTableCell {
-  const display = displayUnitPrice(price);
+function tableCell(
+  meter: PriceMeter,
+  price: UnitPrice,
+  observations: readonly NormalizedPriceObservation[],
+): PricingTableCell {
+  const display = displayUnitPrice(price, observations);
   const formattedMeter = formatMeter(meter);
   return {
     meter: formattedMeter,
@@ -576,7 +777,7 @@ function tableCell(meter: PriceMeter, price: UnitPrice): PricingTableCell {
 }
 
 function dimensionKey(value: PriceDimension): string {
-  return canonicalJson(value);
+  return canonicalJsonKey(value);
 }
 
 export function isModelDimension(dimension: PriceDimension): boolean {

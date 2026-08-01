@@ -7,8 +7,7 @@ import { sha256 } from "../src/catalog/io.ts";
 import { manifests } from "../src/catalog/manifests.ts";
 import { modelUid } from "../src/catalog/model.ts";
 import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts";
-import { prepareCatalogPair, readPricingMirrorSource } from "../src/catalog/pricing-publication.ts";
-import { pricingCatalogEnvelopeSchema } from "../src/catalog/pricing-schema.ts";
+import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import {
   catalogIdsSchema,
@@ -17,12 +16,13 @@ import {
   catalogSummarySchema,
 } from "../src/catalog/publication-schema.ts";
 import { readPublishedAssetProfile } from "../src/catalog/published-assets.ts";
-import { catalogEnvelopeSchema, catalogSchema } from "../src/catalog/schema.ts";
+import { catalogEnvelopeSchema } from "../src/catalog/schema.ts";
 import {
   websiteCatalogIndexSchema,
   websiteDetailChunkSchema,
   websitePricingSummariesSchema,
 } from "../src/catalog/website-schema.ts";
+import { generatedData } from "./generated-data-context.ts";
 
 async function json(path: string): Promise<unknown> {
   return JSON.parse(await readFile(new URL(`../${path}`, import.meta.url), "utf8"));
@@ -30,7 +30,7 @@ async function json(path: string): Promise<unknown> {
 
 describe("generated static catalog", () => {
   it("publishes every provider with coverage and resolvable provenance", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     expect(catalog.providers).toHaveLength(18);
     expect(catalog.coverage).toHaveLength(18);
     expect(catalog.models.length).toBeGreaterThan(0);
@@ -88,7 +88,7 @@ describe("generated static catalog", () => {
   });
 
   it("builds public endpoints from durable state", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const pricing = createPricingCatalogEnvelope(
       {
         provider_vocabularies: [],
@@ -214,7 +214,7 @@ describe("generated static catalog", () => {
   });
 
   it("keeps checked-in catalog exports synchronized with their projection contracts", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const published = await readPublishedAssetProfile("exports");
     const actualHashes = new Map(
       published.manifest.assets.map(({ file_name, source_sha256 }) => [file_name, source_sha256]),
@@ -225,7 +225,7 @@ describe("generated static catalog", () => {
   });
 
   it("keeps Hugging Face within its operated-service boundary", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const models = catalog.models.filter(({ provider_id }) => provider_id === "huggingface");
     const sources = new Set(models.flatMap(({ source_refs }) => source_refs));
     expect(models.length).toBeGreaterThan(500);
@@ -238,7 +238,7 @@ describe("generated static catalog", () => {
   });
 
   it("publishes Bedrock route evidence without duplicating shared endpoint facts", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const models = catalog.models.filter(({ provider_id }) => provider_id === "amazon-bedrock");
     const coverage = catalog.coverage.find(({ provider_id }) => provider_id === "amazon-bedrock");
     const deepseek = models.find(({ model_id }) => model_id === "deepseek.v3.2");
@@ -251,7 +251,7 @@ describe("generated static catalog", () => {
   });
 
   it("keeps Azure OpenAI as a service family inside Microsoft Foundry", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const models = catalog.models.filter(({ provider_id }) => provider_id === "azure");
     const families = new Set(models.flatMap(({ service_families }) => service_families ?? []));
     expect(families).toEqual(
@@ -264,7 +264,7 @@ describe("generated static catalog", () => {
   });
 
   it("publishes the repaired authenticated inventories without transport or schema failures", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const repairedSources = new Set([
       "cohere-api",
       "dashscope-deployable-api",
@@ -284,7 +284,7 @@ describe("generated static catalog", () => {
   });
 
   it("does not publish credential identities in collection diagnostics", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const diagnostics = JSON.stringify({
       coverage: catalog.coverage,
       warnings: catalog.warnings,
@@ -297,7 +297,7 @@ describe("generated static catalog", () => {
   });
 
   it("does not collapse an exact catalog ID through another model's alias", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
+    const { catalog } = await generatedData();
     const o1 = catalog.models.find((model) => model.uid === "openai/o1");
     const preview = catalog.models.find((model) => model.uid === "openai/o1-preview");
     expect({
@@ -314,10 +314,8 @@ describe("generated static catalog", () => {
   });
 
   it("publishes the complete Vercel catalog with canonical pricing", async () => {
-    const catalog = catalogSchema.parse(await json("data/catalog.json"));
-    const pricing = pricingCatalogEnvelopeSchema.parse(
-      JSON.parse(await readPricingMirrorSource()),
-    ).data;
+    const { catalog, pricing: pricingEnvelope } = await generatedData();
+    const pricing = pricingEnvelope.data;
     const models = catalog.models.filter((model) => model.provider_id === "vercel");
     const variants = pricing.books
       .filter(({ provider_id }) => provider_id === "vercel")

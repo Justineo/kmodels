@@ -1,10 +1,34 @@
 import { apiEndpointKey, modelRouteKey, modelUid } from "./model.ts";
 import { providerModelSchema, type ProviderModel } from "./schema.ts";
 
-export interface ValidationResult {
-  ok: boolean;
-  reason?: string;
+type ProviderValidationIssueCode =
+  | "empty_candidate"
+  | "schema_invalid"
+  | "uid_mismatch"
+  | "duplicate_model"
+  | "duplicate_service_family"
+  | "duplicate_api_endpoint"
+  | "duplicate_route"
+  | "missing_route_source"
+  | "duplicate_availability"
+  | "model_count_drop"
+  | "service_family_count_drop"
+  | "api_endpoint_count_drop"
+  | "route_count_drop"
+  | "availability_count_drop";
+
+export interface ProviderValidationIssue {
+  code: ProviderValidationIssueCode;
+  message: string;
+  model_ref?: string;
+  previous?: number;
+  current?: number;
+  minimum_ratio?: number;
 }
+
+export type ValidationResult =
+  | { ok: true; issue?: never }
+  | { ok: false; issue: ProviderValidationIssue };
 
 type CountedField = "service_families" | "api_endpoints" | "routes" | "availability";
 
@@ -12,66 +36,104 @@ function count(models: ProviderModel[], field: CountedField): number {
   return models.reduce((total, model) => total + (model[field]?.length ?? 0), 0);
 }
 
+function invalid(
+  code: ProviderValidationIssueCode,
+  message: string,
+  detail: Omit<ProviderValidationIssue, "code" | "message"> = {},
+): ValidationResult {
+  return { ok: false, issue: { code, message, ...detail } };
+}
+
+function dropped(
+  code: ProviderValidationIssueCode,
+  label: string,
+  previous: number,
+  current: number,
+  minimumRatio: number,
+): ValidationResult | undefined {
+  return previous > 0 && current < previous * minimumRatio
+    ? invalid(code, `${label} dropped by more than ${Math.round((1 - minimumRatio) * 100)}%`, {
+        previous,
+        current,
+        minimum_ratio: minimumRatio,
+      })
+    : undefined;
+}
+
 export function validateProvider(
   models: ProviderModel[],
   previous: ProviderModel[],
 ): ValidationResult {
-  if (models.length === 0) return { ok: false, reason: "candidate catalog is empty" };
+  if (models.length === 0) return invalid("empty_candidate", "candidate catalog is empty");
   const uids = new Set<string>();
   for (const model of models) {
     const parsed = providerModelSchema.safeParse(model);
-    if (!parsed.success) return { ok: false, reason: `schema validation failed for ${model.uid}` };
+    if (!parsed.success)
+      return invalid("schema_invalid", `schema validation failed for ${model.uid}`, {
+        model_ref: model.uid,
+      });
     if (model.uid !== modelUid(model.provider_id, model.model_id, model.version))
-      return { ok: false, reason: `UID mismatch for ${model.model_id}` };
-    if (uids.has(model.uid)) return { ok: false, reason: `duplicate model ${model.uid}` };
+      return invalid("uid_mismatch", `UID mismatch for ${model.model_id}`, {
+        model_ref: model.uid,
+      });
+    if (uids.has(model.uid))
+      return invalid("duplicate_model", `duplicate model ${model.uid}`, {
+        model_ref: model.uid,
+      });
     uids.add(model.uid);
     const serviceFamilies = new Set<string>();
     for (const family of model.service_families ?? []) {
       if (serviceFamilies.has(family))
-        return { ok: false, reason: `duplicate service family for ${model.uid}` };
+        return invalid("duplicate_service_family", `duplicate service family for ${model.uid}`, {
+          model_ref: model.uid,
+        });
       serviceFamilies.add(family);
     }
     const endpoints = new Set<string>();
     for (const endpoint of model.api_endpoints ?? []) {
       const key = apiEndpointKey(endpoint);
       if (endpoints.has(key))
-        return { ok: false, reason: `duplicate API endpoint for ${model.uid}` };
+        return invalid("duplicate_api_endpoint", `duplicate API endpoint for ${model.uid}`, {
+          model_ref: model.uid,
+        });
       endpoints.add(key);
     }
     const routes = new Set<string>();
     for (const route of model.routes ?? []) {
       const key = modelRouteKey(route);
-      if (routes.has(key)) return { ok: false, reason: `duplicate route for ${model.uid}` };
+      if (routes.has(key))
+        return invalid("duplicate_route", `duplicate route for ${model.uid}`, {
+          model_ref: model.uid,
+        });
       if (!model.source_refs.includes(route.source_ref))
-        return { ok: false, reason: `route source is missing for ${model.uid}` };
+        return invalid("missing_route_source", `route source is missing for ${model.uid}`, {
+          model_ref: model.uid,
+        });
       routes.add(key);
     }
     const availability = new Set<string>();
     for (const item of model.availability ?? []) {
       const key = `${item.region}\0${item.deployment_type}`;
       if (availability.has(key))
-        return { ok: false, reason: `duplicate availability for ${model.uid}` };
+        return invalid("duplicate_availability", `duplicate availability for ${model.uid}`, {
+          model_ref: model.uid,
+        });
       availability.add(key);
     }
   }
 
-  if (previous.length > 0 && models.length < previous.length * 0.9)
-    return { ok: false, reason: "model count dropped by more than 10%" };
-  const previousServiceFamilies = count(previous, "service_families");
-  if (
-    previousServiceFamilies > 0 &&
-    count(models, "service_families") < previousServiceFamilies * 0.8
-  )
-    return { ok: false, reason: "service-family count dropped by more than 20%" };
-  const previousEndpoints = count(previous, "api_endpoints");
-  if (previousEndpoints > 0 && count(models, "api_endpoints") < previousEndpoints * 0.8)
-    return { ok: false, reason: "API endpoint count dropped by more than 20%" };
-  const previousRoutes = count(previous, "routes");
-  if (previousRoutes > 0 && count(models, "routes") < previousRoutes * 0.8)
-    return { ok: false, reason: "route count dropped by more than 20%" };
-  const previousAvailability = count(previous, "availability");
-  if (previousAvailability > 0 && count(models, "availability") < previousAvailability * 0.8)
-    return { ok: false, reason: "availability count dropped by more than 20%" };
+  const modelDrop = dropped("model_count_drop", "model count", previous.length, models.length, 0.9);
+  if (modelDrop !== undefined) return modelDrop;
+  const countedFields = [
+    ["service_families", "service_family_count_drop", "service-family count"],
+    ["api_endpoints", "api_endpoint_count_drop", "API endpoint count"],
+    ["routes", "route_count_drop", "route count"],
+    ["availability", "availability_count_drop", "availability count"],
+  ] as const satisfies readonly (readonly [CountedField, ProviderValidationIssueCode, string])[];
+  for (const [field, code, label] of countedFields) {
+    const fieldDrop = dropped(code, label, count(previous, field), count(models, field), 0.8);
+    if (fieldDrop !== undefined) return fieldDrop;
+  }
 
   return { ok: true };
 }

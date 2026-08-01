@@ -7,6 +7,7 @@ import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset
 import {
   commitCatalogPair,
   prepareCatalogPair,
+  prepareCatalogPairInParallel,
   readCatalogPairMirrors,
   recoverCatalogPair,
   type CatalogPairPaths,
@@ -74,6 +75,20 @@ async function expectProjectionPair(paths: ProjectionPaths, pairId: string): Pro
 }
 
 describe("crash-consistent catalog pair publication", () => {
+  it("prepares the same immutable pair with parallel validation", async () => {
+    const serial = prepareCatalogPair(catalog(), pricing);
+    const parallel = await prepareCatalogPairInParallel(catalog(), pricing);
+    expect(parallel).toEqual(serial);
+    expect(Object.isFrozen(parallel)).toBe(true);
+    expect(Object.isFrozen(parallel.pricing.data)).toBe(true);
+  });
+
+  it("commits only the exact immutable object returned by preparation", async () => {
+    const output = await paths();
+    const candidate = prepareCatalogPair(catalog(), pricing);
+    await expect(commitCatalogPair({ ...candidate }, output)).rejects.toThrow("was not prepared");
+  });
+
   it("commits and recovers one exact accepted asset pair", async () => {
     const output = await paths();
     const candidate = prepareCatalogPair(catalog(), pricing);

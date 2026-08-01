@@ -48,6 +48,7 @@ vp dev
 | `vp run collect`         | Refresh catalog, pricing, projections, and the semantic summary |
 | `vp run compile:pricing` | Recompile canonical pricing offline from retained parsed inputs |
 | `vp run prepare:assets`  | Regenerate UI and export assets from the accepted pair          |
+| `vp run report:refresh`  | Render the latest structured refresh report                     |
 | `vp check`               | Format, lint, and type-check                                    |
 | `vp test --run`          | Run fixtures, drift guards, and behavior tests                  |
 | `vp run build`           | Build the static site and materialize validated JSON exports    |

@@ -28,10 +28,10 @@ jobs:
         run: vp install --frozen-lockfile
 
       - name: Check
-        run: pnpm check
+        run: vp check
 
       - name: Test
-        run: pnpm test
+        run: vp test --run
 
       - name: Build
-        run: pnpm build
+        run: vp run build

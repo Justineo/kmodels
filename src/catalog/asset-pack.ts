@@ -61,6 +61,8 @@ export interface EncodedAssetPack {
 
 const ASSET_MANIFEST_MAX_BYTES = 1024 * 1024;
 const ASSET_SOURCE_MAX_BYTES = 128 * 1024 * 1024;
+const CANONICAL_GZIP_OS = 3;
+const GZIP_OS_OFFSET = 9;
 const PACK_MAX_BYTES: Record<AssetPackProfile, number> = {
   ui: 16 * 1024 * 1024,
   exports: 32 * 1024 * 1024,
@@ -87,6 +89,8 @@ export function createAssetPack(
       if (sourceBytes.byteLength > ASSET_SOURCE_MAX_BYTES)
         throw new Error(`${fileName} exceeds the decoded asset limit`);
       const chunk = gzipSync(sourceBytes);
+      // Asset hashes must not depend on zlib's host-specific gzip metadata.
+      chunk[GZIP_OS_OFFSET] = CANONICAL_GZIP_OS;
       chunks.push(chunk);
       const entry = {
         file_name: fileName,

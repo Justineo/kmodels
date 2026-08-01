@@ -450,6 +450,13 @@ RFC 8785 canonical JSON is used after semantic canonicalization. Set-like
 arrays have one schema-owned sort key and reject duplicate identities. Source
 sequences retain source order only where order is itself evidence.
 
+Validation checks the complete graph for I-JSON once. Canonical object keys and
+immutable applicability relations are identity-cached across validation and
+projection, while repeated equal applicability values share one canonicality
+check within the catalog. Resource limits use ordinary JSON byte length because
+member ordering changes byte order, not UTF-8 byte count. Canonical
+serialization remains authoritative for hashes and published bytes.
+
 Stable resource IDs are SHA-256 hashes of domain-separated canonical identity:
 
 - book: provider ID and reviewed `book_key`;
@@ -513,12 +520,16 @@ rather than silently switching commercial meaning. Lower-priority meters remain
 detail-only. The projection never adds terms, compares currencies, converts
 provider credits, or chooses a minimum/maximum.
 
-Exact per-token values may be displayed per million tokens when bounded exact
-arithmetic succeeds. Other standard and reviewed provider units retain their
-native unit. A finite exact rational is rendered as a decimal; a
-non-terminating rational remains a fraction. Display never uses binary floating
-point or an unmarked approximation. USD uses `$` in visible copy and retains
-`USD` in accessible copy.
+Representative token rates are displayed per million tokens when bounded exact
+arithmetic succeeds. Other rates prefer one source-native amount and reviewed
+fixed-unit scale when every observation establishes that same display and it
+reproduces the canonical price exactly. When observations use different source
+scales or describe a derived result, presentation chooses the first reviewed
+scale that yields an exact finite decimal. Internal canonical rationals are
+never exposed as UI fractions. The final fallback is a visibly truncated
+decimal whose accessible copy says `approximately`; it is not used for
+comparison or calculation. Display arithmetic never uses binary floating
+point. USD uses `$` in visible copy and retains `USD` in accessible copy.
 
 When no representative number exists, one dotted-underlined text status spans
 all three price columns and exposes its explanation through the shared tooltip:
@@ -565,9 +576,11 @@ raw base pricing marks the offer incomplete while normalized rows remain
 available after resolution. Raw allowance facts similarly make only the
 allowance summary incomplete.
 
-The compact detail payload contains display-ready exact values and selectors,
-not audit observations. Equal observations remain one row rather than being
-expanded back into the source's flattened layout.
+The compact detail payload contains display-ready values and selectors, not
+audit observations. Source-native display strings are derived while the
+validated observations are available and then emitted without their locators,
+raw fields, or evidence arrays. Equal observations remain one row rather than
+being expanded back into the source's flattened layout.
 
 ## Validation and bounded work
 
@@ -616,9 +629,12 @@ For each provider:
 Safety findings override ordinary availability retention. Known-unsafe bytes
 are never republished merely because a refresh failed.
 
-After provider transitions, the complete catalog and pricing envelopes are
-validated again. Publication stages immutable snapshots and atomically advances
-one pair manifest; mirrors are repairable from that pointer after interruption.
+After provider transitions, publication checks whole-catalog topology, identity,
+I-JSON, and size once, while four work-conserving workers validate the provider
+partitions. Canonical serialization runs concurrently with those independent
+checks. The resulting exact pair candidate is deeply immutable, so commit does
+not repeat validation before staging snapshots and atomically advancing one
+pair manifest. Mirrors are repairable from that pointer after interruption.
 Consumers therefore observe one accepted old pair or one accepted new pair,
 never a mixed pair.
 

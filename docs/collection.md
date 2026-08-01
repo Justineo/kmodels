@@ -41,9 +41,13 @@ Status: implemented
 ## Fetching and raw data
 
 - Every response is size-limited, time-limited, fetched in full, and redirected only to reviewed hosts.
-- Invoke `curl` without a shell for HTTP transport. Retry transient HTTP failures and reviewed
-  cloud throttling responses, including rate-limit bodies returned with a successful status.
+- Invoke `curl` without a shell for HTTP transport. One shared retry policy handles transient HTTP
+  failures and reviewed cloud throttling responses, including rate-limit bodies returned with a
+  successful status. It makes at most three attempts, honors bounded `Retry-After`, and otherwise
+  uses exponential backoff with full jitter. Transports do not add an independent retry loop.
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
+- Bounded multi-document fetches assign the next item to the first free slot while preserving
+  deterministic result order.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
 - Raw replay requires a separately configured external artifact system. The
@@ -72,7 +76,31 @@ Status: implemented
   its presence; overlay and inventory provenance can never keep a row alive. Missing observations
   from non-exhaustive catalogs remain protected. Reviewed superseded rows may still be removed
   explicitly.
-- Every run writes `data/refresh-summary.json`, a deterministic semantic diff with provider/model/source counts, changed-field counts, content changes, coverage, and warning codes. It never copies raw data or private unmatched IDs.
+
+## Refresh evidence
+
+- An observation attempt and its publication decision are separate facts. A rejected attempt
+  records the candidate delta, structured validation issue, and source outcomes while the published
+  provider remains the last accepted partition. Reports never make a rejected candidate look like
+  a successful no-op.
+- Source attempts use finite outcomes: changed, unchanged, fetch failed, parse failed, or skipped
+  because configuration is absent. Provider drift guards use finite issue codes plus the measured
+  previous value, candidate value, and threshold where applicable.
+- `data/refresh-summary.json` is the deterministic report for the accepted run. It includes exact
+  added and removed model refs, changed refs and fields, status and task transitions, exact changed
+  sources, pricing outcomes, warnings, and the corresponding attempt evidence. It never copies raw
+  response data, exception stacks, credentials, or private unmatched IDs.
+- The run-level semantic outcome (`changed`, `evidence_only`, or `unchanged`) is independent of
+  publication completeness (`complete` or `partial`). A retained provider therefore cannot hide
+  behind an “unchanged” label, and provenance-only churn is not presented as a commercial change.
+- Deterministic evidence supports, but does not pretend to replace, human judgment. A parse failure
+  or abrupt count loss may emit `possible_structural_change`; it does not claim that a provider
+  redesigned its site. Repeated reviewed judgments belong in manifests, parsers, and explicit
+  thresholds so later runs can decide them without an LLM.
+- `KMODELS_REFRESH_REPORT_PATH` may name an ephemeral copy written before pair publication. CI uses
+  it for the job summary and retained artifact. This copy also carries provider wall-clock
+  durations for performance diagnosis. The committed summary is written only after the
+  catalog/pricing pair advances successfully and excludes nondeterministic timing data.
 
 ## Pricing
 
@@ -136,7 +164,9 @@ The committed generated state is:
 - `data/quarantine.json`
 - `data/refresh-summary.json`
 
-After candidate validation, one projection stage creates both packs before the
+Candidate preparation overlaps canonical serialization with work-conserving
+provider validation, then freezes the exact accepted candidate. One projection
+stage creates both packs without a redundant validation pass before the
 accepted-pair pointer advances. Immutable pair snapshots and the atomic current
 pointer remain authoritative during collection and recovery; canonical and
 derived mirrors are repaired from that pointer after interruption. The
