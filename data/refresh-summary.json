@@ -1,8 +1,8 @@
 {
-  "catalog_version": "0dd8d39715c3a014ce2acfca3c328abec9796ec6dd62ea18b5de1e0e8953bd0e",
-  "generated_at": "2026-08-01T13:29:55.697Z",
+  "catalog_version": "3955f494b7539a32caa85a1bd0f6c8431a24b069ee001849506302a04414edb1",
+  "generated_at": "2026-08-01T14:29:52.763Z",
   "outcome": "changed",
-  "previous_catalog_version": "8ddca26a9b761d74903e1455f9e8372de1ed22559e2d7b9e08f25ed5f95e4d62",
+  "previous_catalog_version": "0dd8d39715c3a014ce2acfca3c328abec9796ec6dd62ea18b5de1e0e8953bd0e",
   "providers": [
     {
       "attempt": {
@@ -1112,9 +1112,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
@@ -1143,20 +1143,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2153,34 +2146,35 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1402,
+            "parsed_models": 1403,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 130,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1402,
+            "parsed_models": 1403,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 1,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/zai-org/GLM-4.5"
+          "huggingface/YituTech/conv-bert-base",
+          "huggingface/zai-org/GLM-5.1-FP8"
         ],
-        "changed": 29,
+        "changed": 31,
         "changed_fields": {
-          "capabilities": 2,
-          "limits": 28
+          "capabilities": 6,
+          "limits": 29
         },
         "changed_models": [
           {
@@ -2263,6 +2257,19 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-Next-80B-A3B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
+          {
+            "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -2281,12 +2288,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2299,13 +2300,13 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
@@ -2321,6 +2322,13 @@
               "limits"
             ],
             "model_ref": "huggingface/utter-project/EuroLLM-22B-Instruct-2512"
+          },
+          {
+            "fields": [
+              "capabilities",
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.5"
           },
           {
             "fields": [
@@ -2354,23 +2362,22 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1531,
+        "current": 1533,
         "previous": 1531,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/YituTech/conv-bert-base"
-        ],
-        "unchanged": 1501
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1500
       },
       "pricing": {
-        "commercial_hash": "6cd13810aabb99411b3b78294a5174c59f3ec616e394ab0353253bd91bca8565",
+        "commercial_hash": "6e23aa2ee8b0b35e4e5700eb690d71d770caba7e084726055c0bca3fca35a4d5",
         "outcome": "commercial",
-        "previous_commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64"
+        "previous_commercial_hash": "6cd13810aabb99411b3b78294a5174c59f3ec616e394ab0353253bd91bca8565"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -3292,13 +3299,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 1,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 298,
-    "changed_sources": 28,
-    "models": 3364,
+    "changed_models": 300,
+    "changed_sources": 27,
+    "models": 3366,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
