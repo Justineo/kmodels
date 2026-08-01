@@ -1,16 +1,42 @@
 {
-  "catalog_version": "98357e497ec2971d7535c8678759727a267bd5da958b2f70f2e2a1732bbf14c1",
-  "generated_at": "2026-08-01T00:23:11.747Z",
-  "previous_catalog_version": "6bd4ec9f72027e1d13972ea1d98061673f0df1fb51a2e8c355291b42709d3d7e",
+  "catalog_version": "2febc1b3716d8e5160aff4b6fa9de7befebe8adef001c3cdcde3379bccd9e738",
+  "generated_at": "2026-08-01T03:01:04.264Z",
+  "outcome": "changed",
+  "previous_catalog_version": "98357e497ec2971d7535c8678759727a267bd5da958b2f70f2e2a1732bbf14c1",
   "providers": [
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 129,
+            "source_id": "bedrock-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 119,
+            "source_id": "bedrock-api-us-east-1"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 129,
         "previous": 129,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 129
       },
       "pricing": {
@@ -19,12 +45,17 @@
         "previous_commercial_hash": "064b030c8b1c2d3bc93bc6cb7e7755593c204e9fbe98e76b923dde92df93814a"
       },
       "provider_id": "amazon-bedrock",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 2
       },
       "status": "fresh",
@@ -35,13 +66,38 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 31,
+            "source_id": "anthropic-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 11,
+            "source_id": "anthropic-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 31,
         "previous": 31,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 31
       },
       "pricing": {
@@ -50,12 +106,17 @@
         "previous_commercial_hash": "7c6ca422e93a9901c639e01b71cc07a30429a3cb47118df18724acab8a55f6a9"
       },
       "provider_id": "anthropic",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 2
       },
       "status": "fresh",
@@ -66,14 +127,929 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 223,
+            "source_id": "azure-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 72,
+            "source_id": "azure-retail-prices"
+          },
+          {
+            "message": "Required credential(s) AZURE_TENANT_ID and AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and AZURE_SUBSCRIPTION_ID and AZURE_LOCATION are not configured.",
+            "outcome": "skipped_not_configured",
+            "source_id": "azure-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
-        "changed": 0,
-        "changed_fields": {},
+        "added_model_refs": [],
+        "changed": 147,
+        "changed_fields": {
+          "limits": 147
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Codestral-2501@2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-command-a-plus-05-2026@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-embed-v3-english@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-embed-v3-multilingual@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-rerank-v4.0-fast@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-rerank-v4.0-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V3.2-Speciale@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V3.2@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V4-Flash@2026-04-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V4-Pro@2026-04-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX-1.1-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX.1-Kontext-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX.2-flex@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX.2-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Kimi-K2.5@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Kimi-K2.6@2026-04-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Kimi-K2.7-Code@2026-06-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Llama-3.3-70B-Instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Llama-4-Maverick-17B-128E-Instruct-FP8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Llama-4-Scout-17B-16E-Instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/MAI-Image-2.5-Flash@2026-06-02"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/MAI-Image-2.5-Pro@2026-06-19"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/MAI-Image-2.5@2026-06-02"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Ministral-3B@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Mistral-Large-3@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-mini-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-mini-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-multimodal-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-fable-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-haiku-4-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-mythos-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-mythos-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-6"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-7"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-sonnet-4-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-sonnet-4-6"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-sonnet-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/codex-mini@2025-05-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/cohere-command-a@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/computer-use-preview@2025-03-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/embed-v-4-0@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4.1-mini@2025-04-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4.1-nano@2025-04-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4.1@2025-04-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4@turbo-2024-04-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-audio-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-audio-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-realtime-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-transcribe@2025-03-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-transcribe@2025-12-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-tts@2025-03-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-tts@2025-12-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini@2024-07-18"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-realtime-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-realtime-preview@2025-06-03"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-transcribe-diarize@2025-10-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-transcribe@2025-03-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o@2024-05-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o@2024-08-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o@2024-11-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-chat@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-chat@2025-10-03"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-codex@2025-09-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-mini@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-nano@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-pro@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-chat@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-codex-max@2025-12-04"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-codex-mini@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-codex@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2-chat@2025-12-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2-chat@2026-02-10"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2-codex@2026-01-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2@2025-12-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.3-chat@2026-03-03"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.3-codex@2026-02-24"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4-mini@2026-03-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4-nano@2026-03-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4-pro@2026-03-05"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4@2026-03-05"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.5@2026-04-24"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.6-luna@2026-07-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.6-sol@2026-07-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.6-terra@2026-07-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-audio-1.5@2026-02-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-audio-mini@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-audio@2025-08-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-chat-latest@2026-05-05"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-chat-latest@2026-05-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-chat-latest@2026-06-24"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-image-1-mini@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-image-1.5@2025-12-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-image-1@2025-04-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-live-transcribe@2026-07-29"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-oss-120b@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-oss-20b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-1.5@2026-02-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-2.1-mini@2026-07-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-2.1@2026-07-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-2@2026-05-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-mini@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-mini@2025-12-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-translate@2026-05-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-whisper@2026-05-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime@2025-08-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-transcribe"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4-20-non-reasoning@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4-20-reasoning@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4.1-fast-non-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4.1-fast-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4.3@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-code-fast-1@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-document-ai-2512@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-medium-2505@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-medium-3-5@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-ocr-4-0"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-small-2503@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mistral-7B-Instruct-v0-2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mistral-7B-Instruct-v01"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mixtral-8x22B-Instruct-v0-1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mixtral-8x7B-Instruct-v01"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/model-router"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o1-mini@2024-09-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o1-preview@2024-09-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o1@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o3-mini@2025-01-31"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o3-pro@2025-06-10"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o3@2025-04-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o4-mini@2025-04-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/sora"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-3-large@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-3-small@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-ada-002@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-ada-002@2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/tsuzumi-7b@2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/tts-hd@001"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/tts@001"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/whisper@001"
+          }
+        ],
         "current": 226,
         "previous": 226,
         "removed": 0,
-        "unchanged": 226
+        "removed_model_refs": [],
+        "unchanged": 79
       },
       "pricing": {
         "commercial_hash": "9af7c94eca46f550045bba6b049ad901376737fefadde4471fdf8178bcf1c74c",
@@ -81,13 +1057,18 @@
         "previous_commercial_hash": "9af7c94eca46f550045bba6b049ad901376737fefadde4471fdf8178bcf1c74c"
       },
       "provider_id": "azure",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
-        "changed": 1,
+        "added_source_ids": [],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
-        "unchanged": 1
+        "removed_source_ids": [],
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -96,13 +1077,59 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 3,
+            "source_id": "cerebras-catalog"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 3,
+            "source_id": "cerebras-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 12,
+            "source_id": "cerebras-lifecycle"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 12,
+            "source_id": "cerebras-releases"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 3,
+            "source_id": "cerebras-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 15,
         "previous": 15,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 15
       },
       "pricing": {
@@ -111,12 +1138,24 @@
         "previous_commercial_hash": "b812107f3c4bcd9b322ca570b1a04ee8f1c829325d142c84838f13696cd69dba"
       },
       "provider_id": "cerebras",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 4
       },
       "status": "fresh",
@@ -127,13 +1166,38 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 43,
+            "source_id": "cohere-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 31,
+            "source_id": "cohere-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 43,
         "previous": 43,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 43
       },
       "pricing": {
@@ -142,12 +1206,24 @@
         "previous_commercial_hash": "e3805a03b08e4a4b9f4e0f1a52179ba847735c95296346bc6fdb352c741dc116"
       },
       "provider_id": "cohere",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cohere-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "fresh",
@@ -158,14 +1234,612 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 21,
+            "source_id": "dashscope-recommended"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 92,
+            "source_id": "dashscope-text"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 16,
+            "source_id": "dashscope-vision"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 28,
+            "source_id": "dashscope-image"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 35,
+            "source_id": "dashscope-video"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 32,
+            "source_id": "dashscope-asr"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 30,
+            "source_id": "dashscope-tts"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 29,
+            "source_id": "dashscope-s2s"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 29,
+            "source_id": "dashscope-omni"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 7,
+            "source_id": "dashscope-embedding"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 333,
+            "source_id": "dashscope-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 64,
+            "source_id": "dashscope-lifecycle"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 234,
+            "source_id": "dashscope-releases"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 16,
+            "source_id": "dashscope-deployable-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
-        "changed": 0,
-        "changed_fields": {},
+        "added_model_refs": [],
+        "changed": 81,
+        "changed_fields": {
+          "limits": 81
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/cosyvoice-v3-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/cosyvoice-v3.5-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/fun-asr"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/fun-asr-realtime"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/glm-4.6"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/glm-5.2-fast-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/happyhorse-1.0-video-edit"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/happyhorse-1.1-i2v"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/happyhorse-1.1-r2v"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/happyhorse-1.1-t2v"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/kimi-k2.7-code"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-realtime-flash"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-realtime-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-audio-3.0-tts-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-flash-2025-07-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-flash-2025-07-28-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-flash-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-pro"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-pro-2026-06-22"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-01-25"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-04-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-07-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-07-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-09-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-12-01"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-2025-12-01-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-latest"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-plus-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-vl-max"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-vl-ocr"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-vl-ocr-2025-11-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-vl-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-voice-design"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen-voice-enrollment"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-livetranslate-flash"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-livetranslate-flash-realtime"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-omni-30b-a3b-captioner"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-omni-flash"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-omni-flash-realtime"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-235b-a22b-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-235b-a22b-thinking"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-30b-a3b-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-30b-a3b-thinking"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-32b-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-32b-thinking"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-8b-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-8b-thinking"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-flash"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-flash-2025-10-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-flash-2025-10-15-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-flash-2026-01-22"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-flash-2026-01-22-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-flash-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-plus-2025-09-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3-vl-plus-2025-12-19"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.5-livetranslate-flash-realtime"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.5-omni-flash"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.5-omni-flash-realtime"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.5-omni-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.5-omni-plus-realtime"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.5-plus-2026-04-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.6-27b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.7-max-2026-05-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.7-max-2026-06-08"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.7-max-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.7-plus-us"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/video-style-transform"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.2-animate-mix"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.2-animate-move"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-i2v-2026-04-25"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-image"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-image-pro"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-r2v"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-r2v-2026-06-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-t2v-2026-06-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wan2.7-videoedit"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wanx2.1-t2v-plus"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/wanx2.1-t2v-turbo"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/z-image-turbo"
+          }
+        ],
         "current": 373,
         "previous": 373,
         "removed": 0,
-        "unchanged": 373
+        "removed_model_refs": [],
+        "unchanged": 292
       },
       "pricing": {
         "commercial_hash": "732a143d93396b02320098cc7d4168b06ee5419a19bc6f638a25260aab90957b",
@@ -173,12 +1847,96 @@
         "previous_commercial_hash": "732a143d93396b02320098cc7d4168b06ee5419a19bc6f638a25260aab90957b"
       },
       "provider_id": "dashscope",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 13,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-asr"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-embedding"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-image"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-lifecycle"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-omni"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-pricing"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-recommended"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-releases"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-s2s"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-text"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-tts"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-video"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-vision"
+          }
+        ],
         "current": 14,
         "previous": 14,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "fresh",
@@ -189,13 +1947,38 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 50,
+            "source_id": "databricks-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 42,
+            "source_id": "databricks-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 50,
         "previous": 50,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 50
       },
       "pricing": {
@@ -204,12 +1987,24 @@
         "previous_commercial_hash": "647363b149a4433d13143bb21bdf09758382ae7ba2ad64a6289da1286722a425"
       },
       "provider_id": "databricks",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "fresh",
@@ -220,13 +2015,45 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 2,
+            "source_id": "deepseek-catalog"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 5,
+            "source_id": "deepseek-updates"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 2,
+            "source_id": "deepseek-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 2
       },
       "pricing": {
@@ -235,12 +2062,17 @@
         "previous_commercial_hash": "4952f7285afd7c4dc26f8feb817f4024f357922727ae6b4430d5c73d09c3bb5a"
       },
       "provider_id": "deepseek",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 3
       },
       "status": "fresh",
@@ -250,13 +2082,38 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 75,
+            "source_id": "gemini-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 58,
+            "source_id": "gemini-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 75,
         "previous": 75,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 75
       },
       "pricing": {
@@ -265,12 +2122,24 @@
         "previous_commercial_hash": "eadcf4ba7f80f33c77d25c58bd55a4c05d7eb196fd29156f28d42d096045559d"
       },
       "provider_id": "gemini",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "gemini-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "fresh",
@@ -281,30 +2150,260 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 1403,
+            "source_id": "huggingface-hf-inference"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 127,
+            "source_id": "huggingface-router"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 1403,
+            "source_id": "huggingface-hub"
+          }
+        ]
+      },
       "models": {
         "added": 0,
-        "changed": 5,
+        "added_model_refs": [],
+        "changed": 30,
         "changed_fields": {
-          "capabilities": 5
+          "capabilities": 4,
+          "limits": 27
         },
-        "current": 1532,
-        "previous": 1533,
-        "removed": 1,
-        "unchanged": 1527
+        "changed_models": [
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/aya-expanse-32b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/aya-vision-32b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/c4ai-command-a-03-2025"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/c4ai-command-r-08-2024"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-12-2024"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/command-a-reasoning-08-2025"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/command-a-translate-08-2025"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/tiny-aya-earth"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/tiny-aya-fire"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/tiny-aya-global"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/CohereLabs/tiny-aya-water"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen2.5-Coder-3B-Instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-Next-80B-A3B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
+          },
+          {
+            "fields": [
+              "capabilities",
+              "limits"
+            ],
+            "model_ref": "huggingface/aisingapore/Qwen-SEA-LION-v4-32B-IT"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-70B-Instruct-2509"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-8B"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/utter-project/EuroLLM-22B-Instruct-2512"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.5V-FP8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.6-FP8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.6V"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.6V-FP8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
+          }
+        ],
+        "current": 1530,
+        "previous": 1532,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/zai-org/GLM-4.7-FP8",
+          "huggingface/zai-org/GLM-5.1-FP8"
+        ],
+        "unchanged": 1500
       },
       "pricing": {
-        "commercial_hash": "835c7314360275cbb4143598c5cd6746355fa3e7ae5e83e1238a3a884c970169",
-        "outcome": "provenance_only",
+        "commercial_hash": "f5988976aa3ea9ee510a9161a24a34f61d12eb843e7f77a8eee593e345e1aa10",
+        "outcome": "commercial",
         "previous_commercial_hash": "835c7314360275cbb4143598c5cd6746355fa3e7ae5e83e1238a3a884c970169"
       },
       "provider_id": "huggingface",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
-        "changed": 3,
+        "added_source_ids": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-router"
+          }
+        ],
         "current": 3,
         "previous": 3,
         "removed": 0,
-        "unchanged": 0
+        "removed_source_ids": [],
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -312,14 +2411,178 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 12,
+            "source_id": "kimi-openapi"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 18,
+            "source_id": "kimi-catalog"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 11,
+            "source_id": "kimi-pricing"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 11,
+            "source_id": "kimi-international-pricing"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 12,
+            "source_id": "kimi-releases"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 12,
+            "source_id": "kimi-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
-        "changed": 0,
-        "changed_fields": {},
+        "added_model_refs": [],
+        "changed": 18,
+        "changed_fields": {
+          "limits": 18
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2-0711-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2-0905-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2-thinking"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2-thinking-turbo"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2-turbo-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2.5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2.6"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2.7-code"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-k2.7-code-highspeed"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-latest"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/kimi-thinking-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-128k"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-128k-vision-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-32k"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-32k-vision-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-8k"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-8k-vision-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "kimi/moonshot-v1-auto"
+          }
+        ],
         "current": 19,
         "previous": 19,
         "removed": 0,
-        "unchanged": 19
+        "removed_model_refs": [],
+        "unchanged": 1
       },
       "pricing": {
         "commercial_hash": "38e17daa8cb3430aaf1fdbabb4516597df691ab53f610b33b1d091d4ed07b944",
@@ -327,12 +2590,24 @@
         "previous_commercial_hash": "38e17daa8cb3430aaf1fdbabb4516597df691ab53f610b33b1d091d4ed07b944"
       },
       "provider_id": "kimi",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-api"
+          }
+        ],
         "current": 6,
         "previous": 6,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 5
       },
       "status": "fresh",
@@ -343,13 +2618,36 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 48,
+            "source_id": "llama-models"
+          },
+          {
+            "message": "Required credential(s) LLAMA_API_KEY are not configured.",
+            "outcome": "skipped_not_configured",
+            "source_id": "llama-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 48,
         "previous": 48,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 48
       },
       "pricing": {
@@ -358,12 +2656,24 @@
         "previous_commercial_hash": "70f7b26491f19c50cb4175ab4462a77427d5fc7404ab8c9f1a870605f0ff31a9"
       },
       "provider_id": "llama",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "llama-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 0
       },
       "status": "fresh",
@@ -372,13 +2682,38 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 59,
+            "source_id": "mistral-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 52,
+            "source_id": "mistral-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 58,
         "previous": 58,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 58
       },
       "pricing": {
@@ -387,12 +2722,24 @@
         "previous_commercial_hash": "38764268f2d3deb06272b02520b71b195054757fa80fd682fc851445c26eec5b"
       },
       "provider_id": "mistral",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "mistral-api"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "fresh",
@@ -403,13 +2750,38 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 232,
+            "source_id": "ollama-library"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 20,
+            "source_id": "ollama-cloud-models"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 238,
         "previous": 238,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 238
       },
       "pricing": {
@@ -418,12 +2790,30 @@
         "previous_commercial_hash": "44212660202fa62e61ed4866541e5c92a50eeeebaaca5140ae6ea280bd822889"
       },
       "provider_id": "ollama",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "ollama-cloud-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "ollama-library"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 0
       },
       "status": "fresh",
@@ -432,14 +2822,189 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 93,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 1,
+            "source_id": "openai-overview"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 65,
+            "source_id": "openai-deprecations"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 40,
+            "source_id": "openai-pricing"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 133,
+            "source_id": "openai-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
-        "changed": 0,
-        "changed_fields": {},
+        "added_model_refs": [],
+        "changed": 21,
+        "changed_fields": {
+          "limits": 21
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/babbage-002"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/chatgpt-image-latest"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/davinci-002"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-4o-mini-tts"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-image-1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-image-1-mini"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-image-1.5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-image-2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-live-transcribe"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/gpt-transcribe"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/omni-moderation-latest"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/sora-2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/sora-2-pro"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/text-embedding-3-large"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/text-embedding-3-small"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/text-embedding-ada-002"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/text-moderation-latest"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/text-moderation-stable"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/tts-1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/tts-1-hd"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "openai/whisper-1"
+          }
+        ],
         "current": 93,
         "previous": 93,
         "removed": 0,
-        "unchanged": 93
+        "removed_model_refs": [],
+        "unchanged": 72
       },
       "pricing": {
         "commercial_hash": "9aca9ebeface11598148f0ab1a93174b2e7b67902ef2797876ce23053525ab6b",
@@ -447,13 +3012,37 @@
         "previous_commercial_hash": "9aca9ebeface11598148f0ab1a93174b2e7b67902ef2797876ce23053525ab6b"
       },
       "provider_id": "openai",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
-        "changed": 0,
+        "added_source_ids": [],
+        "changed": 3,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-deprecations"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-overview"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
-        "unchanged": 5
+        "removed_source_ids": [],
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -463,13 +3052,34 @@
       }
     },
     {
+      "attempt": {
+        "failure": {
+          "code": "source_schema_changed",
+          "message": "Vercel model schema drift at video_capabilities.generate_audio"
+        },
+        "outcome": "rejected",
+        "pricing": {
+          "failure_code": "source_schema_changed",
+          "outcome": "failed"
+        },
+        "sources": [
+          {
+            "message": "Vercel model schema drift at video_capabilities.generate_audio",
+            "outcome": "parse_failed",
+            "source_id": "vercel-models"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 310,
         "previous": 310,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 310
       },
       "pricing": {
@@ -478,12 +3088,19 @@
         "previous_commercial_hash": "cbf1e67807d2115b656a641230f77a6770508853f09ea131432c30136c4db443"
       },
       "provider_id": "vercel",
+      "publication": "retained",
+      "signals": [
+        "possible_structural_change"
+      ],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "stale",
@@ -492,13 +3109,52 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 49,
+            "source_id": "vertex-google-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 33,
+            "source_id": "vertex-partner-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 18,
+            "source_id": "vertex-open-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 41,
+            "source_id": "vertex-model-garden-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
+        "changed_models": [],
         "current": 101,
         "previous": 101,
         "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 101
       },
       "pricing": {
@@ -507,12 +3163,36 @@
         "previous_commercial_hash": "12a651f4526740abb61f9b75ed9b96bdef25c97a61d0dbff597cb8c721e152e4"
       },
       "provider_id": "vertex",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
+        "added_source_ids": [],
         "changed": 3,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-google-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-open-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-partner-models"
+          }
+        ],
         "current": 4,
         "previous": 4,
         "removed": 0,
+        "removed_source_ids": [],
         "unchanged": 1
       },
       "status": "fresh",
@@ -523,14 +3203,84 @@
       }
     },
     {
+      "attempt": {
+        "outcome": "accepted",
+        "pricing": {
+          "outcome": "accepted"
+        },
+        "sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 20,
+            "source_id": "xai-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 10,
+            "source_id": "xai-api"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 6,
+            "source_id": "xai-language-api"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 2,
+            "source_id": "xai-image-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 2,
+            "source_id": "xai-video-api"
+          }
+        ]
+      },
       "models": {
         "added": 0,
-        "changed": 0,
-        "changed_fields": {},
+        "added_model_refs": [],
+        "changed": 2,
+        "changed_fields": {
+          "api_endpoints": 1,
+          "limits": 2,
+          "modalities": 1,
+          "name": 2,
+          "release_date": 1
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "name",
+              "modalities",
+              "limits",
+              "release_date"
+            ],
+            "model_ref": "xai/grok-imagine-video-1.5@1.0"
+          },
+          {
+            "fields": [
+              "name",
+              "api_endpoints",
+              "limits"
+            ],
+            "model_ref": "xai/grok-imagine-video@1.0"
+          }
+        ],
         "current": 21,
         "previous": 21,
         "removed": 0,
-        "unchanged": 21
+        "removed_model_refs": [],
+        "unchanged": 19
       },
       "pricing": {
         "commercial_hash": "0aaf1f581af8632ea768dccabad85a98dd6363e636a0640a6a6b3f13ff57f8e5",
@@ -538,13 +3288,31 @@
         "previous_commercial_hash": "0aaf1f581af8632ea768dccabad85a98dd6363e636a0640a6a6b3f13ff57f8e5"
       },
       "provider_id": "xai",
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
-        "changed": 1,
+        "added_source_ids": [],
+        "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "xai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "xai-video-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
-        "unchanged": 4
+        "removed_source_ids": [],
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -553,5 +3321,20 @@
         "scope_limited": 4
       }
     }
-  ]
+  ],
+  "publication": "partial",
+  "schema_version": 2,
+  "totals": {
+    "accepted": 17,
+    "added_models": 0,
+    "added_sources": 0,
+    "changed_models": 299,
+    "changed_sources": 31,
+    "models": 3362,
+    "providers": 18,
+    "removed_models": 2,
+    "removed_sources": 0,
+    "retained": 1,
+    "withheld": 0
+  }
 }
