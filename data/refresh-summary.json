@@ -1,8 +1,8 @@
 {
-  "catalog_version": "8e82374ea447e096fa10862238a3992497616cc1adb2bb2b882f7a170091c598",
-  "generated_at": "2026-08-01T09:37:46.227Z",
+  "catalog_version": "6dc10d8b931a41e9d12988be36306f53b5522ba59d864a9f3b42f35b25be02d9",
+  "generated_at": "2026-08-01T10:31:34.069Z",
   "outcome": "changed",
-  "previous_catalog_version": "df8f0153f0f38a2f7bee69dfb71a4a8745df89bb749fb1e41253b5c176f43dd7",
+  "previous_catalog_version": "8e82374ea447e096fa10862238a3992497616cc1adb2bb2b882f7a170091c598",
   "providers": [
     {
       "attempt": {
@@ -2015,16 +2015,16 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "deepseek-catalog"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 5,
             "source_id": "deepseek-updates"
           },
@@ -2060,26 +2060,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "deepseek-catalog"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "deepseek-updates"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -2166,7 +2153,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1401,
+            "parsed_models": 1402,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2180,15 +2167,18 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1401,
+            "parsed_models": 1402,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 30,
+        "added": 2,
+        "added_model_refs": [
+          "huggingface/Intel/dpt-large-ade",
+          "huggingface/staka/fugumt-en-ja"
+        ],
+        "changed": 29,
         "changed_fields": {
           "capabilities": 1,
           "limits": 29
@@ -2226,6 +2216,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
@@ -2289,12 +2280,6 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3-0324"
           },
           {
             "fields": [
@@ -2375,19 +2360,18 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1530,
-        "previous": 1532,
-        "removed": 2,
+        "current": 1531,
+        "previous": 1530,
+        "removed": 1,
         "removed_model_refs": [
-          "huggingface/Intel/dpt-large-ade",
-          "huggingface/staka/fugumt-en-ja"
+          "huggingface/chendelong/DirectSAM-1800px-0424"
         ],
         "unchanged": 1500
       },
       "pricing": {
-        "commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64",
+        "commercial_hash": "02a5b5e832f2176ab9805b7f42254b82b96b31fbc88b92ff8764a12c64c0f91f",
         "outcome": "commercial",
-        "previous_commercial_hash": "211c2a35fa3f1dce05d36e33ea7ff6f998076d1c387b55d11ed162a145bea49f"
+        "previous_commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2874,9 +2858,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3034,20 +3018,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -3316,13 +3293,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 0,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 299,
-    "changed_sources": 31,
-    "models": 3363,
+    "changed_models": 298,
+    "changed_sources": 28,
+    "models": 3364,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
