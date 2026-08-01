@@ -1,5 +1,12 @@
-import { canonicalJson, canonicalJsonBytes } from "./canonical-json.ts";
-import { compareUtf8, compareUtf8Sequences } from "./canonical-value.ts";
+import {
+  assertIJsonValue,
+  canonicalJsonFromValidated as canonicalJson,
+  canonicalJsonKey,
+  canonicalValuesEqual,
+  compareCanonicalValues,
+  compareUtf8,
+  compareUtf8Sequences,
+} from "./canonical-value.ts";
 import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
@@ -32,7 +39,8 @@ import {
 import { publishedValiditiesOverlap, publishedValidityIsCoherent } from "./pricing-time.ts";
 import type { Catalog } from "./schema.ts";
 
-type Core = Pick<Catalog, "models" | "providers" | "sources">;
+export type PricingValidationCore = Pick<Catalog, "models" | "providers" | "sources">;
+type Core = PricingValidationCore;
 type SortKey = readonly string[];
 
 interface CoreIndex {
@@ -47,7 +55,8 @@ interface ProviderValidation {
   vocabulary: ProviderPricingVocabulary;
   atoms: Map<string, ProviderAtomRegistryEntry>;
   modelRefs: Set<string>;
-  applicability: PriceApplicability[];
+  applicabilityBytes: number;
+  applicabilityBytesBySource: Map<string, number>;
   relationPairs: Array<readonly [PriceApplicability, PriceApplicability]>;
   dimensions: Map<string, { kind: PriceCondition["kind"]; unit?: string }>;
   offers: Map<string, PricingOffer>;
@@ -56,7 +65,65 @@ interface ProviderValidation {
 }
 
 export function validatePricingCatalog(data: PricingCatalog, core: Core): void {
-  const coreIndex = indexCore(core);
+  const header = validatePricingCatalogHeader(data, core);
+  validatePricingCatalogProviders(data, header);
+  validatePricingCatalogSize(data);
+}
+
+// Parallel workers receive partitions filtered from a graph validated by the parent thread.
+export function validatePricingCatalogProvidersFromTopology(
+  data: PricingCatalog,
+  core: Core,
+): void {
+  validatePricingCatalogProviders(data, validatePricingCatalogOwnership(data, core));
+}
+
+function validatePricingCatalogProviders(
+  data: PricingCatalog,
+  { coreIndex, ownerIds, snapshots, vocabularies }: ReturnType<typeof validatePricingCatalogHeader>,
+): void {
+  const ids = new Set<string>();
+  const applicabilityBytesBySource = new Map<string, number>();
+  for (const providerId of ownerIds) {
+    const vocabulary = vocabularies.get(providerId);
+    const snapshot = snapshots.get(providerId);
+    if (vocabulary === undefined || snapshot === undefined)
+      fail(providerId, "provider metadata is missing");
+
+    const context = createProviderValidation(
+      providerId,
+      vocabulary,
+      coreIndex,
+      applicabilityBytesBySource,
+    );
+    const books = data.books.filter((book) => book.provider_id === providerId);
+    const dispositions = data.model_dispositions.filter(
+      ({ model_ref }) => ownedModel(coreIndex, model_ref).provider_id === providerId,
+    );
+    if (books.length > pricingLimits.booksPerProvider)
+      fail(providerId, "book count exceeds provider limit");
+    books.forEach((book) => validateBook(book, context, ids));
+    validateProviderLinks(context);
+    dispositions.forEach((disposition) => validateDisposition(disposition, context));
+    validateProviderTotals(books, dispositions, snapshot.observed_at, context);
+  }
+}
+
+export function validatePricingCatalogTopology(data: PricingCatalog, core: Core): void {
+  validatePricingCatalogHeader(data, core);
+  const ids = new Set<string>();
+  for (const book of data.books) {
+    addUniqueId(ids, book.id, `book ${book.book_key}`);
+    for (const offer of book.offers) {
+      addUniqueId(ids, offer.id, `offer ${offer.offer_key}`);
+      for (const term of offer.terms) addUniqueId(ids, term.id, `term ${term.term_key}`);
+    }
+  }
+  validatePricingCatalogSize(data);
+}
+
+function validatePricingCatalogHeader(data: PricingCatalog, core: Core) {
+  assertIJsonValue(data);
   assertSortedUnique(
     data.provider_vocabularies,
     ({ provider_id }) => [provider_id],
@@ -65,7 +132,11 @@ export function validatePricingCatalog(data: PricingCatalog, core: Core): void {
   assertSortedUnique(data.provider_snapshots, ({ provider_id }) => [provider_id], "snapshots");
   assertSortedUnique(data.model_dispositions, ({ model_ref }) => [model_ref], "dispositions");
   assertSortedUnique(data.books, ({ id }) => [id], "books");
+  return validatePricingCatalogOwnership(data, core);
+}
 
+function validatePricingCatalogOwnership(data: PricingCatalog, core: Core) {
+  const coreIndex = indexCore(core);
   const vocabularies = uniqueMap(
     data.provider_vocabularies,
     ({ provider_id }) => provider_id,
@@ -86,32 +157,18 @@ export function validatePricingCatalog(data: PricingCatalog, core: Core): void {
     [...ownerIds].some((providerId) => !vocabularies.has(providerId) || !snapshots.has(providerId))
   )
     fail("catalog", "each represented provider must own exactly one vocabulary and snapshot");
-
-  const ids = new Set<string>();
   for (const providerId of ownerIds) {
-    const vocabulary = vocabularies.get(providerId)!;
-    const snapshot = snapshots.get(providerId)!;
-    if (vocabulary.provider_id !== providerId || snapshot.provider_id !== providerId)
-      fail(providerId, "provider metadata ownership mismatch");
     if (!coreIndex.providers.has(providerId)) fail(providerId, "provider does not exist in core");
-
-    const context = createProviderValidation(providerId, vocabulary, coreIndex);
-    const books = data.books.filter((book) => book.provider_id === providerId);
-    const dispositions = data.model_dispositions.filter(
-      ({ model_ref }) => ownedModel(coreIndex, model_ref).provider_id === providerId,
-    );
-    if (books.length > pricingLimits.booksPerProvider)
-      fail(providerId, "book count exceeds provider limit");
-    books.forEach((book) => validateBook(book, context, ids));
-    validateProviderLinks(context);
-    dispositions.forEach((disposition) => validateDisposition(disposition, context));
-    validateProviderTotals(books, dispositions, snapshot.observed_at, context);
   }
+  return { coreIndex, ownerIds, snapshots, vocabularies };
+}
+
+function validatePricingCatalogSize(data: PricingCatalog): void {
   const conservativeCatalog = {
     ...data,
     provider_snapshots: data.provider_snapshots.map(conservativeSnapshot),
   };
-  if (canonicalJsonBytes(conservativeCatalog).byteLength > pricingLimits.pricingCatalogBytes)
+  if (jsonByteLength(conservativeCatalog) > pricingLimits.pricingCatalogBytes)
     fail("catalog", "pricing catalog byte limit exceeded");
 }
 
@@ -134,6 +191,7 @@ function createProviderValidation(
   providerId: string,
   vocabulary: ProviderPricingVocabulary,
   core: CoreIndex,
+  applicabilityBytesBySource: Map<string, number>,
 ): ProviderValidation {
   const atoms = validateVocabulary(vocabulary);
   return {
@@ -142,7 +200,8 @@ function createProviderValidation(
     vocabulary,
     atoms,
     modelRefs: new Set(),
-    applicability: [],
+    applicabilityBytes: 0,
+    applicabilityBytesBySource,
     relationPairs: [],
     dimensions: new Map(),
     offers: new Map(),
@@ -175,9 +234,9 @@ function validateVocabulary(
       atom.dimension.provider_id !== vocabulary.provider_id
     )
       fail("vocabulary", "categorical atom dimension belongs to another provider");
-    const scope = atomScope(atom, vocabulary.provider_id);
-    const key = canonicalJson([scope, atom.key]);
-    const definition = canonicalJson([scope, atom.definition]);
+    const dimension = atom.kind === "categorical_value" ? atom.dimension : undefined;
+    const key = atomIdentity(vocabulary.provider_id, atom.kind, dimension, atom.key);
+    const definition = atomIdentity(vocabulary.provider_id, atom.kind, dimension, atom.definition);
     if (atoms.has(key)) fail("vocabulary", "duplicate provider atom key");
     if (definitions.has(definition)) fail("vocabulary", "duplicate provider atom definition");
     atoms.set(key, atom);
@@ -206,14 +265,12 @@ function validateBook(book: PricingBook, context: ProviderValidation, ids: Set<s
   if (book.scope.kind === "provider_service")
     assertNormalizedSemantic(book.scope.service_key, `${path} service key`);
 
-  assertSortedUnique(
+  assertSortedUniqueBy(
     book.scope_observations,
-    (observation) => [
-      observation.source_ref,
-      canonicalJson(observation.locator),
-      canonicalJson(observation.establishes),
-      canonicalJson(observation.raw),
-    ],
+    (left, right) =>
+      compareObservationBase(left, right) ||
+      compareCanonicalValues(left.establishes, right.establishes) ||
+      compareCanonicalValues(left.raw, right.raw),
     `${path} scope observations`,
   );
   context.counts.observations += book.scope_observations.length;
@@ -343,7 +400,7 @@ function validateTerm(
       (variant) => canonicalJson([variant.price, ...optionalComponent(variant.validity)]),
       `${path} variant grouping key`,
     );
-    assertSortedUnique(term.raw_variants, rawVariantKey, `${path} raw variants`);
+    assertSortedUniqueBy(term.raw_variants, compareRawVariants, `${path} raw variants`);
     assertUniqueBy(term.raw_variants, rawVariantGroupKey, `${path} raw variant grouping key`);
     validateRateTerm(term, book, context, path);
   } else if (term.kind === "allowance") {
@@ -367,11 +424,11 @@ function validateTerm(
         ]),
       `${path} variant grouping key`,
     );
-    assertSortedUnique(term.raw_variants, rawVariantKey, `${path} raw variants`);
+    assertSortedUniqueBy(term.raw_variants, compareRawVariants, `${path} raw variants`);
     assertUniqueBy(term.raw_variants, rawVariantGroupKey, `${path} raw variant grouping key`);
     validateAllowanceTerm(term, book, context, path);
   } else {
-    assertSortedUnique(term.variants, rawVariantKey, `${path} variants`);
+    assertSortedUniqueBy(term.variants, compareRawVariants, `${path} variants`);
     assertUniqueBy(term.variants, rawVariantGroupKey, `${path} raw variant grouping key`);
     term.variants.forEach((variant) => {
       if (variant.reason === "target_rate_not_normalized")
@@ -496,14 +553,12 @@ function validateNormalizedVariant(
 ): void {
   validateApplicability(variant.applicability, book, context, path);
   validateValidity(variant.validity, path);
-  assertSortedUnique(
+  assertSortedUniqueBy(
     observations,
-    (observation) => [
-      observation.source_ref,
-      canonicalJson(observation.locator),
-      canonicalJson(observation.establishes_applicability),
-      canonicalJson(observation.raw),
-    ],
+    (left, right) =>
+      compareObservationBase(left, right) ||
+      compareCanonicalValues(left.establishes_applicability, right.establishes_applicability) ||
+      compareCanonicalValues(left.raw, right.raw),
     `${path} observations`,
   );
   context.counts.observations += observations.length;
@@ -514,9 +569,10 @@ function validateNormalizedVariant(
     validateApplicability(observation.establishes_applicability, book, context, path);
   }
   if (
-    canonicalJson(
+    !canonicalValuesEqual(
       unionApplicabilities(observations.map((item) => item.establishes_applicability)),
-    ) !== canonicalJson(variant.applicability)
+      variant.applicability,
+    )
   )
     fail(path, "observations do not exactly establish variant applicability");
 }
@@ -530,15 +586,7 @@ function validateRawVariant(
   validateValidity(variant.validity, path);
   if (variant.possible_scope !== undefined)
     validateApplicability(variant.possible_scope, book, context, path);
-  assertSortedUnique(
-    variant.observations,
-    (observation) => [
-      observation.source_ref,
-      canonicalJson(observation.locator),
-      canonicalJson(observation.raw),
-    ],
-    `${path} raw observations`,
-  );
+  assertSortedUniqueBy(variant.observations, compareRawObservations, `${path} raw observations`);
   context.counts.observations += variant.observations.length;
   variant.observations.forEach((observation) =>
     validateObservationBase(observation, context, path),
@@ -614,14 +662,12 @@ function validateCompatibility(
   context: ProviderValidation,
   path: string,
 ): void {
-  assertSortedUnique(
+  assertSortedUniqueBy(
     offer.compatibility_observations,
-    (observation) => [
-      observation.source_ref,
-      canonicalJson(observation.locator),
-      canonicalJson(observation.establishes_offer_refs),
-      canonicalJson(observation.raw),
-    ],
+    (left, right) =>
+      compareObservationBase(left, right) ||
+      compareCanonicalValues(left.establishes_offer_refs, right.establishes_offer_refs) ||
+      compareCanonicalValues(left.raw, right.raw),
     `${path} compatibility observations`,
   );
   context.counts.observations += offer.compatibility_observations.length;
@@ -743,14 +789,12 @@ function validateDisposition(
   if (context.modelRefs.has(disposition.model_ref))
     fail(path, "not-applicable model occurs in a positive book scope");
   ownedModel(context.core, disposition.model_ref);
-  assertSortedUnique(
+  assertSortedUniqueBy(
     disposition.observations,
-    (observation) => [
-      observation.source_ref,
-      canonicalJson(observation.locator),
-      observation.establishes_model_ref,
-      canonicalJson(observation.raw),
-    ],
+    (left, right) =>
+      compareObservationBase(left, right) ||
+      compareUtf8(left.establishes_model_ref, right.establishes_model_ref) ||
+      compareCanonicalValues(left.raw, right.raw),
     `${path} observations`,
   );
   context.counts.observations += disposition.observations.length;
@@ -767,11 +811,16 @@ function validateApplicability(
   context: ProviderValidation,
   path: string,
 ): void {
-  if (canonicalJson(canonicalizeApplicability(applicability)) !== canonicalJson(applicability))
-    fail(path, "applicability is not canonical");
-  const bytes = canonicalJsonBytes(applicability).byteLength;
+  const source = jsonSource(applicability);
+  const knownBytes = context.applicabilityBytesBySource.get(source);
+  const bytes = knownBytes ?? Buffer.byteLength(source);
   if (bytes > pricingLimits.applicabilityBytes) fail(path, "applicability byte limit exceeded");
-  context.applicability.push(applicability);
+  context.applicabilityBytes += bytes;
+  if (knownBytes === undefined) {
+    if (!canonicalValuesEqual(canonicalizeApplicability(applicability), applicability))
+      fail(path, "applicability is not canonical");
+    context.applicabilityBytesBySource.set(source, bytes);
+  }
   for (const clause of applicability.any_of)
     for (const condition of clause.all_of) validateCondition(condition, book, context, path);
 }
@@ -850,11 +899,7 @@ function validateOwnedAtom(
   if (atom.namespace === "kmodels") return;
   if (atom.provider_id !== context.providerId) fail(path, `${kind} atom has the wrong provider`);
   assertNormalizedSemantic(atom.value, `${path} ${kind} atom`);
-  const scope =
-    kind === "categorical_value"
-      ? canonicalJson([context.providerId, kind, dimension])
-      : canonicalJson([context.providerId, kind]);
-  if (!context.atoms.has(canonicalJson([scope, atom.value])))
+  if (!context.atoms.has(atomIdentity(context.providerId, kind, dimension, atom.value)))
     fail(path, `unknown provider ${kind} atom`);
 }
 
@@ -867,7 +912,7 @@ function validateObservationBase(
     fail(path, "observation source belongs to another provider");
   assertSemantic(observation.source_ref, `${path} source ref`);
   assertProvenance(observation.locator.value, `${path} locator`);
-  if (canonicalJsonBytes(observation.raw).byteLength > pricingLimits.rawFactBytes)
+  if (jsonByteLength(observation.raw) > pricingLimits.rawFactBytes)
     fail(path, "raw price fact exceeds byte limit");
 }
 
@@ -882,10 +927,11 @@ function validateVariantConflicts<
     validity?: PublishedValidity | undefined;
   },
 >(variants: T[], payload: (variant: T) => string, path: string): void {
+  const payloads = variants.map(payload);
   for (let left = 0; left < variants.length; left += 1)
     for (let right = left + 1; right < variants.length; right += 1)
       if (
-        payload(variants[left]!) !== payload(variants[right]!) &&
+        payloads[left] !== payloads[right] &&
         applicabilitiesOverlap(variants[left]!.applicability, variants[right]!.applicability) &&
         publishedValiditiesOverlap(variants[left]!.validity, variants[right]!.validity)
       )
@@ -915,11 +961,7 @@ function validateProviderTotals(
     fail(context.providerId, "variant count exceeds provider limit");
   if (context.counts.observations > pricingLimits.observationsPerProvider)
     fail(context.providerId, "observation count exceeds provider limit");
-  const applicabilityBytes = context.applicability.reduce(
-    (total, value) => total + canonicalJsonBytes(value).byteLength,
-    0,
-  );
-  if (applicabilityBytes > pricingLimits.providerApplicabilityBytes)
+  if (context.applicabilityBytes > pricingLimits.providerApplicabilityBytes)
     fail(context.providerId, "provider applicability byte limit exceeded");
   let relationWork = 0;
   for (const [left, right] of context.relationPairs) {
@@ -941,7 +983,7 @@ function validateProviderTotals(
     model_dispositions: dispositions,
     books,
   };
-  if (canonicalJsonBytes(partition).byteLength > pricingLimits.providerPricingBytes)
+  if (jsonByteLength(partition) > pricingLimits.providerPricingBytes)
     fail(context.providerId, "provider pricing byte limit exceeded");
 }
 
@@ -978,14 +1020,14 @@ function rawVariants(term: PricingTerm): RawPricingVariant[] {
   return term.kind === "raw" ? term.variants : term.raw_variants;
 }
 
-function rawVariantKey(variant: RawPricingVariant): SortKey {
-  return [
-    variant.impact,
-    variant.reason,
-    ...optionalComponent(variant.possible_scope),
-    ...optionalComponent(variant.validity),
-    canonicalJson(variant.observations),
-  ];
+function compareRawVariants(left: RawPricingVariant, right: RawPricingVariant): number {
+  return (
+    compareUtf8(left.impact, right.impact) ||
+    compareUtf8(left.reason, right.reason) ||
+    compareOptionalCanonical(left.possible_scope, right.possible_scope) ||
+    compareOptionalCanonical(left.validity, right.validity) ||
+    compareCanonicalValues(left.observations, right.observations)
+  );
 }
 
 function rawVariantGroupKey(variant: RawPricingVariant): string {
@@ -1024,19 +1066,86 @@ function isSingleStandardUnit(expression: UnitExpression, value: "token" | "seco
   );
 }
 
-function atomScope(atom: ProviderAtomRegistryEntry, providerId: string): string {
-  return atom.kind === "categorical_value"
-    ? canonicalJson([providerId, atom.kind, atom.dimension])
-    : canonicalJson([providerId, atom.kind]);
+function atomIdentity(
+  providerId: string,
+  kind: ProviderAtomRegistryEntry["kind"],
+  dimension: PriceDimension | undefined,
+  value: string,
+): string {
+  return JSON.stringify([
+    providerId,
+    kind,
+    dimension === undefined ? null : canonicalJsonKey(dimension),
+    value,
+  ]);
 }
 
 function optionalComponent(value: unknown): string[] {
   return value === undefined ? ["0"] : ["1", canonicalJson(value)];
 }
 
+function compareOptionalCanonical(left: unknown, right: unknown): number {
+  if (left === undefined || right === undefined) {
+    if (left === right) return 0;
+    return left === undefined ? -1 : 1;
+  }
+  return compareCanonicalValues(left, right);
+}
+
+function compareObservationBase(
+  left: { source_ref: string; locator: { kind: string; value: string } },
+  right: { source_ref: string; locator: { kind: string; value: string } },
+): number {
+  return (
+    compareUtf8(left.source_ref, right.source_ref) ||
+    compareCanonicalValues(left.locator, right.locator)
+  );
+}
+
+function compareRawObservations(
+  left: NormalizedPriceObservation,
+  right: NormalizedPriceObservation,
+): number;
+function compareRawObservations(
+  left: RawPricingVariant["observations"][number],
+  right: RawPricingVariant["observations"][number],
+): number;
+function compareRawObservations(
+  left: RawPricingVariant["observations"][number],
+  right: RawPricingVariant["observations"][number],
+): number {
+  return compareObservationBase(left, right) || compareCanonicalValues(left.raw, right.raw);
+}
+
+function jsonByteLength(value: unknown): number {
+  // Canonical key ordering changes byte order, not the encoded byte count.
+  return Buffer.byteLength(jsonSource(value));
+}
+
+function jsonSource(value: unknown): string {
+  const source = JSON.stringify(value);
+  if (source === undefined) throw new Error("Value is not valid JSON");
+  return source;
+}
+
 function assertSortedUnique<T>(values: T[], key: (value: T) => SortKey, path: string): void {
+  if (values.length < 2) return;
+  let previous = key(values[0]!);
   for (let index = 1; index < values.length; index += 1) {
-    const comparison = compareUtf8Sequences(key(values[index - 1]!), key(values[index]!));
+    const current = key(values[index]!);
+    const comparison = compareUtf8Sequences(previous, current);
+    if (comparison >= 0) fail(path, comparison === 0 ? "contains a duplicate" : "is not sorted");
+    previous = current;
+  }
+}
+
+function assertSortedUniqueBy<T>(
+  values: T[],
+  compare: (left: T, right: T) => number,
+  path: string,
+): void {
+  for (let index = 1; index < values.length; index += 1) {
+    const comparison = compare(values[index - 1]!, values[index]!);
     if (comparison >= 0) fail(path, comparison === 0 ? "contains a duplicate" : "is not sorted");
   }
 }

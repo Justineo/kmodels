@@ -8,6 +8,13 @@ import {
   type PublishedAssetProfile,
 } from "./src/catalog/published-assets.ts";
 
+const generatedDataTests = [
+  "tests/catalog.test.ts",
+  "tests/pricing-bedrock-calibration.test.ts",
+  "tests/pricing-provider-calibration.test.ts",
+  "tests/website-data.test.ts",
+];
+
 let developmentUiAssets: Promise<PublishedAssetProfile> | undefined;
 let developmentExportAssets: Promise<PublishedAssetProfile> | undefined;
 
@@ -74,7 +81,26 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   test: {
-    include: ["tests/**/*.test.ts"],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          include: ["tests/**/*.test.ts"],
+          exclude: generatedDataTests,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "generated",
+          include: generatedDataTests,
+          isolate: false,
+          fileParallelism: false,
+          sequence: { groupOrder: 1 },
+        },
+      },
+    ],
   },
   build: {
     rollupOptions: {

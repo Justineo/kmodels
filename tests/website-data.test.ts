@@ -2,18 +2,16 @@ import { readFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
-import { websiteAssets } from "../src/catalog/endpoints.ts";
+import { websitePublicationAssets } from "../src/catalog/endpoints.ts";
 import { baseModel } from "../src/catalog/model.ts";
-import { readPricingMirrorSource } from "../src/catalog/pricing-publication.ts";
-import { pricingCatalogEnvelopeSchema } from "../src/catalog/pricing-schema.ts";
 import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
-import { catalogSchema, migrateCatalogStorage } from "../src/catalog/schema.ts";
 import {
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websiteModelDetail,
   websitePublication,
 } from "../src/catalog/website-data.ts";
+import { generatedData } from "./generated-data-context.ts";
 
 const auditFields = new Set([
   "atom_contract_hash",
@@ -52,17 +50,6 @@ function foundAuditFields(value: unknown, fields = auditFields): string[] {
   return [...found].sort();
 }
 
-async function generatedData() {
-  const [catalogSource, pricingSource] = await Promise.all([
-    readFile(new URL("../data/catalog.json", import.meta.url), "utf8"),
-    readPricingMirrorSource(),
-  ]);
-  return {
-    catalog: catalogSchema.parse(migrateCatalogStorage(JSON.parse(catalogSource))),
-    pricing: pricingCatalogEnvelopeSchema.parse(JSON.parse(pricingSource)),
-  };
-}
-
 let generatedPublication: ReturnType<typeof loadGeneratedPublication> | undefined;
 
 async function loadGeneratedPublication() {
@@ -70,7 +57,6 @@ async function loadGeneratedPublication() {
   const dataVersion = websiteDataVersion(catalog.catalog_version, pricing.pricing_data_version);
   return {
     catalog,
-    pricing,
     dataVersion,
     publication: websitePublication(catalog, pricing.data, dataVersion),
   };
@@ -113,6 +99,10 @@ describe("website data", () => {
       output: { amount: "$30" },
     });
     expect(summary("openai", "chat-latest")?.status).toBeUndefined();
+    expect(summary("openai", "gpt-realtime-translate")?.input).toMatchObject({
+      amount: "$0.034",
+      displayUnit: "minute",
+    });
     expect(summary("openai", "omni-moderation-latest")?.status).toEqual({
       label: "No offer",
       description: "No public hosted pricing offer applies to this model.",
@@ -125,6 +115,11 @@ describe("website data", () => {
       label: "Unpublished",
       description: "A hosted offer exists, but its price is not publicly available.",
     });
+    expect(
+      publication.pricing.pricing.flatMap(({ input, cache, output }) =>
+        [input, cache, output].flatMap((price) => (price === undefined ? [] : [price.amount])),
+      ),
+    ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
   }, 90_000);
 
   it("publishes audit-free details in bounded provider chunks", async () => {
@@ -157,10 +152,33 @@ describe("website data", () => {
         .find(({ model_ref }) => model_ref === "mistral/codestral-embed-2505@25.05")
         ?.pricing?.offers.flatMap(({ rates }) => rates.map(({ amount }) => amount)),
     ).toContain("$0.075");
+    expect(
+      details
+        .find(({ model_ref }) => model_ref === "openai/gpt-realtime-translate")
+        ?.pricing?.offers.flatMap(({ rates }) => rates),
+    ).toContainEqual(
+      expect.objectContaining({
+        amount: "$0.034",
+        unit: "per minute",
+        accessible_text: "USD 0.034 per minute",
+      }),
+    );
+    expect(
+      details.flatMap(
+        ({ pricing }) =>
+          pricing?.offers.flatMap(({ rates }) => rates.map(({ amount }) => amount)) ?? [],
+      ),
+    ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
+    expect(
+      details.flatMap(
+        ({ pricing }) =>
+          pricing?.offers.flatMap(({ allowances }) => allowances.map(({ value }) => value)) ?? [],
+      ),
+    ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
   }, 90_000);
 
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {
-    const [{ catalog, pricing, dataVersion }, manifest, pack] = await Promise.all([
+    const [{ publication, dataVersion }, manifest, pack] = await Promise.all([
       publicationData(),
       readFile(defaultProjectionPaths.uiManifest).then(decodeAssetPackManifest),
       readFile(defaultProjectionPaths.uiPack),
@@ -172,7 +190,7 @@ describe("website data", () => {
     }));
 
     expect(manifest.data_version).toBe(dataVersion);
-    expect(actual).toEqual(websiteAssets(catalog, pricing.data, dataVersion));
+    expect(actual).toEqual(websitePublicationAssets(publication));
   }, 90_000);
 
   it("projects a retained provider failure without audit details", () => {

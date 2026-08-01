@@ -35,9 +35,11 @@ Status: implemented
 - Shared pricing headings stay generic because meter and unit are row-specific.
   `Input`, `Cache`, and `Output` are right-aligned labels whose tooltips explain
   that the columns show representative prices, normalize comparable token rates
-  per million, and retain other meters' native units in their cells. Do not
-  repeat `/ 1M tokens` in every cell. Only provider-owned meters, units, or
-  credits add a price tooltip with namespace-qualified exact copy.
+  per million, and retain a verified source-native fixed-unit scale for other
+  meters when it exactly reproduces the canonical price. Internal rational
+  fractions are never exposed. Do not repeat `/ 1M tokens` in every cell. Only
+  provider-owned meters, units, or credits add a price tooltip with
+  namespace-qualified exact copy.
 - Representative columns are derived only from canonical price books. A cell
   shows a number when one normalized rate is proven invariant across the
   complete applicable offer context;
@@ -184,6 +186,10 @@ Status: implemented
 - All UI projections exclude source records, observations, locators, raw source
   values, derivations, evidence arrays, and canonical audit-envelope metadata.
   They retain only displayed semantics and provider-snapshot freshness copy.
+- Build-time projection indexes snapshots, dispositions, and model-scoped
+  books once. Each model reuses one pricing view for its summary and detail,
+  and the checked-in pack is compared with asset sources from that same
+  publication instead of rebuilding the projection a second time.
 - Development serves those projections from the pair-bound,
   indexed `data/website-assets.pack`; every entry is independently compressed,
   so Vite can return the requested bytes without decoding the pack. UI requests

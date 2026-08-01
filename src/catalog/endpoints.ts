@@ -4,7 +4,7 @@ import { catalogIds, catalogModels, catalogSummary } from "./publication.ts";
 import { catalogProvidersSchema } from "./publication-schema.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
 import type { Catalog, CatalogEnvelope } from "./schema.ts";
-import { websitePublication } from "./website-data.ts";
+import { websitePublication, type WebsitePublication } from "./website-data.ts";
 
 function catalogEnvelope(catalog: Catalog): CatalogEnvelope {
   const metadata = {
@@ -96,7 +96,10 @@ export function websiteAssets(
   pricing: PricingCatalog,
   dataVersion: string,
 ): AssetSource[] {
-  const website = websitePublication(catalog, pricing, dataVersion);
+  return websitePublicationAssets(websitePublication(catalog, pricing, dataVersion));
+}
+
+export function websitePublicationAssets(website: WebsitePublication): AssetSource[] {
   return [
     {
       fileName: "ui/catalog/index.json",

@@ -6,6 +6,7 @@ import {
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
+import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import type { Catalog } from "../src/catalog/schema.ts";
 
@@ -122,6 +123,12 @@ describe("canonical pricing serialized catalog validation", () => {
     expect(() => validatePricingCatalog(catalog(), core)).not.toThrow();
   });
 
+  it("checks the complete graph for I-JSON before using validated canonical serialization", () => {
+    const invalid = catalog();
+    invalid.books[0]!.scope_observations[0]!.raw = { label: "\ud800" };
+    expect(() => validatePricingCatalog(invalid, core)).toThrow("lone surrogate");
+  });
+
   it("rejects unstable IDs, unsorted arrays, and overlapping unequal values", () => {
     const badId = catalog();
     badId.books[0]!.id = "0".repeat(64);
@@ -138,6 +145,14 @@ describe("canonical pricing serialized catalog validation", () => {
       },
     });
     expect(() => validatePricingCatalog(conflict, core)).toThrow();
+  });
+
+  it("preserves provider validation failures across worker boundaries", async () => {
+    const badId = catalog();
+    badId.books[0]!.id = "0".repeat(64);
+    await expect(validatePricingCatalogInParallel(badId, core)).rejects.toThrow(
+      "ID recipe mismatch",
+    );
   });
 
   it("rejects evidence widening and cross-provider source ownership", () => {

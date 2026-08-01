@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { canonicalJsonBytes } from "../src/catalog/canonical-value.ts";
 import { pricingLimits } from "../src/catalog/pricing-constants.ts";
-import { readPricingMirrorSource } from "../src/catalog/pricing-publication.ts";
-import { pricingCatalogEnvelopeSchema } from "../src/catalog/pricing-schema.ts";
+import { generatedData } from "./generated-data-context.ts";
 
 describe("Bedrock pricing resource calibration", () => {
   it("contains the complete committed observation corpus within its provider budget", async () => {
-    const pricing = pricingCatalogEnvelopeSchema.parse(
-      JSON.parse(await readPricingMirrorSource()),
-    ).data;
+    const pricing = (await generatedData()).pricing.data;
     const providerId = "amazon-bedrock";
     const books = pricing.books.filter(({ provider_id }) => provider_id === providerId);
     const modelRefs = new Set(books.flatMap(({ scope }) => scope.model_refs));
@@ -45,7 +41,7 @@ describe("Bedrock pricing resource calibration", () => {
     );
 
     expect(observationCount).toBeGreaterThan(8_000);
-    expect(canonicalJsonBytes(partition).byteLength).toBeLessThan(
+    expect(Buffer.byteLength(JSON.stringify(partition))).toBeLessThan(
       pricingLimits.providerPricingBytes,
     );
   }, 90_000);

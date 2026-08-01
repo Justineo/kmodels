@@ -57,6 +57,9 @@ describe("published projection assets", () => {
     expect(repeated.ui.pack).toEqual(projections.ui.pack);
     expect(repeated.exports.manifestSource).toBe(projections.exports.manifestSource);
     expect(repeated.exports.pack).toEqual(projections.exports.pack);
+    for (const projection of [projections.ui, projections.exports])
+      for (const { offset } of projection.manifest.assets)
+        expect(projection.pack[offset + 9]).toBe(3);
     await Promise.all([
       writeFile(paths.uiManifest, projections.ui.manifestSource),
       writeFile(paths.uiPack, projections.ui.pack),

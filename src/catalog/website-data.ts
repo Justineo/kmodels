@@ -1,4 +1,4 @@
-import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
+import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import {
   displayUnitPrice,
@@ -9,9 +9,12 @@ import {
   formatMeter,
   isModelDimension,
   modelPricingView,
+  modelPricingViewFromIndex,
   offerConditions,
   offerRawVariants,
-  projectPricingTableCell,
+  pricingViewIndex,
+  projectPricingTableCellFromView,
+  type ModelPricingView,
 } from "./pricing-presentation.ts";
 import type {
   AllowanceReset,
@@ -26,7 +29,6 @@ import type { Catalog, ProviderModel } from "./schema.ts";
 import {
   websiteCatalogIndexSchema,
   websiteDetailChunkSchema,
-  websiteModelDetailSchema,
   websitePricingDetailSchema,
   websitePricingSummariesSchema,
   type WebsiteCatalogIndex,
@@ -40,7 +42,7 @@ import {
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
-const textEncoder = new TextEncoder();
+const selectorCache = new WeakMap<PricingOffer, WebsitePricingSelector[]>();
 
 export interface WebsitePublication {
   catalog: WebsiteCatalogIndex;
@@ -53,7 +55,16 @@ export function websitePublication(
   pricing: PricingCatalog,
   dataVersion: string,
 ): WebsitePublication {
-  const details = websiteDetailChunks(catalog, pricing, dataVersion);
+  const index = pricingViewIndex(pricing);
+  const pricingViews = new Map(
+    catalog.models.map((model) => [model.uid, modelPricingViewFromIndex(index, model)]),
+  );
+  const view = (model: ProviderModel): ModelPricingView => {
+    const result = pricingViews.get(model.uid);
+    if (result === undefined) throw new Error(`Missing pricing view for ${model.uid}`);
+    return result;
+  };
+  const details = websiteDetailChunks(catalog, dataVersion, view);
   const detailChunkByModel = new Map(
     details.flatMap(({ chunk, details: chunkDetails }) =>
       chunkDetails.map((detail): [string, number] => [detail.model_ref, chunk]),
@@ -89,7 +100,7 @@ export function websitePublication(
     pricing: websitePricingSummariesSchema.parse({
       schema_version: 1,
       data_version: dataVersion,
-      pricing: catalog.models.map((model) => pricingSummary(pricing, model)),
+      pricing: catalog.models.map((model) => pricingSummary(view(model), model)),
     }),
     details,
   };
@@ -97,8 +108,8 @@ export function websitePublication(
 
 function websiteDetailChunks(
   catalog: Catalog,
-  pricing: PricingCatalog,
   dataVersion: string,
+  view: (model: ProviderModel) => ModelPricingView,
 ): WebsiteDetailChunk[] {
   const chunks: WebsiteDetailChunk[] = [];
 
@@ -106,10 +117,10 @@ function websiteDetailChunks(
     const providerDetails = catalog.models
       .filter((model) => model.provider_id === provider.id)
       .map((model) => {
-        const detail = websiteModelDetail(pricing, model);
+        const detail = websiteModelDetailFromView(view(model), model);
         return {
           detail,
-          bytes: textEncoder.encode(JSON.stringify(detail)).byteLength,
+          bytes: Buffer.byteLength(JSON.stringify(detail)),
         };
       });
     let chunkDetails: WebsiteModelDetail[] = [];
@@ -125,7 +136,7 @@ function websiteDetailChunks(
         chunk,
         details: chunkDetails,
       });
-      const bytes = textEncoder.encode(JSON.stringify(detailChunk)).byteLength;
+      const bytes = Buffer.byteLength(JSON.stringify(detailChunk));
       if (bytes > WEBSITE_DETAIL_CHUNK_MAX_BYTES)
         throw new Error(
           `Website detail chunk ${provider.id}/${chunk} exceeds ${WEBSITE_DETAIL_CHUNK_MAX_BYTES} bytes`,
@@ -152,11 +163,10 @@ function websiteDetailChunks(
   return chunks;
 }
 
-function pricingSummary(pricing: PricingCatalog, model: ProviderModel) {
-  const view = modelPricingView(pricing, model);
-  const input = projectPricingTableCell(pricing, model, "input");
-  const cache = projectPricingTableCell(pricing, model, "cache");
-  const output = projectPricingTableCell(pricing, model, "output");
+function pricingSummary(view: ModelPricingView, model: ProviderModel) {
+  const input = projectPricingTableCellFromView(view, model, "input");
+  const cache = projectPricingTableCellFromView(view, model, "cache");
+  const output = projectPricingTableCellFromView(view, model, "output");
   const hasRepresentativeRate = input !== undefined || cache !== undefined || output !== undefined;
   return {
     outcome: view.outcome,
@@ -167,7 +177,7 @@ function pricingSummary(pricing: PricingCatalog, model: ProviderModel) {
   };
 }
 
-function pricingStatus(view: ReturnType<typeof modelPricingView>, modelRef: string) {
+function pricingStatus(view: ModelPricingView, modelRef: string) {
   if (view.outcome === "not_applicable")
     return {
       label: "No offer",
@@ -227,8 +237,15 @@ export function websiteModelDetail(
   pricing: PricingCatalog,
   model: ProviderModel,
 ): WebsiteModelDetail {
-  const pricingDetail = websitePricingDetail(pricing, model);
-  return websiteModelDetailSchema.parse({
+  return websiteModelDetailFromView(modelPricingView(pricing, model), model);
+}
+
+function websiteModelDetailFromView(
+  view: ModelPricingView,
+  model: ProviderModel,
+): WebsiteModelDetail {
+  const pricingDetail = websitePricingDetail(view, model.uid);
+  return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
     ...(model.description === undefined ? {} : { description: model.description }),
@@ -242,14 +259,13 @@ export function websiteModelDetail(
     scope: model.scope,
     ...(model.availability === undefined ? {} : { availability_count: model.availability.length }),
     ...(pricingDetail === undefined ? {} : { pricing: pricingDetail }),
-  });
+  };
 }
 
 function websitePricingDetail(
-  pricing: PricingCatalog,
-  model: ProviderModel,
+  view: ModelPricingView,
+  modelRef: string,
 ): WebsitePricingDetail | undefined {
-  const view = modelPricingView(pricing, model);
   const snapshot =
     view.snapshot === undefined
       ? undefined
@@ -271,7 +287,7 @@ function websitePricingDetail(
       ? undefined
       : websitePricingDetailSchema.parse({ snapshot, offers: [] });
   const offers = [...view.baseOffers, ...view.addOns].map((offer) =>
-    websiteOffer(view.books, offer, model.uid),
+    websiteOffer(view.books, offer, modelRef),
   );
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
@@ -313,7 +329,9 @@ function websiteOffer(
   for (const term of offer.terms) {
     if (term.kind === "rate") {
       term.variants.forEach((variant, index) => {
-        const price = displayUnitPrice(variant.price);
+        const price = displayUnitPrice(variant.price, variant.observations, {
+          tokenDisplay: "source",
+        });
         rates.push({
           key: `${term.id}:rate:${index}`,
           label: meterLabel(term.meter),
@@ -371,17 +389,19 @@ function websiteOffer(
 }
 
 function pricingSelectors(offer: PricingOffer): WebsitePricingSelector[] {
+  const cached = selectorCache.get(offer);
+  if (cached !== undefined) return cached;
   const byDimension = new Map<string, WebsitePricingSelector>();
   for (const condition of offerConditions(offer)) {
     if (isModelDimension(condition.dimension)) continue;
-    const key = canonicalJson(condition.dimension);
+    const key = canonicalJsonKey(condition.dimension);
     if (condition.kind === "categorical") {
       const current = byDimension.get(key);
       const values = new Map(
         current?.kind === "categorical" ? current.values.map((value) => [value.key, value]) : [],
       );
       for (const value of condition.values) {
-        const valueKey = canonicalJson(value);
+        const valueKey = canonicalJsonKey(value);
         values.set(valueKey, {
           key: valueKey,
           label: formatCategoricalValue(value),
@@ -416,7 +436,11 @@ function pricingSelectors(offer: PricingOffer): WebsitePricingSelector[] {
           },
     );
   }
-  return [...byDimension.values()].sort((left, right) => compareUtf8(left.label, right.label));
+  const selectors = [...byDimension.values()].sort((left, right) =>
+    compareUtf8(left.label, right.label),
+  );
+  selectorCache.set(offer, selectors);
+  return selectors;
 }
 
 function offerStateSummary(offer: PricingOffer, modelRef: string): string {

@@ -9,15 +9,17 @@ import {
   type EncodedAssetPack,
 } from "./asset-pack.ts";
 import { assertCanonicalJson, canonicalJson, parseIJson } from "./canonical-json.ts";
-import { assertIJsonValue } from "./canonical-value.ts";
+import { assertIJsonValue, canonicalJsonFromValidated } from "./canonical-value.ts";
 import { catalogJson } from "./endpoints.ts";
 import { atomicWrite, rootDirectory, sha256, stableJson } from "./io.ts";
 import { catalogPairId, type CatalogPairIdentity } from "./pair-identity.ts";
 import {
   createPricingCatalogEnvelope,
+  createPricingCatalogEnvelopeFromValidatedData,
   decodePricingCatalog,
-  pricingCatalogJson,
+  pricingCatalogJsonFromValidatedData,
   validatePricingCatalogEnvelope,
+  validatePricingCatalogEnvelopeMetadata,
 } from "./pricing-envelope.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import {
@@ -26,6 +28,8 @@ import {
   type PricingCatalog,
   type PricingCatalogEnvelope,
 } from "./pricing-schema.ts";
+import { validatePricingCatalogInParallel } from "./pricing-validation-parallel.ts";
+import { validatePricingCatalog } from "./pricing-validation.ts";
 import { defaultProjectionPaths, type ProjectionPaths } from "./projection-paths.ts";
 import { projectCatalogPair, websiteDataVersion, type PairProjections } from "./projections.ts";
 import { catalogSchema, migrateCatalogStorage, type Catalog } from "./schema.ts";
@@ -66,6 +70,7 @@ const defaultCatalogPairPaths: CatalogPairPaths = {
   pricingMirrorGzip: join(rootDirectory, "data/pricing.json.gz"),
   projections: defaultProjectionPaths,
 };
+const preparedCandidates = new WeakSet<CatalogPairCandidate>();
 
 export function prepareCatalogPair(
   catalog: Catalog,
@@ -74,12 +79,49 @@ export function prepareCatalogPair(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
-  const envelope =
-    "pricing_data_version" in pricing
-      ? pricing
-      : createPricingCatalogEnvelope(pricing, parsedCatalog);
+  const data = "pricing_data_version" in pricing ? pricing.data : pricing;
+  validatePricingCatalog(data, parsedCatalog);
+  const canonicalDataSource = canonicalJsonFromValidated(data);
+  const canonicalDataHash = sha256(canonicalDataSource);
+  const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
+  return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
+}
+
+export async function prepareCatalogPairInParallel(
+  catalog: Catalog,
+  pricing: PricingCatalog | PricingCatalogEnvelope,
+): Promise<CatalogPairCandidate> {
+  const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
+  const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
+  assertIJsonValue(parsedCatalog);
+  const data = "pricing_data_version" in pricing ? pricing.data : pricing;
+  const validation = validatePricingCatalogInParallel(data, parsedCatalog);
+  const canonicalDataSource = canonicalJsonFromValidated(data);
+  const canonicalDataHash = sha256(canonicalDataSource);
+  await validation;
+  const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
+  return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
+}
+
+function pricingEnvelope(
+  pricing: PricingCatalog | PricingCatalogEnvelope,
+  catalog: Catalog,
+  canonicalDataHash: string,
+): PricingCatalogEnvelope {
+  if (!("pricing_data_version" in pricing))
+    return createPricingCatalogEnvelopeFromValidatedData(pricing, catalog, canonicalDataHash);
+  validatePricingCatalogEnvelopeMetadata(pricing, catalog, canonicalDataHash);
+  return pricing;
+}
+
+function catalogPairCandidate(
+  parsedCatalog: Catalog,
+  envelope: PricingCatalogEnvelope,
+  catalogStorageSource: string,
+  canonicalDataSource: string,
+): CatalogPairCandidate {
   const catalogAssetSource = catalogJson(parsedCatalog);
-  const pricingAssetSource = pricingCatalogJson(envelope, parsedCatalog);
+  const pricingAssetSource = pricingCatalogJsonFromValidatedData(envelope, canonicalDataSource);
   if (
     Buffer.byteLength(catalogStorageSource) > pricingLimits.coreInputBytes ||
     Buffer.byteLength(catalogAssetSource) > pricingLimits.coreInputBytes
@@ -91,7 +133,7 @@ export function prepareCatalogPair(
     catalog_asset_sha256: sha256(catalogAssetSource),
     pricing_asset_sha256: sha256(pricingAssetSource),
   };
-  return {
+  const candidate = {
     catalog: parsedCatalog,
     pricing: envelope,
     catalogStorageSource,
@@ -100,6 +142,9 @@ export function prepareCatalogPair(
     identity,
     pairId: catalogPairId(identity),
   };
+  deepFreeze(candidate);
+  preparedCandidates.add(candidate);
+  return candidate;
 }
 
 export async function recoverCatalogPair(
@@ -148,33 +193,27 @@ export async function commitCatalogPair(
   candidate: CatalogPairCandidate,
   paths: CatalogPairPaths = defaultCatalogPairPaths,
 ): Promise<void> {
-  const validated = prepareCatalogPair(candidate.catalog, candidate.pricing);
-  if (
-    validated.pairId !== candidate.pairId ||
-    validated.catalogStorageSource !== candidate.catalogStorageSource ||
-    validated.catalogAssetSource !== candidate.catalogAssetSource ||
-    validated.pricingAssetSource !== candidate.pricingAssetSource
-  )
-    throw new Error("Catalog pair candidate changed after validation");
+  if (!preparedCandidates.has(candidate))
+    throw new Error("Catalog pair candidate was not prepared");
 
-  const projections = projectCatalogPair(validated);
-  const snapshot = snapshotDirectory(paths, validated.pairId);
+  const projections = projectCatalogPair(candidate);
+  const snapshot = snapshotDirectory(paths, candidate.pairId);
   await mkdir(snapshot, { recursive: true });
   await Promise.all([
-    writeIfChanged(join(snapshot, "catalog.json"), validated.catalogStorageSource),
-    writeIfChanged(join(snapshot, "catalog-asset.json"), validated.catalogAssetSource),
-    writeIfChanged(join(snapshot, "pricing.json"), validated.pricingAssetSource),
+    writeIfChanged(join(snapshot, "catalog.json"), candidate.catalogStorageSource),
+    writeIfChanged(join(snapshot, "catalog-asset.json"), candidate.catalogAssetSource),
+    writeIfChanged(join(snapshot, "pricing.json"), candidate.pricingAssetSource),
     writePairProjections(snapshotProjectionPaths(snapshot), projections),
   ]);
 
   const manifest: AcceptedPairManifest = {
     version: 1,
-    pair_id: validated.pairId,
-    ...validated.identity,
+    pair_id: candidate.pairId,
+    ...candidate.identity,
   };
   await atomicWrite(manifestPath(paths), canonicalJson(manifest));
 
-  await writePairMirrors(validated, projections, paths);
+  await writePairMirrors(candidate, projections, paths);
 }
 
 export async function readCatalogPairMirrors(
@@ -350,4 +389,10 @@ export async function readPricingMirrorSource(
 
 function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
   return left.length === right.length && left.every((byte, index) => byte === right[index]);
+}
+
+function deepFreeze(value: unknown): void {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) return;
+  Object.freeze(value);
+  for (const item of Object.values(value)) deepFreeze(item);
 }

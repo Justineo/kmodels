@@ -5,6 +5,11 @@ import {
   canonicalJsonHash,
   parseIJson,
 } from "../src/catalog/canonical-json.ts";
+import {
+  canonicalValuesEqual,
+  compareCanonicalValues,
+  compareUtf8,
+} from "../src/catalog/canonical-value.ts";
 
 const encoder = new TextEncoder();
 
@@ -21,6 +26,34 @@ describe("RFC 8785 JSON", () => {
       }),
     ).toBe('{"a":[333333333.3333333,"€","\\u000f","😀"],"z":0}');
     expect(canonicalJsonHash({ b: 1, a: 2 })).toBe(canonicalJsonHash({ a: 2, b: 1 }));
+  });
+
+  it("orders and compares canonical values consistently", () => {
+    const values: unknown[] = [
+      null,
+      false,
+      true,
+      -10,
+      0,
+      10,
+      "",
+      "€",
+      [],
+      [1],
+      [1, 10],
+      [1, 2],
+      {},
+      { a: 1 },
+      { a: 1, b: ["😀"] },
+      { b: 1, a: 2 },
+    ];
+    for (const left of values)
+      for (const right of values)
+        expect(Math.sign(compareCanonicalValues(left, right))).toBe(
+          Math.sign(compareUtf8(canonicalJson(left), canonicalJson(right))),
+        );
+    expect(canonicalValuesEqual({ b: [1, -0], a: "x" }, { a: "x", b: [1, 0] })).toBe(true);
+    expect(canonicalValuesEqual({ a: [1] }, { a: [1, 2] })).toBe(false);
   });
 
   it("rejects duplicate decoded member names", () => {

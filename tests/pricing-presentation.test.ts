@@ -302,6 +302,27 @@ describe("canonical pricing presentation", () => {
     ).toMatchObject({ amount: "$0.000002", displayUnit: "token^2" });
   });
 
+  it("keeps token table rates comparable while details may use the source scale", () => {
+    const observation = {
+      ...source,
+      raw: {
+        amount: "0.002",
+        denomination: "USD",
+        unit: "per 1K tokens",
+      },
+    };
+    expect(displayUnitPrice(tokenPrice, [observation])).toEqual({
+      amount: "$2",
+      displayUnit: "1M tokens",
+      accessibleText: "USD 2 per 1M tokens",
+    });
+    expect(displayUnitPrice(tokenPrice, [observation], { tokenDisplay: "source" })).toEqual({
+      amount: "$0.002",
+      displayUnit: "1K tokens",
+      accessibleText: "USD 0.002 per 1K tokens",
+    });
+  });
+
   it("binds a categorical context when the offer has only one possible value", () => {
     const batch = categoricalScope("service_tier", "batch");
     const data = catalog([term("input", "input_text", tokenPrice, batch)]);
@@ -372,7 +393,7 @@ describe("canonical pricing presentation", () => {
     expect(projectPricingTableCell(data, model(), "input")).toBeUndefined();
   });
 
-  it("uses exact decimals when finite and fractions only when necessary", () => {
+  it("uses exact decimals and visibly marked decimal approximations", () => {
     const capacityPrice: UnitPrice = {
       value: { numerator: "99", denominator: "500" },
       denomination: { kind: "fiat", currency: "USD" },
@@ -413,8 +434,70 @@ describe("canonical pricing presentation", () => {
         value: { numerator: "1", denominator: "3" },
       }),
     ).toMatchObject({
-      amount: "$1/3",
-      accessibleText: 'USD 1/3 per provider-unit("test","1k_tpm_hour")',
+      amount: "$0.333333333333…",
+      accessibleText: 'approximately USD 0.333333333333 per provider-unit("test","1k_tpm_hour")',
+    });
+  });
+
+  it("prefers source-native fixed units and never exposes canonical fractions", () => {
+    const minutePrice: UnitPrice = {
+      value: { numerator: "17", denominator: "30000" },
+      denomination: { kind: "fiat", currency: "USD" },
+      per: {
+        factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }],
+      },
+    };
+    const minuteObservation = {
+      ...source,
+      raw: {
+        amount: "0.034",
+        denomination: "USD",
+        unit: "Per minute",
+        meter: "input_audio",
+      },
+    };
+    expect(displayUnitPrice(minutePrice, [minuteObservation])).toEqual({
+      amount: "$0.034",
+      displayUnit: "minute",
+      accessibleText: "USD 0.034 per minute",
+    });
+    expect(
+      displayUnitPrice(minutePrice, [
+        minuteObservation,
+        {
+          ...source,
+          raw: { amount: "2.04", denomination: "USD", unit: "per hour" },
+        },
+      ]),
+    ).toEqual({
+      amount: "$0.034",
+      displayUnit: "minute",
+      accessibleText: "USD 0.034 per minute",
+    });
+
+    const data = catalog([term("audio", "input_audio", minutePrice)]);
+    const audio = data.books[0]!.offers[0]!.terms[0];
+    if (audio?.kind !== "rate") throw new Error("Missing audio rate");
+    audio.variants[0]!.observations = [minuteObservation];
+    expect(projectPricingTableCell(data, model(), "input")).toMatchObject({
+      amount: "$0.034",
+      displayUnit: "minute",
+    });
+
+    const storagePrice: UnitPrice = {
+      value: { numerator: "1", denominator: "3600000000" },
+      denomination: { kind: "fiat", currency: "USD" },
+      per: {
+        factors: [
+          { unit: { namespace: "kmodels", value: "second" }, power: 1 },
+          { unit: { namespace: "kmodels", value: "token" }, power: 1 },
+        ],
+      },
+    };
+    expect(displayUnitPrice(storagePrice)).toEqual({
+      amount: "$1",
+      displayUnit: "1M tokens·hour",
+      accessibleText: "USD 1 per 1M tokens·hour",
     });
   });
 

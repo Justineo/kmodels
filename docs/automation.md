@@ -11,15 +11,32 @@ Status: implemented
   catalog, public-only parsed pricing compiler input, canonical pricing,
   derived UI/export asset indexes and packs, fetch state, quarantine, and
   refresh summary using a `chore(data): ...` commit.
-- The workflow schedules, validates, and commits a collection run; it does not
-  interpret provider failures. The collector owns failure classification and
-  the safe public status projection. A workflow failure before collection
-  commits nothing and is reported only by GitHub Actions.
+- The collector owns failure classification and the safe public status
+  projection. The workflow renders its structured report into the GitHub job
+  summary, emits warnings for retained or withheld providers, and keeps the
+  complete report as a 30-day artifact. A failure before report creation is
+  called out explicitly and commits nothing.
+- Provider collection is work-conserving with four bounded workers. Completion
+  of a fast provider immediately starts the next provider instead of waiting
+  for the slowest member of a fixed batch. Source order inside a provider stays
+  deterministic because overlays and inventories can depend on catalog output.
+- Scheduled refresh validates only the generated catalog suite and production
+  build. It does not rerun code-only unit and fixture tests when the checkout is
+  unchanged. Push and pull-request CI runs those tests once.
+- One non-isolated, single-worker generated-data test project shares one parsed
+  catalog/pricing context. Pricing runs one whole-catalog topology and limit
+  pass, then validates provider partitions
+  through four work-conserving worker threads. Large providers therefore run
+  concurrently without parsing the 100+ MB resource more than once. Per-test
+  timeouts remain an inner diagnostic; the 30-minute refresh job timeout is the
+  outer safety cap.
 - The catalog and canonical pricing advance as one validated accepted pair. Collection
-  creates both consumer projections, stages immutable pair snapshots, advances
-  one atomic pointer, and repairs durable mirrors after interruption. Production
-  verifies the pair-bound projection manifests and encoded entry hashes without
-  parsing the canonical pair.
+  overlaps provider validation with canonical serialization, then freezes and
+  brands the exact candidate object. Commit can therefore create both consumer
+  projections and stage the immutable pair without repeating semantic
+  validation. It advances one atomic pointer and repairs durable mirrors after
+  interruption. Production verifies pair-bound projection manifests and
+  encoded entry hashes without parsing the canonical pair.
 - The `compile:pricing` task also makes canonical pricing compilation available
   independently. It performs no fetch, validates the catalog-bound public
   parsed input, and republishes the accepted pair and projections. The

@@ -13,6 +13,7 @@ function catalog(
   generatedAt: string,
   models: ProviderModel[],
   sourceHash: string,
+  status: "fresh" | "stale" = "fresh",
 ): Catalog {
   return catalogSchema.parse({
     catalog_version: version.repeat(64),
@@ -49,7 +50,7 @@ function catalog(
     coverage: [
       {
         provider_id: "test",
-        status: "fresh",
+        status,
         model_count: models.length,
         pricing_term_count: 0,
         checked_at: generatedAt,
@@ -150,6 +151,9 @@ describe("collection state", () => {
         changed: 1,
         unchanged: 0,
         changed_fields: { name: 1 },
+        added_model_refs: ["test/new-model"],
+        removed_model_refs: [],
+        changed_models: [{ model_ref: "test/model", fields: ["name"] }],
       },
       sources: {
         previous: 1,
@@ -159,6 +163,66 @@ describe("collection state", () => {
         changed: 1,
         unchanged: 0,
       },
+    });
+    expect(changed).toMatchObject({
+      schema_version: 2,
+      outcome: "changed",
+      totals: { added_models: 1, changed_models: 1, retained: 0 },
+    });
+  });
+
+  it("separates rejected observations from retained publication", () => {
+    const previousModel = baseModel({
+      providerId: "test",
+      id: "model",
+      name: "Model",
+      sourceId: "test-catalog",
+      observedAt: previousAt,
+    });
+    const previous = catalog("a", previousAt, [previousModel], "b");
+    const current = catalog("c", currentAt, [previousModel], "b", "stale");
+    const summary = summarizeRefresh(previous, current, noPricing, noPricing, [
+      {
+        provider_id: "test",
+        outcome: "rejected",
+        sources: [
+          {
+            source_id: "test-catalog",
+            outcome: "parse_failed",
+            message: "schema changed",
+          },
+        ],
+        candidate_models: [],
+        validation_issue: {
+          code: "model_count_drop",
+          message: "model count dropped by more than 10%",
+          previous: 1,
+          current: 0,
+          minimum_ratio: 0.9,
+        },
+        failure: { code: "source_schema_changed", message: "schema changed" },
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      outcome: "unchanged",
+      publication: "partial",
+      totals: { accepted: 0, retained: 1, withheld: 0 },
+      providers: [
+        {
+          provider_id: "test",
+          status: "stale",
+          publication: "retained",
+          models: { removed: 0 },
+          signals: ["drift_guard_triggered", "possible_structural_change"],
+          attempt: {
+            outcome: "rejected",
+            models: { removed: 1, removed_model_refs: ["test/model"] },
+            validation_issue: { code: "model_count_drop" },
+            failure: { code: "source_schema_changed" },
+          },
+        },
+      ],
     });
   });
 

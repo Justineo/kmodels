@@ -1,4 +1,8 @@
-import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
+import {
+  canonicalJsonFromValidated,
+  canonicalJsonKey as canonicalKey,
+  compareUtf8,
+} from "./canonical-value.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
@@ -14,13 +18,17 @@ export const unconditionalApplicability: PriceApplicability = {
 };
 
 const exactClauseIndexes = new WeakMap<PriceApplicability, ReadonlySet<string>>();
+const overlapResults = new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>();
+const containmentResults = new WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>();
+const conditionIndexes = new WeakMap<PriceCondition[], ReadonlyMap<string, PriceCondition>>();
+const categoricalIndexes = new WeakMap<PriceCondition, ReadonlySet<string>>();
 
 export function normalizeUnitExpression(expression: UnitExpression): UnitExpression {
   const factors = new Map<string, UnitExpression["factors"][number]>();
   for (const factor of expression.factors) {
     if (!Number.isSafeInteger(factor.power) || factor.power < 1)
       throw new Error("Unit factor power must be a positive safe integer");
-    const key = canonicalJson(factor.unit);
+    const key = canonicalKey(factor.unit);
     const previous = factors.get(key);
     const power = (previous?.power ?? 0) + factor.power;
     if (power > pricingLimits.unitFactorPower) throw new Error("Unit factor power limit exceeded");
@@ -29,7 +37,7 @@ export function normalizeUnitExpression(expression: UnitExpression): UnitExpress
   if (factors.size > pricingLimits.unitFactors) throw new Error("Unit factor limit exceeded");
   return {
     factors: [...factors.values()].sort((left, right) =>
-      compareUtf8(canonicalJson(left.unit), canonicalJson(right.unit)),
+      compareUtf8(canonicalKey(left.unit), canonicalKey(right.unit)),
     ),
   };
 }
@@ -44,7 +52,7 @@ export function canonicalizeApplicability(value: PriceApplicability): PriceAppli
     throw new Error("Applicability clause limit exceeded");
   return {
     any_of: uniqueByCanonicalBytes(
-      clauses.sort((left, right) => compareUtf8(canonicalJson(left), canonicalJson(right))),
+      clauses.sort((left, right) => compareUtf8(canonicalKey(left), canonicalKey(right))),
     ),
   };
 }
@@ -59,29 +67,38 @@ export function applicabilitiesOverlap(
   left: PriceApplicability,
   right: PriceApplicability,
 ): boolean {
-  return left.any_of.some((leftClause) =>
+  const cached = overlapResults.get(left)?.get(right);
+  if (cached !== undefined) return cached;
+  const result = left.any_of.some((leftClause) =>
     right.any_of.some((rightClause) => clausesOverlap(leftClause.all_of, rightClause.all_of)),
   );
+  cacheRelation(overlapResults, left, right, result);
+  cacheRelation(overlapResults, right, left, result);
+  return result;
 }
 
 export function applicabilityContainedIn(
   child: PriceApplicability,
   parent: PriceApplicability,
 ): boolean {
+  const cached = containmentResults.get(child)?.get(parent);
+  if (cached !== undefined) return cached;
   const exactParentClauses = exactClauseIndex(parent);
-  return child.any_of.every(
+  const result = child.any_of.every(
     (childClause) =>
-      exactParentClauses.has(canonicalJson(childClause)) ||
+      exactParentClauses.has(canonicalKey(childClause)) ||
       parent.any_of.some((parentClause) =>
         clauseContainedIn(childClause.all_of, parentClause.all_of),
       ),
   );
+  cacheRelation(containmentResults, child, parent, result);
+  return result;
 }
 
 function exactClauseIndex(value: PriceApplicability): ReadonlySet<string> {
   const current = exactClauseIndexes.get(value);
   if (current !== undefined) return current;
-  const created = new Set(value.any_of.map((clause) => canonicalJson(clause)));
+  const created = new Set(value.any_of.map(canonicalKey));
   exactClauseIndexes.set(value, created);
   return created;
 }
@@ -105,7 +122,7 @@ function normalizeClause(conditions: PriceCondition[]): PriceCondition[] | undef
     const normalized = normalizeCondition(condition);
     if (normalized === false) return undefined;
     if (normalized === undefined) continue;
-    const key = canonicalJson(normalized.dimension);
+    const key = canonicalKey(normalized.dimension);
     const previous = byDimension.get(key);
     const intersection =
       previous === undefined ? normalized : intersectConditions(previous, normalized);
@@ -146,7 +163,7 @@ function intersectConditions(
   }
   if (left.kind !== "decimal_range" || right.kind !== "decimal_range")
     throw new Error("Incompatible pricing predicates");
-  if (canonicalJson(left.unit) !== canonicalJson(right.unit))
+  if (canonicalKey(left.unit) !== canonicalKey(right.unit))
     throw new Error("One decimal dimension uses incompatible units");
   const result: PriceCondition = {
     kind: "decimal_range",
@@ -159,21 +176,17 @@ function intersectConditions(
 }
 
 function clausesOverlap(left: PriceCondition[], right: PriceCondition[]): boolean {
-  const rightByDimension = new Map(
-    right.map((condition) => [canonicalJson(condition.dimension), condition]),
-  );
+  const rightByDimension = conditionIndex(right);
   return left.every((condition) => {
-    const other = rightByDimension.get(canonicalJson(condition.dimension));
+    const other = rightByDimension.get(canonicalKey(condition.dimension));
     return other === undefined || predicatesOverlap(condition, other);
   });
 }
 
 function clauseContainedIn(child: PriceCondition[], parent: PriceCondition[]): boolean {
-  const childByDimension = new Map(
-    child.map((condition) => [canonicalJson(condition.dimension), condition]),
-  );
+  const childByDimension = conditionIndex(child);
   return parent.every((condition) => {
-    const childCondition = childByDimension.get(canonicalJson(condition.dimension));
+    const childCondition = childByDimension.get(canonicalKey(condition.dimension));
     return childCondition !== undefined && predicateContainedIn(childCondition, condition);
   });
 }
@@ -182,12 +195,12 @@ function predicatesOverlap(left: PriceCondition, right: PriceCondition): boolean
   if (left.kind !== right.kind) throw new Error("One dimension uses incompatible predicate kinds");
   if (left.kind === "boolean" && right.kind === "boolean") return left.value === right.value;
   if (left.kind === "categorical" && right.kind === "categorical") {
-    const rightValues = new Set(right.values.map(categoricalKey));
-    return left.values.some((value) => rightValues.has(categoricalKey(value)));
+    const rightValues = categoricalIndex(right);
+    return left.values.some((value) => rightValues.has(canonicalKey(value)));
   }
   if (left.kind !== "decimal_range" || right.kind !== "decimal_range")
     throw new Error("Incompatible pricing predicates");
-  if (canonicalJson(left.unit) !== canonicalJson(right.unit))
+  if (canonicalKey(left.unit) !== canonicalKey(right.unit))
     throw new Error("One decimal dimension uses incompatible units");
   return !rangesDisjoint(left, right);
 }
@@ -197,12 +210,12 @@ function predicateContainedIn(child: PriceCondition, parent: PriceCondition): bo
     throw new Error("One dimension uses incompatible predicate kinds");
   if (child.kind === "boolean" && parent.kind === "boolean") return child.value === parent.value;
   if (child.kind === "categorical" && parent.kind === "categorical") {
-    const parentValues = new Set(parent.values.map(categoricalKey));
-    return child.values.every((value) => parentValues.has(categoricalKey(value)));
+    const parentValues = categoricalIndex(parent);
+    return child.values.every((value) => parentValues.has(canonicalKey(value)));
   }
   if (child.kind !== "decimal_range" || parent.kind !== "decimal_range")
     throw new Error("Incompatible pricing predicates");
-  if (canonicalJson(child.unit) !== canonicalJson(parent.unit))
+  if (canonicalKey(child.unit) !== canonicalKey(parent.unit))
     throw new Error("One decimal dimension uses incompatible units");
   return lowerContains(parent.lower, child.lower) && upperContains(parent.upper, child.upper);
 }
@@ -279,8 +292,8 @@ function optionalBound<Key extends "lower" | "upper", Value>(
 }
 
 function compareConditions(left: PriceCondition, right: PriceCondition): number {
-  const dimension = compareUtf8(canonicalJson(left.dimension), canonicalJson(right.dimension));
-  return dimension || compareUtf8(canonicalJson(left), canonicalJson(right));
+  const dimension = compareUtf8(canonicalKey(left.dimension), canonicalKey(right.dimension));
+  return dimension || compareUtf8(canonicalKey(left), canonicalKey(right));
 }
 
 function uniqueCategoricalValues(
@@ -297,7 +310,7 @@ function uniqueCategoricalValues(
 
 function categoricalSortKey(dimension: PriceDimension, value: PriceCategoricalValue): string {
   if (dimension.namespace === "kmodels" && dimension.value === "model") return value.value;
-  return canonicalJson([
+  return canonicalJsonFromValidated([
     value.namespace,
     ...(value.namespace === "provider" ? [value.provider_id] : []),
     value.value,
@@ -305,7 +318,38 @@ function categoricalSortKey(dimension: PriceDimension, value: PriceCategoricalVa
 }
 
 function categoricalKey(value: PriceCategoricalValue): string {
-  return canonicalJson(value);
+  return canonicalKey(value);
+}
+
+function conditionIndex(conditions: PriceCondition[]): ReadonlyMap<string, PriceCondition> {
+  const current = conditionIndexes.get(conditions);
+  if (current !== undefined) return current;
+  const created = new Map(
+    conditions.map((condition) => [canonicalKey(condition.dimension), condition]),
+  );
+  conditionIndexes.set(conditions, created);
+  return created;
+}
+
+function categoricalIndex(
+  condition: Extract<PriceCondition, { kind: "categorical" }>,
+): ReadonlySet<string> {
+  const current = categoricalIndexes.get(condition);
+  if (current !== undefined) return current;
+  const created = new Set(condition.values.map(canonicalKey));
+  categoricalIndexes.set(condition, created);
+  return created;
+}
+
+function cacheRelation(
+  cache: WeakMap<PriceApplicability, WeakMap<PriceApplicability, boolean>>,
+  left: PriceApplicability,
+  right: PriceApplicability,
+  result: boolean,
+): void {
+  const relations = cache.get(left) ?? new WeakMap<PriceApplicability, boolean>();
+  relations.set(right, result);
+  cache.set(left, relations);
 }
 
 function conditionWeight(condition: PriceCondition): number {
@@ -314,9 +358,9 @@ function conditionWeight(condition: PriceCondition): number {
   return 1 + condition.values.length;
 }
 
-function uniqueByCanonicalBytes<T>(values: T[]): T[] {
+function uniqueByCanonicalBytes<T extends object>(values: T[]): T[] {
   return values.filter(
-    (value, index) => index === 0 || canonicalJson(value) !== canonicalJson(values[index - 1]),
+    (value, index) => index === 0 || canonicalKey(value) !== canonicalKey(values[index - 1]!),
   );
 }
 

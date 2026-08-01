@@ -15,7 +15,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -37,6 +37,7 @@ jobs:
       - name: Collect official sources
         run: vp run collect
         env:
+          KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
           KMODELS_JITTER_MS: "30000"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -61,12 +62,26 @@ jobs:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_LOCATION: ${{ secrets.AZURE_LOCATION }}
 
+      - name: Summarize refresh
+        if: always()
+        run: vp run report:refresh
+        env:
+          KMODELS_REFRESH_REPORT_PATH: ${{ runner.temp }}/refresh-report.json
+
+      - name: Upload refresh evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalog-refresh-${{ github.run_id }}
+          path: ${{ runner.temp }}/refresh-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
       - name: Verify generated catalog
-        run: |
-          vp check
-          vp test --run
-          vp run collect:fixtures
-          vp run build
+        run: vp run test:data
+
+      - name: Build generated catalog
+        run: vp run build
 
       - name: Commit validated changes
         run: |

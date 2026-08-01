@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import { mapConcurrent } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import { fetchSource, fetchStateSchema, type FetchState, type SourceState } from "./fetch.ts";
 import {
@@ -21,8 +22,9 @@ import {
 import type { ProviderPricingPartition } from "./pricing-assembly.ts";
 import {
   commitCatalogPair,
-  prepareCatalogPair,
+  prepareCatalogPairInParallel,
   recoverCatalogPair,
+  type CatalogPairCandidate,
 } from "./pricing-publication.ts";
 import {
   capturePricingReplaySources,
@@ -57,9 +59,13 @@ import {
   type ProviderModel,
   type SourceRecord,
 } from "./schema.ts";
-import { reconcileCatalog, validateProvider } from "./validation.ts";
+import { reconcileCatalog, validateProvider, type ProviderValidationIssue } from "./validation.ts";
 import { normalizeModelTasks } from "./task.ts";
-import { summarizeRefresh } from "./summary.ts";
+import {
+  summarizeRefresh,
+  type ProviderRefreshAttempt,
+  type SourceRefreshAttempt,
+} from "./summary.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -76,6 +82,7 @@ interface ProviderResult {
   pricingReplaySources?: PricingReplaySource[];
   pricingFailure?: PricingRefreshFailureCode;
   quarantine?: { provider_id: string; checked_at: string; reason: string };
+  attempt: ProviderRefreshAttempt;
 }
 
 interface CollectionOptions {
@@ -551,6 +558,11 @@ async function collectProvider(
         reason: manifest.notConfiguredReason,
       },
       warnings: [],
+      attempt: {
+        provider_id: manifest.provider.id,
+        outcome: "not_configured",
+        sources: [],
+      },
     };
   }
 
@@ -571,11 +583,12 @@ async function collectProvider(
       : [];
   });
   const oldSources = previousSources(previous, manifest.provider.id);
-  const oldExtractorVersions = new Map(
-    oldSources.map(({ id, extractor_version }) => [id, extractor_version]),
-  );
+  const oldSourceById = new Map(oldSources.map((source) => [source.id, source]));
   const oldCoverage = previousCoverage(previous, manifest.provider.id);
   const warnings: CatalogWarning[] = [];
+  const sourceAttempts: SourceRefreshAttempt[] = [];
+  let candidateModels: ProviderModel[] | undefined;
+  let validationIssue: ProviderValidationIssue | undefined;
   let providerFailure: PricingRefreshFailureCode = "provider_refresh_failed";
 
   try {
@@ -586,6 +599,11 @@ async function collectProvider(
     const sources: SourceRecord[] = [];
     for (const source of manifest.sources) {
       if (missingCredential(source)) {
+        sourceAttempts.push({
+          source_id: source.id,
+          outcome: "skipped_not_configured",
+          message: `Required credential(s) ${credentialLabel(source)} are not configured.`,
+        });
         warnings.push(
           sourceWarning(
             "authentication_not_configured",
@@ -614,6 +632,11 @@ async function collectProvider(
         warnings.push(
           sourceWarning("source_fetch_failed", manifest.provider.id, source.id, message(error)),
         );
+        sourceAttempts.push({
+          source_id: source.id,
+          outcome: "fetch_failed",
+          message: message(error),
+        });
         if (source.optional) continue;
         providerFailure = "source_unavailable";
         throw error;
@@ -640,12 +663,27 @@ async function collectProvider(
         warnings.push(
           sourceWarning("source_parse_failed", manifest.provider.id, source.id, message(error)),
         );
+        sourceAttempts.push({
+          source_id: source.id,
+          outcome: "parse_failed",
+          message: message(error),
+        });
         if (source.optional) continue;
         providerFailure = "source_schema_changed";
         throw error;
       }
 
       const role = source.role ?? "catalog";
+      const oldSource = oldSourceById.get(source.id);
+      const contentChanged = oldSource?.content_hash !== result.contentHash;
+      const extractorChanged = oldSource?.extractor_version !== source.extractorVersion;
+      sourceAttempts.push({
+        source_id: source.id,
+        outcome: contentChanged || extractorChanged ? "changed" : "unchanged",
+        parsed_models: parsed.length,
+        content_changed: contentChanged,
+        extractor_changed: extractorChanged,
+      });
       pricingSources.push({ source, models: parsed });
       if (role === "catalog") groups.push({ source, models: parsed });
       if (role === "overlay") overlays.push({ source, models: parsed });
@@ -709,8 +747,12 @@ async function collectProvider(
       .map(normalizeModelTasks)
       .map(normalizeDeliveryModes);
     const freshModels = candidate.map(publishedModel);
+    candidateModels = freshModels;
     const validation = validateProvider(freshModels, comparableOldModels);
-    if (!validation.ok) throw new Error(validation.reason ?? "Provider validation failed");
+    if (!validation.ok) {
+      validationIssue = validation.issue;
+      throw new Error(validation.issue.message);
+    }
     const reconciliationSources = {
       catalog: new Set(
         manifest.sources
@@ -726,10 +768,10 @@ async function collectProvider(
       ),
       recomputed: new Set(
         sources
-          .filter(
-            ({ id, extractor_version }) =>
-              oldExtractorVersions.has(id) && oldExtractorVersions.get(id) !== extractor_version,
-          )
+          .filter(({ id, extractor_version }) => {
+            const oldSource = oldSourceById.get(id);
+            return oldSource !== undefined && oldSource.extractor_version !== extractor_version;
+          })
           .map(({ id }) => id),
       ),
     };
@@ -817,6 +859,17 @@ async function collectProvider(
       ...(pricing === undefined ? {} : { pricing }),
       ...(pricingReplaySources === undefined ? {} : { pricingReplaySources }),
       ...(pricingFailure === undefined ? {} : { pricingFailure }),
+      attempt: {
+        provider_id: manifest.provider.id,
+        outcome: "accepted",
+        sources: sourceAttempts,
+        pricing:
+          pricing !== undefined
+            ? { outcome: "accepted" }
+            : pricingFailure === undefined
+              ? { outcome: "not_observed" }
+              : { outcome: "failed", failure_code: pricingFailure },
+      },
     };
   } catch (error) {
     const reason = message(error);
@@ -837,8 +890,48 @@ async function collectProvider(
       warnings,
       pricingFailure: providerFailure,
       quarantine: { provider_id: manifest.provider.id, checked_at: observedAt, reason },
+      attempt: {
+        provider_id: manifest.provider.id,
+        outcome: "rejected",
+        sources: sourceAttempts,
+        ...(candidateModels === undefined ? {} : { candidate_models: candidateModels }),
+        ...(validationIssue === undefined ? {} : { validation_issue: validationIssue }),
+        failure: { code: providerFailure, message: reason },
+        pricing: { outcome: "failed", failure_code: providerFailure },
+      },
     };
   }
+}
+
+async function collectProviders(
+  previous: Catalog | undefined,
+  state: FetchState,
+  observedAt: string,
+  rebuildProvider: string | undefined,
+): Promise<{
+  results: ProviderResult[];
+  durations: { provider_id: string; duration_ms: number }[];
+}> {
+  const collected = await mapConcurrent(manifests, 4, async (manifest) => {
+    const started = performance.now();
+    const result = await collectProvider(
+      manifest,
+      rebuildProvider === manifest.provider.id ? undefined : previous,
+      state,
+      observedAt,
+    );
+    return {
+      result,
+      duration: {
+        provider_id: manifest.provider.id,
+        duration_ms: Math.round(performance.now() - started),
+      },
+    };
+  });
+  return {
+    results: collected.map(({ result }) => result),
+    durations: collected.map(({ duration }) => duration),
+  };
 }
 
 export async function collect(options: CollectionOptions = {}): Promise<Catalog> {
@@ -855,23 +948,8 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   const previousState: FetchState = stateResult?.success ? stateResult.data : { sources: {} };
   const state = structuredClone(previousState);
 
-  const results: ProviderResult[] = [];
-  for (let index = 0; index < manifests.length; index += 4) {
-    results.push(
-      ...(await Promise.all(
-        manifests
-          .slice(index, index + 4)
-          .map((manifest) =>
-            collectProvider(
-              manifest,
-              options.rebuildProvider === manifest.provider.id ? undefined : previous,
-              state,
-              observedAt,
-            ),
-          ),
-      )),
-    );
-  }
+  const collected = await collectProviders(previous, state, observedAt, options.rebuildProvider);
+  const { results } = collected;
 
   const providers = results
     .map((result) => result.provider)
@@ -936,7 +1014,7 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       safety_findings: options.pricingSafetyFindings ?? [],
     },
   );
-  const candidate = prepareCatalogPair(composed.catalog, composed.pricing);
+  const candidate = await prepareCatalogPairInParallel(composed.catalog, composed.pricing);
   const pricingCompilation = createPricingCompilationSnapshot(
     candidate,
     pricingCompilationEntries(
@@ -947,17 +1025,22 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       previousPricingCompilation,
     ),
   );
+  const summary = summarizeRefresh(
+    previous,
+    composed.catalog,
+    previous === undefined ? emptyPricingCatalog() : acceptedPricing,
+    composed.pricing,
+    results.map(({ attempt }) => attempt),
+  );
+  const runReportPath = process.env.KMODELS_REFRESH_REPORT_PATH;
+  if (runReportPath !== undefined && runReportPath.trim() !== "")
+    await writeJson(runReportPath, {
+      ...summary,
+      operational: { provider_durations: collected.durations },
+    });
   await writePricingCompilationSnapshot(pricingCompilation);
   await commitCatalogPair(candidate);
-  await writeJson(
-    join(rootDirectory, "data/refresh-summary.json"),
-    summarizeRefresh(
-      previous,
-      composed.catalog,
-      previous === undefined ? emptyPricingCatalog() : acceptedPricing,
-      composed.pricing,
-    ),
-  );
+  await writeJson(join(rootDirectory, "data/refresh-summary.json"), summary);
   return composed.catalog;
 }
 
@@ -973,7 +1056,7 @@ async function loadPreviousPricingCompilation(
 }
 
 function pricingCompilationEntries(
-  candidate: ReturnType<typeof prepareCatalogPair>,
+  candidate: CatalogPairCandidate,
   results: readonly ProviderResult[],
   transitions: ReadonlyMap<string, ProviderPricingTransition>,
   explicitProviders: ReadonlySet<string>,
