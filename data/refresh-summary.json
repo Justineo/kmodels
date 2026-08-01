@@ -1,8 +1,8 @@
 {
-  "catalog_version": "06c022bc1a3ec138620a5598de5d18c3f4a913c1cbcc34015ddc543c7c6472b1",
-  "generated_at": "2026-08-01T18:18:18.538Z",
+  "catalog_version": "feae3c557d123fcfa7594c30d1745e7845a7f9318be38d20d2b80ca5dafb9e42",
+  "generated_at": "2026-08-01T19:25:23.029Z",
   "outcome": "changed",
-  "previous_catalog_version": "51a5e496696304f5f9bec9cb675753b98f7c6e7d58e32f6bfe9e6f03d5a11ce6",
+  "previous_catalog_version": "06c022bc1a3ec138620a5598de5d18c3f4a913c1cbcc34015ddc543c7c6472b1",
   "providers": [
     {
       "attempt": {
@@ -1112,9 +1112,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
@@ -1143,13 +1143,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1947,9 +1954,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 50,
             "source_id": "databricks-models"
           },
@@ -1985,20 +1992,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "databricks-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2150,9 +2150,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1403,
             "source_id": "huggingface-hf-inference"
           },
@@ -2160,7 +2160,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 128,
             "source_id": "huggingface-router"
           },
           {
@@ -2173,14 +2173,11 @@
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/nasa-impact/nasa-smd-ibm-st-v2",
-          "huggingface/zai-org/GLM-4.5"
-        ],
-        "changed": 30,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 31,
         "changed_fields": {
-          "capabilities": 1,
+          "capabilities": 2,
           "limits": 29
         },
         "changed_models": [
@@ -2260,7 +2257,7 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
+            "model_ref": "huggingface/Qwen/Qwen2.5-Coder-3B-Instruct"
           },
           {
             "fields": [
@@ -2285,6 +2282,12 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
           },
           {
             "fields": [
@@ -2365,16 +2368,19 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1533,
-        "previous": 1531,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1501
+        "current": 1531,
+        "previous": 1533,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/Qwen/Qwen2.5-7B-Instruct",
+          "huggingface/zai-org/GLM-4.5"
+        ],
+        "unchanged": 1500
       },
       "pricing": {
-        "commercial_hash": "b1321fab5f67aae15a322722d5310d22dcd6aa0368081c5cbc8a5a47f9872de6",
+        "commercial_hash": "6bdbd1a37fd1af5ff5b8597947d319448723ed796a1e7024c44adc5be0ca9392",
         "outcome": "commercial",
-        "previous_commercial_hash": "94c33754605ca484c66673ba66f8d2a4306b080cee633f69081b22afd5b5c48e"
+        "previous_commercial_hash": "b1321fab5f67aae15a322722d5310d22dcd6aa0368081c5cbc8a5a47f9872de6"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2382,14 +2388,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2407,7 +2407,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3296,13 +3296,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 2,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 299,
-    "changed_sources": 28,
-    "models": 3366,
+    "changed_models": 300,
+    "changed_sources": 27,
+    "models": 3364,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
