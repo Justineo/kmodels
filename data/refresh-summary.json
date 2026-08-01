@@ -1,8 +1,8 @@
 {
-  "catalog_version": "fa03fc939257645412068a25cc565ce0184df37f09b414e2faaa56f576e99092",
-  "generated_at": "2026-08-01T11:26:50.226Z",
+  "catalog_version": "8ddca26a9b761d74903e1455f9e8372de1ed22559e2d7b9e08f25ed5f95e4d62",
+  "generated_at": "2026-08-01T12:19:06.848Z",
   "outcome": "changed",
-  "previous_catalog_version": "6dc10d8b931a41e9d12988be36306f53b5522ba59d864a9f3b42f35b25be02d9",
+  "previous_catalog_version": "fa03fc939257645412068a25cc565ce0184df37f09b414e2faaa56f576e99092",
   "providers": [
     {
       "attempt": {
@@ -2150,10 +2150,10 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1402,
+            "outcome": "changed",
+            "parsed_models": 1403,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2167,16 +2167,19 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1402,
+            "parsed_models": 1403,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 28,
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/chendelong/DirectSAM-1800px-0424"
+        ],
+        "changed": 29,
         "changed_fields": {
+          "capabilities": 1,
           "limits": 28
         },
         "changed_models": [
@@ -2251,6 +2254,12 @@
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/tiny-aya-water"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
           },
           {
             "fields": [
@@ -2349,18 +2358,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1530,
-        "previous": 1531,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/zai-org/GLM-4.5"
-        ],
-        "unchanged": 1502
+        "current": 1531,
+        "previous": 1530,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1501
       },
       "pricing": {
         "commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64",
-        "outcome": "commercial",
-        "previous_commercial_hash": "02a5b5e832f2176ab9805b7f42254b82b96b31fbc88b92ff8764a12c64c0f91f"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "0817e55dd6382f6343b4c3d68e1b630e3d9139a5cfdc126c6c06e6981a304e64"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2368,8 +2375,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hf-inference"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2387,7 +2400,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2841,9 +2854,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3001,13 +3014,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3276,13 +3296,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 0,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 297,
-    "changed_sources": 27,
-    "models": 3363,
+    "changed_models": 298,
+    "changed_sources": 29,
+    "models": 3364,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
