@@ -93,4 +93,10 @@ describe("design token contract", () => {
       /--(?:background|surface|text|border|accent|positive|warning|danger|header-height|toolbar-height)\b/,
     );
   });
+
+  it("keeps native horizontal table overflow inside the viewport", () => {
+    expect(components).toMatch(/\.catalog-section\s*\{[^}]*min-width:\s*0;/s);
+    expect(components).toMatch(/\.table-scroll-host\s*\{[^}]*min-width:\s*0;/s);
+    expect(components).toMatch(/\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow:\s*auto;/s);
+  });
 });
