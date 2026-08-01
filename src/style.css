@@ -1014,7 +1014,12 @@ kbd {
 
 .price-status-band::before,
 .price-status-band::after {
-  border-top: var(--stroke-hairline) dashed var(--color-border-subtle);
+  height: var(--price-status-hatch-size);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-border-subtle) 0 var(--stroke-hairline),
+    var(--color-transparent) var(--stroke-hairline) var(--price-status-hatch-size)
+  );
   content: "";
 }
 

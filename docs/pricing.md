@@ -576,6 +576,12 @@ raw base pricing marks the offer incomplete while normalized rows remain
 available after resolution. Raw allowance facts similarly make only the
 allowance summary incomplete.
 
+Numeric selectors preserve their canonical domain. Dimensions containing only
+inclusive singleton ranges become discrete choices; other numeric dimensions
+show their published ranges and reject out-of-range input. Token counts and
+cache TTLs accept whole numbers, while durations may be fractional. The UI
+never widens an exact price condition into a neighboring interval.
+
 The compact detail payload contains display-ready values and selectors, not
 audit observations. Source-native display strings are derived while the
 validated observations are available and then emitted without their locators,

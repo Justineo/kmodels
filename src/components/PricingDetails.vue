@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { canonicalJson } from "../catalog/canonical-value.ts";
 import { isPricingDecimal } from "../catalog/pricing-constants.ts";
 import {
+  evaluateApplicability,
   evaluateModelApplicability,
   formatCategoricalValue,
   formatDimension,
@@ -40,7 +41,7 @@ interface ScopeCopy {
   secondary?: string;
 }
 
-const selections = ref<Record<string, PricingSelection>>({});
+const inputs = ref<Record<string, string>>({});
 const selectedOfferId = ref("");
 const offers = computed(() => props.detail?.offers ?? []);
 const baseOffers = computed(() => offers.value.filter(({ role }) => role === "base"));
@@ -66,10 +67,13 @@ const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
 );
 const selectionValues = computed(() => [
-  ...Object.values(selections.value),
+  ...selectors.value.flatMap((selector) => {
+    const value = selection(selector);
+    return value === undefined ? [] : [value];
+  }),
   ...fixedSelectors.value.map(fixedSelection),
 ]);
-const selectionCount = computed(() => Object.keys(selections.value).length);
+const selectionCount = computed(() => Object.keys(inputs.value).length);
 const visibleStates = computed(() => matchingRows(activeOffer.value?.states ?? []));
 const visibleRates = computed(() => matchingRows(activeOffer.value?.rates ?? []));
 const visibleAllowances = computed(() => matchingRows(activeOffer.value?.allowances ?? []));
@@ -113,7 +117,7 @@ const booleanOptions = [
 watch(
   () => props.model.uid,
   () => {
-    selections.value = {};
+    inputs.value = {};
     selectedOfferId.value = "";
   },
 );
@@ -206,11 +210,11 @@ function validityNote(validity: WebsitePublishedValidity): string {
 function selectOffer(offerId: string): void {
   if (selectedOfferId.value === offerId) return;
   selectedOfferId.value = offerId;
-  selections.value = {};
+  inputs.value = {};
 }
 
 function clearSelections(): void {
-  selections.value = {};
+  inputs.value = {};
 }
 
 function offerState(offer: WebsitePricingOffer): string | undefined {
@@ -234,54 +238,93 @@ function fixedSelectorValue(selector: CategoricalSelector): string {
   return selector.values[0]!.label;
 }
 
-function selectCategorical(selector: WebsitePricingSelector, value: string): void {
-  if (selector.kind !== "categorical") return;
-  const selected = selector.values.find(({ key }) => key === value);
-  if (selected === undefined) {
-    delete selections.value[selector.key];
-    return;
-  }
-  selections.value[selector.key] = {
-    dimension: selector.dimension,
-    kind: "categorical",
-    value: selected.value,
-  };
+type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
+
+function setInput(key: string, value: string): void {
+  if (value === "") delete inputs.value[key];
+  else inputs.value[key] = value;
 }
 
-function selectBoolean(selector: WebsitePricingSelector, value: string): void {
-  if (selector.kind !== "boolean") return;
-  if (value !== "true" && value !== "false") {
-    delete selections.value[selector.key];
-    return;
-  }
-  selections.value[selector.key] = {
-    dimension: selector.dimension,
-    kind: "boolean",
-    value: value === "true",
-  };
+function setDecimalInput(key: string, event: Event): void {
+  setInput(key, event.target instanceof HTMLInputElement ? event.target.value : "");
 }
 
-function selectDecimal(selector: WebsitePricingSelector, event: Event): void {
-  if (selector.kind !== "decimal_range") return;
-  const value = event.target instanceof HTMLInputElement ? event.target.value : "";
-  if (!isPricingDecimal(value)) {
-    delete selections.value[selector.key];
-    return;
+function selection(selector: WebsitePricingSelector): PricingSelection | undefined {
+  const value = inputValue(selector.key);
+  if (value === "") return undefined;
+  if (selector.kind === "categorical") {
+    const selected = selector.values.find(({ key }) => key === value);
+    return selected === undefined
+      ? undefined
+      : { dimension: selector.dimension, kind: "categorical", value: selected.value };
   }
-  selections.value[selector.key] = {
-    dimension: selector.dimension,
-    kind: "decimal",
-    value,
-    unit: selector.unit,
-  };
+  if (selector.kind === "boolean")
+    return value === "true" || value === "false"
+      ? { dimension: selector.dimension, kind: "boolean", value: value === "true" }
+      : undefined;
+  if (
+    (selector.kind === "decimal_values" && !selector.values.includes(value)) ||
+    (selector.kind === "decimal_range" && !isAcceptedDecimal(selector, value))
+  )
+    return undefined;
+  return { dimension: selector.dimension, kind: "decimal", value, unit: selector.unit };
 }
 
-function selectionValue(key: string): string {
-  const selection = selections.value[key];
-  if (selection === undefined) return "";
-  return selection.kind === "categorical"
-    ? canonicalJson(selection.value)
-    : String(selection.value);
+function isIntegerSelector(selector: WebsitePricingSelector): boolean {
+  return (
+    selector.dimension.namespace === "kmodels" &&
+    ["cache_ttl_seconds", "context_tokens", "input_tokens", "output_tokens"].includes(
+      selector.dimension.value,
+    )
+  );
+}
+
+function isAcceptedDecimal(selector: DecimalRangeSelector, value: string): boolean {
+  if (!isPricingDecimal(value) || (isIntegerSelector(selector) && value.includes(".")))
+    return false;
+  return (
+    evaluateApplicability(
+      {
+        any_of: selector.ranges.map((range) => ({
+          all_of: [
+            {
+              kind: "decimal_range",
+              dimension: selector.dimension,
+              unit: selector.unit,
+              ...range,
+            },
+          ],
+        })),
+      },
+      [{ dimension: selector.dimension, kind: "decimal", value, unit: selector.unit }],
+    ).state === "true"
+  );
+}
+
+function decimalInputError(selector: DecimalRangeSelector): string | undefined {
+  const value = inputValue(selector.key);
+  if (value === "" || isAcceptedDecimal(selector, value)) return undefined;
+  if (!isPricingDecimal(value)) return "Enter a non-negative number.";
+  if (isIntegerSelector(selector) && value.includes(".")) return "Enter a whole number.";
+  return "No published pricing range includes this value.";
+}
+
+function decimalRangeLabel(selector: DecimalRangeSelector): string {
+  return selector.ranges.map(({ lower, upper }) => rangeLabel(lower, upper)).join(" or ");
+}
+
+function rangeLabel(
+  lower: { value: string; inclusive: boolean } | undefined,
+  upper: { value: string; inclusive: boolean } | undefined,
+): string {
+  if (lower === undefined) return `${upper?.inclusive === true ? "≤" : "<"} ${upper?.value ?? ""}`;
+  if (upper === undefined) return `${lower.inclusive ? "≥" : ">"} ${lower.value}`;
+  if (lower.inclusive && upper.inclusive) return `${lower.value}–${upper.value}`;
+  return `${lower.inclusive ? "≥" : ">"} ${lower.value} and ${upper.inclusive ? "≤" : "<"} ${upper.value}`;
+}
+
+function inputValue(key: string): string {
+  return inputs.value[key] ?? "";
 }
 
 function joinLabels(labels: string[]): string {
@@ -418,13 +461,15 @@ function formatSnapshotAt(value: string): string {
           <label v-for="selector in configurableSelectors" :key="selector.key">
             <span>
               {{ selector.label }}
-              <template v-if="selector.kind === 'decimal_range'">
+              <template
+                v-if="selector.kind === 'decimal_values' || selector.kind === 'decimal_range'"
+              >
                 ({{ formatUnitExpression(selector.unit) }})
               </template>
             </span>
             <UiSelect
               v-if="selector.kind === 'categorical'"
-              :model-value="selectionValue(selector.key)"
+              :model-value="inputValue(selector.key)"
               :options="
                 selector.values.map(({ key, label }) => ({
                   value: key,
@@ -432,22 +477,40 @@ function formatSnapshotAt(value: string): string {
                 }))
               "
               placeholder="Choose…"
-              @update:model-value="selectCategorical(selector, $event)"
+              @update:model-value="setInput(selector.key, $event)"
             />
             <UiSelect
               v-else-if="selector.kind === 'boolean'"
-              :model-value="selectionValue(selector.key)"
+              :model-value="inputValue(selector.key)"
               :options="booleanOptions"
               placeholder="Choose…"
-              @update:model-value="selectBoolean(selector, $event)"
+              @update:model-value="setInput(selector.key, $event)"
+            />
+            <UiSelect
+              v-else-if="selector.kind === 'decimal_values'"
+              :model-value="inputValue(selector.key)"
+              :options="selector.values.map((value) => ({ value, label: value }))"
+              placeholder="Choose…"
+              @update:model-value="setInput(selector.key, $event)"
             />
             <input
               v-else
-              inputmode="decimal"
-              :value="selectionValue(selector.key)"
+              :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
+              :value="inputValue(selector.key)"
+              :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
+              :aria-describedby="`${selector.key}-range-guidance`"
               placeholder="Enter value"
-              @input="selectDecimal(selector, $event)"
+              @input="setDecimalInput(selector.key, $event)"
             />
+            <small
+              v-if="selector.kind === 'decimal_range'"
+              :id="`${selector.key}-range-guidance`"
+              :class="
+                decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'
+              "
+            >
+              {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
+            </small>
           </label>
         </div>
       </section>
@@ -794,6 +857,15 @@ function formatSnapshotAt(value: string): string {
   border-color: var(--color-accent);
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: calc(var(--stroke-focus) * -1);
+}
+
+.pricing-selector-grid .selector-hint,
+.pricing-selector-grid .selector-error {
+  line-height: var(--line-height-tight);
+}
+
+.pricing-selector-grid .selector-error {
+  color: var(--color-status-danger);
 }
 
 .pricing-offer-view {

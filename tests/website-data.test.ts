@@ -177,6 +177,38 @@ describe("website data", () => {
     ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
   }, 90_000);
 
+  it("projects singleton numeric domains as choices and retains genuine ranges", async () => {
+    const details = (await publicationData()).publication.details.flatMap((chunk) => chunk.details);
+    const fableFive = details.find(
+      ({ model_ref }) => model_ref === "amazon-bedrock/anthropic.claude-fable-5",
+    );
+    expect(
+      fableFive?.pricing?.offers[0]?.selectors.find(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" && dimension.value === "cache_ttl_seconds",
+      ),
+    ).toMatchObject({ kind: "decimal_values", values: ["300", "3600"] });
+
+    const selectors = details.flatMap(
+      ({ pricing }) => pricing?.offers.flatMap((offer) => offer.selectors) ?? [],
+    );
+    expect(selectors.some(({ kind }) => kind === "decimal_range")).toBe(true);
+    expect(
+      selectors.every(
+        (selector) =>
+          selector.kind !== "decimal_range" ||
+          selector.ranges.some(
+            ({ lower, upper }) =>
+              lower === undefined ||
+              upper === undefined ||
+              !lower.inclusive ||
+              !upper.inclusive ||
+              lower.value !== upper.value,
+          ),
+      ),
+    ).toBe(true);
+  }, 90_000);
+
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {
     const [{ publication, dataVersion }, manifest, pack] = await Promise.all([
       publicationData(),

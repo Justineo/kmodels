@@ -3472,6 +3472,14 @@ describe("Anthropic adapters", () => {
           rate.conditions.service_tier === "batch" &&
           rate.conditions.inference_geo === undefined,
       )?.price,
+      cacheWrites: fable?.price_facts
+        .filter(
+          (rate) =>
+            rate.meter === "cache_write_text" &&
+            rate.conditions.service_tier === undefined &&
+            rate.conditions.inference_geo === undefined,
+        )
+        .map(({ price, conditions }) => [conditions.cache_ttl_seconds, price]),
       sonnetRates: sonnet?.price_facts.length,
       previewStatus: preview?.status,
       previewReplacement: preview?.replacement_model_ids,
@@ -3484,6 +3492,10 @@ describe("Anthropic adapters", () => {
       input: "10",
       usInput: "11",
       batchCache: "0.5",
+      cacheWrites: [
+        [300, "12.50"],
+        [3600, "20"],
+      ],
       sonnetRates: 40,
       previewStatus: "retired",
       previewReplacement: ["claude-mythos-5"],

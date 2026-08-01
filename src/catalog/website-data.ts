@@ -1,5 +1,6 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
+import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
   displayUnitPrice,
   evaluateModelApplicability,
@@ -19,6 +20,7 @@ import {
 import type {
   AllowanceReset,
   PriceAllowanceTarget,
+  PriceCondition,
   PriceMeter,
   PricingBook,
   PricingCatalog,
@@ -130,7 +132,7 @@ function websiteDetailChunks(
     function emitChunk(): void {
       if (chunkDetails.length === 0) return;
       const detailChunk = websiteDetailChunkSchema.parse({
-        schema_version: 1,
+        schema_version: 2,
         data_version: dataVersion,
         provider_id: provider.id,
         chunk,
@@ -391,56 +393,81 @@ function websiteOffer(
 function pricingSelectors(offer: PricingOffer): WebsitePricingSelector[] {
   const cached = selectorCache.get(offer);
   if (cached !== undefined) return cached;
-  const byDimension = new Map<string, WebsitePricingSelector>();
+  const byDimension = new Map<string, PriceCondition[]>();
   for (const condition of offerConditions(offer)) {
     if (isModelDimension(condition.dimension)) continue;
     const key = canonicalJsonKey(condition.dimension);
-    if (condition.kind === "categorical") {
-      const current = byDimension.get(key);
-      const values = new Map(
-        current?.kind === "categorical" ? current.values.map((value) => [value.key, value]) : [],
-      );
-      for (const value of condition.values) {
-        const valueKey = canonicalJsonKey(value);
-        values.set(valueKey, {
-          key: valueKey,
-          label: formatCategoricalValue(value),
-          value,
-        });
-      }
-      byDimension.set(key, {
-        key,
-        label: formatDimension(condition.dimension),
-        dimension: condition.dimension,
-        kind: "categorical",
-        values: [...values.values()].sort((left, right) => compareUtf8(left.label, right.label)),
-      });
-      continue;
-    }
-    if (byDimension.has(key)) continue;
-    byDimension.set(
-      key,
-      condition.kind === "boolean"
-        ? {
-            key,
-            label: formatDimension(condition.dimension),
-            dimension: condition.dimension,
-            kind: "boolean",
-          }
-        : {
-            key,
-            label: formatDimension(condition.dimension),
-            dimension: condition.dimension,
-            kind: "decimal_range",
-            unit: condition.unit,
-          },
-    );
+    const current = byDimension.get(key);
+    if (current === undefined) byDimension.set(key, [condition]);
+    else current.push(condition);
   }
-  const selectors = [...byDimension.values()].sort((left, right) =>
-    compareUtf8(left.label, right.label),
-  );
+  const selectors = [...byDimension.entries()]
+    .map(([key, conditions]) => pricingSelector(key, conditions))
+    .sort((left, right) => compareUtf8(left.label, right.label));
   selectorCache.set(offer, selectors);
   return selectors;
+}
+
+function pricingSelector(key: string, conditions: PriceCondition[]): WebsitePricingSelector {
+  const first = conditions[0];
+  if (first === undefined) throw new Error(`Pricing selector ${key} has no conditions`);
+  const base = {
+    key,
+    label: formatDimension(first.dimension),
+    dimension: first.dimension,
+  };
+  if (first.kind === "categorical") {
+    const values = new Map(
+      conditions.flatMap((condition) => {
+        if (condition.kind !== "categorical") return [];
+        return condition.values.map((value) => {
+          const valueKey = canonicalJsonKey(value);
+          return [
+            valueKey,
+            { key: valueKey, label: formatCategoricalValue(value), value },
+          ] as const;
+        });
+      }),
+    );
+    return {
+      ...base,
+      kind: "categorical",
+      values: [...values.values()].sort((left, right) => compareUtf8(left.label, right.label)),
+    };
+  }
+  if (first.kind === "boolean") return { ...base, kind: "boolean" };
+
+  const ranges = [
+    ...new Map(
+      conditions.flatMap((condition) => {
+        if (condition.kind !== "decimal_range") return [];
+        const range = {
+          ...(condition.lower === undefined ? {} : { lower: condition.lower }),
+          ...(condition.upper === undefined ? {} : { upper: condition.upper }),
+        };
+        return [[canonicalJsonKey(range), range] as const];
+      }),
+    ).values(),
+  ];
+  const exactValues = ranges.flatMap(({ lower, upper }) =>
+    lower !== undefined &&
+    upper !== undefined &&
+    lower.inclusive &&
+    upper.inclusive &&
+    lower.value === upper.value
+      ? [lower.value]
+      : [],
+  );
+  if (exactValues.length === ranges.length)
+    return {
+      ...base,
+      kind: "decimal_values",
+      unit: first.unit,
+      values: exactValues.sort((left, right) =>
+        compareRationals(rationalFromDecimal(left), rationalFromDecimal(right)),
+      ),
+    };
+  return { ...base, kind: "decimal_range", unit: first.unit, ranges };
 }
 
 function offerStateSummary(offer: PricingOffer, modelRef: string): string {
