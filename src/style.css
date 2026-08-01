@@ -584,7 +584,7 @@ kbd {
   display: none;
 }
 
-.kmodels-scrollbar {
+.os-scrollbar.kmodels-scrollbar {
   --os-size: var(--space-2-5);
   --os-padding-perpendicular: var(--radius-xs);
   --os-padding-axis: var(--radius-xs);
@@ -1624,8 +1624,13 @@ button.table-status-trigger {
     width: var(--space-5);
   }
 
-  .mobile-table-scrollbar-slot .kmodels-scrollbar {
+  .mobile-table-scrollbar-slot .os-scrollbar.kmodels-scrollbar {
     --os-handle-interactive-area-offset: var(--space-2-5);
+  }
+
+  .mobile-table-scrollbar-slot > .os-scrollbar-horizontal,
+  .table-scroll-host > .os-scrollbar-vertical {
+    display: none;
   }
 
   .model-table tr {
