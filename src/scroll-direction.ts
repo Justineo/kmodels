@@ -12,3 +12,12 @@ export function dominantScrollAxis(
   if (Math.max(horizontalDistance, verticalDistance) < threshold) return undefined;
   return horizontalDistance > verticalDistance ? "horizontal" : "vertical";
 }
+
+export function clampScrollPosition(
+  position: number,
+  scrollSize: number,
+  viewportSize: number,
+): number {
+  const maximum = Math.max(0, scrollSize - viewportSize);
+  return Math.min(maximum, Math.max(0, position));
+}

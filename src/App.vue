@@ -30,7 +30,7 @@ import UiIcon from "./components/UiIcon.vue";
 import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import { detailsState } from "./details-state.ts";
-import { dominantScrollAxis, type ScrollAxis } from "./scroll-direction.ts";
+import { clampScrollPosition, dominantScrollAxis, type ScrollAxis } from "./scroll-direction.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
@@ -319,7 +319,6 @@ function handleTableTouchMove(event: TouchEvent): void {
     resetTableTouchGesture();
     return;
   }
-  event.preventDefault();
   const scrollPosition = gesture.axis === "horizontal" ? element.scrollLeft : element.scrollTop;
   if (gesture.axis === "horizontal") element.scrollLeft = gesture.startScrollLeft - deltaX;
   else element.scrollTop = gesture.startScrollTop - deltaY;
@@ -344,10 +343,17 @@ function handleTableTouchEnd(event: TouchEvent): void {
   const element = gesture.axis === "horizontal" ? tableShell.value : tableBody.value;
   if (element === null) return;
   const distance = gesture.velocity * TOUCH_MOMENTUM_PROJECTION;
-  element.scrollBy({
+  const horizontal = gesture.axis === "horizontal";
+  const currentPosition = horizontal ? element.scrollLeft : element.scrollTop;
+  const targetPosition = clampScrollPosition(
+    currentPosition + distance,
+    horizontal ? element.scrollWidth : element.scrollHeight,
+    horizontal ? element.clientWidth : element.clientHeight,
+  );
+  element.scrollTo({
     behavior: "smooth",
-    left: gesture.axis === "horizontal" ? distance : 0,
-    top: gesture.axis === "vertical" ? distance : 0,
+    left: horizontal ? targetPosition : element.scrollLeft,
+    top: horizontal ? element.scrollTop : targetPosition,
   });
 }
 
@@ -866,7 +872,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
               ref="tableBody"
               @scroll.passive="handleTableBodyScroll"
               @touchstart.passive="handleTableTouchStart"
-              @touchmove="handleTableTouchMove"
+              @touchmove.prevent="handleTableTouchMove"
               @touchend.passive="handleTableTouchEnd"
               @touchcancel.passive="resetTableTouchGesture"
             >
