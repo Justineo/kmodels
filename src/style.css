@@ -580,6 +580,10 @@ kbd {
   overscroll-behavior: contain;
 }
 
+.mobile-table-scrollbar-slot {
+  display: none;
+}
+
 .kmodels-scrollbar {
   --os-size: var(--space-2-5);
   --os-padding-perpendicular: var(--radius-xs);
@@ -1610,6 +1614,18 @@ button.table-status-trigger {
 
   .model-table tbody td {
     touch-action: pan-x pan-y;
+  }
+
+  .mobile-table-scrollbar-slot {
+    position: absolute;
+    z-index: var(--layer-table-header);
+    inset: var(--layout-table-header-height) var(--space-0) var(--space-0) auto;
+    display: block;
+    width: var(--space-5);
+  }
+
+  .mobile-table-scrollbar-slot .kmodels-scrollbar {
+    --os-handle-interactive-area-offset: var(--space-2-5);
   }
 
   .model-table tr {
