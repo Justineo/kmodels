@@ -1,8 +1,4 @@
-import {
-  OverlayScrollbars,
-  type OverlayScrollbars as OverlayScrollbarsInstance,
-} from "overlayscrollbars";
-import "overlayscrollbars/overlayscrollbars.css";
+import type { OverlayScrollbars as OverlayScrollbarsInstance } from "overlayscrollbars";
 import { onMounted, onUnmounted } from "vue";
 
 interface ScrollbarElements {
@@ -10,12 +6,33 @@ interface ScrollbarElements {
   viewport: HTMLElement | null;
 }
 
+const CUSTOM_SCROLL_QUERY = "(any-hover: hover) and (any-pointer: fine)";
+let overlayScrollbarsModule: Promise<typeof import("overlayscrollbars")> | undefined;
+
+function prefersNativeScrollbars(): boolean {
+  return !window.matchMedia(CUSTOM_SCROLL_QUERY).matches;
+}
+
+async function loadOverlayScrollbars(): Promise<typeof import("overlayscrollbars")> {
+  overlayScrollbarsModule ??= Promise.all([
+    import("overlayscrollbars"),
+    import("overlayscrollbars/overlayscrollbars.css"),
+  ]).then(([module]) => module);
+  return overlayScrollbarsModule;
+}
+
+export async function prepareOverlayScrollbars(): Promise<void> {
+  if (!prefersNativeScrollbars()) await loadOverlayScrollbars();
+}
+
 export function useOverlayScrollbars(elements: () => ScrollbarElements): () => void {
   let instance: OverlayScrollbarsInstance | undefined;
+  let media: MediaQueryList | undefined;
+  let syncVersion = 0;
 
-  function sync(): void {
+  async function syncCurrent(version: number): Promise<void> {
     const { target, viewport } = elements();
-    if (target === null || viewport === null) {
+    if (target === null || viewport === null || prefersNativeScrollbars()) {
       instance?.destroy();
       instance = undefined;
       return;
@@ -25,6 +42,11 @@ export function useOverlayScrollbars(elements: () => ScrollbarElements): () => v
       instance?.update();
       return;
     }
+
+    const { OverlayScrollbars } = await loadOverlayScrollbars();
+    if (version !== syncVersion || prefersNativeScrollbars()) return;
+    const currentElements = elements();
+    if (currentElements.target !== target || currentElements.viewport !== viewport) return;
 
     instance?.destroy();
     instance = OverlayScrollbars(
@@ -42,9 +64,20 @@ export function useOverlayScrollbars(elements: () => ScrollbarElements): () => v
     );
   }
 
-  onMounted(sync);
+  function sync(): void {
+    syncVersion += 1;
+    void syncCurrent(syncVersion);
+  }
+
+  onMounted(() => {
+    media = window.matchMedia(CUSTOM_SCROLL_QUERY);
+    media.addEventListener("change", sync);
+    sync();
+  });
 
   onUnmounted(() => {
+    syncVersion += 1;
+    media?.removeEventListener("change", sync);
     instance?.destroy();
   });
 

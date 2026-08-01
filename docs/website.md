@@ -121,6 +121,9 @@ Status: implemented
   positioning with viewport-aware fallback placement; components do not
   calculate viewport coordinates or own scroll/resize listeners.
 - Keep all filtered results in one continuous, fixed-row virtual scroll surface.
+- Keep every semantic table column visible at every viewport width. On narrow
+  screens, preserve the desktop column proportions and let the table scroll
+  horizontally instead of hiding provider, task, pricing, or release data.
 
 ## Interaction
 
@@ -172,9 +175,12 @@ Status: implemented
 - Use one `data_version` derived from the accepted catalog/pricing pair on the
   catalog, pricing-summary, and detail-chunk projections. Reject mismatched core
   chunks before mounting and mismatched deferred details before rendering them.
-- Keep the initial catalog parser small and dependency-free. Load
-  OverlayScrollbars runtime/CSS with the initial application graph so its
-  explicit viewports replace native scrollbars before the first rendered frame.
+- Keep the initial catalog parser small and dependency-free. On hover-capable
+  pointer devices, load OverlayScrollbars runtime/CSS concurrently with core
+  data so its explicit viewports replace native scrollbars before the first
+  rendered frame. On coarse touch devices without hover, do not request or
+  initialize OverlayScrollbars; keep the same explicit viewports and use native
+  scrolling, momentum, and scrollbar feedback.
   Load the full closed-schema validator, inspector component, and inspector CSS
   asynchronously after that frame. Split non-core code instead of deferring core
   table data. Both browser graphs contain only browser-safe modules; canonical
@@ -228,7 +234,11 @@ Status: implemented
 
 - Keep rows fixed at 48px with eight rows of overscan on each side.
 - Implement range math in a small framework-neutral utility and render Vapor-native table markup. Do not add a VDOM virtualization dependency or dynamic measurement.
-- One Vapor composable initializes OverlayScrollbars on explicit host/viewport pairs for the table, filter popover, and inspector. It owns scrollbar chrome only; Vue owns content, native scrolling, and range calculation.
+- One Vapor composable uses explicit host/viewport pairs for the table, filter
+  popover, and inspector. It initializes OverlayScrollbars only when a
+  hover-capable pointer is available and otherwise leaves the native touch
+  scroller intact. It owns scrollbar chrome only; Vue owns content, native
+  scrolling, and range calculation.
 - The native select picker uses the same restrained scrollbar colors because it is not script-addressable.
 - Publish total and absolute row indexes for assistive technology.
 
