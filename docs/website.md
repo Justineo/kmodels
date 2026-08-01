@@ -144,7 +144,11 @@ Status: implemented
   native page panning and momentum in both axes. Allow horizontal scroll chaining
   from the non-overflowing axis of `tbody` to the outer viewport, while containing
   vertical and outer-edge overscroll. Leave gesture direction locking to the
-  browser instead of replacing its scrolling physics in JavaScript.
+  browser instead of replacing its scrolling physics in JavaScript. Because iOS
+  does not reliably expose an interactive scrollbar for a nested scrollport,
+  attach OverlayScrollbars only to the real `tbody` viewport and place its
+  persistent vertical scrollbar below the table header. It supplies drag and
+  track interactions without handling ordinary content panning.
 
 ## Interaction
 
@@ -201,8 +205,9 @@ Status: implemented
   pointer devices, load OverlayScrollbars runtime/CSS concurrently with core
   data so its explicit viewports replace native scrollbars before the first
   rendered frame. On coarse touch devices without hover, do not request or
-  initialize OverlayScrollbars; keep the same explicit viewports and use native
-  scrolling, momentum, and scrollbar feedback.
+  initialize OverlayScrollbars for general surfaces; keep their native scrolling
+  and momentum. Initialize one vertical-only table instance against the real
+  nested body viewport so touch users can drag directly through long result sets.
   Load the full closed-schema validator, inspector component, and inspector CSS
   asynchronously after that frame. Split non-core code instead of deferring core
   table data. Both browser graphs contain only browser-safe modules; canonical
@@ -260,9 +265,10 @@ Status: implemented
   scrolling `tbody`; on other devices it follows the unified table viewport.
 - One Vapor composable uses explicit host/viewport pairs for the table, filter
   popover, and inspector. It initializes OverlayScrollbars only when a
-  hover-capable pointer is available and otherwise leaves the native touch
-  scrollport intact. It owns scrollbar chrome only; Vue owns content, touch pan
-  projection, and range calculation.
+  hover-capable pointer is available and otherwise leaves native touch scrollports
+  intact, except for the table body's vertical-only scrollbar. The library owns
+  scrollbar chrome and direct handle/track interaction; Vue owns content and
+  virtual range calculation.
 - The native select picker uses the same restrained scrollbar colors because it is not script-addressable.
 - Publish total and absolute row indexes for assistive technology.
 

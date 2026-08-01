@@ -59,6 +59,7 @@ const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewpor
 const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
 const tableBody = useTemplateRef<HTMLTableSectionElement>("tableBody");
+const tableScrollbarSlot = useTemplateRef<HTMLDivElement>("tableScrollbarSlot");
 const tableScrollOffset = ref(0);
 const tableViewportSize = ref(0);
 const usesNestedTableScroll = ref(window.matchMedia(COARSE_TOUCH_QUERY).matches);
@@ -73,10 +74,15 @@ const updateFilterScrollbars = useOverlayScrollbars(() => ({
   target: filterScrollHost.value,
   viewport: filterScrollViewport.value,
 }));
-useOverlayScrollbars(() => ({
-  target: tableScrollHost.value,
-  viewport: tableShell.value,
-}));
+const updateTableScrollbars = useOverlayScrollbars(() => {
+  const coarseTouch = usesNestedTableScroll.value;
+  return {
+    target: coarseTouch ? tableBody.value : tableScrollHost.value,
+    viewport: coarseTouch ? tableBody.value : tableShell.value,
+    slot: coarseTouch ? tableScrollbarSlot.value : null,
+    coarseTouch,
+  };
+});
 
 const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
 const selectedModel = computed(() => {
@@ -275,6 +281,7 @@ function resetVirtualScroll(): void {
   tableShell.value?.scrollTo({ top: 0 });
   tableBody.value?.scrollTo({ top: 0 });
   updateVirtualRange();
+  updateTableScrollbars();
 }
 
 function syncRoute(): void {
@@ -805,6 +812,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
             </tbody>
           </table>
         </div>
+        <div ref="tableScrollbarSlot" class="mobile-table-scrollbar-slot"></div>
       </div>
     </section>
   </main>

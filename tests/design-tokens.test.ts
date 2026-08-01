@@ -108,5 +108,8 @@ describe("design token contract", () => {
       /\.model-table tbody\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior-x:\s*auto;[^}]*overscroll-behavior-y:\s*none;/s,
     );
     expect(components).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
+    expect(components).toMatch(
+      /\.mobile-table-scrollbar-slot\s*\{[^}]*inset:\s*var\(--layout-table-header-height\)[^}]*display:\s*block;/s,
+    );
   });
 });
