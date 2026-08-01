@@ -20,6 +20,7 @@ const props = defineProps<{
   model: WebsiteModel;
   providerName: string;
   rowIndex: number;
+  alternate: boolean;
   selected: boolean;
   showVersionBadge: boolean;
   nested?: boolean;
@@ -61,6 +62,7 @@ function filterStatus(): void {
     class="model-row"
     :aria-rowindex="rowIndex"
     :aria-selected="selected"
+    :data-alternate="alternate ? 'true' : undefined"
     :data-status="status"
     :data-nested="nested ? 'true' : undefined"
   >

@@ -24,6 +24,7 @@ const props = defineProps<{
   group: ModelGroup<WebsiteModel>;
   providerName: string;
   rowIndex: number;
+  alternate: boolean;
   expanded: boolean;
 }>();
 
@@ -101,6 +102,7 @@ function filterStatus(): void {
   <tr
     class="model-row model-group-row"
     :aria-rowindex="rowIndex"
+    :data-alternate="alternate ? 'true' : undefined"
     :data-status="sharedStatus.kind === 'shared' ? sharedStatus.value : 'unknown'"
   >
     <td class="model-col">
