@@ -105,8 +105,8 @@ describe("design token contract", () => {
       /\.table-shell\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;[^}]*overscroll-behavior:\s*none;/s,
     );
     expect(components).toMatch(
-      /\.model-table tbody\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*none;/s,
+      /\.model-table tbody\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior-x:\s*auto;[^}]*overscroll-behavior-y:\s*none;/s,
     );
-    expect(components).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-y;/s);
+    expect(components).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
   });
 });

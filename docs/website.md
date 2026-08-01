@@ -141,12 +141,10 @@ Status: implemented
   nest its scrollports by axis: the outer table viewport owns horizontal
   scrolling for the header and body together, while `tbody` owns vertical
   scrolling below the header. Suppress page zoom gestures while preserving
-  native page panning. Let the browser own vertical table pans and their native
-  momentum; declarative `pan-y` touch action leaves horizontal pans to a small
-  pointer controller that moves only the outer viewport. Determine horizontal
-  intent after a short threshold, estimate release velocity from a recent sample
-  window, and decay it within the real horizontal bounds. Disable overscroll on
-  both scrollports, so an edge fling cannot reveal the page behind the table.
+  native page panning and momentum in both axes. Allow horizontal scroll chaining
+  from the non-overflowing axis of `tbody` to the outer viewport, while containing
+  vertical and outer-edge overscroll. Leave gesture direction locking to the
+  browser instead of replacing its scrolling physics in JavaScript.
 
 ## Interaction
 
