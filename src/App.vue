@@ -36,15 +36,17 @@ const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 const NATIVE_TOUCH_SCROLL_QUERY = "(any-hover: none) and (any-pointer: coarse)";
 const TOUCH_DIRECTION_THRESHOLD = 8;
-const TOUCH_SCROLL_END_FALLBACK = 160;
+const TOUCH_MOMENTUM_PROJECTION = 180;
+const TOUCH_MOMENTUM_MAX_AGE = 80;
 
 interface TableTouchGesture {
   axis: ScrollAxis | undefined;
-  ended: boolean;
+  lastEventTime: number;
   startClientX: number;
   startClientY: number;
   startScrollLeft: number;
   startScrollTop: number;
+  velocity: number;
 }
 
 type Theme = "light" | "dark";
@@ -78,7 +80,6 @@ const usesSplitTableScroll = ref(window.matchMedia(NATIVE_TOUCH_SCROLL_QUERY).ma
 let tableResizeObserver: ResizeObserver | undefined;
 let tableScrollMedia: MediaQueryList | undefined;
 let tableTouchGesture: TableTouchGesture | undefined;
-let tableTouchReleaseTimer: number | undefined;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let applyingRoute = false;
@@ -272,29 +273,15 @@ function updateVirtualRange(): void {
   tableViewportSize.value = Math.max(0, (element?.clientHeight ?? 0) - headerOffset);
 }
 
-function clearTableTouchReleaseTimer(): void {
-  if (tableTouchReleaseTimer !== undefined) window.clearTimeout(tableTouchReleaseTimer);
-  tableTouchReleaseTimer = undefined;
-}
-
 function resetTableTouchGesture(): void {
-  clearTableTouchReleaseTimer();
   tableTouchGesture = undefined;
 }
 
-function enforceTableTouchDirection(): void {
-  const gesture = tableTouchGesture;
+function syncTableHeader(): void {
   const body = tableBody.value;
-  if (gesture?.axis === undefined || body === null) return;
-  if (gesture.axis === "horizontal" && body.scrollTop !== gesture.startScrollTop)
-    body.scrollTop = gesture.startScrollTop;
-  if (gesture.axis === "vertical" && body.scrollLeft !== gesture.startScrollLeft)
-    body.scrollLeft = gesture.startScrollLeft;
-}
-
-function scheduleTableTouchRelease(): void {
-  clearTableTouchReleaseTimer();
-  tableTouchReleaseTimer = window.setTimeout(resetTableTouchGesture, TOUCH_SCROLL_END_FALLBACK);
+  const head = tableHead.value;
+  if (usesSplitTableScroll.value && body !== null && head !== null)
+    head.scrollLeft = body.scrollLeft;
 }
 
 function handleTableTouchStart(event: TouchEvent): void {
@@ -305,51 +292,70 @@ function handleTableTouchStart(event: TouchEvent): void {
   const touch = event.touches.item(0);
   const body = tableBody.value;
   if (touch === null || body === null) return;
-  clearTableTouchReleaseTimer();
+  body.scrollTo(body.scrollLeft, body.scrollTop);
   tableTouchGesture = {
     axis: undefined,
-    ended: false,
+    lastEventTime: event.timeStamp,
     startClientX: touch.clientX,
     startClientY: touch.clientY,
     startScrollLeft: body.scrollLeft,
     startScrollTop: body.scrollTop,
+    velocity: 0,
   };
 }
 
 function handleTableTouchMove(event: TouchEvent): void {
   const gesture = tableTouchGesture;
   const touch = event.touches.item(0);
-  if (gesture === undefined || touch === null) return;
-  gesture.axis ??= dominantScrollAxis(
-    touch.clientX - gesture.startClientX,
-    touch.clientY - gesture.startClientY,
-    TOUCH_DIRECTION_THRESHOLD,
-  );
-  enforceTableTouchDirection();
-}
-
-function handleTableTouchEnd(): void {
-  const gesture = tableTouchGesture;
-  if (gesture?.axis === undefined) {
+  const body = tableBody.value;
+  if (gesture === undefined || touch === null || body === null || event.touches.length !== 1) {
     resetTableTouchGesture();
     return;
   }
-  gesture.ended = true;
-  scheduleTableTouchRelease();
+  const deltaX = touch.clientX - gesture.startClientX;
+  const deltaY = touch.clientY - gesture.startClientY;
+  const nextAxis = dominantScrollAxis(deltaX, deltaY, TOUCH_DIRECTION_THRESHOLD);
+  if (gesture.axis === undefined && nextAxis !== undefined) {
+    gesture.axis = nextAxis;
+    gesture.lastEventTime = event.timeStamp;
+  }
+  if (gesture.axis === undefined) return;
+
+  event.preventDefault();
+  const scrollPosition = gesture.axis === "horizontal" ? body.scrollLeft : body.scrollTop;
+  if (gesture.axis === "horizontal") body.scrollLeft = gesture.startScrollLeft - deltaX;
+  else body.scrollTop = gesture.startScrollTop - deltaY;
+
+  const elapsed = event.timeStamp - gesture.lastEventTime;
+  if (elapsed > 0) {
+    const nextScrollPosition = gesture.axis === "horizontal" ? body.scrollLeft : body.scrollTop;
+    gesture.velocity = (nextScrollPosition - scrollPosition) / elapsed;
+  }
+  gesture.lastEventTime = event.timeStamp;
+  syncTableHeader();
+}
+
+function handleTableTouchEnd(event: TouchEvent): void {
+  const gesture = tableTouchGesture;
+  const body = tableBody.value;
+  resetTableTouchGesture();
+  if (
+    gesture?.axis === undefined ||
+    body === null ||
+    event.timeStamp - gesture.lastEventTime > TOUCH_MOMENTUM_MAX_AGE
+  )
+    return;
+  const distance = gesture.velocity * TOUCH_MOMENTUM_PROJECTION;
+  body.scrollBy({
+    behavior: "smooth",
+    left: gesture.axis === "horizontal" ? distance : 0,
+    top: gesture.axis === "vertical" ? distance : 0,
+  });
 }
 
 function handleTableBodyScroll(): void {
-  enforceTableTouchDirection();
-  const body = tableBody.value;
-  const head = tableHead.value;
-  if (usesSplitTableScroll.value && body !== null && head !== null)
-    head.scrollLeft = body.scrollLeft;
-  if (tableTouchGesture?.ended === true) scheduleTableTouchRelease();
+  syncTableHeader();
   updateVirtualRange();
-}
-
-function handleTableBodyScrollEnd(): void {
-  if (tableTouchGesture?.ended === true) resetTableTouchGesture();
 }
 
 function tableVerticalScrollElement(): HTMLElement | null {
@@ -851,9 +857,8 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
             <tbody
               ref="tableBody"
               @scroll.passive="handleTableBodyScroll"
-              @scrollend.passive="handleTableBodyScrollEnd"
               @touchstart.passive="handleTableTouchStart"
-              @touchmove.passive="handleTableTouchMove"
+              @touchmove="handleTableTouchMove"
               @touchend.passive="handleTableTouchEnd"
               @touchcancel.passive="resetTableTouchGesture"
             >
