@@ -100,6 +100,11 @@ describe("design token contract", () => {
     expect(components).toMatch(/\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow:\s*auto;/s);
   });
 
+  it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {
+    expect(components).toMatch(/\.os-scrollbar\.kmodels-scrollbar\s*\{/);
+    expect(components).not.toMatch(/(?<!\.os-scrollbar)\.kmodels-scrollbar\s*\{/);
+  });
+
   it("separates mobile table scrolling by axis", () => {
     expect(components).toMatch(
       /\.table-shell\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;[^}]*overscroll-behavior:\s*none;/s,
@@ -110,6 +115,9 @@ describe("design token contract", () => {
     expect(components).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
     expect(components).toMatch(
       /\.mobile-table-scrollbar-slot\s*\{[^}]*inset:\s*var\(--layout-table-header-height\)[^}]*display:\s*block;/s,
+    );
+    expect(components).toMatch(
+      /\.mobile-table-scrollbar-slot\s*>\s*\.os-scrollbar-horizontal,[^{]*\.table-scroll-host\s*>\s*\.os-scrollbar-vertical\s*\{[^}]*display:\s*none;/s,
     );
   });
 });

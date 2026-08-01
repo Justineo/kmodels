@@ -77,10 +77,20 @@ const updateFilterScrollbars = useOverlayScrollbars(() => ({
 const updateTableScrollbars = useOverlayScrollbars(() => {
   const coarseTouch = usesNestedTableScroll.value;
   return {
-    target: coarseTouch ? tableBody.value : tableScrollHost.value,
-    viewport: coarseTouch ? tableBody.value : tableShell.value,
+    target: tableScrollHost.value,
+    viewport: tableShell.value,
+    coarseTouch,
+    axis: coarseTouch ? "horizontal" : "both",
+  };
+});
+const updateTableBodyScrollbar = useOverlayScrollbars(() => {
+  const coarseTouch = usesNestedTableScroll.value;
+  return {
+    target: coarseTouch ? tableBody.value : null,
+    viewport: coarseTouch ? tableBody.value : null,
     slot: coarseTouch ? tableScrollbarSlot.value : null,
     coarseTouch,
+    axis: "vertical",
   };
 });
 
@@ -282,6 +292,7 @@ function resetVirtualScroll(): void {
   tableBody.value?.scrollTo({ top: 0 });
   updateVirtualRange();
   updateTableScrollbars();
+  updateTableBodyScrollbar();
 }
 
 function syncRoute(): void {
