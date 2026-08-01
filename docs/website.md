@@ -123,7 +123,10 @@ Status: implemented
 - Keep all filtered results in one continuous, fixed-row virtual scroll surface.
 - Keep every semantic table column visible at every viewport width. On narrow
   screens, preserve the desktop column proportions and let the table scroll
-  horizontally instead of hiding provider, task, pricing, or release data.
+  horizontally instead of hiding provider, task, pricing, or release data. The
+  enclosing grid items must opt into shrinking with `min-width: 0`, while the
+  native scroll viewport stays at the available width, so the table's minimum
+  width creates viewport overflow instead of expanding into clipped workspace.
 
 ## Interaction
 
