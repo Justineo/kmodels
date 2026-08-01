@@ -3,6 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 
 const tokens = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
 const components = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const app = readFileSync(new URL("../src/App.vue", import.meta.url), "utf8");
+const modelRow = readFileSync(new URL("../src/components/ModelRow.vue", import.meta.url), "utf8");
+const modelGroupRow = readFileSync(
+  new URL("../src/components/ModelGroupRow.vue", import.meta.url),
+  "utf8",
+);
 
 function matches(pattern: RegExp, value: string): string[] {
   return [...value.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))].map(
@@ -98,6 +104,14 @@ describe("design token contract", () => {
     expect(components).toMatch(/\.catalog-section\s*\{[^}]*min-width:\s*0;/s);
     expect(components).toMatch(/\.table-scroll-host\s*\{[^}]*min-width:\s*0;/s);
     expect(components).toMatch(/\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow:\s*auto;/s);
+  });
+
+  it("keeps virtual row striping independent of rendered child position", () => {
+    expect(components).not.toMatch(/\.model-row:nth-child\((?:odd|even)\)/);
+    expect(components).toMatch(/\.model-row\[data-alternate="true"\]\s*>\s*td/);
+    expect(matches(/:alternate="\(virtualRange\.start \+ index\) % 2 === 1"/, app)).toHaveLength(2);
+    expect(modelRow).toMatch(/:data-alternate="alternate \? 'true' : undefined"/);
+    expect(modelGroupRow).toMatch(/:data-alternate="alternate \? 'true' : undefined"/);
   });
 
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {

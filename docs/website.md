@@ -262,6 +262,9 @@ Status: implemented
 ## Virtualization and scrollbars
 
 - Keep rows fixed at 48px with eight rows of overscan on each side.
+- Derive alternating row surfaces from each row's absolute index in the virtual
+  result set. Do not use structural child-position selectors because virtual
+  spacers and range slicing make the rendered child position unstable.
 - Implement range math in a small framework-neutral utility and render Vapor-native table markup. Do not add a VDOM virtualization dependency or dynamic measurement.
 - On coarse touch devices, virtual range calculation follows the independently
   scrolling `tbody`; on other devices it follows the unified table viewport.
