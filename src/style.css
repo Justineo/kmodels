@@ -1563,6 +1563,57 @@ kbd {
   }
 }
 
+@media (any-hover: none) and (any-pointer: coarse) {
+  .table-shell {
+    overflow: hidden;
+  }
+
+  .model-table {
+    display: grid;
+    min-width: 0;
+    height: 100%;
+    grid-template-rows: var(--layout-table-header-height) minmax(0, 1fr);
+  }
+
+  .model-table colgroup {
+    display: none;
+  }
+
+  .model-table thead,
+  .model-table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  .model-table thead {
+    overflow: hidden;
+  }
+
+  .model-table tbody {
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .model-table tr {
+    display: grid;
+    min-width: var(--layout-table-min-width);
+    grid-template-columns: var(--layout-table-grid-columns);
+  }
+
+  .model-table th {
+    position: static;
+  }
+
+  .price-status-cell {
+    grid-column: span 3;
+  }
+
+  .virtual-spacer td {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (width <= 1120px) {
   .generated-at {
     display: none;

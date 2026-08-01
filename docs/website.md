@@ -127,6 +127,11 @@ Status: implemented
   enclosing grid items must opt into shrinking with `min-width: 0`, while the
   native scroll viewport stays at the available width, so the table's minimum
   width creates viewport overflow instead of expanding into clipped workspace.
+- On coarse touch devices without hover, keep the semantic table intact but
+  make its `tbody` the scrollport and keep the header in a separate synchronized
+  viewport above it. Resolve the dominant axis after a short movement threshold
+  and hold the other scroll offset at its gesture-start value, including during
+  native momentum, so diagonal touches move in only one direction.
 
 ## Interaction
 
@@ -237,6 +242,8 @@ Status: implemented
 
 - Keep rows fixed at 48px with eight rows of overscan on each side.
 - Implement range math in a small framework-neutral utility and render Vapor-native table markup. Do not add a VDOM virtualization dependency or dynamic measurement.
+- On coarse touch devices, virtual range calculation follows the independently
+  scrolling `tbody`; on other devices it follows the unified table viewport.
 - One Vapor composable uses explicit host/viewport pairs for the table, filter
   popover, and inspector. It initializes OverlayScrollbars only when a
   hover-capable pointer is available and otherwise leaves the native touch
