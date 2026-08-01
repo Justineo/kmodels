@@ -129,9 +129,11 @@ Status: implemented
   width creates viewport overflow instead of expanding into clipped workspace.
 - On coarse touch devices without hover, keep the semantic table intact but
   make its `tbody` the scrollport and keep the header in a separate synchronized
-  viewport above it. Resolve the dominant axis after a short movement threshold
-  and hold the other scroll offset at its gesture-start value, including during
-  native momentum, so diagonal touches move in only one direction.
+  viewport above it. Suppress page zoom gestures while preserving native page
+  panning, and translate single-finger table pans into only the dominant scroll
+  axis after a short movement threshold. Do not clamp offsets after native
+  scrolling has already started: competing with the browser's composited scroll
+  creates visible rollback and flicker.
 
 ## Interaction
 
@@ -247,8 +249,8 @@ Status: implemented
 - One Vapor composable uses explicit host/viewport pairs for the table, filter
   popover, and inspector. It initializes OverlayScrollbars only when a
   hover-capable pointer is available and otherwise leaves the native touch
-  scroller intact. It owns scrollbar chrome only; Vue owns content, native
-  scrolling, and range calculation.
+  scrollport intact. It owns scrollbar chrome only; Vue owns content, touch pan
+  projection, and range calculation.
 - The native select picker uses the same restrained scrollbar colors because it is not script-addressable.
 - Publish total and absolute row indexes for assistive technology.
 

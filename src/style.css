@@ -1564,6 +1564,11 @@ kbd {
 }
 
 @media (any-hover: none) and (any-pointer: coarse) {
+  html,
+  body {
+    touch-action: pan-x pan-y;
+  }
+
   .table-shell {
     overflow: hidden;
   }
@@ -1595,6 +1600,12 @@ kbd {
     overscroll-behavior: contain;
   }
 
+  .model-table tbody,
+  .model-table tbody tr,
+  .model-table tbody td {
+    touch-action: none;
+  }
+
   .model-table tr {
     display: grid;
     min-width: var(--layout-table-min-width);
@@ -1605,8 +1616,20 @@ kbd {
     position: static;
   }
 
+  .model-table th,
+  .model-table .model-row > td {
+    display: grid;
+    align-content: center;
+  }
+
+  .model-table th.numeric,
+  .model-table .model-row > td.numeric {
+    justify-items: end;
+  }
+
   .price-status-cell {
     grid-column: span 3;
+    justify-items: stretch;
   }
 
   .virtual-spacer td {
