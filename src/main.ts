@@ -1,6 +1,7 @@
 import { createVaporApp } from "vue";
 import App from "./App.vue";
 import { parseWebsiteCatalog } from "./catalog/website-runtime.ts";
+import { prepareOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import "./tokens.css";
 import "./style.css";
 
@@ -17,6 +18,7 @@ try {
   const [catalogValue, pricingValue] = await Promise.all([
     json("/ui/catalog/index.json", "Catalog"),
     json("/ui/catalog/pricing.json", "Pricing summary"),
+    prepareOverlayScrollbars(),
   ]);
   const catalog = parseWebsiteCatalog(catalogValue, pricingValue);
   createVaporApp(App, { catalog }).mount("#app");
