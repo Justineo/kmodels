@@ -49,7 +49,9 @@ Status: implemented
   several base offers, and retain the exact `Free`, `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, `No base offer`, or `Details`
   distinction. This status is never owned by the input meter. There is no
-  secondary flat-price path.
+  secondary flat-price path. On an exact model row, activating the status opens
+  that model's inspector at the pricing section; it does not choose an offer or
+  pricing context on the user's behalf.
 - The detail flow is `offer → context → commercial structure`. It never
   flattens books into one rate list or chooses a provider default. Base offers
   and add-ons are stable parent choices; a sole base offer is fixed and shown as
@@ -95,8 +97,10 @@ Status: implemented
   it does not demote an otherwise exact rate to raw.
 - Render exact rationals without binary floating point. Use a decimal whenever
   the exact rational has a finite decimal expansion, retain an exact fraction
-  only when it does not, and render USD amounts with `$` while preserving the
-  currency code in accessible copy. Provider-owned units and
+  only when it does not, and use the shortest decimal spelling that preserves
+  the exact value; source padding such as trailing fractional zeroes remains
+  audit evidence and is not presentation. Render USD amounts with `$` while
+  preserving the currency code in accessible copy. Provider-owned units and
   credits retain namespace-qualified canonical copy so equal source spellings
   cannot make distinct atoms equivalent. Visible provider-unit labels use the
   reviewed native shorthand in their provider-scoped row. Exact token rates may
@@ -119,7 +123,9 @@ Status: implemented
   underlines mark terse text with additional explanation. Every tooltip
   teleports into the document's dedicated tooltip layer and uses CSS anchor
   positioning with viewport-aware fallback placement; components do not
-  calculate viewport coordinates or own scroll/resize listeners.
+  calculate viewport coordinates or own scroll/resize listeners. Activating a
+  tooltip trigger dismisses its open tooltip; pointer hover cannot reopen it
+  until the pointer leaves and enters the trigger again.
 - Keep all filtered results in one continuous, fixed-row virtual scroll surface.
 - Keep every semantic table column visible at every viewport width. On narrow
   screens, preserve the desktop column proportions and let the table scroll
@@ -128,12 +134,13 @@ Status: implemented
   native scroll viewport stays at the available width, so the table's minimum
   width creates viewport overflow instead of expanding into clipped workspace.
 - On coarse touch devices without hover, keep the semantic table intact but
-  make its `tbody` the scrollport and keep the header in a separate synchronized
-  viewport above it. Suppress page zoom gestures while preserving native page
-  panning, and translate single-finger table pans into only the dominant scroll
-  axis after a short movement threshold. Do not clamp offsets after native
-  scrolling has already started: competing with the browser's composited scroll
-  creates visible rollback and flicker.
+  nest its scrollports by axis: the outer table viewport owns horizontal
+  scrolling for the header and body together, while `tbody` owns vertical
+  scrolling below the header. Suppress page zoom gestures while preserving
+  native page panning, and route each single-finger table pan to only its
+  dominant scrollport after a short movement threshold. Clamp projected
+  momentum to the scrollport's real bounds and disable overscroll on both
+  scrollports, so an edge fling cannot reveal the page behind the table.
 
 ## Interaction
 
@@ -142,7 +149,8 @@ Status: implemented
 - Filters update immediately. Selecting an inline facet replaces only that category and preserves other state.
 - Keep separators between multiple facet values presentational and outside interactive controls.
 - Sortable headings cycle default, ascending, descending, then default.
-- Only model identity and its disclosure control open details; the whole row is not a button.
+- Model identity, its disclosure control, and an exact model's pricing status
+  open details; the whole row is not a button.
 - The inspector is a non-modal `<dialog>`. Its panel receives pointer input while the catalog remains interactive.
 - Up/Down selects the previous/next visible model unless focus is in a control that owns arrow keys. Selection resets inspector scroll. Explicit close and Escape dismiss it.
 - Focus styles use `:focus-visible`, including containers with a focus-visible descendant.

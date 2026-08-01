@@ -10,7 +10,9 @@ import ModelDetails from "./components/ModelDetails.vue";
     :detail="detailsState.detail"
     :loading="detailsState.loading"
     :error="detailsState.error"
+    :pricing-target="detailsState.pricingTarget"
     @close="detailsState.close"
     @navigate="detailsState.navigate"
+    @pricing-target-reached="detailsState.pricingTarget = undefined"
   />
 </template>

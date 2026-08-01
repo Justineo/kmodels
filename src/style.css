@@ -1059,6 +1059,10 @@ kbd {
   font-size: var(--font-size-caption);
 }
 
+button.table-status-trigger {
+  cursor: pointer;
+}
+
 .released-col {
   color: var(--color-text-muted);
   font-size: var(--font-size-label);
@@ -1570,12 +1574,13 @@ kbd {
   }
 
   .table-shell {
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior: none;
   }
 
   .model-table {
     display: grid;
-    min-width: 0;
     height: 100%;
     grid-template-rows: var(--layout-table-header-height) minmax(0, 1fr);
   }
@@ -1590,14 +1595,11 @@ kbd {
     min-width: 0;
   }
 
-  .model-table thead {
-    overflow: hidden;
-  }
-
   .model-table tbody {
     min-height: 0;
-    overflow: auto;
-    overscroll-behavior: contain;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: none;
   }
 
   .model-table tbody,
@@ -1608,7 +1610,6 @@ kbd {
 
   .model-table tr {
     display: grid;
-    min-width: var(--layout-table-min-width);
     grid-template-columns: var(--layout-table-grid-columns);
   }
 

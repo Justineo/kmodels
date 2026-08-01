@@ -34,7 +34,7 @@ import { dominantScrollAxis, type ScrollAxis } from "./scroll-direction.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
-const NATIVE_TOUCH_SCROLL_QUERY = "(any-hover: none) and (any-pointer: coarse)";
+const COARSE_TOUCH_QUERY = "(any-hover: none) and (any-pointer: coarse)";
 const TOUCH_DIRECTION_THRESHOLD = 8;
 const TOUCH_MOMENTUM_PROJECTION = 180;
 const TOUCH_MOMENTUM_MAX_AGE = 80;
@@ -72,11 +72,10 @@ const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
 const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
 const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
-const tableHead = useTemplateRef<HTMLTableSectionElement>("tableHead");
 const tableBody = useTemplateRef<HTMLTableSectionElement>("tableBody");
 const tableScrollOffset = ref(0);
 const tableViewportSize = ref(0);
-const usesSplitTableScroll = ref(window.matchMedia(NATIVE_TOUCH_SCROLL_QUERY).matches);
+const usesNestedTableScroll = ref(window.matchMedia(COARSE_TOUCH_QUERY).matches);
 let tableResizeObserver: ResizeObserver | undefined;
 let tableScrollMedia: MediaQueryList | undefined;
 let tableTouchGesture: TableTouchGesture | undefined;
@@ -277,28 +276,23 @@ function resetTableTouchGesture(): void {
   tableTouchGesture = undefined;
 }
 
-function syncTableHeader(): void {
-  const body = tableBody.value;
-  const head = tableHead.value;
-  if (usesSplitTableScroll.value && body !== null && head !== null)
-    head.scrollLeft = body.scrollLeft;
-}
-
 function handleTableTouchStart(event: TouchEvent): void {
-  if (!usesSplitTableScroll.value || event.touches.length !== 1) {
+  if (!usesNestedTableScroll.value || event.touches.length !== 1) {
     resetTableTouchGesture();
     return;
   }
   const touch = event.touches.item(0);
+  const shell = tableShell.value;
   const body = tableBody.value;
-  if (touch === null || body === null) return;
+  if (touch === null || shell === null || body === null) return;
+  shell.scrollTo(shell.scrollLeft, shell.scrollTop);
   body.scrollTo(body.scrollLeft, body.scrollTop);
   tableTouchGesture = {
     axis: undefined,
     lastEventTime: event.timeStamp,
     startClientX: touch.clientX,
     startClientY: touch.clientY,
-    startScrollLeft: body.scrollLeft,
+    startScrollLeft: shell.scrollLeft,
     startScrollTop: body.scrollTop,
     velocity: 0,
   };
@@ -307,8 +301,7 @@ function handleTableTouchStart(event: TouchEvent): void {
 function handleTableTouchMove(event: TouchEvent): void {
   const gesture = tableTouchGesture;
   const touch = event.touches.item(0);
-  const body = tableBody.value;
-  if (gesture === undefined || touch === null || body === null || event.touches.length !== 1) {
+  if (gesture === undefined || touch === null || event.touches.length !== 1) {
     resetTableTouchGesture();
     return;
   }
@@ -321,32 +314,37 @@ function handleTableTouchMove(event: TouchEvent): void {
   }
   if (gesture.axis === undefined) return;
 
+  const element = gesture.axis === "horizontal" ? tableShell.value : tableBody.value;
+  if (element === null) {
+    resetTableTouchGesture();
+    return;
+  }
   event.preventDefault();
-  const scrollPosition = gesture.axis === "horizontal" ? body.scrollLeft : body.scrollTop;
-  if (gesture.axis === "horizontal") body.scrollLeft = gesture.startScrollLeft - deltaX;
-  else body.scrollTop = gesture.startScrollTop - deltaY;
+  const scrollPosition = gesture.axis === "horizontal" ? element.scrollLeft : element.scrollTop;
+  if (gesture.axis === "horizontal") element.scrollLeft = gesture.startScrollLeft - deltaX;
+  else element.scrollTop = gesture.startScrollTop - deltaY;
 
   const elapsed = event.timeStamp - gesture.lastEventTime;
   if (elapsed > 0) {
-    const nextScrollPosition = gesture.axis === "horizontal" ? body.scrollLeft : body.scrollTop;
+    const nextScrollPosition =
+      gesture.axis === "horizontal" ? element.scrollLeft : element.scrollTop;
     gesture.velocity = (nextScrollPosition - scrollPosition) / elapsed;
   }
   gesture.lastEventTime = event.timeStamp;
-  syncTableHeader();
 }
 
 function handleTableTouchEnd(event: TouchEvent): void {
   const gesture = tableTouchGesture;
-  const body = tableBody.value;
   resetTableTouchGesture();
   if (
     gesture?.axis === undefined ||
-    body === null ||
     event.timeStamp - gesture.lastEventTime > TOUCH_MOMENTUM_MAX_AGE
   )
     return;
+  const element = gesture.axis === "horizontal" ? tableShell.value : tableBody.value;
+  if (element === null) return;
   const distance = gesture.velocity * TOUCH_MOMENTUM_PROJECTION;
-  body.scrollBy({
+  element.scrollBy({
     behavior: "smooth",
     left: gesture.axis === "horizontal" ? distance : 0,
     top: gesture.axis === "vertical" ? distance : 0,
@@ -354,12 +352,11 @@ function handleTableTouchEnd(event: TouchEvent): void {
 }
 
 function handleTableBodyScroll(): void {
-  syncTableHeader();
   updateVirtualRange();
 }
 
 function tableVerticalScrollElement(): HTMLElement | null {
-  return usesSplitTableScroll.value ? tableBody.value : tableShell.value;
+  return usesNestedTableScroll.value ? tableBody.value : tableShell.value;
 }
 
 function pixelToken(name: `--${string}`): number {
@@ -497,6 +494,16 @@ function toggleTheme(): void {
   } catch {}
 }
 
+function selectModel(model: WebsiteModel): void {
+  detailsState.pricingTarget = undefined;
+  selectedModelUid.value = model.uid;
+}
+
+function selectModelPricing(model: WebsiteModel): void {
+  detailsState.pricingTarget = model.uid;
+  selectedModelUid.value = model.uid;
+}
+
 async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
   detailRequest = model?.uid ?? "";
   detailsState.detail = undefined;
@@ -534,6 +541,7 @@ detailsState.navigate = selectRelativeModel;
 watch(
   selectedModel,
   (model) => {
+    if (detailsState.pricingTarget !== model?.uid) detailsState.pricingTarget = undefined;
     detailsState.model = model;
     detailsState.providerName = model === undefined ? "" : providerName(model.provider_id);
     void loadModelDetail(model);
@@ -554,7 +562,7 @@ onMounted(() => {
   tableHeaderHeight = pixelToken("--layout-table-header-height");
   window.addEventListener("keydown", handleShortcut);
   window.addEventListener("popstate", applyRoute);
-  tableScrollMedia = window.matchMedia(NATIVE_TOUCH_SCROLL_QUERY);
+  tableScrollMedia = window.matchMedia(COARSE_TOUCH_QUERY);
   tableScrollMedia.addEventListener("change", handleTableScrollModeChange);
   const shell = tableShell.value;
   if (shell !== null) {
@@ -582,7 +590,7 @@ onUnmounted(() => {
 });
 
 function handleTableScrollModeChange(event: MediaQueryListEvent): void {
-  usesSplitTableScroll.value = event.matches;
+  usesNestedTableScroll.value = event.matches;
   resetTableTouchGesture();
   void nextTick(resetVirtualScroll);
 }
@@ -789,7 +797,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
               <col class="released-col" />
               <col class="disclosure-col" />
             </colgroup>
-            <thead ref="tableHead">
+            <thead>
               <tr>
                 <th class="model-col" scope="col" :aria-sort="ariaSort('name')">
                   <ColumnSortButton
@@ -886,7 +894,8 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                   :selected="selectedModelUid === row.model.uid"
                   :show-version-badge="versionBadgeUids.has(row.model.uid)"
                   :nested="row.nested"
-                  @select="selectedModelUid = $event.uid"
+                  @select="selectModel"
+                  @select-pricing="selectModelPricing"
                   @filter-provider="selectedProvider = $event"
                   @filter-task="selectedTasks = [$event]"
                   @filter-lifecycle="selectedLifecycles = [$event]"

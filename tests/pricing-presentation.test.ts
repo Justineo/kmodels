@@ -303,20 +303,20 @@ describe("canonical pricing presentation", () => {
   });
 
   it("keeps token table rates comparable while details may use the source scale", () => {
-    const observation = {
+    const observations = ["0.0020000000", "0.0020"].map((amount) => ({
       ...source,
       raw: {
-        amount: "0.002",
+        amount,
         denomination: "USD",
         unit: "per 1K tokens",
       },
-    };
-    expect(displayUnitPrice(tokenPrice, [observation])).toEqual({
+    }));
+    expect(displayUnitPrice(tokenPrice, observations)).toEqual({
       amount: "$2",
       displayUnit: "1M tokens",
       accessibleText: "USD 2 per 1M tokens",
     });
-    expect(displayUnitPrice(tokenPrice, [observation], { tokenDisplay: "source" })).toEqual({
+    expect(displayUnitPrice(tokenPrice, observations, { tokenDisplay: "source" })).toEqual({
       amount: "$0.002",
       displayUnit: "1K tokens",
       accessibleText: "USD 0.002 per 1K tokens",
