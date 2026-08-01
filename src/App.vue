@@ -30,9 +30,22 @@ import UiIcon from "./components/UiIcon.vue";
 import UiTooltip from "./components/UiTooltip.vue";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import { detailsState } from "./details-state.ts";
+import { dominantScrollAxis, type ScrollAxis } from "./scroll-direction.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
+const NATIVE_TOUCH_SCROLL_QUERY = "(any-hover: none) and (any-pointer: coarse)";
+const TOUCH_DIRECTION_THRESHOLD = 8;
+const TOUCH_SCROLL_END_FALLBACK = 160;
+
+interface TableTouchGesture {
+  axis: ScrollAxis | undefined;
+  ended: boolean;
+  startClientX: number;
+  startClientY: number;
+  startScrollLeft: number;
+  startScrollTop: number;
+}
 
 type Theme = "light" | "dark";
 const LIFECYCLE_OPTIONS = modelLifecycles;
@@ -57,9 +70,15 @@ const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
 const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
 const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
+const tableHead = useTemplateRef<HTMLTableSectionElement>("tableHead");
+const tableBody = useTemplateRef<HTMLTableSectionElement>("tableBody");
 const tableScrollOffset = ref(0);
 const tableViewportSize = ref(0);
+const usesSplitTableScroll = ref(window.matchMedia(NATIVE_TOUCH_SCROLL_QUERY).matches);
 let tableResizeObserver: ResizeObserver | undefined;
+let tableScrollMedia: MediaQueryList | undefined;
+let tableTouchGesture: TableTouchGesture | undefined;
+let tableTouchReleaseTimer: number | undefined;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let applyingRoute = false;
@@ -247,9 +266,94 @@ function handleFilterToggle(event: ToggleEvent): void {
 }
 
 function updateVirtualRange(): void {
-  const element = tableShell.value;
+  const element = tableVerticalScrollElement();
   tableScrollOffset.value = element?.scrollTop ?? 0;
-  tableViewportSize.value = Math.max(0, (element?.clientHeight ?? 0) - tableHeaderHeight);
+  const headerOffset = element === tableShell.value ? tableHeaderHeight : 0;
+  tableViewportSize.value = Math.max(0, (element?.clientHeight ?? 0) - headerOffset);
+}
+
+function clearTableTouchReleaseTimer(): void {
+  if (tableTouchReleaseTimer !== undefined) window.clearTimeout(tableTouchReleaseTimer);
+  tableTouchReleaseTimer = undefined;
+}
+
+function resetTableTouchGesture(): void {
+  clearTableTouchReleaseTimer();
+  tableTouchGesture = undefined;
+}
+
+function enforceTableTouchDirection(): void {
+  const gesture = tableTouchGesture;
+  const body = tableBody.value;
+  if (gesture?.axis === undefined || body === null) return;
+  if (gesture.axis === "horizontal" && body.scrollTop !== gesture.startScrollTop)
+    body.scrollTop = gesture.startScrollTop;
+  if (gesture.axis === "vertical" && body.scrollLeft !== gesture.startScrollLeft)
+    body.scrollLeft = gesture.startScrollLeft;
+}
+
+function scheduleTableTouchRelease(): void {
+  clearTableTouchReleaseTimer();
+  tableTouchReleaseTimer = window.setTimeout(resetTableTouchGesture, TOUCH_SCROLL_END_FALLBACK);
+}
+
+function handleTableTouchStart(event: TouchEvent): void {
+  if (!usesSplitTableScroll.value || event.touches.length !== 1) {
+    resetTableTouchGesture();
+    return;
+  }
+  const touch = event.touches.item(0);
+  const body = tableBody.value;
+  if (touch === null || body === null) return;
+  clearTableTouchReleaseTimer();
+  tableTouchGesture = {
+    axis: undefined,
+    ended: false,
+    startClientX: touch.clientX,
+    startClientY: touch.clientY,
+    startScrollLeft: body.scrollLeft,
+    startScrollTop: body.scrollTop,
+  };
+}
+
+function handleTableTouchMove(event: TouchEvent): void {
+  const gesture = tableTouchGesture;
+  const touch = event.touches.item(0);
+  if (gesture === undefined || touch === null) return;
+  gesture.axis ??= dominantScrollAxis(
+    touch.clientX - gesture.startClientX,
+    touch.clientY - gesture.startClientY,
+    TOUCH_DIRECTION_THRESHOLD,
+  );
+  enforceTableTouchDirection();
+}
+
+function handleTableTouchEnd(): void {
+  const gesture = tableTouchGesture;
+  if (gesture?.axis === undefined) {
+    resetTableTouchGesture();
+    return;
+  }
+  gesture.ended = true;
+  scheduleTableTouchRelease();
+}
+
+function handleTableBodyScroll(): void {
+  enforceTableTouchDirection();
+  const body = tableBody.value;
+  const head = tableHead.value;
+  if (usesSplitTableScroll.value && body !== null && head !== null)
+    head.scrollLeft = body.scrollLeft;
+  if (tableTouchGesture?.ended === true) scheduleTableTouchRelease();
+  updateVirtualRange();
+}
+
+function handleTableBodyScrollEnd(): void {
+  if (tableTouchGesture?.ended === true) resetTableTouchGesture();
+}
+
+function tableVerticalScrollElement(): HTMLElement | null {
+  return usesSplitTableScroll.value ? tableBody.value : tableShell.value;
 }
 
 function pixelToken(name: `--${string}`): number {
@@ -259,8 +363,8 @@ function pixelToken(name: `--${string}`): number {
 }
 
 function resetVirtualScroll(): void {
-  const element = tableShell.value;
-  if (element !== null) element.scrollTop = 0;
+  tableShell.value?.scrollTo({ top: 0 });
+  tableBody.value?.scrollTo({ top: 0 });
   updateVirtualRange();
 }
 
@@ -331,13 +435,14 @@ function selectRelativeModel(offset: -1 | 1): void {
 }
 
 function scrollModelIntoView(index: number): void {
-  const element = tableShell.value;
+  const element = tableVerticalScrollElement();
   if (element === null) return;
+  const headerOffset = element === tableShell.value ? tableHeaderHeight : 0;
   element.scrollTop = nearestItemScrollOffset({
     index,
     itemSize: virtualItemSize,
     scrollOffset: element.scrollTop,
-    viewportSize: Math.max(0, element.clientHeight - tableHeaderHeight),
+    viewportSize: Math.max(0, element.clientHeight - headerOffset),
   });
   updateVirtualRange();
 }
@@ -443,10 +548,14 @@ onMounted(() => {
   tableHeaderHeight = pixelToken("--layout-table-header-height");
   window.addEventListener("keydown", handleShortcut);
   window.addEventListener("popstate", applyRoute);
-  const element = tableShell.value;
-  if (element !== null) {
+  tableScrollMedia = window.matchMedia(NATIVE_TOUCH_SCROLL_QUERY);
+  tableScrollMedia.addEventListener("change", handleTableScrollModeChange);
+  const shell = tableShell.value;
+  if (shell !== null) {
     tableResizeObserver = new ResizeObserver(updateVirtualRange);
-    tableResizeObserver.observe(element);
+    tableResizeObserver.observe(shell);
+    const body = tableBody.value;
+    if (body !== null) tableResizeObserver.observe(body);
   }
   updateVirtualRange();
   syncRoute();
@@ -461,8 +570,16 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("keydown", handleShortcut);
   window.removeEventListener("popstate", applyRoute);
+  tableScrollMedia?.removeEventListener("change", handleTableScrollModeChange);
   tableResizeObserver?.disconnect();
+  resetTableTouchGesture();
 });
+
+function handleTableScrollModeChange(event: MediaQueryListEvent): void {
+  usesSplitTableScroll.value = event.matches;
+  resetTableTouchGesture();
+  void nextTick(resetVirtualScroll);
+}
 </script>
 
 <template>
@@ -666,7 +783,7 @@ onUnmounted(() => {
               <col class="released-col" />
               <col class="disclosure-col" />
             </colgroup>
-            <thead>
+            <thead ref="tableHead">
               <tr>
                 <th class="model-col" scope="col" :aria-sort="ariaSort('name')">
                   <ColumnSortButton
@@ -731,7 +848,15 @@ onUnmounted(() => {
               </tr>
             </thead>
 
-            <tbody>
+            <tbody
+              ref="tableBody"
+              @scroll.passive="handleTableBodyScroll"
+              @scrollend.passive="handleTableBodyScrollEnd"
+              @touchstart.passive="handleTableTouchStart"
+              @touchmove.passive="handleTableTouchMove"
+              @touchend.passive="handleTableTouchEnd"
+              @touchcancel.passive="resetTableTouchGesture"
+            >
               <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="10" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
               </tr>
