@@ -43,9 +43,10 @@ Status: implemented
 - Representative columns are derived only from canonical price books. A cell
   shows a number when one normalized rate is proven invariant across the
   complete applicable offer context;
-  otherwise one dotted-underlined text status sits between flanking hairlines
-  across the three pricing columns and explains the model-level outcome in a
-  tooltip. Use `Varies` for a context-dependent price, an offer count for
+  otherwise one dotted-underlined text status, framed by restrained 45-degree
+  hatch marks spanning the three pricing columns, explains the model-level
+  outcome in a tooltip. Use `Varies` for a
+  context-dependent price, an offer count for
   several base offers, and retain the exact `Free`, `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, `No base offer`, or `Details`
   distinction. This status is never owned by the input meter. There is no
@@ -79,6 +80,9 @@ Status: implemented
   repeated on each resolved rate, allowance, or state; validity qualifications
   remain visible. A single offer state stays in the offer summary; state detail
   appears only when the offer has multiple possible outcomes.
+  Numeric context preserves its published domain: singleton predicates become
+  choices; ranged predicates show their accepted ranges and reject invalid or
+  non-integral count/TTL input.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
