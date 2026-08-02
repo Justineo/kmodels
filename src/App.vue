@@ -738,12 +738,11 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                   />
                 </th>
                 <th class="tasks-col" scope="col">Tasks</th>
-                <th class="status-col" scope="col">
+                <th class="status-col" scope="col" aria-label="Model status and maturity">
                   <UiTooltip
                     class="table-header-tooltip-trigger"
                     tabindex="0"
                     :content="STATUS_TOOLTIP"
-                    :aria-label="`Status. ${STATUS_TOOLTIP}`"
                   >
                     Status
                   </UiTooltip>

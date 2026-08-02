@@ -33,8 +33,8 @@ Status: implemented
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
 - The `Status` heading is a shared tooltip trigger that defines lifecycle and
-  active-model maturity values. Its accessible label carries the same complete
-  explanation without requiring pointer hover.
+  active-model maturity values and uses the same structure and trigger styling
+  as the pricing headings.
 - Shared pricing headings stay generic because meter and unit are row-specific.
   `Input`, `Cache`, and `Output` are right-aligned labels whose tooltips explain
   that the columns show representative prices, normalize comparable token rates
@@ -132,7 +132,10 @@ Status: implemented
   positioning with viewport-aware fallback placement; components do not
   calculate viewport coordinates or own scroll/resize listeners. Activating a
   tooltip trigger dismisses its open tooltip; pointer hover cannot reopen it
-  until the pointer leaves and enters the trigger again.
+  until the pointer leaves and enters the trigger again. On a focusable
+  explanatory text trigger, the click that first moves focus keeps the tooltip
+  open; a subsequent click toggles it closed or open. Action buttons still
+  perform their action and dismiss tooltip text.
 - Keep all filtered results in one continuous, fixed-row virtual scroll surface.
 - Keep every semantic table column visible at every viewport width. On narrow
   screens, preserve the desktop column proportions and let the table scroll
