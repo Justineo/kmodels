@@ -1,8 +1,8 @@
 {
-  "catalog_version": "6f9a021be8fe45d84f0c3d01a978a8fdfd2df54c78b5e6be4971b7edef645cf2",
-  "generated_at": "2026-08-02T15:22:39.728Z",
+  "catalog_version": "be25c62a2d8c0688b3911e8bd166af3a20ee7545ed6e11a36fc340e8af926d6d",
+  "generated_at": "2026-08-02T16:19:25.000Z",
   "outcome": "changed",
-  "previous_catalog_version": "d32403ab5b16f242a0d5f074f45e9e3489f911c36b262931f15bada6074d842f",
+  "previous_catalog_version": "6f9a021be8fe45d84f0c3d01a978a8fdfd2df54c78b5e6be4971b7edef645cf2",
   "providers": [
     {
       "attempt": {
@@ -2150,9 +2150,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1409,
             "source_id": "huggingface-hf-inference"
           },
@@ -2164,23 +2164,20 @@
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1409,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/deutsche-telekom/mt5-small-sum-de-mit-v1",
-          "huggingface/pszemraj/led-base-book-summary"
-        ],
-        "changed": 30,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 29,
         "changed_fields": {
-          "capabilities": 1,
+          "capabilities": 2,
           "limits": 29
         },
         "changed_models": [
@@ -2216,6 +2213,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
@@ -2279,12 +2277,6 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
           },
           {
             "fields": [
@@ -2354,6 +2346,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
@@ -2366,15 +2359,15 @@
           }
         ],
         "current": 1538,
-        "previous": 1536,
+        "previous": 1538,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1506
+        "unchanged": 1509
       },
       "pricing": {
-        "commercial_hash": "66d975169a3456ede2f5b1df24b1f486294370a7f42c22d428f343849d16a146",
+        "commercial_hash": "1656a47ef83b20c8b6089407988aacf53ca847919ae8227b2779c8fb27e4eedc",
         "outcome": "commercial",
-        "previous_commercial_hash": "e46363ceb1adeaa666b4c316388c94e5b2a1dd6eb003cb33b2950b75b7768492"
+        "previous_commercial_hash": "66d975169a3456ede2f5b1df24b1f486294370a7f42c22d428f343849d16a146"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2382,20 +2375,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2407,7 +2388,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2861,9 +2842,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3021,20 +3002,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -3925,10 +3899,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 2,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 403,
-    "changed_sources": 29,
+    "changed_models": 402,
+    "changed_sources": 26,
     "models": 3370,
     "providers": 18,
     "removed_models": 0,
