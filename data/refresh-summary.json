@@ -1,8 +1,8 @@
 {
-  "catalog_version": "be25c62a2d8c0688b3911e8bd166af3a20ee7545ed6e11a36fc340e8af926d6d",
-  "generated_at": "2026-08-02T16:19:25.000Z",
+  "catalog_version": "f9257100b613a2a34459926ac0fe7c7e705ccffbc1a95b480dbdbc87019d8724",
+  "generated_at": "2026-08-02T17:20:52.165Z",
   "outcome": "changed",
-  "previous_catalog_version": "6f9a021be8fe45d84f0c3d01a978a8fdfd2df54c78b5e6be4971b7edef645cf2",
+  "previous_catalog_version": "be25c62a2d8c0688b3911e8bd166af3a20ee7545ed6e11a36fc340e8af926d6d",
   "providers": [
     {
       "attempt": {
@@ -2150,10 +2150,10 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1409,
+            "outcome": "changed",
+            "parsed_models": 1407,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2164,10 +2164,10 @@
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1409,
+            "outcome": "changed",
+            "parsed_models": 1407,
             "source_id": "huggingface-hub"
           }
         ]
@@ -2175,9 +2175,9 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 29,
+        "changed": 30,
         "changed_fields": {
-          "capabilities": 2,
+          "capabilities": 1,
           "limits": 29
         },
         "changed_models": [
@@ -2213,7 +2213,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
@@ -2253,6 +2252,12 @@
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/tiny-aya-water"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
           },
           {
             "fields": [
@@ -2346,7 +2351,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
@@ -2358,16 +2362,19 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1538,
+        "current": 1536,
         "previous": 1538,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1509
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/google/bigbird-pegasus-large-pubmed",
+          "huggingface/microsoft/deberta-xlarge-mnli"
+        ],
+        "unchanged": 1506
       },
       "pricing": {
         "commercial_hash": "1656a47ef83b20c8b6089407988aacf53ca847919ae8227b2779c8fb27e4eedc",
-        "outcome": "commercial",
-        "previous_commercial_hash": "66d975169a3456ede2f5b1df24b1f486294370a7f42c22d428f343849d16a146"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "1656a47ef83b20c8b6089407988aacf53ca847919ae8227b2779c8fb27e4eedc"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2375,8 +2382,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hf-inference"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2388,7 +2407,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3901,11 +3920,11 @@
     "accepted": 18,
     "added_models": 0,
     "added_sources": 0,
-    "changed_models": 402,
-    "changed_sources": 26,
-    "models": 3370,
+    "changed_models": 403,
+    "changed_sources": 28,
+    "models": 3368,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
