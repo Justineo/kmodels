@@ -627,7 +627,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v8",
+        extractorVersion: "bedrock-catalog-v9",
         fields: [
           "model_id",
           "name",
@@ -740,7 +740,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v3",
+        extractorVersion: "databricks-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -907,7 +907,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
-        extractorVersion: "azure-catalog-v3",
+        extractorVersion: "azure-catalog-v4",
         fields: [
           "model_id",
           "version",
@@ -1022,7 +1022,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "azure-api" },
-        extractorVersion: "azure-api-v1",
+        extractorVersion: "azure-api-v2",
         fields: [
           "model_id",
           "version",
@@ -1035,7 +1035,7 @@ export const manifests = [
           "availability",
           "status",
           "release_stage",
-          "deprecated_at",
+          "retired_at",
         ],
         allowedHosts: ["management.azure.com", "login.microsoftonline.com", "prices.azure.com"],
         maxResponseBytes: mebibytes(32),

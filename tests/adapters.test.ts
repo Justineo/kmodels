@@ -354,7 +354,10 @@ async function huggingFaceHub(
   });
 }
 
-async function azureCatalog(stableApiSpec?: string): Promise<ProviderModel[]> {
+async function azureCatalog(
+  stableApiSpec?: string,
+  lifecycleBody?: string,
+): Promise<ProviderModel[]> {
   const value = manifest("azure");
   const configured = value.sources[0];
   if (configured === undefined || configured.extractor.kind !== "azure-catalog")
@@ -386,7 +389,10 @@ async function azureCatalog(stableApiSpec?: string): Promise<ProviderModel[]> {
         body:
           name === "azure-v1-v1-generated.yaml" && stableApiSpec !== undefined
             ? stableApiSpec
-            : await fixture(`azure/${path}`),
+            : name === "concepts-model-retirement-schedule-content.md" &&
+                lifecycleBody !== undefined
+              ? lifecycleBody
+              : await fixture(`azure/${path}`),
       })),
     ),
   });
@@ -2358,7 +2364,7 @@ describe("Azure adapters", () => {
       capabilities: model?.capabilities,
       context: model?.limits.context_tokens,
       status: model?.status,
-      deprecatedAt: model?.deprecated_at,
+      retiredAt: model?.retired_at,
       availability: model?.availability,
       price: model?.price_facts[0],
       imagePrice: model?.price_facts.find((rate) => rate.meter === "input_image")?.price,
@@ -2383,7 +2389,7 @@ describe("Azure adapters", () => {
       },
       context: 128_000,
       status: "active",
-      deprecatedAt: "2027-01-01",
+      retiredAt: "2027-01-01",
       availability: [{ region: "eastus", deployment_type: "GlobalStandard" }],
       price: {
         meter: "input_text",
@@ -2576,6 +2582,28 @@ describe("Azure adapters", () => {
       status: "legacy",
       release_stage: "unknown",
     });
+  });
+
+  it("treats an effective inference retirement date as retired despite stale lifecycle labels", async () => {
+    const value = manifest("azure");
+    const source = value.sources.find((candidate) => candidate.id === "azure-api");
+    if (source === undefined) throw new Error("Missing Azure API source");
+    const body = (await fixture("azure/api.json")).replace(
+      "2027-01-01T00:00:00Z",
+      "2026-07-01T00:00:00Z",
+    );
+    const apiModel = parseSource({ provider: provider(value), source, body, observedAt })[0];
+    expect(apiModel).toMatchObject({ status: "retired", retired_at: "2026-07-01" });
+
+    const lifecycle = (await fixture("azure/lifecycle.md")).replace(
+      "| gpt-multi    | 2026-01-01 | GA        | 2027-01-01",
+      "| gpt-multi    | 2026-01-01 | GA        | 2026-07-01",
+    );
+    expect(
+      (await azureCatalog(undefined, lifecycle)).find(
+        (candidate) => candidate.uid === "azure/gpt-multi@2026-01-01",
+      ),
+    ).toMatchObject({ status: "retired", retired_at: "2026-07-01" });
   });
 });
 
@@ -3739,6 +3767,24 @@ describe("Databricks adapters", () => {
     ).toBe("142.857");
   });
 
+  it("keeps a redirected partner slug deprecated until Databricks stops serving it", async () => {
+    const lifecycle = (await fixture("databricks/lifecycle.html"))
+      .replace("Pay-per-token: October 9, 2026", "Pay-per-token: June 9, 2026")
+      .replace(
+        "Claude Sonnet 4.6</td>",
+        "Claude Sonnet 4.6. To allow more time for migration, between June 9, 2026 and August 7, 2026, API calls to Anthropic Claude Sonnet 4 will be temporarily redirected to Claude Sonnet 4.6.</td>",
+      );
+    expect(
+      (await databricksCatalog({ "lifecycle.html": lifecycle })).find(
+        (model) => model.model_id === "databricks-claude-sonnet-4",
+      ),
+    ).toMatchObject({
+      status: "deprecated",
+      retired_at: "2026-08-07",
+      replacement_model_ids: ["databricks-claude-sonnet-4-6"],
+    });
+  });
+
   it("retains promotional and future standard rates as dated conditions", async () => {
     const models = await databricksCatalog();
     const gemini = models.find((model) => model.model_id === "databricks-gemini-3-5-flash");
@@ -4553,6 +4599,20 @@ describe("document adapter", () => {
     ]);
     expect(models[2]?.status).toBe("legacy");
     expect(models[2]?.aliases).toEqual(["us.cohere.command-r-v1:0"]);
+  });
+
+  it("treats an effective Bedrock EOL date as retired despite a stale Legacy card label", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const body = (await fixture("document/bedrock.json")).replace(
+      "**Model EOL date:** N/A",
+      "**Model EOL date:** Jun 20, 2026",
+    );
+    const model = parseSource({ provider: provider(value), source, body, observedAt }).find(
+      (candidate) => candidate.model_id === "cohere.command-r-v1:0",
+    );
+    expect(model).toMatchObject({ status: "retired", retired_at: "2026-06-20" });
   });
 
   it("preserves an explicit Mantle endpoint on service token prices", async () => {

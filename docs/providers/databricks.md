@@ -14,6 +14,7 @@ Status: current
 
 - General purpose and Embeddings sets supply task evidence and exact `/serving-endpoints/{name}/invocations` routes. Image-output rows may also remain text generation when listed as General purpose.
 - Display-name joins must resolve uniquely. Release dates require an exact release-feed link to a supported-model label; page metadata is not a model date.
+- Deprecated models remain callable only for existing workspaces and map to canonical `deprecated`; inaccessible models map to `retired`. If Databricks explicitly keeps an old partner ID callable by redirecting it after the partner retirement date, the formal migration interval remains canonical `deprecated`, and `retired_at` is the redirect end when requests begin to fail.
 - Keep prices in DBU. Preserve input, output, cache, embedding, batch, capacity, context, promotion, and effective-date conditions. Never convert DBU to USD or infer shifted columns.
 - Pricing rows join only to unique normalized catalog labels; rows for models outside the reviewed regional catalog do not create model identities. Blank, `n/a`, and `Coming soon` cells mean that no rate is published. Any other non-decimal value or unequal rate for the same commercial scope rejects the source.
 - Promotion percentages, validity dates, launch targets, and referenced standard-rate families come from the pricing footnotes. Every matched starred row must be explained by a parsed footnote; the adapter does not hard-code model IDs or dates.

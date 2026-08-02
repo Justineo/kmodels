@@ -674,7 +674,7 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
       const rawVersion = plain(row[versionIndex] ?? "");
       const version = rawVersion === "—" || rawVersion === "-" ? undefined : rawVersion;
       const stage = plain(row[lifecycleIndex] ?? "").toLowerCase();
-      const status: ProviderModel["status"] =
+      const documentedStatus: ProviderModel["status"] =
         stage === "preview"
           ? "active"
           : stage === "ga" || stage === "stable" || stage === "generallyavailable"
@@ -686,7 +686,8 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
                 : stage === "retired"
                   ? "retired"
                   : "unknown";
-      if (status === "unknown") throw new Error(`Unsupported Azure lifecycle stage: ${stage}`);
+      if (documentedStatus === "unknown")
+        throw new Error(`Unsupported Azure lifecycle stage: ${stage}`);
       const releaseStage: ProviderModel["release_stage"] =
         stage === "preview"
           ? "preview"
@@ -694,6 +695,11 @@ function lifecycle(models: Map<string, ProviderModel>, input: Input, body: strin
             ? "stable"
             : "unknown";
       const retiredAt = plain(row[retirementIndex] ?? "");
+      const exactRetiredAt = z.iso.date().safeParse(retiredAt);
+      const status: ProviderModel["status"] =
+        exactRetiredAt.success && exactRetiredAt.data <= input.observedAt.slice(0, 10)
+          ? "retired"
+          : documentedStatus;
       const replacements = modelIds(row[replacementIndex] ?? "");
       const existing = models.get(modelUid(input.provider.id, id, version));
       const tasks = modelTasks(id, table.section, "");
@@ -933,7 +939,11 @@ function integerCapability(values: Map<string, string>, keys: string[]): number 
 
 function apiStatus(
   value: z.infer<typeof azureModelSchema>["model"]["lifecycleStatus"],
+  retiredAt: string | undefined,
+  observedAt: string,
 ): Pick<ProviderModel, "status" | "release_stage"> {
+  if (retiredAt !== undefined && retiredAt <= observedAt.slice(0, 10))
+    return { status: "retired", release_stage: "unknown" };
   if (value === "Preview") return { status: "active", release_stage: "preview" };
   if (value === "Stable" || value === "GenerallyAvailable")
     return { status: "active", release_stage: "stable" };
@@ -1453,7 +1463,10 @@ export function parseAzureApi(input: Input): ProviderModel[] {
     const modelTasksValue = orderedTasks(
       tasks.length === 0 ? classified : [...tasks, ...classified],
     );
-    const status = apiStatus(item.model.lifecycleStatus);
+    const retiredAt = item.model.deprecation?.inference?.slice(0, 10);
+    if (retiredAt !== undefined && !z.iso.date().safeParse(retiredAt).success)
+      throw new Error("Azure API inference retirement date changed shape");
+    const status = apiStatus(item.model.lifecycleStatus, retiredAt, input.observedAt);
     const rates = pricesFor(item, pricesByMeter, bundle.location, input.source.id);
     return {
       ...base(input, item.model.name, item.model.version),
@@ -1475,7 +1488,7 @@ export function parseAzureApi(input: Input): ProviderModel[] {
         context_tokens: integerCapability(raw, ["maxContextToken"]),
         max_output_tokens: integerCapability(raw, ["maxOutputToken"]),
       },
-      deprecated_at: item.model.deprecation?.inference?.slice(0, 10),
+      retired_at: retiredAt,
       ...status,
       pricing_state: rates.length === 0 ? "unknown" : "numeric",
       price_facts: rates,

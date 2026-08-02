@@ -114,6 +114,13 @@ describe("design token contract", () => {
     expect(modelGroupRow).toMatch(/:data-alternate="alternate \? 'true' : undefined"/);
   });
 
+  it("explains lifecycle and maturity from the Status table heading", () => {
+    expect(app).toMatch(/const STATUS_TOOLTIP\s*=\s*"Active means currently available\./);
+    expect(app).toMatch(
+      /<th class="status-col"[^>]*>[\s\S]*?<UiTooltip[\s\S]*?:content="STATUS_TOOLTIP"[\s\S]*?>[\s\S]*?Status[\s\S]*?<\/UiTooltip>/,
+    );
+  });
+
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {
     expect(components).toMatch(/\.os-scrollbar\.kmodels-scrollbar\s*\{/);
     expect(components).not.toMatch(/(?<!\.os-scrollbar)\.kmodels-scrollbar\s*\{/);

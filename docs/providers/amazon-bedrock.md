@@ -14,7 +14,7 @@ Status: current
 
 - Bind API, lifecycle, capability, and availability facts to the matching programmatic ID. Unknown modality/API/endpoint labels reject the provider; negative API rows add no positive evidence.
 - Keep exact `{region, deployment_type}` pairs. Runtime geo/global evidence requires its exact inference-profile alias. Mantle remains in-region and must intersect with the service-region table. Never form cross-products.
-- `Legacy` is callable-but-restricted, not deprecated. “No sooner than” is not an exact retirement date.
+- `Legacy` is callable-but-restricted, not deprecated. An exact EOL date becomes canonical `retired` when effective even if a stale model card still says `Legacy`; “No sooner than” is not an exact retirement date and never triggers that transition.
 - RAG is service-level. `Invoke` does not imply response streaming. Native Rerank additionally requires its model-specific sample.
 - Price joins require one unique official identity or exact ID occurrence. If an inference product omits an identity attribute, match its usage-type tokens against the official card name only when that normalized family identifies one model; an explicit but different version/name never falls back to family matching. Repeated cards are equivalent only when their exact Programmatic Access IDs, endpoints, and deployment types agree.
 - Preserve region, endpoint, routing class, tier, cache TTL, context threshold, media conditions, capacity direction, unit, and effective date. Preserve provider image subtypes such as standard and document images as operations when they select different rates.

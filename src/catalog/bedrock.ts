@@ -527,7 +527,7 @@ function cardIdentityKeys(
   );
 }
 
-function parseCard(body: string): Card {
+function parseCard(body: string, observedAt: string): Card {
   const name = plain(body.match(/^# ([^\n]+)$/m)?.[1] ?? "");
   if (name === "") throw new Error("Bedrock model card omitted its name");
   const publisher = plain(body.match(/^## .*\)\s*([^—\n]+?)\s+—\s+/m)?.[1] ?? "");
@@ -547,7 +547,7 @@ function parseCard(body: string): Card {
   )
     throw new Error(`Bedrock endpoint support disagreed with Programmatic Access for ${name}`);
   const lifecycle = fact(body, "Model lifecycle")?.toLowerCase();
-  const status: ProviderModel["status"] = lifecycle?.startsWith("active")
+  const documentedStatus: ProviderModel["status"] = lifecycle?.startsWith("active")
     ? "active"
     : lifecycle?.startsWith("preview")
       ? "active"
@@ -568,6 +568,8 @@ function parseCard(body: string): Card {
     deprecatedAt !== undefined
       ? undefined
       : humanDate(eol);
+  const status: ProviderModel["status"] =
+    retiredAt !== undefined && retiredAt <= observedAt.slice(0, 10) ? "retired" : documentedStatus;
   const reasoning = fact(body, "Reasoning");
   const promptCache = /\*\*Prompt caching[^\n]*\*\*[\s\S]*?\n\| Yes \|/.test(
     section(body, "Capabilities and Features") ?? "",
@@ -1283,7 +1285,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         /^\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/.test(url.pathname)
       );
     })
-    .map((document) => parseCard(document.body));
+    .map((document) => parseCard(document.body, input.observedAt));
   if (cards.length === 0) throw new Error("Bedrock catalog contained no model cards");
   const prices = parsePrices(bundle.documents, cards, input.source.id);
   const models = new Map<string, ProviderModel>();
