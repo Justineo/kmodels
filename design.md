@@ -19,6 +19,7 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Kong AI Gateway](docs/kong-ai-gateway.md): consumer boundary and compatibility evidence.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
+- [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,
   best-effort normalization and raw fallback, compact UI projections, exact
   catalog binding, provider-atomic collection, commercial diffing, and

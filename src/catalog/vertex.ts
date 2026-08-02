@@ -13,6 +13,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
+import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -1528,14 +1529,22 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
   const values = [...models.values()]
     .map((item) => item.model)
     .sort((left, right) => left.model_id.localeCompare(right.model_id));
-  if (values.length < extractor.minModels || values.length > extractor.maxModels)
-    throw new Error("Vertex model count outside reviewed bounds");
-  if (modelDocuments < extractor.minModelDocuments || modelDocuments > extractor.maxModelDocuments)
-    throw new Error("Vertex model-card document count outside reviewed bounds");
+  assertItemCount("Vertex model catalog", values.length, extractor.minModels, extractor.maxModels);
+  assertItemCount(
+    "Vertex model-card documents",
+    modelDocuments,
+    extractor.minModelDocuments,
+    extractor.maxModelDocuments,
+  );
   const current = values.filter((model) => model.status !== "retired");
   const priced = current.filter((model) => model.price_facts.length > 0);
-  if (current.length === 0 || priced.length / current.length < extractor.minPricingCoverage)
-    throw new Error("Vertex pricing coverage fell below reviewed bounds");
+  assertCoverage(
+    "Vertex pricing coverage",
+    priced.length,
+    current.length,
+    extractor.minPricingCoverage,
+    ["pricing"],
+  );
   return values;
 }
 
@@ -1543,10 +1552,20 @@ export function parseVertexApi(input: Input): ProviderModel[] {
   const bundle = apiBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
   for (const publisher of bundle.publishers) {
-    for (const value of publisher.models) {
-      const parsed = apiItemSchema.safeParse(value);
-      if (!parsed.success) throw new Error("Vertex Model Garden API schema drift");
-      const resource = parsed.data.name.match(/^publishers\/([^/]+)\/models\/(.+)$/);
+    const items = recognizeItems({
+      label: "Vertex Model Garden model",
+      items: publisher.models,
+      schema: apiItemSchema,
+      modelId: (item) => {
+        if (item === null || typeof item !== "object") return undefined;
+        const name = Reflect.get(item, "name");
+        return typeof name === "string"
+          ? name.split("/models/")[1]?.replace(/@\d+$/u, "")
+          : undefined;
+      },
+    });
+    for (const item of items) {
+      const resource = item.name.match(/^publishers\/([^/]+)\/models\/(.+)$/);
       const resourcePublisher = resource?.[1];
       const id = resource?.[2]?.replace(/@\d+$/, "");
       if (
@@ -1556,7 +1575,7 @@ export function parseVertexApi(input: Input): ProviderModel[] {
       )
         throw new Error("Vertex Model Garden API returned an invalid resource name");
       const modelStatus = modelStateFromLabel(
-        `${parsed.data.launchStage ?? ""} ${parsed.data.versionState ?? ""}`,
+        `${item.launchStage ?? ""} ${item.versionState ?? ""}`,
       );
       models.set(id, {
         ...baseModel({

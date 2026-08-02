@@ -15,6 +15,7 @@ import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider } from "./schema.ts";
 
 type TriState = ProviderModel["capabilities"]["reasoning"];
@@ -294,8 +295,7 @@ function bounded(
   max: number,
   label: string,
 ): ProviderModel[] {
-  if (models.size < min || models.size > max)
-    throw new Error(`${label} model count ${models.size} is outside reviewed bounds`);
+  assertItemCount(`${label} models`, models.size, min, max);
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 

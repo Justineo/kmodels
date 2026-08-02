@@ -1,12 +1,36 @@
 import { describe, expect, it } from "vite-plus/test";
+import { fetchStateSchema } from "../src/catalog/fetch.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { emptyPricingCatalog, type PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import { catalogSchema, type Catalog, type ProviderModel } from "../src/catalog/schema.ts";
+import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import { summarizeRefresh } from "../src/catalog/summary.ts";
 
 const previousAt = "2026-07-23T00:00:00.000Z";
 const currentAt = "2026-07-24T00:00:00.000Z";
 const noPricing = emptyPricingCatalog();
+
+function contractFinding(
+  disposition: SourceContractEvidence["disposition"],
+  path: string,
+): SourceContractEvidence {
+  return {
+    disposition,
+    observed_items: 1,
+    diagnostic_count: 1,
+    diagnostics: [
+      {
+        fingerprint: "0123456789abcdef",
+        kind: "unknown_field",
+        path,
+        observed: "boolean",
+        observed_value: "true",
+        affected_items: 1,
+        sample_model_ids: ["test/model"],
+      },
+    ],
+  };
+}
 
 function catalog(
   version: string,
@@ -100,6 +124,18 @@ function pricing(rawLabel: string, publication: "fresh" | "retained"): PricingCa
 }
 
 describe("collection state", () => {
+  it("can persist a source failure before its first successful observation", () => {
+    const state = {
+      sources: {
+        "test-catalog": {
+          checkedAt: currentAt,
+          consecutiveFailures: 1,
+        },
+      },
+    };
+    expect(fetchStateSchema.parse(state)).toEqual(state);
+  });
+
   it("summarizes semantic changes without counting observation timestamps", () => {
     const previousModel = baseModel({
       providerId: "test",
@@ -190,6 +226,9 @@ describe("collection state", () => {
             source_id: "test-catalog",
             outcome: "parse_failed",
             message: "schema changed",
+            consecutive_failures: 2,
+            last_success_at: previousAt,
+            contract_finding: contractFinding("reject", "/new_field"),
           },
         ],
         candidate_models: [],
@@ -214,12 +253,79 @@ describe("collection state", () => {
           status: "stale",
           publication: "retained",
           models: { removed: 0 },
-          signals: ["drift_guard_triggered", "possible_structural_change"],
+          signals: [
+            "drift_guard_triggered",
+            "breaking_contract_mismatch",
+            "coverage_regression",
+            "persistent_source_failure",
+          ],
           attempt: {
             outcome: "rejected",
             models: { removed: 1, removed_model_refs: ["test/model"] },
+            sources: [
+              {
+                source_id: "test-catalog",
+                consecutive_failures: 2,
+                contract_finding: {
+                  disposition: "reject",
+                  observed_items: 1,
+                  diagnostic_count: 1,
+                },
+              },
+            ],
             validation_issue: { code: "model_count_drop" },
             failure: { code: "source_schema_changed" },
+          },
+        },
+      ],
+    });
+  });
+
+  it("accepts fresh publication while surfacing an unowned source extension", () => {
+    const model = baseModel({
+      providerId: "test",
+      id: "model",
+      name: "Model",
+      sourceId: "test-catalog",
+      observedAt: currentAt,
+    });
+    const previous = catalog("a", previousAt, [model], "b");
+    const current = catalog("c", currentAt, [model], "d");
+    const summary = summarizeRefresh(previous, current, noPricing, noPricing, [
+      {
+        provider_id: "test",
+        outcome: "accepted",
+        sources: [
+          {
+            source_id: "test-catalog",
+            outcome: "changed",
+            parsed_models: 1,
+            content_changed: true,
+            extractor_changed: false,
+            contract_finding: contractFinding("accept_with_signal", "/future_field"),
+          },
+        ],
+        candidate_models: [model],
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      outcome: "evidence_only",
+      publication: "complete",
+      providers: [
+        {
+          provider_id: "test",
+          publication: "accepted",
+          signals: ["unreviewed_extension"],
+          attempt: {
+            outcome: "accepted",
+            sources: [
+              {
+                source_id: "test-catalog",
+                outcome: "changed",
+                contract_finding: { disposition: "accept_with_signal" },
+              },
+            ],
           },
         },
       ],

@@ -5,6 +5,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -54,20 +55,17 @@ const publicItemSchema = z.object({
 });
 const publicSchema = z.object({
   object: z.literal("list"),
-  data: z.array(publicItemSchema).min(1),
+  data: z.array(z.unknown()).min(1),
+});
+const inventoryItemSchema = z.object({
+  id: modelIdSchema,
+  object: z.literal("model"),
+  created: z.number().int().nonnegative(),
+  owned_by: z.string().min(1),
 });
 const inventorySchema = z.object({
   object: z.literal("list"),
-  data: z
-    .array(
-      z.object({
-        id: modelIdSchema,
-        object: z.literal("model"),
-        created: z.number().int().nonnegative(),
-        owned_by: z.string().min(1),
-      }),
-    )
-    .min(1),
+  data: z.array(z.unknown()).min(1),
 });
 
 type CerebrasExtractor =
@@ -87,10 +85,7 @@ const apiEndpoints = new Map<string, ApiEndpoint>([
 function bounded(input: Input, kind: CerebrasExtractor, models: ProviderModel[]): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== kind) throw new Error(`Wrong ${kind} extractor`);
-  if (models.length < extractor.minModels || models.length > extractor.maxModels)
-    throw new Error(
-      `Cerebras ${kind} model count ${models.length} outside ${extractor.minModels}-${extractor.maxModels}`,
-    );
+  assertItemCount(`Cerebras ${kind}`, models.length, extractor.minModels, extractor.maxModels);
   if (new Set(models.map(({ model_id }) => model_id)).size !== models.length)
     throw new Error(`Cerebras ${kind} returned duplicate model IDs`);
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
@@ -118,9 +113,14 @@ function architectureInputs(value: string): Modality[] {
 }
 
 export function parseCerebrasPublic(input: Input): ProviderModel[] {
-  const parsed = publicSchema.safeParse(JSON.parse(input.body));
-  if (!parsed.success) throw new Error("Cerebras public model schema drift");
-  const models = parsed.data.data.map((item): ProviderModel => {
+  const list = publicSchema.parse(JSON.parse(input.body));
+  const items = recognizeItems({
+    label: "Cerebras public model",
+    items: list.data,
+    schema: publicItemSchema,
+    modelId: "id",
+  });
+  const models = items.map((item): ProviderModel => {
     const modalities = architectureInputs(item.architecture.modality);
     if (modalities.includes("image") !== item.capabilities.vision)
       throw new Error(`Cerebras modality and vision flag disagree for ${item.id}`);
@@ -684,9 +684,14 @@ export function parseCerebrasReleases(input: Input): ProviderModel[] {
 }
 
 export function parseCerebrasApi(input: Input): ProviderModel[] {
-  const parsed = inventorySchema.safeParse(JSON.parse(input.body));
-  if (!parsed.success) throw new Error("Cerebras API model schema drift");
-  const models = parsed.data.data.map(
+  const list = inventorySchema.parse(JSON.parse(input.body));
+  const items = recognizeItems({
+    label: "Cerebras API model",
+    items: list.data,
+    schema: inventoryItemSchema,
+    modelId: "id",
+  });
+  const models = items.map(
     (item): ProviderModel => ({
       ...baseModel({
         providerId: input.provider.id,

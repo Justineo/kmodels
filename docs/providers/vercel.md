@@ -5,7 +5,20 @@ Status: current
 ## Sources and identity
 
 - Unauthenticated `GET https://ai-gateway.vercel.sh/v1/models` is the exhaustive global catalog and sole model source.
-- Require the exact envelopes, 250–600 valid items, a two-segment `creator/model` ID whose creator matches `owned_by`, and reviewed values for semantic tags, parameters, specifications, video operations, regions, and pricing fields. One malformed item rejects the provider so new source vocabulary cannot silently disappear.
+- Vercel documents this endpoint and its common fields, but the collector does not depend on a
+  complete, versioned machine-readable schema for the extended payload. The reviewed adapter and
+  fixtures are the consumer contract: they remain deliberately narrower than every field Vercel
+  may emit and stricter around the semantics Kmodels publishes.
+- Require the exact envelope, 250–600 valid items, a two-segment `creator/model` ID whose creator
+  matches `owned_by`, and reviewed values for semantic tags, parameters, specifications, video
+  operations, regions, and pricing fields. One malformed owned value rejects the provider so new
+  source vocabulary cannot silently disappear. A new top-level model property outside those owned
+  semantics is stripped and reported as an unreviewed extension without making the fresh catalog
+  stale; nested semantic and pricing objects remain closed.
+- Aggregate every invalid item before rejecting the provider. Refresh evidence reports the bounded
+  mismatch paths, kinds, affected counts, stable fingerprints, and validated public sample IDs, so
+  automation can distinguish a concrete schema mismatch from an unclassified possible structural
+  change without retaining the response body.
 - Do not collect per-model route telemetry into stable rows. A future route resource must remain separate from `ProviderModel`.
 
 ## Mapping
@@ -23,7 +36,7 @@ Status: current
 - Use dedicated meters for directionless realtime messages/sessions. Collapse the duplicated transcription audio-input alias at the source boundary while keeping distinct text and audio rates.
 - Treat an empty pricing object as `not_published`, not free. Per-route endpoint payloads are routing telemetry and do not repair missing catalog prices reliably.
 - Unknown pricing keys fail closed. Coverage warnings describe the rows actually published, including fallback data.
-- Keep knowledge cutoffs, temperature flags, interleaving metadata, AI SDK specification versions, detailed video dimensions/durations/file limits, and provider-route attributes at the source boundary because the canonical model has no faithful field for them. Validate their reviewed shapes rather than forcing them into unrelated fields.
+- Keep knowledge cutoffs, temperature flags, interleaving metadata, AI SDK specification versions, detailed video dimensions/durations/file limits, and provider-route attributes at the source boundary because the canonical model has no faithful field for them. Validate their reviewed shapes rather than forcing them into unrelated fields. Video audio-generation support is an optional disclosure; absence remains unknown, while a present non-boolean value is a contract mismatch.
 
 ## Kong AI Gateway
 

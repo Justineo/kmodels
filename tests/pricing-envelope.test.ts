@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vite-plus/test";
 import {
   createPricingCatalogEnvelope,
@@ -7,7 +6,7 @@ import {
   validatePricingCatalogEnvelope,
 } from "../src/catalog/pricing-envelope.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
-import { catalogSchema } from "../src/catalog/schema.ts";
+import type { Catalog } from "../src/catalog/schema.ts";
 
 const emptyPricing: PricingCatalog = {
   provider_vocabularies: [],
@@ -16,40 +15,44 @@ const emptyPricing: PricingCatalog = {
   books: [],
 };
 
-async function catalog() {
-  return catalogSchema.parse(
-    JSON.parse(await readFile(new URL("../data/catalog.json", import.meta.url), "utf8")),
-  );
-}
+const catalog: Catalog = {
+  catalog_version: "1".repeat(64),
+  generated_at: "2026-07-28T00:00:00.000Z",
+  providers: [],
+  models: [],
+  sources: [],
+  coverage: [],
+  warnings: [],
+};
 
 describe("canonical pricing envelope", () => {
-  it("binds canonical pricing data to the exact core catalog data", async () => {
-    const core = await catalog();
-    const envelope = createPricingCatalogEnvelope(emptyPricing, core);
-    expect(envelope.core_catalog_version).toBe(core.catalog_version);
+  it("binds canonical pricing data to the exact core catalog data", () => {
+    const envelope = createPricingCatalogEnvelope(emptyPricing, catalog);
+    expect(envelope.core_catalog_version).toBe(catalog.catalog_version);
     expect(envelope.core_data_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(envelope.pricing_data_version).toMatch(/^[0-9a-f]{64}$/);
-    expect(() => validatePricingCatalogEnvelope(envelope, core)).not.toThrow();
+    expect(() => validatePricingCatalogEnvelope(envelope, catalog)).not.toThrow();
   });
 
-  it("round-trips only exact canonical public bytes", async () => {
-    const core = await catalog();
-    const envelope = createPricingCatalogEnvelope(emptyPricing, core);
-    const json = pricingCatalogJson(envelope, core);
-    expect(decodePricingCatalog(new TextEncoder().encode(json), core)).toEqual(envelope);
-    expect(() => decodePricingCatalog(new TextEncoder().encode(`${json}\n`), core)).toThrow(
+  it("round-trips only exact canonical public bytes", () => {
+    const envelope = createPricingCatalogEnvelope(emptyPricing, catalog);
+    const json = pricingCatalogJson(envelope, catalog);
+    expect(decodePricingCatalog(new TextEncoder().encode(json), catalog)).toEqual(envelope);
+    expect(() => decodePricingCatalog(new TextEncoder().encode(`${json}\n`), catalog)).toThrow(
       "not in RFC 8785 canonical form",
     );
   });
 
-  it("rejects a mismatched catalog binding or pricing-data hash", async () => {
-    const core = await catalog();
-    const envelope = createPricingCatalogEnvelope(emptyPricing, core);
+  it("rejects a mismatched catalog binding or pricing-data hash", () => {
+    const envelope = createPricingCatalogEnvelope(emptyPricing, catalog);
     expect(() =>
-      validatePricingCatalogEnvelope({ ...envelope, core_data_sha256: "0".repeat(64) }, core),
+      validatePricingCatalogEnvelope({ ...envelope, core_data_sha256: "0".repeat(64) }, catalog),
     ).toThrow("core data hash");
     expect(() =>
-      validatePricingCatalogEnvelope({ ...envelope, pricing_data_version: "0".repeat(64) }, core),
+      validatePricingCatalogEnvelope(
+        { ...envelope, pricing_data_version: "0".repeat(64) },
+        catalog,
+      ),
     ).toThrow("Pricing data version");
   });
 });

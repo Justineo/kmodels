@@ -7,13 +7,7 @@ import {
   readPublishedAssets,
   type PublishedAssetProfile,
 } from "./src/catalog/published-assets.ts";
-
-const generatedDataTests = [
-  "tests/catalog.test.ts",
-  "tests/pricing-bedrock-calibration.test.ts",
-  "tests/pricing-provider-calibration.test.ts",
-  "tests/website-data.test.ts",
-];
+import { generatedDataTests } from "./tests/generated-data-tests.ts";
 
 let developmentUiAssets: Promise<PublishedAssetProfile> | undefined;
 let developmentExportAssets: Promise<PublishedAssetProfile> | undefined;

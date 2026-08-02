@@ -7,6 +7,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import {
   modalitySchema,
   type Modality,
@@ -901,8 +902,7 @@ function currentModels(
   const count = language.length + embeddings.length + images.length + voice.length + videos.length;
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-catalog") throw new Error("Invalid xAI catalog extractor");
-  if (count < extractor.minModels || count > extractor.maxModels)
-    throw new Error("xAI structured model count outside reviewed bounds");
+  assertItemCount("xAI structured models", count, extractor.minModels, extractor.maxModels);
   const pricing = section(llms, "/developers/pricing");
   assertPublicPricing(pricing, language, images, videos);
   const prices = voicePrices(pricing);

@@ -33,8 +33,10 @@ Status: implemented
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
 - The `Status` heading is a shared tooltip trigger that defines lifecycle and
-  active-model maturity values and uses the same structure and trigger styling
-  as the pricing headings.
+  active-model maturity values in separate compact definition lists rather than
+  one prose paragraph. Each definition reuses the table's status badge color as
+  a legend. The heading uses the same trigger structure and styling as the
+  pricing headings.
 - Shared pricing headings stay generic because meter and unit are row-specific.
   `Input`, `Cache`, and `Output` are right-aligned labels whose tooltips explain
   that the columns show representative prices, normalize comparable token rates
@@ -132,10 +134,18 @@ Status: implemented
   positioning with viewport-aware fallback placement; components do not
   calculate viewport coordinates or own scroll/resize listeners. Activating a
   tooltip trigger dismisses its open tooltip; pointer hover cannot reopen it
-  until the pointer leaves and enters the trigger again. On a focusable
-  explanatory text trigger, the click that first moves focus keeps the tooltip
-  open; a subsequent click toggles it closed or open. Action buttons still
-  perform their action and dismiss tooltip text.
+  until the pointer leaves and enters the trigger again. Switching an open
+  tooltip to another trigger through hover or focus does not consume that
+  trigger's first activation. Tooltip hit areas stay on their visible trigger
+  content rather than filling a table cell. The tooltip surface consumes pointer
+  input so clicks cannot pass through to obscured controls, while the content
+  remains non-interactive. On a
+  focusable explanatory text trigger, the first click or tap opens the tooltip
+  and a subsequent activation toggles it closed or open. On touch, an action
+  trigger such as a model pricing status uses the first tap to explain the
+  value; a second tap on the open trigger performs the action and closes the
+  tooltip. Mouse clicks and keyboard activation perform the action immediately
+  and dismiss tooltip text because hover or focus already exposes the tooltip.
 - Keep all filtered results in one continuous, fixed-row virtual scroll surface.
 - Keep every semantic table column visible at every viewport width. On narrow
   screens, preserve the desktop column proportions and let the table scroll

@@ -16,13 +16,20 @@ Status: implemented
   summary, emits warnings for retained or withheld providers, and keeps the
   complete report as a 30-day artifact. A failure before report creation is
   called out explicitly and commits nothing.
+- A recognized source-contract mismatch warns on its first occurrence with bounded path,
+  mismatch kind, affected/observed counts, fingerprint, and public sample IDs
+  when available. A second consecutive source failure adds persistence and,
+  when available, last-success staleness. Unclassified parser failures and abrupt count loss
+  remain `possible_structural_change`; automation never upgrades that heuristic
+  into a factual schema-change claim.
 - Provider collection is work-conserving with four bounded workers. Completion
   of a fast provider immediately starts the next provider instead of waiting
   for the slowest member of a fixed batch. Source order inside a provider stays
   deterministic because overlays and inventories can depend on catalog output.
 - Scheduled refresh validates only the generated catalog suite and production
   build. It does not rerun code-only unit and fixture tests when the checkout is
-  unchanged. Push and pull-request CI runs those tests once.
+  unchanged. Push and pull-request CI runs those tests once. Generated-data
+  assertions follow the boundary and volatility rules in [Testing](testing.md).
 - One non-isolated, single-worker generated-data test project shares one parsed
   catalog/pricing context. Pricing runs one whole-catalog topology and limit
   pass, then validates provider partitions

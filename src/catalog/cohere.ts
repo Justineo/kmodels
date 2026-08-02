@@ -5,6 +5,7 @@ import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { classifyModelTasks } from "./task.ts";
@@ -1178,8 +1179,7 @@ function validatePricingCoverage(models: Map<string, ProviderModel>, minimum: nu
     ({ pricing_state, price_facts, raw_price_facts }) =>
       pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
   ).length;
-  if (current.length === 0 || covered / current.length < minimum)
-    throw new Error("Cohere pricing coverage fell below the reviewed threshold");
+  assertCoverage("Cohere pricing coverage", covered, current.length, minimum, ["pricing"]);
 }
 
 function includesId(value: string, id: string): boolean {
@@ -1286,8 +1286,7 @@ function indexedModelDocuments(
     if (url.origin !== origin || !/^\/docs\/[a-z0-9.-]+\.md$/.test(url.pathname)) continue;
     paths.add(url.pathname.slice(0, -".md".length));
   }
-  if (paths.size < minimum || paths.size > maximum)
-    throw new Error("Cohere model document count outside reviewed bounds");
+  assertItemCount("Cohere model documents", paths.size, minimum, maximum);
   const byPath = new Map<string, LinkedDocument>();
   for (const document of documents) {
     const pathname = new URL(document.url).pathname;
@@ -1340,8 +1339,12 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   applyAliasPricing(models);
   finalizeRetiredPricing(models);
   validatePricingCoverage(models, configuration.minPricingCoverage);
-  if (models.size < configuration.minModels || models.size > configuration.maxModels)
-    throw new Error("Cohere model count outside reviewed bounds");
+  assertItemCount(
+    "Cohere model catalog",
+    models.size,
+    configuration.minModels,
+    configuration.maxModels,
+  );
   return [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 
@@ -1349,11 +1352,13 @@ export function parseCohereApi(input: Input): ProviderModel[] {
   const value = apiSchema.parse(JSON.parse(input.body));
   if (value.next_page_token !== undefined)
     throw new Error("Cohere Models API response was truncated");
-  const items = value.models.map((item) => apiItemSchema.safeParse(item));
-  if (items.some((item) => !item.success)) throw new Error("Cohere Models API schema drift");
-  return items.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
+  const items = recognizeItems({
+    label: "Cohere API model",
+    items: value.models,
+    schema: apiItemSchema,
+    modelId: "name",
+  });
+  return items.map((item) => {
     const facts = (item.endpoints ?? []).map((endpoint) => {
       const fact = apiEndpointFacts.get(endpoint);
       if (fact === undefined) throw new Error(`Unsupported Cohere API endpoint: ${endpoint}`);
@@ -1365,23 +1370,21 @@ export function parseCohereApi(input: Input): ProviderModel[] {
     const apiEndpoints = unique(
       facts.flatMap(({ endpoint }) => (endpoint === undefined ? [] : [endpoint])),
     ).sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.name,
-          name: item.name,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        tasks,
-        api_endpoints: apiEndpoints.length === 0 ? undefined : apiEndpoints,
-        limits:
-          item.context_length === undefined || item.context_length === 0
-            ? {}
-            : { context_tokens: item.context_length },
-        status: item.is_deprecated === true ? "deprecated" : "unknown",
-      },
-    ];
+    return {
+      ...baseModel({
+        providerId: input.provider.id,
+        id: item.name,
+        name: item.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      tasks,
+      api_endpoints: apiEndpoints.length === 0 ? undefined : apiEndpoints,
+      limits:
+        item.context_length === undefined || item.context_length === 0
+          ? {}
+          : { context_tokens: item.context_length },
+      status: item.is_deprecated === true ? "deprecated" : "unknown",
+    };
   });
 }

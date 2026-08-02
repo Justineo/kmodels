@@ -4,6 +4,7 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -914,8 +915,7 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
         ? { ...model.capabilities, batch: true }
         : model.capabilities,
   }));
-  if (values.length < extractor.minModels || values.length > extractor.maxModels)
-    throw new Error("Azure model count outside reviewed bounds");
+  assertItemCount("Azure model catalog", values.length, extractor.minModels, extractor.maxModels);
   return values.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
@@ -1338,18 +1338,19 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
   if (extractor.kind !== "azure-retail-prices")
     throw new Error("Wrong Azure Retail Prices extractor");
   const bundle = azureRetailBundleSchema.parse(JSON.parse(input.body));
-  const parsed = z.array(retailPriceSchema).safeParse(bundle.prices);
-  if (!parsed.success) throw new Error("Azure Retail Prices API schema drift");
+  const prices = recognizeItems({
+    label: "Azure retail price",
+    items: bundle.prices,
+    schema: retailPriceSchema,
+  });
   const catalogModels = input.catalogModels;
   if (catalogModels === undefined || catalogModels.length === 0)
     throw new Error("Azure Retail Prices require the public catalog");
 
   const models = new Map<string, ProviderModel>();
-  const unboundSkus = new Set<string>();
-  const unsupportedSkus = new Set<string>();
   let baseRows = 0;
   let handledRows = 0;
-  for (const price of parsed.data) {
+  for (const price of prices) {
     if (!isBaseRetailPrice(price)) continue;
     baseRows += 1;
     const parsedIdentity = catalogRetailModelIdentity(price, catalogModels);
@@ -1363,15 +1364,11 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
       retailDefaultMeter(parsedIdentity, catalogModels),
     );
     if (fact === undefined) {
-      unsupportedSkus.add(`${price.skuName} [${price.meterName}; ${price.unitOfMeasure}]`);
       continue;
     }
     handledRows += 1;
     const identity = bindRetailModelIdentity(parsedIdentity, catalogModels);
-    if (identity === undefined) {
-      unboundSkus.add(price.skuName);
-      continue;
-    }
+    if (identity === undefined) continue;
     const uid = modelUid(input.provider.id, identity.id, identity.version);
     const current =
       models.get(uid) ??
@@ -1395,12 +1392,19 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
       ).values(),
     ],
   }));
-  if (values.length < extractor.minModels || values.length > extractor.maxModels)
-    throw new Error("Azure retail-priced model count outside reviewed bounds");
-  if (baseRows === 0 || handledRows / baseRows < extractor.minHandledRatio)
-    throw new Error(
-      `Azure retail-price interpretation coverage fell below the reviewed bound (${handledRows}/${baseRows}; unbound: ${[...unboundSkus].slice(0, 5).join(", ") || "none"}; unsupported: ${[...unsupportedSkus].slice(0, 5).join(", ") || "none"})`,
-    );
+  assertItemCount(
+    "Azure retail-priced models",
+    values.length,
+    extractor.minModels,
+    extractor.maxModels,
+  );
+  assertCoverage(
+    "Azure retail-price interpretation",
+    handledRows,
+    baseRows,
+    extractor.minHandledRatio,
+    ["prices"],
+  );
   return values.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
@@ -1441,13 +1445,27 @@ function pricesFor(
 
 export function parseAzureApi(input: Input): ProviderModel[] {
   const bundle = azureApiBundleSchema.parse(JSON.parse(input.body));
-  const models = z.array(azureModelSchema).safeParse(bundle.models);
-  const prices = z.array(retailPriceSchema).safeParse(bundle.prices);
-  if (!models.success || !prices.success) throw new Error("Azure Models API schema drift");
+  const models = recognizeItems({
+    label: "Azure API model",
+    items: bundle.models,
+    schema: azureModelSchema,
+    modelId: (item) => {
+      if (item === null || typeof item !== "object") return undefined;
+      const model = Reflect.get(item, "model");
+      if (model === null || typeof model !== "object") return undefined;
+      const name = Reflect.get(model, "name");
+      return typeof name === "string" ? name : undefined;
+    },
+  });
+  const prices = recognizeItems({
+    label: "Azure API retail price",
+    items: bundle.prices,
+    schema: retailPriceSchema,
+  });
   const pricesByMeter = new Map<string, RetailPrice[]>();
-  for (const price of prices.data)
+  for (const price of prices)
     pricesByMeter.set(price.meterId, [...(pricesByMeter.get(price.meterId) ?? []), price]);
-  return models.data.map((item) => {
+  return models.map((item) => {
     const raw = new Map(
       Object.entries(item.model.capabilities ?? {}).map(([key, value]) => [
         key.toLowerCase(),

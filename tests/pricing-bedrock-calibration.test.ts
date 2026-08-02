@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { pricingLimits } from "../src/catalog/pricing-constants.ts";
 import { generatedData } from "./generated-data-context.ts";
 
+const minimumReviewedObservationCount = 8_000;
+
 describe("Bedrock pricing resource calibration", () => {
   it("contains the complete committed observation corpus within its provider budget", async () => {
     const pricing = (await generatedData()).pricing.data;
@@ -40,7 +42,7 @@ describe("Bedrock pricing resource calibration", () => {
       0,
     );
 
-    expect(observationCount).toBeGreaterThan(8_000);
+    expect(observationCount).toBeGreaterThan(minimumReviewedObservationCount);
     expect(Buffer.byteLength(JSON.stringify(partition))).toBeLessThan(
       pricingLimits.providerPricingBytes,
     );

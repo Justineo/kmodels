@@ -7,6 +7,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -279,8 +280,7 @@ function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
   if (input.source.extractor.kind !== "deepseek-catalog")
     throw new Error("Wrong DeepSeek catalog extractor");
   const { minModels, maxModels } = input.source.extractor;
-  if (models.length < minModels || models.length > maxModels)
-    throw new Error(`DeepSeek model count ${models.length} outside ${minModels}-${maxModels}`);
+  assertItemCount("DeepSeek model catalog", models.length, minModels, maxModels);
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 
@@ -407,8 +407,7 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
     }),
   );
   const { minModels, maxModels } = input.source.extractor;
-  if (models.length < minModels || models.length > maxModels)
-    throw new Error(`DeepSeek update count ${models.length} outside ${minModels}-${maxModels}`);
+  assertItemCount("DeepSeek updates", models.length, minModels, maxModels);
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 
@@ -420,8 +419,7 @@ export function parseDeepseekApi(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "deepseek-api")
     throw new Error("Wrong DeepSeek API extractor");
   const { minModels, maxModels } = input.source.extractor;
-  if (ids.length < minModels || ids.length > maxModels)
-    throw new Error(`DeepSeek API model count ${ids.length} outside ${minModels}-${maxModels}`);
+  assertItemCount("DeepSeek API models", ids.length, minModels, maxModels);
   return ids.map((id) => ({
     ...baseModel({
       providerId: input.provider.id,
