@@ -32,6 +32,9 @@ Status: implemented
   version in child details and JSON.
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
+- The `Status` heading is a shared tooltip trigger that defines lifecycle and
+  active-model maturity values. Its accessible label carries the same complete
+  explanation without requiring pointer hover.
 - Shared pricing headings stay generic because meter and unit are row-specific.
   `Input`, `Cache`, and `Output` are right-aligned labels whose tooltips explain
   that the columns show representative prices, normalize comparable token rates

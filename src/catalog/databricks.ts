@@ -851,8 +851,14 @@ function applyLifecycle(models: ProviderModel[], body: string, observedAt: strin
         if (seen.has(key)) return;
         seen.add(key);
         const payPerToken = retirement.match(/Pay-per-token:\s*([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1];
-        const retiredAt = date(payPerToken ?? retirement);
-        if (retiredAt === undefined) return;
+        const announcedRetirement = date(payPerToken ?? retirement);
+        if (announcedRetirement === undefined) return;
+        const redirectEnd = date(
+          (values[2] ?? "").match(
+            /between [A-Z][a-z]+ \d{1,2}, \d{4} and ([A-Z][a-z]+ \d{1,2}, \d{4}), API calls .* temporarily redirected/i,
+          )?.[1] ?? "",
+        );
+        const retiredAt = redirectEnd ?? announcedRetirement;
         const replacements = (values[2] ?? "")
           .replace(/\. To allow.*$/i, "")
           .split(/\s+or\s+/i)

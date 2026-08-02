@@ -87,8 +87,9 @@ with provenance.
 - `status` describes availability/support: `active`, `legacy`, `deprecated`, `retired`, or `unknown`.
 - `release_stage` independently describes maturity: `stable`, `preview`, `experimental`, or `unknown`.
 - `legacy` means callable but superseded or restricted. `deprecated` means migration is announced while some use remains. `retired` requires evidence that requests or deployments are unavailable.
+- Normalize provider terms by their documented behavior, not by spelling. A provider's `Retired` label can remain canonical `legacy` while its old ID redirects, while API-specific labels such as Azure `Deprecated` can mean canonical `retired`.
 - Publish stable/GA only from positive evidence, except when an official catalog explicitly defines unlabeled current rows as GA. Current membership may establish `active` when the source defines it that way; it does not imply `stable`.
-- Scheduled lifecycle changes take effect only when the source declares that stage or the exact effective time is reached.
+- Scheduled lifecycle changes take effect only when the source declares that stage or a provider-defined exact effective time is reached. Earliest, approximate, and “no sooner than” dates never trigger a transition.
 - `replacement_model_ids` contains only exact same-provider IDs from official lifecycle evidence.
 - `release_date` is the first official availability date for the exact callable model. `updated_date` is an explicit model revision or artifact modification date. Preserve `YYYY`, `YYYY-MM`, or `YYYY-MM-DD` precision.
 - Collection time, page-level update metadata, unlabeled dates in names, `first_seen_at`, and `last_seen_at` never substitute for product dates.

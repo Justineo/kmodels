@@ -34,6 +34,8 @@ import { detailsState } from "./details-state.ts";
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 const COARSE_TOUCH_QUERY = "(any-hover: none) and (any-pointer: coarse)";
+const STATUS_TOOLTIP =
+  "Active means currently available. Stable, Preview, and Experimental describe the maturity of active models. Legacy means available but superseded or restricted. Deprecated means scheduled for retirement. Retired means unavailable. Unknown means evidence is insufficient.";
 
 type Theme = "light" | "dark";
 const LIFECYCLE_OPTIONS = modelLifecycles;
@@ -736,7 +738,16 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                   />
                 </th>
                 <th class="tasks-col" scope="col">Tasks</th>
-                <th class="status-col" scope="col">Status</th>
+                <th class="status-col" scope="col">
+                  <UiTooltip
+                    class="table-header-tooltip-trigger"
+                    tabindex="0"
+                    :content="STATUS_TOOLTIP"
+                    :aria-label="`Status. ${STATUS_TOOLTIP}`"
+                  >
+                    Status
+                  </UiTooltip>
+                </th>
                 <th class="context-col numeric" scope="col" :aria-sort="ariaSort('context')">
                   <ColumnSortButton
                     label="Context"
@@ -746,7 +757,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                 </th>
                 <th class="input-col numeric" scope="col" aria-label="Representative input rate">
                   <UiTooltip
-                    class="pricing-header-trigger"
+                    class="table-header-tooltip-trigger"
                     tabindex="0"
                     content="Representative input price. Token rates use 1M tokens; other meters show their native unit in the cell."
                   >
@@ -755,7 +766,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                 </th>
                 <th class="cached-col numeric" scope="col" aria-label="Representative cache rate">
                   <UiTooltip
-                    class="pricing-header-trigger"
+                    class="table-header-tooltip-trigger"
                     tabindex="0"
                     content="Representative cache price. Token rates use 1M tokens; other meters show their native unit in the cell."
                   >
@@ -764,7 +775,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                 </th>
                 <th class="output-col numeric" scope="col" aria-label="Representative output rate">
                   <UiTooltip
-                    class="pricing-header-trigger"
+                    class="table-header-tooltip-trigger"
                     tabindex="0"
                     content="Representative output price. Token rates use 1M tokens; other meters show their native unit in the cell."
                   >
