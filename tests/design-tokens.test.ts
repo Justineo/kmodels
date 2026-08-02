@@ -119,6 +119,7 @@ describe("design token contract", () => {
     expect(app).toMatch(
       /<th class="status-col"[^>]*>[\s\S]*?<UiTooltip[\s\S]*?:content="STATUS_TOOLTIP"[\s\S]*?>[\s\S]*?Status[\s\S]*?<\/UiTooltip>/,
     );
+    expect(matches(/class="table-header-tooltip-trigger"/, app)).toHaveLength(4);
   });
 
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {
