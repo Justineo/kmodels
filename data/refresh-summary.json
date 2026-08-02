@@ -1,8 +1,8 @@
 {
-  "catalog_version": "7e6c603dfe1fe64d5568c6abe79c5b38fd9ef69bb1d1e16f5eb21a260525f4cb",
-  "generated_at": "2026-08-02T19:25:51.291Z",
+  "catalog_version": "c4cb56f2c0aa2a31b4b22f96658d01545c83e1d7309b4f78cac6bccb1e4dd3c5",
+  "generated_at": "2026-08-02T20:19:22.900Z",
   "outcome": "changed",
-  "previous_catalog_version": "c52cae77d0e38170a93ae9c4b7a12dabbb2458fc8f80e29bf1edce1c82d4e17a",
+  "previous_catalog_version": "7e6c603dfe1fe64d5568c6abe79c5b38fd9ef69bb1d1e16f5eb21a260525f4cb",
   "providers": [
     {
       "attempt": {
@@ -12,9 +12,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 129,
             "source_id": "bedrock-models"
           },
@@ -30,25 +30,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "status": 1
-        },
-        "changed_models": [
-          {
-            "fields": [
-              "status"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-opus-4-1-20250805-v1:0",
-            "previous_status": "active",
-            "status": "legacy"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 129,
         "previous": 129,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 128
+        "unchanged": 129
       },
       "pricing": {
         "commercial_hash": "064b030c8b1c2d3bc93bc6cb7e7755593c204e9fbe98e76b923dde92df93814a",
@@ -61,20 +50,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "bedrock-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2168,9 +2150,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
@@ -2182,23 +2164,20 @@
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/Qwen/Qwen3-32B",
-          "huggingface/chendelong/DirectSAM-1800px-0424"
-        ],
-        "changed": 30,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 31,
         "changed_fields": {
-          "capabilities": 1,
+          "capabilities": 4,
           "limits": 29
         },
         "changed_models": [
@@ -2276,12 +2255,25 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
+          {
+            "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -2300,12 +2292,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2318,6 +2304,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
@@ -2384,15 +2371,15 @@
           }
         ],
         "current": 1539,
-        "previous": 1537,
+        "previous": 1539,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1507
+        "unchanged": 1508
       },
       "pricing": {
-        "commercial_hash": "0abce11ab6ed438802989f36a33a905dd9da4606202fd8a8a980c854055b1314",
+        "commercial_hash": "66d975169a3456ede2f5b1df24b1f486294370a7f42c22d428f343849d16a146",
         "outcome": "commercial",
-        "previous_commercial_hash": "ccdb1a13e0a6db2419cf8a1bd048fe8b0f6606131c43634ee6d6a0f5206edb4d"
+        "previous_commercial_hash": "0abce11ab6ed438802989f36a33a905dd9da4606202fd8a8a980c854055b1314"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2400,20 +2387,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2425,7 +2400,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3081,9 +3056,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 312,
             "source_id": "vercel-models"
           }
@@ -3094,7 +3069,8 @@
         "added_model_refs": [],
         "changed": 104,
         "changed_fields": {
-          "limits": 104
+          "limits": 104,
+          "modalities": 1
         },
         "changed_models": [
           {
@@ -3687,6 +3663,7 @@
           },
           {
             "fields": [
+              "modalities",
               "limits"
             ],
             "model_ref": "vercel/xai/grok-imagine-video-1.5"
@@ -3739,13 +3716,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vercel-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3955,10 +3939,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 2,
+    "added_models": 0,
     "added_sources": 0,
     "changed_models": 404,
-    "changed_sources": 32,
+    "changed_sources": 30,
     "models": 3371,
     "providers": 18,
     "removed_models": 0,
