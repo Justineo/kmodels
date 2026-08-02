@@ -134,6 +134,12 @@ describe("design token contract", () => {
     expect(tooltip).toMatch(/\.ui-tooltip\s*\{[^}]*pointer-events:\s*auto;/s);
   });
 
+  it("keeps tooltip fallbacks valid when the preferred anchor area does not fit", () => {
+    expect(tooltip).toMatch(
+      /position-try-fallbacks:\s*flip-block,\s*flip-inline,\s*flip-block flip-inline;/,
+    );
+  });
+
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {
     expect(components).toMatch(/\.os-scrollbar\.kmodels-scrollbar\s*\{/);
     expect(components).not.toMatch(/(?<!\.os-scrollbar)\.kmodels-scrollbar\s*\{/);

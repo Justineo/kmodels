@@ -155,12 +155,10 @@ span.ui-tooltip-trigger {
 .ui-tooltip {
   position: fixed;
   position-area: block-start;
-  position-try:
+  position-try-fallbacks:
     flip-block,
-    inline-start,
-    inline-end,
-    flip-block inline-start,
-    flip-block inline-end;
+    flip-inline,
+    flip-block flip-inline;
   z-index: var(--layer-overlay);
   width: max-content;
   max-width: min(var(--layout-tooltip-width), calc(100vw - var(--space-4)));
