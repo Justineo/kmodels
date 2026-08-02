@@ -143,11 +143,11 @@ const hasFilters = computed(
     selectedLifecycles.value.length > 0 ||
     selectedReleaseStages.value.length > 0,
 );
-const advancedFilterCount = computed(
+const hasAdvancedFilters = computed(
   () =>
-    selectedTasks.value.length +
-    selectedLifecycles.value.length +
-    selectedReleaseStages.value.length,
+    selectedTasks.value.length > 0 ||
+    selectedLifecycles.value.length > 0 ||
+    selectedReleaseStages.value.length > 0,
 );
 const generatedAtLabel = new Intl.DateTimeFormat("en", {
   month: "short",
@@ -574,17 +574,10 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
           class="filter-trigger"
           type="button"
           popovertarget="catalog-filters"
-          :aria-label="
-            advancedFilterCount === 0
-              ? 'More filters'
-              : `More filters, ${advancedFilterCount} selected`
-          "
+          aria-label="More filters"
         >
           <UiIcon name="list-filter" />
           <span>Filters</span>
-          <span v-if="advancedFilterCount > 0" class="filter-count">
-            {{ advancedFilterCount }}
-          </span>
         </button>
 
         <button
@@ -612,11 +605,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
               <p>Matches any selected value within each group.</p>
             </div>
             <div class="filter-popover-actions">
-              <button
-                type="button"
-                :disabled="advancedFilterCount === 0"
-                @click="clearAdvancedFilters"
-              >
+              <button type="button" :disabled="!hasAdvancedFilters" @click="clearAdvancedFilters">
                 Clear
               </button>
               <button
