@@ -5,6 +5,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -768,44 +769,44 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
   const parsed = listSchema.parse(json(input.body));
   if (parsed.has_more)
     throw new Error("Anthropic model API pagination exceeded the reviewed limit");
-  const results = parsed.data.map((value) => itemSchema.safeParse(value));
-  if (parsed.data.length === 0 || results.some((result) => !result.success))
-    throw new Error("Anthropic model API schema drift");
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
+  assertItemCount("Anthropic model API", parsed.data.length, 1, undefined, ["data"]);
+  const items = recognizeItems({
+    label: "Anthropic model",
+    items: parsed.data,
+    schema: itemSchema,
+    modelId: "id",
+  });
+  return items.map((item) => {
     const inputModalities: Modality[] = ["text"];
     if (item.capabilities.image_input.supported) inputModalities.push("image");
     if (item.capabilities.pdf_input.supported) inputModalities.push("pdf");
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.id,
-          name: item.display_name,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        tasks: ["text_generation"],
-        modalities: { input: inputModalities, output: ["text"] },
-        capabilities: {
-          ...unknownCapabilities(),
-          reasoning: item.capabilities.thinking.supported,
-          structured_output: item.capabilities.structured_outputs.supported,
-          batch: item.capabilities.batch.supported,
-          citations: item.capabilities.citations.supported,
-          code_execution: item.capabilities.code_execution.supported,
-          context_management: item.capabilities.context_management.supported,
-          effort_control: item.capabilities.effort.supported,
-        },
-        limits: {
-          ...(item.max_input_tokens > 0
-            ? { context_tokens: item.max_input_tokens, max_input_tokens: item.max_input_tokens }
-            : {}),
-          ...(item.max_tokens > 0 ? { max_output_tokens: item.max_tokens } : {}),
-        },
-        release_date: item.created_at.slice(0, 10),
-      } satisfies ProviderModel,
-    ];
+    return {
+      ...baseModel({
+        providerId: input.provider.id,
+        id: item.id,
+        name: item.display_name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      tasks: ["text_generation"],
+      modalities: { input: inputModalities, output: ["text"] },
+      capabilities: {
+        ...unknownCapabilities(),
+        reasoning: item.capabilities.thinking.supported,
+        structured_output: item.capabilities.structured_outputs.supported,
+        batch: item.capabilities.batch.supported,
+        citations: item.capabilities.citations.supported,
+        code_execution: item.capabilities.code_execution.supported,
+        context_management: item.capabilities.context_management.supported,
+        effort_control: item.capabilities.effort.supported,
+      },
+      limits: {
+        ...(item.max_input_tokens > 0
+          ? { context_tokens: item.max_input_tokens, max_input_tokens: item.max_input_tokens }
+          : {}),
+        ...(item.max_tokens > 0 ? { max_output_tokens: item.max_tokens } : {}),
+      },
+      release_date: item.created_at.slice(0, 10),
+    } satisfies ProviderModel;
   });
 }

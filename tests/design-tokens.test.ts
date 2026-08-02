@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 const tokens = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
 const components = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
 const app = readFileSync(new URL("../src/App.vue", import.meta.url), "utf8");
+const tooltip = readFileSync(new URL("../src/components/UiTooltip.vue", import.meta.url), "utf8");
 const modelRow = readFileSync(new URL("../src/components/ModelRow.vue", import.meta.url), "utf8");
 const modelGroupRow = readFileSync(
   new URL("../src/components/ModelGroupRow.vue", import.meta.url),
@@ -115,11 +116,22 @@ describe("design token contract", () => {
   });
 
   it("explains lifecycle and maturity from the Status table heading", () => {
-    expect(app).toMatch(/const STATUS_TOOLTIP\s*=\s*"Active means currently available\./);
     expect(app).toMatch(
-      /<th class="status-col"[^>]*>[\s\S]*?<UiTooltip[\s\S]*?:content="STATUS_TOOLTIP"[\s\S]*?>[\s\S]*?Status[\s\S]*?<\/UiTooltip>/,
+      /<th class="status-col"[^>]*>[\s\S]*?<UiTooltip[\s\S]*?>[\s\S]*?Status[\s\S]*?<template #content>[\s\S]*?Lifecycle[\s\S]*?Maturity[\s\S]*?<\/template>[\s\S]*?<\/UiTooltip>/,
     );
+    expect(matches(/class="status-badge" data-status="[^"]+"/, app)).toHaveLength(9);
     expect(matches(/class="table-header-tooltip-trigger"/, app)).toHaveLength(4);
+  });
+
+  it("keeps explanatory tooltip hit areas on their visible content", () => {
+    expect(tooltip).toMatch(/class="ui-tooltip-trigger"/);
+    expect(tooltip).toMatch(
+      /span\.ui-tooltip-trigger\s*\{[^}]*display:\s*inline-block;[^}]*width:\s*fit-content;/s,
+    );
+  });
+
+  it("prevents tooltip surfaces from passing clicks to obscured controls", () => {
+    expect(tooltip).toMatch(/\.ui-tooltip\s*\{[^}]*pointer-events:\s*auto;/s);
   });
 
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {

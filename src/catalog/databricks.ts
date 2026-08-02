@@ -10,6 +10,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 
@@ -235,8 +236,12 @@ function parseModels(input: Input): ProviderModel[] {
   });
   const extractor = input.source.extractor;
   if (extractor.kind !== "databricks-catalog") throw new Error("Wrong Databricks extractor");
-  if (models.length < extractor.minModels || models.length > extractor.maxModels)
-    throw new Error("Databricks model section count outside reviewed bounds");
+  assertItemCount(
+    "Databricks model sections",
+    models.length,
+    extractor.minModels,
+    extractor.maxModels,
+  );
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
@@ -366,8 +371,11 @@ function applyBatch(models: ProviderModel[], body: string): void {
         for (const id of endpointIds($, batchCell)) batch.add(id);
       });
   });
-  if (payPerToken.size < Math.min(30, models.length - 1))
-    throw new Error("Databricks overview omitted regional model IDs");
+  assertItemCount(
+    "Databricks regional model IDs",
+    payPerToken.size,
+    Math.max(0, Math.min(30, models.length - 1)),
+  );
   for (const model of models)
     model.capabilities.batch = batch.has(model.model_id)
       ? true
@@ -995,24 +1003,25 @@ function apiTask(value: string | undefined): {
 
 export function parseDatabricksApi(input: Input): ProviderModel[] {
   const list = endpointListSchema.parse(JSON.parse(input.body));
-  const results = list.endpoints.map((item) => endpointSchema.safeParse(item));
-  if (results.some((result) => !result.success)) throw new Error("Databricks API schema drift");
-  return results.flatMap((result) => {
-    if (!result.success) return [];
-    const task = apiTask(result.data.task);
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: result.data.name,
-          name: result.data.name,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        tasks: task.operation === undefined ? [] : [task.operation],
-        modalities: task.modalities,
-        scope: "runtime_observation",
-      },
-    ];
+  const endpoints = recognizeItems({
+    label: "Databricks serving endpoint",
+    items: list.endpoints,
+    schema: endpointSchema,
+    modelId: "name",
+  });
+  return endpoints.map((endpoint) => {
+    const task = apiTask(endpoint.task);
+    return {
+      ...baseModel({
+        providerId: input.provider.id,
+        id: endpoint.name,
+        name: endpoint.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      tasks: task.operation === undefined ? [] : [task.operation],
+      modalities: task.modalities,
+      scope: "runtime_observation",
+    };
   });
 }

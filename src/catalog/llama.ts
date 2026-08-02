@@ -6,6 +6,7 @@ import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface ParseInput {
@@ -610,8 +611,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   ];
   const bounds = input.source.extractor;
   if (bounds.kind !== "llama-catalog") throw new Error("Invalid Llama extractor");
-  if (models.length < bounds.minModels || models.length > bounds.maxModels)
-    throw new Error("Llama model count outside reviewed bounds");
+  assertItemCount("Llama model catalog", models.length, bounds.minModels, bounds.maxModels);
   if (new Set(models.map(({ id }) => id)).size !== models.length)
     throw new Error("Llama registry returned duplicate descriptors");
 

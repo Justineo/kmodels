@@ -12,6 +12,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
+import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import {
   modalitySchema,
   type Modality,
@@ -1049,8 +1050,7 @@ function applyPricing(
   }
   const current = [...models.values()].filter((model) => model.status !== "retired");
   const priced = current.filter((model) => model.price_facts.length > 0);
-  if (current.length === 0 || priced.length / current.length < 0.8)
-    throw new Error("Gemini pricing coverage fell below reviewed bounds");
+  assertCoverage("Gemini pricing coverage", priced.length, current.length, 0.8, ["pricing"]);
 }
 
 function applyChangelog(models: Map<string, ProviderModel>, body: string): void {
@@ -1237,19 +1237,24 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );
-  if (values.length < extractor.minModels || values.length > extractor.maxModels)
-    throw new Error("Gemini model count outside reviewed bounds");
+  assertItemCount("Gemini model catalog", values.length, extractor.minModels, extractor.maxModels);
   return values;
 }
 
 export function parseGeminiApi(input: Input): ProviderModel[] {
   const list = apiListSchema.parse(JSON.parse(input.body));
   if (list.nextPageToken !== undefined) throw new Error("Gemini API inventory was truncated");
-  const parsed = list.models.map((item) => apiItemSchema.safeParse(item));
-  if (parsed.some((result) => !result.success)) throw new Error("Gemini API schema drift");
-  return parsed.flatMap((result) => {
-    if (!result.success) return [];
-    const item = result.data;
+  const items = recognizeItems({
+    label: "Gemini API model",
+    items: list.models,
+    schema: apiItemSchema,
+    modelId: (item) => {
+      if (item === null || typeof item !== "object") return undefined;
+      const name = Reflect.get(item, "name");
+      return typeof name === "string" ? name.replace(/^models\//u, "") : undefined;
+    },
+  });
+  return items.map((item) => {
     const id = modelIdSchema.parse(item.name.slice("models/".length));
     const methods = unique(item.supportedGenerationMethods ?? []);
     const facts = methods.flatMap((method) => {
@@ -1265,33 +1270,30 @@ export function parseGeminiApi(input: Input): ProviderModel[] {
       if (path === undefined) return [];
       return [{ name: method, path }];
     });
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id,
-          name: item.displayName ?? id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        description: item.description,
-        aliases:
-          item.baseModelId === undefined || item.baseModelId === id ? [] : [item.baseModelId],
-        tasks: orderedTasks(modelTasks),
-        api_endpoints: endpoints.length === 0 ? undefined : endpoints,
-        capabilities: {
-          ...unknownCapabilities(),
-          reasoning: item.thinking ?? "unknown",
-          streaming: methodsReviewed ? facts.some((fact) => fact.streaming === true) : "unknown",
-          batch: methodsReviewed ? facts.some((fact) => fact.batch === true) : "unknown",
-        },
-        limits: {
-          context_tokens: item.inputTokenLimit,
-          max_input_tokens: item.inputTokenLimit,
-          max_output_tokens: item.outputTokenLimit,
-        },
-        scope: "runtime_observation",
-      } satisfies ProviderModel,
-    ];
+    return {
+      ...baseModel({
+        providerId: input.provider.id,
+        id,
+        name: item.displayName ?? id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      description: item.description,
+      aliases: item.baseModelId === undefined || item.baseModelId === id ? [] : [item.baseModelId],
+      tasks: orderedTasks(modelTasks),
+      api_endpoints: endpoints.length === 0 ? undefined : endpoints,
+      capabilities: {
+        ...unknownCapabilities(),
+        reasoning: item.thinking ?? "unknown",
+        streaming: methodsReviewed ? facts.some((fact) => fact.streaming === true) : "unknown",
+        batch: methodsReviewed ? facts.some((fact) => fact.batch === true) : "unknown",
+      },
+      limits: {
+        context_tokens: item.inputTokenLimit,
+        max_input_tokens: item.inputTokenLimit,
+        max_output_tokens: item.outputTokenLimit,
+      },
+      scope: "runtime_observation",
+    } satisfies ProviderModel;
   });
 }

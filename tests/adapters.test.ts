@@ -22,6 +22,7 @@ import { manifests, type ProviderManifest, type SourceManifest } from "../src/ca
 import { baseModel } from "../src/catalog/model.ts";
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
 import { sourceKindSchema, type Provider } from "../src/catalog/schema.ts";
+import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import { reconcileCatalog, validateProvider } from "../src/catalog/validation.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
@@ -252,6 +253,7 @@ async function databricksCatalog(
 async function vercelCatalog(
   path: string,
   edit: (body: string) => string = (body) => body,
+  onContractFinding?: (finding: SourceContractEvidence) => void,
 ): Promise<ProviderModel[]> {
   const value = manifest("vercel");
   const configured = value.sources[0];
@@ -266,6 +268,7 @@ async function vercelCatalog(
     source,
     body: edit(await fixture(path)),
     observedAt,
+    ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
 }
 
@@ -1468,7 +1471,7 @@ describe("Mistral adapters", () => {
       mistralCatalog({
         medium: withoutMistralPrices(medium),
       }),
-    ).rejects.toThrow("Mistral pricing coverage fell below reviewed bounds");
+    ).rejects.toThrow("coverage_below_threshold at /pricing");
 
     expect(
       (
@@ -2410,7 +2413,7 @@ describe("Azure adapters", () => {
       scope: "runtime_observation",
     });
     await expect(parsed("azure", "azure/broken-api.json", "azure-api")).rejects.toThrow(
-      "schema drift",
+      "contract mismatch",
     );
   });
 
@@ -2566,7 +2569,7 @@ describe("Azure adapters", () => {
           azurePricingModel("gpt-4o-mini-audio-preview", "2024-12-17"),
         ],
       }),
-    ).toThrow("interpretation coverage fell below");
+    ).toThrow("coverage_below_threshold at /prices");
   });
 
   it("preserves ARM Legacy as a callable lifecycle state", async () => {
@@ -3239,7 +3242,7 @@ describe("Vertex AI adapters", () => {
         0,
         2,
       ),
-    ).rejects.toThrow("model-card document count");
+    ).rejects.toThrow("count_outside_bounds");
   });
 
   it("normalizes shared tiers, inline units, and only exact base-rate alternatives", async () => {
@@ -3433,7 +3436,7 @@ describe("Vertex AI adapters", () => {
       "Unpublished Model",
     );
     await expect(vertexCatalog({ "pricing.html": pricing }, 1)).rejects.toThrow(
-      "pricing coverage fell below",
+      "coverage_below_threshold at /pricing",
     );
   });
 
@@ -4815,6 +4818,21 @@ describe("document adapter", () => {
 });
 
 describe("Vercel adapter", () => {
+  it("classifies malformed JSON as a structured contract failure", async () => {
+    await expect(vercelCatalog("vercel/normal.json", () => "{")).rejects.toThrow("invalid_json");
+  });
+
+  it("treats an omitted video audio-generation disclosure as unknown", async () => {
+    expect((await vercelCatalog("vercel/pricing.json")).map(({ model_id }) => model_id)).toContain(
+      "acme/video-1",
+    );
+    await expect(
+      vercelCatalog("vercel/pricing.json", (body) =>
+        body.replace('"supported_fps": [24]', '"generate_audio": "yes", "supported_fps": [24]'),
+      ),
+    ).rejects.toThrow("contract mismatch");
+  });
+
   it("parses the normal catalog shape", async () => {
     const model = (await vercelCatalog("vercel/normal.json"))[0];
     expect({
@@ -5070,15 +5088,38 @@ describe("Vercel adapter", () => {
     ]);
   });
 
-  it("detects item schema drift", async () => {
-    await expect(vercelCatalog("vercel/broken.json")).rejects.toThrow("schema drift");
+  it("rejects changes to owned semantics and observes unrelated extensions", async () => {
+    await expect(vercelCatalog("vercel/broken.json")).rejects.toThrow("contract mismatch");
+    let finding: SourceContractEvidence | undefined;
+    const models = await vercelCatalog(
+      "vercel/normal.json",
+      (body) => body.replace('"object": "model"', '"object": "model", "new_field": true'),
+      (value) => {
+        finding = value;
+      },
+    );
+    expect(models).toHaveLength(1);
+    expect(finding).toMatchObject({
+      disposition: "accept_with_signal",
+      observed_items: 1,
+      diagnostic_count: 1,
+      diagnostics: [
+        {
+          kind: "unknown_field",
+          path: "/new_field",
+          observed: "boolean",
+          observed_value: "true",
+          affected_items: 1,
+          sample_model_ids: ["acme/text-1"],
+        },
+      ],
+    });
     for (const edit of [
-      (body: string) => body.replace('"object": "model"', '"object": "model", "new_field": true'),
       (body: string) => body.replace('"vision"', '"new-tag"'),
       (body: string) => body.replace('"max_tokens", "stop"', '"new_parameter", "stop"'),
       (body: string) => body.replace('"v2", "v3", "v4"', '"v2", "v3", "v5"'),
     ])
-      await expect(vercelCatalog("vercel/normal.json", edit)).rejects.toThrow("schema drift");
+      await expect(vercelCatalog("vercel/normal.json", edit)).rejects.toThrow("contract mismatch");
   });
 });
 
@@ -5352,7 +5393,9 @@ describe("Cerebras adapter", () => {
   });
 
   it("rejects an empty catalog", async () => {
-    await expect(parse("cerebras-models", "cerebras/broken.json")).rejects.toThrow("schema drift");
+    await expect(parse("cerebras-models", "cerebras/broken.json")).rejects.toThrow(
+      "contract mismatch",
+    );
   });
 });
 
@@ -6651,6 +6694,49 @@ describe("Ollama adapters", () => {
 });
 
 describe("provider drift validation", () => {
+  it("prefers an exact catalog identity over another model's alias", () => {
+    const inventorySource = manifest("openai").sources.find(({ id }) => id === "openai-api");
+    if (inventorySource === undefined) throw new Error("Missing OpenAI inventory source");
+    const exact = baseModel({
+      providerId: "openai",
+      id: "o1",
+      name: "Exact model",
+      sourceId: "openai-models",
+      observedAt,
+    });
+    const aliasOwner = {
+      ...baseModel({
+        providerId: "openai",
+        id: "o1-preview",
+        name: "Preview model",
+        sourceId: "openai-models",
+        observedAt,
+      }),
+      aliases: ["o1"],
+    };
+    const inventory = baseModel({
+      providerId: "openai",
+      id: "o1",
+      name: "Inventory model",
+      sourceId: inventorySource.id,
+      observedAt,
+    });
+
+    const merged = applyGroups(
+      [aliasOwner, exact],
+      [{ source: inventorySource, models: [inventory] }],
+      false,
+    );
+    expect(merged.find(({ uid }) => uid === exact.uid)).toMatchObject({
+      name: "Exact model",
+      source_refs: ["openai-models", "openai-api"],
+    });
+    expect(merged.find(({ uid }) => uid === aliasOwner.uid)).toMatchObject({
+      name: "Preview model",
+      source_refs: ["openai-models"],
+    });
+  });
+
   it("merges source-declared delivery modes and their evidence", () => {
     const configured = manifest("vercel").sources[0];
     if (configured === undefined) throw new Error("Missing Vercel source");

@@ -3,7 +3,13 @@ import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
 import { mapConcurrent } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
-import { fetchSource, fetchStateSchema, type FetchState, type SourceState } from "./fetch.ts";
+import {
+  fetchSource,
+  fetchStateSchema,
+  type FetchResult,
+  type FetchState,
+  type SourceState,
+} from "./fetch.ts";
 import {
   manifests,
   type CoverageField,
@@ -66,6 +72,7 @@ import {
   type ProviderRefreshAttempt,
   type SourceRefreshAttempt,
 } from "./summary.ts";
+import { contractEvidence, type SourceContractEvidence } from "./source-contract.ts";
 
 const availabilityWarning: CatalogWarning = {
   code: "account_availability_unknown",
@@ -125,7 +132,7 @@ function previousCoverage(catalog: Catalog | undefined, providerId: string): Cov
 }
 
 function sourceState(
-  result: Pick<Awaited<ReturnType<typeof fetchSource>>, "etag" | "lastModified" | "contentHash">,
+  result: Pick<FetchResult, "etag" | "lastModified" | "contentHash">,
   observedAt: string,
 ): SourceState {
   return {
@@ -135,6 +142,31 @@ function sourceState(
     lastSuccessAt: observedAt,
     checkedAt: observedAt,
     consecutiveFailures: 0,
+  };
+}
+
+function recordSourceFailure(
+  state: FetchState,
+  sourceId: string,
+  observedAt: string,
+  result?: Pick<FetchResult, "etag" | "lastModified" | "contentHash">,
+): Pick<SourceRefreshAttempt, "consecutive_failures" | "last_success_at"> {
+  const previous = state.sources[sourceId];
+  const consecutiveFailures = (previous?.consecutiveFailures ?? 0) + 1;
+  const next: SourceState = {
+    ...previous,
+    checkedAt: observedAt,
+    consecutiveFailures,
+  };
+  if (result !== undefined) {
+    next.contentHash = result.contentHash;
+    if (result.etag !== undefined) next.etag = result.etag;
+    if (result.lastModified !== undefined) next.lastModified = result.lastModified;
+  }
+  state.sources[sourceId] = next;
+  return {
+    consecutive_failures: consecutiveFailures,
+    ...(previous?.lastSuccessAt === undefined ? {} : { last_success_at: previous.lastSuccessAt }),
   };
 }
 
@@ -621,28 +653,30 @@ async function collectProvider(
       try {
         result = await fetchSource(source);
       } catch (error) {
-        const oldState = state.sources[source.id];
-        if (oldState !== undefined) {
-          state.sources[source.id] = {
-            ...oldState,
-            checkedAt: observedAt,
-            consecutiveFailures: oldState.consecutiveFailures + 1,
-          };
-        }
+        const failureState = recordSourceFailure(state, source.id, observedAt);
+        const evidence = contractEvidence(error);
         warnings.push(
-          sourceWarning("source_fetch_failed", manifest.provider.id, source.id, message(error)),
+          sourceWarning(
+            evidence === undefined ? "source_fetch_failed" : "source_parse_failed",
+            manifest.provider.id,
+            source.id,
+            message(error),
+          ),
         );
         sourceAttempts.push({
           source_id: source.id,
-          outcome: "fetch_failed",
+          outcome: evidence === undefined ? "fetch_failed" : "parse_failed",
           message: message(error),
+          ...failureState,
+          ...(evidence === undefined ? {} : { contract_finding: evidence }),
         });
         if (source.optional) continue;
-        providerFailure = "source_unavailable";
+        providerFailure = evidence === undefined ? "source_unavailable" : "source_schema_changed";
         throw error;
       }
 
       let parsed: ParsedProviderModel[];
+      let contractFinding: SourceContractEvidence | undefined;
       try {
         parsed = parseSource({
           provider: providerRecord(manifest, [], undefined),
@@ -650,16 +684,13 @@ async function collectProvider(
           body: result.body,
           observedAt,
           ...(source.role === "overlay" ? { catalogModels: applyGroups([], groups, true) } : {}),
+          onContractFinding: (finding) => {
+            contractFinding = finding;
+          },
         });
       } catch (error) {
-        const oldState = state.sources[source.id];
-        if (oldState !== undefined) {
-          state.sources[source.id] = {
-            ...oldState,
-            checkedAt: observedAt,
-            consecutiveFailures: oldState.consecutiveFailures + 1,
-          };
-        }
+        const failureState = recordSourceFailure(state, source.id, observedAt, result);
+        const evidence = contractEvidence(error);
         warnings.push(
           sourceWarning("source_parse_failed", manifest.provider.id, source.id, message(error)),
         );
@@ -667,6 +698,8 @@ async function collectProvider(
           source_id: source.id,
           outcome: "parse_failed",
           message: message(error),
+          ...failureState,
+          ...(evidence === undefined ? {} : { contract_finding: evidence }),
         });
         if (source.optional) continue;
         providerFailure = "source_schema_changed";
@@ -683,7 +716,18 @@ async function collectProvider(
         parsed_models: parsed.length,
         content_changed: contentChanged,
         extractor_changed: extractorChanged,
+        ...(contractFinding === undefined ? {} : { contract_finding: contractFinding }),
       });
+      const firstFinding = contractFinding?.diagnostics[0];
+      if (contractFinding !== undefined && firstFinding !== undefined)
+        warnings.push(
+          sourceWarning(
+            "source_contract_extension",
+            manifest.provider.id,
+            source.id,
+            `${firstFinding.kind} at ${firstFinding.path}; ${firstFinding.affected_items}/${contractFinding.observed_items} items; fingerprint ${firstFinding.fingerprint}`,
+          ),
+        );
       pricingSources.push({ source, models: parsed });
       if (role === "catalog") groups.push({ source, models: parsed });
       if (role === "overlay") overlays.push({ source, models: parsed });

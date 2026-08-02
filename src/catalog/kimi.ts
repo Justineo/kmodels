@@ -5,6 +5,7 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -93,10 +94,7 @@ function bounded(
 ): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== kind) throw new Error(`Wrong ${kind} extractor`);
-  if (models.length < extractor.minModels || models.length > extractor.maxModels)
-    throw new Error(
-      `Kimi ${kind} model count ${models.length} outside ${extractor.minModels}-${extractor.maxModels}`,
-    );
+  assertItemCount(`Kimi ${kind}`, models.length, extractor.minModels, extractor.maxModels);
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 

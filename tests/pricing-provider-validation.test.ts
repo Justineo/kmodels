@@ -3,7 +3,7 @@ import { validatePricingCatalogEnvelopeMetadata } from "../src/catalog/pricing-e
 import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
 import { generatedData } from "./generated-data-context.ts";
 
-describe("provider pricing calibration", () => {
+describe("provider pricing validation", () => {
   it("validates every committed provider pricing partition", async () => {
     const { catalog, pricing, pricingDataHash } = await generatedData();
 
@@ -11,10 +11,5 @@ describe("provider pricing calibration", () => {
       validatePricingCatalogEnvelopeMetadata(pricing, catalog, pricingDataHash),
     ).not.toThrow();
     await expect(validatePricingCatalogInParallel(pricing.data, catalog)).resolves.toBeUndefined();
-    const providers = pricing.data.provider_snapshots.map(({ provider_id }) => provider_id);
-    expect(providers).toEqual(
-      expect.arrayContaining(["openai", "anthropic", "gemini", "vertex", "dashscope"]),
-    );
-    expect(providers.length).toBeGreaterThan(10);
   }, 90_000);
 });

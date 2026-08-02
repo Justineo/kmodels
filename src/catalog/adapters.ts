@@ -47,6 +47,14 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
+import {
+  assertItemCount,
+  invalidJsonContractEvidence,
+  recognizeItems,
+  SourceContractError,
+  zodContractEvidence,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { classifyModelTasks } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
 import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
@@ -84,6 +92,7 @@ interface ParseInput {
     ProviderModel,
     "aliases" | "model_id" | "price_facts" | "tasks" | "version"
   >[];
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
 }
 
 type LoadedDocument = ReturnType<typeof load>;
@@ -857,8 +866,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "openai-pricing") throw new Error("Invalid OpenAI pricing extractor");
   const { minModels, maxModels } = extractor;
-  if (rates.size < minModels || rates.size > maxModels)
-    throw new Error("OpenAI pricing model count outside reviewed bounds");
+  assertItemCount("OpenAI pricing models", rates.size, minModels, maxModels);
   return [...rates]
     .map(([modelId, modelRates]): ProviderModel => {
       const target = exact.get(modelId);
@@ -1044,21 +1052,20 @@ function parseOpenAiOverview(input: ParseInput): ProviderModel[] {
 
 function parseOpenAiApi(input: ParseInput): ProviderModel[] {
   const list = listSchema.parse(parseJson(input.body));
-  const results = list.data.map((item) => openAiItemSchema.safeParse(item));
-  if (list.data.length === 0 || results.some((result) => !result.success))
-    throw new Error("OpenAI model API schema drift");
-  return results.flatMap((result) =>
-    result.success
-      ? [
-          baseModel({
-            providerId: input.provider.id,
-            id: result.data.id,
-            name: result.data.id,
-            sourceId: input.source.id,
-            observedAt: input.observedAt,
-          }),
-        ]
-      : [],
+  assertItemCount("OpenAI model API", list.data.length, 1, undefined, ["data"]);
+  return recognizeItems({
+    label: "OpenAI model",
+    items: list.data,
+    schema: openAiItemSchema,
+    modelId: "id",
+  }).map((item) =>
+    baseModel({
+      providerId: input.provider.id,
+      id: item.id,
+      name: item.id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
   );
 }
 
@@ -1136,7 +1143,7 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-export function parseSource(input: ParseInput): ProviderModel[] {
+function parseSourceBody(input: ParseInput): ProviderModel[] {
   switch (input.source.extractor.kind) {
     case "openai-catalog":
       return parseOpenAiCatalog(input);
@@ -1240,5 +1247,28 @@ export function parseSource(input: ParseInput): ProviderModel[] {
       return parseKimiReleases(input);
     case "kimi-api":
       return parseKimiApi(input);
+  }
+}
+
+export function parseSource(input: ParseInput): ProviderModel[] {
+  try {
+    return parseSourceBody(input);
+  } catch (error) {
+    if (error instanceof SourceContractError) throw error;
+    let value: unknown;
+    if (input.source.format === "json") {
+      try {
+        value = parseJson(input.body);
+      } catch {
+        throw new SourceContractError("Source response", invalidJsonContractEvidence());
+      }
+    }
+    if (error instanceof z.ZodError) {
+      throw new SourceContractError(
+        "Source response",
+        zodContractEvidence([{ error, input: value, itemIndex: 0 }], 1),
+      );
+    }
+    throw error;
   }
 }

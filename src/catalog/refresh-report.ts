@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sourceContractEvidenceSchema } from "./source-contract.ts";
 
 const diffSchema = z.object({
   current: z.number().int().nonnegative(),
@@ -24,6 +25,9 @@ const attemptSchema = z.object({
         "parse_failed",
         "skipped_not_configured",
       ]),
+      consecutive_failures: z.number().int().positive().optional(),
+      last_success_at: z.iso.datetime({ offset: true }).optional(),
+      contract_finding: sourceContractEvidenceSchema.optional(),
     }),
   ),
   validation_issue: z.object({ code: z.string() }).optional(),
@@ -68,6 +72,7 @@ const reportSchema = z.object({
 });
 
 type Provider = z.infer<typeof providerSchema>;
+type SourceAttempt = NonNullable<Provider["attempt"]>["sources"][number];
 const publicationByStatus: Record<Provider["status"], NonNullable<Provider["publication"]>> = {
   fresh: "accepted",
   stale: "retained",
@@ -85,6 +90,63 @@ function refs(label: string, values: string[]): string[] {
   const shown = values.slice(0, 20).map((value) => `\`${value}\``);
   const remainder = values.length - shown.length;
   return [`- ${label}: ${shown.join(", ")}${remainder === 0 ? "" : ` (+${remainder} more)`}`];
+}
+
+function staleness(generatedAt: string, lastSuccessAt: string | undefined): string | undefined {
+  if (lastSuccessAt === undefined) return undefined;
+  const milliseconds = Date.parse(generatedAt) - Date.parse(lastSuccessAt);
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return undefined;
+  const hours = milliseconds / 3_600_000;
+  return hours < 48 ? `${hours.toFixed(1)}h stale` : `${(hours / 24).toFixed(1)}d stale`;
+}
+
+function sourceFailure(source: SourceAttempt, generatedAt: string): string {
+  const details = [
+    source.consecutive_failures === undefined
+      ? undefined
+      : `${source.consecutive_failures} consecutive`,
+    staleness(generatedAt, source.last_success_at),
+  ].filter((value): value is string => value !== undefined);
+  return `\`${source.source_id}\` ${source.outcome}${details.length === 0 ? "" : ` (${details.join(", ")})`}`;
+}
+
+function contractFindingLines(source: SourceAttempt): string[] {
+  const evidence = source.contract_finding;
+  if (evidence === undefined) return [];
+  const lines = evidence.diagnostics.map((diagnostic) => {
+    const observed = `${diagnostic.observed}${diagnostic.observed_value === undefined ? "" : ` \`${diagnostic.observed_value}\``}`;
+    const samples = diagnostic.sample_model_ids?.map((id) => `\`${id}\``).join(", ");
+    return `- Contract ${evidence.disposition} \`${source.source_id}\` \`${diagnostic.path}\`: \`${diagnostic.kind}\`; expected ${diagnostic.expected ?? "reviewed shape"}, observed ${observed}; ${diagnostic.affected_items}/${evidence.observed_items} items${samples === undefined ? "" : `; examples ${samples}`}; fingerprint \`${diagnostic.fingerprint}\``;
+  });
+  const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
+  if (omitted > 0)
+    lines.push(
+      `- Contract ${evidence.disposition} \`${source.source_id}\`: ${omitted} additional diagnostics omitted`,
+    );
+  return lines;
+}
+
+function contractFindingWarnings(providerId: string, source: SourceAttempt): string[] {
+  const evidence = source.contract_finding;
+  const first = evidence?.diagnostics[0];
+  return evidence === undefined || first === undefined
+    ? []
+    : [
+        `${providerId}/${source.source_id}: ${evidence.disposition} ${first.kind} at ${first.path} (${first.affected_items}/${evidence.observed_items} items; ${first.fingerprint})`,
+      ];
+}
+
+function persistentFailureWarning(
+  providerId: string,
+  source: SourceAttempt,
+  generatedAt: string,
+): string[] {
+  const failures = source.consecutive_failures ?? 0;
+  if (failures < 2) return [];
+  const stale = staleness(generatedAt, source.last_success_at);
+  return [
+    `${providerId}/${source.source_id}: ${failures} consecutive failures${stale === undefined ? "" : `; ${stale}`}`,
+  ];
 }
 
 interface RefreshReportOutput {
@@ -146,6 +208,9 @@ export function refreshReport(value: unknown): RefreshReportOutput {
   ];
 
   for (const provider of providers) {
+    const findingSources =
+      provider.attempt?.sources.filter(({ contract_finding: finding }) => finding !== undefined) ??
+      [];
     const failedSources =
       provider.attempt?.sources.filter(({ outcome: sourceOutcome }) =>
         ["fetch_failed", "parse_failed", "skipped_not_configured"].includes(sourceOutcome),
@@ -155,6 +220,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       provider.models.removed === 0 &&
       provider.models.changed === 0 &&
       failedSources.length === 0 &&
+      findingSources.length === 0 &&
       provider.attempt?.validation_issue === undefined &&
       provider.attempt?.pricing?.outcome !== "failed"
     )
@@ -178,8 +244,9 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       lines.push(`- Changed: ${provider.models.changed} models`);
     if (failedSources.length > 0)
       lines.push(
-        `- Source attempts: ${failedSources.map(({ source_id, outcome: sourceOutcome }) => `\`${source_id}\` ${sourceOutcome}`).join(", ")}`,
+        `- Source attempts: ${failedSources.map((source) => sourceFailure(source, report.generated_at)).join(", ")}`,
       );
+    for (const source of findingSources) lines.push(...contractFindingLines(source));
     if (provider.attempt?.validation_issue !== undefined)
       lines.push(`- Validation: \`${provider.attempt.validation_issue.code}\``);
     if (provider.attempt?.failure !== undefined)
@@ -195,7 +262,26 @@ export function refreshReport(value: unknown): RefreshReportOutput {
         ({ provider_id, publication: state }) => `${provider_id} publication was ${state}`,
       ),
       ...providers.flatMap(({ provider_id, signals }) =>
-        signals.map((signal) => `${provider_id}: ${signal}`),
+        signals
+          .filter(
+            (signal) =>
+              ![
+                "breaking_contract_mismatch",
+                "unreviewed_extension",
+                "persistent_source_failure",
+              ].includes(signal),
+          )
+          .map((signal) => `${provider_id}: ${signal}`),
+      ),
+      ...providers.flatMap(
+        ({ provider_id, attempt }) =>
+          attempt?.sources.flatMap((source) => contractFindingWarnings(provider_id, source)) ?? [],
+      ),
+      ...providers.flatMap(
+        ({ provider_id, attempt }) =>
+          attempt?.sources.flatMap((source) =>
+            persistentFailureWarning(provider_id, source, report.generated_at),
+          ) ?? [],
       ),
       ...providers.flatMap(({ provider_id, attempt }) =>
         attempt?.pricing?.outcome === "failed"

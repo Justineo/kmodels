@@ -9,6 +9,7 @@ import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { sha256 } from "./io.ts";
+import { assertItemCount } from "./source-contract.ts";
 
 const execute = promisify(execFile);
 
@@ -56,8 +57,8 @@ const ollamaErrorSchema = z.strictObject({ error: z.string().min(1) });
 export const sourceStateSchema = z.object({
   etag: z.string().optional(),
   lastModified: z.string().optional(),
-  contentHash: z.string().length(64),
-  lastSuccessAt: z.iso.datetime({ offset: true }),
+  contentHash: z.string().length(64).optional(),
+  lastSuccessAt: z.iso.datetime({ offset: true }).optional(),
   checkedAt: z.iso.datetime({ offset: true }),
   consecutiveFailures: z.number().int().nonnegative(),
 });
@@ -709,8 +710,7 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
     $("a[href]").each((_index, element) => add($(element).attr("href")));
   }
   const values = [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
-  if (values.length < crawl.minDocuments || values.length > crawl.maxDocuments)
-    throw new Error("Linked document count outside reviewed bounds");
+  assertItemCount("Linked documents", values.length, crawl.minDocuments, crawl.maxDocuments);
   return values;
 }
 
@@ -792,14 +792,13 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
     const key = `${source.id}/page-${index + 1}`;
     const page = await fetchHuggingFacePage(source, key, next);
     models.push(...huggingFaceModelsPageSchema.parse(JSON.parse(page.payload.body)));
-    if (models.length > transport.maxModels)
-      throw new Error("Hugging Face Hub exceeded model limit");
+    assertItemCount("Hugging Face Hub transport models", models.length, 0, transport.maxModels);
     pages.push({ key, payload: page.payload });
     next = page.next;
     if (index === transport.maxPages - 1 && next !== undefined)
       throw new Error("Hugging Face Hub exceeded page limit");
   }
-  if (models.length === 0) throw new Error("Hugging Face Hub returned no models");
+  assertItemCount("Hugging Face Hub transport models", models.length, 1, transport.maxModels);
   const body = JSON.stringify({ models });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Hugging Face Hub bundle exceeded byte limit");
@@ -887,15 +886,20 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
   };
   const list = ollamaListSchema.parse(json(index.body));
   const listed = new Set(list.models.map((item) => item.model));
-  if (
-    listed.size !== list.models.length ||
-    listed.size < transport.minModels ||
-    listed.size > transport.maxModels
-  )
-    throw new Error("Ollama cloud list count or identity drift");
+  if (listed.size !== list.models.length) throw new Error("Ollama cloud list identity drift");
+  assertItemCount(
+    "Ollama cloud transport models",
+    listed.size,
+    transport.minModels,
+    transport.maxModels,
+  );
   const catalogIds = ollamaCloudIds(catalog.body);
-  if (catalogIds.length < transport.minModels || catalogIds.length > transport.maxModels)
-    throw new Error("Ollama cloud catalog count outside reviewed bounds");
+  assertItemCount(
+    "Ollama cloud transport catalog",
+    catalogIds.length,
+    transport.minModels,
+    transport.maxModels,
+  );
   const modelIds = [...new Set([...listed, ...catalogIds])].sort();
   const documents = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
     const key = `${source.id}/show/${sha256(model)}`;

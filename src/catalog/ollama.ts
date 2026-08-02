@@ -4,6 +4,7 @@ import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import { classifyModelTasks } from "./task.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -187,8 +188,7 @@ export function parseOllamaLibrary(input: ParseInput): ProviderModel[] {
     throw new Error("Invalid Ollama library extractor");
   const models = libraryItems(input.body);
   const { minModels, maxModels } = input.source.extractor;
-  if (models.length < minModels || models.length > maxModels)
-    throw new Error("Ollama library model count outside reviewed bounds");
+  assertItemCount("Ollama library models", models.length, minModels, maxModels);
   return models.map((item) => libraryModel(input, item));
 }
 
@@ -290,8 +290,7 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
     throw new Error("Ollama cloud bundle contained an unexpected catalog URL");
   const list = listSchema.parse(bundle.list);
   const { minModels, maxModels } = input.source.extractor;
-  if (list.models.length < minModels || list.models.length > maxModels)
-    throw new Error("Ollama cloud model count outside reviewed bounds");
+  assertItemCount("Ollama cloud models", list.models.length, minModels, maxModels);
   const listed = new Map(list.models.map((item) => [item.model, item]));
   if (listed.size !== list.models.length)
     throw new Error("Ollama cloud list contained duplicate IDs");
@@ -300,8 +299,7 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
       .filter((item) => item.badges.includes("cloud"))
       .map((item) => [item.id, item]),
   );
-  if (catalog.size < minModels || catalog.size > maxModels)
-    throw new Error("Ollama cloud catalog count outside reviewed bounds");
+  assertItemCount("Ollama cloud catalog", catalog.size, minModels, maxModels);
   const documents = new Map(bundle.documents.map((document) => [document.model, document]));
   if (documents.size !== bundle.documents.length)
     throw new Error("Ollama cloud bundle contained duplicate detail responses");

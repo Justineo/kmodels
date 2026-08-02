@@ -5,6 +5,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount } from "./source-contract.ts";
 import {
   modalitySchema,
   type Modality,
@@ -196,8 +197,7 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
       });
     }
   }
-  if (models.size < config.minModels || models.size > config.maxModels)
-    throw new Error("Hugging Face mapping count outside reviewed bounds");
+  assertItemCount("Hugging Face mappings", models.size, config.minModels, config.maxModels);
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
@@ -300,8 +300,7 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       status: "active",
     });
   }
-  if (models.length < config.minModels || models.length > config.maxModels)
-    throw new Error("Hugging Face router count outside reviewed bounds");
+  assertItemCount("Hugging Face router models", models.length, config.minModels, config.maxModels);
   return models;
 }
 
@@ -327,7 +326,6 @@ export function parseHuggingFaceHub(input: Input): ProviderModel[] {
       },
     ];
   });
-  if (models.length < config.minModels || models.length > config.maxModels)
-    throw new Error("Hugging Face Hub model count outside reviewed bounds");
+  assertItemCount("Hugging Face Hub models", models.length, config.minModels, config.maxModels);
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }

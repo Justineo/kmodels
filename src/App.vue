@@ -34,8 +34,6 @@ import { detailsState } from "./details-state.ts";
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 const COARSE_TOUCH_QUERY = "(any-hover: none) and (any-pointer: coarse)";
-const STATUS_TOOLTIP =
-  "Active means currently available. Stable, Preview, and Experimental describe the maturity of active models. Legacy means available but superseded or restricted. Deprecated means scheduled for retirement. Retired means unavailable. Unknown means evidence is insufficient.";
 
 type Theme = "light" | "dark";
 const LIFECYCLE_OPTIONS = modelLifecycles;
@@ -739,12 +737,52 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
                 </th>
                 <th class="tasks-col" scope="col">Tasks</th>
                 <th class="status-col" scope="col" aria-label="Model status and maturity">
-                  <UiTooltip
-                    class="table-header-tooltip-trigger"
-                    tabindex="0"
-                    :content="STATUS_TOOLTIP"
-                  >
+                  <UiTooltip class="table-header-tooltip-trigger" tabindex="0">
                     Status
+                    <template #content>
+                      <div class="status-tooltip-content">
+                        <div>
+                          <p class="status-tooltip-heading">
+                            <strong>Lifecycle</strong>
+                            <span>Availability &amp; support</span>
+                          </p>
+                          <dl>
+                            <dt><span class="status-badge" data-status="active">Active</span></dt>
+                            <dd>Available for requests or deployment.</dd>
+                            <dt><span class="status-badge" data-status="legacy">Legacy</span></dt>
+                            <dd>Available, but superseded or restricted.</dd>
+                            <dt>
+                              <span class="status-badge" data-status="deprecated">Deprecated</span>
+                            </dt>
+                            <dd>Available; retirement has been announced.</dd>
+                            <dt><span class="status-badge" data-status="retired">Retired</span></dt>
+                            <dd>No longer available for requests or deployment.</dd>
+                            <dt><span class="status-badge" data-status="unknown">Unknown</span></dt>
+                            <dd>Evidence does not establish availability.</dd>
+                          </dl>
+                        </div>
+                        <div>
+                          <p class="status-tooltip-heading">
+                            <strong>Maturity</strong>
+                            <span>Active models only</span>
+                          </p>
+                          <dl>
+                            <dt><span class="status-badge" data-status="stable">Stable</span></dt>
+                            <dd>Stable or generally available.</dd>
+                            <dt><span class="status-badge" data-status="preview">Preview</span></dt>
+                            <dd>Pre-GA access with provider-documented limitations.</dd>
+                            <dt>
+                              <span class="status-badge" data-status="experimental">
+                                Experimental
+                              </span>
+                            </dt>
+                            <dd>Earlier-stage access with weaker stability expectations.</dd>
+                            <dt><span class="status-badge" data-status="unknown">Unknown</span></dt>
+                            <dd>Evidence does not establish maturity.</dd>
+                          </dl>
+                        </div>
+                      </div>
+                    </template>
                   </UiTooltip>
                 </th>
                 <th class="context-col numeric" scope="col" :aria-sort="ariaSort('context')">

@@ -4,6 +4,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { modalitySchema, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 
@@ -12,6 +13,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
 }
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
@@ -127,7 +129,7 @@ const videoCapabilitiesSchema = z
     supported_resolutions: z.array(z.string().min(1)).min(1),
     supported_aspect_ratios: z.array(z.string().min(1)).min(1),
     supported_durations_seconds: z.array(z.number().positive()).min(1),
-    generate_audio: z.boolean(),
+    generate_audio: z.boolean().optional(),
     supported_fps: z.array(z.number().positive()).min(1),
     max_sample_count: z.number().int().positive().optional(),
     input_limits: z
@@ -167,52 +169,50 @@ const supportedParameterSchema = z.enum([
   "tools",
 ]);
 
-const itemSchema = z
-  .object({
-    id: modelIdSchema.refine((value) => value.split("/").length === 2),
-    object: z.literal("model"),
-    created: z.number().int().nonnegative(),
-    released: z.number().int().nonnegative(),
-    owned_by: z.string().min(1),
-    name: z.string().min(1),
-    description: z.string(),
-    context_window: z.number().int().nonnegative().optional(),
-    max_tokens: z.number().int().nonnegative().optional(),
-    type: z.enum([
-      "language",
-      "embedding",
-      "image",
-      "video",
-      "realtime",
-      "reranking",
-      "speech",
-      "transcription",
-    ]),
-    tags: z.array(tagSchema).optional(),
-    modalities: z
-      .object({
-        input: z.array(modalitySchema),
-        output: z.array(modalitySchema),
-      })
-      .strict(),
-    supported_parameters: z.array(supportedParameterSchema).optional(),
-    supported_specifications: z.array(z.enum(["v2", "v3", "v4"])).min(1),
-    deprecated_at: z.number().int().nonnegative().optional(),
-    interleaved: z.boolean().optional(),
-    knowledge: z
-      .string()
-      .regex(/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/)
-      .optional(),
-    reasoning_options: z.array(reasoningOptionSchema).optional(),
-    regions: z
-      .array(z.enum(["eu", "us"]))
-      .min(1)
-      .optional(),
-    temperature: z.boolean().optional(),
-    video_capabilities: videoCapabilitiesSchema.optional(),
-    pricing: pricingSchema,
-  })
-  .strict();
+const itemSchema = z.object({
+  id: modelIdSchema.refine((value) => value.split("/").length === 2),
+  object: z.literal("model"),
+  created: z.number().int().nonnegative(),
+  released: z.number().int().nonnegative(),
+  owned_by: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string(),
+  context_window: z.number().int().nonnegative().optional(),
+  max_tokens: z.number().int().nonnegative().optional(),
+  type: z.enum([
+    "language",
+    "embedding",
+    "image",
+    "video",
+    "realtime",
+    "reranking",
+    "speech",
+    "transcription",
+  ]),
+  tags: z.array(tagSchema).optional(),
+  modalities: z
+    .object({
+      input: z.array(modalitySchema),
+      output: z.array(modalitySchema),
+    })
+    .strict(),
+  supported_parameters: z.array(supportedParameterSchema).optional(),
+  supported_specifications: z.array(z.enum(["v2", "v3", "v4"])).min(1),
+  deprecated_at: z.number().int().nonnegative().optional(),
+  interleaved: z.boolean().optional(),
+  knowledge: z
+    .string()
+    .regex(/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/)
+    .optional(),
+  reasoning_options: z.array(reasoningOptionSchema).optional(),
+  regions: z
+    .array(z.enum(["eu", "us"]))
+    .min(1)
+    .optional(),
+  temperature: z.boolean().optional(),
+  video_capabilities: videoCapabilitiesSchema.optional(),
+  pricing: pricingSchema,
+});
 
 const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) }).strict();
 
@@ -628,16 +628,20 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "vercel-catalog")
     throw new Error("Vercel catalog used the wrong extractor");
   const list = listSchema.parse(JSON.parse(input.body));
-  if (
-    list.data.length < input.source.extractor.minModels ||
-    list.data.length > input.source.extractor.maxModels
-  )
-    throw new Error("Vercel model count outside reviewed bounds");
-  const parsed = list.data.map((item) => itemSchema.safeParse(item));
-  const invalid = parsed.find((result) => !result.success);
-  if (invalid !== undefined && !invalid.success)
-    throw new Error(
-      `Vercel model schema drift at ${invalid.error.issues[0]?.path.join(".") ?? "item"}`,
-    );
-  return parsed.flatMap((result) => (result.success ? [model(result.data, input)] : []));
+  assertItemCount(
+    "Vercel model catalog",
+    list.data.length,
+    input.source.extractor.minModels,
+    input.source.extractor.maxModels,
+    ["data"],
+  );
+  const parsed = recognizeItems({
+    label: "Vercel model",
+    items: list.data,
+    schema: itemSchema,
+    modelId: "id",
+    rootKeys: Object.keys(itemSchema.shape),
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
+  return parsed.map((item) => model(item, input));
 }

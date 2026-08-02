@@ -4,6 +4,7 @@ import { compareUtf8 } from "./canonical-value.ts";
 import { commercialPricingProjection } from "./pricing-commercial.ts";
 import { providerPartition } from "./pricing-transition.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
+import type { SourceContractEvidence } from "./source-contract.ts";
 import type { Catalog, ProviderModel, SourceRecord } from "./schema.ts";
 import type { ProviderValidationIssue } from "./validation.ts";
 
@@ -93,6 +94,9 @@ export interface SourceRefreshAttempt {
   content_changed?: boolean;
   extractor_changed?: boolean;
   message?: string;
+  consecutive_failures?: number;
+  last_success_at?: string;
+  contract_finding?: SourceContractEvidence;
 }
 
 export interface ProviderRefreshAttempt {
@@ -114,6 +118,14 @@ interface ProviderAttemptSummary {
   pricing?: ProviderRefreshAttempt["pricing"];
 }
 
+type ProviderRefreshSignal =
+  | "drift_guard_triggered"
+  | "breaking_contract_mismatch"
+  | "unreviewed_extension"
+  | "coverage_regression"
+  | "possible_structural_change"
+  | "persistent_source_failure";
+
 interface ProviderRefreshSummary {
   provider_id: string;
   status: "fresh" | "stale" | "unavailable" | "not_configured" | "removed";
@@ -122,7 +134,7 @@ interface ProviderRefreshSummary {
   sources: SourceDiffSummary;
   pricing: PricingDiffSummary;
   warning_codes: Record<string, number>;
-  signals: ("drift_guard_triggered" | "possible_structural_change")[];
+  signals: ProviderRefreshSignal[];
   attempt?: ProviderAttemptSummary;
 }
 
@@ -287,9 +299,39 @@ export function summarizeRefresh(
     const attempt = attemptByProvider.get(providerId);
     const oldModels = previous?.models.filter((model) => model.provider_id === providerId) ?? [];
     const validationIssue = attempt?.validation_issue;
-    const possibleStructuralChange =
-      attempt?.sources.some(({ outcome }) => outcome === "parse_failed") === true ||
-      validationIssue?.code.endsWith("_count_drop") === true;
+    const sourceAttempts = attempt?.sources ?? [];
+    const countDropped = validationIssue?.code.endsWith("_count_drop") === true;
+    const contractFindings = sourceAttempts.flatMap(({ contract_finding: finding }) =>
+      finding === undefined ? [] : [finding],
+    );
+    const rejectedFindings = contractFindings.filter(({ disposition }) => disposition === "reject");
+    const acceptedFindings = contractFindings.filter(
+      ({ disposition }) => disposition === "accept_with_signal",
+    );
+    const coverageFinding = rejectedFindings.some(({ diagnostics }) =>
+      diagnostics.some(({ kind }) =>
+        ["count_outside_bounds", "coverage_below_threshold"].includes(kind),
+      ),
+    );
+    const breakingFinding = rejectedFindings.some(({ diagnostics }) =>
+      diagnostics.some(
+        ({ kind }) => !["count_outside_bounds", "coverage_below_threshold"].includes(kind),
+      ),
+    );
+    const signals: ProviderRefreshSignal[] = [];
+    if (countDropped) signals.push("drift_guard_triggered");
+    if (breakingFinding) signals.push("breaking_contract_mismatch");
+    if (acceptedFindings.length > 0) signals.push("unreviewed_extension");
+    if (countDropped || coverageFinding) signals.push("coverage_regression");
+    if (
+      sourceAttempts.some(
+        ({ outcome, contract_finding: finding }) =>
+          outcome === "parse_failed" && finding === undefined,
+      )
+    )
+      signals.push("possible_structural_change");
+    if (sourceAttempts.some(({ consecutive_failures: failures }) => (failures ?? 0) >= 2))
+      signals.push("persistent_source_failure");
     return {
       provider_id: providerId,
       status,
@@ -311,12 +353,7 @@ export function summarizeRefresh(
       ),
       pricing: pricingDiff(pricing.previous, pricing.current, providerId),
       warning_codes: warningCodes,
-      signals: [
-        ...(validationIssue?.code.endsWith("_count_drop") === true
-          ? (["drift_guard_triggered"] as const)
-          : []),
-        ...(possibleStructuralChange ? (["possible_structural_change"] as const) : []),
-      ],
+      signals,
       ...(attempt === undefined
         ? {}
         : {

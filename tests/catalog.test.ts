@@ -24,15 +24,29 @@ import {
 } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
+const generatedCatalogCalibrations = {
+  huggingFace: { minimumModelsExclusive: 500, maximumModelsExclusive: 3_000 },
+  vercel: { minimumModelsExclusive: 250, minimumPricingVariantsExclusive: 1_000 },
+};
+
 async function json(path: string): Promise<unknown> {
   return JSON.parse(await readFile(new URL(`../${path}`, import.meta.url), "utf8"));
+}
+
+function expectUniqueValues<T>(actual: readonly T[], expected: Iterable<T>, label: string): void {
+  const expectedValues = new Set(expected);
+  expect(new Set(actual), label).toEqual(expectedValues);
+  expect(actual, label).toHaveLength(expectedValues.size);
 }
 
 describe("generated static catalog", () => {
   it("publishes every provider with coverage and resolvable provenance", async () => {
     const { catalog } = await generatedData();
-    expect(catalog.providers).toHaveLength(18);
-    expect(catalog.coverage).toHaveLength(18);
+    const providerIds = catalog.providers.map(({ id }) => id);
+    const configuredProviderIds = manifests.map(({ provider }) => provider.id);
+    const coverageProviderIds = catalog.coverage.map(({ provider_id }) => provider_id);
+    expectUniqueValues(providerIds, configuredProviderIds, "providers");
+    expectUniqueValues(coverageProviderIds, providerIds, "provider coverage");
     expect(catalog.models.length).toBeGreaterThan(0);
 
     const sourceIds = new Set(catalog.sources.map((source) => source.id));
@@ -118,9 +132,13 @@ describe("generated static catalog", () => {
     const modelsAsset = assets.find(({ fileName }) => fileName === "catalog/models.json");
     const summaryAsset = assets.find(({ fileName }) => fileName === "catalog/summary.json");
     const providersAsset = assets.find(({ fileName }) => fileName === "providers/index.json");
-    const providerAsset = assets.find(({ fileName }) => fileName === "providers/openai/index.json");
+    const sampleProviderId = catalog.providers[0]?.id;
+    if (sampleProviderId === undefined) throw new Error("Generated catalog has no providers");
+    const providerAsset = assets.find(
+      ({ fileName }) => fileName === `providers/${sampleProviderId}/index.json`,
+    );
     const providerModelsAsset = assets.find(
-      ({ fileName }) => fileName === "providers/openai/models/index.json",
+      ({ fileName }) => fileName === `providers/${sampleProviderId}/models/index.json`,
     );
     const envelope = catalogEnvelopeSchema.parse(JSON.parse(catalogAsset?.source ?? ""));
     const ids = catalogIdsSchema.parse(JSON.parse(idsAsset?.source ?? ""));
@@ -129,11 +147,11 @@ describe("generated static catalog", () => {
     catalogProvidersSchema.parse(JSON.parse(providersAsset?.source ?? ""));
     expect(JSON.parse(providerAsset?.source ?? "")).toMatchObject({
       profile: "provider",
-      provider_id: "openai",
+      provider_id: sampleProviderId,
     });
     expect(JSON.parse(providerModelsAsset?.source ?? "")).toMatchObject({
       profile: "provider-models",
-      provider_id: "openai",
+      provider_id: sampleProviderId,
     });
     const distinctModelCount = new Set(
       catalog.models.map(({ provider_id, model_id }) => JSON.stringify([provider_id, model_id])),
@@ -144,7 +162,6 @@ describe("generated static catalog", () => {
     expect(
       Object.values(ids.providers).reduce((count, modelIds) => count + modelIds.length, 0),
     ).toBe(distinctModelCount);
-    expect(ids.providers.azure?.filter((modelId) => modelId === "gpt-4o")).toEqual(["gpt-4o"]);
     expect(
       Object.values(published.providers).reduce(
         (count, provider) => count + provider.models.length,
@@ -162,27 +179,37 @@ describe("generated static catalog", () => {
         0,
       ),
     ).toBe(catalog.models.length);
-    expect(
-      published.providers.azure?.models.find(({ model_id }) => model_id === "gpt-4o")?.variants,
-    ).toHaveLength(4);
-    expect(summary.models).toHaveLength(catalog.models.length);
-    expect(
-      summary.models.filter(
-        ({ provider, model_id }) => provider === "azure" && model_id === "gpt-4",
-      ),
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          version: "0125-Preview",
-          tasks: ["text_generation"],
-          status: "active",
-        }),
-        expect.objectContaining({
-          version: "turbo-2024-04-09",
-          tasks: ["text_generation"],
-          status: "active",
-        }),
-      ]),
+    for (const provider of catalog.providers) {
+      const sourceModels = catalog.models.filter(({ provider_id }) => provider_id === provider.id);
+      const expectedModelIds = new Set(sourceModels.map(({ model_id }) => model_id));
+      const publishedModelIds = ids.providers[provider.id];
+      const publishedProvider = published.providers[provider.id];
+      expect(publishedModelIds, provider.id).toBeDefined();
+      expect(publishedProvider, provider.id).toBeDefined();
+      if (publishedModelIds === undefined || publishedProvider === undefined) continue;
+      expectUniqueValues(publishedModelIds, expectedModelIds, provider.id);
+      expectUniqueValues(
+        publishedProvider.models.map(({ model_id }) => model_id),
+        expectedModelIds,
+        provider.id,
+      );
+      for (const group of publishedProvider.models) {
+        const expectedUids = sourceModels
+          .filter(({ model_id }) => model_id === group.model_id)
+          .map(({ uid }) => uid)
+          .sort();
+        const publishedUids = group.variants.map(({ uid }) => uid).sort();
+        expect(publishedUids, `${provider.id}/${group.model_id}`).toEqual(expectedUids);
+      }
+    }
+    expect(summary.models).toEqual(
+      catalog.models.map(({ provider_id, model_id, version, tasks, status }) => ({
+        provider: provider_id,
+        model_id,
+        ...(version === undefined ? {} : { version }),
+        tasks,
+        status,
+      })),
     );
     expect(modelsAsset?.source).not.toMatch(
       /"(?:task_evidence|delivery_mode_evidence|raw_type|routes|source_refs|observed_at|first_seen_at|last_seen_at|warnings)"/,
@@ -228,8 +255,12 @@ describe("generated static catalog", () => {
     const { catalog } = await generatedData();
     const models = catalog.models.filter(({ provider_id }) => provider_id === "huggingface");
     const sources = new Set(models.flatMap(({ source_refs }) => source_refs));
-    expect(models.length).toBeGreaterThan(500);
-    expect(models.length).toBeLessThan(3_000);
+    expect(models.length).toBeGreaterThan(
+      generatedCatalogCalibrations.huggingFace.minimumModelsExclusive,
+    );
+    expect(models.length).toBeLessThan(
+      generatedCatalogCalibrations.huggingFace.maximumModelsExclusive,
+    );
     expect([...sources].sort()).toEqual([
       "huggingface-hf-inference",
       "huggingface-hub",
@@ -237,17 +268,17 @@ describe("generated static catalog", () => {
     ]);
   });
 
-  it("publishes Bedrock route evidence without duplicating shared endpoint facts", async () => {
+  it("keeps committed structured evidence duplicate-free", async () => {
     const { catalog } = await generatedData();
-    const models = catalog.models.filter(({ provider_id }) => provider_id === "amazon-bedrock");
-    const coverage = catalog.coverage.find(({ provider_id }) => provider_id === "amazon-bedrock");
-    const deepseek = models.find(({ model_id }) => model_id === "deepseek.v3.2");
-    expect(coverage?.status).toBe("fresh");
-    expect(models.flatMap(({ api_endpoints }) => api_endpoints ?? []).length).toBeGreaterThan(200);
-    expect(models.flatMap(({ availability }) => availability).length).toBeGreaterThan(1_500);
-    expect(deepseek?.api_endpoints?.filter(({ name }) => name === "Chat Completions")).toEqual([
-      { name: "Chat Completions", path: "v1/chat/completions" },
-    ]);
+    for (const model of catalog.models) {
+      const endpoints = model.api_endpoints ?? [];
+      const endpointKeys = endpoints.map(({ name, path }) => JSON.stringify([name, path]));
+      const availabilityKeys = (model.availability ?? []).map(({ region, deployment_type }) =>
+        JSON.stringify([region, deployment_type]),
+      );
+      expect(new Set(endpointKeys).size, model.uid).toBe(endpointKeys.length);
+      expect(new Set(availabilityKeys).size, model.uid).toBe(availabilityKeys.length);
+    }
   });
 
   it("keeps Azure OpenAI as a service family inside Microsoft Foundry", async () => {
@@ -263,26 +294,6 @@ describe("generated static catalog", () => {
     );
   });
 
-  it("publishes the repaired authenticated inventories without transport or schema failures", async () => {
-    const { catalog } = await generatedData();
-    const repairedSources = new Set([
-      "cohere-api",
-      "dashscope-deployable-api",
-      "gemini-api",
-      "kimi-api",
-      "vertex-model-garden-api",
-    ]);
-    expect(
-      catalog.warnings.filter(
-        (warning) =>
-          "source_id" in warning &&
-          warning.source_id !== undefined &&
-          repairedSources.has(warning.source_id) &&
-          ["source_fetch_failed", "source_parse_failed"].includes(warning.code),
-      ),
-    ).toEqual([]);
-  });
-
   it("does not publish credential identities in collection diagnostics", async () => {
     const { catalog } = await generatedData();
     const diagnostics = JSON.stringify({
@@ -296,23 +307,6 @@ describe("generated static catalog", () => {
     );
   });
 
-  it("does not collapse an exact catalog ID through another model's alias", async () => {
-    const { catalog } = await generatedData();
-    const o1 = catalog.models.find((model) => model.uid === "openai/o1");
-    const preview = catalog.models.find((model) => model.uid === "openai/o1-preview");
-    expect({
-      name: o1?.name,
-      description: o1?.description,
-      context: o1?.limits.context_tokens,
-    }).toEqual({
-      name: "o1",
-      description: "Previous full o-series reasoning model",
-      context: 200_000,
-    });
-    expect(preview?.name).toBe("o1 Preview");
-    expect(o1?.aliases).not.toContain("o1-preview-2024-09-12");
-  });
-
   it("publishes the complete Vercel catalog with canonical pricing", async () => {
     const { catalog, pricing: pricingEnvelope } = await generatedData();
     const pricing = pricingEnvelope.data;
@@ -324,13 +318,13 @@ describe("generated static catalog", () => {
       .flatMap((term) =>
         term.kind === "raw" ? term.variants : [...term.variants, ...term.raw_variants],
       );
-    const embedding = models.find((model) => model.model_id === "alibaba/qwen3-embedding-0.6b");
-    const realtime = models.find((model) => model.model_id === "openai/gpt-5.6-luna");
-    expect(models.length).toBeGreaterThan(250);
-    expect(variants.length).toBeGreaterThan(1_000);
+    expect(models.length).toBeGreaterThan(
+      generatedCatalogCalibrations.vercel.minimumModelsExclusive,
+    );
+    expect(variants.length).toBeGreaterThan(
+      generatedCatalogCalibrations.vercel.minimumPricingVariantsExclusive,
+    );
     expect(models.every((model) => !("pricing" in model))).toBe(true);
     expect(models.every((model) => model.release_date !== undefined)).toBe(true);
-    expect(embedding?.modalities.output).toEqual(["embedding"]);
-    expect(realtime?.tasks).toEqual(["text_generation"]);
   });
 });

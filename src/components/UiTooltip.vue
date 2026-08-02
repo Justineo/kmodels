@@ -1,13 +1,18 @@
 <script setup lang="ts" vapor>
 import { computed, onBeforeUnmount, ref, useAttrs, useId } from "vue";
-import { tooltipCoordinator, type TooltipClient } from "../composables/tooltip.ts";
+import {
+  shouldOpenTooltipOnClick,
+  tooltipCoordinator,
+  type TooltipClient,
+  type TooltipTrigger,
+} from "../composables/tooltip.ts";
 
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(
   defineProps<{
-    as?: "button" | "span";
-    content: string;
+    as?: TooltipTrigger;
+    content?: string;
   }>(),
   {
     as: "span",
@@ -24,8 +29,8 @@ const tooltipId = `tooltip-${uid}`;
 const anchorName = `--tooltip-${uid}`;
 const triggerStyle = { anchorName };
 const tooltipStyle = { positionAnchor: anchorName };
-let pointerActivationPending = false;
-let focusOpenedForPointerClick = false;
+let activationOpen = false;
+let pointerDownType: string | undefined;
 const describedBy = computed(() => {
   const existing = attrs["aria-describedby"];
   return [typeof existing === "string" ? existing : undefined, open.value ? tooltipId : undefined]
@@ -38,6 +43,7 @@ const client: TooltipClient = {
   },
   hide() {
     open.value = false;
+    activationOpen = false;
   },
 };
 
@@ -60,20 +66,18 @@ function handlePointerEnter(): void {
 
 function handlePointerLeave(): void {
   hovered.value = false;
-  pointerActivationPending = false;
   release();
 }
 
-function handlePointerDown(): void {
-  pointerActivationPending = true;
+function handlePointerDown(event: PointerEvent): void {
+  pointerDownType = event.pointerType;
 }
 
-function handlePointerCancel(): void {
-  pointerActivationPending = false;
+function clearPointerDown(): void {
+  pointerDownType = undefined;
 }
 
 function handleFocusIn(): void {
-  if (!open.value) focusOpenedForPointerClick = pointerActivationPending;
   focused.value = true;
   request(true);
 }
@@ -82,8 +86,7 @@ function handleFocusOut(event: FocusEvent): void {
   const next = event.relatedTarget;
   if (next instanceof Node && trigger.value?.contains(next)) return;
   focused.value = false;
-  pointerActivationPending = false;
-  focusOpenedForPointerClick = false;
+  clearPointerDown();
   release();
 }
 
@@ -95,15 +98,23 @@ function handleKeydown(event: KeyboardEvent): void {
   tooltipCoordinator.release(client);
 }
 
-function handleClick(): void {
-  const keepFocusOpenedTooltip = props.as === "span" && focusOpenedForPointerClick;
-  pointerActivationPending = false;
-  focusOpenedForPointerClick = false;
-  if (keepFocusOpenedTooltip) return;
-  if (props.as === "span" && !open.value) {
+function handleClick(event: MouseEvent): void {
+  const clickPointerType =
+    "pointerType" in event && typeof event.pointerType === "string" ? event.pointerType : undefined;
+  const pointerType = event.detail > 0 ? clickPointerType || pointerDownType : undefined;
+  const shouldOpen = shouldOpenTooltipOnClick(props.as, activationOpen, pointerType);
+  clearPointerDown();
+
+  if (shouldOpen) {
+    activationOpen = true;
+    if (props.as === "button") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
     request(true);
     return;
   }
+
   tooltipCoordinator.release(client);
 }
 </script>
@@ -112,6 +123,7 @@ function handleClick(): void {
   <component
     :is="as"
     ref="trigger"
+    class="ui-tooltip-trigger"
     v-bind="attrs"
     :aria-describedby="describedBy || undefined"
     :data-tooltip-open="open || undefined"
@@ -119,7 +131,7 @@ function handleClick(): void {
     @pointerenter="handlePointerEnter"
     @pointerleave="handlePointerLeave"
     @pointerdown="handlePointerDown"
-    @pointercancel="handlePointerCancel"
+    @pointercancel="clearPointerDown"
     @focusin="handleFocusIn"
     @focusout="handleFocusOut"
     @keydown="handleKeydown"
@@ -128,13 +140,18 @@ function handleClick(): void {
     <slot></slot>
   </component>
   <Teleport to="#tooltip-layer">
-    <span v-if="open" :id="tooltipId" class="ui-tooltip" :style="tooltipStyle" role="tooltip">
-      {{ content }}
-    </span>
+    <div v-if="open" :id="tooltipId" class="ui-tooltip" :style="tooltipStyle" role="tooltip">
+      <slot name="content">{{ content }}</slot>
+    </div>
   </Teleport>
 </template>
 
 <style scoped>
+span.ui-tooltip-trigger {
+  display: inline-block;
+  width: fit-content;
+}
+
 .ui-tooltip {
   position: fixed;
   position-area: block-start;
@@ -158,7 +175,7 @@ function handleClick(): void {
   font-weight: var(--font-weight-regular);
   letter-spacing: var(--tracking-normal);
   line-height: var(--line-height-control);
-  pointer-events: none;
+  pointer-events: auto;
   text-align: left;
   white-space: normal;
   animation: tooltip-reveal var(--duration-fast) var(--easing-enter);

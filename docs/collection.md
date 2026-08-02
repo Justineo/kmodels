@@ -86,6 +86,23 @@ Status: implemented
 - Source attempts use finite outcomes: changed, unchanged, fetch failed, parse failed, or skipped
   because configuration is absent. Provider drift guards use finite issue codes plus the measured
   previous value, candidate value, and threshold where applicable.
+- Treat every structured upstream response as a language recognized at the source boundary. The
+  parser contract is consumer-driven: require the fields and closed vocabularies whose meaning the
+  catalog actually owns, permit documented omission when absence means unknown, and reject a new
+  value or shape when accepting it could change a published fact. An extension outside the
+  adapter's semantic ownership may be accepted only after the recognizer has discarded it and
+  emitted `accept_with_signal` evidence; it must not silently enter the canonical model. Do not turn
+  a currently common field into a requirement without a catalog invariant that depends on it.
+- Contract findings carry bounded structural evidence: disposition, normalized field path,
+  mismatch kind, expected and observed types, affected-item count, a stable fingerprint, and at
+  most three validated public model IDs. Reports retain at most eight distinct diagnostics per
+  finding and no response bodies, stack traces, private IDs, or unbounded source strings. Numeric
+  array positions are normalized so the same fault has one low-cardinality identity across runs.
+  `reject` findings stop that provider atomically; `accept_with_signal` findings preserve fresh data
+  while making an unowned extension reviewable.
+- Persist check time and consecutive failures even before a source first succeeds, and retain the
+  last success when one exists. The first structured mismatch is immediately visible; repetition
+  adds persistence and staleness signals. A successful parse resets the count.
 - `data/refresh-summary.json` is the deterministic report for the accepted run. It includes exact
   added and removed model refs, changed refs and fields, status and task transitions, exact changed
   sources, pricing outcomes, warnings, and the corresponding attempt evidence. It never copies raw
@@ -93,10 +110,14 @@ Status: implemented
 - The run-level semantic outcome (`changed`, `evidence_only`, or `unchanged`) is independent of
   publication completeness (`complete` or `partial`). A retained provider therefore cannot hide
   behind an “unchanged” label, and provenance-only churn is not presented as a commercial change.
-- Deterministic evidence supports, but does not pretend to replace, human judgment. A parse failure
-  or abrupt count loss may emit `possible_structural_change`; it does not claim that a provider
-  redesigned its site. Repeated reviewed judgments belong in manifests, parsers, and explicit
-  thresholds so later runs can decide them without an LLM.
+- `breaking_contract_mismatch` means a field or value owned by the projection became
+  uninterpretable; `unreviewed_extension` means fresh data was accepted after an unrelated
+  extension was stripped; `coverage_regression` covers explicit item or field-coverage failures;
+  `possible_structural_change` is reserved for unclassified parse failures. None proves that the
+  provider intentionally redesigned an API. Deterministic evidence supports, but does not replace,
+  human judgment: semantic meaning, newly useful fields, and whether omission means false or
+  unknown still require review. Encode repeated reviewed judgments in provider guides, parsers,
+  fixtures, and explicit thresholds so later runs decide them mechanically without an LLM.
 - `KMODELS_REFRESH_REPORT_PATH` may name an ephemeral copy written before pair publication. CI uses
   it for the job summary and retained artifact. This copy also carries provider wall-clock
   durations for performance diagnosis. The committed summary is written only after the

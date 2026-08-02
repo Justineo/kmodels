@@ -7,6 +7,7 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -677,8 +678,13 @@ function validatePricingCoverage(models: ProviderModel[], minimum: number): void
           model.pricing_state === "free" ||
           model.price_facts.length > 0,
       );
-  if (current.size === 0 || [...current.values()].filter(Boolean).length / current.size < minimum)
-    throw new Error("Mistral pricing coverage fell below reviewed bounds");
+  assertCoverage(
+    "Mistral pricing coverage",
+    [...current.values()].filter(Boolean).length,
+    current.size,
+    minimum,
+    ["pricing"],
+  );
 }
 
 export function parseMistralCatalog(input: Input): ProviderModel[] {
@@ -734,11 +740,12 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     return model === undefined ? [] : [model];
   });
   const modelCount = new Set(models.map((model) => model.uid)).size;
-  if (
-    modelCount < input.source.extractor.minModels ||
-    modelCount > input.source.extractor.maxModels
-  )
-    throw new Error("Mistral callable model count outside reviewed bounds");
+  assertItemCount(
+    "Mistral callable models",
+    modelCount,
+    input.source.extractor.minModels,
+    input.source.extractor.maxModels,
+  );
   validatePricingCoverage(models, input.source.extractor.minPricingCoverage);
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }
@@ -794,11 +801,14 @@ function flag(value: boolean | undefined): boolean | "unknown" {
 
 export function parseMistralApi(input: Input): ProviderModel[] {
   const list = apiListSchema.parse(JSON.parse(input.body));
-  const items = list.data.map((item) => apiItemSchema.safeParse(item));
-  if (items.some((item) => !item.success)) throw new Error("Mistral model API schema drift");
-  const models = items.flatMap((item): ProviderModel[] => {
-    if (!item.success || item.data.type !== "base") return [];
-    const value = item.data;
+  const items = recognizeItems({
+    label: "Mistral API model",
+    items: list.data,
+    schema: apiItemSchema,
+    modelId: "id",
+  });
+  const models = items.flatMap((value): ProviderModel[] => {
+    if (value.type !== "base") return [];
     const deprecation = value.deprecation?.slice(0, 10);
     const deprecated =
       deprecation === undefined ? false : deprecation <= input.observedAt.slice(0, 10);
