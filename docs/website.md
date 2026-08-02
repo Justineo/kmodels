@@ -48,9 +48,9 @@ Status: implemented
 - Representative columns are derived only from canonical price books. A cell
   shows a number when one normalized rate is proven invariant across the
   complete applicable offer context;
-  otherwise one dotted-underlined text status, framed by restrained 45-degree
-  hatch marks spanning the three pricing columns, explains the model-level
-  outcome in a tooltip. Use `Varies` for a
+  otherwise one dotted-underlined text status, framed by fine, evenly spaced,
+  light-neutral 45-degree hatch marks across the three pricing columns, explains
+  the model-level outcome in a tooltip. Use `Varies` for a
   context-dependent price, an offer count for
   several base offers, and retain the exact `Free`, `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, `No base offer`, or `Details`
@@ -83,8 +83,9 @@ Status: implemented
   calculator resolves exact applicable rates but does not estimate usage,
   consume allowances, or calculate an invoice. Selected applicability is not
   repeated on each resolved rate, allowance, or state; validity qualifications
-  remain visible. A single offer state stays in the offer summary; state detail
-  appears only when the offer has multiple possible outcomes.
+  remain visible. Its reset action appears only after a configurable selection
+  and does not repeat a selection count. A single offer state stays in the offer
+  summary; state detail appears only when the offer has multiple possible outcomes.
   Numeric context preserves its published domain: singleton predicates become
   choices; ranged predicates show their accepted ranges and reject invalid or
   non-integral count/TTL input.
@@ -186,7 +187,9 @@ Status: implemented
   directly on both the select and its complete `::picker(select)` rule so
   production CSS minification preserves the picker enhancement. The visual
   value mirror is pointer-transparent.
-- The secondary filters use `<dialog popover="auto">` for non-modal top-layer behavior and light dismissal. Keep its title/actions outside its scroll viewport.
+- The secondary filters use `<dialog popover="auto">` for non-modal top-layer behavior and light
+  dismissal. Keep its title/actions outside its scroll viewport, and keep the toolbar trigger free
+  of selection counts.
 - Do not use modal-dialog `closedby="any"` for light dismissal until it is baseline.
 - Filtering or sorting resets virtual scroll. Clearing filters does not move focus.
 - Keep the workspace header and table header fixed while results scroll.

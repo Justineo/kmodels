@@ -73,7 +73,7 @@ const selectionValues = computed(() => [
   }),
   ...fixedSelectors.value.map(fixedSelection),
 ]);
-const selectionCount = computed(() => Object.keys(inputs.value).length);
+const hasSelections = computed(() => Object.keys(inputs.value).length > 0);
 const visibleStates = computed(() => matchingRows(activeOffer.value?.states ?? []));
 const visibleRates = computed(() => matchingRows(activeOffer.value?.rates ?? []));
 const visibleAllowances = computed(() => matchingRows(activeOffer.value?.allowances ?? []));
@@ -447,9 +447,7 @@ function formatSnapshotAt(value: string): string {
       >
         <header class="pricing-subheading">
           <h4 id="context-heading">Price calculator</h4>
-          <button v-if="selectionCount > 0" type="button" @click="clearSelections">
-            Reset {{ selectionCount }}
-          </button>
+          <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
         </header>
         <div v-if="fixedSelectors.length > 0" class="fixed-context-list">
           <span v-for="selector in fixedSelectors" :key="selector.key">
