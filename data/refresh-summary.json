@@ -1,8 +1,8 @@
 {
-  "catalog_version": "f9257100b613a2a34459926ac0fe7c7e705ccffbc1a95b480dbdbc87019d8724",
-  "generated_at": "2026-08-02T17:20:52.165Z",
+  "catalog_version": "c52cae77d0e38170a93ae9c4b7a12dabbb2458fc8f80e29bf1edce1c82d4e17a",
+  "generated_at": "2026-08-02T18:19:02.858Z",
   "outcome": "changed",
-  "previous_catalog_version": "be25c62a2d8c0688b3911e8bd166af3a20ee7545ed6e11a36fc340e8af926d6d",
+  "previous_catalog_version": "f9257100b613a2a34459926ac0fe7c7e705ccffbc1a95b480dbdbc87019d8724",
   "providers": [
     {
       "attempt": {
@@ -2153,31 +2153,34 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1407,
+            "parsed_models": 1409,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 128,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1407,
+            "parsed_models": 1409,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 30,
+        "added": 2,
+        "added_model_refs": [
+          "huggingface/google/bigbird-pegasus-large-pubmed",
+          "huggingface/microsoft/deberta-xlarge-mnli"
+        ],
+        "changed": 32,
         "changed_fields": {
-          "capabilities": 1,
+          "capabilities": 5,
           "limits": 29
         },
         "changed_models": [
@@ -2201,6 +2204,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r-08-2024"
@@ -2257,7 +2261,7 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
+            "model_ref": "huggingface/Qwen/Qwen3-14B"
           },
           {
             "fields": [
@@ -2282,6 +2286,12 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
           },
           {
             "fields": [
@@ -2321,6 +2331,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.5"
@@ -2357,23 +2368,28 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.1"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1536,
-        "previous": 1538,
-        "removed": 2,
+        "current": 1537,
+        "previous": 1536,
+        "removed": 1,
         "removed_model_refs": [
-          "huggingface/google/bigbird-pegasus-large-pubmed",
-          "huggingface/microsoft/deberta-xlarge-mnli"
+          "huggingface/Qwen/Qwen3-32B"
         ],
-        "unchanged": 1506
+        "unchanged": 1503
       },
       "pricing": {
-        "commercial_hash": "1656a47ef83b20c8b6089407988aacf53ca847919ae8227b2779c8fb27e4eedc",
-        "outcome": "provenance_only",
+        "commercial_hash": "ccdb1a13e0a6db2419cf8a1bd048fe8b0f6606131c43634ee6d6a0f5206edb4d",
+        "outcome": "commercial",
         "previous_commercial_hash": "1656a47ef83b20c8b6089407988aacf53ca847919ae8227b2779c8fb27e4eedc"
       },
       "provider_id": "huggingface",
@@ -2861,9 +2877,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3021,13 +3037,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3918,13 +3941,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 0,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 403,
-    "changed_sources": 28,
-    "models": 3368,
+    "changed_models": 405,
+    "changed_sources": 29,
+    "models": 3369,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
