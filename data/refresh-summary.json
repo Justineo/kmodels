@@ -1,8 +1,8 @@
 {
-  "catalog_version": "2b71a176ed3b5743dce192fec4a88b2d3a1b321f927841b80287f249e1a72fb8",
-  "generated_at": "2026-08-03T00:24:14.284Z",
+  "catalog_version": "bf14db1e8f0203bb992f4432454476f6120d1fc2b0090f98944affc9bdc33ee6",
+  "generated_at": "2026-08-03T01:33:16.076Z",
   "outcome": "changed",
-  "previous_catalog_version": "240d62e7a70408cff0b401bf1ebaff493756c9e4d02f0854832ef39ff84c6094",
+  "previous_catalog_version": "2b71a176ed3b5743dce192fec4a88b2d3a1b321f927841b80287f249e1a72fb8",
   "providers": [
     {
       "attempt": {
@@ -146,7 +146,7 @@
             "source_id": "azure-models"
           },
           {
-            "consecutive_failures": 1,
+            "consecutive_failures": 2,
             "last_success_at": "2026-08-02T23:18:24.306Z",
             "message": "Azure Retail Prices HTTP 429",
             "outcome": "fetch_failed",
@@ -173,7 +173,9 @@
       },
       "provider_id": "azure",
       "publication": "retained",
-      "signals": [],
+      "signals": [
+        "persistent_source_failure"
+      ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -1257,10 +1259,10 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 1410,
+            "outcome": "changed",
+            "parsed_models": 1408,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -1274,7 +1276,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1410,
+            "parsed_models": 1408,
             "source_id": "huggingface-hub"
           }
         ]
@@ -1282,11 +1284,9 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 33,
+        "changed": 29,
         "changed_fields": {
-          "capabilities": 4,
-          "limits": 29,
-          "updated_date": 1
+          "limits": 29
         },
         "changed_models": [
           {
@@ -1369,12 +1369,6 @@
           },
           {
             "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/Sachin21112004/distilbart-news-summarizer"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -1390,18 +1384,6 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/prism-ml/Ternary-Bonsai-27B-gguf"
           },
           {
             "fields": [
@@ -1441,7 +1423,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.5"
@@ -1478,27 +1459,24 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-5.1"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1539,
+        "current": 1537,
         "previous": 1539,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1506
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/jhgan/ko-sbert-sts",
+          "huggingface/pparasurama/raceBERT-ethnicity"
+        ],
+        "unchanged": 1508
       },
       "pricing": {
-        "commercial_hash": "d7b9180c61dafc455a6ec16f62662a98d945f77174f4b857ef8a5a2ea74d3104",
+        "commercial_hash": "cbcc7815d81ec68f23fdc877deca828f7c8bea9eabbd3ff11929d9ef8a538b7d",
         "outcome": "commercial",
-        "previous_commercial_hash": "ad102de4933415413207e48e7198fe16dd52d90488d3f402b464abba6d5d91f5"
+        "previous_commercial_hash": "d7b9180c61dafc455a6ec16f62662a98d945f77174f4b857ef8a5a2ea74d3104"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -1506,8 +1484,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hf-inference"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1525,7 +1509,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2162,9 +2146,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 312,
             "source_id": "vercel-models"
           }
@@ -2173,8 +2157,9 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 104,
+        "changed": 105,
         "changed_fields": {
+          "description": 1,
           "limits": 104
         },
         "changed_models": [
@@ -2387,6 +2372,12 @@
               "limits"
             ],
             "model_ref": "vercel/cohere/rerank-v4-pro"
+          },
+          {
+            "fields": [
+              "description"
+            ],
+            "model_ref": "vercel/deepseek/deepseek-v4-flash"
           },
           {
             "fields": [
@@ -2807,11 +2798,11 @@
         "previous": 312,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 208
+        "unchanged": 207
       },
       "pricing": {
-        "commercial_hash": "1c3ed64eb3d07c30eebcd32fcc1bd450e231b82d623289151562b46b1c7b9618",
-        "outcome": "provenance_only",
+        "commercial_hash": "e96b7bf47295af9ffd62dcfbfc6dc4123a8c8f7131c7dda3ef0830fa0153473c",
+        "outcome": "commercial",
         "previous_commercial_hash": "1c3ed64eb3d07c30eebcd32fcc1bd450e231b82d623289151562b46b1c7b9618"
       },
       "provider_id": "vercel",
@@ -2820,13 +2811,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vercel-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2949,9 +2947,9 @@
             "source_id": "xai-api"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 6,
             "source_id": "xai-language-api"
           },
@@ -3009,8 +3007,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "xai-language-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3022,7 +3026,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3038,11 +3042,11 @@
     "accepted": 17,
     "added_models": 0,
     "added_sources": 0,
-    "changed_models": 259,
-    "changed_sources": 26,
-    "models": 3371,
+    "changed_models": 256,
+    "changed_sources": 29,
+    "models": 3369,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
