@@ -1,8 +1,8 @@
 {
-  "catalog_version": "0bc4b1fafee69c17673a7cac42afa7c1455b992c46e198aa662437870e362bd7",
-  "generated_at": "2026-08-03T19:30:45.544Z",
+  "catalog_version": "bae7c9fbbcb0acfb4ba34829da82e255e060bf59e09414e949f47432a22e3bb7",
+  "generated_at": "2026-08-03T20:29:52.803Z",
   "outcome": "changed",
-  "previous_catalog_version": "a5c55d24a9f04a5127a7db9a80342894c21819759bc4438dc3b1bcf7ab441fef",
+  "previous_catalog_version": "0bc4b1fafee69c17673a7cac42afa7c1455b992c46e198aa662437870e362bd7",
   "providers": [
     {
       "attempt": {
@@ -1112,9 +1112,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
@@ -1143,13 +1143,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -2146,32 +2153,35 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1406,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 130,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1406,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 30,
+        "added": 2,
+        "added_model_refs": [
+          "huggingface/plguillou/t5-base-fr-sum-cnndm",
+          "huggingface/zai-org/GLM-4.5"
+        ],
+        "changed": 31,
         "changed_fields": {
-          "capabilities": 1,
-          "limits": 30
+          "capabilities": 3,
+          "limits": 29
         },
         "changed_models": [
           {
@@ -2254,6 +2264,12 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-Coder-480B-A35B-Instruct"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -2272,6 +2288,12 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2284,6 +2306,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
@@ -2299,13 +2322,6 @@
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-v1.5-8B"
-          },
-          {
-            "fields": [
-              "capabilities",
-              "limits"
-            ],
-            "model_ref": "huggingface/thinkingmachines/Inkling-Small"
           },
           {
             "fields": [
@@ -2356,20 +2372,20 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1537,
-        "previous": 1540,
+        "current": 1536,
+        "previous": 1537,
         "removed": 3,
         "removed_model_refs": [
-          "huggingface/XiaomiMiMo/MiMo-V2.5-Pro",
-          "huggingface/chendelong/DirectSAM-1800px-0424",
-          "huggingface/plguillou/t5-base-fr-sum-cnndm"
+          "huggingface/Modotte/AIRealNet",
+          "huggingface/google/efficientnet-b7",
+          "huggingface/staka/fugumt-ja-en"
         ],
-        "unchanged": 1507
+        "unchanged": 1503
       },
       "pricing": {
-        "commercial_hash": "87009c666c081a995bed1b173849e95b03e9a5b073ddea6c1e9d51a62ae99f8c",
+        "commercial_hash": "16bcc1ab733e0401bd8822535f5cfc2874520e6853b213a79c63f07d214b4b5d",
         "outcome": "commercial",
-        "previous_commercial_hash": "2102df23bda29add0c5970b67adaf1832983ee71010f2b294f28e136da073d70"
+        "previous_commercial_hash": "87009c666c081a995bed1b173849e95b03e9a5b073ddea6c1e9d51a62ae99f8c"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2856,9 +2872,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3016,14 +3032,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 3,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3047,7 +3057,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3950,11 +3960,11 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 0,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 405,
+    "changed_models": 406,
     "changed_sources": 31,
-    "models": 3370,
+    "models": 3369,
     "providers": 18,
     "removed_models": 3,
     "removed_sources": 0,
