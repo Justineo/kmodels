@@ -1,8 +1,8 @@
 {
-  "catalog_version": "bf14db1e8f0203bb992f4432454476f6120d1fc2b0090f98944affc9bdc33ee6",
-  "generated_at": "2026-08-03T01:33:16.076Z",
+  "catalog_version": "9c06db9a3b25f27c03cd0950a6cb0cc24f3dbaf02a4229c69ed21107d4fef845",
+  "generated_at": "2026-08-03T03:01:12.229Z",
   "outcome": "changed",
-  "previous_catalog_version": "2b71a176ed3b5743dce192fec4a88b2d3a1b321f927841b80287f249e1a72fb8",
+  "previous_catalog_version": "bf14db1e8f0203bb992f4432454476f6120d1fc2b0090f98944affc9bdc33ee6",
   "providers": [
     {
       "attempt": {
@@ -128,14 +128,9 @@
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_unavailable",
-          "message": "Azure Retail Prices HTTP 429"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -146,25 +141,915 @@
             "source_id": "azure-models"
           },
           {
-            "consecutive_failures": 2,
-            "last_success_at": "2026-08-02T23:18:24.306Z",
-            "message": "Azure Retail Prices HTTP 429",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 72,
             "source_id": "azure-retail-prices"
+          },
+          {
+            "message": "Required credential(s) AZURE_TENANT_ID and AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and AZURE_SUBSCRIPTION_ID and AZURE_LOCATION are not configured.",
+            "outcome": "skipped_not_configured",
+            "source_id": "azure-api"
           }
         ]
       },
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 147,
+        "changed_fields": {
+          "limits": 147
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Codestral-2501@2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-command-a-plus-05-2026@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-embed-v3-english@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-embed-v3-multilingual@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-rerank-v4.0-fast@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Cohere-rerank-v4.0-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V3.2-Speciale@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V3.2@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V4-Flash@2026-04-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/DeepSeek-V4-Pro@2026-04-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX-1.1-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX.1-Kontext-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX.2-flex@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/FLUX.2-pro@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Kimi-K2.5@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Kimi-K2.6@2026-04-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Kimi-K2.7-Code@2026-06-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Llama-3.3-70B-Instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Llama-4-Maverick-17B-128E-Instruct-FP8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Llama-4-Scout-17B-16E-Instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/MAI-Image-2.5-Flash@2026-06-02"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/MAI-Image-2.5-Pro@2026-06-19"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/MAI-Image-2.5@2026-06-02"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Ministral-3B@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Mistral-Large-3@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-mini-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-mini-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-multimodal-instruct"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/Phi-4-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-fable-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-haiku-4-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-mythos-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-mythos-preview"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-6"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-7"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-4-8"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-opus-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-sonnet-4-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-sonnet-4-6"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/claude-sonnet-5"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/codex-mini@2025-05-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/cohere-command-a@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/computer-use-preview@2025-03-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/embed-v-4-0@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4.1-mini@2025-04-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4.1-nano@2025-04-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4.1@2025-04-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4@turbo-2024-04-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-audio-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-audio-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-realtime-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-transcribe@2025-03-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-transcribe@2025-12-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-tts@2025-03-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini-tts@2025-12-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-mini@2024-07-18"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-realtime-preview@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-realtime-preview@2025-06-03"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-transcribe-diarize@2025-10-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o-transcribe@2025-03-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o@2024-05-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o@2024-08-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-4o@2024-11-20"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-chat@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-chat@2025-10-03"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-codex@2025-09-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-mini@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-nano@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5-pro@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-chat@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-codex-max@2025-12-04"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-codex-mini@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1-codex@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.1@2025-11-13"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2-chat@2025-12-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2-chat@2026-02-10"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2-codex@2026-01-14"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.2@2025-12-11"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.3-chat@2026-03-03"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.3-codex@2026-02-24"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4-mini@2026-03-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4-nano@2026-03-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4-pro@2026-03-05"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.4@2026-03-05"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.5@2026-04-24"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.6-luna@2026-07-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.6-sol@2026-07-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5.6-terra@2026-07-09"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-5@2025-08-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-audio-1.5@2026-02-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-audio-mini@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-audio@2025-08-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-chat-latest@2026-05-05"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-chat-latest@2026-05-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-chat-latest@2026-06-24"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-image-1-mini@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-image-1.5@2025-12-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-image-1@2025-04-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-live-transcribe@2026-07-29"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-oss-120b@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-oss-20b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-1.5@2026-02-23"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-2.1-mini@2026-07-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-2.1@2026-07-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-2@2026-05-07"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-mini@2025-10-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-mini@2025-12-15"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-translate@2026-05-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime-whisper@2026-05-06"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-realtime@2025-08-28"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/gpt-transcribe"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4-20-non-reasoning@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4-20-reasoning@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4.1-fast-non-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4.1-fast-reasoning"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4.3@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-4@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/grok-code-fast-1@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-document-ai-2512@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-medium-2505@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-medium-3-5@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-ocr-4-0"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistral-small-2503@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mistral-7B-Instruct-v0-2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mistral-7B-Instruct-v01"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mixtral-8x22B-Instruct-v0-1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/mistralai-Mixtral-8x7B-Instruct-v01"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/model-router"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o1-mini@2024-09-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o1-preview@2024-09-12"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o1@2024-12-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o3-mini@2025-01-31"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o3-pro@2025-06-10"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o3@2025-04-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/o4-mini@2025-04-16"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/sora"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-3-large@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-3-small@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-ada-002@1"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/text-embedding-ada-002@2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/tsuzumi-7b@2"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/tts-hd@001"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/tts@001"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "azure/whisper@001"
+          }
+        ],
         "current": 223,
         "previous": 223,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 223
+        "unchanged": 76
       },
       "pricing": {
         "commercial_hash": "9af7c94eca46f550045bba6b049ad901376737fefadde4471fdf8178bcf1c74c",
@@ -172,10 +1057,8 @@
         "previous_commercial_hash": "9af7c94eca46f550045bba6b049ad901376737fefadde4471fdf8178bcf1c74c"
       },
       "provider_id": "azure",
-      "publication": "retained",
-      "signals": [
-        "persistent_source_failure"
-      ],
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -187,9 +1070,10 @@
         "removed_source_ids": [],
         "unchanged": 2
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_fetch_failed": 1
+        "authentication_not_configured": 1,
+        "missing_field": 3
       }
     },
     {
@@ -228,9 +1112,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
@@ -259,13 +1143,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1262,30 +2153,35 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 130,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 29,
+        "added": 3,
+        "added_model_refs": [
+          "huggingface/jhgan/ko-sbert-sts",
+          "huggingface/pparasurama/raceBERT-ethnicity",
+          "huggingface/zai-org/GLM-5.1-FP8"
+        ],
+        "changed": 32,
         "changed_fields": {
+          "capabilities": 5,
           "limits": 29
         },
         "changed_models": [
@@ -1363,12 +2259,25 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
+          {
+            "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -1384,6 +2293,12 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
           },
           {
             "fields": [
@@ -1459,24 +2374,22 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1537,
-        "previous": 1539,
-        "removed": 2,
-        "removed_model_refs": [
-          "huggingface/jhgan/ko-sbert-sts",
-          "huggingface/pparasurama/raceBERT-ethnicity"
-        ],
-        "unchanged": 1508
+        "current": 1540,
+        "previous": 1537,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1505
       },
       "pricing": {
         "commercial_hash": "cbcc7815d81ec68f23fdc877deca828f7c8bea9eabbd3ff11929d9ef8a538b7d",
-        "outcome": "commercial",
-        "previous_commercial_hash": "d7b9180c61dafc455a6ec16f62662a98d945f77174f4b857ef8a5a2ea74d3104"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "cbcc7815d81ec68f23fdc877deca828f7c8bea9eabbd3ff11929d9ef8a538b7d"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2149,17 +3062,18 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 312,
+            "parsed_models": 313,
             "source_id": "vercel-models"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 105,
+        "added": 1,
+        "added_model_refs": [
+          "vercel/alibaba/qwen3.8-max"
+        ],
+        "changed": 104,
         "changed_fields": {
-          "description": 1,
           "limits": 104
         },
         "changed_models": [
@@ -2372,12 +3286,6 @@
               "limits"
             ],
             "model_ref": "vercel/cohere/rerank-v4-pro"
-          },
-          {
-            "fields": [
-              "description"
-            ],
-            "model_ref": "vercel/deepseek/deepseek-v4-flash"
           },
           {
             "fields": [
@@ -2794,16 +3702,16 @@
             "model_ref": "vercel/xai/grok-voice-think-fast-2.0"
           }
         ],
-        "current": 312,
+        "current": 313,
         "previous": 312,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 207
+        "unchanged": 208
       },
       "pricing": {
-        "commercial_hash": "e96b7bf47295af9ffd62dcfbfc6dc4123a8c8f7131c7dda3ef0830fa0153473c",
+        "commercial_hash": "21e180b7d96ad1aff27d83432ac147c720a9aa8678aa4a3b3a1b4b89aa529ecf",
         "outcome": "commercial",
-        "previous_commercial_hash": "1c3ed64eb3d07c30eebcd32fcc1bd450e231b82d623289151562b46b1c7b9618"
+        "previous_commercial_hash": "e96b7bf47295af9ffd62dcfbfc6dc4123a8c8f7131c7dda3ef0830fa0153473c"
       },
       "provider_id": "vercel",
       "publication": "accepted",
@@ -2947,9 +3855,9 @@
             "source_id": "xai-api"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 6,
             "source_id": "xai-language-api"
           },
@@ -3007,14 +3915,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "xai-language-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3026,7 +3928,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3036,19 +3938,19 @@
       }
     }
   ],
-  "publication": "partial",
+  "publication": "complete",
   "schema_version": 2,
   "totals": {
-    "accepted": 17,
-    "added_models": 0,
+    "accepted": 18,
+    "added_models": 4,
     "added_sources": 0,
-    "changed_models": 256,
+    "changed_models": 405,
     "changed_sources": 29,
-    "models": 3369,
+    "models": 3373,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 0,
     "removed_sources": 0,
-    "retained": 1,
+    "retained": 0,
     "withheld": 0
   }
 }
