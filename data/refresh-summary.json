@@ -1,8 +1,8 @@
 {
-  "catalog_version": "c1820defd84ee053b6c3a3fd7beeb35ba69c6d357b80b66c470ffcc71f9b1615",
-  "generated_at": "2026-08-03T17:32:48.433Z",
+  "catalog_version": "a5c55d24a9f04a5127a7db9a80342894c21819759bc4438dc3b1bcf7ab441fef",
+  "generated_at": "2026-08-03T18:33:26.805Z",
   "outcome": "changed",
-  "previous_catalog_version": "e96b4c79950f9b5bfecb195276050aaa4e3643ffcba470be33474c611762ae86",
+  "previous_catalog_version": "c1820defd84ee053b6c3a3fd7beeb35ba69c6d357b80b66c470ffcc71f9b1615",
   "providers": [
     {
       "attempt": {
@@ -1954,9 +1954,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 50,
             "source_id": "databricks-models"
           },
@@ -1992,13 +1992,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2160,23 +2167,26 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 130,
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 29,
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/Qwen/Qwen2.5-7B-Instruct"
+        ],
+        "changed": 31,
         "changed_fields": {
+          "capabilities": 2,
           "limits": 29
         },
         "changed_models": [
@@ -2254,6 +2264,12 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-14B"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
@@ -2275,6 +2291,12 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
           },
           {
             "fields": [
@@ -2355,19 +2377,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1539,
-        "previous": 1541,
-        "removed": 2,
-        "removed_model_refs": [
-          "huggingface/Qwen/Qwen2.5-7B-Instruct",
-          "huggingface/zai-org/GLM-4.5"
-        ],
-        "unchanged": 1510
+        "current": 1540,
+        "previous": 1539,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1508
       },
       "pricing": {
-        "commercial_hash": "a55cdd730ac19fad33bd3da6212c1f31fe51d128858e1a5018584e05b113ff77",
+        "commercial_hash": "2102df23bda29add0c5970b67adaf1832983ee71010f2b294f28e136da073d70",
         "outcome": "commercial",
-        "previous_commercial_hash": "2bafb2addb519d2cf19be8e09841c074804594de64909b406bdecd7cb61b4f83"
+        "previous_commercial_hash": "a55cdd730ac19fad33bd3da6212c1f31fe51d128858e1a5018584e05b113ff77"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2375,8 +2394,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2388,7 +2413,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2814,23 +2839,23 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 93,
             "source_id": "openai-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1,
             "source_id": "openai-overview"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 65,
             "source_id": "openai-deprecations"
           },
@@ -3002,32 +3027,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-deprecations"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -3044,23 +3050,20 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 315,
             "source_id": "vercel-models"
           }
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "vercel/perplexity/pplx-embed-v1-0.6b",
-          "vercel/perplexity/pplx-embed-v1-4b"
-        ],
-        "changed": 104,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 106,
         "changed_fields": {
-          "limits": 104
+          "limits": 106
         },
         "changed_models": [
           {
@@ -3511,6 +3514,18 @@
             "fields": [
               "limits"
             ],
+            "model_ref": "vercel/perplexity/pplx-embed-v1-0.6b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "vercel/perplexity/pplx-embed-v1-4b"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
             "model_ref": "vercel/prodia/flux-fast-schnell"
           },
           {
@@ -3689,15 +3704,15 @@
           }
         ],
         "current": 315,
-        "previous": 313,
+        "previous": 315,
         "removed": 0,
         "removed_model_refs": [],
         "unchanged": 209
       },
       "pricing": {
         "commercial_hash": "09f4e9a200ebe444fcb62988a307a7e1990f578076f998728626168a070c1051",
-        "outcome": "commercial",
-        "previous_commercial_hash": "7c397366a75bea68d15f9c830d79821e558832d2f07caeaf3a3b28840e9fdd10"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "09f4e9a200ebe444fcb62988a307a7e1990f578076f998728626168a070c1051"
       },
       "provider_id": "vercel",
       "publication": "accepted",
@@ -3705,20 +3720,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3928,13 +3936,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 2,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 402,
-    "changed_sources": 30,
-    "models": 3372,
+    "changed_models": 406,
+    "changed_sources": 28,
+    "models": 3373,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
