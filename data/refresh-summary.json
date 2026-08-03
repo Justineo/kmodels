@@ -1,8 +1,8 @@
 {
-  "catalog_version": "f787faddee5c82fd9bf99dd8675ea5c2be28907babea40d33bc0cd7b79adad48",
-  "generated_at": "2026-08-03T15:01:44.273Z",
+  "catalog_version": "e96b4c79950f9b5bfecb195276050aaa4e3643ffcba470be33474c611762ae86",
+  "generated_at": "2026-08-03T16:47:10.919Z",
   "outcome": "changed",
-  "previous_catalog_version": "9ad3577b9c3e7f46c63dc4b4dad43c941fd5d4a2b612f386c92b1745774e303a",
+  "previous_catalog_version": "f787faddee5c82fd9bf99dd8675ea5c2be28907babea40d33bc0cd7b79adad48",
   "providers": [
     {
       "attempt": {
@@ -134,9 +134,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 223,
             "source_id": "azure-models"
           },
@@ -159,6 +159,7 @@
         "added_model_refs": [],
         "changed": 147,
         "changed_fields": {
+          "availability": 3,
           "limits": 147
         },
         "changed_models": [
@@ -602,7 +603,8 @@
           },
           {
             "fields": [
-              "limits"
+              "limits",
+              "availability"
             ],
             "model_ref": "azure/gpt-5.1-codex-max@2025-12-04"
           },
@@ -662,7 +664,8 @@
           },
           {
             "fields": [
-              "limits"
+              "limits",
+              "availability"
             ],
             "model_ref": "azure/gpt-5.4-mini@2026-03-17"
           },
@@ -698,7 +701,8 @@
           },
           {
             "fields": [
-              "limits"
+              "limits",
+              "availability"
             ],
             "model_ref": "azure/gpt-5.6-sol@2026-07-09"
           },
@@ -1062,13 +1066,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2100,14 +2111,49 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 3,
+        "changed_fields": {
+          "replacement_model_ids": 3,
+          "retired_at": 3,
+          "status": 3
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "retired_at",
+              "status",
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/gemini-2.5-flash",
+            "previous_status": "deprecated",
+            "status": "active"
+          },
+          {
+            "fields": [
+              "retired_at",
+              "status",
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/gemini-2.5-flash-lite",
+            "previous_status": "deprecated",
+            "status": "active"
+          },
+          {
+            "fields": [
+              "retired_at",
+              "status",
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/gemini-2.5-pro",
+            "previous_status": "deprecated",
+            "status": "active"
+          }
+        ],
         "current": 75,
         "previous": 75,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 75
+        "unchanged": 72
       },
       "pricing": {
         "commercial_hash": "3ce1db4d677495d2147e7488ffd36e86edffd46d1e28585056e3a40089765a87",
@@ -2153,38 +2199,35 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1409,
+            "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 131,
             "source_id": "huggingface-router"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1409,
+            "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 4,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/Helsinki-NLP/opus-mt-sk-en",
-          "huggingface/Helsinki-NLP/opus-mt-tc-big-en-ko",
-          "huggingface/dunzhang/stella-mrl-large-zh-v3.5-1792d",
-          "huggingface/sshleifer/distilbart-cnn-12-6"
+          "huggingface/facebook/mask2former-swin-large-ade-panoptic",
+          "huggingface/moonshotai/Kimi-K2-Thinking"
         ],
-        "changed": 34,
+        "changed": 31,
         "changed_fields": {
-          "capabilities": 1,
-          "limits": 30,
-          "updated_date": 3
+          "capabilities": 2,
+          "limits": 30
         },
         "changed_models": [
           {
@@ -2287,7 +2330,7 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
+            "model_ref": "huggingface/google/gemma-3-4b-it"
           },
           {
             "fields": [
@@ -2327,24 +2370,6 @@
           },
           {
             "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/vinai/phobert-base"
-          },
-          {
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/vinai/phobert-base-v2"
-          },
-          {
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/vinai/phobert-large"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.5"
@@ -2375,6 +2400,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
@@ -2392,18 +2418,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1539,
-        "previous": 1536,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/facebook/mask2former-swin-large-ade-panoptic"
-        ],
-        "unchanged": 1501
+        "current": 1541,
+        "previous": 1539,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1508
       },
       "pricing": {
-        "commercial_hash": "82ec230c912e29541dbd93371da151482d0f616e31c951c5b1f8b11273042394",
+        "commercial_hash": "2bafb2addb519d2cf19be8e09841c074804594de64909b406bdecd7cb61b4f83",
         "outcome": "commercial",
-        "previous_commercial_hash": "04847a431b5a28a5d9ffd40735ce3a09918055fa943008d5af151547fd8af71a"
+        "previous_commercial_hash": "82ec230c912e29541dbd93371da151482d0f616e31c951c5b1f8b11273042394"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2868,23 +2892,23 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 93,
             "source_id": "openai-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1,
             "source_id": "openai-overview"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 65,
             "source_id": "openai-deprecations"
           },
@@ -2896,9 +2920,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3056,20 +3080,32 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 3,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "openai-api"
+            "source_id": "openai-deprecations"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-overview"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3807,8 +3843,8 @@
         "unchanged": 99
       },
       "pricing": {
-        "commercial_hash": "5937a9e8f21de2d5b00a6a182db76e9623dd9b25fb428d7c589cdaad9bba716e",
-        "outcome": "provenance_only",
+        "commercial_hash": "54e32169f8464b6024ba700bb672766c267b83723d440e8ee7cc00d3c1c71c3c",
+        "outcome": "commercial",
         "previous_commercial_hash": "5937a9e8f21de2d5b00a6a182db76e9623dd9b25fb428d7c589cdaad9bba716e"
       },
       "provider_id": "vertex",
@@ -3960,13 +3996,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 4,
+    "added_models": 2,
     "added_sources": 0,
     "changed_models": 407,
-    "changed_sources": 30,
-    "models": 3370,
+    "changed_sources": 33,
+    "models": 3372,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
