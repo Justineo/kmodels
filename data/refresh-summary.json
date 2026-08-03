@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b690588adb4578ef786efc68201cd748f89d71912fac0f4b93eba2224e899d18",
-  "generated_at": "2026-08-03T07:02:53.963Z",
+  "catalog_version": "86b0d003c85b6d55faf24329cac49f0e8fc014742e9fdd10fcfcb3f0d70dcacc",
+  "generated_at": "2026-08-03T09:03:13.257Z",
   "outcome": "changed",
-  "previous_catalog_version": "77808b6337fd16767cf399b146a979d6b421cfa42a20181ab53a7bc06f981e2d",
+  "previous_catalog_version": "b690588adb4578ef786efc68201cd748f89d71912fac0f4b93eba2224e899d18",
   "providers": [
     {
       "attempt": {
@@ -1112,9 +1112,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
@@ -1143,13 +1143,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1325,10 +1332,10 @@
             "source_id": "dashscope-releases"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 16,
+            "outcome": "changed",
+            "parsed_models": 17,
             "source_id": "dashscope-deployable-api"
           }
         ]
@@ -1845,13 +1852,19 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 13,
+        "changed": 14,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "dashscope-asr"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "dashscope-deployable-api"
           },
           {
             "content_changed": true,
@@ -1930,7 +1943,7 @@
         "previous": 14,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2146,7 +2159,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2160,18 +2173,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 2,
+        "added_model_refs": [
+          "huggingface/VietAI/envit5-translation",
+          "huggingface/microsoft/deberta-large"
+        ],
         "changed": 34,
         "changed_fields": {
-          "capabilities": 6,
-          "limits": 30
+          "capabilities": 3,
+          "limits": 30,
+          "updated_date": 1
         },
         "changed_models": [
           {
@@ -2194,7 +2211,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r-08-2024"
@@ -2249,12 +2265,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-14B"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
@@ -2285,15 +2295,27 @@
           },
           {
             "fields": [
-              "capabilities"
+              "updated_date"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3-0324"
+            "model_ref": "huggingface/cointegrated/rubert-tiny-toxicity"
           },
           {
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/prism-ml/Ternary-Bonsai-27B-gguf"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Flash"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
           },
           {
             "fields": [
@@ -2333,7 +2355,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.5V-FP8"
@@ -2364,12 +2385,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-5.1"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.1-FP8"
@@ -2381,20 +2396,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1537,
-        "previous": 1540,
-        "removed": 3,
-        "removed_model_refs": [
-          "huggingface/VietAI/envit5-translation",
-          "huggingface/microsoft/deberta-large",
-          "huggingface/zai-org/GLM-4.5"
-        ],
+        "current": 1539,
+        "previous": 1537,
+        "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 1503
       },
       "pricing": {
-        "commercial_hash": "4778e19e731a79119c3147561ce31763e61f303e75a0d0ef714a481927000d58",
+        "commercial_hash": "de7c724864f97d8709473064dbe07fbb877e1ca6feb623813571b6af881028ba",
         "outcome": "commercial",
-        "previous_commercial_hash": "bcc9875c52c996206a1fc8e39cace7ed9c6cf24d8b3378c006da5005a7605a0a"
+        "previous_commercial_hash": "4778e19e731a79119c3147561ce31763e61f303e75a0d0ef714a481927000d58"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2859,23 +2870,23 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 93,
             "source_id": "openai-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1,
             "source_id": "openai-overview"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 65,
             "source_id": "openai-deprecations"
           },
@@ -3047,13 +3058,32 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 3,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-deprecations"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-overview"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3857,9 +3887,9 @@
             "source_id": "xai-api"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 6,
             "source_id": "xai-language-api"
           },
@@ -3917,14 +3947,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "xai-language-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3936,7 +3960,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3950,13 +3974,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 0,
+    "added_models": 2,
     "added_sources": 0,
     "changed_models": 407,
-    "changed_sources": 29,
-    "models": 3368,
+    "changed_sources": 33,
+    "models": 3370,
     "providers": 18,
-    "removed_models": 3,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
