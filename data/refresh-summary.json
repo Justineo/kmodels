@@ -1,8 +1,8 @@
 {
-  "catalog_version": "86b0d003c85b6d55faf24329cac49f0e8fc014742e9fdd10fcfcb3f0d70dcacc",
-  "generated_at": "2026-08-03T09:03:13.257Z",
+  "catalog_version": "59e4e3a8fec45d7a453d948d09a98d77e45742274bfaae9c323d715b913d7728",
+  "generated_at": "2026-08-03T11:02:58.561Z",
   "outcome": "changed",
-  "previous_catalog_version": "b690588adb4578ef786efc68201cd748f89d71912fac0f4b93eba2224e899d18",
+  "previous_catalog_version": "86b0d003c85b6d55faf24329cac49f0e8fc014742e9fdd10fcfcb3f0d70dcacc",
   "providers": [
     {
       "attempt": {
@@ -1332,9 +1332,9 @@
             "source_id": "dashscope-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 17,
             "source_id": "dashscope-deployable-api"
           }
@@ -1852,19 +1852,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 14,
+        "changed": 13,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "dashscope-asr"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-deployable-api"
           },
           {
             "content_changed": true,
@@ -1943,7 +1937,7 @@
         "previous": 14,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2156,9 +2150,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
@@ -2170,25 +2164,23 @@
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 2,
+        "added": 1,
         "added_model_refs": [
-          "huggingface/VietAI/envit5-translation",
-          "huggingface/microsoft/deberta-large"
+          "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731"
         ],
-        "changed": 34,
+        "changed": 29,
         "changed_fields": {
-          "capabilities": 3,
-          "limits": 30,
-          "updated_date": 1
+          "capabilities": 2,
+          "limits": 29
         },
         "changed_models": [
           {
@@ -2223,6 +2215,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
@@ -2273,12 +2266,6 @@
             "fields": [
               "limits"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-VL-30B-A3B-Instruct"
-          },
-          {
-            "fields": [
-              "limits"
-            ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
           },
           {
@@ -2292,30 +2279,6 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
-          },
-          {
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/cointegrated/rubert-tiny-toxicity"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Flash"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
           },
           {
             "fields": [
@@ -2379,6 +2342,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
@@ -2397,15 +2361,17 @@
           }
         ],
         "current": 1539,
-        "previous": 1537,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1503
+        "previous": 1539,
+        "removed": 1,
+        "removed_model_refs": [
+          "huggingface/alpindale/WizardLM-2-8x22B"
+        ],
+        "unchanged": 1509
       },
       "pricing": {
-        "commercial_hash": "de7c724864f97d8709473064dbe07fbb877e1ca6feb623813571b6af881028ba",
+        "commercial_hash": "82ec230c912e29541dbd93371da151482d0f616e31c951c5b1f8b11273042394",
         "outcome": "commercial",
-        "previous_commercial_hash": "4778e19e731a79119c3147561ce31763e61f303e75a0d0ef714a481927000d58"
+        "previous_commercial_hash": "de7c724864f97d8709473064dbe07fbb877e1ca6feb623813571b6af881028ba"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2413,20 +2379,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2438,7 +2392,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2481,9 +2435,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -2630,26 +2584,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2870,23 +2818,23 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 93,
             "source_id": "openai-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1,
             "source_id": "openai-overview"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 65,
             "source_id": "openai-deprecations"
           },
@@ -3058,32 +3006,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-deprecations"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -3974,13 +3903,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 2,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 407,
-    "changed_sources": 33,
+    "changed_models": 402,
+    "changed_sources": 26,
     "models": 3370,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
