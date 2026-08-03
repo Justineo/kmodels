@@ -302,6 +302,7 @@ export function compilePricingSnapshot(
       providerSnapshot.observed_at,
       replaySources(replay, manifest, providerSnapshot, current),
       current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
+      manifest.pricingCategoricalLabels,
     );
     if (partition === undefined)
       throw new Error(`Pricing replay for ${providerId} produced nothing`);

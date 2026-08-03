@@ -136,7 +136,7 @@ describe("website data", () => {
     ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
   }, 90_000);
 
-  it("projects numeric selector domains without degenerate ranges", async () => {
+  it("projects exact numeric values and complete range partitions as choices", async () => {
     const details = (await publicationData()).publication.details.flatMap((chunk) => chunk.details);
     const selectors = details.flatMap(
       ({ pricing }) => pricing?.offers.flatMap((offer) => offer.selectors) ?? [],
@@ -144,6 +144,13 @@ describe("website data", () => {
     for (const selector of selectors) {
       if (selector.kind === "decimal_values") {
         expect(new Set(selector.values).size, selector.key).toBe(selector.values.length);
+        continue;
+      }
+      if (selector.kind === "decimal_buckets") {
+        expect(new Set(selector.values.map(({ key }) => key)).size, selector.key).toBe(
+          selector.values.length,
+        );
+        expect(selector.values.length, selector.key).toBeGreaterThan(1);
         continue;
       }
       if (selector.kind !== "decimal_range") continue;
@@ -157,6 +164,47 @@ describe("website data", () => {
           selector.key,
         ).toBe(true);
     }
+    expect(selectors.some(({ kind }) => kind === "decimal_buckets")).toBe(true);
+    expect(selectors.some(({ kind }) => kind === "decimal_range")).toBe(true);
+
+    const grok = details.find(({ model_ref }) => model_ref === "xai/grok-4.5@1.0");
+    expect(
+      grok?.pricing?.offers[0]?.selectors.find(
+        ({ dimension }) =>
+          dimension.namespace === "kmodels" && dimension.value === "context_tokens",
+      ),
+    ).toMatchObject({
+      kind: "decimal_buckets",
+      values: [
+        {
+          label: "≤ 199,999",
+          lower: { value: "0", inclusive: true },
+          upper: { value: "199999", inclusive: true },
+        },
+        {
+          label: "≥ 200,000",
+          lower: { value: "200000", inclusive: true },
+        },
+      ],
+    });
+
+    const voice = details.find(
+      ({ model_ref }) => model_ref === "xai/grok-voice-think-fast-2.0@1.0",
+    );
+    const operations = voice?.pricing?.offers[0]?.selectors.find(
+      ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "operation",
+    );
+    expect(operations?.kind).toBe("categorical");
+    expect(operations?.kind === "categorical" ? operations.values : []).toContainEqual(
+      expect.objectContaining({
+        label: "Text input",
+        value: {
+          namespace: "provider",
+          provider_id: "xai",
+          value: "conversation.item.create",
+        },
+      }),
+    );
   }, 90_000);
 
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {

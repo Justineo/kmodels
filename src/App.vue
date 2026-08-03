@@ -501,7 +501,7 @@ onMounted(() => {
     void import("./details-app.ts")
       .then(({ mountDetailsApp }) => mountDetailsApp())
       .catch((error: unknown) => console.error(error));
-    preloadWebsiteDetails(models.value);
+    preloadWebsiteDetails(props.catalog.data_version, models.value);
   });
 });
 

@@ -1,4 +1,5 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
+import { manifests, type ProviderManifest } from "./manifests.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
@@ -8,6 +9,7 @@ import {
   formatCategoricalValue,
   formatDimension,
   formatMeter,
+  isWholeNumberDimension,
   isModelDimension,
   modelPricingView,
   modelPricingViewFromIndex,
@@ -20,7 +22,9 @@ import {
 import type {
   AllowanceReset,
   PriceAllowanceTarget,
+  PriceCategoricalValue,
   PriceCondition,
+  PriceDimension,
   PriceMeter,
   PricingBook,
   PricingCatalog,
@@ -44,7 +48,11 @@ import {
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
-const selectorCache = new WeakMap<PricingOffer, WebsitePricingSelector[]>();
+type CategoricalLabelIndex = ReadonlyMap<string, string>;
+const selectorCache = new WeakMap<
+  PricingOffer,
+  WeakMap<CategoricalLabelIndex, WebsitePricingSelector[]>
+>();
 
 export interface WebsitePublication {
   catalog: WebsiteCatalogIndex;
@@ -58,6 +66,7 @@ export function websitePublication(
   dataVersion: string,
 ): WebsitePublication {
   const index = pricingViewIndex(pricing);
+  const labels = categoricalLabelIndex(pricing);
   const pricingViews = new Map(
     catalog.models.map((model) => [model.uid, modelPricingViewFromIndex(index, model)]),
   );
@@ -66,7 +75,7 @@ export function websitePublication(
     if (result === undefined) throw new Error(`Missing pricing view for ${model.uid}`);
     return result;
   };
-  const details = websiteDetailChunks(catalog, dataVersion, view);
+  const details = websiteDetailChunks(catalog, dataVersion, view, labels);
   const detailChunkByModel = new Map(
     details.flatMap(({ chunk, details: chunkDetails }) =>
       chunkDetails.map((detail): [string, number] => [detail.model_ref, chunk]),
@@ -102,7 +111,7 @@ export function websitePublication(
     pricing: websitePricingSummariesSchema.parse({
       schema_version: 1,
       data_version: dataVersion,
-      pricing: catalog.models.map((model) => pricingSummary(view(model), model)),
+      pricing: catalog.models.map((model) => pricingSummary(view(model), model, labels)),
     }),
     details,
   };
@@ -112,6 +121,7 @@ function websiteDetailChunks(
   catalog: Catalog,
   dataVersion: string,
   view: (model: ProviderModel) => ModelPricingView,
+  labels: CategoricalLabelIndex,
 ): WebsiteDetailChunk[] {
   const chunks: WebsiteDetailChunk[] = [];
 
@@ -119,7 +129,7 @@ function websiteDetailChunks(
     const providerDetails = catalog.models
       .filter((model) => model.provider_id === provider.id)
       .map((model) => {
-        const detail = websiteModelDetailFromView(view(model), model);
+        const detail = websiteModelDetailFromView(view(model), model, labels);
         return {
           detail,
           bytes: Buffer.byteLength(JSON.stringify(detail)),
@@ -132,7 +142,7 @@ function websiteDetailChunks(
     function emitChunk(): void {
       if (chunkDetails.length === 0) return;
       const detailChunk = websiteDetailChunkSchema.parse({
-        schema_version: 2,
+        schema_version: 3,
         data_version: dataVersion,
         provider_id: provider.id,
         chunk,
@@ -165,21 +175,25 @@ function websiteDetailChunks(
   return chunks;
 }
 
-function pricingSummary(view: ModelPricingView, model: ProviderModel) {
+function pricingSummary(
+  view: ModelPricingView,
+  model: ProviderModel,
+  labels: CategoricalLabelIndex,
+) {
   const input = projectPricingTableCellFromView(view, model, "input");
   const cache = projectPricingTableCellFromView(view, model, "cache");
   const output = projectPricingTableCellFromView(view, model, "output");
   const hasRepresentativeRate = input !== undefined || cache !== undefined || output !== undefined;
   return {
     outcome: view.outcome,
-    ...(hasRepresentativeRate ? {} : { status: pricingStatus(view, model.uid) }),
+    ...(hasRepresentativeRate ? {} : { status: pricingStatus(view, model.uid, labels) }),
     ...(input === undefined ? {} : { input }),
     ...(cache === undefined ? {} : { cache }),
     ...(output === undefined ? {} : { output }),
   };
 }
 
-function pricingStatus(view: ModelPricingView, modelRef: string) {
+function pricingStatus(view: ModelPricingView, modelRef: string, labels: CategoricalLabelIndex) {
   if (view.outcome === "not_applicable")
     return {
       label: "No offer",
@@ -224,7 +238,7 @@ function pricingStatus(view: ModelPricingView, modelRef: string) {
       label: "Incomplete",
       description: "Some official pricing facts cannot yet be expressed as exact rates.",
     };
-  if (pricingSelectors(offer).some((selector) => !hasFixedValue(selector)))
+  if (pricingSelectors(offer, labels).some((selector) => !hasFixedValue(selector)))
     return {
       label: "Varies",
       description: "Price varies by request context. Open model details to choose the options.",
@@ -239,14 +253,19 @@ export function websiteModelDetail(
   pricing: PricingCatalog,
   model: ProviderModel,
 ): WebsiteModelDetail {
-  return websiteModelDetailFromView(modelPricingView(pricing, model), model);
+  return websiteModelDetailFromView(
+    modelPricingView(pricing, model),
+    model,
+    categoricalLabelIndex(pricing),
+  );
 }
 
 function websiteModelDetailFromView(
   view: ModelPricingView,
   model: ProviderModel,
+  labels: CategoricalLabelIndex,
 ): WebsiteModelDetail {
-  const pricingDetail = websitePricingDetail(view, model.uid);
+  const pricingDetail = websitePricingDetail(view, model.uid, labels);
   return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
@@ -267,6 +286,7 @@ function websiteModelDetailFromView(
 function websitePricingDetail(
   view: ModelPricingView,
   modelRef: string,
+  labels: CategoricalLabelIndex,
 ): WebsitePricingDetail | undefined {
   const snapshot =
     view.snapshot === undefined
@@ -289,7 +309,7 @@ function websitePricingDetail(
       ? undefined
       : websitePricingDetailSchema.parse({ snapshot, offers: [] });
   const offers = [...view.baseOffers, ...view.addOns].map((offer) =>
-    websiteOffer(view.books, offer, modelRef),
+    websiteOffer(view.books, offer, modelRef, labels),
   );
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
@@ -316,6 +336,7 @@ function websiteOffer(
   books: PricingBook[],
   offer: PricingOffer,
   modelRef: string,
+  labels: CategoricalLabelIndex,
 ): WebsitePricingOffer {
   const states = offer.states.map((state, index) => ({
     key: `state:${index}`,
@@ -382,7 +403,7 @@ function websiteOffer(
     role: offer.role,
     ...(offer.role === "add_on" ? { compatibility: compatibilityLabel(books, offer) } : {}),
     state_summary: offerStateSummary(offer, modelRef),
-    selectors: pricingSelectors(offer),
+    selectors: pricingSelectors(offer, labels),
     states,
     rates,
     allowances,
@@ -390,8 +411,12 @@ function websiteOffer(
   };
 }
 
-function pricingSelectors(offer: PricingOffer): WebsitePricingSelector[] {
-  const cached = selectorCache.get(offer);
+function pricingSelectors(
+  offer: PricingOffer,
+  labels: CategoricalLabelIndex,
+): WebsitePricingSelector[] {
+  const cache = selectorCache.get(offer);
+  const cached = cache?.get(labels);
   if (cached !== undefined) return cached;
   const byDimension = new Map<string, PriceCondition[]>();
   for (const condition of offerConditions(offer)) {
@@ -402,13 +427,19 @@ function pricingSelectors(offer: PricingOffer): WebsitePricingSelector[] {
     else current.push(condition);
   }
   const selectors = [...byDimension.entries()]
-    .map(([key, conditions]) => pricingSelector(key, conditions))
+    .map(([key, conditions]) => pricingSelector(key, conditions, labels))
     .sort((left, right) => compareUtf8(left.label, right.label));
-  selectorCache.set(offer, selectors);
+  const created = cache ?? new WeakMap<CategoricalLabelIndex, WebsitePricingSelector[]>();
+  created.set(labels, selectors);
+  if (cache === undefined) selectorCache.set(offer, created);
   return selectors;
 }
 
-function pricingSelector(key: string, conditions: PriceCondition[]): WebsitePricingSelector {
+function pricingSelector(
+  key: string,
+  conditions: PriceCondition[],
+  labels: CategoricalLabelIndex,
+): WebsitePricingSelector {
   const first = conditions[0];
   if (first === undefined) throw new Error(`Pricing selector ${key} has no conditions`);
   const base = {
@@ -424,7 +455,7 @@ function pricingSelector(key: string, conditions: PriceCondition[]): WebsitePric
           const valueKey = canonicalJsonKey(value);
           return [
             valueKey,
-            { key: valueKey, label: formatCategoricalValue(value), value },
+            { key: valueKey, label: categoricalLabel(labels, first.dimension, value), value },
           ] as const;
         });
       }),
@@ -467,7 +498,196 @@ function pricingSelector(key: string, conditions: PriceCondition[]): WebsitePric
         compareRationals(rationalFromDecimal(left), rationalFromDecimal(right)),
       ),
     };
+  const buckets = decimalBuckets(first.dimension, ranges);
+  if (buckets !== undefined)
+    return { ...base, kind: "decimal_buckets", unit: first.unit, values: buckets };
   return { ...base, kind: "decimal_range", unit: first.unit, ranges };
+}
+
+function categoricalLabelIndex(pricing: PricingCatalog): CategoricalLabelIndex {
+  const labels = new Map<string, string>();
+  for (const vocabulary of pricing.provider_vocabularies)
+    for (const atom of vocabulary.atoms)
+      if (atom.kind === "categorical_value" && atom.label !== undefined)
+        addCategoricalLabel(
+          labels,
+          categoricalLabelIdentity(vocabulary.provider_id, atom.dimension, atom.key),
+          atom.label,
+        );
+  const providerManifests: readonly ProviderManifest[] = manifests;
+  for (const manifest of providerManifests)
+    for (const label of manifest.pricingCategoricalLabels ?? [])
+      addCategoricalLabel(
+        labels,
+        categoricalLabelIdentity(manifest.provider.id, label.dimension, label.value),
+        label.label,
+      );
+  return labels;
+}
+
+function addCategoricalLabel(labels: Map<string, string>, identity: string, label: string): void {
+  const current = labels.get(identity);
+  if (current !== undefined && current !== label)
+    throw new Error(`Provider categorical label conflicts with its canonical vocabulary`);
+  labels.set(identity, label);
+}
+
+function categoricalLabel(
+  labels: CategoricalLabelIndex,
+  dimension: PriceDimension,
+  value: PriceCategoricalValue,
+): string {
+  if (value.namespace === "provider") {
+    const label = labels.get(categoricalLabelIdentity(value.provider_id, dimension, value.value));
+    if (label !== undefined) return label;
+  }
+  return formatCategoricalValue(value);
+}
+
+function categoricalLabelIdentity(
+  providerId: string,
+  dimension: PriceDimension,
+  value: string,
+): string {
+  return canonicalJsonKey([providerId, dimension, value]);
+}
+
+type WebsiteDecimalRange = Extract<
+  WebsitePricingSelector,
+  { kind: "decimal_range" }
+>["ranges"][number];
+type WebsiteDecimalBucket = Extract<
+  WebsitePricingSelector,
+  { kind: "decimal_buckets" }
+>["values"][number];
+
+function decimalBuckets(
+  dimension: PriceCondition["dimension"],
+  ranges: WebsiteDecimalRange[],
+): WebsiteDecimalBucket[] | undefined {
+  if (ranges.length < 2) return undefined;
+  const partition = isWholeNumberDimension(dimension)
+    ? integerPartition(ranges)
+    : continuousPartition(ranges);
+  return partition?.map((range) => ({
+    key: canonicalJsonKey(range),
+    label: decimalBucketLabel(range),
+    ...range,
+  }));
+}
+
+function integerPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] | undefined {
+  const normalized = ranges.flatMap((range) => {
+    const lower = integerLower(range.lower);
+    const upper = integerUpper(range.upper);
+    return upper !== undefined && upper < lower
+      ? []
+      : [{ lower, ...(upper === undefined ? {} : { upper }) }];
+  });
+  if (normalized.length !== ranges.length) return undefined;
+  normalized.sort((left, right) =>
+    left.lower < right.lower ? -1 : left.lower > right.lower ? 1 : 0,
+  );
+  if (normalized[0]?.lower !== 0n || normalized.at(-1)?.upper !== undefined) return undefined;
+  for (let index = 1; index < normalized.length; index++) {
+    const previousUpper = normalized[index - 1]?.upper;
+    if (previousUpper === undefined || normalized[index]?.lower !== previousUpper + 1n)
+      return undefined;
+  }
+  return normalized.map(({ lower, upper }) => ({
+    lower: { value: String(lower), inclusive: true },
+    ...(upper === undefined ? {} : { upper: { value: String(upper), inclusive: true } }),
+  }));
+}
+
+function integerLower(bound: WebsiteDecimalRange["lower"]): bigint {
+  if (bound === undefined) return 0n;
+  const { integer, fractional } = decimalParts(bound.value);
+  return fractional || !bound.inclusive ? integer + 1n : integer;
+}
+
+function integerUpper(bound: WebsiteDecimalRange["upper"]): bigint | undefined {
+  if (bound === undefined) return undefined;
+  const { integer, fractional } = decimalParts(bound.value);
+  return fractional || bound.inclusive ? integer : integer - 1n;
+}
+
+function decimalParts(value: string): { integer: bigint; fractional: boolean } {
+  const [integer = "0", fraction = ""] = value.split(".");
+  return { integer: BigInt(integer), fractional: fraction !== "" };
+}
+
+function continuousPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] | undefined {
+  const sorted = [...ranges].sort(compareRangeLower);
+  const first = sorted[0];
+  if (first === undefined || !rangeIncludesZero(first) || sorted.at(-1)?.upper !== undefined)
+    return undefined;
+  for (let index = 1; index < sorted.length; index++) {
+    const previousUpper = sorted[index - 1]?.upper;
+    const lower = sorted[index]?.lower;
+    if (
+      previousUpper === undefined ||
+      lower === undefined ||
+      compareRationals(
+        rationalFromDecimal(previousUpper.value),
+        rationalFromDecimal(lower.value),
+      ) !== 0 ||
+      previousUpper.inclusive === lower.inclusive
+    )
+      return undefined;
+  }
+  return sorted.map((range) =>
+    range.lower === undefined
+      ? {
+          lower: { value: "0", inclusive: true },
+          ...(range.upper === undefined ? {} : { upper: range.upper }),
+        }
+      : range,
+  );
+}
+
+function compareRangeLower(left: WebsiteDecimalRange, right: WebsiteDecimalRange): number {
+  if (left.lower === undefined) return right.lower === undefined ? 0 : -1;
+  if (right.lower === undefined) return 1;
+  return compareRationals(
+    rationalFromDecimal(left.lower.value),
+    rationalFromDecimal(right.lower.value),
+  );
+}
+
+function rangeIncludesZero(range: WebsiteDecimalRange): boolean {
+  if (range.lower !== undefined && (range.lower.value !== "0" || !range.lower.inclusive))
+    return false;
+  return (
+    range.upper === undefined ||
+    compareRationals(rationalFromDecimal(range.upper.value), rationalFromDecimal("0")) > 0 ||
+    (range.upper.value === "0" && range.upper.inclusive)
+  );
+}
+
+function decimalBucketLabel({ lower, upper }: WebsiteDecimalRange): string {
+  if (
+    lower !== undefined &&
+    upper !== undefined &&
+    lower.value === upper.value &&
+    lower.inclusive &&
+    upper.inclusive
+  )
+    return formatSelectorDecimal(lower.value);
+  if (lower?.value === "0" && lower.inclusive && upper !== undefined)
+    return `${upper.inclusive ? "≤" : "<"} ${formatSelectorDecimal(upper.value)}`;
+  if (lower !== undefined && upper === undefined)
+    return `${lower.inclusive ? "≥" : ">"} ${formatSelectorDecimal(lower.value)}`;
+  if (lower === undefined || upper === undefined) throw new Error("Incomplete decimal bucket");
+  return `${lower.inclusive ? "≥" : ">"} ${formatSelectorDecimal(lower.value)} and ${
+    upper.inclusive ? "≤" : "<"
+  } ${formatSelectorDecimal(upper.value)}`;
+}
+
+function formatSelectorDecimal(value: string): string {
+  const [integer = "0", fraction] = value.split(".");
+  const grouped = integer.replace(/\B(?=(?:\d{3})+(?!\d))/g, ",");
+  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
 }
 
 function offerStateSummary(offer: PricingOffer, modelRef: string): string {

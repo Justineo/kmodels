@@ -31,7 +31,7 @@ import type {
   UnitExpression,
   UnitPrice,
 } from "./pricing-schema.ts";
-import type { SourceManifest } from "./manifests.ts";
+import type { ProviderManifest, SourceManifest } from "./manifests.ts";
 import {
   sourcePriceFactSchema,
   type ParsedPricingModel,
@@ -67,6 +67,7 @@ interface AdapterContext {
   bookKey: string;
   bookName: string;
   atoms: Map<string, ProviderAtomRegistryEntry>;
+  categoricalLabels: ReadonlyMap<string, string>;
   scopeBySource: Map<string, Set<string>>;
   offers: Map<"usage" | "capacity", OfferBuilder>;
 }
@@ -76,10 +77,12 @@ export function assembleParsedProviderPricing(
   observedAt: string,
   sources: readonly ParsedPricingSource[],
   publishedModels: readonly Pick<ParsedProviderModel, "model_id" | "uid" | "version">[],
+  categoricalLabels: ProviderManifest["pricingCategoricalLabels"] = [],
 ): ProviderPricingPartition | undefined {
   const publishedByUid = new Map(publishedModels.map((model) => [model.uid, model]));
   const publishedByModelId = uniqueModelsById(publishedModels);
   const atoms = new Map<string, ProviderAtomRegistryEntry>();
+  const labelIndex = categoricalLabelIndex(categoricalLabels);
   const contexts = new Map<string, AdapterContext>();
   const dispositions: AtomicModelDisposition[] = [];
   for (const { source, models } of sources) {
@@ -110,7 +113,7 @@ export function assembleParsedProviderPricing(
         });
         continue;
       }
-      const context = adapterContext(contexts, providerId, bound.uid, atoms);
+      const context = adapterContext(contexts, providerId, bound.uid, atoms, labelIndex);
       addModelPricing(context, source, bound);
     }
   }
@@ -150,6 +153,7 @@ function adapterContext(
   providerId: string,
   modelRef: string,
   atoms: Map<string, ProviderAtomRegistryEntry>,
+  categoricalLabels: ReadonlyMap<string, string>,
 ): AdapterContext {
   const key = `model:${modelRef}`;
   const current = contexts.get(key);
@@ -159,6 +163,7 @@ function adapterContext(
     bookKey: key,
     bookName: `Pricing for ${modelRef}`,
     atoms,
+    categoricalLabels,
     scopeBySource: new Map(),
     offers: new Map(),
   };
@@ -748,17 +753,38 @@ function timeBoundary(value: string | undefined): PublishedValidity["from"] | un
 
 function providerCategorical(context: AdapterContext, dimension: PriceDimension, rawValue: string) {
   const key = rawValue.normalize("NFC");
+  const label = context.categoricalLabels.get(categoricalLabelIdentity(dimension, key));
   addAtom(context, {
     kind: "categorical_value",
     key,
     dimension,
     definition: `Provider-published ${dimension.value} value ${JSON.stringify(key)}`,
+    ...(label === undefined ? {} : { label }),
   });
   return {
     namespace: "provider" as const,
     provider_id: context.providerId,
     value: key,
   };
+}
+
+function categoricalLabelIndex(
+  labels: ProviderManifest["pricingCategoricalLabels"],
+): ReadonlyMap<string, string> {
+  const result = new Map<string, string>();
+  for (const { dimension, value, label } of labels ?? []) {
+    const identity = categoricalLabelIdentity(dimension, value.normalize("NFC"));
+    const normalizedLabel = label.normalize("NFC");
+    const current = result.get(identity);
+    if (current !== undefined && current !== normalizedLabel)
+      throw new Error(`Provider categorical value ${value} has conflicting labels`);
+    result.set(identity, normalizedLabel);
+  }
+  return result;
+}
+
+function categoricalLabelIdentity(dimension: PriceDimension, value: string): string {
+  return canonicalJson([dimension, value]);
 }
 
 function addAtom(context: AdapterContext, atom: ProviderAtomRegistryEntry): void {

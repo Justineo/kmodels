@@ -4052,6 +4052,7 @@ describe("xAI adapter", () => {
   });
 
   it("keeps standard, long-context, batch, priority, media, and tool rates distinct", async () => {
+    const value = manifest("xai");
     const models = await xaiCatalog();
     const multiAgent = models.find(({ model_id }) => model_id === "grok-4.20-multi-agent-0309");
     const build = models.find(({ model_id }) => model_id === "grok-build-0.1");
@@ -4077,6 +4078,39 @@ describe("xAI adapter", () => {
     expect(build?.price_facts.some(({ conditions }) => conditions.service_tier === "batch")).toBe(
       false,
     );
+
+    const operationLabels = new Map(
+      value.pricingCategoricalLabels
+        ?.filter(
+          ({ dimension }) => dimension.namespace === "kmodels" && dimension.value === "operation",
+        )
+        .map(({ value: operation, label }) => [operation, label]),
+    );
+    const operations = new Set(
+      models.flatMap(({ price_facts }) =>
+        price_facts.flatMap(({ conditions }) =>
+          conditions.operation === undefined ? [] : [conditions.operation],
+        ),
+      ),
+    );
+    expect([...operations].sort()).toEqual([...operationLabels.keys()].sort());
+
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing xAI pricing source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    expect(
+      partition?.vocabulary.atoms.flatMap((atom) =>
+        atom.kind === "categorical_value" && atom.dimension.value === "operation"
+          ? [[atom.key, atom.label]]
+          : [],
+      ),
+    ).toEqual([...operationLabels].sort(([left], [right]) => left.localeCompare(right)));
 
     const changedPriority = await xaiCatalog(
       "xai/models.txt",

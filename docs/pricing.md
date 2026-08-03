@@ -577,16 +577,35 @@ available after resolution. Raw allowance facts similarly make only the
 allowance summary incomplete.
 
 Numeric selectors preserve their canonical domain. Dimensions containing only
-inclusive singleton ranges become discrete choices; other numeric dimensions
-show their published ranges and reject out-of-range input. Token counts and
-cache TTLs accept whole numbers, while durations may be fractional. The UI
-never widens an exact price condition into a neighboring interval.
+inclusive singleton ranges become discrete choices. When the distinct range
+predicates are mutually exclusive and together cover the dimension's complete
+non-negative domain, the detail projection emits ordered range choices instead
+of asking for an arbitrary representative number. Token counts and cache TTLs
+are partitioned over whole numbers; other numeric dimensions are partitioned
+over continuous decimals. Range-choice labels preserve the exact mathematical
+operators (`<`, `≤`, `>`, and `≥`) rather than paraphrasing their boundary
+semantics. A selected range retains its exact bounds. The
+applicability evaluator resolves a predicate only when that full selected range
+is contained in or disjoint from it, while a partial overlap stays unresolved.
+Ranges with a gap or overlap remain exact-value inputs and reject out-of-range
+values. The UI never widens an exact price condition into a neighboring interval.
 
 The compact detail payload contains display-ready values and selectors, not
 audit observations. Source-native display strings are derived while the
 validated observations are available and then emitted without their locators,
 raw fields, or evidence arrays. Equal observations remain one row rather than
 being expanded back into the source's flattened layout.
+
+Provider-owned categorical values keep their exact canonical keys even when
+those keys are wire-protocol identifiers rather than suitable UI copy. A
+provider may define reviewed labels for its categorical vocabulary once at the
+provider boundary. Canonical assembly attaches those labels to matching
+provider atoms across every model and offer, including local pricing replay.
+The website uses the same provider registry as a build-time fallback and
+requires any label carried by the canonical vocabulary to agree with it, then
+resolves labels by provider, dimension, and exact value. Values without a
+reviewed label continue through the shared conservative formatter. Components
+never contain provider- or value-specific label branches.
 
 ## Validation and bounded work
 

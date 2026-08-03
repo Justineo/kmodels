@@ -228,6 +228,8 @@ function validateVocabulary(
   for (const atom of vocabulary.atoms) {
     assertNormalizedSemantic(atom.key, "provider atom key");
     assertReviewedText(atom.definition, "provider atom definition");
+    if (atom.kind === "categorical_value" && atom.label !== undefined)
+      assertReviewedText(atom.label, "provider atom label");
     if (
       atom.kind === "categorical_value" &&
       atom.dimension.namespace === "provider" &&

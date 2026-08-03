@@ -186,6 +186,16 @@ const websiteDecimalRangeSchema = z
   .refine(({ lower, upper }) => lower !== undefined || upper !== undefined, {
     message: "A website decimal range must have a bound",
   });
+const websiteDecimalBucketSchema = z
+  .strictObject({
+    key: nonEmpty,
+    label: nonEmpty,
+    lower: decimalBoundSchema.optional(),
+    upper: decimalBoundSchema.optional(),
+  })
+  .refine(({ lower, upper }) => lower !== undefined || upper !== undefined, {
+    message: "A website decimal bucket must have a bound",
+  });
 
 const websitePricingSelectorSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -210,6 +220,12 @@ const websitePricingSelectorSchema = z.discriminatedUnion("kind", [
     kind: z.literal("decimal_values"),
     unit: unitExpressionSchema,
     values: z.array(nonEmpty).min(1),
+  }),
+  z.strictObject({
+    ...selectorBase,
+    kind: z.literal("decimal_buckets"),
+    unit: unitExpressionSchema,
+    values: z.array(websiteDecimalBucketSchema).min(2),
   }),
   z.strictObject({
     ...selectorBase,
@@ -313,7 +329,7 @@ export const websiteModelDetailSchema = z.strictObject({
 });
 
 export const websiteDetailChunkSchema = z.strictObject({
-  schema_version: z.literal(2),
+  schema_version: z.literal(3),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
