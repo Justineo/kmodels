@@ -1,8 +1,8 @@
 {
-  "catalog_version": "bae7c9fbbcb0acfb4ba34829da82e255e060bf59e09414e949f47432a22e3bb7",
-  "generated_at": "2026-08-03T20:29:52.803Z",
+  "catalog_version": "ad38d18f4ab9c5f43238f92d471895614487f61aa6d356a3f99a9de179f2cad3",
+  "generated_at": "2026-08-03T21:23:41.548Z",
   "outcome": "changed",
-  "previous_catalog_version": "0bc4b1fafee69c17673a7cac42afa7c1455b992c46e198aa662437870e362bd7",
+  "previous_catalog_version": "bae7c9fbbcb0acfb4ba34829da82e255e060bf59e09414e949f47432a22e3bb7",
   "providers": [
     {
       "attempt": {
@@ -73,9 +73,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 31,
             "source_id": "anthropic-models"
           },
@@ -111,13 +111,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "anthropic-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2153,7 +2160,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1406,
+            "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2167,21 +2174,23 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1406,
+            "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 2,
+        "added": 4,
         "added_model_refs": [
-          "huggingface/plguillou/t5-base-fr-sum-cnndm",
-          "huggingface/zai-org/GLM-4.5"
+          "huggingface/Modotte/AIRealNet",
+          "huggingface/chendelong/DirectSAM-1800px-0424",
+          "huggingface/google/efficientnet-b7",
+          "huggingface/staka/fugumt-ja-en"
         ],
-        "changed": 31,
+        "changed": 30,
         "changed_fields": {
-          "capabilities": 3,
-          "limits": 29
+          "capabilities": 1,
+          "limits": 30
         },
         "changed_models": [
           {
@@ -2264,12 +2273,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-Coder-480B-A35B-Instruct"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -2288,12 +2291,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2306,7 +2303,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
@@ -2328,6 +2324,12 @@
               "limits"
             ],
             "model_ref": "huggingface/utter-project/EuroLLM-22B-Instruct-2512"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.5"
           },
           {
             "fields": [
@@ -2361,6 +2363,7 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.1-FP8"
@@ -2372,20 +2375,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1536,
-        "previous": 1537,
-        "removed": 3,
-        "removed_model_refs": [
-          "huggingface/Modotte/AIRealNet",
-          "huggingface/google/efficientnet-b7",
-          "huggingface/staka/fugumt-ja-en"
-        ],
-        "unchanged": 1503
+        "current": 1540,
+        "previous": 1536,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1506
       },
       "pricing": {
         "commercial_hash": "16bcc1ab733e0401bd8822535f5cfc2874520e6853b213a79c63f07d214b4b5d",
-        "outcome": "commercial",
-        "previous_commercial_hash": "87009c666c081a995bed1b173849e95b03e9a5b073ddea6c1e9d51a62ae99f8c"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "16bcc1ab733e0401bd8822535f5cfc2874520e6853b213a79c63f07d214b4b5d"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2775,14 +2774,14 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 232,
+            "parsed_models": 231,
             "source_id": "ollama-library"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 21,
+            "parsed_models": 20,
             "source_id": "ollama-cloud-models"
           }
         ]
@@ -2790,18 +2789,27 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 1,
+        "changed_fields": {
+          "source_refs": 1
+        },
+        "changed_models": [
+          {
+            "fields": [
+              "source_refs"
+            ],
+            "model_ref": "ollama/gemini-3-flash-preview"
+          }
+        ],
         "current": 239,
         "previous": 239,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 239
+        "unchanged": 238
       },
       "pricing": {
-        "commercial_hash": "5a3a53ec7eb2648978cfba518718d8faf1367f50ec80f7ab85a8bb4ad11e109d",
-        "outcome": "provenance_only",
+        "commercial_hash": "20793b886123fe0edab1a896226480212a194e01ccfabf5f3ed388c48f66cab8",
+        "outcome": "commercial",
         "previous_commercial_hash": "5a3a53ec7eb2648978cfba518718d8faf1367f50ec80f7ab85a8bb4ad11e109d"
       },
       "provider_id": "ollama",
@@ -3074,9 +3082,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 315,
             "source_id": "vercel-models"
           }
@@ -3734,8 +3742,8 @@
         "unchanged": 209
       },
       "pricing": {
-        "commercial_hash": "09f4e9a200ebe444fcb62988a307a7e1990f578076f998728626168a070c1051",
-        "outcome": "provenance_only",
+        "commercial_hash": "e623543886de7766628d5c74e4d914c477b22be190ca0ec97324b1e159d0de35",
+        "outcome": "commercial",
         "previous_commercial_hash": "09f4e9a200ebe444fcb62988a307a7e1990f578076f998728626168a070c1051"
       },
       "provider_id": "vercel",
@@ -3744,13 +3752,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vercel-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3960,13 +3975,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 2,
+    "added_models": 4,
     "added_sources": 0,
     "changed_models": 406,
-    "changed_sources": 31,
-    "models": 3369,
+    "changed_sources": 33,
+    "models": 3373,
     "providers": 18,
-    "removed_models": 3,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
