@@ -211,6 +211,19 @@ export type ProviderManifest = ProviderManifestBase &
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
 
+type StandardPriceDimension = Extract<PriceDimension, { namespace: "kmodels" }>["value"];
+
+function pricingLabels(
+  dimension: StandardPriceDimension,
+  labels: Readonly<Record<string, string>>,
+): NonNullable<ProviderManifest["pricingCategoricalLabels"]> {
+  return Object.entries(labels).map(([value, label]) => ({
+    dimension: { namespace: "kmodels", value: dimension },
+    value,
+    label,
+  }));
+}
+
 const xaiApiSource = (
   id: string,
   path: string,
@@ -474,6 +487,7 @@ export const manifests = [
       docs_url: "https://platform.claude.com/docs/en/about-claude/models/overview",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: pricingLabels("inference_geo", { us: "US" }),
     sources: [
       {
         id: "anthropic-models",
@@ -623,6 +637,30 @@ export const manifests = [
       docs_url: "https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html",
       catalog_scope: "regional",
     },
+    pricingCategoricalLabels: [
+      ...pricingLabels("deployment_scope", {
+        geo_cross_region: "Geographic Cross-Region",
+        global_cross_region: "Global Cross-Region",
+        in_region: "In-Region",
+      }),
+      ...pricingLabels("endpoint", {
+        "bedrock-mantle": "Bedrock Mantle",
+        "bedrock-runtime": "Bedrock Runtime",
+      }),
+      ...pricingLabels("operation", {
+        I2I: "Image to image",
+        I2V: "Image to video",
+        T2I: "Text to image",
+        T2V: "Text to video",
+      }),
+      ...pricingLabels("service_tier", {
+        provisioned_1_month: "Provisioned (1-month commitment)",
+        provisioned_6_month: "Provisioned (6-month commitment)",
+        provisioned_no_commit: "Provisioned (no commitment)",
+        reserved_1_month: "Reserved (1-month commitment)",
+        reserved_3_month: "Reserved (3-month commitment)",
+      }),
+    ],
     sources: [
       {
         id: "bedrock-models",
@@ -855,6 +893,11 @@ export const manifests = [
       docs_url: "https://vercel.com/ai-gateway/models",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: [
+      ...pricingLabels("quality", { std: "Standard" }),
+      ...pricingLabels("region", { eu: "EU", us: "US" }),
+      ...pricingLabels("resolution", { "2k": "2K", "4k": "4K" }),
+    ],
     sources: [
       {
         id: "vercel-models",
@@ -904,6 +947,59 @@ export const manifests = [
         "https://learn.microsoft.com/azure/foundry/foundry-models/concepts/models-sold-directly-by-azure",
       catalog_scope: "mixed",
     },
+    pricingCategoricalLabels: [
+      ...pricingLabels("deployment_scope", {
+        DataZoneBatch: "Data Zone Batch",
+        DataZoneStandard: "Data Zone Standard",
+        GlobalBatch: "Global Batch",
+        GlobalStandard: "Global Standard",
+      }),
+      ...pricingLabels("region", {
+        australiaeast: "Australia East",
+        australiasoutheast: "Australia Southeast",
+        brazilsouth: "Brazil South",
+        canadacentral: "Canada Central",
+        canadaeast: "Canada East",
+        centralindia: "Central India",
+        centralus: "Central US",
+        denmarkeast: "Denmark East",
+        eastasia: "East Asia",
+        eastus: "East US",
+        eastus2: "East US 2",
+        francecentral: "France Central",
+        germanywestcentral: "Germany West Central",
+        indonesiacentral: "Indonesia Central",
+        italynorth: "Italy North",
+        japaneast: "Japan East",
+        japanwest: "Japan West",
+        jioindiawest: "Jio India West",
+        koreacentral: "Korea Central",
+        malaysiawest: "Malaysia West",
+        northcentralus: "North Central US",
+        northeurope: "North Europe",
+        norwayeast: "Norway East",
+        polandcentral: "Poland Central",
+        qatarcentral: "Qatar Central",
+        southafricanorth: "South Africa North",
+        southcentralus: "South Central US",
+        southeastasia: "Southeast Asia",
+        southindia: "South India",
+        spaincentral: "Spain Central",
+        swedencentral: "Sweden Central",
+        switzerlandnorth: "Switzerland North",
+        switzerlandwest: "Switzerland West",
+        uaenorth: "UAE North",
+        uksouth: "UK South",
+        ukwest: "UK West",
+        usgovarizona: "US Gov Arizona",
+        usgovvirginia: "US Gov Virginia",
+        westcentralus: "West Central US",
+        westeurope: "West Europe",
+        westus: "West US",
+        westus2: "West US 2",
+        westus3: "West US 3",
+      }),
+    ],
     sources: [
       {
         id: "azure-models",
@@ -1083,6 +1179,13 @@ export const manifests = [
       docs_url: "https://ai.google.dev/gemini-api/docs/models",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: [
+      ...pricingLabels("operation", {
+        google_maps: "Google Maps",
+        google_search: "Google Search",
+      }),
+      ...pricingLabels("resolution", { "4k": "4K" }),
+    ],
     sources: [
       {
         id: "gemini-models",
@@ -1215,6 +1318,10 @@ export const manifests = [
       docs_url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models",
       catalog_scope: "regional",
     },
+    pricingCategoricalLabels: [
+      ...pricingLabels("deployment_scope", { "non-global": "Non-global" }),
+      ...pricingLabels("resolution", { "4k": "4K" }),
+    ],
     sources: [
       {
         id: "vertex-google-models",
@@ -1511,6 +1618,9 @@ export const manifests = [
       docs_url: "https://docs.cohere.com/docs/models",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: pricingLabels("capacity", {
+      "starting rate": "Starting rate",
+    }),
     sources: [
       {
         id: "cohere-models",
@@ -1674,6 +1784,7 @@ export const manifests = [
       docs_url: "https://docs.mistral.ai/models/overview",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: pricingLabels("operation", { ocr: "OCR" }),
     sources: [
       {
         id: "mistral-models",
@@ -1938,46 +2049,16 @@ export const manifests = [
       catalog_scope: "global",
     },
     pricingCategoricalLabels: [
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "conversation.item.create",
-        label: "Text input",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "web_search",
-        label: "Web search",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "x_search",
-        label: "X search",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "code_execution",
-        label: "Code execution",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "code_interpreter",
-        label: "Code execution",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "attachment_search",
-        label: "File attachments",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "collections_search",
-        label: "Collections search",
-      },
-      {
-        dimension: { namespace: "kmodels", value: "operation" },
-        value: "file_search",
-        label: "Collections search",
-      },
+      ...pricingLabels("operation", {
+        attachment_search: "File attachments",
+        code_execution: "Code execution",
+        code_interpreter: "Code interpreter",
+        collections_search: "Collections search",
+        "conversation.item.create": "Text input",
+        file_search: "File search",
+        web_search: "Web search",
+        x_search: "X search",
+      }),
     ],
     sources: [
       {
@@ -2067,6 +2148,12 @@ export const manifests = [
       docs_url: "https://huggingface.co/docs/inference-providers/",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: pricingLabels("route_provider", {
+      deepinfra: "DeepInfra",
+      "fireworks-ai": "Fireworks",
+      ovhcloud: "OVHcloud AI Endpoints",
+      publicai: "Public AI",
+    }),
     sources: [
       huggingFaceInferenceSource,
       {
@@ -2126,6 +2213,45 @@ export const manifests = [
       docs_url: "https://www.alibabacloud.com/help/en/model-studio/models",
       catalog_scope: "regional",
     },
+    pricingCategoricalLabels: [
+      ...pricingLabels("context_tier", {
+        "0<Token≤128K": "0 < tokens ≤ 128K",
+        "0<Token≤1M": "0 < tokens ≤ 1M",
+        "0<Token≤200K": "0 < tokens ≤ 200K",
+        "0<Token≤256K": "0 < tokens ≤ 256K",
+        "0<Token≤32K": "0 < tokens ≤ 32K",
+        "128K<Token≤200K": "128K < tokens ≤ 200K",
+        "128K<Token≤256K": "128K < tokens ≤ 256K",
+        "256K<Token≤1M": "256K < tokens ≤ 1M",
+        "32K<Token≤128K": "32K < tokens ≤ 128K",
+        "32K<Token≤166K": "32K < tokens ≤ 166K",
+        "32K<Token≤200K": "32K < tokens ≤ 200K",
+      }),
+      ...pricingLabels("modality", {
+        "image/video": "Image / video",
+        "text + audioaudio only billed": "Text + audio (audio only billed)",
+        "text/image": "Text / image",
+        "text/image/video": "Text / image / video",
+        "textmultimodal input": "Text (multimodal input)",
+        "texttext-only input": "Text (text-only input)",
+      }),
+      ...pricingLabels("operation", {
+        "1_1landscape_video": "1:1 landscape video",
+        "3_4landscape_video": "3:4 landscape video",
+        non_thinking_and_thinking_modes: "Non-Thinking and Thinking modes",
+        non_thinking_mode: "Non-Thinking mode",
+        non_thinking_mode_only: "Non-Thinking mode only",
+        "prompt_extend=false": "Prompt rewriting disabled",
+        "prompt_extend=true": "Prompt rewriting enabled",
+        thinking_mode_chain_of_thought_answer_: "Thinking mode (chain of thought + answer)",
+        thinking_mode_only: "Thinking mode only",
+      }),
+      ...pricingLabels("service_tier", {
+        limited_time_20_percent_off: "Limited-time 20% off",
+        limited_time_40_percent_off: "Limited-time 40% off",
+        limited_time_50_percent_off: "Limited-time 50% off",
+      }),
+    ],
     sources: [
       {
         id: "dashscope-recommended",

@@ -2,8 +2,11 @@ import { readFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
+import { canonicalJsonKey } from "../src/catalog/canonical-value.ts";
 import { websitePublicationAssets } from "../src/catalog/endpoints.ts";
+import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
+import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
 import { WEBSITE_DETAIL_CHUNK_MAX_BYTES, websitePublication } from "../src/catalog/website-data.ts";
 import { generatedData } from "./generated-data-context.ts";
@@ -60,6 +63,7 @@ async function loadGeneratedPublication() {
   return {
     catalog,
     dataVersion,
+    pricing: pricing.data,
     publication: websitePublication(catalog, pricing.data, dataVersion),
   };
 }
@@ -67,6 +71,47 @@ async function loadGeneratedPublication() {
 function publicationData() {
   generatedPublication ??= loadGeneratedPublication();
   return generatedPublication;
+}
+
+function categoricalLabelIdentity(
+  providerId: string,
+  dimension: PriceDimension,
+  value: string,
+): string {
+  return canonicalJsonKey([providerId, dimension, value]);
+}
+
+function isExactRegionIdentifier(
+  providerId: string,
+  dimension: PriceDimension,
+  value: string,
+): boolean {
+  if (dimension.namespace !== "kmodels" || dimension.value !== "region") return false;
+  if (providerId === "amazon-bedrock") return /^(?:[a-z]{2}|us-gov)-[a-z0-9]+-\d$/.test(value);
+  return providerId === "vertex" && /^[a-z]+(?:-[a-z]+)+\d$/.test(value);
+}
+
+function needsReviewedCategoricalLabel(
+  providerId: string,
+  dimension: PriceDimension,
+  value: string,
+): boolean {
+  if (isExactRegionIdentifier(providerId, dimension, value)) return false;
+  return (
+    value.includes(".") ||
+    value.includes("=") ||
+    /[a-z][A-Z]/.test(value) ||
+    /(?:<|≤)/u.test(value) ||
+    /(?:audioaudio|textmultimodal|texttext)/.test(value) ||
+    /^(?:I2I|I2V|T2I|T2V|eu|ocr|std|us|\d+k)$/.test(value) ||
+    /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(value) ||
+    /(?:_\d+_month|_no_commit|_percent_off)$/.test(value) ||
+    /^\d+_\d+/.test(value) ||
+    (providerId === "azure" &&
+      dimension.namespace === "kmodels" &&
+      dimension.value === "region" &&
+      value !== "Global")
+  );
 }
 
 describe("website data", () => {
@@ -205,6 +250,65 @@ describe("website data", () => {
         },
       }),
     );
+  }, 90_000);
+
+  it("audits every provider categorical vocabulary and keeps selector labels unambiguous", async () => {
+    const { pricing, publication } = await publicationData();
+    const providerManifests: readonly ProviderManifest[] = manifests;
+    const configuredLabels = new Map(
+      providerManifests.flatMap((manifest) =>
+        (manifest.pricingCategoricalLabels ?? []).map(
+          ({ dimension, value, label }) =>
+            [categoricalLabelIdentity(manifest.provider.id, dimension, value), label] as const,
+        ),
+      ),
+    );
+    const vocabularyAtoms = new Set<string>();
+    const missingReviewedLabels: string[] = [];
+    for (const vocabulary of pricing.provider_vocabularies)
+      for (const atom of vocabulary.atoms) {
+        if (atom.kind !== "categorical_value") continue;
+        const identity = categoricalLabelIdentity(vocabulary.provider_id, atom.dimension, atom.key);
+        vocabularyAtoms.add(identity);
+        if (
+          atom.label === undefined &&
+          !configuredLabels.has(identity) &&
+          needsReviewedCategoricalLabel(vocabulary.provider_id, atom.dimension, atom.key)
+        )
+          missingReviewedLabels.push(
+            `${vocabulary.provider_id}:${canonicalJsonKey(atom.dimension)}:${atom.key}`,
+          );
+      }
+    expect(missingReviewedLabels).toEqual([]);
+    expect(
+      [...configuredLabels.keys()].filter((identity) => !vocabularyAtoms.has(identity)),
+    ).toEqual([]);
+
+    const projectedLabels = new Map<string, Set<string>>();
+    for (const detail of publication.details.flatMap((chunk) => chunk.details))
+      for (const offer of detail.pricing?.offers ?? [])
+        for (const selector of offer.selectors) {
+          if (selector.kind !== "categorical") continue;
+          expect(
+            new Set(selector.values.map(({ label }) => label)).size,
+            `${detail.model_ref}:${offer.id}:${selector.key}`,
+          ).toBe(selector.values.length);
+          for (const { label, value } of selector.values) {
+            if (value.namespace !== "provider") continue;
+            const identity = categoricalLabelIdentity(
+              value.provider_id,
+              selector.dimension,
+              value.value,
+            );
+            const labels = projectedLabels.get(identity) ?? new Set<string>();
+            labels.add(label);
+            projectedLabels.set(identity, labels);
+          }
+        }
+
+    for (const [identity, label] of configuredLabels)
+      expect([...(projectedLabels.get(identity) ?? [])], identity).toEqual([label]);
+    expect(configuredLabels.size).toBeGreaterThan(100);
   }, 90_000);
 
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {
