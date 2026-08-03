@@ -1,8 +1,8 @@
 {
-  "catalog_version": "9ad3577b9c3e7f46c63dc4b4dad43c941fd5d4a2b612f386c92b1745774e303a",
-  "generated_at": "2026-08-03T13:56:20.645Z",
+  "catalog_version": "f787faddee5c82fd9bf99dd8675ea5c2be28907babea40d33bc0cd7b79adad48",
+  "generated_at": "2026-08-03T15:01:44.273Z",
   "outcome": "changed",
-  "previous_catalog_version": "b7b5069faad53ff8feecfa1fafd3a72e2c7d168c286df30092544dcca8a77815",
+  "previous_catalog_version": "9ad3577b9c3e7f46c63dc4b4dad43c941fd5d4a2b612f386c92b1745774e303a",
   "providers": [
     {
       "attempt": {
@@ -2153,7 +2153,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1406,
+            "parsed_models": 1409,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2167,22 +2167,24 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1406,
+            "parsed_models": 1409,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 3,
+        "added": 4,
         "added_model_refs": [
-          "huggingface/chendelong/DirectSAM-1800px-0424",
-          "huggingface/google/bigbird-pegasus-large-pubmed",
-          "huggingface/shi-labs/oneformer_ade20k_swin_large"
+          "huggingface/Helsinki-NLP/opus-mt-sk-en",
+          "huggingface/Helsinki-NLP/opus-mt-tc-big-en-ko",
+          "huggingface/dunzhang/stella-mrl-large-zh-v3.5-1792d",
+          "huggingface/sshleifer/distilbart-cnn-12-6"
         ],
-        "changed": 32,
+        "changed": 34,
         "changed_fields": {
-          "capabilities": 3,
-          "limits": 30
+          "capabilities": 1,
+          "limits": 30,
+          "updated_date": 3
         },
         "changed_models": [
           {
@@ -2265,12 +2267,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-Coder-480B-A35B-Instruct"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
@@ -2291,7 +2287,7 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Flash"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
           },
           {
             "fields": [
@@ -2331,13 +2327,30 @@
           },
           {
             "fields": [
+              "updated_date"
+            ],
+            "model_ref": "huggingface/vinai/phobert-base"
+          },
+          {
+            "fields": [
+              "updated_date"
+            ],
+            "model_ref": "huggingface/vinai/phobert-base-v2"
+          },
+          {
+            "fields": [
+              "updated_date"
+            ],
+            "model_ref": "huggingface/vinai/phobert-large"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.5"
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.5V-FP8"
@@ -2379,21 +2392,18 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1536,
-        "previous": 1537,
-        "removed": 4,
+        "current": 1539,
+        "previous": 1536,
+        "removed": 1,
         "removed_model_refs": [
-          "huggingface/Helsinki-NLP/opus-mt-sk-en",
-          "huggingface/Helsinki-NLP/opus-mt-tc-big-en-ko",
-          "huggingface/dunzhang/stella-mrl-large-zh-v3.5-1792d",
-          "huggingface/sshleifer/distilbart-cnn-12-6"
+          "huggingface/facebook/mask2former-swin-large-ade-panoptic"
         ],
         "unchanged": 1501
       },
       "pricing": {
-        "commercial_hash": "04847a431b5a28a5d9ffd40735ce3a09918055fa943008d5af151547fd8af71a",
+        "commercial_hash": "82ec230c912e29541dbd93371da151482d0f616e31c951c5b1f8b11273042394",
         "outcome": "commercial",
-        "previous_commercial_hash": "82ec230c912e29541dbd93371da151482d0f616e31c951c5b1f8b11273042394"
+        "previous_commercial_hash": "04847a431b5a28a5d9ffd40735ce3a09918055fa943008d5af151547fd8af71a"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2469,9 +2479,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -2618,26 +2628,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2718,9 +2722,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 59,
             "source_id": "mistral-models"
           },
@@ -2756,20 +2760,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "mistral-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "mistral-models"
           }
         ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2886,9 +2896,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 133,
             "source_id": "openai-api"
           }
@@ -3046,13 +3056,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-api"
+          }
+        ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3943,13 +3960,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 3,
+    "added_models": 4,
     "added_sources": 0,
-    "changed_models": 405,
-    "changed_sources": 29,
-    "models": 3367,
+    "changed_models": 407,
+    "changed_sources": 30,
+    "models": 3370,
     "providers": 18,
-    "removed_models": 4,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
