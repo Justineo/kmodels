@@ -9,6 +9,7 @@ import {
   formatDimension,
   formatUnitExpression,
   isModelDimension,
+  isWholeNumberDimension,
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
 import { formatSentenceCase } from "../catalog/presentation.ts";
@@ -262,6 +263,18 @@ function selection(selector: WebsitePricingSelector): PricingSelection | undefin
     return value === "true" || value === "false"
       ? { dimension: selector.dimension, kind: "boolean", value: value === "true" }
       : undefined;
+  if (selector.kind === "decimal_buckets") {
+    const selected = selector.values.find(({ key }) => key === value);
+    return selected === undefined
+      ? undefined
+      : {
+          dimension: selector.dimension,
+          kind: "decimal_range",
+          unit: selector.unit,
+          ...(selected.lower === undefined ? {} : { lower: selected.lower }),
+          ...(selected.upper === undefined ? {} : { upper: selected.upper }),
+        };
+  }
   if (
     (selector.kind === "decimal_values" && !selector.values.includes(value)) ||
     (selector.kind === "decimal_range" && !isAcceptedDecimal(selector, value))
@@ -271,12 +284,7 @@ function selection(selector: WebsitePricingSelector): PricingSelection | undefin
 }
 
 function isIntegerSelector(selector: WebsitePricingSelector): boolean {
-  return (
-    selector.dimension.namespace === "kmodels" &&
-    ["cache_ttl_seconds", "context_tokens", "input_tokens", "output_tokens"].includes(
-      selector.dimension.value,
-    )
-  );
+  return isWholeNumberDimension(selector.dimension);
 }
 
 function isAcceptedDecimal(selector: DecimalRangeSelector, value: string): boolean {
@@ -460,7 +468,11 @@ function formatSnapshotAt(value: string): string {
             <span>
               {{ selector.label }}
               <template
-                v-if="selector.kind === 'decimal_values' || selector.kind === 'decimal_range'"
+                v-if="
+                  selector.kind === 'decimal_values' ||
+                  selector.kind === 'decimal_buckets' ||
+                  selector.kind === 'decimal_range'
+                "
               >
                 ({{ formatUnitExpression(selector.unit) }})
               </template>
@@ -488,6 +500,13 @@ function formatSnapshotAt(value: string): string {
               v-else-if="selector.kind === 'decimal_values'"
               :model-value="inputValue(selector.key)"
               :options="selector.values.map((value) => ({ value, label: value }))"
+              placeholder="Choose…"
+              @update:model-value="setInput(selector.key, $event)"
+            />
+            <UiSelect
+              v-else-if="selector.kind === 'decimal_buckets'"
+              :model-value="inputValue(selector.key)"
+              :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
               placeholder="Choose…"
               @update:model-value="setInput(selector.key, $event)"
             />
@@ -833,6 +852,7 @@ function formatSnapshotAt(value: string): string {
 .pricing-selector-grid label {
   display: grid;
   min-width: 0;
+  align-content: start;
   gap: var(--space-1);
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);

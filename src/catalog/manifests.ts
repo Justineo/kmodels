@@ -1,3 +1,4 @@
+import type { PriceDimension } from "./pricing-schema.ts";
 import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } from "./schema.ts";
 
 export type Extractor =
@@ -182,6 +183,11 @@ export interface SourceManifest {
 
 interface ProviderManifestBase {
   provider: Omit<Provider, "source_ids" | "last_successful_sync_at" | "catalog_version">;
+  pricingCategoricalLabels?: {
+    dimension: PriceDimension;
+    value: string;
+    label: string;
+  }[];
   supersededIdKinds?: ProviderModel["id_kind"][];
   supersededModelIds?: string[];
   warnOnMissing?: {
@@ -1931,6 +1937,48 @@ export const manifests = [
       docs_url: "https://docs.x.ai/developers/models",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: [
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "conversation.item.create",
+        label: "Text input",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "web_search",
+        label: "Web search",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "x_search",
+        label: "X search",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "code_execution",
+        label: "Code execution",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "code_interpreter",
+        label: "Code execution",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "attachment_search",
+        label: "File attachments",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "collections_search",
+        label: "Collections search",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "operation" },
+        value: "file_search",
+        label: "Collections search",
+      },
+    ],
     sources: [
       {
         id: "xai-models",

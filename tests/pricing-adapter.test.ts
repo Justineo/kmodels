@@ -178,6 +178,48 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(Object.hasOwn(parsed.conditions, "endpoint")).toBe(false);
   });
 
+  it("registers reviewed provider labels without changing canonical categorical values", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.price_facts = [
+      tokenRate("1", { operation: "provider.event.create" }),
+      tokenRate("2", { operation: "other_operation" }),
+    ];
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+      [
+        {
+          dimension: { namespace: "kmodels", value: "operation" },
+          value: "provider.event.create",
+          label: "Text input",
+        },
+      ],
+    );
+
+    expect(
+      partition?.vocabulary.atoms.filter(
+        (atom) => atom.kind === "categorical_value" && atom.dimension.value === "operation",
+      ),
+    ).toEqual([
+      {
+        kind: "categorical_value",
+        key: "other_operation",
+        dimension: { namespace: "kmodels", value: "operation" },
+        definition: 'Provider-published operation value "other_operation"',
+      },
+      {
+        kind: "categorical_value",
+        key: "provider.event.create",
+        dimension: { namespace: "kmodels", value: "operation" },
+        definition: 'Provider-published operation value "provider.event.create"',
+        label: "Text input",
+      },
+    ]);
+  });
+
   it("normalizes exact calculated rates and fixed/provider units", () => {
     const { provider: providerManifest, source: pricingSource } = pricingManifest();
     const parsedModel = model();

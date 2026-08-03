@@ -13,6 +13,7 @@ import {
   formatDenomination,
   formatDimension,
   formatUnitExpression,
+  isWholeNumberDimension,
   modelPricingView,
   projectPricingTableCell,
 } from "../src/catalog/pricing-presentation.ts";
@@ -181,6 +182,8 @@ describe("canonical pricing presentation", () => {
   it("uses concise labels for unit-bearing dimensions", () => {
     expect(formatDimension({ namespace: "kmodels", value: "cache_ttl_seconds" })).toBe("Cache TTL");
     expect(formatDimension({ namespace: "kmodels", value: "context_tokens" })).toBe("Context");
+    expect(isWholeNumberDimension({ namespace: "kmodels", value: "context_tokens" })).toBe(true);
+    expect(isWholeNumberDimension({ namespace: "kmodels", value: "duration_seconds" })).toBe(false);
   });
 
   it("short-circuits partial OR selectors and reports only live missing dimensions", () => {
@@ -240,6 +243,75 @@ describe("canonical pricing presentation", () => {
         },
       ]),
     ).toThrow("exact-integer digit limit");
+  });
+
+  it("evaluates interval selections without replacing them with representative points", () => {
+    const dimension = { namespace: "kmodels" as const, value: "context_tokens" as const };
+    const unit = {
+      factors: [{ unit: { namespace: "kmodels" as const, value: "token" as const }, power: 1 }],
+    };
+    const applicability: PriceApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "decimal_range",
+              dimension,
+              unit,
+              upper: { value: "199999", inclusive: true },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      evaluateApplicability(applicability, [
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "0", inclusive: true },
+          upper: { value: "199999", inclusive: true },
+        },
+      ]),
+    ).toEqual({ state: "true", missing_dimensions: [] });
+    expect(
+      evaluateApplicability(applicability, [
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "200000", inclusive: true },
+        },
+      ]),
+    ).toEqual({ state: "false", missing_dimensions: [] });
+
+    const overlapping: PriceApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "decimal_range",
+              dimension,
+              unit,
+              lower: { value: "100000", inclusive: true },
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      evaluateApplicability(overlapping, [
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "0", inclusive: true },
+          upper: { value: "199999", inclusive: true },
+        },
+      ]),
+    ).toEqual({ state: "missing", missing_dimensions: [dimension] });
   });
 
   it("formats exact namespace-qualified values without approximation", () => {

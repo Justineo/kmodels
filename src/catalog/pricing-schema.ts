@@ -445,6 +445,7 @@ export const providerAtomRegistryEntrySchema = z.union([
     key: nonEmptyString,
     dimension: priceDimensionSchema,
     definition: nonEmptyString,
+    label: nonEmptyString.optional(),
   }),
 ]);
 

@@ -69,6 +69,11 @@ const availability = computed(() => {
     : `${count} observed deployment${count === 1 ? "" : "s"}`;
 });
 const apiEndpoints = computed(() => props.detail?.api_endpoints ?? []);
+const detailStatus = computed(() => {
+  if (props.detail !== undefined) return formatSnakeCase(props.detail.scope);
+  if (props.loading) return "Loading details…";
+  return "Details unavailable";
+});
 
 watch(
   () => props.model,
@@ -202,7 +207,7 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
               <span class="status-badge" :data-status="primaryStatus(model)">
                 {{ primaryStatus(model) }}
               </span>
-              <span>{{ detail ? formatSnakeCase(detail.scope) : "Loading details…" }}</span>
+              <span>{{ detailStatus }}</span>
             </div>
 
             <p v-if="detail?.description" class="details-description">{{ detail.description }}</p>

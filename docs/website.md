@@ -75,10 +75,11 @@ Status: implemented
   a price or that model-level validation failed.
   Selecting another offer resets its child context, and context filtering never
   hides or reorders the choices above it. Context controls use the shared
-  customizable-select component. A categorical dimension with one possible
-  value is resolved and shown as compact fixed context instead of rendered as a
-  control. A rate appears only when the current partial context proves that it
-  applies; unresolved
+  customizable-select component. Configurable controls in the same grid row
+  stay top-aligned when one control includes guidance or validation text. A
+  categorical dimension with one possible value is resolved and shown as
+  compact fixed context instead of rendered as a control. A rate appears only
+  when the current partial context proves that it applies; unresolved
   alternatives stay hidden behind a prompt for their missing dimensions. The
   calculator resolves exact applicable rates but does not estimate usage,
   consume allowances, or calculate an invoice. Selected applicability is not
@@ -87,8 +88,10 @@ Status: implemented
   and does not repeat a selection count. A single offer state stays in the offer
   summary; state detail appears only when the offer has multiple possible outcomes.
   Numeric context preserves its published domain: singleton predicates become
-  choices; ranged predicates show their accepted ranges and reject invalid or
-  non-integral count/TTL input.
+  choices, and complete non-overlapping range partitions become ordered range
+  choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
+  operators. Ranges with gaps or overlaps continue to accept an exact value and
+  reject invalid or non-integral count/TTL input.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -221,6 +224,9 @@ Status: implemented
 - Use one `data_version` derived from the accepted catalog/pricing pair on the
   catalog, pricing-summary, and detail-chunk projections. Reject mismatched core
   chunks before mounting and mismatched deferred details before rendering them.
+  Scope deferred-source, parsed-chunk, and model-detail caches to that version;
+  evict rejected requests so a transient fetch or validation failure cannot
+  poison later attempts.
 - Keep the initial catalog parser small and dependency-free. On hover-capable
   pointer devices, load OverlayScrollbars runtime/CSS concurrently with core
   data so its explicit viewports replace native scrollbars before the first
@@ -249,7 +255,9 @@ Status: implemented
   so Vite can return the requested bytes without decoding the pack. UI requests
   do not open the separate export pack. Explicit `/catalog/`, `/providers/`, and
   `/pricing/` requests are served from `data/export-assets.pack`; they do not
-  parse either canonical mirror.
+  parse either canonical mirror. When either checked-in pack changes, the dev
+  server invalidates its in-memory profile; a UI-pack change reloads the page so
+  the catalog index, detail schema, and deferred chunks always advance together.
 - `/catalog/models.json`, `/catalog/summary.json`, `/catalog/ids.json`, the
   audit-rich `/catalog/index.json`, provider-scoped profiles, and
   `/pricing/index.json` remain explicit public downloads documented in the

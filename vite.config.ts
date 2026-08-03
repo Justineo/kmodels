@@ -7,6 +7,7 @@ import {
   readPublishedAssets,
   type PublishedAssetProfile,
 } from "./src/catalog/published-assets.ts";
+import { defaultProjectionPaths } from "./src/catalog/projection-paths.ts";
 import { generatedDataTests } from "./tests/generated-data-tests.ts";
 
 let developmentUiAssets: Promise<PublishedAssetProfile> | undefined;
@@ -27,6 +28,35 @@ function serveCatalog(): Plugin {
     name: "kmodels-catalog-serve",
     apply: "serve",
     configureServer(server) {
+      const uiAssetPaths = new Set([
+        defaultProjectionPaths.uiManifest,
+        defaultProjectionPaths.uiPack,
+      ]);
+      const exportAssetPaths = new Set([
+        defaultProjectionPaths.exportManifest,
+        defaultProjectionPaths.exportPack,
+      ]);
+      const watchedAssetPaths = [...uiAssetPaths, ...exportAssetPaths];
+      let reloadTimer: ReturnType<typeof setTimeout> | undefined;
+
+      function invalidatePublishedAssets(path: string): void {
+        if (uiAssetPaths.has(path)) {
+          developmentUiAssets = undefined;
+          if (reloadTimer !== undefined) clearTimeout(reloadTimer);
+          reloadTimer = setTimeout(() => {
+            server.ws.send({ type: "full-reload", path: "*" });
+            reloadTimer = undefined;
+          }, 50);
+        }
+        if (exportAssetPaths.has(path)) developmentExportAssets = undefined;
+      }
+
+      server.watcher.add(watchedAssetPaths);
+      server.watcher.on("change", invalidatePublishedAssets);
+      server.httpServer?.once("close", () => {
+        server.watcher.off("change", invalidatePublishedAssets);
+        if (reloadTimer !== undefined) clearTimeout(reloadTimer);
+      });
       server.middlewares.use((request, response, next) => {
         const path = new URL(request.url ?? "/", "http://localhost").pathname;
         void developmentAsset(path)

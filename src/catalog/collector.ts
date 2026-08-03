@@ -842,6 +842,7 @@ async function collectProvider(
         observedAt,
         pricingSources,
         models,
+        manifest.pricingCategoricalLabels,
       );
       if (pricing !== undefined) {
         validatePricingCatalog(

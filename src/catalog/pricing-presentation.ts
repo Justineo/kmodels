@@ -1,7 +1,11 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import { scaleDecimal } from "./pricing.ts";
-import { applicabilityContainedIn, unionApplicabilities } from "./pricing-canonical.ts";
+import {
+  applicabilitiesOverlap,
+  applicabilityContainedIn,
+  unionApplicabilities,
+} from "./pricing-canonical.ts";
 import { assertPricingDecimal } from "./pricing-constants.ts";
 import {
   compareRationals,
@@ -55,7 +59,8 @@ export type PricingSelection =
       kind: "decimal";
       value: string;
       unit: UnitExpression;
-    };
+    }
+  | Extract<PriceCondition, { kind: "decimal_range" }>;
 
 export interface ModelPricingView {
   outcome: "not_applicable" | "unknown" | "offers";
@@ -108,6 +113,12 @@ const outputMeters = [
   "provisioned_throughput",
 ] as const;
 const modelDimension: PriceDimension = { namespace: "kmodels", value: "model" };
+const wholeNumberDimensions = new Set([
+  "cache_ttl_seconds",
+  "context_tokens",
+  "input_tokens",
+  "output_tokens",
+]);
 
 export function evaluateApplicability(
   applicability: PriceApplicability,
@@ -674,6 +685,12 @@ function selectionMap(selections: readonly PricingSelection[]): Map<string, Pric
     const key = dimensionKey(selection.dimension);
     if (result.has(key)) throw new Error(`Duplicate pricing selection for ${key}`);
     if (selection.kind === "decimal") assertPricingDecimal(selection.value);
+    if (selection.kind === "decimal_range") {
+      if (selection.lower === undefined && selection.upper === undefined)
+        throw new Error("Decimal-range pricing selection has no bound");
+      if (selection.lower !== undefined) assertPricingDecimal(selection.lower.value);
+      if (selection.upper !== undefined) assertPricingDecimal(selection.upper.value);
+    }
     result.set(key, selection);
   }
   return result;
@@ -693,10 +710,16 @@ function evaluateCondition(
   if (condition.kind === "boolean")
     return selected.kind === "boolean" && condition.value === selected.value ? "true" : "false";
   if (
-    selected.kind !== "decimal" ||
+    (selected.kind !== "decimal" && selected.kind !== "decimal_range") ||
     canonicalJsonKey(selected.unit) !== canonicalJsonKey(condition.unit)
   )
     return "false";
+  if (selected.kind === "decimal_range") {
+    const selectedScope = { any_of: [{ all_of: [selected] }] };
+    const conditionScope = { any_of: [{ all_of: [condition] }] };
+    if (applicabilityContainedIn(selectedScope, conditionScope)) return "true";
+    return applicabilitiesOverlap(selectedScope, conditionScope) ? "missing" : "false";
+  }
   const value = rationalFromDecimal(selected.value);
   if (
     condition.lower !== undefined &&
@@ -783,6 +806,10 @@ function dimensionKey(value: PriceDimension): string {
 
 export function isModelDimension(dimension: PriceDimension): boolean {
   return dimension.namespace === "kmodels" && dimension.value === "model";
+}
+
+export function isWholeNumberDimension(dimension: PriceDimension): boolean {
+  return dimension.namespace === "kmodels" && wholeNumberDimensions.has(dimension.value);
 }
 
 function formatProviderValue(kind: string, providerId: string, value: string): string {
