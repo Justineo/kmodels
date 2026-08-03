@@ -1,8 +1,8 @@
 {
-  "catalog_version": "ad38d18f4ab9c5f43238f92d471895614487f61aa6d356a3f99a9de179f2cad3",
-  "generated_at": "2026-08-03T21:23:41.548Z",
+  "catalog_version": "d8f24a6fd30fd6996f2814e2428696869758853bb74f4634a681fbd362bf2038",
+  "generated_at": "2026-08-03T22:21:20.782Z",
   "outcome": "changed",
-  "previous_catalog_version": "bae7c9fbbcb0acfb4ba34829da82e255e060bf59e09414e949f47432a22e3bb7",
+  "previous_catalog_version": "ad38d18f4ab9c5f43238f92d471895614487f61aa6d356a3f99a9de179f2cad3",
   "providers": [
     {
       "attempt": {
@@ -73,9 +73,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 31,
             "source_id": "anthropic-models"
           },
@@ -111,20 +111,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "anthropic-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -1961,9 +1954,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 50,
             "source_id": "databricks-models"
           },
@@ -1999,13 +1992,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-models"
+          }
+        ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2157,9 +2157,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
@@ -2167,30 +2167,27 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 129,
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 4,
+        "added": 1,
         "added_model_refs": [
-          "huggingface/Modotte/AIRealNet",
-          "huggingface/chendelong/DirectSAM-1800px-0424",
-          "huggingface/google/efficientnet-b7",
-          "huggingface/staka/fugumt-ja-en"
+          "huggingface/alpindale/WizardLM-2-8x22B"
         ],
-        "changed": 30,
+        "changed": 32,
         "changed_fields": {
-          "capabilities": 1,
-          "limits": 30
+          "capabilities": 3,
+          "limits": 29
         },
         "changed_models": [
           {
@@ -2222,12 +2219,6 @@
               "limits"
             ],
             "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-12-2024"
-          },
-          {
-            "fields": [
-              "limits"
-            ],
-            "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
           },
           {
             "fields": [
@@ -2288,6 +2279,24 @@
               "limits"
             ],
             "model_ref": "huggingface/allenai/Olmo-3-7B-Instruct"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3.2"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/google/gemma-3-4b-it"
           },
           {
             "fields": [
@@ -2363,7 +2372,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.1-FP8"
@@ -2375,15 +2383,18 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1540,
-        "previous": 1536,
-        "removed": 0,
-        "removed_model_refs": [],
+        "current": 1539,
+        "previous": 1540,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025",
+          "huggingface/moonshotai/Kimi-K2-Thinking"
+        ],
         "unchanged": 1506
       },
       "pricing": {
-        "commercial_hash": "16bcc1ab733e0401bd8822535f5cfc2874520e6853b213a79c63f07d214b4b5d",
-        "outcome": "provenance_only",
+        "commercial_hash": "294d8338969cee876efde04350c57b6ebff38e6b19b58608a47a15e7f8af8fd8",
+        "outcome": "commercial",
         "previous_commercial_hash": "16bcc1ab733e0401bd8822535f5cfc2874520e6853b213a79c63f07d214b4b5d"
       },
       "provider_id": "huggingface",
@@ -2392,20 +2403,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2417,7 +2416,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2789,28 +2788,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "source_refs": 1
-        },
-        "changed_models": [
-          {
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "ollama/gemini-3-flash-preview"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 239,
         "previous": 239,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 238
+        "unchanged": 239
       },
       "pricing": {
         "commercial_hash": "20793b886123fe0edab1a896226480212a194e01ccfabf5f3ed388c48f66cab8",
-        "outcome": "commercial",
-        "previous_commercial_hash": "5a3a53ec7eb2648978cfba518718d8faf1367f50ec80f7ab85a8bb4ad11e109d"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "20793b886123fe0edab1a896226480212a194e01ccfabf5f3ed388c48f66cab8"
       },
       "provider_id": "ollama",
       "publication": "accepted",
@@ -3082,9 +3072,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 315,
             "source_id": "vercel-models"
           }
@@ -3743,8 +3733,8 @@
       },
       "pricing": {
         "commercial_hash": "e623543886de7766628d5c74e4d914c477b22be190ca0ec97324b1e159d0de35",
-        "outcome": "commercial",
-        "previous_commercial_hash": "09f4e9a200ebe444fcb62988a307a7e1990f578076f998728626168a070c1051"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "e623543886de7766628d5c74e4d914c477b22be190ca0ec97324b1e159d0de35"
       },
       "provider_id": "vercel",
       "publication": "accepted",
@@ -3752,20 +3742,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3975,13 +3958,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 4,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 406,
-    "changed_sources": 33,
-    "models": 3373,
+    "changed_models": 407,
+    "changed_sources": 30,
+    "models": 3372,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
