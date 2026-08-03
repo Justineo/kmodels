@@ -1,8 +1,8 @@
 {
-  "catalog_version": "e96b4c79950f9b5bfecb195276050aaa4e3643ffcba470be33474c611762ae86",
-  "generated_at": "2026-08-03T16:47:10.919Z",
+  "catalog_version": "c1820defd84ee053b6c3a3fd7beeb35ba69c6d357b80b66c470ffcc71f9b1615",
+  "generated_at": "2026-08-03T17:32:48.433Z",
   "outcome": "changed",
-  "previous_catalog_version": "f787faddee5c82fd9bf99dd8675ea5c2be28907babea40d33bc0cd7b79adad48",
+  "previous_catalog_version": "e96b4c79950f9b5bfecb195276050aaa4e3643ffcba470be33474c611762ae86",
   "providers": [
     {
       "attempt": {
@@ -134,9 +134,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 223,
             "source_id": "azure-models"
           },
@@ -159,7 +159,6 @@
         "added_model_refs": [],
         "changed": 147,
         "changed_fields": {
-          "availability": 3,
           "limits": 147
         },
         "changed_models": [
@@ -603,8 +602,7 @@
           },
           {
             "fields": [
-              "limits",
-              "availability"
+              "limits"
             ],
             "model_ref": "azure/gpt-5.1-codex-max@2025-12-04"
           },
@@ -664,8 +662,7 @@
           },
           {
             "fields": [
-              "limits",
-              "availability"
+              "limits"
             ],
             "model_ref": "azure/gpt-5.4-mini@2026-03-17"
           },
@@ -701,8 +698,7 @@
           },
           {
             "fields": [
-              "limits",
-              "availability"
+              "limits"
             ],
             "model_ref": "azure/gpt-5.6-sol@2026-07-09"
           },
@@ -1066,20 +1062,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2111,49 +2100,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 3,
-        "changed_fields": {
-          "replacement_model_ids": 3,
-          "retired_at": 3,
-          "status": 3
-        },
-        "changed_models": [
-          {
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash",
-            "previous_status": "deprecated",
-            "status": "active"
-          },
-          {
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash-lite",
-            "previous_status": "deprecated",
-            "status": "active"
-          },
-          {
-            "fields": [
-              "retired_at",
-              "status",
-              "replacement_model_ids"
-            ],
-            "model_ref": "gemini/gemini-2.5-pro",
-            "previous_status": "deprecated",
-            "status": "active"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 75,
         "previous": 75,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 72
+        "unchanged": 75
       },
       "pricing": {
         "commercial_hash": "3ce1db4d677495d2147e7488ffd36e86edffd46d1e28585056e3a40089765a87",
@@ -2196,9 +2150,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hf-inference"
           },
@@ -2206,28 +2160,24 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 131,
+            "parsed_models": 129,
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/facebook/mask2former-swin-large-ade-panoptic",
-          "huggingface/moonshotai/Kimi-K2-Thinking"
-        ],
-        "changed": 31,
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 29,
         "changed_fields": {
-          "capabilities": 2,
-          "limits": 30
+          "limits": 29
         },
         "changed_models": [
           {
@@ -2328,12 +2278,6 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/google/gemma-3-4b-it"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2372,12 +2316,6 @@
             "fields": [
               "limits"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.5"
-          },
-          {
-            "fields": [
-              "limits"
-            ],
             "model_ref": "huggingface/zai-org/GLM-4.5V-FP8"
           },
           {
@@ -2400,7 +2338,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
@@ -2418,16 +2355,19 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1541,
-        "previous": 1539,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1508
+        "current": 1539,
+        "previous": 1541,
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/Qwen/Qwen2.5-7B-Instruct",
+          "huggingface/zai-org/GLM-4.5"
+        ],
+        "unchanged": 1510
       },
       "pricing": {
-        "commercial_hash": "2bafb2addb519d2cf19be8e09841c074804594de64909b406bdecd7cb61b4f83",
+        "commercial_hash": "a55cdd730ac19fad33bd3da6212c1f31fe51d128858e1a5018584e05b113ff77",
         "outcome": "commercial",
-        "previous_commercial_hash": "82ec230c912e29541dbd93371da151482d0f616e31c951c5b1f8b11273042394"
+        "previous_commercial_hash": "2bafb2addb519d2cf19be8e09841c074804594de64909b406bdecd7cb61b4f83"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2435,20 +2375,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2460,7 +2388,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2746,9 +2674,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 59,
             "source_id": "mistral-models"
           },
@@ -2784,26 +2712,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "mistral-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "mistral-models"
           }
         ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3122,17 +3044,20 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 313,
+            "outcome": "changed",
+            "parsed_models": 315,
             "source_id": "vercel-models"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
+        "added": 2,
+        "added_model_refs": [
+          "vercel/perplexity/pplx-embed-v1-0.6b",
+          "vercel/perplexity/pplx-embed-v1-4b"
+        ],
         "changed": 104,
         "changed_fields": {
           "limits": 104
@@ -3763,15 +3688,15 @@
             "model_ref": "vercel/xai/grok-voice-think-fast-2.0"
           }
         ],
-        "current": 313,
+        "current": 315,
         "previous": 313,
         "removed": 0,
         "removed_model_refs": [],
         "unchanged": 209
       },
       "pricing": {
-        "commercial_hash": "7c397366a75bea68d15f9c830d79821e558832d2f07caeaf3a3b28840e9fdd10",
-        "outcome": "provenance_only",
+        "commercial_hash": "09f4e9a200ebe444fcb62988a307a7e1990f578076f998728626168a070c1051",
+        "outcome": "commercial",
         "previous_commercial_hash": "7c397366a75bea68d15f9c830d79821e558832d2f07caeaf3a3b28840e9fdd10"
       },
       "provider_id": "vercel",
@@ -3780,13 +3705,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vercel-models"
+          }
+        ],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3844,8 +3776,8 @@
       },
       "pricing": {
         "commercial_hash": "54e32169f8464b6024ba700bb672766c267b83723d440e8ee7cc00d3c1c71c3c",
-        "outcome": "commercial",
-        "previous_commercial_hash": "5937a9e8f21de2d5b00a6a182db76e9623dd9b25fb428d7c589cdaad9bba716e"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "54e32169f8464b6024ba700bb672766c267b83723d440e8ee7cc00d3c1c71c3c"
       },
       "provider_id": "vertex",
       "publication": "accepted",
@@ -3998,11 +3930,11 @@
     "accepted": 18,
     "added_models": 2,
     "added_sources": 0,
-    "changed_models": 407,
-    "changed_sources": 33,
+    "changed_models": 402,
+    "changed_sources": 30,
     "models": 3372,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
