@@ -607,11 +607,9 @@ resolves labels by provider, dimension, and exact value. Values without a
 reviewed label continue through the shared conservative formatter. Components
 never contain provider- or value-specific label branches.
 
-The generated-data audit covers the complete current provider vocabulary. It
-requires wire-shaped values to have reviewed provider labels, preserves exact
-AWS and Vertex programmatic region identifiers, rejects labels for values that
-are no longer registered, and rejects duplicate labels inside any selector so
-distinct canonical choices remain distinguishable.
+Generated-data tests require every configured label to match a current
+vocabulary value and its UI projection, and reject duplicate labels inside a
+selector so distinct canonical choices remain distinguishable.
 
 ## Validation and bounded work
 

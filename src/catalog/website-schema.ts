@@ -178,11 +178,12 @@ const selectorBase = {
   label: z.string().min(1),
   dimension: priceDimensionSchema,
 };
+const decimalRangeShape = {
+  lower: decimalBoundSchema.optional(),
+  upper: decimalBoundSchema.optional(),
+};
 const websiteDecimalRangeSchema = z
-  .strictObject({
-    lower: decimalBoundSchema.optional(),
-    upper: decimalBoundSchema.optional(),
-  })
+  .strictObject(decimalRangeShape)
   .refine(({ lower, upper }) => lower !== undefined || upper !== undefined, {
     message: "A website decimal range must have a bound",
   });
@@ -190,8 +191,7 @@ const websiteDecimalBucketSchema = z
   .strictObject({
     key: nonEmpty,
     label: nonEmpty,
-    lower: decimalBoundSchema.optional(),
-    upper: decimalBoundSchema.optional(),
+    ...decimalRangeShape,
   })
   .refine(({ lower, upper }) => lower !== undefined || upper !== undefined, {
     message: "A website decimal bucket must have a bound",

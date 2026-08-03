@@ -181,13 +181,15 @@ export interface SourceManifest {
   linkedDocuments?: LinkedDocuments;
 }
 
+export interface PricingCategoricalLabel {
+  dimension: PriceDimension;
+  value: string;
+  label: string;
+}
+
 interface ProviderManifestBase {
   provider: Omit<Provider, "source_ids" | "last_successful_sync_at" | "catalog_version">;
-  pricingCategoricalLabels?: {
-    dimension: PriceDimension;
-    value: string;
-    label: string;
-  }[];
+  pricingCategoricalLabels?: PricingCategoricalLabel[];
   supersededIdKinds?: ProviderModel["id_kind"][];
   supersededModelIds?: string[];
   warnOnMissing?: {
@@ -216,7 +218,7 @@ type StandardPriceDimension = Extract<PriceDimension, { namespace: "kmodels" }>[
 function pricingLabels(
   dimension: StandardPriceDimension,
   labels: Readonly<Record<string, string>>,
-): NonNullable<ProviderManifest["pricingCategoricalLabels"]> {
+): PricingCategoricalLabel[] {
   return Object.entries(labels).map(([value, label]) => ({
     dimension: { namespace: "kmodels", value: dimension },
     value,
@@ -1338,7 +1340,7 @@ export const manifests = [
           maxModelDocuments: 40,
           minPricingCoverage: 0.8,
         },
-        extractorVersion: "vertex-catalog-v3",
+        extractorVersion: "vertex-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -1416,6 +1418,11 @@ export const manifests = [
               url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
               maxResponseBytes: mebibytes(6),
             },
+            {
+              id: "billing-skus",
+              url: "https://cloud.google.com/skus/sku-groups/select-google-cloud-offerings",
+              maxResponseBytes: mebibytes(2),
+            },
           ],
         },
       },
@@ -1434,7 +1441,7 @@ export const manifests = [
           maxModelDocuments: 45,
           minPricingCoverage: 0.9,
         },
-        extractorVersion: "vertex-catalog-v3",
+        extractorVersion: "vertex-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -1511,7 +1518,7 @@ export const manifests = [
           maxModelDocuments: 40,
           minPricingCoverage: 0.9,
         },
-        extractorVersion: "vertex-catalog-v3",
+        extractorVersion: "vertex-catalog-v4",
         fields: [
           "model_id",
           "name",
@@ -2048,18 +2055,16 @@ export const manifests = [
       docs_url: "https://docs.x.ai/developers/models",
       catalog_scope: "global",
     },
-    pricingCategoricalLabels: [
-      ...pricingLabels("operation", {
-        attachment_search: "File attachments",
-        code_execution: "Code execution",
-        code_interpreter: "Code interpreter",
-        collections_search: "Collections search",
-        "conversation.item.create": "Text input",
-        file_search: "File search",
-        web_search: "Web search",
-        x_search: "X search",
-      }),
-    ],
+    pricingCategoricalLabels: pricingLabels("operation", {
+      attachment_search: "File attachments",
+      code_execution: "Code execution",
+      code_interpreter: "Code interpreter",
+      collections_search: "Collections search",
+      "conversation.item.create": "Text input",
+      file_search: "File search",
+      web_search: "Web search",
+      x_search: "X search",
+    }),
     sources: [
       {
         id: "xai-models",

@@ -467,13 +467,7 @@ function formatSnapshotAt(value: string): string {
           <label v-for="selector in configurableSelectors" :key="selector.key">
             <span>
               {{ selector.label }}
-              <template
-                v-if="
-                  selector.kind === 'decimal_values' ||
-                  selector.kind === 'decimal_buckets' ||
-                  selector.kind === 'decimal_range'
-                "
-              >
+              <template v-if="'unit' in selector">
                 ({{ formatUnitExpression(selector.unit) }})
               </template>
             </span>
@@ -845,6 +839,7 @@ function formatSnapshotAt(value: string): string {
 .pricing-selector-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
   gap: var(--space-2);
   margin-top: var(--space-2);
 }
@@ -852,7 +847,6 @@ function formatSnapshotAt(value: string): string {
 .pricing-selector-grid label {
   display: grid;
   min-width: 0;
-  align-content: start;
   gap: var(--space-1);
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);

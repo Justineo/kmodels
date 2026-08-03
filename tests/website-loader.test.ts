@@ -70,6 +70,24 @@ describe("website detail loading", () => {
     expect(attempts).toBe(2);
   });
 
+  it("evicts rejected chunks so a later attempt can recover", async () => {
+    const dataVersion = "d".repeat(64);
+    let attempts = 0;
+    vi.stubGlobal("fetch", async () => {
+      attempts += 1;
+      const version = attempts === 1 ? "e".repeat(64) : dataVersion;
+      return new Response(JSON.stringify(detailChunk(version, "Recovered")));
+    });
+
+    await expect(loadWebsiteModelDetail(dataVersion, model)).rejects.toThrow(
+      "does not match the catalog",
+    );
+    await expect(loadWebsiteModelDetail(dataVersion, model)).resolves.toMatchObject({
+      description: "Recovered",
+    });
+    expect(attempts).toBe(2);
+  });
+
   it("scopes deferred detail caches and request URLs to the catalog data version", async () => {
     const firstVersion = "b".repeat(64);
     const secondVersion = "c".repeat(64);

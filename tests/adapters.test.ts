@@ -533,6 +533,7 @@ async function vertexCatalog(
         "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music",
         "routes.html",
       ],
+      ["https://cloud.google.com/skus/sku-groups/select-google-cloud-offerings", "skus.html"],
     ],
     overrides,
     minPricingCoverage,
@@ -3313,15 +3314,235 @@ describe("Vertex AI adapters", () => {
         .filter(({ meter }) => meter === "output_video")
         .map(({ price, unit }) => [price, unit])
         .sort(),
-    ).toEqual([
-      ["0.10", "second"],
-      ["17.50", "million_tokens"],
-    ]);
-    expect(model?.raw_price_facts).toEqual([
+    ).toEqual([["17.50", "million_tokens"]]);
+    expect(model?.raw_price_facts.filter(({ impact }) => impact === "base_price")).toEqual([
       expect.objectContaining({
         impact: "base_price",
         reason: "unknown_applicability",
         raw: expect.objectContaining({ fragment: expect.stringContaining("$0.003/page") }),
+      }),
+    ]);
+    expect(model?.raw_price_facts.filter(({ impact }) => impact === "informational")).toEqual([
+      expect.objectContaining({
+        reason: "unsupported_structure",
+        raw: expect.objectContaining({ fragment: expect.stringContaining("$0.10 / second") }),
+      }),
+    ]);
+    const conflictingSkus = `
+      <main><table>
+        <tr><th>Service Name</th><th>SKU Name</th><th>SKU ID</th><th>Date Added</th></tr>
+        <tr><td>Gemini API</td><td>Video output token count for Gemini Test</td><td>ABCD-1234-EF56</td><td>August 3, 2026</td></tr>
+        <tr><td>Gemini API</td><td>Video output second count for Gemini Test</td><td>BCDE-2345-FA67</td><td>August 3, 2026</td></tr>
+      </table></main>`;
+    const unresolved = (
+      await vertexCatalog({ "pricing.html": pricing, "skus.html": conflictingSkus })
+    ).find(({ model_id }) => model_id === "gemini-test");
+    expect(
+      unresolved?.price_facts
+        .filter(({ meter }) => meter === "output_video")
+        .map(({ price, unit }) => [price, unit])
+        .sort(),
+    ).toEqual([
+      ["0.10", "second"],
+      ["17.50", "million_tokens"],
+    ]);
+  });
+
+  it("resolves only document-verified Vertex pricing ambiguities", async () => {
+    const card = (id: string, name: string, quota = "") => `
+      <main><div class="devsite-article-body">
+        <h1>${name}</h1>
+        <table>
+          <tr><th>Model ID</th><td><code>${id}</code></td></tr>
+          <tr><th>Modalities</th><td>Inputs: Text Outputs: Text</td></tr>
+          ${quota === "" ? "" : `<tr><th>Quota limits</th><td>${quota}</td></tr>`}
+        </table>
+      </div></main>`;
+    const sonnetShort =
+      "Input: $3.30 Output: $16.50 Batch Input: $1.65 Batch Output: $8.25 5m Cache Write: $4.13 1h Cache Write: $6.60 Cache Hit: $0.33 5m Batch Cache Write: $2.06 1h Batch Cache Write: $3.30 Batch Cache Hit: $0.17";
+    const sonnetLong =
+      "Input: $3.30 Output: $16.50 5m Cache Write: $4.13 1h Cache Write: $6.60 Cache Hit: $0.33";
+    const pricing = `
+      <main><div class="devsite-article-body">
+        <h3>us-east5</h3>
+        <table>
+          <tr>
+            <th>Model</th>
+            <th>Price (/1M tokens) =&lt; 200K input tokens</th>
+            <th>Price (/1M tokens) &gt; 200K input tokens</th>
+          </tr>
+          <tr>
+            <td>Claude Haiku 4.5</td>
+            <td>Input: $1.10 Output: $5.50 5m Cache Write: $1.375 1h Cache Write: $2.20 Cache Write: $1.375 Cache Hit: $0.11</td>
+            <td>N/A</td>
+          </tr>
+          <tr>
+            <td>Claude Sonnet 4.6</td>
+            <td>${sonnetShort} Input: $6.60 Output: $24.75</td>
+            <td>${sonnetLong}</td>
+          </tr>
+          <tr>
+            <td>Claude Cache Ambiguous</td>
+            <td>Input: $1.00 Output: $5.00 5m Cache Write: $1.25 1h Cache Write: $2.00 Cache Write: $1.50 Cache Hit: $0.10</td>
+            <td>N/A</td>
+          </tr>
+        </table>
+        <h3>europe-west1</h3>
+        <table>
+          <tr>
+            <th>Model</th>
+            <th>Price (/1M tokens) =&lt; 200K input tokens</th>
+            <th>Price (/1M tokens) &gt; 200K input tokens</th>
+          </tr>
+          <tr><td>Claude Sonnet 4.6</td><td>${sonnetShort}</td><td>${sonnetLong}</td></tr>
+        </table>
+        <h3>asia-east1</h3>
+        <table>
+          <tr>
+            <th>Model</th>
+            <th>Price (/1M tokens) =&lt; 200K input tokens</th>
+            <th>Price (/1M tokens) &gt; 200K input tokens</th>
+          </tr>
+          <tr><td>Claude Sonnet 4.6</td><td>${sonnetShort}</td><td>${sonnetLong}</td></tr>
+        </table>
+        <h3>Mistral AI's models</h3>
+        <table>
+          <tr><th>Model</th><th>Pricing</th></tr>
+          <tr>
+            <td>Mistral OCR (25.05)</td>
+            <td>Input: $0.0005 / million tokens (or $0.0005/page) Output: $0.0005 / million tokens (or $0.0005/page)</td>
+          </tr>
+          <tr>
+            <td>OCR Converted</td>
+            <td>Input: $0.30 / million tokens (or $0.0003/page) Output: $1.20 / million tokens (or $0.00012/page)</td>
+          </tr>
+        </table>
+      </div></main>`;
+    const models = await vertexModels(
+      1,
+      [
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/claude-haiku-4-5",
+          "haiku.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/claude-sonnet-4-6",
+          "sonnet.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/claude-cache-ambiguous",
+          "ambiguous.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/mistral/mistral-ocr",
+          "mistral.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/mistral/ocr-converted",
+          "converted.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
+          "routes.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+          "routes.html",
+        ],
+        [
+          "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
+          "routes.html",
+        ],
+        [
+          "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+          "pricing.html",
+        ],
+      ],
+      {
+        "haiku.html": card("claude-haiku-4-5", "Claude Haiku 4.5"),
+        "sonnet.html": card("claude-sonnet-4-6", "Claude Sonnet 4.6"),
+        "ambiguous.html": card("claude-cache-ambiguous", "Claude Cache Ambiguous"),
+        "mistral.html": card(
+          "mistral-ocr-2505",
+          "Mistral OCR (25.05)",
+          "Pages per request: 30 (1 page = 1 million input tokens and 1 million output tokens)",
+        ),
+        "converted.html": card(
+          "ocr-converted",
+          "OCR Converted",
+          "Pages per request: 30 (1 page = 1 thousand input tokens and 100 output tokens)",
+        ),
+        "pricing.html": pricing,
+      },
+    );
+    const byId = new Map(models.map((model) => [model.model_id, model]));
+    expect(byId.get("claude-haiku-4-5")?.raw_price_facts).toEqual([]);
+    expect(
+      byId
+        .get("claude-haiku-4-5")
+        ?.price_facts.filter(({ meter }) => meter === "cache_write_text")
+        .map(({ price, conditions }) => [price, conditions.cache_ttl_seconds]),
+    ).toEqual([
+      ["1.375", 300],
+      ["2.20", 3600],
+    ]);
+    expect(
+      byId
+        .get("claude-sonnet-4-6")
+        ?.raw_price_facts.filter(({ impact }) => impact === "base_price"),
+    ).toEqual([]);
+    expect(
+      byId
+        .get("claude-sonnet-4-6")
+        ?.raw_price_facts.filter(({ impact }) => impact === "informational"),
+    ).toEqual([
+      expect.objectContaining({
+        reason: "unsupported_structure",
+        raw: expect.objectContaining({ fragment: "Input: $6.60 Output: $24.75" }),
+      }),
+    ]);
+    expect(
+      byId
+        .get("claude-sonnet-4-6")
+        ?.price_facts.filter(
+          ({ meter, conditions }) =>
+            (meter === "input_text" || meter === "output_text") &&
+            conditions.service_tier === undefined &&
+            conditions.region === "us-east5",
+        )
+        .map(({ meter, price, conditions }) => [
+          meter,
+          price,
+          conditions.context_max_tokens,
+          conditions.context_min_tokens,
+        ]),
+    ).toEqual([
+      ["input_text", "3.30", 200_000, undefined],
+      ["input_text", "3.30", undefined, 200_001],
+      ["output_text", "16.50", 200_000, undefined],
+      ["output_text", "16.50", undefined, 200_001],
+    ]);
+    expect(byId.get("mistral-ocr-2505")?.raw_price_facts).toEqual([]);
+    expect(
+      byId
+        .get("mistral-ocr-2505")
+        ?.price_facts.map(({ meter, price, unit }) => [meter, price, unit]),
+    ).toEqual([
+      ["input_text", "0.0005", "million_tokens"],
+      ["output_text", "0.0005", "million_tokens"],
+    ]);
+    expect(byId.get("ocr-converted")?.raw_price_facts).toEqual([]);
+    expect(
+      byId.get("ocr-converted")?.price_facts.map(({ meter, price, unit }) => [meter, price, unit]),
+    ).toEqual([
+      ["input_text", "0.30", "million_tokens"],
+      ["output_text", "1.20", "million_tokens"],
+    ]);
+    expect(byId.get("claude-cache-ambiguous")?.raw_price_facts).toEqual([
+      expect.objectContaining({
+        impact: "base_price",
+        reason: "unknown_applicability",
+        raw: expect.objectContaining({ fragment: expect.stringContaining("Cache Write: $1.50") }),
       }),
     ]);
   });
