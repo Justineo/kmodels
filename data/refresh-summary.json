@@ -1,8 +1,8 @@
 {
-  "catalog_version": "d8f24a6fd30fd6996f2814e2428696869758853bb74f4634a681fbd362bf2038",
-  "generated_at": "2026-08-03T22:21:20.782Z",
+  "catalog_version": "dee1201c515267994ec0bbe7240d1c29c8a793c02b3863a599bd1bb3380b6ec6",
+  "generated_at": "2026-08-03T23:21:53.787Z",
   "outcome": "changed",
-  "previous_catalog_version": "ad38d18f4ab9c5f43238f92d471895614487f61aa6d356a3f99a9de179f2cad3",
+  "previous_catalog_version": "d8f24a6fd30fd6996f2814e2428696869758853bb74f4634a681fbd362bf2038",
   "providers": [
     {
       "attempt": {
@@ -1954,9 +1954,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 50,
             "source_id": "databricks-models"
           },
@@ -1992,20 +1992,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "databricks-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2167,26 +2160,27 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 131,
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 1,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/alpindale/WizardLM-2-8x22B"
+          "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025",
+          "huggingface/XiaomiMiMo/MiMo-V2.5-Pro"
         ],
-        "changed": 32,
+        "changed": 30,
         "changed_fields": {
-          "capabilities": 3,
+          "capabilities": 1,
           "limits": 29
         },
         "changed_models": [
@@ -2284,19 +2278,7 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3.2"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/google/gemma-3-4b-it"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
           },
           {
             "fields": [
@@ -2383,19 +2365,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1539,
-        "previous": 1540,
-        "removed": 2,
-        "removed_model_refs": [
-          "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025",
-          "huggingface/moonshotai/Kimi-K2-Thinking"
-        ],
-        "unchanged": 1506
+        "current": 1541,
+        "previous": 1539,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1509
       },
       "pricing": {
-        "commercial_hash": "294d8338969cee876efde04350c57b6ebff38e6b19b58608a47a15e7f8af8fd8",
+        "commercial_hash": "39060398086d37fdaabf0de95e461dc51fb6094b022c6f1c514ba23b399829e5",
         "outcome": "commercial",
-        "previous_commercial_hash": "16bcc1ab733e0401bd8822535f5cfc2874520e6853b213a79c63f07d214b4b5d"
+        "previous_commercial_hash": "294d8338969cee876efde04350c57b6ebff38e6b19b58608a47a15e7f8af8fd8"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2403,8 +2382,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2416,7 +2401,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2842,23 +2827,23 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 93,
             "source_id": "openai-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1,
             "source_id": "openai-overview"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 65,
             "source_id": "openai-deprecations"
           },
@@ -2870,10 +2855,10 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 133,
+            "outcome": "changed",
+            "parsed_models": 132,
             "source_id": "openai-api"
           }
         ]
@@ -3030,32 +3015,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "openai-deprecations"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
+            "source_id": "openai-api"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3958,13 +3931,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 1,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 407,
-    "changed_sources": 30,
-    "models": 3372,
+    "changed_models": 405,
+    "changed_sources": 28,
+    "models": 3374,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
