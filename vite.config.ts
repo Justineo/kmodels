@@ -28,19 +28,17 @@ function serveCatalog(): Plugin {
     name: "kmodels-catalog-serve",
     apply: "serve",
     configureServer(server) {
-      const uiAssetPaths = new Set([
-        defaultProjectionPaths.uiManifest,
-        defaultProjectionPaths.uiPack,
+      const assetProfiles = new Map<string, "ui" | "exports">([
+        [defaultProjectionPaths.uiManifest, "ui"],
+        [defaultProjectionPaths.uiPack, "ui"],
+        [defaultProjectionPaths.exportManifest, "exports"],
+        [defaultProjectionPaths.exportPack, "exports"],
       ]);
-      const exportAssetPaths = new Set([
-        defaultProjectionPaths.exportManifest,
-        defaultProjectionPaths.exportPack,
-      ]);
-      const watchedAssetPaths = [...uiAssetPaths, ...exportAssetPaths];
       let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 
       function invalidatePublishedAssets(path: string): void {
-        if (uiAssetPaths.has(path)) {
+        const profile = assetProfiles.get(path);
+        if (profile === "ui") {
           developmentUiAssets = undefined;
           if (reloadTimer !== undefined) clearTimeout(reloadTimer);
           reloadTimer = setTimeout(() => {
@@ -48,10 +46,10 @@ function serveCatalog(): Plugin {
             reloadTimer = undefined;
           }, 50);
         }
-        if (exportAssetPaths.has(path)) developmentExportAssets = undefined;
+        if (profile === "exports") developmentExportAssets = undefined;
       }
 
-      server.watcher.add(watchedAssetPaths);
+      server.watcher.add([...assetProfiles.keys()]);
       server.watcher.on("change", invalidatePublishedAssets);
       server.httpServer?.once("close", () => {
         server.watcher.off("change", invalidatePublishedAssets);

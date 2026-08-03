@@ -191,7 +191,7 @@ function clauseContainedIn(child: PriceCondition[], parent: PriceCondition[]): b
   });
 }
 
-function predicatesOverlap(left: PriceCondition, right: PriceCondition): boolean {
+export function predicatesOverlap(left: PriceCondition, right: PriceCondition): boolean {
   if (left.kind !== right.kind) throw new Error("One dimension uses incompatible predicate kinds");
   if (left.kind === "boolean" && right.kind === "boolean") return left.value === right.value;
   if (left.kind === "categorical" && right.kind === "categorical") {
@@ -205,7 +205,7 @@ function predicatesOverlap(left: PriceCondition, right: PriceCondition): boolean
   return !rangesDisjoint(left, right);
 }
 
-function predicateContainedIn(child: PriceCondition, parent: PriceCondition): boolean {
+export function predicateContainedIn(child: PriceCondition, parent: PriceCondition): boolean {
   if (child.kind !== parent.kind)
     throw new Error("One dimension uses incompatible predicate kinds");
   if (child.kind === "boolean" && parent.kind === "boolean") return child.value === parent.value;

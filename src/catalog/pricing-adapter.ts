@@ -31,7 +31,7 @@ import type {
   UnitExpression,
   UnitPrice,
 } from "./pricing-schema.ts";
-import type { ProviderManifest, SourceManifest } from "./manifests.ts";
+import type { PricingCategoricalLabel, SourceManifest } from "./manifests.ts";
 import {
   sourcePriceFactSchema,
   type ParsedPricingModel,
@@ -77,7 +77,7 @@ export function assembleParsedProviderPricing(
   observedAt: string,
   sources: readonly ParsedPricingSource[],
   publishedModels: readonly Pick<ParsedProviderModel, "model_id" | "uid" | "version">[],
-  categoricalLabels: ProviderManifest["pricingCategoricalLabels"] = [],
+  categoricalLabels: readonly PricingCategoricalLabel[] = [],
 ): ProviderPricingPartition | undefined {
   const publishedByUid = new Map(publishedModels.map((model) => [model.uid, model]));
   const publishedByModelId = uniqueModelsById(publishedModels);
@@ -769,10 +769,10 @@ function providerCategorical(context: AdapterContext, dimension: PriceDimension,
 }
 
 function categoricalLabelIndex(
-  labels: ProviderManifest["pricingCategoricalLabels"],
+  labels: readonly PricingCategoricalLabel[],
 ): ReadonlyMap<string, string> {
   const result = new Map<string, string>();
-  for (const { dimension, value, label } of labels ?? []) {
+  for (const { dimension, value, label } of labels) {
     const identity = categoricalLabelIdentity(dimension, value.normalize("NFC"));
     const normalizedLabel = label.normalize("NFC");
     const current = result.get(identity);

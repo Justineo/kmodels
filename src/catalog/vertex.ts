@@ -6,7 +6,7 @@ import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
-import { decimalsEqual, publishedRate } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import {
   sourceRawPricingFactKey,
   sourcePriceFactKey,
@@ -26,6 +26,22 @@ interface Input {
 interface Evidence {
   model: ProviderModel;
   names: Set<string>;
+}
+
+interface PageTokenEquivalence {
+  inputTokensPerPage: number;
+  outputTokensPerPage: number;
+}
+
+interface PricingEvidence {
+  canonicalUnits: ReadonlyMap<string, SourcePriceFact["unit"]>;
+  pageTokenEquivalences: ReadonlyMap<string, PageTokenEquivalence>;
+}
+
+interface LabeledPrice {
+  label: string;
+  price: string;
+  index: number;
 }
 
 type LoadedDocument = ReturnType<typeof load>;
@@ -1033,6 +1049,100 @@ function meters(descriptor: string, cached: boolean): SourcePriceFact["meter"][]
   });
 }
 
+function pricingEvidenceKey(modelId: string, meter: SourcePriceFact["meter"]): string {
+  return `${modelId}\0${meter}`;
+}
+
+function embeddedPriceTarget(
+  models: Map<string, Evidence>,
+  label: string,
+): ProviderModel | undefined {
+  const normalized = priceName(label);
+  const candidates = [...models.values()]
+    .map((item) => ({
+      item,
+      score: Math.max(
+        0,
+        ...[...priceKeys(item)]
+          .filter((key) => key.length >= 8 && normalized.includes(key))
+          .map((key) => key.length),
+      ),
+    }))
+    .filter(({ score }) => score > 0);
+  const best = Math.max(0, ...candidates.map(({ score }) => score));
+  const matched = candidates.filter(({ score }) => score === best);
+  return matched.length === 1 ? matched[0]?.item.model : undefined;
+}
+
+function pageTokenEquivalence(value: string): PageTokenEquivalence | undefined {
+  if (!/\b(?:1|one) page\s*=/i.test(value)) return undefined;
+  const inputTokensPerPage = tokens(value, /([\d,.]+)\s*(K|M|thousand|million)?\s+input tokens/i);
+  const outputTokensPerPage = tokens(value, /([\d,.]+)\s*(K|M|thousand|million)?\s+output tokens/i);
+  return inputTokensPerPage === undefined || outputTokensPerPage === undefined
+    ? undefined
+    : { inputTokensPerPage, outputTokensPerPage };
+}
+
+function pricingEvidence(
+  models: Map<string, Evidence>,
+  documents: LinkedDocument[],
+): PricingEvidence {
+  const skuUnits = new Map<string, Set<SourcePriceFact["unit"] | undefined>>();
+  const pageTokenEquivalences = new Map<string, PageTokenEquivalence>();
+  for (const document of documents) {
+    const $ = load(document.body);
+    $(".devsite-article-body table").each((_index, tableElement) => {
+      const table = $(tableElement);
+      const idCell = rowCell($, table, /^Model ID$/i);
+      const quotaCell = rowCell($, table, /^Quotas?(?: limits?)?$/i);
+      const id = text(idCell?.find("code").first().text() ?? idCell?.text() ?? "");
+      const equivalence = pageTokenEquivalence(text(quotaCell?.text() ?? ""));
+      if (modelIdSchema.safeParse(id).success && equivalence !== undefined)
+        pageTokenEquivalences.set(id, equivalence);
+    });
+    $("table").each((_index, tableElement) => {
+      const table = $(tableElement);
+      const headers = tableHeaders($, table);
+      const serviceIndex = headers.findIndex((header) => /^Service Name$/i.test(header));
+      const nameIndex = headers.findIndex((header) => /^SKU Name$/i.test(header));
+      const idIndex = headers.findIndex((header) => /^SKU ID$/i.test(header));
+      if (serviceIndex < 0 || nameIndex < 0 || idIndex < 0) return;
+      table
+        .find("tr")
+        .slice(1)
+        .each((_rowIndex, row) => {
+          const cells = $(row).find("th,td");
+          const service = text(cells.eq(serviceIndex).text());
+          const skuName = text(cells.eq(nameIndex).text());
+          const skuId = text(cells.eq(idIndex).text());
+          if (!service.startsWith("Gemini API") || !/^[0-9A-F]{4}(?:-[0-9A-F]{4}){2}$/.test(skuId))
+            return;
+          const target = embeddedPriceTarget(models, skuName);
+          if (target === undefined) return;
+          const rateMeters = meters(skuName, false);
+          const lower = skuName.toLowerCase();
+          const unit: SourcePriceFact["unit"] | undefined = lower.includes("token count")
+            ? "million_tokens"
+            : lower.includes("second count") || lower.includes("seconds")
+              ? "second"
+              : undefined;
+          for (const meter of rateMeters) {
+            const key = pricingEvidenceKey(target.model_id, meter);
+            const units = skuUnits.get(key) ?? new Set();
+            units.add(unit);
+            skuUnits.set(key, units);
+          }
+        });
+    });
+  }
+  const canonicalUnits = new Map<string, SourcePriceFact["unit"]>();
+  for (const [key, units] of skuUnits) {
+    const unit = [...units][0];
+    if (units.size === 1 && unit !== undefined) canonicalUnits.set(key, unit);
+  }
+  return { canonicalUnits, pageTokenEquivalences };
+}
+
 function money(value: string): { price: string; scope?: string; serviceTier?: string }[] {
   const results: { price: string; scope?: string; serviceTier?: string }[] = [];
   for (const match of value.matchAll(
@@ -1155,20 +1265,136 @@ function rawRate(
   label: string,
   fragment: string,
   conditions: SourcePriceFact["conditions"],
+  impact: "base_price" | "informational" = "base_price",
 ): void {
   model.raw_price_facts.push({
     term_key: "unparsed_base_rate",
-    impact: "base_price",
-    reason: "unknown_applicability",
+    impact,
+    reason: impact === "base_price" ? "unknown_applicability" : "unsupported_structure",
     conditions,
     source_ref: sourceId,
     raw: { label, fragment },
   });
 }
 
-function labeledTables(models: Map<string, Evidence>, sourceId: string, $: LoadedDocument): void {
-  const pattern =
-    /(5m Batch Cache Write|1h Batch Cache Write|Batch Cache Write|Batch Cache Hit|Batch Input|Batch Output|5m Cache Write|1h Cache Write|Cache Write|Cache Hit|Input|Output):\s*\$(\d+(?:\.\d+)?)/gi;
+const labeledPricePattern =
+  /(5m Batch Cache Write|1h Batch Cache Write|Batch Cache Write|Batch Cache Hit|Batch Input|Batch Output|5m Cache Write|1h Cache Write|Cache Write|Cache Hit|Input|Output):\s*\$(\d+(?:\.\d+)?)/gi;
+
+function labeledCellKey(modelLabel: string, header: string): string {
+  return `${priceName(modelLabel)}\0${priceName(header)}\0${JSON.stringify(contextTokenBounds(header))}`;
+}
+
+function labeledPrices(fragment: string): LabeledPrice[] {
+  return [...fragment.matchAll(labeledPricePattern)].flatMap((match) => {
+    const label = match[1];
+    const price = match[2];
+    return label === undefined || price === undefined || match.index === undefined
+      ? []
+      : [{ label, price, index: match.index }];
+  });
+}
+
+function dominantLabeledSequences($: LoadedDocument): ReadonlyMap<string, readonly string[]> {
+  const counts = new Map<string, Map<string, { count: number; labels: string[] }>>();
+  $(".devsite-article-body table").each((_index, tableElement) => {
+    const table = $(tableElement);
+    const headers = tableHeaders($, table);
+    if (headers[0] !== "Model" || headers.length > 3 || excludedPricingTable(table, headers))
+      return;
+    table
+      .find("tr")
+      .slice(1)
+      .each((_rowIndex, row) => {
+        const cells = $(row).find("th,td");
+        const modelLabel = text(cells.eq(0).text());
+        cells.slice(1).each((cellIndex, cell) => {
+          const header = headers[cellIndex + 1] ?? "";
+          const labels = labeledPrices(cellText($(cell))).map(({ label }) => label.toLowerCase());
+          if (labels.length === 0) return;
+          const key = labeledCellKey(modelLabel, header);
+          const signature = labels.join("\0");
+          const signatures = counts.get(key) ?? new Map();
+          const current = signatures.get(signature);
+          signatures.set(signature, { count: (current?.count ?? 0) + 1, labels });
+          counts.set(key, signatures);
+        });
+      });
+  });
+  const result = new Map<string, readonly string[]>();
+  for (const [key, signatures] of counts) {
+    const ranked = [...signatures.values()].sort((left, right) => right.count - left.count);
+    const best = ranked[0];
+    if (best !== undefined && best.count >= 2 && best.count > (ranked[1]?.count ?? 0))
+      result.set(key, best.labels);
+  }
+  return result;
+}
+
+function canonicalLabeledFragment(
+  fragment: string,
+  expected: readonly string[] | undefined,
+): { fragment: string; ignoredSuffix?: string } {
+  if (expected === undefined) return { fragment };
+  const matches = labeledPrices(fragment);
+  const labels = matches.map(({ label }) => label.toLowerCase());
+  if (
+    matches.length <= expected.length ||
+    matches.length !== (fragment.match(/\$/g) ?? []).length ||
+    !expected.every((label, index) => labels[index] === label) ||
+    !labels.slice(expected.length).every((label) => expected.includes(label))
+  )
+    return { fragment };
+  const splitAt = matches[expected.length]?.index;
+  if (splitAt === undefined) return { fragment };
+  return {
+    fragment: text(fragment.slice(0, splitAt)),
+    ignoredSuffix: text(fragment.slice(splitAt)),
+  };
+}
+
+function exactPageAlternatives(fragment: string, equivalence: PageTokenEquivalence): boolean {
+  const matches = [
+    ...fragment.matchAll(
+      /\b(Input|Output):\s*\$(\d+(?:\.\d+)?)\s*\/\s*million tokens\s*\(or\s*\$(\d+(?:\.\d+)?)\s*\/\s*page\)/gi,
+    ),
+  ];
+  return (
+    matches.length === 2 &&
+    new Set(matches.map((match) => match[1]?.toLowerCase())).size === 2 &&
+    matches.every((match) => {
+      const label = match[1]?.toLowerCase();
+      const tokenPrice = match[2];
+      const pagePrice = match[3];
+      if (label === undefined || tokenPrice === undefined || pagePrice === undefined) return false;
+      const tokensPerPage =
+        label === "input" ? equivalence.inputTokensPerPage : equivalence.outputTokensPerPage;
+      const expected = scaleDecimal(multiplyDecimal(tokenPrice, String(tokensPerPage)), -6);
+      return decimalsEqual(expected, pagePrice);
+    })
+  );
+}
+
+function verifiedDefaultCacheDuplicate(matches: LabeledPrice[]): boolean {
+  const bare = matches.filter(({ label }) => /^Cache Write$/i.test(label));
+  const fiveMinute = matches.filter(({ label }) => /^5m Cache Write$/i.test(label));
+  const oneHour = matches.filter(({ label }) => /^1h Cache Write$/i.test(label));
+  return (
+    bare.length === 1 &&
+    fiveMinute.length === 1 &&
+    oneHour.length === 1 &&
+    bare[0] !== undefined &&
+    fiveMinute[0] !== undefined &&
+    decimalsEqual(bare[0].price, fiveMinute[0].price)
+  );
+}
+
+function labeledTables(
+  models: Map<string, Evidence>,
+  sourceId: string,
+  $: LoadedDocument,
+  evidence: PricingEvidence,
+): void {
+  const dominantSequences = dominantLabeledSequences($);
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
     const headers = tableHeaders($, table);
@@ -1191,19 +1417,20 @@ function labeledTables(models: Map<string, Evidence>, sourceId: string, $: Loade
           ?.replace(/(\d)(?:st|nd|rd|th)/, "$1");
         cells.slice(1).each((cellIndex, cell) => {
           const header = headers[cellIndex + 1] ?? "";
-          const fragment = cellText($(cell));
-          const matches = [...fragment.matchAll(pattern)];
+          const originalFragment = cellText($(cell));
+          const canonical = canonicalLabeledFragment(
+            originalFragment,
+            dominantSequences.get(labeledCellKey(modelLabel, header)),
+          );
+          const fragment = canonical.fragment;
+          const matches = labeledPrices(fragment);
           const counts = new Map<string, number>();
-          for (const match of matches) {
-            const label = match[1]?.toLowerCase();
-            if (label !== undefined) counts.set(label, (counts.get(label) ?? 0) + 1);
+          for (const { label } of matches) {
+            const key = label.toLowerCase();
+            counts.set(key, (counts.get(key) ?? 0) + 1);
           }
-          for (const match of matches) {
-            const rateLabel = match[1];
-            const price = match[2];
+          for (const { label: rateLabel, price } of matches) {
             if (
-              rateLabel === undefined ||
-              price === undefined ||
               (/^Cache Write$/i.test(rateLabel) && /\b(?:5m|1h) Cache Write:/i.test(fragment)) ||
               (counts.get(rateLabel.toLowerCase()) ?? 0) > 1
             )
@@ -1247,17 +1474,34 @@ function labeledTables(models: Map<string, Evidence>, sourceId: string, $: Loade
                 ),
               );
           }
-          const incomplete =
-            [...counts.values()].some((count) => count > 1) ||
-            (matches.some((match) => /^Cache Write$/i.test(match[1] ?? "")) &&
-              /\b(?:5m|1h) Cache Write:/i.test(fragment));
-          if (!incomplete && matches.length === (fragment.match(/\$/g) ?? []).length) return;
           const conditions = {
             region,
             ...contextTokenBounds(header),
           };
-          for (const model of targets)
-            rawRate(model, sourceId, `${modelLabel}; ${header}`, fragment, conditions);
+          const cacheDuplicate =
+            matches.some(({ label }) => /^Cache Write$/i.test(label)) &&
+            /\b(?:5m|1h) Cache Write:/i.test(fragment);
+          const incomplete =
+            [...counts.values()].some((count) => count > 1) ||
+            (cacheDuplicate && !verifiedDefaultCacheDuplicate(matches));
+          const dollarCount = (fragment.match(/\$/g) ?? []).length;
+          for (const model of targets) {
+            const pageTokenRelation = evidence.pageTokenEquivalences.get(model.model_id);
+            const pageAlternativesVerified =
+              pageTokenRelation !== undefined && exactPageAlternatives(fragment, pageTokenRelation);
+            const accountedDollarCount = matches.length + (pageAlternativesVerified ? 2 : 0);
+            if (incomplete || accountedDollarCount !== dollarCount)
+              rawRate(model, sourceId, `${modelLabel}; ${header}`, fragment, conditions);
+            if (canonical.ignoredSuffix !== undefined)
+              rawRate(
+                model,
+                sourceId,
+                `${modelLabel}; ${header}; structurally rejected suffix`,
+                canonical.ignoredSuffix,
+                conditions,
+                "informational",
+              );
+          }
         });
       });
   });
@@ -1410,6 +1654,7 @@ function inlineUnitTables(
   models: Map<string, Evidence>,
   sourceId: string,
   $: LoadedDocument,
+  evidence: PricingEvidence,
 ): void {
   $(".devsite-article-body table").each((_index, tableElement) => {
     const table = $(tableElement);
@@ -1431,6 +1676,7 @@ function inlineUnitTables(
         if (rateMeters.length === 0) return;
         const raw = cellText(cells.last());
         const matches = [...raw.matchAll(/\$(\d+(?:\.\d+)?)/g)];
+        const prices: { price: string; unit: SourcePriceFact["unit"] }[] = [];
         for (const [index, match] of matches.entries()) {
           const price = match[1];
           if (price === undefined) continue;
@@ -1442,21 +1688,46 @@ function inlineUnitTables(
               ? "second"
               : undefined;
           if (unit === undefined) continue;
-          for (const model of current)
-            for (const meter of rateMeters)
-              addRate(model, publishedRate(meter, price, unit, sourceId, raw));
+          prices.push({ price, unit });
         }
+        for (const model of current)
+          for (const meter of rateMeters) {
+            const canonicalUnit = evidence.canonicalUnits.get(
+              pricingEvidenceKey(model.model_id, meter),
+            );
+            const canonicalObserved =
+              canonicalUnit !== undefined && prices.some(({ unit }) => unit === canonicalUnit);
+            const selected = canonicalObserved
+              ? prices.filter(({ unit }) => unit === canonicalUnit)
+              : prices;
+            for (const { price, unit } of selected)
+              addRate(model, publishedRate(meter, price, unit, sourceId, raw));
+            if (canonicalObserved && selected.length < prices.length)
+              rawRate(
+                model,
+                sourceId,
+                `${descriptor}; alternate display unit`,
+                raw,
+                {},
+                "informational",
+              );
+          }
       });
   });
 }
 
-function applyPricing(models: Map<string, Evidence>, sourceId: string, body: string): void {
+function applyPricing(
+  models: Map<string, Evidence>,
+  sourceId: string,
+  body: string,
+  evidence: PricingEvidence,
+): void {
   const $ = load(body);
   tokenTables(models, sourceId, $);
-  labeledTables(models, sourceId, $);
+  labeledTables(models, sourceId, $, evidence);
   storageTables(models, sourceId, $);
   mediaTables(models, sourceId, $);
-  inlineUnitTables(models, sourceId, $);
+  inlineUnitTables(models, sourceId, $, evidence);
   for (const { model } of models.values()) {
     model.price_facts.sort((left, right) =>
       `${left.meter}\0${left.unit}\0${left.price}\0${JSON.stringify(left.conditions)}`.localeCompare(
@@ -1519,7 +1790,8 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
   const pricing = bundle.documents.find((document) =>
     new URL(document.url).pathname.endsWith("/generative-ai/pricing"),
   );
-  if (pricing !== undefined) applyPricing(models, input.source.id, pricing.body);
+  if (pricing !== undefined)
+    applyPricing(models, input.source.id, pricing.body, pricingEvidence(models, bundle.documents));
   const embedding = bundle.documents.find(
     (document) =>
       new URL(document.url).pathname ===

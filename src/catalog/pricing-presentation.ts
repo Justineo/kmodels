@@ -2,8 +2,9 @@ import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import { scaleDecimal } from "./pricing.ts";
 import {
-  applicabilitiesOverlap,
   applicabilityContainedIn,
+  predicateContainedIn,
+  predicatesOverlap,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
 import { assertPricingDecimal } from "./pricing-constants.ts";
@@ -715,10 +716,8 @@ function evaluateCondition(
   )
     return "false";
   if (selected.kind === "decimal_range") {
-    const selectedScope = { any_of: [{ all_of: [selected] }] };
-    const conditionScope = { any_of: [{ all_of: [condition] }] };
-    if (applicabilityContainedIn(selectedScope, conditionScope)) return "true";
-    return applicabilitiesOverlap(selectedScope, conditionScope) ? "missing" : "false";
+    if (predicateContainedIn(selected, condition)) return "true";
+    return predicatesOverlap(selected, condition) ? "missing" : "false";
   }
   const value = rationalFromDecimal(selected.value);
   if (

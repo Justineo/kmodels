@@ -15,6 +15,21 @@ function websiteSchemas(): Promise<typeof import("./website-schema.ts")> {
   return schemaModule;
 }
 
+function cachedRequest<T>(
+  cache: Map<string, Promise<T>>,
+  key: string,
+  load: () => Promise<T>,
+): Promise<T> {
+  const existing = cache.get(key);
+  if (existing !== undefined) return existing;
+  const request = load().catch((error: unknown) => {
+    cache.delete(key);
+    throw error;
+  });
+  cache.set(key, request);
+  return request;
+}
+
 function targetKey({ providerId, chunk }: DetailTarget): string {
   return `${providerId}/${chunk}`;
 }
@@ -38,48 +53,33 @@ async function responseBlob(response: Response): Promise<Blob> {
 
 function detailSource(dataVersion: string, target: DetailTarget): Promise<Blob> {
   const key = detailKey(dataVersion, target);
-  const existing = detailSources.get(key);
-  if (existing !== undefined) return existing;
-  const request = fetch(detailUrl(dataVersion, target), {
-    cache: "no-cache",
-    headers: { Accept: "application/json" },
-  })
-    .then(responseBlob)
-    .catch((error: unknown) => {
-      detailSources.delete(key);
-      throw error;
-    });
-  detailSources.set(key, request);
-  return request;
+  return cachedRequest(detailSources, key, () =>
+    fetch(detailUrl(dataVersion, target), {
+      cache: "no-cache",
+      headers: { Accept: "application/json" },
+    }).then(responseBlob),
+  );
 }
 
 function parseDetailChunk(target: DetailTarget, dataVersion: string): Promise<WebsiteDetailChunk> {
   const key = detailKey(dataVersion, target);
-  const existing = parsedDetailChunks.get(key);
-  if (existing !== undefined) return existing;
-  const request = Promise.all([detailSource(dataVersion, target), websiteSchemas()])
-    .then(async ([source, { websiteDetailChunkSchema }]) => {
-      const text = await source.text();
-      const value: unknown = JSON.parse(text);
-      const chunk = websiteDetailChunkSchema.parse(value);
-      if (
-        chunk.data_version !== dataVersion ||
-        chunk.provider_id !== target.providerId ||
-        chunk.chunk !== target.chunk
-      )
-        throw new Error("Model detail chunk does not match the catalog");
-      for (const detail of chunk.details)
-        detailsByModel.set(modelDetailKey(dataVersion, detail.model_ref), detail);
-      detailSources.delete(key);
-      return chunk;
-    })
-    .catch((error: unknown) => {
-      detailSources.delete(key);
-      parsedDetailChunks.delete(key);
-      throw error;
-    });
-  parsedDetailChunks.set(key, request);
-  return request;
+  return cachedRequest(parsedDetailChunks, key, () =>
+    Promise.all([detailSource(dataVersion, target), websiteSchemas()])
+      .then(async ([source, { websiteDetailChunkSchema }]) => {
+        const value: unknown = JSON.parse(await source.text());
+        const chunk = websiteDetailChunkSchema.parse(value);
+        if (
+          chunk.data_version !== dataVersion ||
+          chunk.provider_id !== target.providerId ||
+          chunk.chunk !== target.chunk
+        )
+          throw new Error("Model detail chunk does not match the catalog");
+        for (const detail of chunk.details)
+          detailsByModel.set(modelDetailKey(dataVersion, detail.model_ref), detail);
+        return chunk;
+      })
+      .finally(() => detailSources.delete(key)),
+  );
 }
 
 function detailTargets(models: readonly WebsiteModel[]): DetailTarget[] {

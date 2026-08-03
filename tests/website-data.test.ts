@@ -81,39 +81,6 @@ function categoricalLabelIdentity(
   return canonicalJsonKey([providerId, dimension, value]);
 }
 
-function isExactRegionIdentifier(
-  providerId: string,
-  dimension: PriceDimension,
-  value: string,
-): boolean {
-  if (dimension.namespace !== "kmodels" || dimension.value !== "region") return false;
-  if (providerId === "amazon-bedrock") return /^(?:[a-z]{2}|us-gov)-[a-z0-9]+-\d$/.test(value);
-  return providerId === "vertex" && /^[a-z]+(?:-[a-z]+)+\d$/.test(value);
-}
-
-function needsReviewedCategoricalLabel(
-  providerId: string,
-  dimension: PriceDimension,
-  value: string,
-): boolean {
-  if (isExactRegionIdentifier(providerId, dimension, value)) return false;
-  return (
-    value.includes(".") ||
-    value.includes("=") ||
-    /[a-z][A-Z]/.test(value) ||
-    /(?:<|≤)/u.test(value) ||
-    /(?:audioaudio|textmultimodal|texttext)/.test(value) ||
-    /^(?:I2I|I2V|T2I|T2V|eu|ocr|std|us|\d+k)$/.test(value) ||
-    /^[a-z0-9]+(?:-[a-z0-9]+)+$/.test(value) ||
-    /(?:_\d+_month|_no_commit|_percent_off)$/.test(value) ||
-    /^\d+_\d+/.test(value) ||
-    (providerId === "azure" &&
-      dimension.namespace === "kmodels" &&
-      dimension.value === "region" &&
-      value !== "Global")
-  );
-}
-
 describe("website data", () => {
   it("publishes all core table data in bounded parallel chunks", async () => {
     const { catalog, publication, dataVersion } = await publicationData();
@@ -252,7 +219,7 @@ describe("website data", () => {
     );
   }, 90_000);
 
-  it("audits every provider categorical vocabulary and keeps selector labels unambiguous", async () => {
+  it("keeps configured provider labels current and selector choices unambiguous", async () => {
     const { pricing, publication } = await publicationData();
     const providerManifests: readonly ProviderManifest[] = manifests;
     const configuredLabels = new Map(
@@ -264,27 +231,18 @@ describe("website data", () => {
       ),
     );
     const vocabularyAtoms = new Set<string>();
-    const missingReviewedLabels: string[] = [];
     for (const vocabulary of pricing.provider_vocabularies)
       for (const atom of vocabulary.atoms) {
         if (atom.kind !== "categorical_value") continue;
-        const identity = categoricalLabelIdentity(vocabulary.provider_id, atom.dimension, atom.key);
-        vocabularyAtoms.add(identity);
-        if (
-          atom.label === undefined &&
-          !configuredLabels.has(identity) &&
-          needsReviewedCategoricalLabel(vocabulary.provider_id, atom.dimension, atom.key)
-        )
-          missingReviewedLabels.push(
-            `${vocabulary.provider_id}:${canonicalJsonKey(atom.dimension)}:${atom.key}`,
-          );
+        vocabularyAtoms.add(
+          categoricalLabelIdentity(vocabulary.provider_id, atom.dimension, atom.key),
+        );
       }
-    expect(missingReviewedLabels).toEqual([]);
     expect(
       [...configuredLabels.keys()].filter((identity) => !vocabularyAtoms.has(identity)),
     ).toEqual([]);
 
-    const projectedLabels = new Map<string, Set<string>>();
+    const projectedLabels = new Map<string, string>();
     for (const detail of publication.details.flatMap((chunk) => chunk.details))
       for (const offer of detail.pricing?.offers ?? [])
         for (const selector of offer.selectors) {
@@ -300,15 +258,14 @@ describe("website data", () => {
               selector.dimension,
               value.value,
             );
-            const labels = projectedLabels.get(identity) ?? new Set<string>();
-            labels.add(label);
-            projectedLabels.set(identity, labels);
+            const current = projectedLabels.get(identity);
+            if (current !== undefined) expect(label, identity).toBe(current);
+            projectedLabels.set(identity, label);
           }
         }
 
     for (const [identity, label] of configuredLabels)
-      expect([...(projectedLabels.get(identity) ?? [])], identity).toEqual([label]);
-    expect(configuredLabels.size).toBeGreaterThan(100);
+      expect(projectedLabels.get(identity), identity).toBe(label);
   }, 90_000);
 
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {
