@@ -16,11 +16,12 @@ Status: implemented
   summary, emits warnings for retained or withheld providers, and keeps the
   complete report as a 30-day artifact. A failure before report creation is
   called out explicitly and commits nothing.
-- The report separates the current published model count from added, removed, and updated model
-  counts since the previous accepted catalog. Every changed model has one table row with
-  leaf-level previous/current field values. `Pricing Δ` is a pricing-snapshot comparison, not a
-  price. The commercial-change label means the public commercial projection changed. The
-  evidence-only label means only provenance, freshness, or other non-commercial evidence changed.
+- The report keeps its provider table compact: model and source deltas use `+`, `−`, and `~`, while
+  publication, pricing, and signal values remain stable machine-readable labels. A collapsible
+  legend defines each value and distinguishes a published semantic model update from a source
+  content, extractor, or field-path change. Provider-specific model changes and operational details
+  use compact tables with zero counters omitted; explanatory semantics and shorthand stay in the
+  external legend. Every changed model has one row with leaf-level previous/current field values.
 - A recognized source-contract mismatch warns on its first occurrence with bounded path,
   mismatch kind, affected/observed counts, fingerprint, and public sample IDs
   when available. A second consecutive source failure adds persistence and,

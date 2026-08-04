@@ -89,7 +89,11 @@ const providerSchema = z.object({
   status: z.enum(["fresh", "stale", "unavailable", "not_configured", "removed"]),
   publication: z.enum(["accepted", "retained", "withheld", "not_configured", "removed"]).optional(),
   models: diffSchema,
-  sources: z.object({ changed: z.number().int().nonnegative() }),
+  sources: z.object({
+    added: z.number().int().nonnegative().default(0),
+    removed: z.number().int().nonnegative().default(0),
+    changed: z.number().int().nonnegative(),
+  }),
   pricing: z.object({ outcome: z.string() }),
   pricing_coverage: z
     .object({
@@ -129,6 +133,7 @@ const reportSchema = z.object({
 
 type Provider = z.infer<typeof providerSchema>;
 type SourceAttempt = NonNullable<Provider["attempt"]>["sources"][number];
+type ProviderDetailRow = readonly [type: string, source: string, value: string];
 const publicationByStatus: Record<Provider["status"], NonNullable<Provider["publication"]>> = {
   fresh: "accepted",
   stale: "retained",
@@ -188,19 +193,19 @@ function changedModelDetails(value: Provider["models"]["changed_models"][number]
 
 function modelChangeTable(provider: Provider): string[] {
   const rows = [
-    ...provider.models.added_model_refs.map((modelRef) => ["Added", modelRef, "—"]),
+    ...provider.models.added_model_refs.map((modelRef) => ["+", modelRef, "—"]),
     ...provider.models.changed_models.map((model) => [
-      "Updated",
+      "~",
       model.model_ref,
       changedModelDetails(model),
     ]),
-    ...provider.models.removed_model_refs.map((modelRef) => ["Removed", modelRef, "—"]),
+    ...provider.models.removed_model_refs.map((modelRef) => ["−", modelRef, "—"]),
   ];
   if (rows.length === 0) return [];
   return [
     "#### Model changes",
     "",
-    "| Change | Model | Details |",
+    "| Δ | Model | Details |",
     "| --- | --- | --- |",
     ...rows.map(
       ([change, modelRef, details]) =>
@@ -209,15 +214,69 @@ function modelChangeTable(provider: Provider): string[] {
   ];
 }
 
-function pricingOutcome(outcome: string): string {
-  if (outcome === "none") return "not tracked";
-  if (outcome === "added") return "pricing added";
-  if (outcome === "removed") return "pricing removed";
-  if (outcome === "commercial") return "commercial terms changed";
-  if (outcome === "provenance_only") return "terms unchanged; evidence changed";
-  if (outcome === "unchanged") return "unchanged";
-  return outcome.replaceAll("_", " ");
+function providerDetailTable(rows: ProviderDetailRow[]): string[] {
+  if (rows.length === 0) return [];
+  return [
+    "#### Details",
+    "",
+    "| Type | Source | Value |",
+    "| --- | --- | --- |",
+    ...rows.map(
+      ([type, source, value]) => `| ${table(type)} | ${table(source)} | ${table(value)} |`,
+    ),
+  ];
 }
+
+const legend = [
+  "",
+  "<details>",
+  "<summary>Legend</summary>",
+  "",
+  "#### Deltas",
+  "",
+  "- `Models` is the current published count. In both delta columns, `+` means added, `−` removed, and `~` updated/changed since the previous accepted catalog.",
+  "- Model `~`: the same model identity remains, but at least one published semantic field changed. Observation time alone is not compared.",
+  "- Source `~`: the same accepted source record remains, but its content hash, extractor version, or declared field paths changed. A source change is input/evidence churn and does not necessarily change a model, so the two `~` counts need not match.",
+  "",
+  "#### Publication",
+  "",
+  "- `accepted`: the fresh candidate was published.",
+  "- `retained`: the refresh did not replace this provider; its previous accepted data was kept.",
+  "- `withheld`: no usable previous data was available and the candidate was not published.",
+  "- `not_configured`: this provider is intentionally not configured for collection.",
+  "- `removed`: this provider is no longer in the published catalog.",
+  "",
+  "#### Pricing",
+  "",
+  "- `none`: neither catalog has a pricing partition for this provider.",
+  "- `added`: a pricing partition was added.",
+  "- `removed`: a pricing partition was explicitly removed.",
+  "- `commercial`: canonical commercial terms changed.",
+  "- `provenance_only`: commercial terms stayed the same; only provenance, freshness, publication, or other non-commercial evidence changed.",
+  "- `unchanged`: the complete pricing partition stayed the same.",
+  "",
+  "#### Signals",
+  "",
+  "- `drift_guard_triggered`: validation rejected an abrupt model-count drop.",
+  "- `breaking_contract_mismatch`: a source field or value owned by the projection became uninterpretable.",
+  "- `unreviewed_extension`: fresh data was accepted after an unrelated extension was stripped.",
+  "- `coverage_regression`: reviewed item or field coverage fell below its threshold.",
+  "- `possible_structural_change`: an unclassified parse failure may indicate a source-structure change.",
+  "- `persistent_source_failure`: at least one source has failed twice or more consecutively.",
+  "",
+  "#### Coverage",
+  "",
+  "- Coverage uses `resolved/current · ?unknown`. Resolved means a public offer or an explicit not-applicable disposition.",
+  "",
+  "#### Provider details",
+  "",
+  "- Detail tables keep raw outcome and reason codes. Zero-valued counters are omitted.",
+  "- `Extract` summarizes parsed model states; `facts N/R` means normalized/raw facts. `Reconcile` summarizes the reviewed source-item partition; `?N` is the unresolved finding count.",
+  "- `Finding` gives disposition and reason code; bounded public samples are collapsed below the table. `Contract` gives disposition, mismatch kind and path, affected/observed items, expected and observed shapes, and fingerprint.",
+  "- `Source`, `Validation`, `Failure`, and `Pricing` retain their machine-readable outcome or failure code.",
+  "",
+  "</details>",
+];
 
 function staleness(generatedAt: string, lastSuccessAt: string | undefined): string | undefined {
   if (lastSuccessAt === undefined) return undefined;
@@ -227,55 +286,103 @@ function staleness(generatedAt: string, lastSuccessAt: string | undefined): stri
   return hours < 48 ? `${hours.toFixed(1)}h stale` : `${(hours / 24).toFixed(1)}d stale`;
 }
 
-function sourceFailure(source: SourceAttempt, generatedAt: string): string {
+function sourceAttemptValue(source: SourceAttempt, generatedAt: string): string {
   const details = [
     source.consecutive_failures === undefined
       ? undefined
       : `${source.consecutive_failures} consecutive`,
     staleness(generatedAt, source.last_success_at),
   ].filter((value): value is string => value !== undefined);
-  return `\`${source.source_id}\` ${source.outcome}${details.length === 0 ? "" : ` (${details.join(", ")})`}`;
+  return `\`${source.outcome}\`${details.length === 0 ? "" : ` · ${details.join(" · ")}`}`;
 }
 
-function contractFindingLines(source: SourceAttempt): string[] {
+function contractFindingRows(source: SourceAttempt): ProviderDetailRow[] {
   const evidence = source.contract_finding;
   if (evidence === undefined) return [];
-  const lines = evidence.diagnostics.map((diagnostic) => {
+  const rows: ProviderDetailRow[] = evidence.diagnostics.map((diagnostic) => {
     const observed = `${diagnostic.observed}${diagnostic.observed_value === undefined ? "" : ` \`${diagnostic.observed_value}\``}`;
     const samples = diagnostic.sample_model_ids?.map((id) => `\`${id}\``).join(", ");
-    return `- Contract ${evidence.disposition} \`${source.source_id}\` \`${diagnostic.path}\`: \`${diagnostic.kind}\`; expected ${diagnostic.expected ?? "reviewed shape"}, observed ${observed}; ${diagnostic.affected_items}/${evidence.observed_items} items${samples === undefined ? "" : `; examples ${samples}`}; fingerprint \`${diagnostic.fingerprint}\``;
+    return [
+      "Contract",
+      `\`${source.source_id}\``,
+      `\`${evidence.disposition}\` · \`${diagnostic.kind}\` · \`${diagnostic.path}\` · ${diagnostic.affected_items}/${evidence.observed_items} · expected ${diagnostic.expected ?? "reviewed shape"} · observed ${observed}${samples === undefined ? "" : ` · ${samples}`} · \`${diagnostic.fingerprint}\``,
+    ];
   });
   const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
   if (omitted > 0)
-    lines.push(
-      `- Contract ${evidence.disposition} \`${source.source_id}\`: ${omitted} additional diagnostics omitted`,
-    );
-  return lines;
+    rows.push([
+      "Contract",
+      `\`${source.source_id}\``,
+      `\`${evidence.disposition}\` · +${omitted} diagnostics omitted`,
+    ]);
+  return rows;
 }
 
-function pricingExtractionLine(source: SourceAttempt): string[] {
+function pricingExtractionRows(source: SourceAttempt): ProviderDetailRow[] {
   const pricing = source.pricing_extraction;
   if (pricing === undefined) return [];
-  return [
-    `- Pricing extraction \`${source.source_id}\`: ${pricing.model_records} model records; ${pricing.numeric_models} numeric, ${pricing.raw_models} with raw facts, ${pricing.free_models} free, ${pricing.custom_quote_models} custom quote, ${pricing.not_published_models} not published, ${pricing.not_applicable_models} not applicable, ${pricing.unknown_models} unresolved; ${pricing.normalized_facts} normalized facts and ${pricing.raw_facts} raw facts`,
-  ];
+  const counts = [
+    `${pricing.model_records} models`,
+    pricing.numeric_models === 0 ? undefined : `${pricing.numeric_models} numeric`,
+    pricing.raw_models === 0 ? undefined : `${pricing.raw_models} raw`,
+    pricing.free_models === 0 ? undefined : `${pricing.free_models} free`,
+    pricing.custom_quote_models === 0 ? undefined : `${pricing.custom_quote_models} quote`,
+    pricing.not_published_models === 0 ? undefined : `${pricing.not_published_models} unpublished`,
+    pricing.not_applicable_models === 0 ? undefined : `${pricing.not_applicable_models} N/A`,
+    pricing.unknown_models === 0 ? undefined : `?${pricing.unknown_models}`,
+    pricing.normalized_facts === 0 && pricing.raw_facts === 0
+      ? undefined
+      : `facts ${pricing.normalized_facts}/${pricing.raw_facts}`,
+  ].filter((value): value is string => value !== undefined);
+  return [["Extract", `\`${source.source_id}\``, counts.join(" · ")]];
 }
 
-function pricingReconciliationLine(source: SourceAttempt): string[] {
+function pricingReconciliationRows(source: SourceAttempt): ProviderDetailRow[] {
   const evidence = source.pricing_reconciliation;
   if (evidence === undefined) return [];
   const counts = evidence.disposition_counts;
-  const line = `- Pricing reconciliation \`${source.source_id}\`: ${evidence.basis.replace("_", " ")} over ${evidence.observed_items} ${evidence.unit}s; ${counts.normalized} normalized, ${counts.raw} raw, ${counts.explicit_non_numeric} explicit non-numeric, ${counts.excluded} excluded, ${evidence.diagnostic_count} unresolved`;
-  const diagnostics = evidence.diagnostics.map(
-    ({ disposition, reason_code, sample }) =>
-      `- Pricing finding \`${source.source_id}\`: \`${disposition}\` / \`${reason_code}\`${sample === undefined ? "" : `; \`${sample}\``}`,
-  );
+  const summary = [
+    `\`${evidence.basis}\``,
+    `${evidence.observed_items} items`,
+    counts.normalized === 0 ? undefined : `${counts.normalized} normalized`,
+    counts.raw === 0 ? undefined : `${counts.raw} raw`,
+    counts.explicit_non_numeric === 0 ? undefined : `${counts.explicit_non_numeric} non-numeric`,
+    counts.excluded === 0 ? undefined : `${counts.excluded} excluded`,
+    evidence.diagnostic_count === 0 ? undefined : `?${evidence.diagnostic_count}`,
+  ].filter((value): value is string => value !== undefined);
+  const rows: ProviderDetailRow[] = [
+    ["Reconcile", `\`${source.source_id}\``, summary.join(" · ")],
+    ...evidence.diagnostics.map(
+      ({ disposition, reason_code }): ProviderDetailRow => [
+        "Finding",
+        `\`${source.source_id}\``,
+        `\`${disposition}\` · \`${reason_code}\``,
+      ],
+    ),
+  ];
   const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
-  if (omitted > 0)
-    diagnostics.push(
-      `- Pricing finding \`${source.source_id}\`: ${omitted} additional unresolved items omitted`,
-    );
-  return [line, ...diagnostics];
+  if (omitted > 0) rows.push(["Finding", `\`${source.source_id}\``, `+${omitted} omitted`]);
+  return rows;
+}
+
+function pricingFindingNotes(source: SourceAttempt): string[] {
+  const diagnostics =
+    source.pricing_reconciliation?.diagnostics.filter(
+      (diagnostic): diagnostic is typeof diagnostic & { sample: string } =>
+        diagnostic.sample !== undefined,
+    ) ?? [];
+  if (diagnostics.length === 0) return [];
+  return [
+    "<details>",
+    `<summary>Pricing finding samples — ${inlineCode(source.source_id)} (${diagnostics.length})</summary>`,
+    "",
+    ...diagnostics.map(
+      ({ disposition, reason_code, sample }) =>
+        `- ${inlineCode(disposition)} · ${inlineCode(reason_code)} · ${inlineCode(sample)}`,
+    ),
+    "",
+    "</details>",
+  ];
 }
 
 function pricingReconciliationWarnings(providerId: string, source: SourceAttempt): string[] {
@@ -329,6 +436,8 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       models.added > 0 ||
       models.removed > 0 ||
       models.changed > 0 ||
+      sources.added > 0 ||
+      sources.removed > 0 ||
       sources.changed > 0 ||
       ["added", "removed", "commercial", "provenance_only"].includes(pricing.outcome),
   );
@@ -350,9 +459,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     "",
     `**${outcome.replaceAll("_", " ")}** · ${publicationState} publication · ${report.generated_at} · \`${report.catalog_version.slice(0, 12)}\``,
     "",
-    "Models now is the current published count. Model Δ lists added, removed, and updated model identities since the previous accepted catalog. Pricing Δ compares pricing semantics, not a price value.",
-    "",
-    "| Provider | Publication | Models now | Model Δ | Source Δ | Pricing Δ | Coverage | Duration | Signals |",
+    "| Provider | Publication | Models | Model Δ | Source Δ | Pricing Δ | Coverage | Duration | Signals |",
     "| --- | --- | ---: | --- | ---: | --- | --- | ---: | --- |",
     ...providers.map(
       ({
@@ -368,18 +475,19 @@ export function refreshReport(value: unknown): RefreshReportOutput {
           table(provider_id),
           state,
           String(models.current),
-          `+${models.added} added · −${models.removed} removed · ~${models.changed} updated`,
-          `${sources.changed} changed`,
-          table(pricingOutcome(pricing.outcome)),
+          `+${models.added} / −${models.removed} / ~${models.changed}`,
+          `+${sources.added} / −${sources.removed} / ~${sources.changed}`,
+          table(pricing.outcome),
           coverage === undefined
             ? "—"
-            : `${coverage.offer_models + coverage.not_applicable_models}/${coverage.current_models} resolved · ${coverage.unknown_models} unknown`,
+            : `${coverage.offer_models + coverage.not_applicable_models}/${coverage.current_models} · ?${coverage.unknown_models}`,
           durations.has(provider_id)
             ? `${((durations.get(provider_id) ?? 0) / 1000).toFixed(1)}s`
             : "—",
           table(signals.join(", ") || "—"),
         ].join(" | ")} |`,
     ),
+    ...legend,
   ];
 
   for (const provider of providers) {
@@ -406,34 +514,61 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       pricingSources.every(({ pricing_extraction: pricing }) => pricing?.unknown_models === 0)
     )
       continue;
-    lines.push("", `### ${provider.provider_id}`, "");
-    lines.push(...modelChangeTable(provider));
+    const detailRows: ProviderDetailRow[] = [];
+    const detailNotes: string[] = [];
     const pricingCoverage = provider.pricing_coverage;
     if (pricingCoverage !== undefined && pricingCoverage.unknown_models > 0) {
       const omitted = pricingCoverage.unknown_model_refs_omitted;
-      lines.push(
-        `- Unknown pricing: ${pricingCoverage.unknown_models}/${pricingCoverage.current_models} current models; examples ${pricingCoverage.unknown_model_refs.map((modelRef) => `\`${modelRef}\``).join(", ")}${omitted === 0 ? "" : ` (+${omitted} more)`}`,
-      );
+      const examples = pricingCoverage.unknown_model_refs
+        .map((modelRef) => `\`${modelRef}\``)
+        .join(", ");
+      detailRows.push([
+        "Coverage",
+        "—",
+        `${pricingCoverage.offer_models + pricingCoverage.not_applicable_models}/${pricingCoverage.current_models} resolved · ?${pricingCoverage.unknown_models}`,
+      ]);
+      if (examples.length > 0 || omitted > 0)
+        detailNotes.push(
+          "<details>",
+          `<summary>Unknown pricing examples (${pricingCoverage.unknown_models}/${pricingCoverage.current_models})</summary>`,
+          "",
+          `${examples}${omitted === 0 ? "" : `${examples.length === 0 ? "" : " "}(+${omitted} more)`}`,
+          "",
+          "</details>",
+        );
     }
-    for (const source of pricingSources) lines.push(...pricingExtractionLine(source));
-    for (const source of pricingSources) lines.push(...pricingReconciliationLine(source));
+    for (const source of pricingSources) detailRows.push(...pricingExtractionRows(source));
+    for (const source of pricingSources) {
+      detailRows.push(...pricingReconciliationRows(source));
+      detailNotes.push(...pricingFindingNotes(source));
+    }
     if (provider.models.added > 0 && provider.models.added_model_refs.length === 0)
-      lines.push(`- Added: ${provider.models.added} models (identities unavailable)`);
+      detailRows.push(["Model +", "—", `${provider.models.added} · identities unavailable`]);
     if (provider.models.removed > 0 && provider.models.removed_model_refs.length === 0)
-      lines.push(`- Removed: ${provider.models.removed} models (identities unavailable)`);
+      detailRows.push(["Model −", "—", `${provider.models.removed} · identities unavailable`]);
     if (provider.models.changed > 0 && provider.models.changed_models.length === 0)
-      lines.push(`- Updated: ${provider.models.changed} models (details unavailable)`);
-    if (failedSources.length > 0)
-      lines.push(
-        `- Source attempts: ${failedSources.map((source) => sourceFailure(source, report.generated_at)).join(", ")}`,
-      );
-    for (const source of findingSources) lines.push(...contractFindingLines(source));
+      detailRows.push(["Model ~", "—", `${provider.models.changed} · details unavailable`]);
+    for (const source of failedSources)
+      detailRows.push([
+        "Source",
+        `\`${source.source_id}\``,
+        sourceAttemptValue(source, report.generated_at),
+      ]);
+    for (const source of findingSources) detailRows.push(...contractFindingRows(source));
     if (provider.attempt?.validation_issue !== undefined)
-      lines.push(`- Validation: \`${provider.attempt.validation_issue.code}\``);
+      detailRows.push(["Validation", "—", `\`${provider.attempt.validation_issue.code}\``]);
     if (provider.attempt?.failure !== undefined)
-      lines.push(`- Failure: \`${provider.attempt.failure.code}\``);
+      detailRows.push(["Failure", "—", `\`${provider.attempt.failure.code}\``]);
     if (provider.attempt?.pricing?.outcome === "failed")
-      lines.push(`- Pricing attempt: \`${provider.attempt.pricing.failure_code ?? "failed"}\``);
+      detailRows.push(["Pricing", "—", `\`${provider.attempt.pricing.failure_code ?? "failed"}\``]);
+
+    const modelTable = modelChangeTable(provider);
+    const detailTable = providerDetailTable(detailRows);
+    lines.push("", `### ${provider.provider_id}`, "", ...modelTable);
+    if (modelTable.length > 0 && detailTable.length > 0) lines.push("");
+    lines.push(...detailTable);
+    if (detailTable.length > 0 && detailNotes.length > 0) lines.push("");
+    lines.push(...detailNotes);
   }
 
   return {
