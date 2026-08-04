@@ -9,6 +9,18 @@
   "ignoreTests": false,
   "separateMajorMinor": true,
   "separateMultipleMajor": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^package\\.json$/"],
+      "matchStrings": [
+        "\\\"devEngines\\\"\\s*:\\s*\\{\\s*\\\"packageManager\\\"\\s*:\\s*\\{\\s*\\\"name\\\"\\s*:\\s*\\\"pnpm\\\"\\s*,\\s*\\\"version\\\"\\s*:\\s*\\\"(?<currentValue>[^\\\"]+)\\\""
+      ],
+      "depNameTemplate": "pnpm",
+      "datasourceTemplate": "npm",
+      "depTypeTemplate": "packageManager"
+    }
+  ],
   "packageRules": [
     {
       "matchDepTypes": ["dependencies", "devDependencies"],

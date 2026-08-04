@@ -59,4 +59,7 @@ Status: implemented
   must be resupplied for every attempted build until a safe pair commits.
 - Provider secrets are optional. Missing secrets skip only their scoped inventories.
 - Deployment uses the pinned `void` dependency and GitHub OIDC. `void.json` deploys static `dist/`; `VOID_PROJECT` is the only repository variable.
-- Renovate uses the Shanghai timezone, a seven-day minimum release age, grouped automerge for non-major updates, and isolated manual major updates.
+- Renovate uses the Shanghai timezone, a seven-day minimum release age, grouped automerge for
+  non-major updates, and isolated manual major updates. Its custom package-manager matcher keeps
+  the strict `devEngines.packageManager.version` pin synchronized with the standard
+  `packageManager` pin.
