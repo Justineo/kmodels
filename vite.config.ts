@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig, type Plugin } from "vite-plus";
 import {
@@ -8,10 +9,45 @@ import {
   type PublishedAssetProfile,
 } from "./src/catalog/published-assets.ts";
 import { defaultProjectionPaths } from "./src/catalog/projection-paths.ts";
+import { catalogUpdateUrl, type CatalogRevision } from "./src/catalog/update-link.ts";
 import { generatedDataTests } from "./tests/generated-data-tests.ts";
 
+const repositoryUrl = "https://github.com/Justineo/kmodels";
 let developmentUiAssets: Promise<PublishedAssetProfile> | undefined;
 let developmentExportAssets: Promise<PublishedAssetProfile> | undefined;
+
+function gitOutput(arguments_: string[]): string | undefined {
+  try {
+    return execFileSync("git", arguments_, { encoding: "utf8" });
+  } catch {
+    return undefined;
+  }
+}
+
+function catalogRevision(): CatalogRevision {
+  const log = gitOutput([
+    "log",
+    "-1",
+    "--format=%H%x00%(trailers:key=Kmodels-Refresh-Run,valueonly)",
+    "--",
+    "data/catalog.json",
+  ]);
+  const separator = log?.indexOf("\0") ?? -1;
+  if (log !== undefined && separator >= 0) {
+    const commitSha = log.slice(0, separator).trim();
+    const actionRunUrl = log.slice(separator + 1).trim();
+    return {
+      commitSha,
+      ...(actionRunUrl === "" ? {} : { actionRunUrl }),
+    };
+  }
+
+  const commitSha = gitOutput(["rev-parse", "HEAD"])?.trim();
+  if (commitSha === undefined) throw new Error("Unable to resolve the catalog revision");
+  return { commitSha };
+}
+
+const updatedUrl = catalogUpdateUrl(repositoryUrl, catalogRevision());
 
 async function developmentAsset(path: string): Promise<Uint8Array | undefined> {
   if (path.startsWith("/ui/")) {
@@ -94,6 +130,9 @@ function buildCatalog(): Plugin {
 
 export default defineConfig({
   plugins: [buildCatalog(), serveCatalog(), vue()],
+  define: {
+    __KMODELS_CATALOG_UPDATE_URL__: JSON.stringify(updatedUrl),
+  },
   fmt: {
     ignorePatterns: ["data/**"],
   },

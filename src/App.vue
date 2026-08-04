@@ -43,6 +43,7 @@ const initialRoute = parseRouteSearch(location.search);
 const props = defineProps<{ catalog: WebsiteCatalog }>();
 
 const { providers, generated_at: generatedAt } = props.catalog;
+const catalogUpdateUrl = __KMODELS_CATALOG_UPDATE_URL__;
 const models = ref(props.catalog.models);
 const query = ref(initialRoute.query);
 const selectedProvider = ref(initialRoute.provider);
@@ -533,7 +534,13 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
         <strong>{{ providers.length }}</strong>
         providers
       </span>
-      <time class="generated-at" :datetime="generatedAt"> Updated {{ generatedAtLabel }} </time>
+      <a
+        class="generated-at"
+        :href="catalogUpdateUrl"
+        aria-label="View this catalog update on GitHub"
+      >
+        <time :datetime="generatedAt">Updated {{ generatedAtLabel }}</time>
+      </a>
       <a
         class="header-link"
         href="https://github.com/Justineo/kmodels"

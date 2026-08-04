@@ -10,7 +10,11 @@ Status: implemented
 - The scheduled refresh runs hourly with jitter and commits the validated
   catalog, public-only parsed pricing compiler input, canonical pricing,
   derived UI/export asset indexes and packs, fetch state, quarantine, and
-  refresh summary using a `chore(data): ...` commit.
+  refresh summary using a `chore(data): ...` commit. Its commit records the
+  producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
+  out full history so the website generation-time link can resolve the latest
+  catalog-producing commit and prefer that run, while manually produced catalog
+  commits fall back to their GitHub commit page.
 - The collector owns failure classification and the safe public status
   projection. The workflow renders its structured report into the GitHub job
   summary, emits warnings for retained or withheld providers, and keeps the

@@ -5,7 +5,7 @@ Status: implemented
 ## Product shape
 
 - The site is a full-width, full-height precision workspace, not a centered marketing page.
-- One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle.
+- One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle. The generation time links to the catalog-producing GitHub Actions run when that run is recorded on the commit; otherwise it links to the catalog-producing commit.
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
 - One toolbar keeps model-ID/name search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
