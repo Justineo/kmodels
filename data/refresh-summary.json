@@ -1,8 +1,8 @@
 {
-  "catalog_version": "4fd3b670bfc6dfac4617476d24b06e4be3745b31c1a10b59fd33bd2827467e91",
-  "generated_at": "2026-08-04T03:00:47.201Z",
+  "catalog_version": "8d7c75610b3d6a1a0d42566f95e8728802169b062253a3f0666336409a50defe",
+  "generated_at": "2026-08-04T05:01:32.844Z",
   "outcome": "changed",
-  "previous_catalog_version": "9e28f1a7a78090922e9e766fb2f8afefdfef36ba2fc339d2dde0fb99549081db",
+  "previous_catalog_version": "4fd3b670bfc6dfac4617476d24b06e4be3745b31c1a10b59fd33bd2827467e91",
   "providers": [
     {
       "attempt": {
@@ -12,9 +12,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 129,
             "source_id": "bedrock-models"
           },
@@ -30,23 +30,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "availability": 1
-        },
-        "changed_models": [
-          {
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-5"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 129,
         "previous": 129,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 128
+        "unchanged": 129
       },
       "pricing": {
         "commercial_hash": "0c074911046910c9b1738dffb4e2ed164bac74c40814cf677c9169bb5fd1ed5e",
@@ -59,20 +50,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "bedrock-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2169,7 +2153,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1410,
+            "parsed_models": 1411,
             "source_id": "huggingface-hf-inference"
           },
           {
@@ -2183,7 +2167,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1410,
+            "parsed_models": 1411,
             "source_id": "huggingface-hub"
           }
         ]
@@ -2191,13 +2175,12 @@
       "models": {
         "added": 1,
         "added_model_refs": [
-          "huggingface/Qwen/Qwen2.5-7B-Instruct"
+          "huggingface/chendelong/DirectSAM-1800px-0424"
         ],
-        "changed": 32,
+        "changed": 35,
         "changed_fields": {
-          "capabilities": 3,
-          "limits": 30,
-          "updated_date": 1
+          "capabilities": 6,
+          "limits": 30
         },
         "changed_models": [
           {
@@ -2276,7 +2259,7 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
+            "model_ref": "huggingface/MiniMaxAI/MiniMax-M3"
           },
           {
             "fields": [
@@ -2286,9 +2269,9 @@
           },
           {
             "fields": [
-              "updated_date"
+              "capabilities"
             ],
-            "model_ref": "huggingface/Sachin21112004/distilbart-news-summarizer"
+            "model_ref": "huggingface/XiaomiMiMo/MiMo-V2.5-Pro"
           },
           {
             "fields": [
@@ -2310,6 +2293,18 @@
           },
           {
             "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3.2"
+          },
+          {
+            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
@@ -2322,7 +2317,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
@@ -2338,6 +2332,12 @@
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-v1.5-8B"
+          },
+          {
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/tencent/Hy3"
           },
           {
             "fields": [
@@ -2377,13 +2377,13 @@
           },
           {
             "fields": [
+              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/zai-org/GLM-5.1-FP8"
@@ -2395,18 +2395,16 @@
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1541,
+        "current": 1542,
         "previous": 1541,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/chendelong/DirectSAM-1800px-0424"
-        ],
-        "unchanged": 1508
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1506
       },
       "pricing": {
-        "commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507",
+        "commercial_hash": "1ec9ae0bc9b7eded4ab3cd8c051ecdaf1a6baa8c6005547b2b404f92b1d4fa01",
         "outcome": "commercial",
-        "previous_commercial_hash": "808a04bbcb9fc2ea0acd3f772343b5059c01b0c79f4a5f04c510d2045b4cb2d6"
+        "previous_commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507"
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2482,9 +2480,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -2631,20 +2629,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-releases"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -3875,9 +3879,9 @@
             "source_id": "xai-api"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 6,
             "source_id": "xai-language-api"
           },
@@ -3935,8 +3939,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "xai-language-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3948,7 +3958,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3964,11 +3974,11 @@
     "accepted": 18,
     "added_models": 1,
     "added_sources": 0,
-    "changed_models": 408,
-    "changed_sources": 29,
-    "models": 3374,
+    "changed_models": 410,
+    "changed_sources": 30,
+    "models": 3375,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
