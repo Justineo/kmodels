@@ -29,3 +29,33 @@ Claude Fable 5, Claude Mythos 5, Claude Mythos Preview, Claude Opus 4.8, Opus 4.
 | Claude Opus 4.8 | auto        | 290 tokens                         |
 | Claude Opus 4.7 | auto        | 675 tokens                         |
 | Claude Sonnet 5 | auto        | 354 tokens                         |
+
+Prompt caching uses the following pricing multipliers relative to base input token rates:
+
+| Cache operation      | Multiplier             | Duration                             |
+| -------------------- | ---------------------- | ------------------------------------ |
+| 5-minute cache write | 1.25x base input price | Cache valid for 5 minutes            |
+| 1-hour cache write   | 2x base input price    | Cache valid for 1 hour               |
+| Cache read (hit)     | 0.1x base input price  | Same duration as the preceding write |
+
+For Claude 4.6 and later models, specifying US-only inference through the `inference_geo` parameter incurs a 1.1x multiplier on all token pricing categories.
+
+Each organization receives **1,550 free hours** of usage per month. Additional usage beyond 1,550 hours is billed at **$0.05 USD per hour, per container**.
+
+Web search is available for **$10 per 1,000 searches**.
+
+Web fetch usage has **no additional charges** beyond standard token costs.
+
+| SKU             | Rate                   | Metering                  |
+| --------------- | ---------------------- | ------------------------- |
+| Session runtime | $0.08 per session-hour | `running` status duration |
+
+| Concept       | Details                                                  |
+| ------------- | -------------------------------------------------------- |
+| **CCU price** | $0.01 per CCU (fixed; discounts apply during conversion) |
+
+| Concept       | Details                                                  |
+| ------------- | -------------------------------------------------------- |
+| **CCU price** | $0.01 per CCU (fixed; discounts apply during conversion) |
+
+Volume discounts may be available for high-volume users. These are negotiated on a case-by-case basis.

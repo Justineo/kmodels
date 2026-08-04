@@ -4,6 +4,7 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
@@ -15,6 +16,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 const endpointSchema = z.enum([
@@ -54,6 +56,7 @@ const pricingModelSchema = z.object({
 
 type Document = ReturnType<typeof load>;
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
+type Reconcile = Input["onPricingReconciliation"];
 
 interface LinkedDocument {
   url: string;
@@ -159,6 +162,83 @@ const endpointDefinitions: EndpointDefinition[] = [
     endpoint: { name: "Generate", path: "v1/generate" },
     labels: ["Generate"],
     modelList: "generate",
+  },
+];
+
+const accountingReferences: readonly {
+  documentPath: string;
+  markers: readonly RegExp[];
+  forbiddenMarkers?: readonly RegExp[];
+  message: string;
+}[] = [
+  {
+    documentPath: "/docs/how-does-cohere-pricing-work.md",
+    markers: [
+      /billed_units[\s\S]*input_tokens[\s\S]*output_tokens[\s\S]*tokens/,
+      /billed[^\n]*tokens are the tokens that you(?:'|’)re actually[^\n]*billed/i,
+      /trial API key usage is free/i,
+    ],
+    message: "Cohere pricing-accounting reference drifted",
+  },
+  {
+    documentPath: "/docs/rate-limits.md",
+    markers: [
+      /evaluation keys \(free but limited in usage\).*production keys \(paid/i,
+      /Prod keys work like trial keys for newer model variants/i,
+      /Trial keys \(and prod keys on newer Chat model variants\) are limited to 1,000 API calls a month/i,
+    ],
+    message: "Cohere API-key pricing reference drifted",
+  },
+  {
+    documentPath: "/reference/errors.md",
+    markers: [/402 responses are sent when the account has reached its billing limit/i],
+    message: "Cohere billing-limit reference drifted",
+  },
+  {
+    documentPath: "/reference/teams-and-roles.md",
+    markers: [/View Usage history/, /View and download invoices/],
+    message: "Cohere account-billing reference drifted",
+  },
+  {
+    documentPath: "/reference/chat.md",
+    markers: [
+      /The number of billed input tokens[\s\S]*The number of billed output tokens/,
+      /cached_tokens[\s\S]*The number of prompt tokens that hit the inference cache/,
+    ],
+    message: "Cohere Chat usage reference drifted",
+  },
+  {
+    documentPath: "/reference/chat-v1.md",
+    markers: [/billed_units[\s\S]*input_tokens[\s\S]*output_tokens[\s\S]*tokens/],
+    message: "Cohere Chat V1 usage reference drifted",
+  },
+  {
+    documentPath: "/reference/chat-stream.md",
+    markers: [/message-end[\s\S]*usage[\s\S]*billed_units/, /cached_tokens/],
+    message: "Cohere streaming usage reference drifted",
+  },
+  {
+    documentPath: "/reference/embed.md",
+    markers: [
+      /The number of billed images[\s\S]*The number of billed input tokens[\s\S]*The number of billed image tokens/,
+    ],
+    message: "Cohere Embed usage reference drifted",
+  },
+  {
+    documentPath: "/reference/rerank.md",
+    markers: [/The number of billed search units/, /"billed_units"[\s\S]*"search_units"/],
+    message: "Cohere Rerank usage reference drifted",
+  },
+  {
+    documentPath: "/reference/get-embed-job.md",
+    markers: [/"billed_units"[\s\S]*"images"[\s\S]*"input_tokens"[\s\S]*"image_tokens"/],
+    message: "Cohere Embed Job usage reference drifted",
+  },
+  {
+    documentPath: "/reference/create-audio-transcription.md",
+    markers: [/audio_transcriptions_create_Response_200[\s\S]*The transcribed text/],
+    forbiddenMarkers: [/billed_units/],
+    message: "Cohere transcription response reference drifted",
   },
 ];
 
@@ -308,6 +388,22 @@ function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
     for (const label of definition.labels) byLabel.set(label, reference);
   }
   return { byHref, byLabel };
+}
+
+function validateAccountingReferences(documents: LinkedDocument[]): void {
+  for (const reference of accountingReferences) {
+    const matches = documents.filter(
+      (document) => new URL(document.url).pathname === reference.documentPath,
+    );
+    const document = matches[0];
+    if (
+      matches.length !== 1 ||
+      document === undefined ||
+      reference.markers.some((marker) => !marker.test(document.body)) ||
+      reference.forbiddenMarkers?.some((marker) => marker.test(document.body)) === true
+    )
+      throw new Error(reference.message);
+  }
 }
 
 function withEndpoints(current: ProviderModel, values: ApiEndpoint[]): ProviderModel {
@@ -537,7 +633,11 @@ function cardMatchesPath(id: string, pathname: string): boolean {
   return page !== undefined && normalized(id) === normalized(page);
 }
 
-function addRate(current: ProviderModel, rate: SourcePriceFact): ProviderModel {
+function addRate(
+  current: ProviderModel,
+  rate: SourcePriceFact,
+  reconcile?: Reconcile,
+): ProviderModel {
   const key = (item: SourcePriceFact): string =>
     JSON.stringify([item.meter, item.unit, item.conditions, item.source_ref]);
   const existing = current.price_facts.find((item) => key(item) === key(rate));
@@ -550,8 +650,10 @@ function addRate(current: ProviderModel, rate: SourcePriceFact): ProviderModel {
     };
     if (decimal(existing.price) !== decimal(rate.price))
       throw new Error(`Cohere pricing sources disagree for ${current.model_id}`);
+    reconcile?.({ disposition: "excluded", reason_code: "duplicate_price_fact" });
     return current;
   }
+  reconcile?.({ disposition: "normalized", reason_code: "normalized_price_fact" });
   return {
     ...current,
     price_facts: [...current.price_facts, rate],
@@ -571,7 +673,29 @@ function modelCard(
 ): void {
   const $ = load(body);
   const id = cardId($);
-  if (id === undefined || !cardMatchesPath(id, url.pathname)) return;
+  const pricing = text(
+    $(".fern-card")
+      .filter((_index, card) => text($(card).text()).startsWith("Pricing"))
+      .text(),
+  );
+  const direct = pricing.match(
+    /Input\s*\$([\d.]+)\s*\/\s*1M tokens\s*Output\s*\$([\d.]+)\s*\/\s*1M tokens/i,
+  );
+  if (id === undefined || !cardMatchesPath(id, url.pathname)) {
+    const count =
+      direct !== null
+        ? 2
+        : Number(/\bfree\b/i.test(pricing)) +
+          Number(/contact (?:our )?sales|Model Vault/i.test(pricing));
+    for (let index = 0; index < count; index += 1)
+      input.onPricingReconciliation?.({
+        disposition: id === undefined ? "unbound" : "ambiguous",
+        reason_code:
+          id === undefined ? "model_card_pricing_without_id" : "model_card_identity_conflict",
+        sample: id === undefined ? url.pathname : `${url.pathname} -> ${id}`,
+      });
+    return;
+  }
   const title = cardTitle($);
   const description = text(
     $("h2")
@@ -662,14 +786,6 @@ function modelCard(
       apiEndpoints,
     ),
   );
-  const pricing = text(
-    $(".fern-card")
-      .filter((_index, card) => text($(card).text()).startsWith("Pricing"))
-      .text(),
-  );
-  const direct = pricing.match(
-    /Input\$([\d.]+)\s*\/\s*1M tokensOutput\$([\d.]+)\s*\/\s*1M tokens/i,
-  );
   if (direct?.[1] !== undefined && direct[2] !== undefined) {
     const inputPrice = direct[1];
     const outputPrice = direct[2];
@@ -678,15 +794,33 @@ function modelCard(
         addRate(
           current,
           publishedRate("input_text", inputPrice, "million_tokens", input.source.id, "1M tokens"),
+          input.onPricingReconciliation,
         ),
         publishedRate("output_text", outputPrice, "million_tokens", input.source.id, "1M tokens"),
+        input.onPricingReconciliation,
       ),
     );
   } else if (/free until rate limits/i.test(pricing)) {
     update(models, id, (current) => ({ ...current, pricing_state: "free" }));
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "free_until_rate_limits",
+    });
   } else if (/contact (?:our )?sales|Model Vault/i.test(pricing)) {
     update(models, id, (current) => ({ ...current, pricing_state: "custom_quote" }));
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "custom_quote",
+    });
   }
+  if (
+    (direct !== null || /free until rate limits/i.test(pricing)) &&
+    /Model Vault|contact (?:our )?sales/i.test(pricing)
+  )
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "model_vault_alternative",
+    });
 }
 
 function transcribePage(
@@ -743,6 +877,16 @@ function transcribePage(
       [endpoint.endpoint],
     ),
   );
+  if (free) {
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "free_until_rate_limits",
+    });
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "model_vault_alternative",
+    });
+  }
 }
 
 function lifecycle(input: Input, models: Map<string, ProviderModel>, body: string): void {
@@ -887,20 +1031,11 @@ function lifecycle(input: Input, models: Map<string, ProviderModel>, body: strin
           ]),
         }));
         factCount += 1;
-        const price = cells[priceIndex]?.match(/\$([\d.]+)\s*\/\s*1K searches/i)?.[1];
-        if (price !== undefined)
-          update(models, id.data, (current) =>
-            addRate(
-              current,
-              publishedRate(
-                "rerank_request",
-                price,
-                "thousand_search_units",
-                input.source.id,
-                "1K searches",
-              ),
-            ),
-          );
+        if (/\$[\d.]+\s*\/\s*1K searches/i.test(cells[priceIndex] ?? ""))
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "historical_retired_price",
+          });
       });
   });
   if (factCount === 0) throw new Error("Cohere lifecycle structure drifted");
@@ -917,18 +1052,33 @@ function key(value: string, keepDate: boolean): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-function matchProduct(
+function productMatches(
   models: Map<string, ProviderModel>,
   label: string,
   keepDate = false,
-): ProviderModel | undefined {
+): ProviderModel[] {
   const target = key(label, keepDate);
   const matches = [...models.values()].filter(
     (item) =>
       item.status !== "retired" &&
       (key(item.model_id, keepDate) === target || key(item.name, keepDate) === target),
   );
-  return matches.length === 1 ? matches[0] : undefined;
+  const active = matches.filter(({ status }) => status === "active");
+  return active.length > 0 ? active : matches;
+}
+
+function reconcileUnmatched(
+  label: string,
+  matches: readonly ProviderModel[],
+  reconcile?: Reconcile,
+  count = 1,
+): void {
+  for (let index = 0; index < count; index += 1)
+    reconcile?.({
+      disposition: matches.length === 0 ? "unbound" : "ambiguous",
+      reason_code: matches.length === 0 ? "pricing_product_unbound" : "pricing_product_ambiguous",
+      sample: label,
+    });
 }
 
 function collectPricing(value: unknown, result: z.infer<typeof pricingModelSchema>[]): void {
@@ -982,13 +1132,27 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
   if (products.length < 5 || products.length > 20)
     throw new Error("Cohere pricing model structure drifted");
   for (const product of products) {
-    const current = matchProduct(models, product.modelName);
-    if (current === undefined) continue;
+    const description = nestedText(product.portableDescription);
+    const matches = productMatches(models, product.modelName);
+    const current = matches.length === 1 ? matches[0] : undefined;
+    if (current === undefined) {
+      if (/custom enterprise pricing|contact (?:our )?(?:team|sales)/i.test(description))
+        input.onPricingReconciliation?.({
+          disposition: "explicit_non_numeric",
+          reason_code: "provider_service_custom_quote",
+        });
+      else reconcileUnmatched(product.modelName, matches, input.onPricingReconciliation);
+      continue;
+    }
     if (product.per === "Free") {
       update(models, current.model_id, (item) => ({
         ...item,
         pricing_state: "free",
       }));
+      input.onPricingReconciliation?.({
+        disposition: "explicit_non_numeric",
+        reason_code: "free",
+      });
       continue;
     }
     if (product.per !== "1M tokens")
@@ -1017,61 +1181,85 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
                   input.source.id,
                   unit,
                 );
-        update(models, current.model_id, (modelValue) => addRate(modelValue, rate));
+        update(models, current.model_id, (modelValue) =>
+          addRate(modelValue, rate, input.onPricingReconciliation),
+        );
       };
-      if (item.inputPrice !== undefined && item.inputPrice !== null)
-        add(item.inputLabel, item.inputPrice);
-      if (
-        item.outputLabel !== undefined &&
-        item.outputPrice !== undefined &&
-        item.outputPrice !== null
-      )
+      if (item.inputPrice === null)
+        input.onPricingReconciliation?.({
+          disposition: "explicit_non_numeric",
+          reason_code: "price_not_published",
+        });
+      else if (item.inputPrice !== undefined) add(item.inputLabel, item.inputPrice);
+      if (item.outputPrice === null)
+        input.onPricingReconciliation?.({
+          disposition: "explicit_non_numeric",
+          reason_code: "price_not_published",
+        });
+      else if (item.outputLabel !== undefined && item.outputPrice !== undefined)
         add(item.outputLabel, item.outputPrice);
     }
     if (product.modelName === "Transcribe") {
-      const value = nestedText(product.portableDescription).match(
-        /\$+([\d.]+)\s*\/\s*hour\s*\/\s*instance/i,
-      )?.[1];
-      if (value !== undefined)
-        update(models, current.model_id, (item) =>
-          addRate(
-            item,
-            publishedRate(
-              "provisioned_throughput",
-              value,
-              "unit_hour",
-              input.source.id,
-              "hour / instance",
-              { endpoint: "Model Vault", capacity: "starting rate" },
-            ),
+      const value = description.match(/\$+([\d.]+)\s*\/\s*hour\s*\/\s*instance/i)?.[1];
+      if (value === undefined) throw new Error("Cohere Transcribe pricing structure drifted");
+      update(models, current.model_id, (item) =>
+        addRate(
+          item,
+          publishedRate(
+            "provisioned_throughput",
+            value,
+            "unit_hour",
+            input.source.id,
+            "hour / instance",
+            { endpoint: "Model Vault", capacity: "starting rate" },
           ),
-        );
+          input.onPricingReconciliation,
+        ),
+      );
     }
   }
   const legacy =
     /(.+?) pricing is \$([\d.]+)\/1M tokens for input and \$([\d.]+)\/1M tokens for output/i;
-  $("li,p").each((_index, element) => {
-    const match = text($(element).text()).match(legacy);
-    const current = match?.[1] === undefined ? undefined : matchProduct(models, match[1], true);
-    if (current === undefined || match?.[2] === undefined || match[3] === undefined) return;
-    const inputPrice = match[2];
-    const outputPrice = match[3];
-    update(models, current.model_id, (item) =>
-      addRate(
+  $("li,p")
+    .filter((_index, element) => $(element).find("li,p").length === 0)
+    .each((_index, element) => {
+      const match = text($(element).text()).match(legacy);
+      if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) return;
+      const matches = productMatches(models, match[1], true);
+      const current = matches.length === 1 ? matches[0] : undefined;
+      if (current === undefined) {
+        reconcileUnmatched(match[1], matches, input.onPricingReconciliation, 2);
+        return;
+      }
+      const inputPrice = match[2];
+      const outputPrice = match[3];
+      update(models, current.model_id, (item) =>
         addRate(
-          item,
-          publishedRate("input_text", inputPrice, "million_tokens", input.source.id, "1M tokens"),
+          addRate(
+            item,
+            publishedRate("input_text", inputPrice, "million_tokens", input.source.id, "1M tokens"),
+            input.onPricingReconciliation,
+          ),
+          publishedRate("output_text", outputPrice, "million_tokens", input.source.id, "1M tokens"),
+          input.onPricingReconciliation,
         ),
-        publishedRate("output_text", outputPrice, "million_tokens", input.source.id, "1M tokens"),
-      ),
-    );
-  });
+      );
+    });
   const aya = text($("body").text()).match(
     /Aya Expanse models \(8B and 32B\).*?\$([\d.]+)\/1M tokens for input and \$([\d.]+)\/1M tokens for output/i,
   );
   if (aya?.[1] !== undefined && aya[2] !== undefined)
-    for (const id of ["c4ai-aya-expanse-8b", "c4ai-aya-expanse-32b"])
-      if (models.has(id))
+    for (const id of ["c4ai-aya-expanse-8b", "c4ai-aya-expanse-32b"]) {
+      const target = models.get(id);
+      if (target === undefined) {
+        reconcileUnmatched(id, [], input.onPricingReconciliation, 2);
+      } else if (target.status === "retired") {
+        for (let index = 0; index < 2; index += 1)
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "historical_retired_price",
+          });
+      } else
         update(models, id, (item) =>
           addRate(
             addRate(
@@ -1083,6 +1271,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
                 input.source.id,
                 "1M tokens",
               ),
+              input.onPricingReconciliation,
             ),
             publishedRate(
               "output_text",
@@ -1091,8 +1280,10 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
               input.source.id,
               "1M tokens",
             ),
+            input.onPricingReconciliation,
           ),
         );
+    }
   $("div.grid")
     .filter((_index, row) => $(row).children().length === 4)
     .each((_index, row) => {
@@ -1100,16 +1291,22 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
         .children()
         .map((_cellIndex, cell) => text($(cell).text()))
         .get();
-      const current = cells[0] === undefined ? undefined : matchProduct(models, cells[0]);
       const hourly = cells[2]?.match(/\$([\d,.]+)/)?.[1]?.replace(/,/g, "");
       const monthly = cells[3]?.match(/\$([\d,.]+)/)?.[1]?.replace(/,/g, "");
+      if (hourly === undefined && monthly === undefined) return;
       if (
-        current === undefined ||
+        cells[0] === undefined ||
         cells[1] === undefined ||
         hourly === undefined ||
         monthly === undefined
       )
+        throw new Error("Cohere Model Vault pricing structure drifted");
+      const matches = productMatches(models, cells[0]);
+      const current = matches.length === 1 ? matches[0] : undefined;
+      if (current === undefined) {
+        reconcileUnmatched(cells[0], matches, input.onPricingReconciliation, 2);
         return;
+      }
       const conditions = { endpoint: "Model Vault", capacity: cells[1] };
       update(models, current.model_id, (item) =>
         addRate(
@@ -1123,6 +1320,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
               "hour / instance",
               { ...conditions, billing_period: "hourly" },
             ),
+            input.onPricingReconciliation,
           ),
           publishedRate(
             "provisioned_throughput",
@@ -1132,6 +1330,7 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
             "month / instance",
             { ...conditions, billing_period: "monthly" },
           ),
+          input.onPricingReconciliation,
         ),
       );
     });
@@ -1311,6 +1510,7 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
   const references = endpointReferences(bundle.documents);
+  validateAccountingReferences(bundle.documents);
   const modelDocuments = indexedModelDocuments(
     bundle.index,
     bundle.documents,

@@ -7,6 +7,7 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourceRawPricingFactKey,
   type ParsedProviderModel as ProviderModel,
@@ -26,6 +27,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 interface Card {
@@ -597,6 +599,7 @@ function applyGemmaFreePricing(
   models: Map<string, ProviderModel>,
   sourceId: string,
   body: string,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   const gemma = [...models.values()].filter((model) => /^gemma-4-.+-it$/.test(model.model_id));
   if (gemma.length === 0) return;
@@ -624,6 +627,19 @@ function applyGemmaFreePricing(
     )
   )
     throw new Error("Gemma 4 free-tier pricing structure changed");
+
+  for (const label of required) {
+    onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "gemma_free_tier_rate",
+      sample: label,
+    });
+    onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "gemma_paid_tier_unavailable",
+      sample: label,
+    });
+  }
 
   for (const model of gemma) {
     const input = model.modalities.input.filter((modality) => modality !== "pdf");
@@ -868,6 +884,7 @@ function addRates(
   row: string,
   accountEligibility: "free_tier" | "paid_tier",
   values: PriceCandidate[],
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   for (const { price, descriptor, segment, unit } of values) {
     const rates = meterRates(
@@ -879,12 +896,18 @@ function addRates(
       conditions(tier, accountEligibility, descriptor, row),
     );
     if (rates.length === 0) throw new Error(`Gemini pricing row changed: ${row}`);
-    for (const rate of rates)
+    for (const rate of rates) {
+      const billedUnit =
+        rate.meter === "tool_call" &&
+        unit === "thousand_requests" &&
+        /^gemini-3(?:[.-])/.test(model.model_id)
+          ? "thousand_search_units"
+          : unit;
       model.price_facts.push(
         publishedRate(
           rate.meter,
           price,
-          unit,
+          billedUnit,
           sourceId,
           accountEligibility === "free_tier"
             ? `Free Tier; ${row}; Free of charge`
@@ -892,6 +915,12 @@ function addRates(
           rate.conditions,
         ),
       );
+    }
+    onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "pricing_rate_bound",
+      sample: model.model_id,
+    });
   }
 }
 
@@ -901,13 +930,18 @@ function addSearchAllowance(
   tier: string,
   row: string,
   value: string,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   if (
     !/grounding with google .*search/i.test(row) ||
     !/free search requests per month/i.test(value)
   )
     return;
-  if (!/shared across all .*models.*then \$\d+(?:\.\d+)? per 1,000 requests/i.test(value))
+  if (
+    !/shared across all .*models.*then \$\d+(?:\.\d+)? per 1,000 (?:requests|search queries)/i.test(
+      value,
+    )
+  )
     throw new Error("Gemini search allowance changed");
   model.raw_price_facts.push({
     term_key: "google_search_allowance",
@@ -920,6 +954,11 @@ function addSearchAllowance(
       fragment: value,
     },
   });
+  onPricingReconciliation?.({
+    disposition: "raw",
+    reason_code: "shared_grounding_allowance",
+    sample: model.model_id,
+  });
 }
 
 function applyAgentPricing(
@@ -927,6 +966,7 @@ function applyAgentPricing(
   models: Map<string, ProviderModel>,
   sourceId: string,
   agentIds: string[],
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   if (agentIds.length === 0) return;
   const tables = $(".pricing-table").filter((_index, table) => {
@@ -951,6 +991,12 @@ function applyAgentPricing(
     })
     .get();
   if (rows.length === 0) throw new Error("Gemini agent pricing table is empty");
+  for (const row of rows)
+    onPricingReconciliation?.({
+      disposition: "raw",
+      reason_code: "agent_usage_formula",
+      sample: row.slice(0, 256),
+    });
   for (const id of agentIds) {
     const model = models.get(id);
     if (model === undefined) throw new Error(`Gemini pricing references unknown agent: ${id}`);
@@ -973,6 +1019,7 @@ function applyPricing(
   sourceId: string,
   body: string,
   agentIds: string[],
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   const $ = load(body);
   $(".devsite-article-body .models-section").each((_index, section) => {
@@ -1005,13 +1052,43 @@ function applyPricing(
           const cells = $(rowElement).find("td");
           if (cells.length < 3) return;
           const row = text(cells.eq(0).text());
+          if (row === "Used to improve our products") {
+            onPricingReconciliation?.({
+              disposition: "excluded",
+              reason_code: "non_price_commercial_row",
+              sample: row,
+            });
+            return;
+          }
           const paid = selectedCandidates(header, candidates(header, row, cells.eq(2)));
           const paidText = text(cells.eq(2).text());
           const selectedModels = targets(codes, row).map((id) => pricingModel(models, id));
           for (const model of selectedModels) {
-            addRates(model, sourceId, header, tier, row, "paid_tier", paid);
-            addSearchAllowance(model, sourceId, tier, row, paidText);
-            if (text(cells.eq(1).text()) !== "Free of charge") continue;
+            if (paid.length === 0)
+              onPricingReconciliation?.({
+                disposition: "explicit_non_numeric",
+                reason_code: "paid_tier_not_numeric",
+                sample: `${model.model_id}: ${row}`.slice(0, 256),
+              });
+            addRates(
+              model,
+              sourceId,
+              header,
+              tier,
+              row,
+              "paid_tier",
+              paid,
+              onPricingReconciliation,
+            );
+            addSearchAllowance(model, sourceId, tier, row, paidText, onPricingReconciliation);
+            if (text(cells.eq(1).text()) !== "Free of charge") {
+              onPricingReconciliation?.({
+                disposition: "explicit_non_numeric",
+                reason_code: "free_tier_not_numeric",
+                sample: `${model.model_id}: ${row}`.slice(0, 256),
+              });
+              continue;
+            }
             const free = paid.map((candidate) => ({ ...candidate, price: "0" }));
             if (free.length === 0) {
               const unit = priceUnit(header, "", row);
@@ -1019,13 +1096,22 @@ function applyPricing(
                 throw new Error(`Gemini free-tier pricing unit changed: ${row}`);
               free.push({ price: "0", descriptor: "", segment: row, unit });
             }
-            addRates(model, sourceId, header, tier, row, "free_tier", free);
+            addRates(
+              model,
+              sourceId,
+              header,
+              tier,
+              row,
+              "free_tier",
+              free,
+              onPricingReconciliation,
+            );
           }
         });
     });
   });
-  applyGemmaFreePricing(models, sourceId, body);
-  applyAgentPricing($, models, sourceId, agentIds);
+  applyGemmaFreePricing(models, sourceId, body, onPricingReconciliation);
+  applyAgentPricing($, models, sourceId, agentIds, onPricingReconciliation);
   for (const item of models.values()) {
     item.price_facts = [
       ...new Map(
@@ -1097,6 +1183,106 @@ function document(bundle: z.infer<typeof linkedBundleSchema>, pathname: string):
   const value = bundle.documents.find((item) => new URL(item.url).pathname === pathname)?.body;
   if (value === undefined) throw new Error(`Gemini bundle omitted ${pathname}`);
   return value;
+}
+
+function documentText(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
+  return text(load(document(bundle, pathname)).text());
+}
+
+function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const pricing = documentText(bundle, "/gemini-api/docs/pricing");
+  if (
+    !pricing.includes("Document token billing") ||
+    !pricing.includes("DOCUMENT modality") ||
+    !pricing.includes("billed at the image token rate") ||
+    !pricing.includes("Google AI Studio usage is free of charge in all available regions") ||
+    !pricing.includes("Prices may differ from the prices listed here")
+  )
+    throw new Error("Gemini pricing boundary documentation drifted");
+
+  const billing = documentText(bundle, "/gemini-api/docs/billing");
+  if (
+    !billing.includes(
+      "Tiers, rate limits, and billing account caps are all determined at the billing account level",
+    ) ||
+    !billing.includes("Prepay and Postpay") ||
+    !billing.includes("approximately 10 minute billing pipeline latency") ||
+    !/cost details are available within a day.*more than 24 hours/i.test(billing) ||
+    !/paid API key.*charged for AI Studio usage/i.test(billing)
+  )
+    throw new Error("Gemini billing-account contract drifted");
+
+  const implicitCaching = documentText(bundle, "/gemini-api/docs/caching");
+  const explicitCaching = documentText(bundle, "/gemini-api/docs/generate-content/caching");
+  if (
+    !implicitCaching.includes(
+      "Implicit caching is enabled by default for all Gemini 2.5 and newer models",
+    ) ||
+    !implicitCaching.includes("usage.total_cached_tokens") ||
+    !explicitCaching.includes("billed based on the TTL duration of cached token count") ||
+    !explicitCaching.includes("usage_metadata")
+  )
+    throw new Error("Gemini cache accounting contract drifted");
+
+  const tokens = documentText(bundle, "/gemini-api/docs/tokens");
+  const generateContent = documentText(bundle, "/api/generate-content");
+  const interactions = documentText(bundle, "/api/interactions-api");
+  if (
+    ![
+      "total_input_tokens",
+      "total_output_tokens",
+      "total_thought_tokens",
+      "total_cached_tokens",
+      "total_tool_use_tokens",
+    ].every((field) => tokens.includes(field)) ||
+    ![
+      "promptTokenCount",
+      "cachedContentTokenCount",
+      "candidatesTokenCount",
+      "toolUsePromptTokenCount",
+      "thoughtsTokenCount",
+      "promptTokensDetails",
+      "cacheTokensDetails",
+      "serviceTier",
+    ].every((field) => generateContent.includes(field)) ||
+    ![
+      "input_tokens_by_modality",
+      "output_tokens_by_modality",
+      "cached_tokens_by_modality",
+      "tool_use_tokens_by_modality",
+      "grounding_tool_count",
+    ].every((field) => interactions.includes(field))
+  )
+    throw new Error("Gemini response usage-accounting contract drifted");
+
+  const flex = documentText(bundle, "/gemini-api/docs/flex-inference");
+  const priority = documentText(bundle, "/gemini-api/docs/priority-inference");
+  if (
+    !flex.includes("50% cost reduction") ||
+    !flex.includes("service_tier") ||
+    !flex.includes("No server-side fallback") ||
+    !priority.includes("75-100% more") ||
+    !priority.includes("x-gemini-service-tier")
+  )
+    throw new Error("Gemini inference-tier accounting contract drifted");
+
+  for (const pathname of ["/gemini-api/docs/google-search", "/gemini-api/docs/maps-grounding"]) {
+    const grounding = documentText(bundle, pathname);
+    if (
+      !grounding.includes("billed for each search query") ||
+      !/billed per (?:search )?prompt/i.test(grounding)
+    )
+      throw new Error(`Gemini grounding accounting contract drifted for ${pathname}`);
+  }
+
+  const accountPricing = documentText(bundle, "/billing/docs/how-to/get-pricing-information-api");
+  const billingExport = documentText(bundle, "/billing/docs/how-to/export-data-bigquery-tables");
+  if (
+    !accountPricing.includes("custom prices associated with your Cloud Billing account") ||
+    !billingExport.includes("no delivery or latency guarantees") ||
+    !billingExport.includes("once each day")
+  )
+    throw new Error("Google Cloud account-pricing or cost-export contract drifted");
 }
 
 function validateMethodDocumentation(body: string): void {
@@ -1191,6 +1377,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "gemini-catalog") throw new Error("Wrong Gemini catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  validateAccountingDocumentation(bundle);
   const indexCards = cards(bundle.index.body);
   const models = new Map<string, ProviderModel>();
   const versionIds = new Map<string, string[]>();
@@ -1233,7 +1420,13 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
     document(bundle, "/gemini-api/docs/interactions-overview"),
     document(bundle, "/api/interactions-api"),
   );
-  applyPricing(models, input.source.id, document(bundle, "/gemini-api/docs/pricing"), agents);
+  applyPricing(
+    models,
+    input.source.id,
+    document(bundle, "/gemini-api/docs/pricing"),
+    agents,
+    input.onPricingReconciliation,
+  );
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );

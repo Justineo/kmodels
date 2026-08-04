@@ -1,21 +1,51 @@
 {
-  "catalog_version": "b6106531d07ab34f7d9007dc1076a64b542c99f62afa85372e1503624f3a213b",
-  "generated_at": "2026-08-04T08:54:56.328Z",
+  "catalog_version": "bf19dfde447b30ba654052c2e624408e579d937360cbcb321afb58b9832c10c7",
+  "generated_at": "2026-08-04T09:04:03.119Z",
   "outcome": "changed",
-  "previous_catalog_version": "518c617c5ebed1ed65e4587874791ef9be929f20e9f89abd17a16cb049b8472b",
+  "previous_catalog_version": "b70f77a5e5b767edb1527c8894f63aa381972bc11a73e89a819b3aadd67a62bf",
   "providers": [
     {
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "pricing_validation_failed",
+          "outcome": "failed"
         },
         "sources": [
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 129,
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 132,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 132,
+              "normalized_facts": 13513,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 128,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 4
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 2386,
+                "explicit_non_numeric": 0,
+                "normalized": 13629,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 16015,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "bedrock-models"
           },
           {
@@ -44,6 +74,33 @@
         "outcome": "provenance_only",
         "previous_commercial_hash": "0c074911046910c9b1738dffb4e2ed164bac74c40814cf677c9169bb5fd1ed5e"
       },
+      "pricing_coverage": {
+        "current_models": 123,
+        "normalized_rate_models": 107,
+        "not_applicable_models": 0,
+        "offer_models": 107,
+        "raw_fact_models": 1,
+        "unknown_model_refs": [
+          "amazon-bedrock/amazon.titan-embed-g1-text-02",
+          "amazon-bedrock/anthropic.claude-mythos-preview",
+          "amazon-bedrock/openai.gpt-5.5",
+          "amazon-bedrock/stability.stable-conservative-upscale-v1:0",
+          "amazon-bedrock/stability.stable-creative-upscale-v1:0",
+          "amazon-bedrock/stability.stable-fast-upscale-v1:0",
+          "amazon-bedrock/stability.stable-image-control-sketch-v1:0",
+          "amazon-bedrock/stability.stable-image-control-structure-v1:0",
+          "amazon-bedrock/stability.stable-image-erase-object-v1:0",
+          "amazon-bedrock/stability.stable-image-inpaint-v1:0",
+          "amazon-bedrock/stability.stable-image-remove-background-v1:0",
+          "amazon-bedrock/stability.stable-image-search-recolor-v1:0",
+          "amazon-bedrock/stability.stable-image-search-replace-v1:0",
+          "amazon-bedrock/stability.stable-image-style-guide-v1:0",
+          "amazon-bedrock/stability.stable-outpaint-v1:0",
+          "amazon-bedrock/stability.stable-style-transfer-v1:0"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 16
+      },
       "provider_id": "amazon-bedrock",
       "publication": "accepted",
       "signals": [],
@@ -62,6 +119,7 @@
       "warning_codes": {
         "catalog_api_set_mismatch": 1,
         "missing_field": 2,
+        "pricing_invalid": 1,
         "scope_limited": 1
       }
     },
@@ -77,6 +135,35 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 31,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 31,
+              "normalized_facts": 270,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 15,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 16
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 20,
+                "explicit_non_numeric": 0,
+                "normalized": 37,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 57,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "anthropic-models"
           },
           {
@@ -101,9 +188,21 @@
         "unchanged": 31
       },
       "pricing": {
-        "commercial_hash": "7395bd92b12d4657cd243f764c8dc26d0114d3e1cb658b20e6d604c8d6aedd17",
+        "commercial_hash": "d9d9ffa4507a9632f28d37d620674c715b38823e26076ad666522200193bafe8",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "7395bd92b12d4657cd243f764c8dc26d0114d3e1cb658b20e6d604c8d6aedd17"
+        "previous_commercial_hash": "d9d9ffa4507a9632f28d37d620674c715b38823e26076ad666522200193bafe8"
+      },
+      "pricing_coverage": {
+        "current_models": 13,
+        "normalized_rate_models": 12,
+        "not_applicable_models": 0,
+        "offer_models": 12,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "anthropic/claude-mythos-preview"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 1
       },
       "provider_id": "anthropic",
       "publication": "accepted",
@@ -144,8 +243,114 @@
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 72,
+            "parsed_models": 109,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 109,
+              "normalized_facts": 18934,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 109,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 5324,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / Grok 4.2 Inp Dzone / Grok 4.2 Inp Dzone Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / Grok 4.2 Inp glbl / Grok 4.2 Inp glbl Tokens"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "retail_version_not_unique",
+                  "sample": "Azure OpenAI Media / gpt-realtime-2 Image cd inp Gl / gpt-realtime-2 Image cd inp Gl 1M Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Kimi / K2 Thinking Inp DZ / K2 Thinking Inp DZ Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure BFL Flux Models / Flex Ref / Flex Ref Megapixel"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "retail_version_not_unique",
+                  "sample": "Azure OpenAI / gpt-4-8K-Inp-glbl / gpt-4-8K-Inp-glbl Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / 4.3 Outp DZ L / 4.3 Outp DZ L Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Kimi / K2.6 Thinking Inp glbl / K2.6 Thinking Inp glbl Tokens"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 1446,
+                "excluded": 4803,
+                "explicit_non_numeric": 0,
+                "normalized": 19110,
+                "raw": 0,
+                "unbound": 3864,
+                "unresolved": 0,
+                "unsupported": 14
+              },
+              "observed_items": 29237,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "azure-retail-prices"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 12,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 12,
+              "normalized_facts": 85,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 12,
+              "raw_facts": 12,
+              "raw_models": 12,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 3,
+                "explicit_non_numeric": 0,
+                "normalized": 13,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 16,
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "azure-claude-pricing"
           },
           {
             "message": "Required credential(s) AZURE_TENANT_ID and AZURE_CLIENT_ID and AZURE_CLIENT_SECRET and AZURE_SUBSCRIPTION_ID and AZURE_LOCATION are not configured.",
@@ -1052,9 +1257,40 @@
         "unchanged": 76
       },
       "pricing": {
-        "commercial_hash": "e634ba1b4900ed04bafbdf24198527a0e7017cdb8307276db898268238ba7fc3",
+        "commercial_hash": "2dc01903b27e1277d8db18ccbe72c051c106aa1d0977f0d9359d7f509ac4fd85",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "e634ba1b4900ed04bafbdf24198527a0e7017cdb8307276db898268238ba7fc3"
+        "previous_commercial_hash": "2dc01903b27e1277d8db18ccbe72c051c106aa1d0977f0d9359d7f509ac4fd85"
+      },
+      "pricing_coverage": {
+        "current_models": 191,
+        "normalized_rate_models": 110,
+        "not_applicable_models": 0,
+        "offer_models": 110,
+        "raw_fact_models": 13,
+        "unknown_model_refs": [
+          "azure/Cohere-embed-v3-english@1",
+          "azure/Cohere-embed-v3-multilingual@1",
+          "azure/FLUX.1-Kontext-pro@1",
+          "azure/FLUX.2-flex@1",
+          "azure/FLUX.2-pro@1",
+          "azure/FW-DeepSeek-V3.1@1",
+          "azure/FW-GLM-4.7@1",
+          "azure/FW-Kimi-K2-Instruct-0905@1",
+          "azure/FW-Kimi-K2-Thinking@1",
+          "azure/FW-Qwen3-14B@1",
+          "azure/FW-Qwen3.5-122B-A10B@1",
+          "azure/FW-Qwen3.5-397B-A17B@1",
+          "azure/Llama-3.3-70B-Instruct",
+          "azure/Llama-3.3-70B-Instruct@1",
+          "azure/Llama-3.3-70B-Instruct@2",
+          "azure/Llama-3.3-70B-Instruct@3",
+          "azure/Llama-3.3-70B-Instruct@4",
+          "azure/Llama-3.3-70B-Instruct@5",
+          "azure/Llama-3.3-70B-Instruct@9",
+          "azure/Llama-4-Maverick-17B-128E-Instruct-FP8"
+        ],
+        "unknown_model_refs_omitted": 61,
+        "unknown_models": 81
       },
       "provider_id": "azure",
       "publication": "accepted",
@@ -1064,11 +1300,11 @@
         "added_source_ids": [],
         "changed": 0,
         "changed_sources": [],
-        "current": 2,
-        "previous": 2,
+        "current": 3,
+        "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -1084,10 +1320,56 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 3,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 3,
+              "normalized_facts": 9,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 3,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 4,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "usage_cost_api_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "monthly_subscription_rates_not_public"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "enterprise_dedicated_terms_not_public"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_rate_not_published"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 13,
+                "explicit_non_numeric": 0,
+                "normalized": 9,
+                "raw": 0,
+                "unbound": 4,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 26,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "cerebras-catalog"
           },
           {
@@ -1095,6 +1377,35 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 3,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 3,
+              "normalized_facts": 6,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 3,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 0,
+                "normalized": 6,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 6,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "cerebras-models"
           },
           {
@@ -1137,26 +1448,55 @@
         "outcome": "provenance_only",
         "previous_commercial_hash": "b812107f3c4bcd9b322ca570b1a04ee8f1c829325d142c84838f13696cd69dba"
       },
+      "pricing_coverage": {
+        "current_models": 15,
+        "normalized_rate_models": 3,
+        "not_applicable_models": 0,
+        "offer_models": 3,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "cerebras/deepseek-r1-distill-llama-70b",
+          "cerebras/llama-3.3-70b",
+          "cerebras/llama-4-maverick-17b-128e-instruct",
+          "cerebras/llama-4-scout-17b-16e-instruct",
+          "cerebras/llama3.1-70b",
+          "cerebras/llama3.1-8b",
+          "cerebras/qwen-3-235b-a22b",
+          "cerebras/qwen-3-235b-a22b-instruct-2507",
+          "cerebras/qwen-3-235b-a22b-thinking-2507",
+          "cerebras/qwen-3-32b",
+          "cerebras/qwen-3-coder-480b",
+          "cerebras/zai-glm-4.6"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 12
+      },
       "provider_id": "cerebras",
       "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "cerebras-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-catalog"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -1177,6 +1517,46 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 43,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 7,
+              "model_records": 43,
+              "normalized_facts": 37,
+              "not_applicable_models": 7,
+              "not_published_models": 0,
+              "numeric_models": 14,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 15
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 2,
+              "diagnostics": [
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "model_card_identity_conflict",
+                  "sample": "/docs/command-a -> command-a-plus-05-2026"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "model_card_identity_conflict",
+                  "sample": "/docs/command-a -> command-a-plus-05-2026"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 2,
+                "excluded": 10,
+                "explicit_non_numeric": 16,
+                "normalized": 33,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 61,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "cohere-models"
           },
           {
@@ -1204,6 +1584,32 @@
         "commercial_hash": "78f0b77c5d3399cba0ac7b2cca0af1f0802a16febaac5253ed316e3d1e9fc3d3",
         "outcome": "provenance_only",
         "previous_commercial_hash": "78f0b77c5d3399cba0ac7b2cca0af1f0802a16febaac5253ed316e3d1e9fc3d3"
+      },
+      "pricing_coverage": {
+        "current_models": 36,
+        "normalized_rate_models": 15,
+        "not_applicable_models": 0,
+        "offer_models": 21,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "cohere/c4ai-aya-vision-32b",
+          "cohere/command-a-03-2025",
+          "cohere/command-light-nightly",
+          "cohere/command-nightly",
+          "cohere/embed-english-light-v3.0",
+          "cohere/embed-english-v3.0",
+          "cohere/embed-multilingual-light-v3.0",
+          "cohere/embed-multilingual-v3.0",
+          "cohere/rerank-english-v3.0",
+          "cohere/rerank-multilingual-v3.0",
+          "cohere/summarize",
+          "cohere/tiny-aya-earth",
+          "cohere/tiny-aya-fire",
+          "cohere/tiny-aya-global",
+          "cohere/tiny-aya-water"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 15
       },
       "provider_id": "cohere",
       "publication": "accepted",
@@ -1315,6 +1721,75 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 333,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 333,
+              "normalized_facts": 3151,
+              "not_applicable_models": 1,
+              "not_published_models": 0,
+              "numeric_models": 332,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 15,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "web_extractor_promotion_not_bound"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen3.5-plus:Explicit cache:Hong Kong (China)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen-flash:Explicit cache:Hong Kong (China)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen3.7-max-2026-06-08:Explicit cache:Japan (Tokyo)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen3-max:Explicit cache:Japan (Tokyo)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen3.5-plus:Explicit cache:Japan (Tokyo)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen-plus:Explicit cache:Japan (Tokyo)"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cache_base_price_not_bound",
+                  "sample": "qwen3.5-flash:Explicit cache:Japan (Tokyo)"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 7,
+                "explicit_non_numeric": 1,
+                "normalized": 3242,
+                "raw": 0,
+                "unbound": 15,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 3265,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "dashscope-pricing"
           },
           {
@@ -1343,9 +1818,9 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 81,
+        "changed": 83,
         "changed_fields": {
-          "limits": 81
+          "limits": 83
         },
         "changed_models": [
           {
@@ -1736,6 +2211,12 @@
             "fields": [
               "limits"
             ],
+            "model_ref": "dashscope/qwen3.7-max-2026-05-17"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
             "model_ref": "dashscope/qwen3.7-max-2026-05-20"
           },
           {
@@ -1743,6 +2224,12 @@
               "limits"
             ],
             "model_ref": "dashscope/qwen3.7-max-2026-06-08"
+          },
+          {
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "dashscope/qwen3.7-max-preview"
           },
           {
             "fields": [
@@ -1839,12 +2326,43 @@
         "previous": 373,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 292
+        "unchanged": 290
       },
       "pricing": {
-        "commercial_hash": "00f9b9d07500623ec8c0066386d0a3667743fdf091514a73d2a4aac42ce8bfa8",
+        "commercial_hash": "43a2b32086204590e965b66c3a93ce52a6bcf43c5986c7096fa84d830b38aaf8",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "00f9b9d07500623ec8c0066386d0a3667743fdf091514a73d2a4aac42ce8bfa8"
+        "previous_commercial_hash": "43a2b32086204590e965b66c3a93ce52a6bcf43c5986c7096fa84d830b38aaf8"
+      },
+      "pricing_coverage": {
+        "current_models": 355,
+        "normalized_rate_models": 332,
+        "not_applicable_models": 0,
+        "offer_models": 332,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "dashscope/MiniMax-M2.1",
+          "dashscope/MiniMax-M2.7",
+          "dashscope/glm-4.5",
+          "dashscope/glm-4.5-air",
+          "dashscope/paraformer-realtime-8k-v1",
+          "dashscope/paraformer-realtime-v1",
+          "dashscope/qwen-long",
+          "dashscope/qwen-tts",
+          "dashscope/qwen2.5-14b-instruct",
+          "dashscope/qwen2.5-14b-instruct-1m",
+          "dashscope/qwen2.5-32b-instruct",
+          "dashscope/qwen2.5-72b-instruct",
+          "dashscope/qwen2.5-7b-instruct",
+          "dashscope/qwen2.5-7b-instruct-1m",
+          "dashscope/qwen2.5-vl-32b-instruct",
+          "dashscope/qwen2.5-vl-3b-instruct",
+          "dashscope/qwen2.5-vl-72b-instruct",
+          "dashscope/qwen2.5-vl-7b-instruct",
+          "dashscope/qwen3-0.6b",
+          "dashscope/qwen3-1.7b"
+        ],
+        "unknown_model_refs_omitted": 3,
+        "unknown_models": 23
       },
       "provider_id": "dashscope",
       "publication": "accepted",
@@ -1948,24 +2466,22 @@
     },
     {
       "attempt": {
-        "outcome": "accepted",
+        "failure": {
+          "code": "source_unavailable",
+          "message": "Reviewed companion URL contained unsupported URL components"
+        },
+        "outcome": "rejected",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_unavailable",
+          "outcome": "failed"
         },
         "sources": [
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 50,
+            "consecutive_failures": 1,
+            "last_success_at": "2026-08-04T07:51:11.204Z",
+            "message": "Reviewed companion URL contained unsupported URL components",
+            "outcome": "fetch_failed",
             "source_id": "databricks-models"
-          },
-          {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 42,
-            "source_id": "databricks-api"
           }
         ]
       },
@@ -1986,8 +2502,22 @@
         "outcome": "provenance_only",
         "previous_commercial_hash": "647363b149a4433d13143bb21bdf09758382ae7ba2ad64a6289da1286722a425"
       },
+      "pricing_coverage": {
+        "current_models": 49,
+        "normalized_rate_models": 46,
+        "not_applicable_models": 0,
+        "offer_models": 46,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "databricks/databricks-gemini-3-1-flash-image",
+          "databricks/databricks-gemini-3-pro-image",
+          "databricks/databricks-inkling"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 3
+      },
       "provider_id": "databricks",
-      "publication": "accepted",
+      "publication": "retained",
       "signals": [],
       "sources": {
         "added": 0,
@@ -2000,11 +2530,9 @@
         "removed_source_ids": [],
         "unchanged": 2
       },
-      "status": "fresh",
+      "status": "stale",
       "warning_codes": {
-        "catalog_api_set_mismatch": 1,
-        "missing_field": 3,
-        "scope_limited": 1
+        "source_fetch_failed": 1
       }
     },
     {
@@ -2019,6 +2547,48 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 2,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 2,
+              "normalized_facts": 6,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 2,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 3,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "upcoming_peak_policy_not_effective"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "web_search_fee_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "anthropic_model_mapping_not_bound"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 4,
+                "explicit_non_numeric": 0,
+                "normalized": 6,
+                "raw": 0,
+                "unbound": 3,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 13,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "deepseek-catalog"
           },
           {
@@ -2054,6 +2624,16 @@
         "outcome": "provenance_only",
         "previous_commercial_hash": "4952f7285afd7c4dc26f8feb817f4024f357922727ae6b4430d5c73d09c3bb5a"
       },
+      "pricing_coverage": {
+        "current_models": 2,
+        "normalized_rate_models": 2,
+        "not_applicable_models": 0,
+        "offer_models": 2,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
+      },
       "provider_id": "deepseek",
       "publication": "accepted",
       "signals": [],
@@ -2086,6 +2666,35 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 75,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 75,
+              "normalized_facts": 1053,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 42,
+              "raw_facts": 36,
+              "raw_models": 15,
+              "unknown_models": 33
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 79,
+                "explicit_non_numeric": 273,
+                "normalized": 558,
+                "raw": 40,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 950,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "gemini-models"
           },
           {
@@ -2110,9 +2719,23 @@
         "unchanged": 75
       },
       "pricing": {
-        "commercial_hash": "3ce1db4d677495d2147e7488ffd36e86edffd46d1e28585056e3a40089765a87",
+        "commercial_hash": "d346a8320d76b248336b6fe805eb48823194e56a86e7b45abbf172105fc18c69",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "3ce1db4d677495d2147e7488ffd36e86edffd46d1e28585056e3a40089765a87"
+        "previous_commercial_hash": "d346a8320d76b248336b6fe805eb48823194e56a86e7b45abbf172105fc18c69"
+      },
+      "pricing_coverage": {
+        "current_models": 44,
+        "normalized_rate_models": 38,
+        "not_applicable_models": 0,
+        "offer_models": 41,
+        "raw_fact_models": 15,
+        "unknown_model_refs": [
+          "gemini/gemini-3-pro-image-preview",
+          "gemini/gemini-3.1-flash-image-preview",
+          "gemini/lyria-realtime-exp"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 3
       },
       "provider_id": "gemini",
       "publication": "accepted",
@@ -2150,17 +2773,156 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1410,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 1410,
+              "normalized_facts": 0,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 0,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 1410
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 1410,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "51la5/roberta-large-NER"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "aaraki/vit-base-patch16-224-in21k-finetuned-cifar10"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "Aardiiiiy/indobertweet-base-Indonesian-sentiment-analysis"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "aari1995/German_Semantic_STS_V2"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "abdulmatinomotoso/English_Grammar_Checker"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "adalbertojunior/distilbert-portuguese-cased"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "adibvafa/CodonTransformer"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "hf_inference_compute_price_unbound",
+                  "sample": "Ahmed9275/Vit-Cifar100"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 0,
+                "normalized": 0,
+                "raw": 0,
+                "unbound": 1410,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 1410,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "huggingface-hf-inference"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 129,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 129,
+              "normalized_facts": 412,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 110,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 19
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 96,
+              "diagnostics": [
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "auto_routing_policy_conflict"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "moonshotai/Kimi-K3:featherless-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "deepseek-ai/DeepSeek-V4-Flash-0731:fireworks-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "zai-org/GLM-5.2:featherless-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "zai-org/GLM-5.2:zai-org"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "deepseek-ai/DeepSeek-V4-Flash:featherless-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "Qwen/Qwen3.6-27B:featherless-ai"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "thinkingmachines/Inkling:fireworks-ai"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 1,
+                "excluded": 7,
+                "explicit_non_numeric": 0,
+                "normalized": 206,
+                "raw": 0,
+                "unbound": 95,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 309,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "huggingface-router"
           },
           {
@@ -2173,12 +2935,13 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 32,
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/nasa-impact/nasa-smd-ibm-st-v2"
+        ],
+        "changed": 28,
         "changed_fields": {
-          "capabilities": 4,
-          "limits": 29
+          "limits": 28
         },
         "changed_models": [
           {
@@ -2255,27 +3018,9 @@
           },
           {
             "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen2.5-Coder-3B-Instruct"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3-32B"
-          },
-          {
-            "fields": [
               "limits"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-Coder-30B-A3B-Instruct"
-          },
-          {
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
           },
           {
             "fields": [
@@ -2309,7 +3054,6 @@
           },
           {
             "fields": [
-              "capabilities",
               "limits"
             ],
             "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
@@ -2366,27 +3110,52 @@
             "fields": [
               "limits"
             ],
-            "model_ref": "huggingface/zai-org/GLM-5.1-FP8"
-          },
-          {
-            "fields": [
-              "limits"
-            ],
             "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1540,
-        "previous": 1541,
+        "current": 1539,
+        "previous": 1539,
         "removed": 1,
         "removed_model_refs": [
-          "huggingface/zai-org/GLM-4.5"
+          "huggingface/zai-org/GLM-5.1-FP8"
         ],
-        "unchanged": 1508
+        "unchanged": 1510
       },
       "pricing": {
         "commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507",
         "outcome": "provenance_only",
         "previous_commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507"
+      },
+      "pricing_coverage": {
+        "current_models": 1539,
+        "normalized_rate_models": 110,
+        "not_applicable_models": 0,
+        "offer_models": 110,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "huggingface/51la5/roberta-large-NER",
+          "huggingface/AI-Growth-Lab/PatentSBERTa",
+          "huggingface/AI-Sweden-Models/roberta-large-1160k",
+          "huggingface/AICodexLab/answerdotai-ModernBERT-base-ai-detector",
+          "huggingface/AIDA-UPM/mstsb-paraphrase-multilingual-mpnet-base-v2",
+          "huggingface/AITeamVN/Vietnamese_Embedding",
+          "huggingface/AMR-KELEG/NADI2024-baseline",
+          "huggingface/Aardiiiiy/indobertweet-base-Indonesian-sentiment-analysis",
+          "huggingface/Ahmed9275/Vit-Cifar100",
+          "huggingface/AkshitaS/bhasha-embed-v0",
+          "huggingface/Alibaba-NLP/gte-modernbert-base",
+          "huggingface/AnasAlokla/multilingual_go_emotions",
+          "huggingface/Angelakeke/RaTE-NER-Deberta",
+          "huggingface/AnkitAI/distilbert-base-uncased-financial-news-sentiment-analysis",
+          "huggingface/AnnaWegmann/Style-Embedding",
+          "huggingface/Anwarkh1/Skin_Cancer-Image_Classification",
+          "huggingface/Aremaki/sentence-camembert-bio",
+          "huggingface/Ateeqq/ai-vs-human-image-detector",
+          "huggingface/Ateeqq/nsfw-image-detection",
+          "huggingface/BAAI/bge-base-en"
+        ],
+        "unknown_model_refs_omitted": 1409,
+        "unknown_models": 1429
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2394,8 +3163,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hf-inference"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2413,7 +3188,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2428,9 +3203,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 12,
             "source_id": "kimi-openapi"
           },
@@ -2446,6 +3221,61 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 11,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 11,
+              "normalized_facts": 72,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 11,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 6,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "usage_cost_api_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "stream_interruption_usage_unavailable"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "enterprise_terms_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_web_search_billing_trigger_ambiguous"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_cached_tokens_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_guide_scope_conflict",
+                  "sample": "kimi-k2.7-code"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 8,
+                "explicit_non_numeric": 0,
+                "normalized": 72,
+                "raw": 0,
+                "unbound": 6,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 86,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "kimi-pricing"
           },
           {
@@ -2453,6 +3283,61 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 11,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 11,
+              "normalized_facts": 72,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 11,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 6,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "usage_cost_api_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "stream_interruption_usage_unavailable"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "enterprise_terms_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_web_search_billing_trigger_ambiguous"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_cached_tokens_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_guide_scope_conflict",
+                  "sample": "kimi-k2.7-code"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 9,
+                "explicit_non_numeric": 0,
+                "normalized": 72,
+                "raw": 0,
+                "unbound": 6,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 87,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "kimi-international-pricing"
           },
           {
@@ -2595,9 +3480,21 @@
         "unchanged": 1
       },
       "pricing": {
-        "commercial_hash": "38e17daa8cb3430aaf1fdbabb4516597df691ab53f610b33b1d091d4ed07b944",
+        "commercial_hash": "eeee78a7a6aefc204aa129ef35d4d9f08137db61609becbb8d37c7d927260ec2",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "38e17daa8cb3430aaf1fdbabb4516597df691ab53f610b33b1d091d4ed07b944"
+        "previous_commercial_hash": "eeee78a7a6aefc204aa129ef35d4d9f08137db61609becbb8d37c7d927260ec2"
+      },
+      "pricing_coverage": {
+        "current_models": 12,
+        "normalized_rate_models": 11,
+        "not_applicable_models": 0,
+        "offer_models": 11,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "kimi/moonshot-v1-auto"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 1
       },
       "provider_id": "kimi",
       "publication": "accepted",
@@ -2605,20 +3502,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-openapi"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -2639,6 +3542,35 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 48,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 48,
+              "normalized_facts": 0,
+              "not_applicable_models": 46,
+              "not_published_models": 2,
+              "numeric_models": 0,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 2,
+                "explicit_non_numeric": 48,
+                "normalized": 0,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 50,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "llama-models"
           },
           {
@@ -2664,6 +3596,16 @@
         "commercial_hash": "70f7b26491f19c50cb4175ab4462a77427d5fc7404ab8c9f1a870605f0ff31a9",
         "outcome": "provenance_only",
         "previous_commercial_hash": "70f7b26491f19c50cb4175ab4462a77427d5fc7404ab8c9f1a870605f0ff31a9"
+      },
+      "pricing_coverage": {
+        "current_models": 48,
+        "normalized_rate_models": 0,
+        "not_applicable_models": 46,
+        "offer_models": 2,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
       },
       "provider_id": "llama",
       "publication": "accepted",
@@ -2703,6 +3645,66 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 59,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 59,
+              "normalized_facts": 233,
+              "not_applicable_models": 21,
+              "not_published_models": 1,
+              "numeric_models": 37,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 6,
+              "diagnostics": [
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "first_party_price_conflict",
+                  "sample": "voxtral-small-latest: Output (/M tokens)"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "public_free_model_conflict",
+                  "sample": "labs-leanstral-2603"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "public_price_retired_model_conflict",
+                  "sample": "open-mixtral-8x7b: Input (/M tokens)"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "public_price_retired_model_conflict",
+                  "sample": "open-mixtral-8x7b: Output (/M tokens)"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "public_price_retired_model_conflict",
+                  "sample": "open-mixtral-8x22b: Input (/M tokens)"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "public_price_retired_model_conflict",
+                  "sample": "open-mixtral-8x22b: Output (/M tokens)"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 6,
+                "excluded": 53,
+                "explicit_non_numeric": 24,
+                "normalized": 104,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 187,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "mistral-models"
           },
           {
@@ -2717,28 +3719,29 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "aliases": 1
-        },
-        "changed_models": [
-          {
-            "fields": [
-              "aliases"
-            ],
-            "model_ref": "mistral/mistral-ocr-4-0@4.0"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 58,
         "previous": 58,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 57
+        "unchanged": 58
       },
       "pricing": {
-        "commercial_hash": "3b6c89df2695a162db2c8a7fc7f503b11f5df12f1bd905920b64e8c5d727be2d",
+        "commercial_hash": "39627d0baaaeb93223570537b04d9de5a0b2c81bbed3d268691ada73ebfb684c",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "3b6c89df2695a162db2c8a7fc7f503b11f5df12f1bd905920b64e8c5d727be2d"
+        "previous_commercial_hash": "39627d0baaaeb93223570537b04d9de5a0b2c81bbed3d268691ada73ebfb684c"
+      },
+      "pricing_coverage": {
+        "current_models": 37,
+        "normalized_rate_models": 19,
+        "not_applicable_models": 0,
+        "offer_models": 37,
+        "raw_fact_models": 19,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
       },
       "provider_id": "mistral",
       "publication": "accepted",
@@ -2772,7 +3775,8 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "pricing_validation_failed",
+          "outcome": "failed"
         },
         "sources": [
           {
@@ -2780,13 +3784,100 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 231,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 231,
+              "normalized_facts": 0,
+              "not_applicable_models": 215,
+              "not_published_models": 16,
+              "numeric_models": 0,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 231,
+                "normalized": 0,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 231,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "ollama-library"
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 20,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 20,
+              "normalized_facts": 3,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 1,
+              "raw_facts": 19,
+              "raw_models": 19,
+              "unknown_models": 19
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 7,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "included_usage_limits_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "usage_cost_ledger_api_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "cached_token_count_not_returned"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "anthropic_token_counts_approximate"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "thinking_token_accounting_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "vision_token_accounting_not_documented"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "web_search_rate_not_published"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 11,
+                "explicit_non_numeric": 0,
+                "normalized": 1,
+                "raw": 19,
+                "unbound": 7,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 38,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "ollama-cloud-models"
           }
         ]
@@ -2808,36 +3899,36 @@
         "outcome": "provenance_only",
         "previous_commercial_hash": "20793b886123fe0edab1a896226480212a194e01ccfabf5f3ed388c48f66cab8"
       },
+      "pricing_coverage": {
+        "current_models": 239,
+        "normalized_rate_models": 0,
+        "not_applicable_models": 215,
+        "offer_models": 23,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "ollama/gemini-3-flash-preview"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 1
+      },
       "provider_id": "ollama",
       "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "ollama-cloud-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "ollama-library"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
-        "missing_field": 3
+        "missing_field": 3,
+        "pricing_invalid": 1
       }
     },
     {
@@ -2852,6 +3943,41 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 93,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 3,
+              "model_records": 93,
+              "normalized_facts": 325,
+              "not_applicable_models": 2,
+              "not_published_models": 0,
+              "numeric_models": 87,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 1
+            },
+            "pricing_reconciliation": {
+              "basis": "model_output",
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "disposition": "unresolved",
+                  "reason_code": "parser_output_unknown",
+                  "sample": "gpt-image-2"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 5,
+                "normalized": 87,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 1,
+                "unsupported": 0
+              },
+              "observed_items": 93,
+              "unit": "parsed model record"
+            },
             "source_id": "openai-models"
           },
           {
@@ -2865,14 +3991,56 @@
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 65,
+            "parsed_models": 35,
             "source_id": "openai-deprecations"
           },
           {
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 40,
+            "parsed_models": 52,
+            "source_id": "openai-data-residency"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 46,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 46,
+              "normalized_facts": 277,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 45,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 1
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "disposition": "unsupported",
+                  "reason_code": "pricing_row_has_no_normalized_rate",
+                  "sample": "gpt-5.4-cyber"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 119,
+                "explicit_non_numeric": 0,
+                "normalized": 89,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 1
+              },
+              "observed_items": 209,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "openai-pricing"
           },
           {
@@ -3019,16 +4187,32 @@
             "model_ref": "openai/whisper-1"
           }
         ],
-        "current": 93,
-        "previous": 93,
+        "current": 103,
+        "previous": 103,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 72
+        "unchanged": 82
       },
       "pricing": {
-        "commercial_hash": "9aca9ebeface11598148f0ab1a93174b2e7b67902ef2797876ce23053525ab6b",
+        "commercial_hash": "e1fc158ceecaa0a348c371bce6eb1f0c2f3dd319ecfd69d085fc7fe11c7ae667",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "9aca9ebeface11598148f0ab1a93174b2e7b67902ef2797876ce23053525ab6b"
+        "previous_commercial_hash": "e1fc158ceecaa0a348c371bce6eb1f0c2f3dd319ecfd69d085fc7fe11c7ae667"
+      },
+      "pricing_coverage": {
+        "current_models": 88,
+        "normalized_rate_models": 80,
+        "not_applicable_models": 2,
+        "offer_models": 81,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [
+          "openai/gpt-4-1106-preview",
+          "openai/gpt-4o-2024-11-20",
+          "openai/gpt-4o-tts",
+          "openai/gpt-5.4-cyber",
+          "openai/sora-2-2025-10-06"
+        ],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 5
       },
       "provider_id": "openai",
       "publication": "accepted",
@@ -3038,16 +4222,16 @@
         "added_source_ids": [],
         "changed": 0,
         "changed_sources": [],
-        "current": 5,
-        "previous": 5,
+        "current": 6,
+        "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
         "catalog_api_set_mismatch": 1,
-        "missing_field": 1,
+        "missing_field": 2,
         "scope_limited": 1
       }
     },
@@ -3063,6 +4247,35 @@
             "extractor_changed": false,
             "outcome": "unchanged",
             "parsed_models": 315,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 315,
+              "normalized_facts": 2479,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 314,
+              "raw_facts": 4,
+              "raw_models": 4,
+              "unknown_models": 1
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 39,
+                "explicit_non_numeric": 12,
+                "normalized": 827,
+                "raw": 4,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 882,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "vercel-models"
           }
         ]
@@ -3719,9 +4932,19 @@
         "unchanged": 209
       },
       "pricing": {
-        "commercial_hash": "e623543886de7766628d5c74e4d914c477b22be190ca0ec97324b1e159d0de35",
+        "commercial_hash": "637b2d37cbf8303a85daa3cc898de1ab410496e6e9cc69822ed4848060f0dd61",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "e623543886de7766628d5c74e4d914c477b22be190ca0ec97324b1e159d0de35"
+        "previous_commercial_hash": "637b2d37cbf8303a85daa3cc898de1ab410496e6e9cc69822ed4848060f0dd61"
+      },
+      "pricing_coverage": {
+        "current_models": 315,
+        "normalized_rate_models": 314,
+        "not_applicable_models": 0,
+        "offer_models": 315,
+        "raw_fact_models": 10,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
       },
       "provider_id": "vercel",
       "publication": "accepted",
@@ -3754,6 +4977,35 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 49,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 49,
+              "normalized_facts": 1045,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 38,
+              "raw_facts": 69,
+              "raw_models": 12,
+              "unknown_models": 11
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 4,
+                "explicit_non_numeric": 277,
+                "normalized": 1045,
+                "raw": 69,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 1395,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "vertex-google-models"
           },
           {
@@ -3761,6 +5013,35 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 33,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 33,
+              "normalized_facts": 545,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 28,
+              "raw_facts": 1,
+              "raw_models": 1,
+              "unknown_models": 5
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 88,
+                "explicit_non_numeric": 5,
+                "normalized": 545,
+                "raw": 1,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 639,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "vertex-partner-models"
           },
           {
@@ -3768,6 +5049,35 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 18,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 18,
+              "normalized_facts": 60,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 18,
+              "raw_facts": 1,
+              "raw_models": 1,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 0,
+                "normalized": 60,
+                "raw": 1,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 61,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "vertex-open-models"
           },
           {
@@ -3792,9 +5102,19 @@
         "unchanged": 99
       },
       "pricing": {
-        "commercial_hash": "54e32169f8464b6024ba700bb672766c267b83723d440e8ee7cc00d3c1c71c3c",
+        "commercial_hash": "c1c18bba777b09057a35cf713370bd7e88b1f2e6ff53128ba7df3d0d05ad57f3",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "54e32169f8464b6024ba700bb672766c267b83723d440e8ee7cc00d3c1c71c3c"
+        "previous_commercial_hash": "c1c18bba777b09057a35cf713370bd7e88b1f2e6ff53128ba7df3d0d05ad57f3"
+      },
+      "pricing_coverage": {
+        "current_models": 69,
+        "normalized_rate_models": 69,
+        "not_applicable_models": 0,
+        "offer_models": 69,
+        "raw_fact_models": 14,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
       },
       "provider_id": "vertex",
       "publication": "accepted",
@@ -3848,6 +5168,46 @@
             "extractor_changed": false,
             "outcome": "changed",
             "parsed_models": 20,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 20,
+              "normalized_facts": 908,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 20,
+              "raw_facts": 2,
+              "raw_models": 2,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 2,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "non_model_tts_price_unbound",
+                  "sample": "$15 / 1M chars"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "non_model_stt_prices_unbound",
+                  "sample": "$0.1 / hr REST; $0.2 / hr streaming"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 6,
+                "explicit_non_numeric": 0,
+                "normalized": 20,
+                "raw": 1,
+                "unbound": 2,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 29,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "xai-models"
           },
           {
@@ -3901,16 +5261,26 @@
             "model_ref": "xai/grok-imagine-video@1.0"
           }
         ],
-        "current": 21,
-        "previous": 21,
+        "current": 20,
+        "previous": 20,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 19
+        "unchanged": 18
       },
       "pricing": {
-        "commercial_hash": "1f42448614137c2c062fe36f6f3c9b918ba571102c57174fdc74e2e5fa5b76e3",
+        "commercial_hash": "1eb6a0ec8a2e91aaa07cf038eedc66615c3b81a0dc7d791a859bc75408f2672d",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "1f42448614137c2c062fe36f6f3c9b918ba571102c57174fdc74e2e5fa5b76e3"
+        "previous_commercial_hash": "1eb6a0ec8a2e91aaa07cf038eedc66615c3b81a0dc7d791a859bc75408f2672d"
+      },
+      "pricing_coverage": {
+        "current_models": 20,
+        "normalized_rate_models": 20,
+        "not_applicable_models": 0,
+        "offer_models": 20,
+        "raw_fact_models": 2,
+        "unknown_model_refs": [],
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 0
       },
       "provider_id": "xai",
       "publication": "accepted",
@@ -3941,19 +5311,19 @@
       }
     }
   ],
-  "publication": "complete",
+  "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 18,
-    "added_models": 0,
+    "accepted": 17,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 408,
-    "changed_sources": 27,
-    "models": 3373,
+    "changed_models": 405,
+    "changed_sources": 28,
+    "models": 3381,
     "providers": 18,
     "removed_models": 1,
     "removed_sources": 0,
-    "retained": 0,
+    "retained": 1,
     "withheld": 0
   }
 }

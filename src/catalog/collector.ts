@@ -33,6 +33,11 @@ import {
   type CatalogPairCandidate,
 } from "./pricing-publication.ts";
 import {
+  sourcePricingExtraction,
+  sourcePricingReconciliation,
+  type PricingReconciliationItem,
+} from "./pricing-reconciliation.ts";
+import {
   capturePricingReplaySources,
   createPricingCompilationSnapshot,
   readPricingCompilationSnapshot,
@@ -416,6 +421,34 @@ export function applyGroups(
   groups: SourceGroup[],
   create: boolean,
 ): ParsedProviderModel[] {
+  return mergeGroups(models, groups, create, !create);
+}
+
+export function applySupplementGroups(
+  models: ParsedProviderModel[],
+  groups: SourceGroup[],
+): ParsedProviderModel[] {
+  return mergeGroups(models, groups, true, true);
+}
+
+function applyPublicGroups(
+  catalogs: SourceGroup[],
+  supplements: SourceGroup[],
+  overlays: SourceGroup[],
+): ParsedProviderModel[] {
+  return applyGroups(
+    applySupplementGroups(applyGroups([], catalogs, true), supplements),
+    overlays,
+    false,
+  );
+}
+
+function mergeGroups(
+  models: ParsedProviderModel[],
+  groups: SourceGroup[],
+  create: boolean,
+  matchAliases: boolean,
+): ParsedProviderModel[] {
   const byUid = new Map(models.map((model) => [model.uid, model]));
   const aliases = new Map<string, string | null>();
   const modelIds = new Map<string, string | null>();
@@ -444,7 +477,8 @@ export function applyGroups(
       const reverseUid = reverseMatches.size === 1 ? [...reverseMatches][0] : undefined;
       const reverseModel = reverseUid === undefined ? undefined : byUid.get(reverseUid);
       const current =
-        byUid.get(incoming.uid) ?? (create ? undefined : (idModel ?? aliasModel ?? reverseModel));
+        byUid.get(incoming.uid) ??
+        (matchAliases ? (idModel ?? aliasModel ?? reverseModel) : undefined);
       if (current === undefined) {
         if (create) {
           byUid.set(incoming.uid, incoming);
@@ -519,14 +553,20 @@ function missingFieldWarning(
         : model[field] === undefined,
   ).length;
   if (count === 0) return undefined;
+  if (field === "pricing")
+    return {
+      code: "missing_field",
+      provider_id: providerId,
+      source_id: sourceId,
+      field,
+      message: `Kmodels did not resolve public pricing for ${count} ${count === 1 ? "model" : "models"} from the configured official sources.`,
+    };
   const fact =
     field === "limits.context_tokens"
       ? "a token context limit"
-      : field === "pricing"
-        ? "machine-readable pricing in the configured official sources"
-        : field === "release_date"
-          ? "an official release date"
-          : "an official update date";
+      : field === "release_date"
+        ? "an official release date"
+        : "an official update date";
   return {
     code: "missing_field",
     provider_id: providerId,
@@ -625,11 +665,13 @@ async function collectProvider(
 
   try {
     const groups: SourceGroup[] = [];
+    const supplements: SourceGroup[] = [];
     const overlays: SourceGroup[] = [];
     const inventories: SourceGroup[] = [];
     const pricingSources: SourceGroup[] = [];
     const sources: SourceRecord[] = [];
     for (const source of manifest.sources) {
+      const role = source.role ?? "catalog";
       if (missingCredential(source)) {
         sourceAttempts.push({
           source_id: source.id,
@@ -677,15 +719,21 @@ async function collectProvider(
 
       let parsed: ParsedProviderModel[];
       let contractFinding: SourceContractEvidence | undefined;
+      const pricingReconciliationItems: PricingReconciliationItem[] = [];
       try {
         parsed = parseSource({
           provider: providerRecord(manifest, [], undefined),
           source,
           body: result.body,
           observedAt,
-          ...(source.role === "overlay" ? { catalogModels: applyGroups([], groups, true) } : {}),
+          ...(role === "catalog"
+            ? {}
+            : { catalogModels: applyPublicGroups(groups, supplements, overlays) }),
           onContractFinding: (finding) => {
             contractFinding = finding;
+          },
+          onPricingReconciliation: (item) => {
+            pricingReconciliationItems.push(item);
           },
         });
       } catch (error) {
@@ -706,7 +754,6 @@ async function collectProvider(
         throw error;
       }
 
-      const role = source.role ?? "catalog";
       const oldSource = oldSourceById.get(source.id);
       const contentChanged = oldSource?.content_hash !== result.contentHash;
       const extractorChanged = oldSource?.extractor_version !== source.extractorVersion;
@@ -716,6 +763,16 @@ async function collectProvider(
         parsed_models: parsed.length,
         content_changed: contentChanged,
         extractor_changed: extractorChanged,
+        ...(source.fields.includes("pricing")
+          ? {
+              pricing_extraction: sourcePricingExtraction(parsed),
+              pricing_reconciliation: sourcePricingReconciliation(
+                parsed,
+                pricingReconciliationItems,
+                source.access === "public" && source.auth === undefined,
+              ),
+            }
+          : {}),
         ...(contractFinding === undefined ? {} : { contract_finding: contractFinding }),
       });
       const firstFinding = contractFinding?.diagnostics[0];
@@ -730,6 +787,7 @@ async function collectProvider(
         );
       pricingSources.push({ source, models: parsed });
       if (role === "catalog") groups.push({ source, models: parsed });
+      if (role === "supplement") supplements.push({ source, models: parsed });
       if (role === "overlay") overlays.push({ source, models: parsed });
       if (role === "inventory") inventories.push({ source, models: parsed });
       sources.push({
@@ -742,6 +800,9 @@ async function collectProvider(
         exhaustive: source.exhaustive ?? false,
         role,
         field_paths: source.fields,
+        ...(source.pricingEvidence === undefined
+          ? {}
+          : { pricing_evidence: source.pricingEvidence }),
         observed_at: observedAt,
         etag: result.etag,
         last_modified: result.lastModified,
@@ -757,7 +818,7 @@ async function collectProvider(
     }
 
     if (groups.length === 0) throw new Error("No global catalog source succeeded");
-    let candidate = applyGroups(applyGroups([], groups, true), overlays, false);
+    let candidate = applyPublicGroups(groups, supplements, overlays);
     const identity = (model: ProviderModel): string =>
       `${model.model_id}${model.version === undefined ? "" : `@${model.version}`}`;
     const catalogIdentities = new Set(
@@ -800,7 +861,7 @@ async function collectProvider(
     const reconciliationSources = {
       catalog: new Set(
         manifest.sources
-          .filter(({ role }) => (role ?? "catalog") === "catalog")
+          .filter(({ role }) => role === undefined || role === "catalog" || role === "supplement")
           .map(({ id }) => id),
       ),
       exhaustive: new Set(

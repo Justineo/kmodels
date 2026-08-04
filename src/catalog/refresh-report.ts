@@ -1,5 +1,26 @@
 import { z } from "zod";
+import { modelLimitFields } from "./catalog-vocabulary.ts";
 import { sourceContractEvidenceSchema } from "./source-contract.ts";
+import {
+  sourcePricingExtractionSchema,
+  sourcePricingReconciliationSchema,
+} from "./pricing-reconciliation.ts";
+
+const limitValueSchema = z.union([
+  z.number().int().nonnegative(),
+  z.array(z.number().int().positive()),
+  z.object({ min: z.number().int().positive(), max: z.number().int().positive() }),
+]);
+
+const limitChangeSchema = z
+  .object({
+    field: z.enum(modelLimitFields),
+    previous: limitValueSchema.optional(),
+    current: limitValueSchema.optional(),
+  })
+  .refine(({ previous, current }) => previous !== undefined || current !== undefined, {
+    message: "Limit change must retain a previous or current value",
+  });
 
 const diffSchema = z.object({
   current: z.number().int().nonnegative(),
@@ -9,7 +30,13 @@ const diffSchema = z.object({
   added_model_refs: z.array(z.string()).default([]),
   removed_model_refs: z.array(z.string()).default([]),
   changed_models: z
-    .array(z.object({ model_ref: z.string(), fields: z.array(z.string()) }))
+    .array(
+      z.object({
+        model_ref: z.string(),
+        fields: z.array(z.string()),
+        limit_changes: z.array(limitChangeSchema).default([]),
+      }),
+    )
     .default([]),
 });
 
@@ -28,6 +55,8 @@ const attemptSchema = z.object({
       consecutive_failures: z.number().int().positive().optional(),
       last_success_at: z.iso.datetime({ offset: true }).optional(),
       contract_finding: sourceContractEvidenceSchema.optional(),
+      pricing_extraction: sourcePricingExtractionSchema.optional(),
+      pricing_reconciliation: sourcePricingReconciliationSchema.optional(),
     }),
   ),
   validation_issue: z.object({ code: z.string() }).optional(),
@@ -47,6 +76,18 @@ const providerSchema = z.object({
   models: diffSchema,
   sources: z.object({ changed: z.number().int().nonnegative() }),
   pricing: z.object({ outcome: z.string() }),
+  pricing_coverage: z
+    .object({
+      current_models: z.number().int().nonnegative(),
+      offer_models: z.number().int().nonnegative(),
+      not_applicable_models: z.number().int().nonnegative(),
+      unknown_models: z.number().int().nonnegative(),
+      normalized_rate_models: z.number().int().nonnegative(),
+      raw_fact_models: z.number().int().nonnegative(),
+      unknown_model_refs: z.array(z.string()),
+      unknown_model_refs_omitted: z.number().int().nonnegative(),
+    })
+    .optional(),
   signals: z.array(z.string()).default([]),
   attempt: attemptSchema.optional(),
 });
@@ -83,6 +124,28 @@ const publicationByStatus: Record<Provider["status"], NonNullable<Provider["publ
 
 function table(value: string): string {
   return value.replaceAll("|", "\\|");
+}
+
+function displayLimitValue(value: z.infer<typeof limitValueSchema> | undefined): string {
+  if (value === undefined) return "missing";
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return `[${value.join(", ")}]`;
+  return `{min: ${value.min}, max: ${value.max}}`;
+}
+
+function changedModel(value: Provider["models"]["changed_models"][number]): string {
+  const details = value.fields.filter((field) => field !== "limits");
+  if (value.limit_changes.length > 0) {
+    details.push(
+      ...value.limit_changes.map(
+        ({ field, previous, current }) =>
+          `limits.${field}: ${displayLimitValue(previous)} → ${displayLimitValue(current)}`,
+      ),
+    );
+  } else if (value.fields.includes("limits")) {
+    details.push("limits");
+  }
+  return `${value.model_ref} (${details.join("; ")})`;
 }
 
 function refs(label: string, values: string[]): string[] {
@@ -124,6 +187,40 @@ function contractFindingLines(source: SourceAttempt): string[] {
       `- Contract ${evidence.disposition} \`${source.source_id}\`: ${omitted} additional diagnostics omitted`,
     );
   return lines;
+}
+
+function pricingExtractionLine(source: SourceAttempt): string[] {
+  const pricing = source.pricing_extraction;
+  if (pricing === undefined) return [];
+  return [
+    `- Pricing extraction \`${source.source_id}\`: ${pricing.model_records} model records; ${pricing.numeric_models} numeric, ${pricing.raw_models} with raw facts, ${pricing.free_models} free, ${pricing.custom_quote_models} custom quote, ${pricing.not_published_models} not published, ${pricing.not_applicable_models} not applicable, ${pricing.unknown_models} unresolved; ${pricing.normalized_facts} normalized facts and ${pricing.raw_facts} raw facts`,
+  ];
+}
+
+function pricingReconciliationLine(source: SourceAttempt): string[] {
+  const evidence = source.pricing_reconciliation;
+  if (evidence === undefined) return [];
+  const counts = evidence.disposition_counts;
+  const line = `- Pricing reconciliation \`${source.source_id}\`: ${evidence.basis.replace("_", " ")} over ${evidence.observed_items} ${evidence.unit}s; ${counts.normalized} normalized, ${counts.raw} raw, ${counts.explicit_non_numeric} explicit non-numeric, ${counts.excluded} excluded, ${evidence.diagnostic_count} unresolved`;
+  const diagnostics = evidence.diagnostics.map(
+    ({ disposition, reason_code, sample }) =>
+      `- Pricing finding \`${source.source_id}\`: \`${disposition}\` / \`${reason_code}\`${sample === undefined ? "" : `; \`${sample}\``}`,
+  );
+  const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
+  if (omitted > 0)
+    diagnostics.push(
+      `- Pricing finding \`${source.source_id}\`: ${omitted} additional unresolved items omitted`,
+    );
+  return [line, ...diagnostics];
+}
+
+function pricingReconciliationWarnings(providerId: string, source: SourceAttempt): string[] {
+  const evidence = source.pricing_reconciliation;
+  if (evidence === undefined || evidence.diagnostic_count === 0) return [];
+  const counts = evidence.disposition_counts;
+  return [
+    `${providerId}/${source.source_id}: ${evidence.diagnostic_count}/${evidence.observed_items} pricing items unresolved (${counts.unbound} unbound, ${counts.ambiguous} ambiguous, ${counts.unsupported} unsupported, ${counts.unresolved} unresolved)`,
+  ];
 }
 
 function contractFindingWarnings(providerId: string, source: SourceAttempt): string[] {
@@ -189,16 +286,27 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     "",
     `**${outcome.replaceAll("_", " ")}** · ${publicationState} publication · ${report.generated_at} · \`${report.catalog_version.slice(0, 12)}\``,
     "",
-    "| Provider | Publication | Models | Sources | Pricing | Duration | Signals |",
-    "| --- | --- | ---: | ---: | --- | ---: | --- |",
+    "| Provider | Publication | Models | Sources | Pricing | Coverage | Duration | Signals |",
+    "| --- | --- | ---: | ---: | --- | --- | ---: | --- |",
     ...providers.map(
-      ({ provider_id, publication: state, models, sources, pricing, signals }) =>
+      ({
+        provider_id,
+        publication: state,
+        models,
+        sources,
+        pricing,
+        pricing_coverage: coverage,
+        signals,
+      }) =>
         `| ${[
           table(provider_id),
           state,
           `${models.current} (+${models.added} / −${models.removed} / ~${models.changed})`,
           `${sources.changed} changed`,
           table(pricing.outcome),
+          coverage === undefined
+            ? "—"
+            : `${coverage.offer_models + coverage.not_applicable_models}/${coverage.current_models} resolved · ${coverage.unknown_models} unknown`,
           durations.has(provider_id)
             ? `${((durations.get(provider_id) ?? 0) / 1000).toFixed(1)}s`
             : "—",
@@ -211,6 +319,10 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     const findingSources =
       provider.attempt?.sources.filter(({ contract_finding: finding }) => finding !== undefined) ??
       [];
+    const pricingSources =
+      provider.attempt?.sources.filter(
+        ({ pricing_extraction: pricing }) => pricing !== undefined,
+      ) ?? [];
     const failedSources =
       provider.attempt?.sources.filter(({ outcome: sourceOutcome }) =>
         ["fetch_failed", "parse_failed", "skipped_not_configured"].includes(sourceOutcome),
@@ -222,20 +334,24 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       failedSources.length === 0 &&
       findingSources.length === 0 &&
       provider.attempt?.validation_issue === undefined &&
-      provider.attempt?.pricing?.outcome !== "failed"
+      provider.attempt?.pricing?.outcome !== "failed" &&
+      (provider.pricing_coverage?.unknown_models ?? 0) === 0 &&
+      pricingSources.every(({ pricing_extraction: pricing }) => pricing?.unknown_models === 0)
     )
       continue;
     lines.push("", `### ${provider.provider_id}`, "");
     lines.push(...refs("Added", provider.models.added_model_refs));
     lines.push(...refs("Removed", provider.models.removed_model_refs));
-    lines.push(
-      ...refs(
-        "Changed",
-        provider.models.changed_models.map(
-          ({ model_ref, fields }) => `${model_ref} (${fields.join(", ")})`,
-        ),
-      ),
-    );
+    lines.push(...refs("Changed", provider.models.changed_models.map(changedModel)));
+    const pricingCoverage = provider.pricing_coverage;
+    if (pricingCoverage !== undefined && pricingCoverage.unknown_models > 0) {
+      const omitted = pricingCoverage.unknown_model_refs_omitted;
+      lines.push(
+        `- Unknown pricing: ${pricingCoverage.unknown_models}/${pricingCoverage.current_models} current models; examples ${pricingCoverage.unknown_model_refs.map((modelRef) => `\`${modelRef}\``).join(", ")}${omitted === 0 ? "" : ` (+${omitted} more)`}`,
+      );
+    }
+    for (const source of pricingSources) lines.push(...pricingExtractionLine(source));
+    for (const source of pricingSources) lines.push(...pricingReconciliationLine(source));
     if (provider.models.added > 0 && provider.models.added_model_refs.length === 0)
       lines.push(`- Added: ${provider.models.added} models`);
     if (provider.models.removed > 0 && provider.models.removed_model_refs.length === 0)
@@ -276,6 +392,12 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       ...providers.flatMap(
         ({ provider_id, attempt }) =>
           attempt?.sources.flatMap((source) => contractFindingWarnings(provider_id, source)) ?? [],
+      ),
+      ...providers.flatMap(
+        ({ provider_id, attempt }) =>
+          attempt?.sources.flatMap((source) =>
+            pricingReconciliationWarnings(provider_id, source),
+          ) ?? [],
       ),
       ...providers.flatMap(
         ({ provider_id, attempt }) =>

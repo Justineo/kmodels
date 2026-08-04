@@ -5,6 +5,7 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, scaleDecimal } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourcePriceFactKey,
   type ParsedProviderModel as ProviderModel,
@@ -19,6 +20,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 type Document = ReturnType<typeof load>;
@@ -277,6 +279,22 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
     !/Chat and completion endpoints support streaming responses\./i.test(referenceText)
   )
     throw new Error("Databricks API reference changed");
+  const usageFields = new Set<string>();
+  reference("main table").each((_tableIndex, table) => {
+    const fields = reference(table)
+      .find("tbody tr")
+      .map((_rowIndex, row) => text(reference(row).children("td").first().text()))
+      .get();
+    if (fields.includes("prompt_tokens")) usageFields.add(fields.join("|"));
+  });
+  if (
+    usageFields.size !== 1 ||
+    !usageFields.has("completion_tokens|prompt_tokens|total_tokens|reasoning_tokens") ||
+    !/service tier used for the request\. Returns "priority" if priority mode was requested, otherwise "default"/i.test(
+      referenceText,
+    )
+  )
+    throw new Error("Databricks response usage contract changed");
 
   const $ = load(tasksBody);
   if (
@@ -537,7 +555,9 @@ function openPrices(
   body: string,
   sourceId: string,
   rates: Map<string, Map<string, SourcePriceFact>>,
-): void {
+  prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): Set<string> {
   const $ = load(body);
   const table = $("main table").first();
   if (table.length === 0) throw new Error("Databricks open-model pricing table is missing");
@@ -550,10 +570,30 @@ function openPrices(
     "Model|Pay-Per-Token|ProvisionedThroughput|DBU/Minputtokens|DBU/Moutputtokens|DBU/Mcachereadtokens|DBU/hour(entrycapacity)|DBU/hour(scalingcapacity)"
   )
     throw new Error("Databricks open-model pricing table changed shape");
+  const exactPriority = new Set<string>();
   for (const values of rows($, table)) {
     const label = values[0];
     if (label === undefined) continue;
-    for (const model of matched(models, label, true)) {
+    const priority = /\s+\(Priority\)$/i.test(label);
+    const normalizedLabel = label.replace(/\s+\(Priority\)$/i, "");
+    const targets = matched(models, normalizedLabel, true);
+    if (targets.length === 0) {
+      onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "price_row_outside_reviewed_catalog",
+        sample: label,
+      });
+      continue;
+    }
+    let added = 0;
+    for (const model of targets) {
+      const priorityConditions = prioritySupport.get(model.model_id);
+      let payPerTokenConditions: SourcePriceFact["conditions"] = { service_tier: "standard" };
+      if (priority) {
+        if (priorityConditions === undefined)
+          throw new Error(`Databricks priority price named unsupported model ${model.model_id}`);
+        payPerTokenConditions = priorityConditions;
+      }
       const embedding = model.tasks.includes("embeddings");
       const input = rate(
         embedding ? "embedding" : "input_text",
@@ -561,7 +601,7 @@ function openPrices(
         "million_tokens",
         sourceId,
         "DBU / M input tokens",
-        { service_tier: "pay_per_token" },
+        payPerTokenConditions,
       );
       const output = rate(
         "output_text",
@@ -569,7 +609,7 @@ function openPrices(
         "million_tokens",
         sourceId,
         "DBU / M output tokens",
-        { service_tier: "pay_per_token" },
+        payPerTokenConditions,
       );
       const cacheRead = rate(
         "cache_read_text",
@@ -577,7 +617,7 @@ function openPrices(
         "million_tokens",
         sourceId,
         "DBU / M cache read tokens",
-        { service_tier: "pay_per_token" },
+        payPerTokenConditions,
       );
       const entry = rate(
         "provisioned_throughput",
@@ -596,9 +636,27 @@ function openPrices(
         { capacity: "scaling" },
       );
       for (const value of [input, output, cacheRead, entry, scaling])
-        if (value !== undefined) add(rates, model.model_id, value);
+        if (value !== undefined) {
+          add(rates, model.model_id, value);
+          added += 1;
+        }
+      if (priority && added > 0) exactPriority.add(model.model_id);
     }
+    onPricingReconciliation?.({
+      disposition: added > 0 ? "normalized" : "explicit_non_numeric",
+      reason_code: added > 0 ? "open_model_price_row" : "non_numeric_price_row",
+      sample: label,
+    });
   }
+  const accountBoundary = text($("main").text());
+  if (!/committed-use discounts or custom requirements/i.test(accountBoundary))
+    throw new Error("Databricks account-specific pricing boundary changed");
+  onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "account_specific_discount",
+    sample: "Committed-use discount or custom requirements",
+  });
+  return exactPriority;
 }
 
 function endpoint(value: string): string {
@@ -674,6 +732,7 @@ function applyPriceNotes(
   rates: Map<string, Map<string, SourcePriceFact>>,
   pricedModels: Set<string>,
   starred: Set<string>,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   const notes = $("main p, main li")
     .map((_index, element) => text($(element).text()))
@@ -721,6 +780,11 @@ function applyPriceNotes(
         });
       covered.add(target.model_id);
     }
+    onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "launch_price_note",
+      sample: targetLabel,
+    });
   }
 
   const discount = notes.match(
@@ -763,6 +827,11 @@ function applyPriceNotes(
       }
       covered.add(model.model_id);
     }
+    onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "promotional_discount_note",
+      sample: family.join(" "),
+    });
   }
 
   const uncovered = [...starred].filter((id) => !covered.has(id));
@@ -775,6 +844,7 @@ function partnerPrices(
   body: string,
   sourceId: string,
   rates: Map<string, Map<string, SourcePriceFact>>,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   const $ = load(body);
   const tables = $("main table");
@@ -795,12 +865,22 @@ function partnerPrices(
     for (const row of values) {
       const label = row[0];
       if (label === undefined) continue;
-      for (const model of matched(models, label, true)) {
+      const targets = matched(models, label, true);
+      if (targets.length === 0) {
+        onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "price_row_outside_reviewed_catalog",
+          sample: label,
+        });
+        continue;
+      }
+      let added = 0;
+      for (const model of targets) {
         pricedModels.add(model.model_id);
         if (label.includes("*")) starred.add(model.model_id);
         const common = {
           endpoint: endpoint(row[1] ?? ""),
-          service_tier: "pay_per_token",
+          service_tier: "standard",
           ...contextConditions(row[2] ?? "", long.has(label)),
         };
         const valuesToAdd = [
@@ -827,13 +907,225 @@ function partnerPrices(
             service_tier: "batch",
           }),
         ].flatMap((value) => (value === undefined ? [] : [value]));
-        for (const value of valuesToAdd) add(rates, model.model_id, value);
+        for (const value of valuesToAdd) {
+          add(rates, model.model_id, value);
+          added += 1;
+        }
       }
+      onPricingReconciliation?.({
+        disposition: added > 0 ? "normalized" : "explicit_non_numeric",
+        reason_code: added > 0 ? "partner_model_price_row" : "non_numeric_price_row",
+        sample: label,
+      });
     }
   });
   if (providers.size !== tables.length)
     throw new Error("Databricks partner pricing groups changed");
-  applyPriceNotes($, models, rates, pricedModels, starred);
+  applyPriceNotes($, models, rates, pricedModels, starred, onPricingReconciliation);
+  const accountBoundary = text($("main").text());
+  if (!/committed-use discounts or custom requirements/i.test(accountBoundary))
+    throw new Error("Databricks account-specific pricing boundary changed");
+  onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "account_specific_discount",
+    sample: "Committed-use discount or custom requirements",
+  });
+}
+
+function priorityModels(
+  models: ProviderModel[],
+  body: string,
+): Map<string, SourcePriceFact["conditions"]> {
+  const $ = load(body);
+  const main = text($("main").text());
+  if (
+    !/service_tier parameter set to "priority"/i.test(main) ||
+    !/requests are served at standard pay-per-token availability and billed at standard pay-per-token rates/i.test(
+      main,
+    )
+  )
+    throw new Error("Databricks priority request or fallback contract changed");
+  const catalog = new Map(models.map((model) => [model.model_id, model]));
+  const support = new Map<string, SourcePriceFact["conditions"]>();
+  $("main table").each((_tableIndex, table) => {
+    const headers = $(table)
+      .find("thead th")
+      .map((_index, cell) => text($(cell).text()))
+      .get();
+    if (headers.join("|") !== "Provider|Model|Endpoint name|Notes") return;
+    $(table)
+      .find("tbody tr")
+      .each((_rowIndex, row) => {
+        const cells = $(row).children("td");
+        const ids = endpointIds($, cells.eq(2));
+        if (ids.length !== 1) throw new Error("Databricks priority row omitted its endpoint ID");
+        const id = ids[0];
+        if (id === undefined || !catalog.has(id))
+          throw new Error(`Databricks priority table named unknown catalog model ${id ?? ""}`);
+        const note = text(cells.eq(3).text());
+        const conditions: SourcePriceFact["conditions"] = {
+          service_tier: "priority",
+          ...(/global endpoint only/i.test(note) ? { endpoint: "global" } : {}),
+          ...(/ap-south-1 region/i.test(note) ? { region: "ap_south_1" } : {}),
+          ...(/account teams? for enablement/i.test(note)
+            ? { account_eligibility: "account_enablement" }
+            : {}),
+        };
+        const current = support.get(id);
+        if (current !== undefined && JSON.stringify(current) !== JSON.stringify(conditions))
+          throw new Error(`Databricks priority model conditions conflict for ${id}`);
+        support.set(id, conditions);
+      });
+  });
+  const minimum = Math.max(1, Math.min(10, Math.floor(models.length / 4)));
+  assertItemCount("Databricks priority model IDs", support.size, minimum, models.length);
+  return support;
+}
+
+function applyPriorityPricing(
+  models: ProviderModel[],
+  support: ReadonlyMap<string, SourcePriceFact["conditions"]>,
+  exact: ReadonlySet<string>,
+  sourceId: string,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): void {
+  const byId = new Map(models.map((model) => [model.model_id, model]));
+  for (const [id, conditions] of support) {
+    if (exact.has(id)) {
+      onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code: "priority_price_row",
+        sample: id,
+      });
+      continue;
+    }
+    const model = byId.get(id);
+    if (model === undefined) throw new Error(`Databricks priority model disappeared: ${id}`);
+    model.raw_price_facts.push({
+      term_key: "priority_pay_per_token",
+      impact: "base_price",
+      reason: "unknown_amount",
+      conditions,
+      source_ref: sourceId,
+      raw: {
+        label: "Priority pay-per-token",
+        fragment:
+          "Priority requires no capacity commitment and is billed at a higher per-token rate than standard. Capacity fallback is billed at standard rates.",
+      },
+    });
+    onPricingReconciliation?.({
+      disposition: "raw",
+      reason_code: "priority_amount_not_published",
+      sample: id,
+    });
+  }
+}
+
+interface ImagePassThroughPrice {
+  input: string;
+  outputText: string;
+  outputImage: string;
+}
+
+function imagePassThroughPrice(body: string, googleId: string): ImagePassThroughPrice {
+  const $ = load(body);
+  const heading = $("h2").filter((_index, element) => $(element).attr("id") === googleId);
+  if (heading.length !== 1) throw new Error(`Google pass-through pricing omitted ${googleId}`);
+  const modelSection = heading.closest(".models-section");
+  if (modelSection.length !== 1)
+    throw new Error(`Google pass-through pricing section changed for ${googleId}`);
+  const standard = modelSection
+    .nextUntil(".models-section")
+    .find("section")
+    .filter((_index, section) => text($(section).find("h3").first().text()) === "Standard");
+  if (standard.length !== 1)
+    throw new Error(`Google standard pass-through price changed for ${googleId}`);
+  const table = standard.find("table.pricing-table");
+  const headers = table
+    .find("thead th")
+    .map((_index, cell) => text($(cell).text()))
+    .get();
+  if (headers.join("|") !== "|Free Tier|Paid Tier, per 1M tokens in USD")
+    throw new Error(`Google pass-through pricing table changed for ${googleId}`);
+  const values = new Map<string, string>();
+  table.find("tbody tr").each((_index, row) => {
+    const cells = $(row).children("td");
+    values.set(text(cells.eq(0).text()), text(cells.eq(2).text()));
+  });
+  const input = decimal(
+    values.get("Input price")?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \(text\s*\/\s*image\)/i)?.[1] ??
+      "",
+  );
+  const output = values.get("Output price") ?? "";
+  const outputText = decimal(
+    output.match(/\$((?:0|[1-9]\d*)(?:\.\d+)?) \(text and thinking\)/i)?.[1] ?? "",
+  );
+  const outputImage = decimal(output.match(/\$((?:0|[1-9]\d*)(?:\.\d+)?) \(images\)/i)?.[1] ?? "");
+  if (input === undefined || outputText === undefined || outputImage === undefined)
+    throw new Error(`Google pass-through prices were not machine-readable for ${googleId}`);
+  return { input, outputText, outputImage };
+}
+
+function applyImagePassThroughPricing(
+  models: ProviderModel[],
+  catalogBody: string,
+  pricingBody: string,
+  sourceId: string,
+  rates: Map<string, Map<string, SourcePriceFact>>,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): void {
+  const catalog = load(catalogBody);
+  const byId = new Map(models.map((model) => [model.model_id, model]));
+  const targets = [
+    ["databricks-gemini-3-1-flash-image", "gemini-3.1-flash-image"],
+    ["databricks-gemini-3-pro-image", "gemini-3-pro-image"],
+  ] as const;
+  for (const [id, googleId] of targets) {
+    const model = byId.get(id);
+    if (model === undefined) throw new Error(`Databricks catalog omitted image model ${id}`);
+    const heading = catalog("main h2").filter((_index, element) =>
+      catalog(element).nextUntil("h2").text().includes(`Endpoint name: ${id}`),
+    );
+    const section = heading.nextUntil("h2");
+    const hrefs = section
+      .find("a[href]")
+      .map((_index, element) => catalog(element).attr("href") ?? "")
+      .get();
+    const expected = `https://ai.google.dev/gemini-api/docs/pricing#${googleId}`;
+    const content = text(section.text());
+    if (
+      heading.length !== 1 ||
+      !hrefs.includes(expected) ||
+      !/Google uses pass-through pricing for this model/i.test(content) ||
+      !/only available through Foundation Model APIs pay-per-token/i.test(content)
+    )
+      throw new Error(`Databricks image pass-through contract changed for ${id}`);
+    const price = imagePassThroughPrice(pricingBody, googleId);
+    const conditions = { endpoint: "global", service_tier: "standard" } as const;
+    const values: [SourcePriceFact["meter"], string][] = [
+      ["input_text", price.input],
+      ["input_image", price.input],
+      ["output_text", price.outputText],
+      ["output_image", price.outputImage],
+    ];
+    for (const [meter, amount] of values)
+      add(rates, id, {
+        meter,
+        price: amount,
+        currency: "USD",
+        unit: "million_tokens",
+        conditions,
+        source_ref: sourceId,
+        derived: false,
+        raw_price: `$${amount}`,
+        raw_unit: "Google pass-through price per 1M tokens",
+      });
+    onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "official_pass_through_price",
+      sample: id,
+    });
+  }
 }
 
 function applyLifecycle(models: ProviderModel[], body: string, observedAt: string): void {
@@ -953,18 +1245,40 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     document(bundle, "/aws/en/machine-learning/foundation-model-apis/limits"),
   );
   applyReleases(models, document(bundle, "/aws/en/feed.xml"));
+  const priority = priorityModels(
+    models,
+    document(bundle, "/aws/en/machine-learning/foundation-model-apis/priority-mode"),
+  );
   const rates = new Map<string, Map<string, SourcePriceFact>>();
-  openPrices(
+  const exactPriority = openPrices(
     models,
     document(bundle, "/product/pricing/foundation-model-serving"),
     input.source.id,
     rates,
+    priority,
+    input.onPricingReconciliation,
   );
   partnerPrices(
     models,
     document(bundle, "/product/pricing/proprietary-foundation-model-serving"),
     input.source.id,
     rates,
+    input.onPricingReconciliation,
+  );
+  applyImagePassThroughPricing(
+    models,
+    bundle.index.body,
+    document(bundle, "/gemini-api/docs/pricing"),
+    input.source.id,
+    rates,
+    input.onPricingReconciliation,
+  );
+  applyPriorityPricing(
+    models,
+    priority,
+    exactPriority,
+    input.source.id,
+    input.onPricingReconciliation,
   );
   const current = models.filter((model) => model.status !== "retired");
   const priced = current.filter((model) => rates.has(model.model_id));

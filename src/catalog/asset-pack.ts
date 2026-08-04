@@ -3,6 +3,7 @@ import { z } from "zod";
 import { canonicalJsonBytes, parseIJson } from "./canonical-json.ts";
 import { compareUtf8 } from "./canonical-value.ts";
 import { sha256 } from "./io.ts";
+import { pricingLimits } from "./pricing-constants.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const utf8Decoder = new TextDecoder();
@@ -60,7 +61,10 @@ export interface EncodedAssetPack {
 }
 
 const ASSET_MANIFEST_MAX_BYTES = 1024 * 1024;
-const ASSET_SOURCE_MAX_BYTES = 128 * 1024 * 1024;
+const ASSET_SOURCE_MAX_BYTES: Record<AssetPackProfile, number> = {
+  ui: pricingLimits.coreInputBytes,
+  exports: pricingLimits.pricingInputBytes,
+};
 const CANONICAL_GZIP_OS = 3;
 const GZIP_OS_OFFSET = 9;
 const PACK_MAX_BYTES: Record<AssetPackProfile, number> = {
@@ -86,7 +90,7 @@ export function createAssetPack(
     data_version: dataVersion,
     assets: assets.map(({ fileName, source }) => {
       const sourceBytes = utf8Encoder.encode(source);
-      if (sourceBytes.byteLength > ASSET_SOURCE_MAX_BYTES)
+      if (sourceBytes.byteLength > ASSET_SOURCE_MAX_BYTES[profile])
         throw new Error(`${fileName} exceeds the decoded asset limit`);
       const chunk = gzipSync(sourceBytes);
       // Asset hashes must not depend on zlib's host-specific gzip metadata.

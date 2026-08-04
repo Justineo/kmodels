@@ -46,10 +46,10 @@ export interface ParsedPricingSource {
 }
 
 export function isPricingSource(source: SourceManifest): boolean {
-  return (
-    source.fields.includes("pricing") &&
-    !["account", "workspace", "runtime"].includes(source.scope ?? "global")
-  );
+  const declaresPricing = source.fields.includes("pricing");
+  if (declaresPricing !== (source.pricingEvidence !== undefined))
+    throw new Error(`Pricing source policy mismatch for ${source.id}`);
+  return declaresPricing && !["account", "workspace", "runtime"].includes(source.scope ?? "global");
 }
 
 export function isRequiredPricingSource(source: SourceManifest): boolean {
@@ -327,7 +327,11 @@ function normalizedSourceFacts(
   }
 
   completeReviewedDefault(normalized, "service_tier", "standard");
-  if (providerId === "anthropic") completeReviewedDefault(normalized, "inference_geo", "global");
+  if (providerId === "anthropic" || providerId === "amazon-bedrock")
+    completeReviewedDefault(normalized, "speed", "standard");
+  if (providerId === "anthropic") {
+    completeReviewedDefault(normalized, "inference_geo", "global");
+  }
   if (providerId === "azure") completeReviewedDefault(normalized, "context_tier", "standard");
   if (providerId === "vertex") completeReviewedDefault(normalized, "region", "default");
   if (providerId === "databricks" || providerId === "vertex")
@@ -517,7 +521,16 @@ function normalizedUnit(
   rate: SourcePriceFact,
 ): CanonicalSourceUnit | undefined {
   const standard = (
-    value: "character" | "frame" | "image" | "page" | "request" | "second" | "token" | "video",
+    value:
+      | "character"
+      | "frame"
+      | "image"
+      | "page"
+      | "pixel"
+      | "request"
+      | "second"
+      | "token"
+      | "video",
   ) => ({
     namespace: "kmodels" as const,
     value,
@@ -537,6 +550,8 @@ function normalizedUnit(
       return one("token", "thousand");
     case "million_tokens":
       return one("token", "million");
+    case "million_pixels":
+      return one("pixel", "million");
     case "character":
       return one("character");
     case "thousand_characters":
@@ -660,6 +675,7 @@ function rateApplicability(
     "endpoint",
     "deployment_scope",
     "service_tier",
+    "speed",
     "inference_geo",
     "route_provider",
     "context_tier",

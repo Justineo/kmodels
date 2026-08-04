@@ -75,6 +75,9 @@ curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video-1.
 | `/v1/videos/edits` |
 | `/v1/videos/extensions` |
 
+Each result includes `cost_in_usd_ticks`, and the batch summary exposes
+`total_cost_usd_ticks`.
+
 
 ===/developers/model-capabilities/text/streaming===
 # Streaming
@@ -157,6 +160,112 @@ Priority processing is billed at a **2x** premium.
 | Token pricing | Standard rates | **2x** standard rates |
 
 The 2x multiplier applies to all token types.
+
+## Files and Collections Pricing
+
+| Resource | Rate |
+|---|---|
+| File storage | $0.025 / GiB / day |
+| Collection storage | $0.10 / GiB / day |
+| File downloads | $0.20 / GiB downloaded |
+
+## Usage Guidelines Violation Fee
+
+For violations that are caught before generation in the Responses API, we will charge a $0.05
+usage guideline violation fee per request.
+
+## Billing and Availability
+
+Your model access might vary depending on various factors such as geographical location, account limitations, etc.
+
+
+===/developers/cost-tracking===
+# Cost Tracking
+
+Every inference response includes the exact cost you were charged in `cost_in_usd_ticks`. The value
+is per-request, after all applicable discounts, and inclusive of all token costs and server-side tool invocation costs.
+
+1 USD = 10,000,000,000 ticks.
+
+For REST streaming, Cost is only included in the final chunk.
+
+
+===/developers/advanced-api-usage/prompt-caching/usage-and-pricing===
+# Usage & Pricing
+
+Chat reports `usage.prompt_tokens_details.cached_tokens` and Responses reports
+`usage.input_tokens_details.cached_tokens`.
+
+| Token type | Billing rate |
+|---|---|
+| Reasoning tokens | Full completion token price |
+
+Long context pricing applies to total prompt tokens (including cached tokens).
+
+
+===/developers/advanced-api-usage/priority-processing===
+# Priority Processing
+
+Request `service_tier: "priority"`. You are only billed at the priority rate when the response confirms `"priority"`.
+
+```json
+{"usage":{"cost_in_usd_ticks":37756000}}
+```
+
+
+===/developers/tools/tool-usage-details===
+# Tool Usage Details
+
+### `server_side_tool_usage` - Successful Calls (Billable)
+
+This value determines your billing. Only successful tool executions are billed.
+
+Agent usage reports `completion_tokens`, cumulative `prompt_tokens`, `reasoning_tokens`,
+`cached_prompt_text_tokens`, and `prompt_image_tokens`.
+
+
+===/developers/rest-api-reference/management===
+# Management REST API Overview
+
+You need a management key. The base URL is https://management-api.x.ai.
+
+
+===/developers/rest-api-reference/management/billing===
+# Billing Management
+
+## POST /v1/billing/teams/\{team\_id}/usage
+
+Get historical usage of the API over a time period, aggregated by fields.
+
+`TIME\_UNIT\_SECOND` is supported. The response includes `limitReached`.
+
+```json
+{"analyticsRequest":{"values":[{"name": "usd","aggregation":"AGGREGATION_SUM"}]}}
+```
+
+
+===/developers/faq/billing===
+# Billing
+
+When you make API requests, the cost is calculated immediately.
+
+The inference endpoints add pre-defined tokens to help process the request.
+
+
+===/developers/rate-limits===
+# Rate Limits
+
+Your tier is based on cumulative spend. Rate limit tiers apply to text and embedding models.
+
+
+===/developers/rest-api-reference/inference/voice===
+# Voice
+
+POST /v1/tts
+
+POST /v1/stt
+
+WSS wss://api.x.ai/v1/realtime
 
 
 ===/developers/migration/may-15-retirement===

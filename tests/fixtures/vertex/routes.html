@@ -15,11 +15,16 @@ POST /v1/projects/PROJECT_ID/locations/LOCATION/publishers/google/models/lyria-0
 POST /v1/projects/PROJECT_ID/locations/LOCATION/publishers/anthropic/models/MODEL:rawPredict</pre>
     <pre>
 POST /v1/projects/PROJECT_ID/locations/LOCATION/publishers/anthropic/models/MODEL:streamRawPredict</pre>
+    <pre>{"usage":{"input_tokens":120,"output_tokens":24}}</pre>
     <pre>POST /v1/projects/PROJECT_ID/locations/global/endpoints/openapi/responses</pre>
+    <pre>
+{"usage":{"input_tokens_details":{"cached_tokens":10},"output_tokens_details":{"reasoning_tokens":4}},"extra_properties":{"google":{"traffic_type":"ON_DEMAND"}}}</pre>
     <pre>
 POST /v1beta1/projects/PROJECT_ID/locations/LOCATION/endpoints/openapi/chat/completions</pre>
     <pre>
 POST /v1/projects/PROJECT_ID/locations/LOCATION/endpoints/openapi/chat/completions
-{"model": "zai-org/glm-test-maas"}</pre>
+{"model": "zai-org/glm-test-maas"}
+{"usage":{"completion_tokens":24,"prompt_tokens":120,"total_tokens":144}}
+There is no price difference with the regional endpoints when you use the global endpoint.</pre>
   </div>
 </main>

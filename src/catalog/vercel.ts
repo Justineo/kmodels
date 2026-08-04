@@ -3,9 +3,21 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { publishedRate, scaleDecimal } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
+import {
+  sourcePriceFactKey,
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+  type SourceRawPricingFact,
+} from "./pricing-source.ts";
 import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
-import { modalitySchema, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
+import {
+  modalitySchema,
+  type ModelRoute,
+  type ModelTask,
+  type Provider,
+  unknownCapabilities,
+} from "./schema.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 
 interface Input {
@@ -14,6 +26,7 @@ interface Input {
   body: string;
   observedAt: string;
   onContractFinding?: (evidence: SourceContractEvidence) => void;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
@@ -216,10 +229,135 @@ const itemSchema = z.object({
 
 const listSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) }).strict();
 
+const endpointServicePriceSchema = z
+  .object({
+    prompt: decimal.optional(),
+    completion: decimal.optional(),
+    input_cache_read: decimal.optional(),
+    input_cache_write: decimal.optional(),
+  })
+  .strict();
+
+const endpointTokenPriceSchema = endpointServicePriceSchema.extend({
+  prompt_tiers: z.array(tierSchema).optional(),
+  completion_tiers: z.array(tierSchema).optional(),
+  input_cache_read_tiers: z.array(tierSchema).optional(),
+  input_cache_write_tiers: z.array(tierSchema).optional(),
+});
+
+const endpointServiceTierSchema = endpointServicePriceSchema.extend({
+  long_context: endpointServicePriceSchema
+    .extend({ threshold: z.number().int().positive() })
+    .strict()
+    .optional(),
+});
+
+const endpointPricingSchema = endpointTokenPriceSchema
+  .extend({
+    request: z.literal("0"),
+    image: z.literal("0"),
+    image_output: z.literal("0"),
+    web_search: z.literal("0"),
+    internal_reasoning: z.literal("0"),
+    discount: z.literal(0),
+    service_tiers: z.record(z.string().min(1), endpointServiceTierSchema).optional(),
+    audio_input_token_cost: decimal.optional(),
+    audio_output_token_cost: decimal.optional(),
+    video_duration_pricing: z.array(videoPriceSchema).optional(),
+    video_token_pricing: z
+      .object({
+        no_video_input: videoTokenTierSchema,
+        with_video_input: videoTokenTierSchema,
+        notes: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+    speech_input_character_cost: decimal.optional(),
+    transcription_duration_cost_per_second: decimal.optional(),
+    realtime_client_message_cost: decimal.optional(),
+    realtime_session_duration_cost_per_second: decimal.optional(),
+  })
+  .strict();
+
+const endpointRegionSchema = z
+  .object({
+    scope: z.enum(["specific", "zone"]),
+    geo_region: z.enum(["eu", "us"]),
+    provider_region: z.string().min(1).optional(),
+    pricing: endpointTokenPriceSchema.optional(),
+  })
+  .strict()
+  .superRefine(({ scope, provider_region: providerRegion }, context) => {
+    if ((scope === "specific") !== (providerRegion !== undefined))
+      context.addIssue({ code: "custom", message: "Provider region must match specific scope" });
+  });
+
+const endpointSchema = z
+  .object({
+    name: z.string().min(1),
+    model_name: z.string().min(1),
+    context_length: z.number().int().nonnegative().optional(),
+    pricing: endpointPricingSchema,
+    provider_name: z.string().min(1),
+    tags: z.array(tagSchema).optional(),
+    inference_regions: z.array(endpointRegionSchema).optional(),
+    quantization: z.null(),
+    max_completion_tokens: z.number().int().nonnegative().optional(),
+    max_prompt_tokens: z.number().int().nonnegative().nullable().optional(),
+    supported_parameters: z.array(supportedParameterSchema).optional(),
+    status: z.literal(0),
+    supports_implicit_caching: z.boolean(),
+    deprecated_at: z.number().int().nonnegative().optional(),
+  })
+  .strict();
+
+const endpointDocumentSchema = z
+  .object({
+    data: z
+      .object({
+        id: modelIdSchema,
+        name: z.string().min(1),
+        created: z.number().int().nonnegative(),
+        released: z.number().int().nonnegative(),
+        description: z.string(),
+        architecture: z.unknown(),
+        reasoning: z.unknown().optional(),
+        capabilities: z.unknown().optional(),
+        endpoints: z.array(endpointSchema).min(1),
+      })
+      .strict(),
+  })
+  .strict();
+
+const modelPageDocumentSchema = z
+  .object({
+    title: z.string().min(1),
+    provider: z.string().min(1),
+    headers: z.array(z.string().min(1)).min(2),
+    values: z.array(z.string()),
+    titles: z.array(z.array(z.string().min(1))),
+  })
+  .strict()
+  .refine(
+    ({ headers, values, titles }) =>
+      headers.length === values.length && values.length === titles.length,
+    "Model-page pricing columns must align",
+  );
+
+const bundleSchema = z
+  .object({
+    index: z.object({ url: z.url(), body: z.string().min(1) }).strict(),
+    documents: z.array(z.object({ url: z.url(), body: z.string().min(1) }).strict()),
+  })
+  .strict();
+
 type Item = z.infer<typeof itemSchema>;
 type Tier = z.infer<typeof tierSchema>;
 type ServicePrice = z.infer<typeof servicePriceSchema>;
 type TokenPrice = z.infer<typeof tokenPriceSchema>;
+type Endpoint = z.infer<typeof endpointSchema>;
+type EndpointPrice = z.infer<typeof endpointTokenPriceSchema>;
+type ModelPageDocument = z.infer<typeof modelPageDocumentSchema>;
 
 function date(timestamp: number | undefined, milliseconds = false): string | undefined {
   if (timestamp === undefined) return undefined;
@@ -365,6 +503,331 @@ function addUsageRates(
     prices.input_cache_write_tiers,
     conditions,
   );
+}
+
+function endpointTokenPrice(value: EndpointPrice): TokenPrice {
+  return {
+    input: value.prompt,
+    output: value.completion,
+    input_tiers: value.prompt_tiers,
+    output_tiers: value.completion_tiers,
+    input_cache_read: value.input_cache_read,
+    input_cache_read_tiers: value.input_cache_read_tiers,
+    input_cache_write: value.input_cache_write,
+    input_cache_write_tiers: value.input_cache_write_tiers,
+  };
+}
+
+function nonzero(value: string | undefined): string | undefined {
+  return value === "0" ? undefined : value;
+}
+
+function endpointUsagePrice(item: Item, value: EndpointPrice): TokenPrice {
+  const allowFreeInput = item.pricing.input === "0";
+  const allowFreeOutput = item.pricing.output === "0";
+  return {
+    ...endpointTokenPrice(value),
+    input: allowFreeInput ? value.prompt : nonzero(value.prompt),
+    output: allowFreeOutput ? value.completion : nonzero(value.completion),
+  };
+}
+
+function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): SourcePriceFact[] {
+  const rates: SourcePriceFact[] = [];
+  const value = endpoint.pricing;
+  const regions = endpoint.inference_regions ?? [];
+  const hasFast =
+    item.pricing.fast !== undefined ||
+    Object.values(item.pricing.regional ?? {}).some(({ fast }) => fast !== undefined);
+  const baseConditions: SourcePriceFact["conditions"] = {
+    route_provider: endpoint.provider_name,
+    region: regions.length === 0 ? undefined : "default",
+    service_tier: hasFast ? "standard" : undefined,
+  };
+  const transcriptionAudioPrice =
+    item.type === "transcription" ? value.audio_input_token_cost : undefined;
+  const specializedInput =
+    value.speech_input_character_cost !== undefined ||
+    value.transcription_duration_cost_per_second !== undefined ||
+    transcriptionAudioPrice !== undefined;
+  const inputMeter: SourcePriceFact["meter"] =
+    item.type === "embedding"
+      ? "embedding"
+      : item.type === "transcription"
+        ? "input_audio"
+        : "input_text";
+  const outputMeter: SourcePriceFact["meter"] =
+    item.type === "image" ? "output_image" : "output_text";
+  if (transcriptionAudioPrice !== undefined)
+    rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId, baseConditions));
+  addUsageRates(
+    rates,
+    endpointUsagePrice(item, value),
+    sourceId,
+    inputMeter,
+    outputMeter,
+    baseConditions,
+    !specializedInput,
+  );
+  if (value.audio_input_token_cost !== undefined && transcriptionAudioPrice === undefined)
+    rates.push(tokenRate("input_audio", value.audio_input_token_cost, sourceId, baseConditions));
+  if (value.audio_output_token_cost !== undefined)
+    rates.push(tokenRate("output_audio", value.audio_output_token_cost, sourceId, baseConditions));
+
+  for (const [serviceTier, tier] of Object.entries(value.service_tiers ?? {})) {
+    const contextMax = tier.long_context?.threshold;
+    addServiceRates(
+      rates,
+      serviceTier,
+      {
+        input: tier.prompt,
+        output: tier.completion,
+        input_cache_read: tier.input_cache_read,
+        input_cache_write: tier.input_cache_write,
+      },
+      sourceId,
+      {
+        route_provider: endpoint.provider_name,
+        ...(contextMax === undefined ? {} : { context_max_tokens: contextMax }),
+      },
+    );
+    if (tier.long_context !== undefined)
+      addServiceRates(
+        rates,
+        serviceTier,
+        {
+          input: tier.long_context.prompt,
+          output: tier.long_context.completion,
+          input_cache_read: tier.long_context.input_cache_read,
+          input_cache_write: tier.long_context.input_cache_write,
+        },
+        sourceId,
+        {
+          route_provider: endpoint.provider_name,
+          context_min_tokens: tier.long_context.threshold + 1,
+        },
+      );
+  }
+  for (const region of regions) {
+    if (region.pricing === undefined) continue;
+    addUsageRates(
+      rates,
+      endpointUsagePrice(item, region.pricing),
+      sourceId,
+      inputMeter,
+      outputMeter,
+      {
+        route_provider: endpoint.provider_name,
+        region: region.provider_region ?? region.geo_region,
+        deployment_scope: region.scope,
+        service_tier: hasFast ? "standard" : undefined,
+      },
+      !specializedInput,
+    );
+  }
+
+  const hasVoiceControl =
+    value.video_duration_pricing?.some(({ voice_control }) => voice_control !== undefined) === true;
+  for (const variant of value.video_duration_pricing ?? [])
+    rates.push(
+      publishedRate("video_generation", variant.cost_per_second, "second", sourceId, "second", {
+        ...baseConditions,
+        resolution: variant.resolution,
+        quality: variant.mode,
+        audio: variant.audio,
+        voice_control: hasVoiceControl ? (variant.voice_control ?? false) : undefined,
+      }),
+    );
+  if (value.video_token_pricing !== undefined)
+    for (const [videoInput, tier] of [
+      [false, value.video_token_pricing.no_video_input],
+      [true, value.video_token_pricing.with_video_input],
+    ] as const)
+      rates.push(
+        publishedRate(
+          "video_generation",
+          tier.cost_per_million_tokens,
+          "million_tokens",
+          sourceId,
+          "million video tokens",
+          { ...baseConditions, video_input: videoInput },
+        ),
+      );
+  if (value.speech_input_character_cost !== undefined)
+    rates.push(
+      publishedRate(
+        "input_text",
+        value.speech_input_character_cost,
+        "character",
+        sourceId,
+        "character",
+        baseConditions,
+      ),
+    );
+  if (value.transcription_duration_cost_per_second !== undefined)
+    rates.push(
+      publishedRate(
+        "input_audio",
+        value.transcription_duration_cost_per_second,
+        "second",
+        sourceId,
+        "second",
+        baseConditions,
+      ),
+    );
+  if (value.realtime_client_message_cost !== undefined)
+    rates.push(
+      publishedRate(
+        "realtime_client_message",
+        value.realtime_client_message_cost,
+        "request",
+        sourceId,
+        "message",
+        baseConditions,
+      ),
+    );
+  if (value.realtime_session_duration_cost_per_second !== undefined)
+    rates.push(
+      publishedRate(
+        "realtime_session_duration",
+        value.realtime_session_duration_cost_per_second,
+        "second",
+        sourceId,
+        "second",
+        baseConditions,
+      ),
+    );
+  return rates;
+}
+
+function routeComparableFact(fact: SourcePriceFact): string {
+  const {
+    route_provider: _routeProvider,
+    deployment_scope: _scope,
+    ...conditions
+  } = fact.conditions;
+  const stableConditions = Object.fromEntries(
+    Object.entries(conditions).sort(([left], [right]) => left.localeCompare(right)),
+  );
+  return `${fact.meter}\0${fact.unit}\0${JSON.stringify(stableConditions)}`;
+}
+
+function mergedRates(
+  catalogRates: SourcePriceFact[],
+  routeRates: SourcePriceFact[],
+): SourcePriceFact[] {
+  const routedTerms = new Set(routeRates.map(routeComparableFact));
+  return [
+    ...new Map(
+      [
+        ...catalogRates.filter((rate) => !routedTerms.has(routeComparableFact(rate))),
+        ...routeRates,
+      ].map((rate) => [sourcePriceFactKey(rate), rate]),
+    ).values(),
+  ];
+}
+
+function rawPageRate(
+  header: string,
+  value: string,
+  provider: string,
+  sourceId: string,
+): SourceRawPricingFact {
+  return {
+    term_key: `model_page_${header.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`,
+    impact: "base_price",
+    reason: "unknown_applicability",
+    conditions: { route_provider: provider },
+    source_ref: sourceId,
+    raw: { label: header, denomination: "USD", fragment: value },
+  };
+}
+
+function modelPageRates(
+  item: Item,
+  page: ModelPageDocument,
+  sourceId: string,
+): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
+  if (page.title !== item.name) throw new Error(`Vercel model page title disagreed for ${item.id}`);
+  const cells = new Map(page.headers.map((header, index) => [header, page.values[index] ?? ""]));
+  const titles = new Map(page.headers.map((header, index) => [header, page.titles[index] ?? []]));
+  if (cells.get("Provider") === undefined)
+    throw new Error(`Vercel model page omitted the provider column for ${item.id}`);
+  const rates: SourcePriceFact[] = [];
+  const raw: SourceRawPricingFact[] = [];
+  const pricePattern = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP)(\*)?(?:\+(\d+) more)?$/;
+  for (const header of ["Input", "Output", "Cache", "Web Search"] as const) {
+    const value = cells.get(header);
+    if (value === undefined || value === "" || value === "—") continue;
+    const match = value.match(pricePattern);
+    if (match?.[1] === undefined || match[2] === undefined)
+      throw new Error(`Vercel model page price changed shape for ${item.id}: ${header}`);
+    const [, amount, unit, star, alternatives] = match;
+    if (star !== undefined || alternatives !== undefined) {
+      raw.push(rawPageRate(header, value, page.provider, sourceId));
+      continue;
+    }
+    const conditions = { route_provider: page.provider };
+    if (item.type === "reranking" && header === "Input" && unit === "K") {
+      if (!titles.get(header)?.includes("Per 1,000 queries"))
+        throw new Error(`Vercel rerank unit lost its query disclosure for ${item.id}`);
+      rates.push(
+        publishedRate(
+          "rerank_request",
+          amount,
+          "thousand_requests",
+          sourceId,
+          "1,000 queries",
+          conditions,
+        ),
+      );
+      continue;
+    }
+    if (item.type === "image" && header === "Output" && (unit === "img" || unit === "MP")) {
+      rates.push(
+        publishedRate(
+          "image_generation",
+          amount,
+          unit === "img" ? "image" : "million_pixels",
+          sourceId,
+          unit === "img" ? "image" : "megapixel",
+          conditions,
+        ),
+      );
+      continue;
+    }
+    if (unit === "M" && (header === "Input" || header === "Output" || header === "Cache")) {
+      const meter: SourcePriceFact["meter"] =
+        header === "Input" ? "input_text" : header === "Output" ? "output_text" : "cache_read_text";
+      rates.push(
+        publishedRate(meter, amount, "million_tokens", sourceId, "million tokens", conditions),
+      );
+      continue;
+    }
+    if (header === "Web Search" && unit === "K") {
+      rates.push(
+        publishedRate("tool_call", amount, "thousand_requests", sourceId, "1K requests", {
+          ...conditions,
+          operation: "web_search",
+        }),
+      );
+      continue;
+    }
+    throw new Error(`Vercel model page price could not be normalized for ${item.id}: ${header}`);
+  }
+  if (rates.length === 0 && raw.length === 0)
+    throw new Error(`Vercel model page contained no usable pricing for ${item.id}`);
+  return { rates, raw };
+}
+
+function routes(item: Item, endpoints: readonly Endpoint[], sourceId: string): ModelRoute[] {
+  return endpoints.map((endpoint) => ({
+    source_ref: sourceId,
+    provider: endpoint.provider_name,
+    provider_model_id: item.id,
+    task: item.type,
+    status: "live",
+  }));
 }
 
 function pricing(item: Item, sourceId: string): SourcePriceFact[] {
@@ -540,7 +1003,59 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
   return rates;
 }
 
-function model(item: Item, input: Input): ProviderModel {
+function validateDocumentation(documents: ReadonlyMap<string, string>): void {
+  const requirements = new Map<string, string[]>([
+    [
+      "/docs/ai-gateway/pricing.md",
+      [
+        "AI Gateway charges no markup and no platform fee on tokens.",
+        "AI Gateway bases its rates on the provider's list price.",
+        "fallback usage is charged against your credits balance",
+        "$0.075 / 1,000 tag/user ID/quota entity ID writes",
+        "$0.10 per 1,000 successful requests",
+        "$0.10 per 1,000 requests",
+      ],
+    ],
+    [
+      "/docs/ai-gateway/models-and-providers/provider-options.md",
+      ["`order`, `only`, and `sort`", "sort: 'cost'", "caching: 'auto'"],
+    ],
+    [
+      "/docs/ai-gateway/sdks-and-apis/rest-api.md",
+      [
+        "GET /v1/models/{creator}/{model}/endpoints",
+        "GET /v1/generation?id={generation_id}",
+        "Usage events are ingested asynchronously",
+        "Allow a few seconds",
+        "`total_cost`",
+        "`upstream_inference_cost`",
+        "`native_tokens_cached`",
+        "`native_tokens_cache_creation`",
+      ],
+    ],
+    [
+      "/docs/ai-gateway/observability-and-spend/custom-reporting.md",
+      ["It can take a few minutes", "`market_cost`", "`surcharge_cost`"],
+    ],
+    [
+      "/docs/ai-gateway/observability-and-spend/logs.md",
+      ["refreshing every 5 seconds", "about 90 seconds", "Fallback Path", "Cache Write"],
+    ],
+  ]);
+  for (const [path, markers] of requirements) {
+    const body = documents.get(path);
+    if (body === undefined) throw new Error(`Vercel bundle omitted ${path}`);
+    for (const marker of markers)
+      if (!body.includes(marker)) throw new Error(`Vercel policy changed at ${path}: ${marker}`);
+  }
+}
+
+function model(
+  item: Item,
+  input: Input,
+  endpointValues: readonly Endpoint[],
+  page: ModelPageDocument | undefined,
+): ProviderModel {
   const creator = item.id.split("/")[0];
   if (creator !== item.owned_by) throw new Error(`Vercel owner mismatch for ${item.id}`);
   const modelModalities = modalities(item);
@@ -555,7 +1070,57 @@ function model(item: Item, input: Input): ProviderModel {
   const realtimeTag = tags.find(
     (tag) => tag === "websocket-realtime" || tag === "websocket-transcription",
   );
-  const rates = pricing(item, input.source.id);
+  const catalogRates = pricing(item, input.source.id);
+  const routeRateGroups = endpointValues.map((endpoint) => ({
+    endpoint,
+    rates: endpointRates(item, endpoint, input.source.id),
+  }));
+  const routeRates = routeRateGroups.flatMap(({ rates: values }) => values);
+  const pagePricing =
+    page === undefined ? { rates: [], raw: [] } : modelPageRates(item, page, input.source.id);
+  input.onPricingReconciliation?.(
+    catalogRates.length === 0
+      ? {
+          disposition: "explicit_non_numeric",
+          reason_code: "catalog_price_empty",
+          sample: item.id,
+        }
+      : { disposition: "normalized", reason_code: "catalog_price_object", sample: item.id },
+  );
+  for (const { endpoint, rates: endpointPriceFacts } of routeRateGroups)
+    input.onPricingReconciliation?.(
+      endpointPriceFacts.length === 0
+        ? {
+            disposition: "excluded",
+            reason_code: "route_amount_not_published",
+            sample: `${item.id}:${endpoint.provider_name}`,
+          }
+        : {
+            disposition: "normalized",
+            reason_code: "route_price_object",
+            sample: `${item.id}:${endpoint.provider_name}`,
+          },
+    );
+  for (const _rate of pagePricing.rates)
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "model_page_price",
+      sample: item.id,
+    });
+  for (const _fact of pagePricing.raw)
+    input.onPricingReconciliation?.({
+      disposition: "raw",
+      reason_code: "model_page_ambiguous_variants",
+      sample: item.id,
+    });
+  const rates = [
+    ...new Map(
+      [...mergedRates(catalogRates, routeRates), ...pagePricing.rates].map((rate) => [
+        sourcePriceFactKey(rate),
+        rate,
+      ]),
+    ).values(),
+  ];
   const deprecatedAt = date(item.deprecated_at, true);
   const deprecated = deprecatedAt !== undefined && deprecatedAt <= input.observedAt.slice(0, 10);
   const preview = /(?:^|[\s/_-])preview(?:$|[\s/_-])/i.test(`${item.id} ${item.name}`);
@@ -583,6 +1148,7 @@ function model(item: Item, input: Input): ProviderModel {
             },
           ],
     raw_type: item.type,
+    routes: endpointValues.length === 0 ? undefined : routes(item, endpointValues, input.source.id),
     modalities: modelModalities,
     capabilities: {
       ...unknownCapabilities(),
@@ -594,6 +1160,7 @@ function model(item: Item, input: Input): ProviderModel {
       prompt_cache:
         tags.includes("implicit-caching") ||
         tags.includes("explicit-caching") ||
+        endpointValues.some(({ supports_implicit_caching: caching }) => caching) ||
         rates.some((rate) => rate.meter === "cache_read_text" || rate.meter === "cache_write_text")
           ? true
           : "unknown",
@@ -619,15 +1186,21 @@ function model(item: Item, input: Input): ProviderModel {
       region,
       deployment_type: "regional_inference",
     })),
-    pricing_state: rates.length === 0 ? "not_published" : "numeric",
+    pricing_state:
+      rates.length > 0 ? "numeric" : pagePricing.raw.length > 0 ? "unknown" : "not_published",
     price_facts: rates,
+    raw_price_facts: pagePricing.raw,
   };
 }
 
 export function parseVercelCatalog(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "vercel-catalog")
     throw new Error("Vercel catalog used the wrong extractor");
-  const list = listSchema.parse(JSON.parse(input.body));
+  const value: unknown = JSON.parse(input.body);
+  const bundled = bundleSchema.safeParse(value);
+  if (input.source.transport?.kind === "vercel-models" && !bundled.success)
+    throw new Error("Vercel models transport omitted its source bundle");
+  const list = listSchema.parse(JSON.parse(bundled.success ? bundled.data.index.body : input.body));
   assertItemCount(
     "Vercel model catalog",
     list.data.length,
@@ -643,5 +1216,78 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     rootKeys: Object.keys(itemSchema.shape),
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
-  return parsed.map((item) => model(item, input));
+  if (!bundled.success) return parsed.map((item) => model(item, input, [], undefined));
+  if (bundled.data.index.url !== input.source.url)
+    throw new Error("Vercel bundle index URL changed");
+  const byId = new Map(parsed.map((item) => [item.id, item]));
+  const endpoints = new Map<string, Endpoint[]>();
+  const pages = new Map<string, ModelPageDocument>();
+  const documentation = new Map<string, string>();
+  for (const document of bundled.data.documents) {
+    const url = new URL(document.url);
+    const endpointMatch = url.pathname.match(/^\/v1\/models\/([^/]+\/[^/]+)\/endpoints$/);
+    if (url.hostname === "ai-gateway.vercel.sh" && endpointMatch?.[1] !== undefined) {
+      const id = endpointMatch[1];
+      const item = byId.get(id);
+      if (item === undefined) throw new Error(`Vercel endpoint document had unknown model ${id}`);
+      if (endpoints.has(id)) throw new Error(`Vercel endpoint document was duplicated for ${id}`);
+      const parsedDocument = endpointDocumentSchema.parse(JSON.parse(document.body));
+      if (parsedDocument.data.id !== id)
+        throw new Error(`Vercel endpoint identity disagreed for ${id}`);
+      if (
+        new Set(
+          parsedDocument.data.endpoints.map(({ provider_name: providerName }) => providerName),
+        ).size !== parsedDocument.data.endpoints.length
+      )
+        throw new Error(`Vercel route provider was duplicated for ${id}`);
+      for (const endpoint of parsedDocument.data.endpoints)
+        if (
+          endpoint.name !== `${endpoint.provider_name} | ${id}` ||
+          endpoint.model_name !== parsedDocument.data.name
+        )
+          throw new Error(`Vercel route identity disagreed for ${id}`);
+      endpoints.set(id, parsedDocument.data.endpoints);
+      continue;
+    }
+    const pageMatch = url.pathname.match(/^\/ai-gateway\/models\/([^/]+)$/);
+    if (url.hostname === "vercel.com" && pageMatch?.[1] !== undefined) {
+      const slug = pageMatch[1];
+      if (pages.has(slug)) throw new Error(`Vercel model page was duplicated for ${slug}`);
+      pages.set(slug, modelPageDocumentSchema.parse(JSON.parse(document.body)));
+      continue;
+    }
+    if (url.hostname === "vercel.com" && url.pathname.endsWith(".md")) {
+      if (documentation.has(url.pathname))
+        throw new Error(`Vercel documentation was duplicated at ${url.pathname}`);
+      documentation.set(url.pathname, document.body);
+      continue;
+    }
+    throw new Error(`Vercel bundle contained an unreviewed document ${document.url}`);
+  }
+  if (endpoints.size !== parsed.length)
+    throw new Error(`Vercel bundle had ${endpoints.size}/${parsed.length} endpoint documents`);
+  const missing = parsed.filter(({ pricing: value }) => Object.keys(value).length === 0);
+  if (pages.size !== missing.length)
+    throw new Error(`Vercel bundle had ${pages.size}/${missing.length} missing-price model pages`);
+  for (const item of missing) {
+    const slug = item.id.split("/")[1];
+    if (slug === undefined || !pages.has(slug))
+      throw new Error(`Vercel bundle omitted the pricing page for ${item.id}`);
+  }
+  validateDocumentation(documentation);
+  for (const path of documentation.keys())
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "account_or_service_policy",
+      sample: path,
+    });
+  return parsed.map((item) => {
+    const slug = item.id.split("/")[1];
+    return model(
+      item,
+      input,
+      endpoints.get(item.id) ?? [],
+      slug === undefined ? undefined : pages.get(slug),
+    );
+  });
 }

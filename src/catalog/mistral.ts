@@ -1,12 +1,18 @@
 import * as ts from "typescript";
+import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
-import { multiplyDecimal, publishedRate } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
+import {
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+  sourcePriceFactKey,
+} from "./pricing-source.ts";
 import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -15,6 +21,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 type Direction = "input" | "output";
@@ -49,6 +56,97 @@ interface Draft {
   retiredAt?: string;
   replacement?: string;
 }
+
+type Reconcile = Input["onPricingReconciliation"];
+
+const publicPriceSchema = z.object({
+  priceEur: z.number().nonnegative(),
+  priceUsd: z.number().nonnegative(),
+  prefix: z.string().nullable(),
+  suffix: z.string().nullable(),
+});
+
+const publicDiscountSchema = z.tuple([z.literal("batch"), z.enum(["", "cache"])]);
+
+const publicPriceSuffixes = new Map<string, string | null>([
+  ["Input (/M tokens)", null],
+  ["Output (/M tokens)", null],
+  ["OCR", "/ 1000 pages"],
+  ["Document AI", "/ 1000 pages"],
+  ["Audio generation", "per 1k characters"],
+  ["Audio Input/min", null],
+  ["Audio Input (per min / per M tok)", ""],
+  ["Text Input (per min / per M tok)", ""],
+]);
+
+const accountingReferences: readonly {
+  path: string;
+  markers: readonly RegExp[];
+  message: string;
+}[] = [
+  {
+    path: "/mistralai/platform-docs-public/main/openapi.yaml",
+    markers: [
+      /UsageInfo:[\s\S]*prompt_tokens:[\s\S]*completion_tokens:[\s\S]*total_tokens:/,
+      /PromptTokensDetails:[\s\S]*^\s+cached_tokens:/m,
+      /UsageInfo:[\s\S]*prompt_audio_seconds:/,
+      /OCRUsageInfo:[\s\S]*pages_processed:/,
+      /TranscriptionResponse:[\s\S]*usage:[\s\S]*UsageInfo/,
+      /SpeechResponse:[\s\S]*audio_data:/,
+    ],
+    message: "Mistral endpoint usage schema drifted",
+  },
+  {
+    path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/admin-api/usage-metrics/page.mdx",
+    markers: [
+      /Billing usage.*cost and consumption for your Organization over a billing period/is,
+      /\/v1\/admin\/usage\?month=5&year=2026/,
+      /month.*,.*year.*,.*workspace_id.*optional/is,
+      /chat.*completion.*ocr.*audio.*connectors.*libraries_api.*fine_tuning.*vibe_usage/is,
+    ],
+    message: "Mistral Admin usage guide drifted",
+  },
+  {
+    path: "/mistralai/platform-docs-public/main/src/content/en/api/endpoint/beta/admin/billing/page.mdx",
+    markers: [
+      /GET<\/b><\/Pill> \/v1\/admin\/usage/,
+      /Get usage and cost data for the Organization/,
+      /api_zone[\s\S]*global[\s\S]*us[\s\S]*eu/,
+      /Prices used to calculate usage amounts/,
+      /Billing metric this price applies to/,
+      /Unit price for the billing metric/,
+    ],
+    message: "Mistral Admin billing API reference drifted",
+  },
+  {
+    path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/billing/page.mdx",
+    markers: [
+      /credits.*pending pay-as-you-go usage/is,
+      /current API usage for the ongoing month/i,
+      /Invoices.*invoice ID.*amount.*payment status/is,
+    ],
+    message: "Mistral account billing guide drifted",
+  },
+  {
+    path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/subscriptions/page.mdx",
+    markers: [
+      /included monthly usage.*shared across Studio, the API, and Vibe Code/is,
+      /pay-as-you-go is enabled.*billed per token/is,
+      /Free mode.*Pro.*Education.*Team.*Enterprise/is,
+    ],
+    message: "Mistral account plan guide drifted",
+  },
+  {
+    path: "/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/regional-inference/page.mdx",
+    markers: [
+      /Regional inference is billed at \*\*1\.1× standard list pricing\*\*/,
+      /input tokens, output tokens, cached reads, and cache writes/,
+      /Regional endpoints only serve models hosted in that region/,
+      /Stateful features.*Agents, Batch, Files API.*not available/is,
+    ],
+    message: "Mistral regional pricing guide drifted",
+  },
+];
 
 const apiCapabilitiesSchema = z.object({
   completion_chat: z.boolean().optional(),
@@ -569,11 +667,13 @@ function directRate(
   return publishedRate(meter, price.price, unit, sourceId, price.denominator, conditions);
 }
 
-function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): SourcePriceFact[] {
-  if (draft.status === "retired") return [];
-  const direct = draft.pricing.prices.map((price) => directRate(price, modelTasks, sourceId));
+function derivedPricing(
+  direct: readonly SourcePriceFact[],
+  batch: boolean,
+  cache: boolean,
+): SourcePriceFact[] {
   const derived: SourcePriceFact[] = [];
-  if (draft.features.includes("batching"))
+  if (batch)
     derived.push(
       ...direct.map((rate) => ({
         ...rate,
@@ -585,7 +685,7 @@ function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): Sourc
         raw_unit: "published 50% Batch API discount",
       })),
     );
-  if (draft.features.some((feature) => feature === "chat-completions" || feature === "fim"))
+  if (cache)
     derived.push(
       ...direct.flatMap((rate): SourcePriceFact[] =>
         rate.meter !== "input_text"
@@ -603,7 +703,20 @@ function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): Sourc
             ],
       ),
     );
-  return [...direct, ...derived];
+  return derived;
+}
+
+function pricing(draft: Draft, modelTasks: ModelTask[], sourceId: string): SourcePriceFact[] {
+  if (draft.status === "retired") return [];
+  const direct = draft.pricing.prices.map((price) => directRate(price, modelTasks, sourceId));
+  return [
+    ...direct,
+    ...derivedPricing(
+      direct,
+      draft.features.includes("batching"),
+      draft.features.some((feature) => feature === "chat-completions" || feature === "fim"),
+    ),
+  ];
 }
 
 function sourceModel(
@@ -667,6 +780,375 @@ function sourceModel(
   };
 }
 
+function compact(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function decimalNumber(value: number): string {
+  const result = String(value);
+  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(result))
+    throw new Error(`Mistral published an unsupported numeric price: ${result}`);
+  return result;
+}
+
+function pageRate(
+  model: ProviderModel,
+  label: string,
+  price: string,
+  suffix: string | null,
+  currency: "EUR" | "USD",
+  sourceId: string,
+): SourcePriceFact | undefined {
+  if (suffix !== publicPriceSuffixes.get(label)) return undefined;
+  let meter: SourcePriceFact["meter"];
+  let unit: SourcePriceFact["unit"];
+  let normalizedPrice = price;
+  const conditions: SourcePriceFact["conditions"] = {};
+  if (label === "Input (/M tokens)") {
+    meter = model.tasks.includes("embeddings") ? "embedding" : "input_text";
+    unit = "million_tokens";
+  } else if (label === "Output (/M tokens)") {
+    meter = "output_text";
+    unit = "million_tokens";
+  } else if (label === "OCR") {
+    meter = "input_image";
+    unit = "thousand_pages";
+    conditions.operation = "ocr";
+  } else if (label === "Document AI") {
+    meter = "input_image";
+    unit = "thousand_pages";
+    conditions.operation = "document_annotation";
+  } else if (label === "Audio generation") {
+    meter = "output_audio";
+    unit = "million_characters";
+    normalizedPrice = multiplyDecimal(price, "1000");
+  } else if (label === "Audio Input/min") {
+    meter = "input_audio";
+    unit = "minute";
+    conditions.operation = model.tasks.includes("text_generation")
+      ? "chat_completions"
+      : "transcription";
+  } else if (label === "Audio Input (per min / per M tok)") {
+    meter = "input_audio";
+    unit = "minute";
+    conditions.operation = "chat_completions";
+  } else if (label === "Text Input (per min / per M tok)") {
+    meter = "input_text";
+    unit = "million_tokens";
+  } else {
+    return undefined;
+  }
+  return {
+    ...publishedRate(meter, normalizedPrice, unit, sourceId, label, conditions),
+    currency,
+    raw_price: price,
+  };
+}
+
+function pageTargets(models: readonly ProviderModel[], id: string): number[] {
+  const exact = models.flatMap((model, index) => (model.model_id === id ? [index] : []));
+  const matches =
+    exact.length > 0
+      ? exact
+      : models.flatMap((model, index) => (model.aliases.includes(id) ? [index] : []));
+  const active = matches.filter((index) => models[index]?.status === "active");
+  return active.length > 0 ? active : matches;
+}
+
+function mergeRates(
+  model: ProviderModel,
+  rates: readonly SourcePriceFact[],
+): ProviderModel | undefined {
+  const existing = new Map(model.price_facts.map((rate) => [sourcePriceFactKey(rate), rate]));
+  for (const rate of rates) {
+    const current = existing.get(sourcePriceFactKey(rate));
+    if (current !== undefined && !decimalsEqual(current.price, rate.price)) return undefined;
+    if (current === undefined) existing.set(sourcePriceFactKey(rate), rate);
+  }
+  return {
+    ...model,
+    pricing_state: existing.size > 0 ? "numeric" : model.pricing_state,
+    price_facts: [...existing.values()],
+  };
+}
+
+function reconcileMany(reconcile: Reconcile, count: number, item: PricingReconciliationItem): void {
+  for (let index = 0; index < count; index += 1) reconcile?.(item);
+}
+
+function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
+  for (const draft of drafts) {
+    if (draft.apiNames.length === 0) {
+      reconcile?.({
+        disposition: "excluded",
+        reason_code: "definition_without_api_name",
+        sample: draft.sourceSlug,
+      });
+      continue;
+    }
+    if (draft.status === "retired") {
+      reconcileMany(reconcile, draft.pricing.prices.length, {
+        disposition: "excluded",
+        reason_code: "historical_retired_price",
+      });
+      reconcile?.({
+        disposition: "explicit_non_numeric",
+        reason_code: "not_applicable",
+      });
+      continue;
+    }
+    reconcileMany(reconcile, draft.pricing.prices.length, {
+      disposition: "normalized",
+      reason_code: "normalized_repository_price",
+    });
+    if (draft.pricing.free)
+      reconcile?.({ disposition: "explicit_non_numeric", reason_code: "free" });
+    else if (draft.pricing.prices.length === 0)
+      reconcile?.({
+        disposition: "explicit_non_numeric",
+        reason_code: "price_not_published",
+      });
+  }
+}
+
+function publicPricing(input: Input, models: ProviderModel[], body: string): void {
+  const $ = load(body);
+  const cards = $("mistral-block-card-model").toArray();
+  assertItemCount("Mistral public pricing cards", cards.length, 5, 60);
+  const rowCount = cards.reduce(
+    (count, card) => count + $(card).find("mistral-atom-text-price").length,
+    0,
+  );
+  assertItemCount("Mistral public pricing rows", rowCount, 5, 100);
+  const pageText = compact($("body").text());
+  if (!/Batch processing\s*-50%/i.test(pageText) || !/Cached input tokens\s*-90%/i.test(pageText))
+    throw new Error("Mistral public pricing discounts drifted");
+  reconcileMany(input.onPricingReconciliation, 2, {
+    disposition: "excluded",
+    reason_code: "duplicate_discount_policy",
+  });
+
+  const seen = new Set<string>();
+  for (const card of cards) {
+    const element = $(card);
+    const id = compact(element.find("mistral-atom-button-copy-clipboard").attr("data-text") ?? "");
+    const text = compact(element.text());
+    const rows = element
+      .find("mistral-atom-text-price")
+      .toArray()
+      .map((priceElement) => {
+        const price = $(priceElement);
+        const label = compact(price.parent().children("p").first().text());
+        const values = publicPriceSchema.parse(JSON.parse(price.attr("data-prices") ?? "null"));
+        const discounts = publicDiscountSchema.parse(
+          JSON.parse(price.attr("data-discounts") ?? "[]"),
+        );
+        return { label, values, discounts };
+      });
+    const free = element
+      .find("p")
+      .toArray()
+      .some((paragraph) => compact($(paragraph).text()) === "Free");
+    const fingerprint = JSON.stringify({ id, rows, free, ...(id === "" ? { text } : {}) });
+    if (seen.has(fingerprint)) {
+      reconcileMany(input.onPricingReconciliation, rows.length + Number(free), {
+        disposition: "excluded",
+        reason_code: "duplicate_public_price_card",
+      });
+      continue;
+    }
+    seen.add(fingerprint);
+
+    if (id.startsWith("Classifier API model")) {
+      reconcileMany(
+        input.onPricingReconciliation,
+        rows.length + Number(/minimum fee per fine-tuning job of \$4/i.test(text)),
+        {
+          disposition: "excluded",
+          reason_code: "provider_service_pricing_unmodeled",
+        },
+      );
+      continue;
+    }
+    if (id === "") {
+      const recognized = [
+        "Enterprise APIs",
+        "Agent API",
+        "Libraries",
+        "Code execution",
+        "Web search",
+        "Images",
+        "Premium news",
+        "Data capture",
+      ].find((label) => text.startsWith(label));
+      if (recognized === undefined) {
+        reconcileMany(input.onPricingReconciliation, Math.max(rows.length, 1), {
+          disposition: "unsupported",
+          reason_code: "unknown_public_pricing_card",
+          sample: text.slice(0, 256),
+        });
+      } else {
+        reconcileMany(input.onPricingReconciliation, Math.max(rows.length, 1), {
+          disposition: "excluded",
+          reason_code: "provider_service_pricing_unmodeled",
+        });
+      }
+      continue;
+    }
+
+    const targets = pageTargets(models, id);
+    if (rows.length === 0) {
+      if (!free) {
+        input.onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "public_model_price_without_rate",
+          sample: id,
+        });
+        continue;
+      }
+      const targetIndex = targets.length === 1 ? targets[0] : undefined;
+      const target = targetIndex === undefined ? undefined : models[targetIndex];
+      if (targetIndex === undefined || target === undefined || target.status === "retired") {
+        input.onPricingReconciliation?.({
+          disposition: targets.length === 0 ? "unbound" : "ambiguous",
+          reason_code:
+            targets.length === 0 ? "public_free_model_unbound" : "public_free_model_conflict",
+          sample: id,
+        });
+      } else if (target.price_facts.some(({ price }) => !decimalsEqual(price, "0"))) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "public_free_model_conflict",
+          sample: id,
+        });
+      } else if (target.pricing_state === "free" || target.price_facts.length > 0) {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "duplicate_free_evidence",
+        });
+      } else {
+        models[targetIndex] = { ...target, pricing_state: "free" };
+        input.onPricingReconciliation?.({
+          disposition: "explicit_non_numeric",
+          reason_code: "free",
+        });
+      }
+      continue;
+    }
+
+    for (const { label, values } of rows) {
+      if (values.prefix !== null) {
+        input.onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "public_price_shape_unsupported",
+          sample: `${id}: ${label}`,
+        });
+        continue;
+      }
+      const possible = targets.flatMap((index) => {
+        const model = models[index];
+        if (model === undefined) return [];
+        const rate = pageRate(
+          model,
+          label,
+          decimalNumber(values.priceUsd),
+          values.suffix,
+          "USD",
+          input.source.id,
+        );
+        return rate === undefined ? [] : [{ index, model, rate }];
+      });
+      const withExistingRate = possible.filter(({ model, rate }) =>
+        model.price_facts.some(
+          (current) => sourcePriceFactKey(current) === sourcePriceFactKey(rate),
+        ),
+      );
+      const candidates = withExistingRate.length > 0 ? withExistingRate : possible;
+      const candidate = candidates.length === 1 ? candidates[0] : undefined;
+      if (candidate === undefined) {
+        input.onPricingReconciliation?.({
+          disposition:
+            targets.length === 0 ? "unbound" : possible.length === 0 ? "unsupported" : "ambiguous",
+          reason_code:
+            targets.length === 0
+              ? "public_price_model_unbound"
+              : possible.length === 0
+                ? "public_price_label_unsupported"
+                : "public_price_model_ambiguous",
+          sample: `${id}: ${label}`,
+        });
+        continue;
+      }
+      if (candidate.model.status === "retired") {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "public_price_retired_model_conflict",
+          sample: `${id}: ${label}`,
+        });
+        continue;
+      }
+      const current = candidate.model.price_facts.find(
+        (rate) => sourcePriceFactKey(rate) === sourcePriceFactKey(candidate.rate),
+      );
+      if (current !== undefined && !decimalsEqual(current.price, candidate.rate.price)) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "first_party_price_conflict",
+          sample: `${id}: ${label}`,
+        });
+        continue;
+      }
+      const eur = pageRate(
+        candidate.model,
+        label,
+        decimalNumber(values.priceEur),
+        values.suffix,
+        "EUR",
+        input.source.id,
+      );
+      if (eur === undefined) throw new Error("Mistral public price mapping was inconsistent");
+      const direct = current === undefined ? [candidate.rate, eur] : [eur];
+      const rates = [
+        ...direct,
+        ...derivedPricing(
+          direct,
+          candidate.model.capabilities.batch === true,
+          candidate.model.capabilities.prompt_cache === true,
+        ),
+      ];
+      const merged = mergeRates(candidate.model, rates);
+      if (merged === undefined) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "first_party_price_conflict",
+          sample: `${id}: ${label}`,
+        });
+        continue;
+      }
+      models[candidate.index] = merged;
+      input.onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code: "normalized_public_currency_price",
+      });
+    }
+  }
+}
+
+function validateAccountingReferences(documents: readonly { url: string; body: string }[]): void {
+  for (const reference of accountingReferences) {
+    const matches = documents.filter(
+      (document) => new URL(document.url).pathname === reference.path,
+    );
+    const document = matches[0];
+    if (
+      matches.length !== 1 ||
+      document === undefined ||
+      reference.markers.some((marker) => !marker.test(document.body))
+    )
+      throw new Error(reference.message);
+  }
+}
+
 function validatePricingCoverage(models: ProviderModel[], minimum: number): void {
   if (minimum < 0 || minimum > 1) throw new Error("Invalid Mistral pricing coverage threshold");
   const current = new Map<string, boolean>();
@@ -701,6 +1183,7 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   const observed = new Set(drafts.map((draft) => draft.sourceSlug));
   if (drafts.length !== expected.size || [...expected].some((slug) => !observed.has(slug)))
     throw new Error("Mistral index and model documents disagree");
+  validateAccountingReferences(bundle.documents);
   const document = (path: string): string => {
     const matches = bundle.documents.filter(
       (candidate) => new URL(candidate.url).pathname === path,
@@ -723,6 +1206,18 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     throw new Error("Mistral prompt-cache pricing semantics changed");
   if (!/50% discount/i.test(companion("/studio-api/batch-processing.md")))
     throw new Error("Mistral Batch API pricing semantics changed");
+  reconcileMany(input.onPricingReconciliation, 2, {
+    disposition: "normalized",
+    reason_code: "normalized_discount_policy",
+  });
+  input.onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "regional_model_availability_required",
+  });
+  input.onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "account_plan_allowance_unscoped",
+  });
 
   const currentByName = new Map<string, string | null>();
   for (const draft of drafts) {
@@ -739,6 +1234,8 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     const model = sourceModel(input, draft, replacement, endpointsByFeature);
     return model === undefined ? [] : [model];
   });
+  reconcileDrafts(drafts, input.onPricingReconciliation);
+  publicPricing(input, models, document("/pricing/api/"));
   const modelCount = new Set(models.map((model) => model.uid)).size;
   assertItemCount(
     "Mistral callable models",

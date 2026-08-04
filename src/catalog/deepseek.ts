@@ -6,6 +6,7 @@ import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
@@ -15,6 +16,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 const listSchema = z.object({
@@ -160,6 +162,17 @@ function endpointEvidence(
   return { modelIds: new Set(ids.data), propertyValues, propertyText };
 }
 
+function propertyClaims(
+  evidence: ReturnType<typeof endpointEvidence>,
+  property: string,
+  claims: readonly string[],
+  message: string,
+): void {
+  const value = evidence.propertyText(property).join(" ").toLowerCase();
+  if (value === "" || claims.some((claim) => !value.includes(claim.toLowerCase())))
+    throw new Error(message);
+}
+
 function chatModelIds(body: string): Set<string> {
   const evidence = endpointEvidence(body, chatEndpoint);
   const thinkingValues = evidence.propertyValues("thinking");
@@ -185,7 +198,160 @@ function chatModelIds(body: string): Set<string> {
     .filter((value) => /partial message deltas will be sent/.test(value));
   if (streaming.length !== 1)
     throw new Error("DeepSeek Chat Completions reference changed streaming schema");
+  propertyClaims(
+    evidence,
+    "usage",
+    [
+      "completion_tokens",
+      "prompt_tokens",
+      "prompt_cache_hit_tokens",
+      "prompt_cache_miss_tokens",
+      "total_tokens",
+      "reasoning_tokens",
+    ],
+    "DeepSeek Chat Completions reference changed usage schema",
+  );
+  propertyClaims(
+    evidence,
+    "include_usage",
+    ["entire request", "choices field will always be an empty array"],
+    "DeepSeek Chat Completions reference changed streaming usage schema",
+  );
   return evidence.modelIds;
+}
+
+function responseModelIds(body: string): Set<string> {
+  const evidence = endpointEvidence(body, responsesEndpoint);
+  propertyClaims(
+    evidence,
+    "tools",
+    ["function", "web_search", "executed on the server side"],
+    "DeepSeek Responses reference changed tool schema",
+  );
+  propertyClaims(
+    evidence,
+    "usage",
+    ["input_tokens", "cached_tokens", "output_tokens", "reasoning_tokens", "total_tokens"],
+    "DeepSeek Responses reference changed usage schema",
+  );
+  return evidence.modelIds;
+}
+
+function companion(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  path: string,
+  label: string,
+): string {
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === path);
+  const [match] = matches;
+  if (matches.length !== 1 || match === undefined)
+    throw new Error(`DeepSeek catalog omitted the ${label} reference`);
+  return match.body;
+}
+
+function requireClaims(body: string, claims: readonly string[], message: string): void {
+  const value = htmlText(load(body).root().text()).toLowerCase();
+  if (claims.some((claim) => !value.includes(claim.toLowerCase()))) throw new Error(message);
+}
+
+function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSchema>): void {
+  requireClaims(
+    bundle.index.body,
+    [
+      "bill based on the total number of input and output tokens",
+      "peak/off-peak pricing policy",
+      "prices will be 2x the regular prices",
+      "effective date will be subject to the official announcement",
+      "expense = number of tokens × price",
+      "preference for using the granted balance first",
+      "most recent pricing information",
+    ],
+    "DeepSeek public pricing contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/quick_start/token_usage", "token usage"),
+    [
+      "units we use for billing",
+      "actual number of tokens processed each time is based on the model's return",
+      "usage results",
+    ],
+    "DeepSeek token-usage contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/guides/kv_cache", "context cache"),
+    [
+      "enabled by default for all users",
+      "prompt_cache_hit_tokens",
+      "prompt_cache_miss_tokens",
+      "best-effort",
+      "cache construction takes seconds",
+      "few hours to a few days",
+    ],
+    "DeepSeek context-cache contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/api/get-user-balance", "balance API"),
+    [
+      "Get user current balance",
+      "is_available",
+      "total_balance",
+      "granted_balance",
+      "topped_up_balance",
+    ],
+    "DeepSeek balance API contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/quick_start/rate_limit", "rate-limit"),
+    [
+      "account level, regardless of which API Key is used",
+      "There is no additional cost for capacity expansion",
+      "KVCache Isolation",
+      "Scheduling Isolation",
+    ],
+    "DeepSeek account-quota contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/quick_start/error_codes", "error-code"),
+    ["402 - Insufficient Balance", "check your account's balance"],
+    "DeepSeek insufficient-balance contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/guides/responses_api", "Responses guide"),
+    [
+      "server-side web search tool call",
+      "service_tier",
+      "Not supported",
+      "final event",
+      "full response object including usage",
+    ],
+    "DeepSeek Responses accounting contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/guides/anthropic_api", "Anthropic compatibility"),
+    [
+      "unsupported model name",
+      "automatically map it to the deepseek-v4-flash model",
+      "Models starting with claude-opus are mapped to deepseek-v4-pro",
+      "claude-haiku or claude-sonnet are mapped to deepseek-v4-flash",
+      "cache_control",
+      "Ignored",
+    ],
+    "DeepSeek Anthropic compatibility contract drifted",
+  );
+
+  for (const reason_code of [
+    "granted_balance_account_entitlement",
+    "account_balance_api_out_of_catalog",
+    "account_concurrency_out_of_catalog",
+    "response_exact_cost_not_returned",
+  ])
+    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
+  for (const reason_code of [
+    "upcoming_peak_policy_not_effective",
+    "web_search_fee_not_published",
+    "anthropic_model_mapping_not_bound",
+  ])
+    input.onPricingReconciliation?.({ disposition: "unbound", reason_code });
 }
 
 const catalogRows = new Set([
@@ -242,6 +408,21 @@ function model(
     ...(hasChatEndpoint ? [chatEndpoint] : []),
     ...(hasResponsesEndpoint ? [responsesEndpoint] : []),
   ];
+  const priceFacts = priceRows.map(([meter, label]) =>
+    publishedRate(
+      meter,
+      price(cells(table, label, [column])[0] ?? ""),
+      "million_tokens",
+      input.source.id,
+      label,
+    ),
+  );
+  for (const rate of priceFacts)
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "price_fact_normalized",
+      sample: `${id}:${rate.meter}`,
+    });
   return {
     ...baseModel({
       providerId: input.provider.id,
@@ -264,15 +445,7 @@ function model(
     limits: { context_tokens: context, max_output_tokens: output },
     status: "active",
     pricing_state: "numeric",
-    price_facts: priceRows.map(([meter, label]) =>
-      publishedRate(
-        meter,
-        price(cells(table, label, [column])[0] ?? ""),
-        "million_tokens",
-        input.source.id,
-        label,
-      ),
-    ),
+    price_facts: priceFacts,
   };
 }
 
@@ -286,17 +459,11 @@ function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
 
 export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const document = (path: string, label: string): string => {
-    const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === path);
-    const [match] = matches;
-    if (matches.length !== 1 || match === undefined)
-      throw new Error(`DeepSeek catalog omitted the ${label} reference`);
-    return match.body;
-  };
-  const chatDocument = document("/api/create-chat-completion", "Chat Completions");
-  const responsesDocument = document("/api/create-response", "Responses");
+  commercialEvidence(input, bundle);
+  const chatDocument = companion(bundle, "/api/create-chat-completion", "Chat Completions");
+  const responsesDocument = companion(bundle, "/api/create-response", "Responses");
   const chatIds = chatModelIds(chatDocument);
-  const responseIds = endpointEvidence(responsesDocument, responsesEndpoint).modelIds;
+  const responseIds = responseModelIds(responsesDocument);
   const modelTables = htmlTables(bundle.index.body).filter(
     (item) => item.headers[0] === "MODEL" && item.headers[1] === "MODEL",
   );

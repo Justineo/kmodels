@@ -3,7 +3,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import { multiplyDecimal, publishedRate } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
@@ -13,6 +14,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 interface MarkdownTable {
@@ -125,11 +127,18 @@ const months = new Map([
 ]);
 
 function date(value: string): string | undefined {
-  const match = value.match(/^([A-Z][a-z]+) (\d{1,2}), (\d{4})$/);
+  const match = value.match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th)?, (\d{4})$/);
   const month = match?.[1] === undefined ? undefined : months.get(match[1]);
-  return month === undefined || match?.[2] === undefined || match[3] === undefined
-    ? undefined
-    : `${match[3]}-${month}-${match[2].padStart(2, "0")}`;
+  if (month === undefined || match?.[2] === undefined || match[3] === undefined) return undefined;
+  const result = `${match[3]}-${month}-${match[2].padStart(2, "0")}`;
+  return z.iso.date().safeParse(result).success ? result : undefined;
+}
+
+function tableDate(value: string, field: string): string | undefined {
+  if (value === "N/A" || value.startsWith("Not sooner than ")) return undefined;
+  const parsed = date(value);
+  if (parsed === undefined) throw new Error(`Anthropic ${field} was not a valid date: ${value}`);
+  return parsed;
 }
 
 function model(models: Map<string, ProviderModel>, input: Input, id: string): ProviderModel {
@@ -239,6 +248,39 @@ function launch(body: string, input: Input, models: Map<string, ProviderModel>):
   }
 }
 
+function releaseNotes(body: string, input: Input, models: Map<string, ProviderModel>): void {
+  let currentDate: string | undefined;
+  let launches = 0;
+  for (const line of body.split(/\r?\n/)) {
+    const heading = line.match(/^### (.+)$/)?.[1];
+    if (heading !== undefined) currentDate = date(heading);
+    const subject = line.match(/^[*-] We've launched (.+?), /)?.[1];
+    if (subject === undefined) continue;
+    const launchSubject = text(subject);
+    if (!/^Claude (?:Fable|Mythos|Opus|Sonnet|Haiku|\d)\b/.test(launchSubject)) continue;
+    if (currentDate === undefined)
+      throw new Error("Anthropic release notes omitted a valid launch date");
+    const targets = new Map<string, ProviderModel>();
+    for (const match of subject.matchAll(
+      /`(claude-[a-z0-9._:/-]+)`|\((claude-[a-z0-9._:/-]+)\)/g,
+    )) {
+      const id = match[1] ?? match[2];
+      if (id !== undefined) {
+        const item = model(models, input, id);
+        targets.set(item.model_id, item);
+      }
+    }
+    for (const item of mentioned(launchSubject, models)) targets.set(item.model_id, item);
+    for (const item of targets.values()) {
+      if (item.release_date !== undefined && item.release_date !== currentDate)
+        throw new Error(`Anthropic release sources disagree for ${item.model_id}`);
+      item.release_date = currentDate;
+      launches += 1;
+    }
+  }
+  if (launches === 0) throw new Error("Anthropic release notes omitted model launches");
+}
+
 function status(value: string): ProviderModel["status"] | undefined {
   const normalized = value.toLowerCase();
   if (normalized === "active") return "active";
@@ -258,9 +300,9 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
     if (id === undefined || state === undefined || !modelIdSchema.safeParse(id).success) continue;
     const item = model(models, input, id);
     item.status = state;
-    const deprecatedAt = date(values[2] ?? "");
+    const deprecatedAt = tableDate(values[2] ?? "", "deprecation date");
     if (deprecatedAt !== undefined) item.deprecated_at = deprecatedAt;
-    const retiredAt = date(values[3] ?? "");
+    const retiredAt = tableDate(values[3] ?? "", "retirement date");
     if (retiredAt !== undefined && state !== "active") item.retired_at = retiredAt;
   }
 
@@ -276,11 +318,12 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
     if (deprecatedAt === undefined)
       throw new Error("Anthropic lifecycle history omitted announcement date");
     for (const values of table.rows) {
-      const retiredAt = date(values[0] ?? "");
       const id = values[1];
       const replacement = values[2];
-      if (retiredAt === undefined || id === undefined || !modelIdSchema.safeParse(id).success)
-        continue;
+      if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
+      const retiredAt = tableDate(values[0] ?? "", "historical retirement date");
+      if (retiredAt === undefined)
+        throw new Error("Anthropic lifecycle history omitted its retirement date");
       const item = model(models, input, id);
       item.deprecated_at = deprecatedAt;
       item.retired_at = retiredAt;
@@ -309,8 +352,10 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
   for (const match of body.matchAll(
     /`(claude-[a-z0-9._:/-]+)`\) will be retired on ([A-Z][a-z]+ \d{1,2}, \d{4})\.[^\n]*?`(claude-[a-z0-9._:/-]+)`/g,
   )) {
-    const retiredAt = match[2] === undefined ? undefined : date(match[2]);
-    if (match[1] === undefined || match[3] === undefined || retiredAt === undefined) continue;
+    if (match[1] === undefined || match[2] === undefined || match[3] === undefined) continue;
+    const retiredAt = date(match[2]);
+    if (retiredAt === undefined)
+      throw new Error(`Anthropic inline retirement date was not valid: ${match[2]}`);
     const item = model(models, input, match[1]);
     item.retired_at = retiredAt;
     item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
@@ -550,7 +595,13 @@ function effective(value: string): SourcePriceFact["conditions"] {
   return {};
 }
 
-function cached(rate: SourcePriceFact): SourcePriceFact[] {
+interface CacheMultipliers {
+  fiveMinuteWrite: string;
+  oneHourWrite: string;
+  read: string;
+}
+
+function cached(rate: SourcePriceFact, multipliers: CacheMultipliers): SourcePriceFact[] {
   const derive = (
     meter: "cache_write_text" | "cache_read_text",
     multiplier: string,
@@ -564,15 +615,108 @@ function cached(rate: SourcePriceFact): SourcePriceFact[] {
       ...(cacheTtlSeconds === undefined ? {} : { cache_ttl_seconds: cacheTtlSeconds }),
     },
     derived: true,
-    derivation: `${multiplier} × published ${rate.conditions.service_tier ?? "standard"} input rate`,
+    derivation: `${multiplier} × published ${rate.conditions.speed ?? rate.conditions.service_tier ?? "standard"} input rate`,
     raw_price: undefined,
     raw_unit: "published prompt-cache multiplier",
   });
   return [
-    derive("cache_write_text", "1.25", 300),
-    derive("cache_write_text", "2", 3600),
-    derive("cache_read_text", "0.1"),
+    derive("cache_write_text", multipliers.fiveMinuteWrite, 300),
+    derive("cache_write_text", multipliers.oneHourWrite, 3600),
+    derive("cache_read_text", multipliers.read),
   ];
+}
+
+function cacheMultipliers(parsedTables: MarkdownTable[], input: Input): CacheMultipliers {
+  const table = parsedTables.find(
+    (candidate) => candidate.headers.join("|") === "Cache operation|Multiplier|Duration",
+  );
+  if (table === undefined) throw new Error("Anthropic pricing page omitted cache multipliers");
+  const multiplier = (label: string): string => {
+    const value = row(table, label)?.[1]?.match(
+      /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price$/,
+    )?.[1];
+    if (value === undefined)
+      throw new Error(`Anthropic cache multiplier was not machine-readable for ${label}`);
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "cache_multiplier_applied",
+    });
+    return value;
+  };
+  return {
+    fiveMinuteWrite: multiplier("5-minute cache write"),
+    oneHourWrite: multiplier("1-hour cache write"),
+    read: multiplier("Cache read"),
+  };
+}
+
+function validateFastMode(body: string, expectedIds: Set<string>): void {
+  if (
+    !body.includes('Set `speed: "fast"`') ||
+    !/Fast mode is not available with the \[Batch API]/.test(body)
+  )
+    throw new Error("Anthropic fast-mode request contract drifted");
+  const supported = new Set(
+    [...body.matchAll(/^\s*[*-] Claude [^(]+\(`?(claude-[a-z0-9._:/-]+)`?\)$/gm)].flatMap((match) =>
+      match[1] === undefined ? [] : [match[1]],
+    ),
+  );
+  if (
+    supported.size === 0 ||
+    supported.size !== expectedIds.size ||
+    [...supported].some((id) => !expectedIds.has(id))
+  )
+    throw new Error("Anthropic fast-mode model coverage disagreed with pricing");
+}
+
+function reconcileExcludedPricing(body: string, input: Input): void {
+  const statements = [
+    {
+      pattern:
+        /\*\*1,550 free hours\*\* of usage per month[\s\S]*?\*\*\$0\.05 USD per hour, per container\*\*/,
+      reason_code: "provider_service_pricing_unmodeled",
+      sample: "Code execution container time",
+    },
+    {
+      pattern: /\*\*\$10 per 1,000 searches\*\*/,
+      reason_code: "provider_service_pricing_unmodeled",
+      sample: "Web search",
+    },
+    {
+      pattern: /Web fetch usage has \*\*no additional charges\*\*/,
+      reason_code: "provider_service_pricing_unmodeled",
+      sample: "Web fetch",
+    },
+    {
+      pattern: /\| Session runtime \| \$0\.08 per session-hour \|/,
+      reason_code: "separate_product_pricing",
+      sample: "Claude Managed Agents runtime",
+    },
+  ] as const;
+  for (const statement of statements) {
+    if (!statement.pattern.test(body))
+      throw new Error(`Anthropic pricing page omitted ${statement.sample}`);
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: statement.reason_code,
+      sample: statement.sample,
+    });
+  }
+  const ccuRates = body.match(/\$0\.01 per CCU \(fixed;/g)?.length ?? 0;
+  if (ccuRates !== 2) throw new Error("Anthropic marketplace CCU pricing drifted");
+  for (const sample of ["Claude Platform on AWS CCU", "Claude in Microsoft Foundry CCU"])
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "separate_distribution_pricing",
+      sample,
+    });
+  if (!/Volume discounts may be available[\s\S]*?negotiated on a case-by-case basis/.test(body))
+    throw new Error("Anthropic account-specific pricing boundary drifted");
+  input.onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "account_specific_discount",
+    sample: "Negotiated volume discount",
+  });
 }
 
 function supportsUsInference(id: string): boolean {
@@ -584,13 +728,19 @@ function supportsUsInference(id: string): boolean {
   return major > 4 || (major === 4 && minor >= 6);
 }
 
-function pricing(body: string, input: Input, models: Map<string, ProviderModel>): void {
+function pricing(
+  body: string,
+  fastModeBody: string,
+  input: Input,
+  models: Map<string, ProviderModel>,
+): void {
   const resolve = resolver(models);
   const add = (item: ProviderModel, rates: SourcePriceFact[]): void => {
     item.price_facts.push(...rates);
     item.pricing_state = "numeric";
   };
   const parsedTables = tables(body);
+  const multipliers = cacheMultipliers(parsedTables, input);
   const base = parsedTables.find((table) => table.headers[1] === "Base Input Tokens");
   const batch = parsedTables.find((table) => table.headers[1] === "Batch input");
   const fastTables = parsedTables.filter(
@@ -629,6 +779,21 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
       rate("cache_read_text", cacheRead),
       rate("output_text", outputPrice),
     ]);
+    const expectedFiveMinuteWrite = multiplyDecimal(inputPrice, multipliers.fiveMinuteWrite);
+    const expectedOneHourWrite = multiplyDecimal(inputPrice, multipliers.oneHourWrite);
+    const expectedCacheRead = multiplyDecimal(inputPrice, multipliers.read);
+    if (
+      !decimalsEqual(fiveMinuteWrite, expectedFiveMinuteWrite) ||
+      !decimalsEqual(oneHourWrite, expectedOneHourWrite) ||
+      !decimalsEqual(cacheRead, expectedCacheRead)
+    )
+      throw new Error(
+        `Anthropic cache prices disagreed with published multipliers for ${item.model_id}`,
+      );
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "base_model_price_row",
+    });
     item.capabilities.prompt_cache = true;
   }
 
@@ -649,7 +814,7 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
     );
     add(item, [
       inputRate,
-      ...cached(inputRate),
+      ...cached(inputRate, multipliers),
       publishedRate(
         "output_text",
         outputPrice,
@@ -659,6 +824,10 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
         conditions,
       ),
     ]);
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "batch_model_price_row",
+    });
     item.capabilities.batch = true;
   }
 
@@ -669,9 +838,11 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
       throw new Error(`Anthropic fast pricing was not machine-readable for ${values[0] ?? ""}`);
     const names = (values[0] ?? "").split(/\s+\/\s+/).filter(Boolean);
     if (names.length === 0) throw new Error("Anthropic fast pricing omitted its model");
+    const fastIds = new Set<string>();
     for (const name of names) {
       const item = resolve(name);
-      const conditions = { service_tier: "fast" };
+      fastIds.add(item.model_id);
+      const conditions = { speed: "fast" };
       const inputRate = publishedRate(
         "input_text",
         inputPrice,
@@ -682,7 +853,7 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
       );
       add(item, [
         inputRate,
-        ...cached(inputRate),
+        ...cached(inputRate, multipliers),
         publishedRate(
           "output_text",
           outputPrice,
@@ -693,11 +864,23 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
         ),
       ]);
     }
+    validateFastMode(fastModeBody, fastIds);
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "fast_model_price_row",
+    });
   }
 
   const tools = parsedTables.find((table) => table.headers.includes("Tool choice"));
   if (tools === undefined) throw new Error("Anthropic pricing page omitted tool support");
-  for (const values of tools.rows) resolve(values[0] ?? "").capabilities.tool_call = true;
+  for (const values of tools.rows) {
+    resolve(values[0] ?? "").capabilities.tool_call = true;
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "token_overhead_included_in_usage",
+      ...(values[0] === undefined ? {} : { sample: values[0] }),
+    });
+  }
 
   const longContext = body.match(/^(.+?) include the full \[1M token context window]/m)?.[1];
   if (longContext === undefined)
@@ -710,22 +893,32 @@ function pricing(body: string, input: Input, models: Map<string, ProviderModel>)
     )
       item.limits.context_tokens = 1_000_000;
 
+  const inferenceGeoMultiplier = body.match(
+    /incurs a ((?:0|[1-9]\d*)(?:\.\d+)?)x multiplier on all token pricing categories/,
+  )?.[1];
+  if (inferenceGeoMultiplier === undefined)
+    throw new Error("Anthropic pricing page omitted the inference geography multiplier");
   for (const item of models.values()) {
     if (!supportsUsInference(item.model_id)) continue;
     item.price_facts.push(
       ...item.price_facts.map(
         (rate): SourcePriceFact => ({
           ...rate,
-          price: multiplyDecimal(rate.price, "1.1"),
+          price: multiplyDecimal(rate.price, inferenceGeoMultiplier),
           conditions: { ...rate.conditions, inference_geo: "us" },
           derived: true,
-          derivation: `1.1 × ${rate.derivation ?? "published rate"} for US-only inference`,
+          derivation: `${inferenceGeoMultiplier} × ${rate.derivation ?? "published rate"} for US-only inference`,
           raw_price: undefined,
           raw_unit: "published inference geography multiplier",
         }),
       ),
     );
   }
+  input.onPricingReconciliation?.({
+    disposition: "normalized",
+    reason_code: "inference_geo_multiplier_applied",
+  });
+  reconcileExcludedPricing(body, input);
 }
 
 export function parseAnthropicCatalog(input: Input): ProviderModel[] {
@@ -739,7 +932,8 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   overview(bundle.index.body, input, models);
   launch(document("introducing-claude-fable-5-and-claude-mythos-5.md"), input, models);
   lifecycle(document("model-deprecations.md"), input, models);
-  pricing(document("pricing.md"), input, models);
+  releaseNotes(document("/release-notes/overview.md"), input, models);
+  pricing(document("pricing.md"), document("/build-with-claude/fast-mode.md"), input, models);
   applyEndpoints(
     document("/api/messages/create.md"),
     document("/api/messages/batches/create.md"),

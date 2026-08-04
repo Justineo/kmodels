@@ -1,9 +1,14 @@
 import { isDeepStrictEqual } from "node:util";
+import { modelLimitFields } from "./catalog-vocabulary.ts";
 import { canonicalJsonHash } from "./canonical-json.ts";
 import { compareUtf8 } from "./canonical-value.ts";
 import { commercialPricingProjection } from "./pricing-commercial.ts";
 import { providerPartition } from "./pricing-transition.ts";
 import type { PricingCatalog } from "./pricing-schema.ts";
+import type {
+  SourcePricingExtraction,
+  SourcePricingReconciliation,
+} from "./pricing-reconciliation.ts";
 import type { SourceContractEvidence } from "./source-contract.ts";
 import type { Catalog, ProviderModel, SourceRecord } from "./schema.ts";
 import type { ProviderValidationIssue } from "./validation.ts";
@@ -39,9 +44,19 @@ const semanticModelFields = [
 
 type SemanticModelField = (typeof semanticModelFields)[number];
 
+type SemanticLimitField = (typeof modelLimitFields)[number];
+type ModelLimitValue = ProviderModel["limits"][SemanticLimitField];
+
+interface ModelLimitChangeSummary {
+  field: SemanticLimitField;
+  previous?: ModelLimitValue;
+  current?: ModelLimitValue;
+}
+
 interface ModelChangeSummary {
   model_ref: string;
   fields: SemanticModelField[];
+  limit_changes?: ModelLimitChangeSummary[];
   previous_status?: ProviderModel["status"];
   status?: ProviderModel["status"];
   previous_tasks?: ProviderModel["tasks"];
@@ -97,6 +112,8 @@ export interface SourceRefreshAttempt {
   consecutive_failures?: number;
   last_success_at?: string;
   contract_finding?: SourceContractEvidence;
+  pricing_extraction?: SourcePricingExtraction;
+  pricing_reconciliation?: SourcePricingReconciliation;
 }
 
 export interface ProviderRefreshAttempt {
@@ -133,6 +150,7 @@ interface ProviderRefreshSummary {
   models: ModelDiffSummary;
   sources: SourceDiffSummary;
   pricing: PricingDiffSummary;
+  pricing_coverage: PricingCoverageSummary;
   warning_codes: Record<string, number>;
   signals: ProviderRefreshSignal[];
   attempt?: ProviderAttemptSummary;
@@ -144,10 +162,72 @@ interface PricingDiffSummary {
   commercial_hash?: string;
 }
 
+interface PricingCoverageSummary {
+  current_models: number;
+  offer_models: number;
+  not_applicable_models: number;
+  unknown_models: number;
+  normalized_rate_models: number;
+  raw_fact_models: number;
+  unknown_model_refs: string[];
+  unknown_model_refs_omitted: number;
+}
+
 interface PricingComparison {
   data: PricingCatalog;
   owner: (modelRef: string) => string;
   commercialHashes: ReadonlyMap<string, string>;
+}
+
+const maxUnknownPricingSamples = 20;
+
+function pricingCoverage(
+  providerId: string,
+  catalog: Catalog,
+  pricing: PricingCatalog,
+): PricingCoverageSummary {
+  const currentModelRefs = catalog.models
+    .filter(({ provider_id: owner, status }) => owner === providerId && status !== "retired")
+    .map(({ uid }) => uid)
+    .sort(compareUtf8);
+  const current = new Set(currentModelRefs);
+  const offers = new Set<string>();
+  const normalizedRates = new Set<string>();
+  const rawFacts = new Set<string>();
+
+  for (const book of pricing.books) {
+    if (book.provider_id !== providerId || book.scope.kind !== "models") continue;
+    const modelRefs = book.scope.model_refs.filter((modelRef) => current.has(modelRef));
+    for (const modelRef of modelRefs) offers.add(modelRef);
+    const hasNormalizedRate = book.offers.some((offer) =>
+      offer.terms.some((term) => term.kind === "rate" && term.variants.length > 0),
+    );
+    const hasRawFact = book.offers.some((offer) =>
+      offer.terms.some((term) => term.kind === "raw" || term.raw_variants.length > 0),
+    );
+    if (hasNormalizedRate) for (const modelRef of modelRefs) normalizedRates.add(modelRef);
+    if (hasRawFact) for (const modelRef of modelRefs) rawFacts.add(modelRef);
+  }
+
+  const notApplicable = new Set(
+    pricing.model_dispositions
+      .filter(({ model_ref: modelRef }) => current.has(modelRef))
+      .map(({ model_ref: modelRef }) => modelRef),
+  );
+  const unknown = currentModelRefs.filter(
+    (modelRef) => !offers.has(modelRef) && !notApplicable.has(modelRef),
+  );
+  const unknownSamples = unknown.slice(0, maxUnknownPricingSamples);
+  return {
+    current_models: currentModelRefs.length,
+    offer_models: offers.size,
+    not_applicable_models: notApplicable.size,
+    unknown_models: unknown.length,
+    normalized_rate_models: normalizedRates.size,
+    raw_fact_models: rawFacts.size,
+    unknown_model_refs: unknownSamples,
+    unknown_model_refs_omitted: unknown.length - unknownSamples.length,
+  };
 }
 
 export interface RefreshSummary {
@@ -203,9 +283,11 @@ function modelDiff(previous: ProviderModel[], current: ProviderModel[]): ModelDi
       continue;
     }
     for (const field of fields) changedFields[field] = (changedFields[field] ?? 0) + 1;
+    const changedLimits = limitDiff(old.limits, model.limits);
     changedModels.push({
       model_ref: uid,
       fields,
+      ...(changedLimits.length === 0 ? {} : { limit_changes: changedLimits }),
       ...(fields.includes("status") ? { previous_status: old.status, status: model.status } : {}),
       ...(fields.includes("tasks") ? { previous_tasks: old.tasks, tasks: model.tasks } : {}),
     });
@@ -230,6 +312,24 @@ function modelDiff(previous: ProviderModel[], current: ProviderModel[]): ModelDi
       compareUtf8(left.model_ref, right.model_ref),
     ),
   };
+}
+
+function limitDiff(
+  previous: ProviderModel["limits"],
+  current: ProviderModel["limits"],
+): ModelLimitChangeSummary[] {
+  const changes: ModelLimitChangeSummary[] = [];
+  for (const field of modelLimitFields) {
+    const oldValue = previous[field];
+    const newValue = current[field];
+    if (isDeepStrictEqual(oldValue, newValue)) continue;
+    changes.push({
+      field,
+      ...(oldValue === undefined ? {} : { previous: oldValue }),
+      ...(newValue === undefined ? {} : { current: newValue }),
+    });
+  }
+  return changes;
 }
 
 function sourceDiff(previous: SourceRecord[], current: SourceRecord[]): SourceDiffSummary {
@@ -352,6 +452,7 @@ export function summarizeRefresh(
         current.sources.filter((source) => source.provider_id === providerId),
       ),
       pricing: pricingDiff(pricing.previous, pricing.current, providerId),
+      pricing_coverage: pricingCoverage(providerId, current, currentPricing),
       warning_codes: warningCodes,
       signals,
       ...(attempt === undefined

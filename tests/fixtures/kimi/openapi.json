@@ -27,6 +27,18 @@
               }
             }
           }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ChatCompletionResponse" }
+              },
+              "text/event-stream": {
+                "schema": { "$ref": "#/components/schemas/ChatCompletionChunk" }
+              }
+            }
+          }
         }
       }
     }
@@ -46,6 +58,15 @@
             }
           },
           "stream": { "type": "boolean" },
+          "stream_options": {
+            "properties": {
+              "include_usage": {
+                "type": "boolean",
+                "default": false,
+                "description": "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive."
+              }
+            }
+          },
           "tools": {
             "items": { "$ref": "#/components/schemas/ToolDefinition" }
           },
@@ -54,6 +75,30 @@
           "max_completion_tokens": {
             "type": "integer",
             "description": "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576."
+          }
+        }
+      },
+      "ChatCompletionResponse": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "prompt_tokens": { "type": "integer" },
+              "completion_tokens": { "type": "integer" },
+              "total_tokens": { "type": "integer" },
+              "cached_tokens": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "ChatCompletionChunk": {
+        "properties": {
+          "usage": {
+            "properties": {
+              "prompt_tokens": { "type": "integer" },
+              "completion_tokens": { "type": "integer" },
+              "total_tokens": { "type": "integer" },
+              "cached_tokens": { "type": "integer" }
+            }
           }
         }
       },

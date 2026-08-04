@@ -5,6 +5,7 @@ import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
@@ -14,6 +15,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 interface RegisteredModel {
@@ -589,6 +591,87 @@ function toolCall(
   return "unknown";
 }
 
+function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundleSchema>): void {
+  const params = document(bundle, "/types/chat/completion_create_params.py");
+  const response = document(bundle, "/types/create_chat_completion_response.py");
+  const stream = document(bundle, "/types/create_chat_completion_response_stream_chunk.py");
+  const moderation = document(bundle, "/types/moderation_create_response.py");
+  if (
+    !/messages: Required\[Iterable\[MessageParam\]\]/.test(params) ||
+    !/model: Required\[str\]/.test(params) ||
+    !/max_completion_tokens: int/.test(params)
+  )
+    throw new Error("Llama API request accounting inputs drifted");
+  if (
+    !/class Metric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
+      response,
+    ) ||
+    !/metrics: Optional\[List\[Metric\]\]/.test(response)
+  )
+    throw new Error("Llama API response metrics drifted");
+  if (
+    !/class EventMetric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
+      stream,
+    ) ||
+    !/event_type: Literal\["start", "complete", "progress", "metrics"\]/.test(stream) ||
+    !/metrics: Optional\[List\[EventMetric\]\]/.test(stream)
+  )
+    throw new Error("Llama API streaming metrics drifted");
+  if (
+    !/class ModerationCreateResponse\(BaseModel\):[\s\S]*model: str[\s\S]*results: List\[Result\]/.test(
+      moderation,
+    )
+  )
+    throw new Error("Llama API moderation response drifted");
+
+  const launch = document(bundle, "/blog/llamacon-llama-news/");
+  if (
+    announcementDate(launch, "Everything we announced at our first-ever LlamaCon", [
+      "Llama API",
+      "limited free preview",
+      "Llama 4 Scout",
+      "Llama 4 Maverick",
+      "all usage tracked in one location",
+    ]) !== "2025-04-29"
+  )
+    throw new Error("Llama API launch terms drifted");
+
+  const license = document(bundle, "/models/llama4/LICENSE");
+  if (
+    !/royalty-free limited license/i.test(license) ||
+    !/greater than 700 million\s+monthly\s+active users/i.test(license) ||
+    !/must request a license from Meta/i.test(license)
+  )
+    throw new Error("Llama 4 commercial license terms drifted");
+
+  input.onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "historical_limited_free_preview",
+  });
+  input.onPricingReconciliation?.({
+    disposition: "excluded",
+    reason_code: "artifact_license_not_api_rate",
+  });
+
+  const client = document(bundle, "/src/llama_api_client/_client.py");
+  const resources = unique(
+    [...client.matchAll(/^ {4}from \.resources import ([a-z_, ]+)$/gm)].flatMap((match) =>
+      (match[1] ?? "").split(",").map((value) => value.trim()),
+    ),
+  );
+  if (resources.length === 0)
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "api_resource_registry_unparsed",
+    });
+  for (const resource of resources.filter((value) => /^(?:billing|costs?|usage)$/.test(value)))
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "account_cost_api_unmodeled",
+      sample: resource,
+    });
+}
+
 export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const skuTypes = document(bundle, "/models/sku_types.py");
@@ -627,12 +710,13 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const apiBase = hostedApiBase(apiClient);
   const chatEndpoint = hostedEndpoint(apiBase, chatCompletions, "Chat Completions");
   const moderationEndpoint = hostedEndpoint(apiBase, moderations, "Moderations");
+  hostedAccounting(input, bundle);
   const hosted = hostedEvidence(models, {
     chat: chatExample,
     structured: structuredExample,
     tool: toolExample,
   });
-  return models.map((model) => {
+  const parsed: ProviderModel[] = models.map((model) => {
     const evidence = hosted.get(model.id);
     const safetyRelease = releases.get(model.id);
     const capability = (name: HostedCapability): true | "unknown" =>
@@ -681,6 +765,13 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       pricing_state: endpoints.length === 0 ? "not_applicable" : "not_published",
     };
   });
+  for (const model of parsed)
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code:
+        model.pricing_state === "not_applicable" ? "not_applicable" : "price_not_published",
+    });
+  return parsed;
 }
 
 export function parseLlamaApi(input: ParseInput): ProviderModel[] {
