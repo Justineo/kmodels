@@ -16,6 +16,11 @@ Status: implemented
   summary, emits warnings for retained or withheld providers, and keeps the
   complete report as a 30-day artifact. A failure before report creation is
   called out explicitly and commits nothing.
+- The report separates the current published model count from added, removed, and updated model
+  counts since the previous accepted catalog. Every changed model has one table row with
+  leaf-level previous/current field values. `Pricing Δ` is a pricing-snapshot comparison, not a
+  price. The commercial-change label means the public commercial projection changed. The
+  evidence-only label means only provenance, freshness, or other non-commercial evidence changed.
 - A recognized source-contract mismatch warns on its first occurrence with bounded path,
   mismatch kind, affected/observed counts, fingerprint, and public sample IDs
   when available. A second consecutive source failure adds persistence and,

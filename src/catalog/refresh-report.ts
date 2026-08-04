@@ -6,20 +6,30 @@ import {
   sourcePricingReconciliationSchema,
 } from "./pricing-reconciliation.ts";
 
-const limitValueSchema = z.union([
+const fieldChangeSchema = z
+  .object({
+    path: z.string().min(1),
+    previous: z.json().optional(),
+    current: z.json().optional(),
+  })
+  .refine(({ previous, current }) => previous !== undefined || current !== undefined, {
+    message: "Field change must retain a previous or current value",
+  });
+
+const legacyLimitValueSchema = z.union([
   z.number().int().nonnegative(),
   z.array(z.number().int().positive()),
   z.object({ min: z.number().int().positive(), max: z.number().int().positive() }),
 ]);
 
-const limitChangeSchema = z
+const legacyLimitChangeSchema = z
   .object({
     field: z.enum(modelLimitFields),
-    previous: limitValueSchema.optional(),
-    current: limitValueSchema.optional(),
+    previous: legacyLimitValueSchema.optional(),
+    current: legacyLimitValueSchema.optional(),
   })
   .refine(({ previous, current }) => previous !== undefined || current !== undefined, {
-    message: "Limit change must retain a previous or current value",
+    message: "Legacy limit change must retain a previous or current value",
   });
 
 const diffSchema = z.object({
@@ -34,7 +44,12 @@ const diffSchema = z.object({
       z.object({
         model_ref: z.string(),
         fields: z.array(z.string()),
-        limit_changes: z.array(limitChangeSchema).default([]),
+        field_changes: z.array(fieldChangeSchema).default([]),
+        limit_changes: z.array(legacyLimitChangeSchema).default([]),
+        previous_status: z.string().optional(),
+        status: z.string().optional(),
+        previous_tasks: z.array(z.string()).optional(),
+        tasks: z.array(z.string()).optional(),
       }),
     )
     .default([]),
@@ -126,33 +141,82 @@ function table(value: string): string {
   return value.replaceAll("|", "\\|");
 }
 
-function displayLimitValue(value: z.infer<typeof limitValueSchema> | undefined): string {
-  if (value === undefined) return "missing";
-  if (typeof value === "number") return String(value);
-  if (Array.isArray(value)) return `[${value.join(", ")}]`;
-  return `{min: ${value.min}, max: ${value.max}}`;
+function inlineCode(value: string): string {
+  return `<code>${value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("|", "&#124;")
+    .replaceAll("\r", "")
+    .replaceAll("\n", "&#10;")}</code>`;
 }
 
-function changedModel(value: Provider["models"]["changed_models"][number]): string {
-  const details = value.fields.filter((field) => field !== "limits");
-  if (value.limit_changes.length > 0) {
-    details.push(
-      ...value.limit_changes.map(
-        ({ field, previous, current }) =>
-          `limits.${field}: ${displayLimitValue(previous)} → ${displayLimitValue(current)}`,
-      ),
-    );
-  } else if (value.fields.includes("limits")) {
-    details.push("limits");
-  }
-  return `${value.model_ref} (${details.join("; ")})`;
+function displayChangeValue(value: z.infer<typeof fieldChangeSchema>["previous"]): string {
+  if (value === undefined) return "<em>missing</em>";
+  const encoded = JSON.stringify(value);
+  const bounded = encoded.length <= 240 ? encoded : `${encoded.slice(0, 239)}…`;
+  return inlineCode(bounded);
 }
 
-function refs(label: string, values: string[]): string[] {
-  if (values.length === 0) return [];
-  const shown = values.slice(0, 20).map((value) => `\`${value}\``);
-  const remainder = values.length - shown.length;
-  return [`- ${label}: ${shown.join(", ")}${remainder === 0 ? "" : ` (+${remainder} more)`}`];
+function legacyChangeDetails(value: Provider["models"]["changed_models"][number]): string[] {
+  const exactLimits = value.limit_changes.map(
+    ({ field, previous, current }) =>
+      `${inlineCode(`limits.${field}`)}: ${displayChangeValue(previous)} → ${displayChangeValue(current)}`,
+  );
+  const fields = value.fields
+    .filter((field) => field !== "limits" || exactLimits.length === 0)
+    .map((field) => {
+      if (field === "status" && (value.previous_status !== undefined || value.status !== undefined))
+        return `${inlineCode(field)}: ${displayChangeValue(value.previous_status)} → ${displayChangeValue(value.status)}`;
+      if (field === "tasks" && (value.previous_tasks !== undefined || value.tasks !== undefined))
+        return `${inlineCode(field)}: ${displayChangeValue(value.previous_tasks)} → ${displayChangeValue(value.tasks)}`;
+      return inlineCode(field);
+    });
+  return [...exactLimits, ...fields];
+}
+
+function changedModelDetails(value: Provider["models"]["changed_models"][number]): string {
+  const details =
+    value.field_changes.length > 0
+      ? value.field_changes.map(
+          ({ path, previous, current }) =>
+            `${inlineCode(path)}: ${displayChangeValue(previous)} → ${displayChangeValue(current)}`,
+        )
+      : legacyChangeDetails(value);
+  return details.join("<br>") || "—";
+}
+
+function modelChangeTable(provider: Provider): string[] {
+  const rows = [
+    ...provider.models.added_model_refs.map((modelRef) => ["Added", modelRef, "—"]),
+    ...provider.models.changed_models.map((model) => [
+      "Updated",
+      model.model_ref,
+      changedModelDetails(model),
+    ]),
+    ...provider.models.removed_model_refs.map((modelRef) => ["Removed", modelRef, "—"]),
+  ];
+  if (rows.length === 0) return [];
+  return [
+    "#### Model changes",
+    "",
+    "| Change | Model | Details |",
+    "| --- | --- | --- |",
+    ...rows.map(
+      ([change, modelRef, details]) =>
+        `| ${change} | ${inlineCode(modelRef ?? "")} | ${details ?? "—"} |`,
+    ),
+  ];
+}
+
+function pricingOutcome(outcome: string): string {
+  if (outcome === "none") return "not tracked";
+  if (outcome === "added") return "pricing added";
+  if (outcome === "removed") return "pricing removed";
+  if (outcome === "commercial") return "commercial terms changed";
+  if (outcome === "provenance_only") return "terms unchanged; evidence changed";
+  if (outcome === "unchanged") return "unchanged";
+  return outcome.replaceAll("_", " ");
 }
 
 function staleness(generatedAt: string, lastSuccessAt: string | undefined): string | undefined {
@@ -286,8 +350,10 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     "",
     `**${outcome.replaceAll("_", " ")}** · ${publicationState} publication · ${report.generated_at} · \`${report.catalog_version.slice(0, 12)}\``,
     "",
-    "| Provider | Publication | Models | Sources | Pricing | Coverage | Duration | Signals |",
-    "| --- | --- | ---: | ---: | --- | --- | ---: | --- |",
+    "Models now is the current published count. Model Δ lists added, removed, and updated model identities since the previous accepted catalog. Pricing Δ compares pricing semantics, not a price value.",
+    "",
+    "| Provider | Publication | Models now | Model Δ | Source Δ | Pricing Δ | Coverage | Duration | Signals |",
+    "| --- | --- | ---: | --- | ---: | --- | --- | ---: | --- |",
     ...providers.map(
       ({
         provider_id,
@@ -301,9 +367,10 @@ export function refreshReport(value: unknown): RefreshReportOutput {
         `| ${[
           table(provider_id),
           state,
-          `${models.current} (+${models.added} / −${models.removed} / ~${models.changed})`,
+          String(models.current),
+          `+${models.added} added · −${models.removed} removed · ~${models.changed} updated`,
           `${sources.changed} changed`,
-          table(pricing.outcome),
+          table(pricingOutcome(pricing.outcome)),
           coverage === undefined
             ? "—"
             : `${coverage.offer_models + coverage.not_applicable_models}/${coverage.current_models} resolved · ${coverage.unknown_models} unknown`,
@@ -340,9 +407,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     )
       continue;
     lines.push("", `### ${provider.provider_id}`, "");
-    lines.push(...refs("Added", provider.models.added_model_refs));
-    lines.push(...refs("Removed", provider.models.removed_model_refs));
-    lines.push(...refs("Changed", provider.models.changed_models.map(changedModel)));
+    lines.push(...modelChangeTable(provider));
     const pricingCoverage = provider.pricing_coverage;
     if (pricingCoverage !== undefined && pricingCoverage.unknown_models > 0) {
       const omitted = pricingCoverage.unknown_model_refs_omitted;
@@ -353,11 +418,11 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     for (const source of pricingSources) lines.push(...pricingExtractionLine(source));
     for (const source of pricingSources) lines.push(...pricingReconciliationLine(source));
     if (provider.models.added > 0 && provider.models.added_model_refs.length === 0)
-      lines.push(`- Added: ${provider.models.added} models`);
+      lines.push(`- Added: ${provider.models.added} models (identities unavailable)`);
     if (provider.models.removed > 0 && provider.models.removed_model_refs.length === 0)
-      lines.push(`- Removed: ${provider.models.removed} models`);
+      lines.push(`- Removed: ${provider.models.removed} models (identities unavailable)`);
     if (provider.models.changed > 0 && provider.models.changed_models.length === 0)
-      lines.push(`- Changed: ${provider.models.changed} models`);
+      lines.push(`- Updated: ${provider.models.changed} models (details unavailable)`);
     if (failedSources.length > 0)
       lines.push(
         `- Source attempts: ${failedSources.map((source) => sourceFailure(source, report.generated_at)).join(", ")}`,

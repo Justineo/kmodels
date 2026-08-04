@@ -149,12 +149,14 @@ Status: implemented
   adds persistence and staleness signals. A successful parse resets the count.
 - `data/refresh-summary.json` is the deterministic report for the accepted run. It includes exact
   added and removed model refs, changed refs and fields, leaf-level previous/current values for
-  model-limit changes, status and task transitions, exact changed sources, pricing outcomes,
+  every changed model field, status and task transitions, exact changed sources, pricing outcomes,
   bounded per-provider pricing-resolution coverage, warnings, and the corresponding attempt
   evidence. Pricing coverage distinguishes models with public offers,
   exact not-applicable dispositions, and unresolved pricing; an unresolved model is a Kmodels
   collection outcome, not a claim that the provider publishes no price. It never copies raw response
-  data, exception stacks, credentials, or private unmatched IDs.
+  data, exception stacks, credentials, or private unmatched IDs. Model comparison uses the
+  storage-visible JSON projection, so an omitted optional member and an explicitly `undefined`
+  optional member cannot create a false model change.
 - The run-level semantic outcome (`changed`, `evidence_only`, or `unchanged`) is independent of
   publication completeness (`complete` or `partial`). A retained provider therefore cannot hide
   behind an “unchanged” label, and provenance-only churn is not presented as a commercial change.
