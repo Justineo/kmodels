@@ -656,10 +656,9 @@ function validateFastMode(body: string, expectedIds: Set<string>): void {
     !/Fast mode is not available with the \[Batch API]/.test(body)
   )
     throw new Error("Anthropic fast-mode request contract drifted");
+  const modelPattern = /^\s*[*-] Claude [^(]+\(`?(claude-[a-z0-9._:/-]+)`?\)$/gm;
   const supported = new Set(
-    [...body.matchAll(/^\s*[*-] Claude [^(]+\(`?(claude-[a-z0-9._:/-]+)`?\)$/gm)].flatMap((match) =>
-      match[1] === undefined ? [] : [match[1]],
-    ),
+    [...body.matchAll(modelPattern)].flatMap((match) => (match[1] === undefined ? [] : [match[1]])),
   );
   if (
     supported.size === 0 ||
