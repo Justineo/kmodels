@@ -157,6 +157,10 @@ Status: implemented
   data, exception stacks, credentials, or private unmatched IDs. Model comparison uses the
   storage-visible JSON projection, so an omitted optional member and an explicitly `undefined`
   optional member cannot create a false model change.
+- Model and source changes are independent comparisons. A model update keeps the same model
+  identity but changes at least one published semantic field. A source update keeps the same
+  accepted source record but changes its content hash, extractor version, or declared field paths;
+  that evidence churn does not by itself imply a changed model.
 - The run-level semantic outcome (`changed`, `evidence_only`, or `unchanged`) is independent of
   publication completeness (`complete` or `partial`). A retained provider therefore cannot hide
   behind an “unchanged” label, and provenance-only churn is not presented as a commercial change.

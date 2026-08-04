@@ -40,7 +40,7 @@ describe("refresh report", () => {
               },
             ],
           },
-          sources: { changed: 0 },
+          sources: { added: 2, removed: 1, changed: 3 },
           pricing: { outcome: "unchanged" },
           pricing_coverage: {
             current_models: 3,
@@ -138,10 +138,10 @@ describe("refresh report", () => {
     ]);
     expect(output.markdown).toContain("partial publication");
     expect(output.markdown).toContain("1.3s");
-    expect(output.markdown).toContain("| Added | <code>example/new</code> | — |");
-    expect(output.markdown).toContain("| Removed | <code>example/old</code> | — |");
+    expect(output.markdown).toContain("| + | <code>example/new</code> | — |");
+    expect(output.markdown).toContain("| − | <code>example/old</code> | — |");
     expect(output.markdown).toContain(
-      "| Updated | <code>example/model</code> | <code>capabilities.reasoning</code>: <code>false</code> → <code>true</code>",
+      "| ~ | <code>example/model</code> | <code>capabilities.reasoning</code>: <code>false</code> → <code>true</code>",
     );
     expect(output.markdown).toContain(
       "<code>limits.context_tokens</code>: <code>128000</code> → <code>131072</code>",
@@ -149,25 +149,52 @@ describe("refresh report", () => {
     expect(output.markdown).toContain(
       "<code>limits.max_output_tokens</code>: <code>4096</code> → <em>missing</em>",
     );
-    expect(output.markdown).toContain("Models now is the current published count");
-    expect(output.markdown).toContain("Pricing Δ compares pricing semantics, not a price value");
-    expect(output.markdown).toContain("`example-catalog` parse_failed");
-    expect(output.markdown).toContain("3 consecutive, 24.0h stale");
-    expect(output.markdown).toContain("`/video_capabilities/generate_audio`");
-    expect(output.markdown).toContain("Contract reject");
-    expect(output.markdown).toContain("1/312 items");
-    expect(output.markdown).toContain("`example/video`");
-    expect(output.markdown).toContain("1 additional diagnostics omitted");
-    expect(output.markdown).toContain("`model_count_drop`");
-    expect(output.markdown).toContain("Pricing attempt: `source_schema_changed`");
-    expect(output.markdown).toContain("Pricing extraction `example-catalog`: 2 model records");
     expect(output.markdown).toContain(
-      "Pricing reconciliation `example-catalog`: source item over 5 reviewed source pricing items",
+      "| example | retained | 1 | +1 / −1 / ~1 | +2 / −1 / ~3 | unchanged |",
     );
-    expect(output.markdown).toContain("`unbound` / `identity_not_found`; `Example model input`");
-    expect(output.markdown).toContain("1 additional unresolved items omitted");
-    expect(output.markdown).toContain("2/3 resolved · 1 unknown");
-    expect(output.markdown).toContain("Unknown pricing: 1/3 current models");
+    expect(output.markdown).toContain("<summary>Legend</summary>");
+    expect(output.markdown).toContain("Model `~`: the same model identity remains");
+    expect(output.markdown).toContain("Source `~`: the same accepted source record remains");
+    expect(output.markdown).toContain("#### Publication");
+    expect(output.markdown).toContain("`retained`: the refresh did not replace this provider");
+    expect(output.markdown).toContain("#### Pricing");
+    expect(output.markdown).toContain("`commercial`: canonical commercial terms changed");
+    expect(output.markdown).toContain("#### Signals");
+    expect(output.markdown).toContain(
+      "`persistent_source_failure`: at least one source has failed",
+    );
+    expect(output.markdown).toContain("3 consecutive · 24.0h stale");
+    expect(output.markdown).toContain("#### Details");
+    expect(output.markdown).toContain("| Type | Source | Value |");
+    expect(output.markdown).toContain(
+      "| Source | `example-catalog` | `parse_failed` · 3 consecutive · 24.0h stale |",
+    );
+    expect(output.markdown).toContain("`/video_capabilities/generate_audio`");
+    expect(output.markdown).toContain(
+      "| Contract | `example-catalog` | `reject` · `missing_required_field`",
+    );
+    expect(output.markdown).toContain("1/312 · expected boolean · observed missing");
+    expect(output.markdown).toContain("`example/video`");
+    expect(output.markdown).toContain("`reject` · +1 diagnostics omitted");
+    expect(output.markdown).toContain("`model_count_drop`");
+    expect(output.markdown).toContain("| Pricing | — | `source_schema_changed` |");
+    expect(output.markdown).toContain(
+      "| Extract | `example-catalog` | 2 models · 1 numeric · ?1 · facts 4/0 |",
+    );
+    expect(output.markdown).toContain(
+      "| Reconcile | `example-catalog` | `source_item` · 5 items · 2 normalized · 1 excluded · ?2 |",
+    );
+    expect(output.markdown).toContain(
+      "| Finding | `example-catalog` | `unbound` · `identity_not_found` |",
+    );
+    expect(output.markdown).toContain("| Finding | `example-catalog` | +1 omitted |");
+    expect(output.markdown).toContain("2/3 · ?1");
+    expect(output.markdown).toContain("| Coverage | — | 2/3 resolved · ?1 |");
+    expect(output.markdown).toContain("<summary>Unknown pricing examples (1/3)</summary>");
+    expect(output.markdown).toContain(
+      "<summary>Pricing finding samples — <code>example-catalog</code> (1)</summary>",
+    );
+    expect(output.markdown).toContain("<code>Example model input</code>");
     expect(output.markdown).toContain("`example/unknown`");
   });
 
@@ -215,8 +242,15 @@ describe("refresh report", () => {
     });
 
     expect(output.markdown).toContain("complete publication");
-    expect(output.markdown).toContain("terms unchanged; evidence changed");
-    expect(output.markdown).toContain("Contract accept_with_signal");
+    expect(output.markdown).toContain(
+      "| example | accepted | 1 | +0 / −0 / ~0 | +0 / −0 / ~1 | provenance_only |",
+    );
+    expect(output.markdown).toContain(
+      "`provenance_only`: commercial terms stayed the same; only provenance",
+    );
+    expect(output.markdown).toContain(
+      "| Contract | `example-catalog` | `accept_with_signal` · `unknown_field`",
+    );
     expect(output.warnings).toEqual([
       "example/example-catalog: accept_with_signal unknown_field at /future_field (1/1 items; 0123456789abcdef)",
     ]);
