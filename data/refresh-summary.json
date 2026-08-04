@@ -1,8 +1,8 @@
 {
-  "catalog_version": "da131e628c38055a6f615f43cd6c7ddded9038d414d8b0bb9f01b0ac4b25b79e",
-  "generated_at": "2026-08-04T10:25:14.338Z",
+  "catalog_version": "10170825e0d6d47565ec050fd740ea39b3ac995cc44fec9d9dc17df319879a6a",
+  "generated_at": "2026-08-04T10:52:28.908Z",
   "outcome": "changed",
-  "previous_catalog_version": "5b47924acdeb2d865da9bebd8f54c7c0cc0752c1a17b37c214401a804b4ff61e",
+  "previous_catalog_version": "da131e628c38055a6f615f43cd6c7ddded9038d414d8b0bb9f01b0ac4b25b79e",
   "providers": [
     {
       "attempt": {
@@ -1091,7 +1091,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 4,
+            "consecutive_failures": 5,
             "last_success_at": "2026-08-04T07:51:11.204Z",
             "message": "Reviewed companion URL contained unsupported URL components",
             "outcome": "fetch_failed",
@@ -1469,22 +1469,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 129,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 130,
-              "normalized_facts": 412,
+              "model_records": 129,
+              "normalized_facts": 410,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 20
+              "unknown_models": 19
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 97,
+              "diagnostic_count": 96,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -1530,13 +1530,13 @@
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 206,
+                "normalized": 205,
                 "raw": 0,
-                "unbound": 96,
+                "unbound": 95,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 310,
+              "observed_items": 308,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
@@ -1551,27 +1551,47 @@
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "huggingface/alpindale/WizardLM-2-8x22B",
-          "huggingface/zai-org/GLM-5.1-FP8"
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 1,
+        "changed_fields": {
+          "capabilities": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              },
+              {
+                "current": true,
+                "path": "capabilities.tool_call",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/tencent/Hy3"
+          }
         ],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 1540,
-        "previous": 1538,
-        "removed": 0,
-        "removed_model_refs": [],
+        "current": 1539,
+        "previous": 1540,
+        "removed": 1,
+        "removed_model_refs": [
+          "huggingface/zai-org/GLM-4.7-FP8"
+        ],
         "unchanged": 1538
       },
       "pricing": {
-        "commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507",
+        "commercial_hash": "9153bdb0f19051098634cae5861183f467ca42a601995ccb0d61d7ad86dbd172",
         "outcome": "commercial",
-        "previous_commercial_hash": "b30754000d32b058687d033b7405d53c3608a40bd14076d8b09c906177606c98"
+        "previous_commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507"
       },
       "pricing_coverage": {
-        "current_models": 1540,
+        "current_models": 1539,
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
         "offer_models": 110,
@@ -1598,8 +1618,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1410,
-        "unknown_models": 1430
+        "unknown_model_refs_omitted": 1409,
+        "unknown_models": 1429
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -1773,9 +1793,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -1823,26 +1843,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2040,37 +2054,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "aliases": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "mistral-ocr-4",
-                  "mistral-ocr-latest",
-                  "mistral-ocr-4-1"
-                ],
-                "path": "aliases",
-                "previous": [
-                  "mistral-ocr-4",
-                  "mistral-ocr-latest"
-                ]
-              }
-            ],
-            "fields": [
-              "aliases"
-            ],
-            "model_ref": "mistral/mistral-ocr-4-0@4.0"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 58,
         "previous": 58,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 57
+        "unchanged": 58
       },
       "pricing": {
         "commercial_hash": "39627d0baaaeb93223570537b04d9de5a0b2c81bbed3d268691ada73ebfb684c",
@@ -2458,9 +2449,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 315,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2528,20 +2519,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2883,13 +2867,13 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 2,
+    "added_models": 0,
     "added_sources": 0,
     "changed_models": 1,
-    "changed_sources": 27,
-    "models": 3382,
+    "changed_sources": 25,
+    "models": 3381,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
