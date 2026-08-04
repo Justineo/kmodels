@@ -1,8 +1,8 @@
 {
-  "catalog_version": "278f18394f07a5b66c6ded48b7e55c652d183356889aace4cd29d14fa0ddc3ee",
-  "generated_at": "2026-08-04T13:33:02.599Z",
+  "catalog_version": "5b3d67a518a12ee7591c1b0867f3ebe9ea01f8e1e3cc7a25ae8f061039501df8",
+  "generated_at": "2026-08-04T14:48:41.106Z",
   "outcome": "changed",
-  "previous_catalog_version": "53b8084bb587b0074a81716dc681b8a28690107000952726e432eac7513b5710",
+  "previous_catalog_version": "278f18394f07a5b66c6ded48b7e55c652d183356889aace4cd29d14fa0ddc3ee",
   "providers": [
     {
       "attempt": {
@@ -1091,7 +1091,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 8,
+            "consecutive_failures": 9,
             "last_success_at": "2026-08-04T07:51:11.204Z",
             "message": "Reviewed companion URL contained unsupported URL components",
             "outcome": "fetch_failed",
@@ -1153,22 +1153,73 @@
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_unavailable",
-          "message": "Transient transport failure (28)"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
-            "consecutive_failures": 1,
-            "last_success_at": "2026-08-04T12:35:08.565Z",
-            "message": "Transient transport failure (28)",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 2,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 2,
+              "normalized_facts": 6,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 2,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 3,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "upcoming_peak_policy_not_effective"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "web_search_fee_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "anthropic_model_mapping_not_bound"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 4,
+                "explicit_non_numeric": 0,
+                "normalized": 6,
+                "raw": 0,
+                "unbound": 3,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 13,
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "deepseek-catalog"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 5,
+            "source_id": "deepseek-updates"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 2,
+            "source_id": "deepseek-api"
           }
         ]
       },
@@ -1200,7 +1251,7 @@
         "unknown_models": 0
       },
       "provider_id": "deepseek",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [],
       "sources": {
         "added": 0,
@@ -1213,9 +1264,10 @@
         "removed_source_ids": [],
         "unchanged": 3
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_fetch_failed": 1
+        "missing_field": 1,
+        "scope_limited": 1
       }
     },
     {
@@ -1273,545 +1325,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 28,
-        "changed_fields": {
-          "description": 28,
-          "name": 19,
-          "status": 6
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "Antigravity preview",
-                "path": "name",
-                "previous": "Antigravity Agent"
-              },
-              {
-                "current": "A powerful general-purpose managed agent designed for autonomous, multi-step workflows. This model plans, reasons, runs code, manages files, and searches the web inside a secure, isolated Linux sandbox hosted by Google.",
-                "path": "description",
-                "previous": "A general-purpose managed agent that autonomously plans, reasons, runs code, manages files, and browses the web inside a secure, isolated Linux sandbox."
-              },
-              {
-                "current": "unknown",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "name",
-              "description",
-              "status"
-            ],
-            "model_ref": "gemini/antigravity-preview-05-2026",
-            "previous_status": "active",
-            "status": "unknown"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Deep Research Max preview",
-                "path": "name",
-                "previous": "Gemini Deep Research Max"
-              },
-              {
-                "current": "Maximum comprehensiveness for automated context gathering and synthesis. Deep Research Max is optimized for long-running, accuracy-critical investigations that synthesize complex information from hundreds of public web sources and private workspace data into comprehensive, cited reports. It supports collaborative planning, visualization, MCP servers, and File Search.",
-                "path": "description",
-                "previous": "Maximum comprehensiveness for automated context gathering and synthesis across hundreds of sources."
-              },
-              {
-                "current": "unknown",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "name",
-              "description",
-              "status"
-            ],
-            "model_ref": "gemini/deep-research-max-preview-04-2026",
-            "previous_status": "active",
-            "status": "unknown"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Deep Research preview",
-                "path": "name",
-                "previous": "Gemini Deep Research"
-              },
-              {
-                "current": "A powerful agentic researcher designed for autonomous, multi-step investigations that synthesize complex information into comprehensive, cited reports. This model supports collaborative planning, visualization, MCP servers, and File Search. It comes in two versions: Deep Research for speed and efficiency, and Deep Research Max for maximum comprehensiveness.",
-                "path": "description",
-                "previous": "An agentic model that autonomously plans and executes multi-step research across hundreds of sources to produce cited, interactive reports."
-              },
-              {
-                "current": "unknown",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "name",
-              "description",
-              "status"
-            ],
-            "model_ref": "gemini/deep-research-preview-04-2026",
-            "previous_status": "active",
-            "status": "unknown"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini 2.0 Flash",
-                "path": "description",
-                "previous": "Our second generation workhorse model, with next-gen features and improved capabilities, including superior speed, native tool use, and a 1M token context window."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.0-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini 2.0 Flash-Lite",
-                "path": "description",
-                "previous": "Our fastest second generation model, optimized for cost efficiency and low latency."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.0-flash-lite"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini 2.5 Computer Use model",
-                "path": "name",
-                "previous": "Computer Use"
-              },
-              {
-                "current": "An agentic capability model designed for direct interface interaction, allowing Gemini to perceive and navigate digital environments. Gemini 2.5 Computer Use is best for browser automation, multi-step software tasks, and UI testing that requires visual reasoning and precise cursor control.",
-                "path": "description",
-                "previous": "A specialized model that can \"see\" a digital screen and perform UI actions like clicking, typing, and navigating to automate complex browser tasks."
-              },
-              {
-                "current": "unknown",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "name",
-              "description",
-              "status"
-            ],
-            "model_ref": "gemini/gemini-2.5-computer-use-preview-10-2025",
-            "previous_status": "active",
-            "status": "unknown"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Our best model in terms of price-performance, offering well-rounded capabilities. 2.5 Flash is best for large scale processing, low-latency, high volume tasks that require thinking, and agentic use cases.",
-                "path": "description",
-                "previous": "Our best price-performance model for low-latency, high-volume tasks that require reasoning."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Nano Banana"
-              },
-              {
-                "current": "Our best engine for high-velocity visual creation, offering state-of-the-art speed and efficiency. Gemini 2.5 Flash Image, also known as Nano Banana, is best for high-volume generation, conversational image editing, and low-latency creative workflows that require native multimodal understanding.",
-                "path": "description",
-                "previous": "State-of-the-art native image generation and editing designed for fast, creative workflows."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash-image"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Our most cost-efficient multimodal model, offering the fastest performance for high-frequency, lightweight tasks. Gemini 2.5 Flash-Lite is best for high-volume classification, simple data extraction, and extremely low-latency applications where budget and speed are the primary constraints.",
-                "path": "description",
-                "previous": "The fastest and most budget-friendly multimodal model in the 2.5 family."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash-lite"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Gemini 2.5 Flash Live"
-              },
-              {
-                "current": "The Live API enables low-latency, real-time voice and video interactions with Gemini 2.5 Flash. It processes continuous streams of audio, video, or text to deliver immediate, human-like spoken responses, creating a natural conversational experience for your users.",
-                "path": "description",
-                "previous": "Optimized for real-time conversational agents with sub-second native audio streaming."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash-native-audio-preview-12-2025"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Gemini 2.5 Flash TTS"
-              },
-              {
-                "current": "Our fastest engine for high-fidelity speech synthesis, offering low-latency and cost-efficient audio generation. Gemini 2.5 Flash TTS is best for real-time assistants, high-volume narration, and conversational use cases that require fine-grained control over voice style and pacing.",
-                "path": "description",
-                "previous": "Controllable text-to-speech audio generation with fine control over style and pacing."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-flash-preview-tts"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Our state-of-the-art thinking model, capable of reasoning over complex problems in code, math, and STEM, as well as analyzing large datasets, codebases, and documents using long context.",
-                "path": "description",
-                "previous": "Our most advanced model for complex tasks, featuring deep reasoning and coding capabilities."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-pro"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Gemini 2.5 Pro TTS"
-              },
-              {
-                "current": "Our premium engine for studio-quality speech synthesis, offering high-fidelity and sophisticated audio generation. Gemini 2.5 Pro TTS is best for long-form content, professional narrations, and complex creative workflows that require the highest level of vocal clarity and natural prosody.",
-                "path": "description",
-                "previous": "High-fidelity speech synthesis optimized for quality in structured workflows like podcasts and audiobooks."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-2.5-pro-preview-tts"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini 3 Pro Preview",
-                "path": "description",
-                "previous": "Our state-of-the-art reasoning model, with advanced multimodal understanding."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-3-pro-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini 3.1 Flash Lite Preview",
-                "path": "name",
-                "previous": "Gemini 3.1 Flash-Lite Preview"
-              },
-              {
-                "current": "Gemini 3.1 Flash Lite Preview",
-                "path": "description",
-                "previous": "Our most cost-efficient multimodal model, offering the fastest performance for high-frequency, lightweight tasks."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-3.1-flash-lite-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini Embedding model",
-                "path": "name",
-                "previous": "Gemini Embedding"
-              },
-              {
-                "current": "A specialized engine for high-dimensional vector representation, providing efficient numerical mapping of text and images. The Gemini Embedding model is best for semantic search, document retrieval, and recommendation systems that require fast, scalable similarity calculations across large datasets.",
-                "path": "description",
-                "previous": "High-dimensional vector representations for advanced semantic search, text classification, and RAG systems."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-embedding-001"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini Embedding 2 model",
-                "path": "name",
-                "previous": "Gemini Embedding 2"
-              },
-              {
-                "current": "Our first multimodal embedding model, providing efficient numerical mapping of text, images, video, audio, and PDFs into a single unified embedding space. The Gemini Embedding 2 model is best for cross-modal semantic search, document retrieval, and recommendation systems that require fast, scalable similarity calculations across large multimodal datasets.",
-                "path": "description",
-                "previous": "Our first multimodal embedding model, mapping text, images, video, audio, and PDFs into a unified embedding space for advanced semantic search and RAG systems."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/gemini-embedding-2"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini Robotics ER 1.6 is a vision-language model (VLM) that brings Gemini's agentic capabilities to robotics. It's designed for advanced reasoning in the physical world, allowing robots to interpret complex visual data, perform spatial reasoning, and plan actions from natural language commands.",
-                "path": "description",
-                "previous": "Advanced embodied reasoning model that understands physical spaces and plans multi-step tasks for robotic agents with new capabilities like instrument reading, improved spatial and physical reasoning."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "gemini/gemini-robotics-er-1.6-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini Robotics ER (embodied reasoning) models are vision-language models (VLMs) that let robots perceive and interact with the physical world. They interpret visual data, perform spatial and temporal reasoning, plan multi-step tasks, and orchestrate robots and tools.",
-                "path": "description",
-                "previous": "Embodied reasoning model delivering advanced video understanding, spatial reasoning, multi-step tool orchestration, and multi-robot collaboration for robotics tasks."
-              },
-              {
-                "current": "unknown",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "description",
-              "status"
-            ],
-            "model_ref": "gemini/gemini-robotics-er-2-preview",
-            "previous_status": "active",
-            "status": "unknown"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Gemini Robotics ER (embodied reasoning) models are vision-language models (VLMs) that let robots perceive and interact with the physical world. They interpret visual data, perform spatial and temporal reasoning, plan multi-step tasks, and orchestrate robots and tools.",
-                "path": "description",
-                "previous": "Embodied reasoning model delivering advanced video understanding, spatial reasoning, multi-step tool orchestration, and multi-robot collaboration for robotics tasks."
-              },
-              {
-                "current": "unknown",
-                "path": "status",
-                "previous": "active"
-              }
-            ],
-            "fields": [
-              "description",
-              "status"
-            ],
-            "model_ref": "gemini/gemini-robotics-er-2-streaming-preview",
-            "previous_status": "active",
-            "status": "unknown"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Imagen 4"
-              },
-              {
-                "current": "A high-performance engine for advanced visual synthesis, offering sophisticated creative control and photorealistic output. Use Imagen 4 for professional branding, intricate scene composition, and high-fidelity design tasks that require precise text rendering and complex lighting.",
-                "path": "description",
-                "previous": "Text-to-image model yet, featuring fast and ultra-fast generation and exceptional clarity up to 2K resolution."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/imagen-4.0-fast-generate-001"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Imagen 4"
-              },
-              {
-                "current": "A high-performance engine for advanced visual synthesis, offering sophisticated creative control and photorealistic output. Use Imagen 4 for professional branding, intricate scene composition, and high-fidelity design tasks that require precise text rendering and complex lighting.",
-                "path": "description",
-                "previous": "Text-to-image model yet, featuring fast and ultra-fast generation and exceptional clarity up to 2K resolution."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/imagen-4.0-generate-001"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Imagen 4"
-              },
-              {
-                "current": "A high-performance engine for advanced visual synthesis, offering sophisticated creative control and photorealistic output. Use Imagen 4 for professional branding, intricate scene composition, and high-fidelity design tasks that require precise text rendering and complex lighting.",
-                "path": "description",
-                "previous": "Text-to-image model yet, featuring fast and ultra-fast generation and exceptional clarity up to 2K resolution."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/imagen-4.0-ultra-generate-001"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Lyria 3 Clip"
-              },
-              {
-                "current": "Lyria 3 Clip Preview is Google's model optimized for generating short musical clips, loops, and previews. It generates 30-second high-quality, 48kHz stereo audio from text prompts or image inputs.",
-                "path": "description",
-                "previous": "Optimized for generating short musical clips, loops, and previews up to 30 seconds."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/lyria-3-clip-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Lyria RealTime experimental",
-                "path": "name",
-                "previous": "Lyria RealTime"
-              },
-              {
-                "current": "An experimental engine for high-fidelity musical synthesis, offering innovative capabilities for generating and transforming audio content. Lyria RealTime is best for AI-assisted songwriting, unique instrumental generation, and creative audio workflows that require deep control over melody and rhythm, with no vocals.",
-                "path": "description",
-                "previous": "High-fidelity music generation model providing granular creative control and real-time streaming capabilities."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/lyria-realtime-exp"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Veo 3.1"
-              },
-              {
-                "current": "A state-of-the-art cinematic engine designed for high-end creative storytelling and experimental video production. Veo 3.1 is best for professional-grade 4K output, natively synchronized audio generation, and complex camera movements that require the highest level of temporal consistency and artistic control.",
-                "path": "description",
-                "previous": "State-of-the-art cinematic video generation with advanced creative controls and natively synchronized audio."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/veo-3.1-fast-generate-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Veo 3.1"
-              },
-              {
-                "current": "A state-of-the-art cinematic engine designed for high-end creative storytelling and experimental video production. Veo 3.1 is best for professional-grade 4K output, natively synchronized audio generation, and complex camera movements that require the highest level of temporal consistency and artistic control.",
-                "path": "description",
-                "previous": "State-of-the-art cinematic video generation with advanced creative controls and natively synchronized audio."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/veo-3.1-generate-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "Documentation",
-                "path": "name",
-                "previous": "Veo 3.1 Lite"
-              },
-              {
-                "current": "Veo 3.1 Lite Preview is a high-efficiency, developer-first video model providing high-fidelity video generation, editing, and cinematic control. It leverages the state-of-the-art Veo 3.1 model to democratize professional-grade video AI by offering a scalable, programmable interface for creators and enterprises.",
-                "path": "description",
-                "previous": "High-efficiency, low-cost, developer-first video generation, editing, and cinematic control from the Veo 3.1 family."
-              }
-            ],
-            "fields": [
-              "name",
-              "description"
-            ],
-            "model_ref": "gemini/veo-3.1-lite-generate-preview"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 75,
         "previous": 75,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 47
+        "unchanged": 75
       },
       "pricing": {
         "commercial_hash": "d346a8320d76b248336b6fe805eb48823194e56a86e7b45abbf172105fc18c69",
@@ -1948,22 +1469,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 131,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 130,
-              "normalized_facts": 404,
+              "model_records": 131,
+              "normalized_facts": 406,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 20
+              "unknown_models": 21
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 98,
+              "diagnostic_count": 99,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -2009,21 +1530,21 @@
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 202,
+                "normalized": 203,
                 "raw": 0,
-                "unbound": 97,
+                "unbound": 98,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 307,
+              "observed_items": 309,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1411,
             "source_id": "huggingface-hub"
           }
@@ -2032,25 +1553,39 @@
       "models": {
         "added": 1,
         "added_model_refs": [
-          "huggingface/Qwen/Qwen2.5-7B-Instruct"
+          "huggingface/zai-org/GLM-4.5"
         ],
-        "changed": 6,
+        "changed": 3,
         "changed_fields": {
-          "capabilities": 6
+          "capabilities": 2,
+          "limits": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": true,
+                "current": "unknown",
                 "path": "capabilities.structured_output",
-                "previous": "unknown"
+                "previous": true
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3-14B"
+            "model_ref": "huggingface/Qwen/Qwen3-Coder-480B-A35B-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": 131072,
+                "path": "limits.context_tokens",
+                "previous": 262144
+              }
+            ],
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-VL-235B-A22B-Instruct"
           },
           {
             "field_changes": [
@@ -2063,74 +1598,22 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.5V-FP8"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-4.6V"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-5.1"
+            "model_ref": "huggingface/aisingapore/Gemma-SEA-LION-v4-27B-IT"
           }
         ],
-        "current": 1541,
-        "previous": 1540,
+        "current": 1542,
+        "previous": 1541,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1534
+        "unchanged": 1538
       },
       "pricing": {
-        "commercial_hash": "733c9d290212514d7e137e7131ba75ac7d8c88abd515676b339ccb552fe0cbf5",
+        "commercial_hash": "f8a529701298d07bc165efe25e39329d122ddf753099d0e126965b6ed97173d1",
         "outcome": "commercial",
-        "previous_commercial_hash": "9a0f2851821d1d7abe09f4bdcb37109e699cf8dd94cd72625a2fe31c3c88f816"
+        "previous_commercial_hash": "733c9d290212514d7e137e7131ba75ac7d8c88abd515676b339ccb552fe0cbf5"
       },
       "pricing_coverage": {
-        "current_models": 1541,
+        "current_models": 1542,
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
         "offer_models": 110,
@@ -2157,8 +1640,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1411,
-        "unknown_models": 1431
+        "unknown_model_refs_omitted": 1412,
+        "unknown_models": 1432
       },
       "provider_id": "huggingface",
       "publication": "accepted",
@@ -2166,8 +1649,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2179,7 +1668,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2515,9 +2004,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 59,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2568,7 +2057,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 6,
-                "excluded": 53,
+                "excluded": 54,
                 "explicit_non_numeric": 24,
                 "normalized": 104,
                 "raw": 0,
@@ -2576,7 +2065,7 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 187,
+              "observed_items": 188,
               "unit": "reviewed source pricing item"
             },
             "source_id": "mistral-models"
@@ -2623,20 +2112,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "mistral-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "mistral-models"
           }
         ],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -3412,16 +2907,16 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 16,
+    "accepted": 17,
     "added_models": 1,
     "added_sources": 0,
-    "changed_models": 34,
-    "changed_sources": 26,
-    "models": 3383,
+    "changed_models": 3,
+    "changed_sources": 28,
+    "models": 3384,
     "providers": 18,
     "removed_models": 0,
     "removed_sources": 0,
-    "retained": 2,
+    "retained": 1,
     "withheld": 0
   }
 }
