@@ -70,7 +70,7 @@ jobs:
 
       - name: Upload refresh evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: catalog-refresh-${{ github.run_id }}
           path: ${{ runner.temp }}/refresh-report.json
