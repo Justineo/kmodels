@@ -199,7 +199,13 @@ describe("collection state", () => {
         changed_fields: { name: 1 },
         added_model_refs: ["test/new-model"],
         removed_model_refs: [],
-        changed_models: [{ model_ref: "test/model", fields: ["name"] }],
+        changed_models: [
+          {
+            model_ref: "test/model",
+            fields: ["name"],
+            field_changes: [{ path: "name", previous: "Model", current: "Renamed model" }],
+          },
+        ],
       },
       sources: {
         previous: 1,
@@ -217,7 +223,7 @@ describe("collection state", () => {
     });
   });
 
-  it("records exact leaf-level model limit changes", () => {
+  it("records exact leaf-level model field changes", () => {
     const previousModel = {
       ...baseModel({
         providerId: "test",
@@ -252,17 +258,48 @@ describe("collection state", () => {
       {
         model_ref: "test/model",
         fields: ["limits"],
-        limit_changes: [
-          { field: "context_tokens", previous: 128_000, current: 131_072 },
-          { field: "max_output_tokens", previous: 4_096 },
+        field_changes: [
+          { path: "limits.context_tokens", previous: 128_000, current: 131_072 },
           {
-            field: "embedding_dimensions",
+            path: "limits.embedding_dimensions",
             previous: [512, 1_024],
             current: [256, 512, 1_024],
           },
+          { path: "limits.max_output_tokens", previous: 4_096 },
         ],
       },
     ]);
+  });
+
+  it("does not count omitted and explicitly undefined optional fields as different", () => {
+    const previousModel = {
+      ...baseModel({
+        providerId: "test",
+        id: "model",
+        name: "Model",
+        sourceId: "test-catalog",
+        observedAt: previousAt,
+      }),
+      limits: { context_tokens: 128_000 },
+    };
+    const currentModel = {
+      ...previousModel,
+      limits: {
+        context_tokens: 128_000,
+        max_input_tokens: undefined,
+        max_output_tokens: undefined,
+      },
+      last_seen_at: currentAt,
+      observed_at: currentAt,
+    };
+    const summary = summarizeRefresh(
+      catalog("a", previousAt, [previousModel], "b"),
+      catalog("c", currentAt, [currentModel], "b"),
+      noPricing,
+      noPricing,
+    );
+
+    expect(summary.providers[0]?.models).toMatchObject({ changed: 0, unchanged: 1 });
   });
 
   it("separates rejected observations from retained publication", () => {

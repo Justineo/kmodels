@@ -27,10 +27,15 @@ describe("refresh report", () => {
             changed_models: [
               {
                 model_ref: "example/model",
-                fields: ["limits"],
-                limit_changes: [
-                  { field: "context_tokens", previous: 128_000, current: 131_072 },
-                  { field: "max_output_tokens", previous: 4_096 },
+                fields: ["capabilities", "limits"],
+                field_changes: [
+                  { path: "capabilities.reasoning", previous: false, current: true },
+                  {
+                    path: "limits.context_tokens",
+                    previous: 128_000,
+                    current: 131_072,
+                  },
+                  { path: "limits.max_output_tokens", previous: 4_096 },
                 ],
               },
             ],
@@ -133,11 +138,19 @@ describe("refresh report", () => {
     ]);
     expect(output.markdown).toContain("partial publication");
     expect(output.markdown).toContain("1.3s");
-    expect(output.markdown).toContain("`example/new`");
-    expect(output.markdown).toContain("`example/old`");
+    expect(output.markdown).toContain("| Added | <code>example/new</code> | — |");
+    expect(output.markdown).toContain("| Removed | <code>example/old</code> | — |");
     expect(output.markdown).toContain(
-      "`example/model (limits.context_tokens: 128000 → 131072; limits.max_output_tokens: 4096 → missing)`",
+      "| Updated | <code>example/model</code> | <code>capabilities.reasoning</code>: <code>false</code> → <code>true</code>",
     );
+    expect(output.markdown).toContain(
+      "<code>limits.context_tokens</code>: <code>128000</code> → <code>131072</code>",
+    );
+    expect(output.markdown).toContain(
+      "<code>limits.max_output_tokens</code>: <code>4096</code> → <em>missing</em>",
+    );
+    expect(output.markdown).toContain("Models now is the current published count");
+    expect(output.markdown).toContain("Pricing Δ compares pricing semantics, not a price value");
     expect(output.markdown).toContain("`example-catalog` parse_failed");
     expect(output.markdown).toContain("3 consecutive, 24.0h stale");
     expect(output.markdown).toContain("`/video_capabilities/generate_audio`");
@@ -171,7 +184,7 @@ describe("refresh report", () => {
           publication: "accepted",
           models: { current: 1, added: 0, removed: 0, changed: 0 },
           sources: { changed: 1 },
-          pricing: { outcome: "unchanged" },
+          pricing: { outcome: "provenance_only" },
           signals: ["unreviewed_extension"],
           attempt: {
             outcome: "accepted",
@@ -202,9 +215,42 @@ describe("refresh report", () => {
     });
 
     expect(output.markdown).toContain("complete publication");
+    expect(output.markdown).toContain("terms unchanged; evidence changed");
     expect(output.markdown).toContain("Contract accept_with_signal");
     expect(output.warnings).toEqual([
       "example/example-catalog: accept_with_signal unknown_field at /future_field (1/1 items; 0123456789abcdef)",
     ]);
+  });
+
+  it("renders the immediately preceding limit-change shape", () => {
+    const output = refreshReport({
+      generated_at: "2026-08-01T00:00:00.000Z",
+      catalog_version: "abcdef0123456789",
+      providers: [
+        {
+          provider_id: "example",
+          status: "fresh",
+          models: {
+            current: 1,
+            added: 0,
+            removed: 0,
+            changed: 1,
+            changed_models: [
+              {
+                model_ref: "example/model",
+                fields: ["limits"],
+                limit_changes: [{ field: "context_tokens", previous: 128_000, current: 131_072 }],
+              },
+            ],
+          },
+          sources: { changed: 0 },
+          pricing: { outcome: "unchanged" },
+        },
+      ],
+    });
+
+    expect(output.markdown).toContain(
+      "<code>limits.context_tokens</code>: <code>128000</code> → <code>131072</code>",
+    );
   });
 });

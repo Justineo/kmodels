@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import { modelLimitFields } from "./catalog-vocabulary.ts";
 import { canonicalJsonHash } from "./canonical-json.ts";
 import { compareUtf8 } from "./canonical-value.ts";
 import { commercialPricingProjection } from "./pricing-commercial.ts";
@@ -44,19 +43,24 @@ const semanticModelFields = [
 
 type SemanticModelField = (typeof semanticModelFields)[number];
 
-type SemanticLimitField = (typeof modelLimitFields)[number];
-type ModelLimitValue = ProviderModel["limits"][SemanticLimitField];
+type ModelChangeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ModelChangeValue[]
+  | { [field: string]: ModelChangeValue };
 
-interface ModelLimitChangeSummary {
-  field: SemanticLimitField;
-  previous?: ModelLimitValue;
-  current?: ModelLimitValue;
+interface ModelFieldChangeSummary {
+  path: string;
+  previous?: ModelChangeValue;
+  current?: ModelChangeValue;
 }
 
 interface ModelChangeSummary {
   model_ref: string;
   fields: SemanticModelField[];
-  limit_changes?: ModelLimitChangeSummary[];
+  field_changes: ModelFieldChangeSummary[];
   previous_status?: ProviderModel["status"];
   status?: ProviderModel["status"];
   previous_tasks?: ProviderModel["tasks"];
@@ -275,19 +279,22 @@ function modelDiff(previous: ProviderModel[], current: ProviderModel[]): ModelDi
   for (const [uid, model] of currentByUid) {
     const old = previousByUid.get(uid);
     if (old === undefined) continue;
-    const fields = semanticModelFields.filter(
-      (field) => !isDeepStrictEqual(old[field], model[field]),
+    const changesByField = semanticModelFields.map((field) => ({
+      field,
+      changes: modelValueDiff(field, modelChangeValue(old[field]), modelChangeValue(model[field])),
+    }));
+    const fields = changesByField.flatMap(({ field, changes }) =>
+      changes.length === 0 ? [] : [field],
     );
     if (fields.length === 0) {
       unchanged += 1;
       continue;
     }
     for (const field of fields) changedFields[field] = (changedFields[field] ?? 0) + 1;
-    const changedLimits = limitDiff(old.limits, model.limits);
     changedModels.push({
       model_ref: uid,
       fields,
-      ...(changedLimits.length === 0 ? {} : { limit_changes: changedLimits }),
+      field_changes: changesByField.flatMap(({ changes }) => changes),
       ...(fields.includes("status") ? { previous_status: old.status, status: model.status } : {}),
       ...(fields.includes("tasks") ? { previous_tasks: old.tasks, tasks: model.tasks } : {}),
     });
@@ -314,22 +321,51 @@ function modelDiff(previous: ProviderModel[], current: ProviderModel[]): ModelDi
   };
 }
 
-function limitDiff(
-  previous: ProviderModel["limits"],
-  current: ProviderModel["limits"],
-): ModelLimitChangeSummary[] {
-  const changes: ModelLimitChangeSummary[] = [];
-  for (const field of modelLimitFields) {
-    const oldValue = previous[field];
-    const newValue = current[field];
-    if (isDeepStrictEqual(oldValue, newValue)) continue;
-    changes.push({
-      field,
-      ...(oldValue === undefined ? {} : { previous: oldValue }),
-      ...(newValue === undefined ? {} : { current: newValue }),
-    });
+function modelChangeValue(value: unknown): ModelChangeValue | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Object.is(value, -0) ? 0 : value;
+  if (Array.isArray(value)) {
+    const items = value.map(modelChangeValue);
+    if (items.some((item) => item === undefined))
+      throw new Error("Model semantic array contained an undefined item");
+    return items.filter((item): item is ModelChangeValue => item !== undefined);
   }
-  return changes;
+  if (typeof value !== "object") throw new Error("Model semantic value is not JSON-compatible");
+  const entries: [string, ModelChangeValue][] = [];
+  for (const [field, item] of Object.entries(value)) {
+    const normalized = modelChangeValue(item);
+    if (normalized !== undefined) entries.push([field, normalized]);
+  }
+  return Object.fromEntries(entries);
+}
+
+function modelChangeObject(
+  value: ModelChangeValue | undefined,
+): value is { [field: string]: ModelChangeValue } {
+  return (
+    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+  );
+}
+
+function modelValueDiff(
+  path: string,
+  previous: ModelChangeValue | undefined,
+  current: ModelChangeValue | undefined,
+): ModelFieldChangeSummary[] {
+  if (isDeepStrictEqual(previous, current)) return [];
+  if (modelChangeObject(previous) && modelChangeObject(current)) {
+    return [...new Set([...Object.keys(previous), ...Object.keys(current)])]
+      .sort(compareUtf8)
+      .flatMap((field) => modelValueDiff(`${path}.${field}`, previous[field], current[field]));
+  }
+  return [
+    {
+      path,
+      ...(previous === undefined ? {} : { previous }),
+      ...(current === undefined ? {} : { current }),
+    },
+  ];
 }
 
 function sourceDiff(previous: SourceRecord[], current: SourceRecord[]): SourceDiffSummary {
