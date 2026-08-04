@@ -1,8 +1,8 @@
 {
-  "catalog_version": "d7ad585dd27d681a7bff19adc883fe9d833163234398c973d542d7f173b82710",
-  "generated_at": "2026-08-04T09:45:09.210Z",
+  "catalog_version": "5b47924acdeb2d865da9bebd8f54c7c0cc0752c1a17b37c214401a804b4ff61e",
+  "generated_at": "2026-08-04T09:53:07.535Z",
   "outcome": "changed",
-  "previous_catalog_version": "bf19dfde447b30ba654052c2e624408e579d937360cbcb321afb58b9832c10c7",
+  "previous_catalog_version": "d7ad585dd27d681a7bff19adc883fe9d833163234398c973d542d7f173b82710",
   "providers": [
     {
       "attempt": {
@@ -1091,7 +1091,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 2,
+            "consecutive_failures": 3,
             "last_success_at": "2026-08-04T07:51:11.204Z",
             "message": "Reviewed companion URL contained unsupported URL components",
             "outcome": "fetch_failed",
@@ -1469,15 +1469,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 129,
+            "parsed_models": 128,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 129,
-              "normalized_facts": 412,
+              "model_records": 128,
+              "normalized_facts": 410,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 110,
+              "numeric_models": 109,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 19
@@ -1530,13 +1530,13 @@
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 206,
+                "normalized": 205,
                 "raw": 0,
                 "unbound": 95,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 309,
+              "observed_items": 308,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
@@ -1556,22 +1556,24 @@
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 1539,
+        "current": 1538,
         "previous": 1539,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1539
+        "removed": 1,
+        "removed_model_refs": [
+          "huggingface/alpindale/WizardLM-2-8x22B"
+        ],
+        "unchanged": 1538
       },
       "pricing": {
-        "commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507",
-        "outcome": "provenance_only",
+        "commercial_hash": "b30754000d32b058687d033b7405d53c3608a40bd14076d8b09c906177606c98",
+        "outcome": "commercial",
         "previous_commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507"
       },
       "pricing_coverage": {
-        "current_models": 1539,
-        "normalized_rate_models": 110,
+        "current_models": 1538,
+        "normalized_rate_models": 109,
         "not_applicable_models": 0,
-        "offer_models": 110,
+        "offer_models": 109,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
@@ -1770,9 +1772,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -1820,26 +1822,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2037,37 +2033,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "aliases": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "mistral-ocr-4",
-                  "mistral-ocr-latest"
-                ],
-                "path": "aliases",
-                "previous": [
-                  "mistral-ocr-4",
-                  "mistral-ocr-latest",
-                  "mistral-ocr-4-1"
-                ]
-              }
-            ],
-            "fields": [
-              "aliases"
-            ],
-            "model_ref": "mistral/mistral-ocr-4-0@4.0"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 58,
         "previous": 58,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 57
+        "unchanged": 58
       },
       "pricing": {
         "commercial_hash": "39627d0baaaeb93223570537b04d9de5a0b2c81bbed3d268691ada73ebfb684c",
@@ -2455,9 +2428,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 315,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2525,20 +2498,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2882,11 +2848,11 @@
     "accepted": 17,
     "added_models": 0,
     "added_sources": 0,
-    "changed_models": 1,
-    "changed_sources": 27,
-    "models": 3381,
+    "changed_models": 0,
+    "changed_sources": 25,
+    "models": 3380,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
