@@ -30,6 +30,12 @@ jobs:
       - name: Check
         run: vp check
 
+      - name: Show formatter diff
+        if: failure()
+        run: |
+          vp fmt src/catalog/anthropic.ts --write
+          git diff -- src/catalog/anthropic.ts
+
       - name: Test
         run: vp test --run
 
