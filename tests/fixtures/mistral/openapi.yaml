@@ -1,0 +1,21 @@
+components:
+  schemas:
+    OCRUsageInfo:
+      properties:
+        pages_processed: { type: integer }
+    PromptTokensDetails:
+      properties:
+        cached_tokens: { type: integer }
+    UsageInfo:
+      properties:
+        prompt_tokens: { type: integer }
+        completion_tokens: { type: integer }
+        total_tokens: { type: integer }
+        prompt_audio_seconds: { type: integer }
+    TranscriptionResponse:
+      properties:
+        usage:
+          $ref: UsageInfo
+    SpeechResponse:
+      properties:
+        audio_data: { type: string }

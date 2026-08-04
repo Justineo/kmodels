@@ -96,7 +96,9 @@ with provenance.
 
 ## Provenance, pricing, and diagnostics
 
-- `source_refs` resolve to source records with standardized origins, scope, role, stability, exhaustiveness, extraction, and content hashes. Access method and response format are not model facts.
+- `source_refs` resolve to source records with standardized origins, scope, role, stability,
+  exhaustiveness, extraction, content hashes, and optional reviewed first-party pricing-evidence
+  policy. Access method and response format are not model facts.
 - `ProviderModel` contains no pricing projection. Canonical pricing is bound to
   the exact co-published catalog and references its opaque model and source
   identities.

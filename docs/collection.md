@@ -5,16 +5,45 @@ Status: implemented
 ## Source trust
 
 - `src/catalog/manifests.ts` is the reviewed provider registry and source allowlist. Requests never choose root URLs.
-- Discovered documents must match an exact same-host path policy. Fixed companions require reviewed hosts, keys, byte limits, and an explicit format when content negotiation differs from the parent source.
+- Every source that can establish pricing declares a first-party pricing-evidence policy. The policy
+  records whether the source is a model catalog, price book, billing catalog, commercial-terms
+  surface, or scoped meter inventory; how identities may bind; and whether the source is an explicit
+  snapshot, an observed current publication, or scoped current inventory. A source without this
+  policy cannot contribute pricing.
+- Discovered documents must match an exact same-host path policy. A source may declare one bounded
+  level of nested indexes with its own exact path and count limits; only documents that satisfy the
+  original content path may leave those indexes. Fixed companions require reviewed hosts, keys,
+  byte limits, and an explicit format when content negotiation differs from the parent source.
 - Prefer documented structured sources. Parse official catalogs only for facts structured sources do not provide.
 - Provider adapters accept IDs only from labeled ID fields or reviewed structured properties and validate a provider-neutral grammar. Do not use product-name prefix lists or generic document extraction.
 - Operator-defined local runtimes are configuration, not public providers.
 - Publish only observed official facts. Never use an LLM, infer unsupported facts, or inherit facts across providers.
+- A pricing audit reviews four first-party surfaces separately: the public commercial price book;
+  request and response schemas that define rate selectors and returned usage; account, workspace,
+  usage, and cost documentation that defines private adjustments and reporting delay; and
+  lifecycle/release evidence needed for exact binding. A price table alone cannot establish that two
+  similarly named selectors share one dimension.
+- When the provider publishes a bounded documentation index such as `llms.txt`, a sitemap, or an
+  OpenAPI route inventory, fetch it atomically with the reviewed companions and partition its
+  commercial links against the manifest allowlist. A new relevant first-party page is a review
+  signal, not an automatically trusted crawl target; failing closed here prevents a hand-picked
+  pricing-page list from silently missing a new tool, account, usage, or cost surface.
+- Before treating a missing rate as unknown, enumerate the official source's pricing-input
+  denominator and assign every item a normalized, raw, exact non-numeric, excluded, or diagnostic
+  disposition. If official prose publishes a multiplier, promotion interval, free allowance, or
+  separate service charge, either parse it deterministically or record a stable explicit boundary;
+  never let it disappear because the model table parsed successfully.
+- Third-party registries may be used only as read-only coverage and drift comparisons. They cannot
+  contribute production identities, prices, aliases, dates, or fallback values.
 
 ## Source roles and scope
 
 - Each source declares `scope`, `exhaustive`, and `role`.
-- Catalog sources may create rows. Overlays may replace only declared fields on existing rows.
+- Catalog sources create exact rows even when another row already exposes the ID as an alias.
+  Supplements may create only identities that match neither a current exact ID nor a unique alias;
+  otherwise they fill the matched row. Overlays may replace only declared fields on existing rows.
+  This keeps a non-exhaustive lifecycle or price-book supplement from splitting a documented alias
+  while still admitting an exact current identity omitted by the primary catalog.
 - Account, region, workspace, and runtime inventories are scoped validation. They may fill fields the public catalog leaves undisclosed and add positive set-valued facts to exact public matches, but never override a known global fact or create or remove a global row.
 - Only an exhaustive global catalog supports a completeness claim.
 - Optional authenticated sources use named environment variables. Collection loads ignored `.env` values without overriding the process environment.
@@ -32,6 +61,8 @@ Status: implemented
 ## Provenance
 
 - Public origin values are only `api`, `website`, and `repository`; a source may have more than one. Access method and wire format stay internal. Runtime is a scope, not an origin.
+- Full catalog/API source records retain the reviewed pricing-evidence policy for audit. It is not
+  copied into the website UI payload.
 - Provenance is additive. Every successful allowlisted source that exactly matches a published model remains in `source_refs`.
 - A successfully fetched new extractor version recomputes that source's observations. Rows and provenance omitted by the new interpretation are not retained as if the obsolete extractor had still observed them; ordinary omissions from an unchanged non-exhaustive extractor remain protected.
 - Publish the latest successful record for each referenced source. If an optional source is skipped, retain its last validated record.
@@ -86,6 +117,19 @@ Status: implemented
 - Source attempts use finite outcomes: changed, unchanged, fetch failed, parse failed, or skipped
   because configuration is absent. Provider drift guards use finite issue codes plus the measured
   previous value, candidate value, and threshold where applicable.
+- A pricing source reports two independent observations. Extraction counts the parsed model records,
+  pricing states, normalized facts, and raw facts that left the adapter. Reconciliation accounts for
+  the adapter's pricing-input denominator: every reviewed source item is normalized, preserved raw,
+  classified as an exact non-numeric state, deliberately excluded, unbound, ambiguous, unsupported,
+  or unresolved. Source-item accounting is preferred for row-oriented price books and billing
+  catalogs; adapters without a separately enumerable source denominator fall back explicitly to
+  parsed-model accounting. The report names that basis, so output coverage cannot masquerade as
+  input coverage.
+- Reconciliation dispositions partition the observed denominator exactly. Unbound, ambiguous,
+  unsupported, and unresolved items produce bounded findings and an aggregate warning; exclusion is
+  successful only with a stable reviewed reason. Public-source samples may contain a short public
+  label, while authenticated or scoped sources suppress samples. This evidence is operational audit
+  data only and never enters the accepted catalog, canonical pricing API, or website packs.
 - Treat every structured upstream response as a language recognized at the source boundary. The
   parser contract is consumer-driven: require the fields and closed vocabularies whose meaning the
   catalog actually owns, permit documented omission when absence means unknown, and reject a new
@@ -104,9 +148,13 @@ Status: implemented
   last success when one exists. The first structured mismatch is immediately visible; repetition
   adds persistence and staleness signals. A successful parse resets the count.
 - `data/refresh-summary.json` is the deterministic report for the accepted run. It includes exact
-  added and removed model refs, changed refs and fields, status and task transitions, exact changed
-  sources, pricing outcomes, warnings, and the corresponding attempt evidence. It never copies raw
-  response data, exception stacks, credentials, or private unmatched IDs.
+  added and removed model refs, changed refs and fields, leaf-level previous/current values for
+  model-limit changes, status and task transitions, exact changed sources, pricing outcomes,
+  bounded per-provider pricing-resolution coverage, warnings, and the corresponding attempt
+  evidence. Pricing coverage distinguishes models with public offers,
+  exact not-applicable dispositions, and unresolved pricing; an unresolved model is a Kmodels
+  collection outcome, not a claim that the provider publishes no price. It never copies raw response
+  data, exception stacks, credentials, or private unmatched IDs.
 - The run-level semantic outcome (`changed`, `evidence_only`, or `unchanged`) is independent of
   publication completeness (`complete` or `partial`). A retained provider therefore cannot hide
   behind an “unchanged” label, and provenance-only churn is not presented as a commercial change.

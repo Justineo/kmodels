@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { linkedBundleSchema } from "./bundle.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { orderedTasks } from "./task.ts";
 import { publishedRate } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
@@ -20,6 +22,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 interface TaskFacts {
@@ -47,7 +50,7 @@ const routeSchema = z.object({
   provider: z.string().min(1),
   status: z.enum(["live", "error"]),
   context_length: z.number().int().positive().optional(),
-  pricing: z.object({ input: decimal.optional(), output: decimal.optional() }).optional(),
+  pricing: z.object({ input: decimal, output: decimal }).optional(),
   is_free: z.boolean().optional(),
   supports_tools: z.boolean().optional(),
   supports_structured_output: z.boolean().optional(),
@@ -66,7 +69,7 @@ const routerItemSchema = z.object({
   }),
   providers: z.array(routeSchema).min(1),
 });
-const routerSchema = z.object({ data: z.array(routerItemSchema) });
+const routerSchema = z.object({ object: z.literal("list"), data: z.array(routerItemSchema) });
 const hubSchema = z.object({
   models: z.array(
     z.object({
@@ -198,7 +201,14 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
     }
   }
   assertItemCount("Hugging Face mappings", models.size, config.minModels, config.maxModels);
-  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  for (const value of values)
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "hf_inference_compute_price_unbound",
+      sample: value.model_id,
+    });
+  return values;
 }
 
 function availability(values: (boolean | undefined)[]): boolean | "unknown" {
@@ -249,11 +259,136 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Sourc
   return rates;
 }
 
+function companion(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === pathname);
+  if (matches.length !== 1) throw new Error(`Hugging Face bundle requires exactly one ${pathname}`);
+  return matches[0]?.body ?? "";
+}
+
+function requireClaims(body: string, claims: readonly string[], message: string): void {
+  if (claims.some((claim) => !body.includes(claim))) throw new Error(message);
+}
+
+function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSchema>): void {
+  const pricing = companion(bundle, "/docs/inference-providers/en/pricing.md");
+  requireClaims(
+    pricing,
+    [
+      "with no markup from Hugging Face",
+      "$0.10, subject to change",
+      "$2.00 per seat",
+      "same rates as the provider",
+      "broken down by model and provider",
+      "Hugging Face won't charge you for the call",
+      "compute time x price of the underlying hardware",
+      '"X-HF-Bill-To: my-org-name"',
+      "set a spending limit",
+      "disable a set of Inference Providers",
+    ],
+    "Hugging Face pricing and account-billing reference drifted",
+  );
+
+  const overview = companion(bundle, "/docs/inference-providers/en/index.md");
+  requireClaims(
+    overview,
+    [
+      ":cheapest` for the most cost-efficient provider (lowest price per output token)",
+      ":preferred` to follow your preference order",
+      'provider="auto"',
+      "Automatic Failover",
+      "per-provider pricing",
+      "throughput when available",
+    ],
+    "Hugging Face provider-selection reference drifted",
+  );
+  const sdk = companion(bundle, "/docs/huggingface_hub/en/guides/inference.md");
+  const overviewUsesFastest = overview.includes(
+    "automatically selects the fastest available provider for the specified model",
+  );
+  const sdkUsesPreference = sdk
+    .replace(/\s+/g, " ")
+    .includes(
+      'default value is "auto" which will select the first of the providers available for the model, sorted by the user\'s order',
+    );
+  const autoPolicyConflict = overviewUsesFastest && sdkUsesPreference;
+  if (!overviewUsesFastest && !sdkUsesPreference)
+    throw new Error("Hugging Face automatic provider-selection evidence drifted");
+  input.onPricingReconciliation?.({
+    disposition: autoPolicyConflict ? "ambiguous" : "excluded",
+    reason_code: autoPolicyConflict
+      ? "auto_routing_policy_conflict"
+      : "auto_routing_policy_not_price_fact",
+  });
+
+  requireClaims(
+    companion(bundle, "/docs/inference-providers/en/hub-api.md"),
+    [
+      "inference_provider=all",
+      "inferenceProviderMapping",
+      "`input` and `output` prices in USD per million tokens, when available",
+      "temporary promo",
+      "Output throughput in tokens per second",
+    ],
+    "Hugging Face Hub routing API reference drifted",
+  );
+  const chat = companion(bundle, "/docs/inference-providers/en/tasks/chat-completion.md");
+  requireClaims(
+    chat,
+    ["reasoning_effort", "include_usage", "completion_tokens", "prompt_tokens", "total_tokens"],
+    "Hugging Face response-usage reference drifted",
+  );
+  requireClaims(
+    companion(bundle, "/docs/inference-providers/en/guides/responses-api.md"),
+    ["All Inference Providers chat completion models", "/v1/responses"],
+    "Hugging Face Responses API reference drifted",
+  );
+  requireClaims(
+    companion(bundle, "/docs/inference-providers/en/register-as-a-provider.md"),
+    [
+      "placeholder",
+      "background job runs every minute",
+      "cost in nano-USD (10^-9 USD)",
+      "up to 10,000 request IDs",
+      "30 minutes",
+      "completed successfully",
+      "`Inference-Id`",
+      "Price in US dollars per million input tokens",
+    ],
+    "Hugging Face provider-cost reconciliation reference drifted",
+  );
+  requireClaims(
+    companion(bundle, "/docs/hub/en/billing.md"),
+    ["monitor your usage at any time from your billing dashboard", "beginning of each month"],
+    "Hugging Face billing-history reference drifted",
+  );
+
+  for (const reason_code of [
+    "account_credits_not_public_rates",
+    "byok_direct_provider_billing",
+    "billing_dashboard_out_of_catalog",
+    "organization_billing_controls_not_rates",
+    "provider_cost_api_not_user_accessible",
+    "partner_mapping_catalog_out_of_scope",
+  ])
+    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
+  const responseReturnsCost = ["costNanoUsd", "cost_in_usd", "exact_cost"].some((field) =>
+    chat.includes(field),
+  );
+  input.onPricingReconciliation?.({
+    disposition: responseReturnsCost ? "unsupported" : "excluded",
+    reason_code: responseReturnsCost
+      ? "response_exact_cost_unmodeled"
+      : "response_exact_cost_not_documented",
+  });
+}
+
 export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   const config = input.source.extractor;
   if (config.kind !== "huggingface-router")
     throw new Error("Invalid Hugging Face router extractor");
-  const items = routerSchema.parse(JSON.parse(input.body)).data;
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  commercialEvidence(input, bundle);
+  const items = routerSchema.parse(JSON.parse(bundle.index.body)).data;
   const ids = new Set<string>();
   const models: ProviderModel[] = [];
   for (const item of items) {
@@ -266,11 +401,37 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
         throw new Error(`Duplicate Hugging Face route ${item.id}:${route.provider}`);
       providers.add(route.provider);
     }
-    const routes = item.providers.filter((route) => route.status === "live");
+    const routeFacts = item.providers.map((route) => ({
+      route,
+      rates: route.status === "live" ? routeRates(route, input.source.id) : [],
+    }));
+    for (const { route, rates } of routeFacts) {
+      const sample = `${item.id}:${route.provider}`;
+      if (route.status === "error") {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "route_not_live",
+          sample,
+        });
+      } else if (rates.length === 0) {
+        input.onPricingReconciliation?.({
+          disposition: "unbound",
+          reason_code: "route_price_not_published",
+          sample,
+        });
+      } else {
+        input.onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "route_price_normalized",
+          sample,
+        });
+      }
+    }
+    const routes = routeFacts.filter(({ route }) => route.status === "live");
     if (routes.length === 0) continue;
-    const pricing = routes.flatMap((route) => routeRates(route, input.source.id));
+    const pricing = routes.flatMap(({ rates }) => rates);
     const contexts = routes.flatMap((route) =>
-      route.context_length === undefined ? [] : [route.context_length],
+      route.route.context_length === undefined ? [] : [route.route.context_length],
     );
     models.push({
       ...baseModel({
@@ -285,12 +446,17 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
         input: unique(item.architecture.input_modalities),
         output: unique(item.architecture.output_modalities),
       },
-      api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
+      api_endpoints: [
+        { name: "Chat Completions", path: "/v1/chat/completions" },
+        { name: "Responses", path: "/v1/responses" },
+      ],
       capabilities: {
         ...unknownCapabilities(),
         streaming: true,
-        tool_call: availability(routes.map((route) => route.supports_tools)),
-        structured_output: availability(routes.map((route) => route.supports_structured_output)),
+        tool_call: availability(routes.map(({ route }) => route.supports_tools)),
+        structured_output: availability(
+          routes.map(({ route }) => route.supports_structured_output),
+        ),
       },
       limits: {
         context_tokens: contexts.length === 0 ? undefined : Math.max(...contexts),

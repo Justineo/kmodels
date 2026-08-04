@@ -8,11 +8,26 @@ Status: current
 - Accept IDs, aliases, snapshots, facts, endpoint cards, and card-local prices only from the
   matching card. Disabled cards add no evidence; an unknown endpoint label/path rejects the
   provider.
-- The public Markdown price book is a pricing-only overlay. Bind its exact IDs and current
-  card aliases to catalog models; it never creates a model. It fills cards that link out for
-  pricing and adds explicit Batch, Flex, and Fast tiers. A card's numeric price block remains
-  the Standard authority; price-book Standard rows only fill cards with no numeric facts.
-- `/api/docs/models` is alias-only. `/api/docs/deprecations` is lifecycle-only; “legacy” alone is not deprecation.
+- The public Markdown price book is a non-exhaustive catalog supplement. Bind its exact IDs,
+  current card aliases, and unique exact card display names to catalog models. A model-rate row
+  whose identity matches none of those may create a minimal current row; this admits models such
+  as `gpt-5-search-api` that OpenAI prices and documents outside `/models/all`. It fills cards that
+  link out for pricing and adds explicit Batch, Flex, and Fast tiers. A card's numeric price block
+  remains the Standard authority; price-book Standard rows only fill cards with no numeric facts.
+- Account for every reviewed model-rate row in the price book. Rows used by the catalog are
+  normalized; duplicate Standard rows and out-of-scope fine-tuning/tool prices are deliberately
+  excluded; unmatched, ambiguous, or unsupported rows remain bounded reconciliation findings. An
+  output model count is not a substitute for this input-row denominator.
+- `/api/docs/models` is alias-only. `/api/docs/deprecations` is a non-exhaustive lifecycle
+  supplement because `/models/all` can omit a model whose future shutdown table proves it remains
+  callable. ISO dates and exact English month dates are accepted. A future-shutdown row may create
+  a missing public identity; an already retired or fine-tuned identity may only update an existing
+  exact catalog row. In a `snapshot | aliases` cell, retain one snapshot identity and attach the
+  remaining codes as aliases. “Legacy” alone is not deprecation.
+- The data-residency support matrix is a non-exhaustive catalog supplement for exact model/
+  snapshot IDs, API endpoints, and `{region, regional_processing}` availability. Preserve the
+  matrix's United Arab Emirates snapshot exceptions instead of widening the row-level region list.
+  Service-only rows do not create models.
 - Authenticated `GET /v1/models` is account-scoped validation. Private rows and absence never change the global catalog, and raw responses are not retained.
 - Enable the optional inventory with `OPENAI_API_KEY`.
 
@@ -25,11 +40,32 @@ Status: current
   and an adjacent paired price group, when present, to distinguish Standard from Batch; use
   explicit price-book headings for Standard, Batch, Flex, and Fast.
 - Derive long-context and cache-write prices only from published multipliers with decimal-string arithmetic.
-- Explicit open-weight and free moderation models use `not_applicable`; absent or unparseable hosted prices remain `unknown`.
+- Explicit open-weight models use `not_applicable`. An explicitly free hosted moderation model uses
+  a free offer. Absent or unparseable hosted prices remain `unknown`.
 - Map exact Tools support to `computer_use` and code-execution capabilities, and explicit
   `reasoning.effort` value lists to effort control. Account-tier rate-limit tables do not fit
-  model-global scalar limits. Regional uplift eligibility and fine-tuning training terms stay
-  unmodeled until their model scope and billing meter can be represented without inference.
+  model-global scalar limits. Tool/service rows and fine-tuning rows are reconciled but excluded
+  from model base offers: tool storage/session charges require provider-service books and usage
+  aggregation, while fine-tuned inference belongs to private derived IDs. The public 10% data-
+  residency uplift also remains unmodeled until model release-cutoff eligibility and the configured
+  project processing region can both be represented without deriving a release date from an ID.
+
+## Gateway accounting boundary
+
+- Price a completed Responses or Chat Completions request from the returned model, actual
+  `service_tier`, and usage breakdown—not only the submitted request. `service_tier: auto` can use
+  the project default, and Fast requests can be downgraded and billed as Standard. For GPT-5.6 and
+  earlier, a Fast request is reported as `priority`; normalize that response value to the public
+  Fast price tier.
+- Responses usage publishes input, cached-input/cache-write, output, and reasoning-token counts.
+  The organization Usage API additionally exposes uncached and modality-specific token totals and
+  can group completion usage by model, batch, and service tier. Endpoint-specific request counts
+  remain necessary for tool charges.
+- The organization Costs API is the billing authority for account-specific effects, credits,
+  negotiated terms, and the final charged amount. It exposes only daily buckets and aggregate line
+  items, not a synchronous per-request quote. Use it for delayed reconciliation, never hot-path
+  cost-based load balancing. Route on a public-price estimate before the request and correct the
+  estimate from the response; do not wait for Costs API data.
 
 ## Kong AI Gateway
 

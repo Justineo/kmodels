@@ -5,6 +5,7 @@ export const standardPriceDimensions = [
   "deployment_type",
   "deployment_scope",
   "service_tier",
+  "speed",
   "inference_geo",
   "route_provider",
   "context_tier",

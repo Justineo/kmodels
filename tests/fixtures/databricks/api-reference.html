@@ -4,4 +4,39 @@
   <p>The <code>stream</code> field sends partial results using Server-sent events.</p>
   <h2>Embeddings API</h2>
   <p>Embedding tasks map input strings into embedding vectors.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Type</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>completion_tokens</td>
+        <td>Integer</td>
+        <td>Number of generated tokens.</td>
+      </tr>
+      <tr>
+        <td>prompt_tokens</td>
+        <td>Integer</td>
+        <td>Number of input tokens.</td>
+      </tr>
+      <tr>
+        <td>total_tokens</td>
+        <td>Integer</td>
+        <td>Number of total tokens.</td>
+      </tr>
+      <tr>
+        <td>reasoning_tokens</td>
+        <td>Integer</td>
+        <td>Number of thinking tokens.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    The service tier used for the request. Returns "priority" if priority mode was requested,
+    otherwise "default".
+  </p>
 </main>

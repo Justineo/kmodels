@@ -1,4 +1,5 @@
 import { BedrockClient, ListFoundationModelsCommand } from "@aws-sdk/client-bedrock";
+import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -6,6 +7,7 @@ import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { decimalsEqual, scaleDecimal } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   modalitySchema,
@@ -21,6 +23,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 interface CardId {
@@ -222,8 +225,7 @@ function fact(body: string, label: string): string | undefined {
   return body.match(new RegExp(`^\\+ \\*\\*${label}:\\*\\* ([^\\n]+)$`, "m"))?.[1]?.trim();
 }
 
-function humanDate(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined;
+function humanDate(value: string): string | undefined {
   const normalized = plain(value);
   const named = normalized.match(/^([A-Za-z]+)\s+(?:(\d{1,2}),?\s+)?(\d{4})$/);
   if (named !== null) {
@@ -231,12 +233,21 @@ function humanDate(value: string | undefined): string | undefined {
     const year = named[3];
     if (month === undefined || year === undefined) return undefined;
     const prefix = `${year}-${String(month).padStart(2, "0")}`;
-    return named[2] === undefined ? prefix : `${prefix}-${named[2].padStart(2, "0")}`;
+    if (named[2] === undefined) return prefix;
+    const result = `${prefix}-${named[2].padStart(2, "0")}`;
+    return z.iso.date().safeParse(result).success ? result : undefined;
   }
   const numeric = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (numeric?.[1] === undefined || numeric[2] === undefined || numeric[3] === undefined)
     return undefined;
-  return `${numeric[3]}-${numeric[1].padStart(2, "0")}-${numeric[2].padStart(2, "0")}`;
+  const result = `${numeric[3]}-${numeric[1].padStart(2, "0")}-${numeric[2].padStart(2, "0")}`;
+  return z.iso.date().safeParse(result).success ? result : undefined;
+}
+
+function exactHumanDate(value: string, field: string): string {
+  const parsed = humanDate(value);
+  if (parsed === undefined) throw new Error(`Bedrock ${field} was not a valid date: ${value}`);
+  return parsed;
 }
 
 function apiDate(value: string | undefined): string | undefined {
@@ -537,6 +548,18 @@ function parseCard(body: string, observedAt: string): Card {
     .map((line) => line.trim())
     .find((line) => line !== "" && !line.startsWith("<a ") && !line.startsWith("+ "));
   const cardSupport = cardTable(body);
+  const responsePath = body.match(
+    /available on the `([^`]+)` path on the `bedrock-mantle` endpoint/i,
+  )?.[1];
+  if (responsePath !== undefined && !/^(?:[a-z0-9-]+\/)*v1\/responses$/.test(responsePath))
+    throw new Error(`Unsupported Bedrock Responses path for ${name}: ${responsePath}`);
+  const apiEndpoints = cardSupport.apiEndpoints.map((endpoint) =>
+    responsePath !== undefined &&
+    endpoint.name === "Responses" &&
+    endpoint.programmaticEndpoint === "bedrock-mantle"
+      ? { ...endpoint, path: responsePath }
+      : endpoint,
+  );
   const cardIds = programmaticAccess(body, name);
   const programmaticEndpoints = new Set(
     [...cardIds.values()].flatMap(({ endpoints }) => [...endpoints]),
@@ -558,8 +581,9 @@ function parseCard(body: string, observedAt: string): Card {
     ? "preview"
     : "unknown";
   const eol = fact(body, "Model EOL date");
+  const launchDate = fact(body, "Model launch date");
   const deprecatedAt = eol?.startsWith("Legacy:")
-    ? humanDate(eol.slice("Legacy:".length).trim())
+    ? exactHumanDate(eol.slice("Legacy:".length).trim(), "legacy date")
     : undefined;
   const retiredAt =
     eol === undefined ||
@@ -567,7 +591,7 @@ function parseCard(body: string, observedAt: string): Card {
     eol.startsWith("No sooner than") ||
     deprecatedAt !== undefined
       ? undefined
-      : humanDate(eol);
+      : exactHumanDate(eol, "EOL date");
   const status: ProviderModel["status"] =
     retiredAt !== undefined && retiredAt <= observedAt.slice(0, 10) ? "retired" : documentedStatus;
   const reasoning = fact(body, "Reasoning");
@@ -600,11 +624,11 @@ function parseCard(body: string, observedAt: string): Card {
     description: description === undefined ? undefined : plain(description),
     ids: cardIds,
     modalities: cardSupport.modalities,
-    apiEndpoints: cardSupport.apiEndpoints,
+    apiEndpoints,
     availability: cardAvailability(body),
     capabilities,
     limits,
-    releaseDate: humanDate(fact(body, "Model launch date")),
+    releaseDate: launchDate === undefined ? undefined : exactHumanDate(launchDate, "launch date"),
     deprecatedAt,
     retiredAt,
     status,
@@ -724,11 +748,14 @@ function tier(attributes: Record<string, string>, text: string): string | undefi
   if (/reserved[^a-z0-9]*3.?month|3.?month.*reserved/.test(value)) return "reserved_3_month";
   if (/reserved[^a-z0-9]*1.?month|1.?month.*reserved/.test(value)) return "reserved_1_month";
   if (/reserved/.test(value)) return "reserved";
-  if (/latency.?optimized/.test(value)) return "latency_optimized";
   if (/batch/.test(value)) return "batch";
   if (/priority/.test(value)) return "priority";
   if (/flex/.test(value)) return "flex";
   if (/standard|on-demand/.test(value)) return "standard";
+}
+
+function speed(text: string): string | undefined {
+  return /latency.?optimized/.test(text) ? "optimized" : undefined;
 }
 
 function priceDeploymentType(text: string): DeploymentType {
@@ -787,7 +814,8 @@ function conditions(
     endpoint,
     deployment_scope: deploymentScope,
     service_tier: serviceTier,
-    context_min_tokens: /long.?context/.test(lower) ? 200_001 : undefined,
+    speed: speed(lower),
+    context_min_tokens: /long.?(?:context|ctx)/.test(lower) ? 200_001 : undefined,
     cache_ttl_seconds: ttl,
     capacity,
     modality,
@@ -914,13 +942,24 @@ function addRate(
   next: SourcePriceFact,
   modelId: string,
 ): void {
-  const key = `${next.meter}:${next.currency}:${next.unit}:${JSON.stringify(next.conditions)}`;
+  const key = rateKey(next);
   const current = rates.get(key);
   if (current !== undefined && !decimalsEqual(current.price, next.price))
     throw new Error(
       `Bedrock price conflict for ${modelId}: ${current.price} and ${next.price} at ${key}`,
     );
   rates.set(key, next);
+}
+
+function rateKey(rate: SourcePriceFact): string {
+  return `${rate.meter}:${rate.currency}:${rate.unit}:${JSON.stringify(rate.conditions)}`;
+}
+
+function setReviewedPageRate(rates: Map<string, SourcePriceFact>, next: SourcePriceFact): boolean {
+  const key = rateKey(next);
+  const current = rates.get(key);
+  rates.set(key, next);
+  return current !== undefined && !decimalsEqual(current.price, next.price);
 }
 
 function mergeOptionalFact<T>(
@@ -1178,6 +1217,7 @@ function parsePrices(
   documents: z.infer<typeof linkedBundleSchema>["documents"],
   cards: Card[],
   sourceId: string,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): Map<string, SourcePriceFact[]> {
   const byId = new Map<string, Map<string, SourcePriceFact>>();
   let requiredDimensions = 0;
@@ -1207,9 +1247,17 @@ function parsePrices(
       );
       const card = modelForProduct(cards, label, usage);
       if (card === undefined) {
-        if (inferredFromUsage) {
-          requiredDimensions += dimensions.length;
-          unbound.add(label);
+        requiredDimensions += dimensions.length;
+        if (inferredFromUsage) unbound.add(label);
+        else handledDimensions += dimensions.length;
+        for (const { dimension } of dimensions) {
+          onPricingReconciliation?.({
+            disposition: inferredFromUsage ? "unbound" : "excluded",
+            reason_code: inferredFromUsage
+              ? "price_product_model_unbound"
+              : "price_product_absent_from_current_catalog",
+            sample: `${label}: ${dimension.description}`,
+          });
         }
         continue;
       }
@@ -1217,12 +1265,23 @@ function parsePrices(
       const target = priceTargets(card, list.offerCode, usage);
       if (target.ids.length === 0) {
         unbound.add(`${label} (${usage})`);
+        for (const { dimension } of dimensions)
+          onPricingReconciliation?.({
+            disposition: "unbound",
+            reason_code: "price_dimension_target_unbound",
+            sample: `${label}: ${dimension.description}`,
+          });
         continue;
       }
       for (const { dimension, term } of dimensions) {
         const price = dimension.pricePerUnit.USD;
         if (price === undefined) {
           unsupported.add(`${label}: ${dimension.unit}`);
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "non_usd_price_dimension",
+            sample: `${label}: ${dimension.description}`,
+          });
           continue;
         }
         if (
@@ -1231,6 +1290,11 @@ function parsePrices(
           )
         ) {
           handledDimensions++;
+          onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "non_inference_dimension",
+            sample: `${label}: ${dimension.description}`,
+          });
           continue;
         }
         const parsed = rate(
@@ -1245,9 +1309,18 @@ function parsePrices(
         );
         if (parsed === undefined) {
           unsupported.add(`${label}: ${dimension.unit}`);
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "price_dimension_unsupported",
+            sample: `${label}: ${dimension.description}`,
+          });
           continue;
         }
         handledDimensions++;
+        onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "price_dimension_bound",
+        });
         for (const id of target.ids) {
           const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
           addRate(rates, parsed, id);
@@ -1255,6 +1328,253 @@ function parsePrices(
         }
       }
     }
+  }
+  const publicPage = documents.find(
+    ({ url }) =>
+      new URL(url).hostname === "aws.amazon.com" && new URL(url).pathname === "/bedrock/pricing/",
+  );
+  if (publicPage !== undefined) {
+    const page = load(publicPage.body);
+    const openAiHeading = page("h2#OpenAI").first();
+    const openAiPanel = openAiHeading.closest("li[role='tabpanel']");
+    const frontierPanel = openAiHeading
+      .nextAll(".lb-tabs")
+      .first()
+      .find("li[role='tabpanel']")
+      .first();
+    const openAi = frontierPanel.length === 0 ? openAiPanel : frontierPanel;
+    if (openAi.length === 0) throw new Error("Bedrock pricing page omitted the OpenAI panel");
+    const regionNames = new Map([
+      ["US East (N. Virginia)", "us-east-1"],
+      ["US East (Ohio)", "us-east-2"],
+      ["US West (Oregon)", "us-west-2"],
+      ["AWS GovCloud (US-West)", "us-gov-west-1"],
+    ]);
+    let reviewedTables = 0;
+    openAi.find("table").each((_tableIndex, table) => {
+      const rows = page(table).find("tr");
+      const headers = rows
+        .first()
+        .children("th,td")
+        .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+        .get();
+      if (
+        headers[0] !== "OpenAI models" ||
+        !headers.includes("Price per 1M input tokens") ||
+        !headers.includes("Price per 1M output tokens")
+      )
+        return;
+      reviewedTables++;
+      const regionText = page(table)
+        .parent()
+        .prevAll(".lb-rtxt")
+        .first()
+        .text()
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^Regions?:\s*/i, "");
+      const regions = [...regionNames]
+        .filter(([label]) => regionText.includes(label))
+        .map(([, region]) => region);
+      if (regions.length === 0)
+        throw new Error(`Unsupported Bedrock OpenAI pricing region: ${regionText}`);
+      const rateColumns = headers.flatMap((header, index) => {
+        const meter: SourcePriceFact["meter"] | undefined =
+          header === "Price per 1M input tokens"
+            ? "input_text"
+            : /Price per 1M input tokens \((?:30m )?cache write\)/.test(header)
+              ? "cache_write_text"
+              : header === "Price per 1M input tokens (cache read)" ||
+                  header === "Price per 1M cached input tokens"
+                ? "cache_read_text"
+                : header === "Price per 1M output tokens"
+                  ? "output_text"
+                  : undefined;
+        return meter === undefined
+          ? []
+          : [
+              {
+                index,
+                meter,
+                cacheTtl: header.includes("30m cache write") ? 1_800 : undefined,
+              },
+            ];
+      });
+      rows.slice(1).each((_rowIndex, row) => {
+        const cells = page(row)
+          .children("th,td")
+          .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+          .get();
+        const label = cells[0];
+        if (label === undefined || label === "") return;
+        const card = modelForProduct(cards, label, "");
+        const ids =
+          card === undefined
+            ? []
+            : [...card.ids]
+                .filter(([, access]) => access.deploymentTypes.has("in-region"))
+                .map(([id]) => id);
+        for (const column of rateColumns) {
+          const raw = cells[column.index] ?? "";
+          if (raw === "-" || raw === "N/A") {
+            onPricingReconciliation?.({
+              disposition: "excluded",
+              reason_code: "price_cell_not_available",
+              sample: `${label}: ${headers[column.index] ?? column.meter}`,
+            });
+            continue;
+          }
+          requiredDimensions++;
+          if (card === undefined || ids.length === 0) {
+            handledDimensions++;
+            unbound.add(label);
+            onPricingReconciliation?.({
+              disposition: "unbound",
+              reason_code: "pricing_page_model_unbound",
+              sample: label,
+            });
+            continue;
+          }
+          const amount = raw.match(/^\$\s*(\d+(?:\.\d+)?)$/)?.[1];
+          if (amount === undefined) {
+            unsupported.add(`${label}: ${raw}`);
+            onPricingReconciliation?.({
+              disposition: "unsupported",
+              reason_code: "pricing_page_amount_unsupported",
+              sample: `${label}: ${raw}`,
+            });
+            continue;
+          }
+          handledDimensions++;
+          let overrodePriceList = false;
+          for (const id of ids) {
+            const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
+            for (const region of regions)
+              overrodePriceList =
+                setReviewedPageRate(rates, {
+                  meter: column.meter,
+                  price: amount,
+                  currency: "USD",
+                  unit: "million_tokens",
+                  conditions: {
+                    region,
+                    deployment_scope: "in_region",
+                    service_tier: "standard",
+                    ...(column.cacheTtl === undefined
+                      ? {}
+                      : { cache_ttl_seconds: column.cacheTtl }),
+                  },
+                  source_ref: sourceId,
+                  derived: false,
+                  raw_price: raw,
+                  raw_unit: headers[column.index],
+                }) || overrodePriceList;
+            byId.set(id, rates);
+          }
+          onPricingReconciliation?.({
+            disposition: "normalized",
+            reason_code: overrodePriceList
+              ? "pricing_page_cell_overrode_price_list"
+              : "pricing_page_cell_bound",
+          });
+        }
+      });
+    });
+    if (reviewedTables === 0)
+      throw new Error("Bedrock pricing page contained no reviewed OpenAI model tables");
+
+    const stability = page("h2#Stability_AI").first().closest("li[role='tabpanel']");
+    if (stability.length === 0)
+      throw new Error("Bedrock pricing page omitted the Stability AI panel");
+    let stabilityTables = 0;
+    stability.find("table").each((_tableIndex, table) => {
+      const rows = page(table).find("tr");
+      const headers = rows
+        .first()
+        .children("th,td")
+        .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+        .get();
+      if (
+        headers[0] !== "Stability AI Image Services" ||
+        headers[1] !== "Price per generation for each model"
+      )
+        return;
+      stabilityTables++;
+      const regions = ["us-east-1", "us-east-2", "us-west-2"];
+      rows.slice(1).each((_rowIndex, row) => {
+        const cells = page(row)
+          .children("th,td")
+          .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+          .get();
+        const label = cells[0];
+        const raw = cells[1];
+        if (label === undefined || label === "" || raw === undefined || raw === "") return;
+        requiredDimensions++;
+        const card = modelForProduct(cards, label, "");
+        const ids =
+          card === undefined
+            ? []
+            : [...card.ids]
+                .filter(
+                  ([, access]) =>
+                    access.endpoints.has("bedrock-runtime") && access.deploymentTypes.has("geo"),
+                )
+                .map(([id]) => id);
+        if (card === undefined || ids.length === 0) {
+          handledDimensions++;
+          unbound.add(label);
+          onPricingReconciliation?.({
+            disposition: "unbound",
+            reason_code: "pricing_page_model_unbound",
+            sample: label,
+          });
+          return;
+        }
+        const amount = raw.match(/^\$\s*(\d+(?:\.\d+)?)$/)?.[1];
+        if (amount === undefined) {
+          unsupported.add(`${label}: ${raw}`);
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "pricing_page_amount_unsupported",
+            sample: `${label}: ${raw}`,
+          });
+          return;
+        }
+        handledDimensions++;
+        let overrodePriceList = false;
+        for (const id of ids) {
+          const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
+          for (const region of regions)
+            overrodePriceList =
+              setReviewedPageRate(rates, {
+                meter: "image_generation",
+                price: amount,
+                currency: "USD",
+                unit: "image",
+                conditions: {
+                  region,
+                  deployment_scope: "geo",
+                  service_tier: "standard",
+                },
+                source_ref: sourceId,
+                derived: false,
+                raw_price: raw,
+                raw_unit: headers[1],
+              }) || overrodePriceList;
+          byId.set(id, rates);
+        }
+        onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: overrodePriceList
+            ? "pricing_page_cell_overrode_price_list"
+            : "pricing_page_cell_bound",
+        });
+      });
+    });
+    if (stabilityTables !== 1)
+      throw new Error(
+        `Bedrock pricing page contained ${stabilityTables} reviewed Stability AI tables`,
+      );
   }
   if (requiredDimensions === 0 || handledDimensions !== requiredDimensions)
     throw new Error(
@@ -1287,7 +1607,12 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
     })
     .map((document) => parseCard(document.body, input.observedAt));
   if (cards.length === 0) throw new Error("Bedrock catalog contained no model cards");
-  const prices = parsePrices(bundle.documents, cards, input.source.id);
+  const prices = parsePrices(
+    bundle.documents,
+    cards,
+    input.source.id,
+    input.onPricingReconciliation,
+  );
   const models = new Map<string, ProviderModel>();
   for (const card of cards) {
     for (const [id, access] of card.ids) {

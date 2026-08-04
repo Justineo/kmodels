@@ -64,7 +64,12 @@ describe("generated static catalog", () => {
       modelIds.add(model.uid);
       expect(model.uid).toBe(modelUid(model.provider_id, model.model_id, model.version));
       expect(model.source_refs.every((source) => sourceIds.has(source))).toBe(true);
-      expect(model.source_refs.some((source) => sourceRoles.get(source) === "catalog")).toBe(true);
+      expect(
+        model.source_refs.some((source) => {
+          const role = sourceRoles.get(source);
+          return role === "catalog" || role === "supplement";
+        }),
+      ).toBe(true);
       expect(
         model.task_evidence?.every(
           (evidence) => sourceIds.has(evidence.source_ref) && model.tasks.includes(evidence.task),

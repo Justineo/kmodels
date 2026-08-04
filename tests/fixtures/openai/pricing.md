@@ -62,3 +62,33 @@ Prices per 1M tokens unless noted.
 | ----------------- | ------------- | ----- | ------ | ---------------- |
 | gpt-transcribe    | Transcription | -     | -      | $0.0045 / minute |
 | gpt-4o-transcribe | Transcription | $2.50 | $10.00 | $0.006 / minute  |
+| Whisper           | Transcription | -     | -      | $0.006 / minute  |
+
+Tools
+
+### Grouped Pricing Table data
+
+| Tool        | Details   | Pricing          |
+| ----------- | --------- | ---------------- |
+| File search | Tool call | $2.50 / 1k calls |
+
+Specialized models
+
+Standard
+
+### Grouped Pricing Table data
+
+| Category   | Model                  | Input | Cached input | Output |
+| ---------- | ---------------------- | ----- | ------------ | ------ |
+| Search     | gpt-5-search-api       | $1.25 | $0.125       | $10.00 |
+| Moderation | omni-moderation-latest | Free  | -            | -      |
+
+Finetuning
+
+Standard
+
+### Pricing Table data
+
+| Model              | Training | Input | Cached input | Output |
+| ------------------ | -------- | ----- | ------------ | ------ |
+| gpt-4.1-2025-04-14 | $25.00   | $3.00 | $0.75        | $12.00 |

@@ -1,0 +1,43 @@
+<main>
+  <p>
+    When you send a request with the <code>service_tier</code> parameter set to
+    <code>"priority"</code>, Databricks admits the request ahead of standard traffic.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Provider</th>
+        <th>Model</th>
+        <th>Endpoint name</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>OpenAI</td>
+        <td>GPT-5.6 Sol</td>
+        <td><code>databricks-gpt-5-6-sol</code></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td>Google</td>
+        <td>Gemini 3.5 Flash</td>
+        <td><code>databricks-gemini-3-5-flash</code></td>
+        <td>Available on the global endpoint only. Requires cross geography routing.</td>
+      </tr>
+      <tr>
+        <td>Alibaba Cloud</td>
+        <td>Qwen3.5 122B A10B</td>
+        <td><code>databricks-qwen35-122b-a10b</code></td>
+        <td>
+          This model is available in preview. Reach out to your account team for enablement.
+          Available only in the ap-south-1 region.
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    If priority capacity is fully subscribed, requests are served at standard pay-per-token
+    availability and billed at standard pay-per-token rates.
+  </p>
+</main>

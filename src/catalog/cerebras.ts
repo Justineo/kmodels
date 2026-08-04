@@ -3,7 +3,8 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { publishedRate, scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
@@ -13,6 +14,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 const decimalSchema = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
@@ -157,7 +159,9 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
       ],
     };
   });
-  return bounded(input, "cerebras-public", models);
+  const result = bounded(input, "cerebras-public", models);
+  reconcileRates(input, result);
+  return result;
 }
 
 interface MarkdownTable {
@@ -457,9 +461,351 @@ function catalogCard(
 }
 
 function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): string {
-  const item = bundle.documents.find(({ url }) => new URL(url).pathname.endsWith(suffix));
-  if (item === undefined) throw new Error(`Cerebras source bundle omitted ${suffix}`);
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname.endsWith(suffix));
+  const [item] = matches;
+  if (matches.length !== 1 || item === undefined)
+    throw new Error(`Cerebras source bundle omitted or duplicated ${suffix}`);
   return item.body;
+}
+
+function requireClaims(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  suffix: string,
+  claims: readonly RegExp[],
+  label: string,
+): string {
+  const body = document(bundle, suffix);
+  const normalized = body.replace(/\\([_$*])/g, "$1").replace(/\s+/g, " ");
+  if (claims.some((claim) => !claim.test(normalized)))
+    throw new Error(`Cerebras ${label} contract drift`);
+  return body;
+}
+
+const commercialPaths = new Set([
+  "/api-reference/chat-completions",
+  "/api-reference/completions",
+  "/api-reference/metrics/retrieve-metrics",
+  "/api-reference/models/public-models",
+  "/capabilities/batch",
+  "/capabilities/image-inputs",
+  "/capabilities/metrics",
+  "/capabilities/prompt-caching",
+  "/capabilities/reasoning",
+  "/capabilities/service-tiers",
+  "/capabilities/tool-use",
+  "/console/account-billing",
+  "/console/overview",
+  "/console/projects",
+  "/console/usage-monitoring",
+  "/dedicated/overview",
+  "/dedicated/predicted-outputs",
+  "/integrations/aws-marketplace",
+  "/support/pricing",
+  "/support/rate-limits",
+]);
+const nonBillingCommercialMentions = new Set(["/integrations/foundry"]);
+
+function commercialIndexEntry(path: string, line: string): boolean {
+  const normalized = path.replace(/\.md$/, "");
+  if (commercialPaths.has(normalized)) return true;
+  if (nonBillingCommercialMentions.has(normalized)) return false;
+  return /\b(?:billing|costs?|credits?|meters?|pricing|spend|subscriptions?|usage)\b/i.test(line);
+}
+
+function validateCommercialIndex(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const body = document(bundle, "/llms.txt");
+  const indexed = new Set(
+    [...body.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\).*$/gm)].flatMap((match) => {
+      const href = match[1];
+      const line = match[0];
+      if (href === undefined || line === undefined) return [];
+      const url = new URL(href);
+      return url.origin === "https://inference-docs.cerebras.ai" &&
+        commercialIndexEntry(url.pathname, line)
+        ? [url.pathname.replace(/\.md$/, "")]
+        : [];
+    }),
+  );
+  if (indexed.size === 0) throw new Error("Cerebras documentation index omitted commercial pages");
+  const selected = new Set(
+    [bundle.index, ...bundle.documents].map(({ url }) =>
+      new URL(url).pathname.replace(/\.md$/, ""),
+    ),
+  );
+  const missing = [...indexed].filter((path) => !selected.has(path)).sort();
+  if (missing.length > 0)
+    throw new Error(
+      `Cerebras documentation index has unreviewed commercial pages: ${missing.join(", ")}`,
+    );
+}
+
+interface PagePrice {
+  label: string;
+  input: string;
+  output: string;
+}
+
+function pricePageRows(body: string): PagePrice[] {
+  const decoded = body.replaceAll('\\"', '"');
+  const rows = [
+    ...decoded.matchAll(
+      /"cells":\["([^"]+)","[^"]+","\$\$((?:0|[1-9]\d*)(?:\.\d+)?)\/M tokens","\$\$((?:0|[1-9]\d*)(?:\.\d+)?)\/M tokens"\]/g,
+    ),
+  ].flatMap((match) =>
+    match[1] === undefined || match[2] === undefined || match[3] === undefined
+      ? []
+      : [{ label: match[1], input: match[2], output: match[3] }],
+  );
+  if (rows.length === 0) throw new Error("Cerebras pricing page omitted model price rows");
+  return rows;
+}
+
+function identity(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function pricePageEvidence(body: string, models: ProviderModel[]): PricingReconciliationItem[] {
+  if (
+    !/Get started with \$5 in free credits after making an account/.test(body) ||
+    !/Self-serve payment starting at just \$10/.test(body) ||
+    !/10x higher rate limits than free tier/.test(body) ||
+    !/Developer Tier Pricing/.test(body)
+  )
+    throw new Error("Cerebras pricing-plan contract drift");
+  const rows = pricePageRows(body);
+  if (rows.length !== models.length) throw new Error("Cerebras pricing-page model count drift");
+  const conflicts: PricingReconciliationItem[] = [];
+  for (const row of rows) {
+    const matches = models.filter(({ model_id }) =>
+      identity(row.label).includes(identity(model_id)),
+    );
+    const [model] = matches;
+    if (matches.length !== 1 || model === undefined)
+      throw new Error(`Cerebras pricing-page identity drift: ${row.label}`);
+    const input = model.price_facts.find(({ meter }) => meter === "input_text")?.price;
+    const output = model.price_facts.find(({ meter }) => meter === "output_text")?.price;
+    if (input === undefined || output === undefined)
+      throw new Error(`Cerebras pricing-page model omitted rates: ${model.model_id}`);
+    if (!decimalsEqual(input, row.input) || !decimalsEqual(output, row.output))
+      conflicts.push({
+        disposition: "unbound",
+        reason_code: "pricing_page_card_rate_conflict",
+        sample: model.model_id,
+      });
+  }
+  return conflicts;
+}
+
+function commercialEvidence(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  models: ProviderModel[],
+): PricingReconciliationItem[] {
+  validateCommercialIndex(bundle);
+  requireClaims(
+    bundle,
+    "/api-reference/chat-completions.md",
+    [
+      /prompt_tokens:/,
+      /completion_tokens:/,
+      /total_tokens:/,
+      /image_tokens:/,
+      /cached_tokens:/,
+      /reasoning_tokens:/,
+      /rejected_prediction_tokens:/,
+      /service_tier_used:/,
+      /object: chat\.completion\.chunk[\s\S]*?usage:/,
+    ],
+    "Chat usage",
+  );
+  requireClaims(
+    bundle,
+    "/api-reference/completions.md",
+    [/prompt_tokens/, /completion_tokens/, /total_tokens/, /cached_tokens/],
+    "Completions usage",
+  );
+  requireClaims(
+    bundle,
+    "/api-reference/models/public-models.md",
+    [
+      /Pricing per token in USD/,
+      /Cost per prompt token/,
+      /Cost per completion token/,
+      /input_cache_read/,
+      /typically `"0"`/,
+    ],
+    "public-model pricing schema",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/prompt-caching.md",
+    [
+      /automatically enabled for all users/,
+      /usage\.prompt_tokens_details\.cached_tokens/,
+      /billed at the standard input token rate/,
+      /does not (?:affect|change) billing/,
+    ],
+    "cache accounting",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/service-tiers.md",
+    [/service_tier/, /service_tier_used/, /all service tiers are billed equally/],
+    "service-tier pricing",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/image-inputs.md",
+    [/usage\.image_tokens/, /prompt_tokens` includes text tokens, image tokens/],
+    "image-token accounting",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/reasoning.md",
+    [/reasoning tokens are still generated and counted toward total\s+completion tokens/i],
+    "reasoning-token accounting",
+  );
+  requireClaims(
+    bundle,
+    "/dedicated/predicted-outputs.md",
+    [
+      /rejected_prediction_tokens/,
+      /billed at the output token\s+rate/,
+      /dedicated endpoints are not affected by rejected-token pricing/,
+    ],
+    "predicted-output accounting",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/tool-use.md",
+    [/client application receives the model's tool call request, executes the specified tool/i],
+    "tool-execution",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/batch.md",
+    [
+      /Private Preview/,
+      /only charged for requests that completed/i,
+      /prompt_tokens/,
+      /completion_tokens/,
+    ],
+    "Batch accounting",
+  );
+  requireClaims(
+    bundle,
+    "/console/account-billing.md",
+    [
+      /\$5 in free credits/,
+      /Credits expire 30 days/,
+      /credit grant history/,
+      /Auto-recharge is off by default/,
+      /inference plans on a per-model basis/,
+      /multiple tiers at different\s+monthly rates/,
+    ],
+    "account billing",
+  );
+  requireClaims(
+    bundle,
+    "/console/overview.md",
+    [
+      /usage, billing, and team access/,
+      /Manage credits, payment methods, subscriptions, and invoices/,
+    ],
+    "console billing",
+  );
+  requireClaims(
+    bundle,
+    "/console/usage-monitoring.md",
+    [
+      /Usage[\s\S]*Cached-Usage[\s\S]*Cost/,
+      /Cost data may be delayed by up to 10 minutes/,
+      /active monthly subscription\s+are excluded from usage-based billing/,
+      /Download Report.*CSV/,
+    ],
+    "usage and cost reporting",
+  );
+  requireClaims(
+    bundle,
+    "/console/projects.md",
+    [
+      /two-level quota model/,
+      /billing is always aggregated and invoiced at the organization level/,
+    ],
+    "project billing",
+  );
+  requireClaims(
+    bundle,
+    "/support/rate-limits.md",
+    [/organization level, not the user level/, /precise, up-to-date rate limit\s+information/],
+    "account limits",
+  );
+  requireClaims(
+    bundle,
+    "/capabilities/metrics.md",
+    [/dedicated Cerebras inference endpoint/, /Track input and output tokens for cost analysis/],
+    "metrics availability",
+  );
+  requireClaims(
+    bundle,
+    "/api-reference/metrics/retrieve-metrics.md",
+    [
+      /available on an opt-in basis/,
+      /input_tokens_total/,
+      /output_tokens_total/,
+      /cache_reads_total/,
+      /last complete minute/,
+    ],
+    "metrics aggregation",
+  );
+  requireClaims(
+    bundle,
+    "/dedicated/overview.md",
+    [/reserved exclusively for your organization/, /available to enterprise customers/],
+    "dedicated endpoint",
+  );
+  requireClaims(
+    bundle,
+    "/integrations/aws-marketplace.md",
+    [
+      /X-Cerebras-3rd-Party-Integration: aws-marketplace/,
+      /billed monthly through your AWS account/,
+      /\$0\.01 SKU/,
+      /allow 24-48 hours for charges to appear/,
+    ],
+    "AWS Marketplace billing",
+  );
+  const pageEvidence = pricePageEvidence(document(bundle, "/support/pricing.md"), models);
+  return [
+    { disposition: "excluded", reason_code: "free_trial_credit_allowance_out_of_catalog" },
+    { disposition: "excluded", reason_code: "credit_balance_recharge_out_of_catalog" },
+    { disposition: "excluded", reason_code: "account_tier_capacity_out_of_catalog" },
+    { disposition: "excluded", reason_code: "monthly_subscription_out_of_catalog" },
+    { disposition: "excluded", reason_code: "console_cost_reporting_out_of_catalog" },
+    { disposition: "excluded", reason_code: "console_cost_delay_out_of_catalog" },
+    { disposition: "excluded", reason_code: "project_quota_out_of_catalog" },
+    { disposition: "excluded", reason_code: "metrics_api_operational_out_of_catalog" },
+    { disposition: "excluded", reason_code: "dedicated_endpoint_contract_out_of_catalog" },
+    { disposition: "excluded", reason_code: "aws_marketplace_billing_out_of_catalog" },
+    { disposition: "excluded", reason_code: "aws_billing_delay_out_of_catalog" },
+    { disposition: "excluded", reason_code: "cerebras_code_subscription_out_of_catalog" },
+    { disposition: "excluded", reason_code: "client_executed_tools_out_of_catalog" },
+    { disposition: "unbound", reason_code: "usage_cost_api_not_documented" },
+    { disposition: "unbound", reason_code: "monthly_subscription_rates_not_public" },
+    { disposition: "unbound", reason_code: "enterprise_dedicated_terms_not_public" },
+    { disposition: "unbound", reason_code: "batch_rate_not_published" },
+    ...pageEvidence,
+  ];
+}
+
+function reconcileRates(input: Input, models: ProviderModel[]): void {
+  for (const model of models)
+    for (const rate of model.price_facts)
+      input.onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code:
+          rate.meter === "cache_read_text" ? "cache_rate_normalized" : "price_normalized",
+        sample: `${model.model_id}:${rate.meter}`,
+      });
 }
 
 function validateApiReferences(bundle: z.infer<typeof linkedBundleSchema>): void {
@@ -513,7 +859,11 @@ export function parseCerebrasCatalog(input: Input): ProviderModel[] {
     if (card === undefined) throw new Error(`Cerebras catalog omitted model page for ${row.id}`);
     return catalogCard(input, row, card, cachePolicy, scheduled);
   });
-  return bounded(input, "cerebras-catalog", models);
+  const evidence = commercialEvidence(bundle, models);
+  const result = bounded(input, "cerebras-catalog", models);
+  reconcileRates(input, result);
+  for (const item of evidence) input.onPricingReconciliation?.(item);
+  return result;
 }
 
 interface Update {

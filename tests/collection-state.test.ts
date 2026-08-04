@@ -163,6 +163,16 @@ describe("collection state", () => {
       unchanged: 1,
       changed_fields: {},
     });
+    expect(unchanged.providers[0]?.pricing_coverage).toEqual({
+      current_models: 1,
+      offer_models: 0,
+      not_applicable_models: 0,
+      unknown_models: 1,
+      normalized_rate_models: 0,
+      raw_fact_models: 0,
+      unknown_model_refs: ["test/model"],
+      unknown_model_refs_omitted: 0,
+    });
 
     const changedModel = { ...unchangedModel, name: "Renamed model" };
     const addedModel = baseModel({
@@ -205,6 +215,54 @@ describe("collection state", () => {
       outcome: "changed",
       totals: { added_models: 1, changed_models: 1, retained: 0 },
     });
+  });
+
+  it("records exact leaf-level model limit changes", () => {
+    const previousModel = {
+      ...baseModel({
+        providerId: "test",
+        id: "model",
+        name: "Model",
+        sourceId: "test-catalog",
+        observedAt: previousAt,
+      }),
+      limits: {
+        context_tokens: 128_000,
+        max_output_tokens: 4_096,
+        embedding_dimensions: [512, 1_024],
+      },
+    };
+    const currentModel = {
+      ...previousModel,
+      limits: {
+        context_tokens: 131_072,
+        embedding_dimensions: [256, 512, 1_024],
+      },
+      last_seen_at: currentAt,
+      observed_at: currentAt,
+    };
+    const summary = summarizeRefresh(
+      catalog("a", previousAt, [previousModel], "b"),
+      catalog("c", currentAt, [currentModel], "b"),
+      noPricing,
+      noPricing,
+    );
+
+    expect(summary.providers[0]?.models.changed_models).toEqual([
+      {
+        model_ref: "test/model",
+        fields: ["limits"],
+        limit_changes: [
+          { field: "context_tokens", previous: 128_000, current: 131_072 },
+          { field: "max_output_tokens", previous: 4_096 },
+          {
+            field: "embedding_dimensions",
+            previous: [512, 1_024],
+            current: [256, 512, 1_024],
+          },
+        ],
+      },
+    ]);
   });
 
   it("separates rejected observations from retained publication", () => {
@@ -350,6 +408,13 @@ describe("collection state", () => {
     );
     expect(provenance.providers[0]?.pricing).toMatchObject({
       outcome: "provenance_only",
+    });
+    expect(provenance.providers[0]?.pricing_coverage).toMatchObject({
+      current_models: 1,
+      offer_models: 0,
+      not_applicable_models: 1,
+      unknown_models: 0,
+      unknown_model_refs: [],
     });
 
     const removed = summarizeRefresh(previous, current, pricing("Not offered", "fresh"), noPricing);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { manifests } from "../src/catalog/manifests.ts";
+import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import {
   assembleParsedProviderPricing,
   isRequiredPricingSource,
@@ -9,6 +9,7 @@ import {
   pricingOfferId,
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
+import { sourcePricingReconciliation } from "../src/catalog/pricing-reconciliation.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import {
   sourcePriceFactSchema,
@@ -156,10 +157,109 @@ function source(): SourceRecord {
 }
 
 describe("parsed-source canonical pricing adapter", () => {
+  it("canonicalizes megapixel rates without losing the pixel billing unit", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.price_facts = [
+      {
+        meter: "image_generation",
+        price: "0.07",
+        currency: "USD",
+        unit: "million_pixels",
+        conditions: {},
+        source_ref: sourceRef,
+        derived: false,
+        raw_price: "0.07",
+        raw_unit: "megapixel",
+      },
+    ];
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    const term = partition?.books[0]?.offers[0]?.terms[0];
+    expect(term?.kind === "rate" ? term.variants[0]?.price : undefined).toMatchObject({
+      value: { numerator: "7", denominator: "100000000" },
+      per: {
+        factors: [{ unit: { namespace: "kmodels", value: "pixel" }, power: 1 }],
+      },
+    });
+  });
+
+  it("partitions every source pricing item into an explicit reconciliation disposition", () => {
+    expect(
+      sourcePricingReconciliation(
+        [model()],
+        [
+          { disposition: "normalized", reason_code: "bound" },
+          {
+            disposition: "unbound",
+            reason_code: "identity_not_found",
+            sample: "public source row",
+          },
+          { disposition: "excluded", reason_code: "not_base_inference" },
+        ],
+        true,
+      ),
+    ).toEqual({
+      basis: "source_item",
+      unit: "reviewed source pricing item",
+      observed_items: 3,
+      disposition_counts: {
+        normalized: 1,
+        raw: 0,
+        explicit_non_numeric: 0,
+        excluded: 1,
+        unbound: 1,
+        ambiguous: 0,
+        unsupported: 0,
+        unresolved: 0,
+      },
+      diagnostic_count: 1,
+      diagnostics: [
+        {
+          disposition: "unbound",
+          reason_code: "identity_not_found",
+          sample: "public source row",
+        },
+      ],
+    });
+  });
+
+  it("falls back to parsed model outcomes and suppresses samples for private sources", () => {
+    const unresolved = model();
+    unresolved.pricing_state = "unknown";
+    unresolved.price_facts = [];
+    expect(sourcePricingReconciliation([unresolved], [], false)).toMatchObject({
+      basis: "model_output",
+      observed_items: 1,
+      disposition_counts: { unresolved: 1 },
+      diagnostic_count: 1,
+      diagnostics: [{ disposition: "unresolved", reason_code: "parser_output_unknown" }],
+    });
+  });
+
+  it("classifies every pricing source as reviewed first-party evidence", () => {
+    const providerManifests: readonly ProviderManifest[] = manifests;
+    for (const manifest of providerManifests)
+      for (const source of manifest.sources) {
+        if (source.fields.includes("pricing")) {
+          expect(source.pricingEvidence, `${manifest.provider.id}/${source.id}`).toMatchObject({
+            authority: "first_party",
+          });
+        } else {
+          expect(source.pricingEvidence, `${manifest.provider.id}/${source.id}`).toBeUndefined();
+        }
+      }
+  });
+
   it("does not make optional account inventory part of the required pricing bundle", () => {
     const azure = manifests.find(({ provider }) => provider.id === "azure");
     expect(azure?.sources.filter(isRequiredPricingSource).map(({ id }) => id)).toEqual([
       "azure-retail-prices",
+      "azure-claude-pricing",
     ]);
   });
 
@@ -470,6 +570,18 @@ describe("parsed-source canonical pricing adapter", () => {
         expected: "global",
       },
       {
+        provider: "anthropic",
+        key: "speed",
+        explicit: "fast",
+        expected: "standard",
+      },
+      {
+        provider: "amazon-bedrock",
+        key: "speed",
+        explicit: "optimized",
+        expected: "standard",
+      },
+      {
         provider: "azure",
         key: "context_tier",
         explicit: "long_context",
@@ -510,6 +622,52 @@ describe("parsed-source canonical pricing adapter", () => {
             : undefined,
       ).toBe(scenario.expected);
     }
+  });
+
+  it("keeps Anthropic speed, service tier, and inference geography independent", () => {
+    const { source: pricingSource } = pricingManifest();
+    const base = model();
+    const parsedModel: ParsedProviderModel = {
+      ...base,
+      provider_id: "anthropic",
+      uid: "anthropic/test-model",
+      price_facts: [
+        tokenRate("1", {}),
+        tokenRate("0.5", { service_tier: "batch" }),
+        tokenRate("2", { speed: "fast" }),
+        tokenRate("1.1", { inference_geo: "us" }),
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "anthropic",
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    const term = partition?.books[0]?.offers[0]?.terms[0];
+    if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
+    const conditions = (amount: string) => {
+      const variant = term.variants.find(({ observations }) =>
+        observations.some(({ raw }) => raw.amount === amount),
+      );
+      return Object.fromEntries(
+        (variant?.applicability.any_of[0]?.all_of ?? []).flatMap((condition) =>
+          condition.kind === "categorical"
+            ? [[condition.dimension.value, condition.values[0]?.value]]
+            : [],
+        ),
+      );
+    };
+    expect(conditions("0.5")).toEqual({
+      service_tier: "batch",
+      speed: "standard",
+      inference_geo: "global",
+    });
+    expect(conditions("2")).toEqual({
+      service_tier: "standard",
+      speed: "fast",
+      inference_geo: "global",
+    });
   });
 
   it("preserves explicit non-numeric source states", () => {

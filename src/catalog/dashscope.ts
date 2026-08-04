@@ -13,7 +13,8 @@ import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { multiplyDecimal, scaleDecimal } from "./pricing.ts";
+import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider } from "./schema.ts";
@@ -26,6 +27,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 const deploymentPageSchema = z.object({
@@ -524,7 +526,9 @@ function meter(
   }
   if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
   if (tasks.includes("video_generation")) return "video_generation";
-  if (tasks.includes("audio_generation")) return "output_audio";
+  if (/voice clone/.test(evidence)) return "tool_call";
+  if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
+    return direction === "output" ? "output_audio" : "input_text";
   if (tasks.includes("transcription")) return "input_audio";
   if (/output/.test(header.toLowerCase())) {
     if (/audio/.test(header.toLowerCase())) return "output_audio";
@@ -535,7 +539,6 @@ function meter(
   if (/audio/.test(header.toLowerCase())) return "input_audio";
   if (/image/.test(header.toLowerCase())) return "input_image";
   if (/video/.test(header.toLowerCase())) return "input_video";
-  if (/voice clone/.test(evidence)) return "tool_call";
   return "input_text";
 }
 
@@ -658,6 +661,16 @@ function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string):
   const priceIndexes = table.headers.flatMap((header, index) =>
     /price/i.test(header) ? [index] : [],
   );
+  const sharedRateUnits = [
+    ...new Set(
+      priceIndexes.flatMap((index) => {
+        const header = table.headers[index];
+        if (header === undefined) return [];
+        const rateUnit = unit(header, row[index]?.text ?? "");
+        return rateUnit === undefined ? [] : [rateUnit];
+      }),
+    ),
+  ];
   for (const [index, header] of table.headers.entries()) {
     if (!/price/i.test(header)) continue;
     const effectiveHeader =
@@ -667,10 +680,17 @@ function rates(table: Table, row: Cell[], tasks: ModelTask[], sourceId: string):
     const cell = row[index];
     if (cell === undefined) continue;
     const raw = cell.text;
-    const rateUnit = unit(effectiveHeader, raw);
-    if (rateUnit === undefined) continue;
+    const rateUnit =
+      unit(effectiveHeader, raw) ?? (sharedRateUnits.length === 1 ? sharedRateUnits[0] : undefined);
+    const segments = priceSegments(cell);
+    if (segments.length === 0) {
+      if (raw === "" || /^(?:--|-)$/.test(raw) || /\bDiscontinued\b/i.test(raw)) continue;
+      throw new Error(`DashScope pricing cell omitted a supported price or disposition: ${raw}`);
+    }
+    if (rateUnit === undefined)
+      throw new Error(`DashScope pricing unit changed shape: ${effectiveHeader} ${raw}`);
     const baseConditions = priceConditions(table, row, effectiveHeader);
-    for (const segment of priceSegments(cell)) {
+    for (const segment of segments) {
       const conditions = {
         ...baseConditions,
         ...segmentConditions(segment.label),
@@ -810,6 +830,254 @@ function priceModalities(
   return { input: unique(input), output: unique(output) };
 }
 
+function companion(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === pathname);
+  if (matches.length !== 1) throw new Error(`DashScope bundle requires exactly one ${pathname}`);
+  return matches[0]?.body ?? "";
+}
+
+function documentText(body: string): string {
+  return text(load(body).root().text());
+}
+
+function requireClaims(body: string, claims: readonly string[], message: string): void {
+  const normalized = documentText(body).toLowerCase();
+  if (claims.some((claim) => !normalized.includes(claim.toLowerCase()))) throw new Error(message);
+}
+
+function commercialEvidence(input: ParseInput, bundle: z.infer<typeof linkedBundleSchema>): void {
+  requireClaims(
+    bundle.index.body,
+    [
+      "only lists standard prices",
+      "unit price is determined by the total number of input tokens in a single request",
+      "All tokens in the request are billed at the unit price of the corresponding tier",
+      "These two discounts cannot apply simultaneously",
+    ],
+    "DashScope public pricing contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/context-cache"),
+    [
+      "125% of the standard input token price",
+      "10% of the standard input token price",
+      "20% of the standard input token price",
+      "Explicit cache and implicit cache are mutually exclusive",
+      "deepseek-v4-pro",
+      "not 20%",
+      "cached_tokens",
+      "cache_creation_input_tokens",
+      "not eligible for cache discounts",
+    ],
+    "DashScope context-cache accounting contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/batch-inference/"),
+    [
+      "50% of the real-time inference price",
+      "only for successfully executed requests",
+      "not eligible",
+      "context caching",
+      "thinking tokens",
+      "output token price",
+    ],
+    "DashScope batch accounting contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/qwen-api-via-openai-chat-completions"),
+    [
+      "completion_tokens",
+      "prompt_tokens",
+      "total_tokens",
+      "prompt_tokens_details",
+      "cached_tokens",
+    ],
+    "DashScope Chat Completions usage contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/compatibility-with-openai-responses-api"),
+    [
+      "input_tokens",
+      "output_tokens",
+      "total_tokens",
+      "input_tokens_details",
+      "cached_tokens",
+      "output_tokens_details",
+      "reasoning_tokens",
+    ],
+    "DashScope Responses usage contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/web-search"),
+    [
+      "plugins",
+      "x_tools",
+      "web_search",
+      "count",
+      "For the Chinese mainland and global deployment scopes: $0.573411",
+      "For the international deployment scope: $10.00",
+      "web extractor tool is free for a limited time",
+    ],
+    "DashScope web-search accounting contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/bill-query-and-cost-management"),
+    [
+      "minute-level granularity",
+      "within 2 to 10 minutes",
+      "API Key ID",
+      "input/output type",
+      "Is pay-as-you-go billed in real time? No",
+      "web search fees are still incurred for each call",
+    ],
+    "DashScope billing and cost-management contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/model-usage-statistics"),
+    [
+      "export the bill to view token usage",
+      "Billed by the number of tokens for input and output",
+      "number of images successfully generated",
+      "number of video seconds successfully generated",
+      "data displayed in the console may be delayed",
+    ],
+    "DashScope usage-reporting contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/savings-plan-and-resource-package"),
+    [
+      "discounts of up to 47%",
+      "No rollover",
+      "Deduction order: free quota",
+      "Web search plugin fees are billed independently",
+    ],
+    "DashScope savings-plan contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/more-tools"),
+    [
+      "Token Plan (Team Edition): Seat-based subscription",
+      "Coding Plan: Fixed monthly subscription billed by number of model calls",
+      "Pay-as-you-go: Post-paid based on actual usage",
+    ],
+    "DashScope billing-plan contract drifted",
+  );
+  requireClaims(
+    companion(bundle, "/help/en/model-studio/base-url"),
+    [
+      "must be used together with an API Key from the same billing plan",
+      "API Keys are independent across regions",
+      "Token Plan",
+      "Coding Plan",
+      "not for backend services",
+      "dedicated API Key",
+    ],
+    "DashScope billing-route contract drifted",
+  );
+  requireClaims(
+    companion(
+      bundle,
+      "/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill",
+    ),
+    [
+      "updated with a 24-hour delay",
+      "does not include pay-as-you-go resources that are not yet settled",
+      "final bill is available after 12:00 on the third day of the next month",
+      "PretaxGrossAmount",
+      "InvoiceDiscount",
+      "DeductedByCoupons",
+      "PaymentAmount",
+    ],
+    "Alibaba Cloud customer billing API contract drifted",
+  );
+
+  for (const reason_code of [
+    "console_promotions_out_of_catalog",
+    "free_quota_account_entitlement",
+    "savings_plans_account_adjustment",
+    "subscription_plans_account_adjustment",
+    "billing_console_out_of_catalog",
+    "bss_cost_api_out_of_catalog",
+    "response_exact_cost_not_returned",
+  ])
+    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
+  input.onPricingReconciliation?.({
+    disposition: "unbound",
+    reason_code: "web_extractor_promotion_not_bound",
+  });
+}
+
+const webSearchScopes = new Map([
+  ["International", "10"],
+  ["Global", "0.573411"],
+  ["Chinese mainland", "0.573411"],
+]);
+
+function mentionedModelIds(body: string, knownIds: Set<string>): Set<string> {
+  const normalized = documentText(body);
+  const result = new Set(
+    [...normalized.matchAll(/\bqwen[a-z0-9._-]*[.-][a-z0-9._-]+\b/g)]
+      .map((match) => match[0])
+      .filter((id) => knownIds.has(id)),
+  );
+  for (const match of normalized.matchAll(
+    /\b(qwen[a-z0-9._-]+), (qwen[a-z0-9._-]+-(\d{4}-\d{2}-\d{2})) and later snapshots\b/g,
+  )) {
+    const base = match[1];
+    const firstDate = match[3];
+    if (base === undefined || firstDate === undefined) continue;
+    const snapshot = new RegExp(
+      `^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-(\\d{4}-\\d{2}-\\d{2})$`,
+    );
+    for (const id of knownIds) {
+      const date = id.match(snapshot)?.[1];
+      if (date !== undefined && date >= firstDate) result.add(id);
+    }
+  }
+  return result;
+}
+
+function webSearchRates(input: ParseInput, body: string, models: Map<string, ProviderModel>): void {
+  const $ = load(body);
+  const supported = $("h2")
+    .filter((_index, heading) => text($(heading).text()) === "Supported models")
+    .first()
+    .parent("section");
+  const sections = supported
+    .children("section[data-tag='tabbed-content-box']")
+    .first()
+    .children("section")
+    .toArray();
+  if (sections.length !== webSearchScopes.size)
+    throw new Error("DashScope web-search model scopes drifted");
+  const knownIds = new Set(models.keys());
+  for (const section of sections) {
+    const scope = text($(section).children("h2").first().text());
+    const price = webSearchScopes.get(scope);
+    if (price === undefined) throw new Error(`Unsupported DashScope web-search scope: ${scope}`);
+    const ids = mentionedModelIds($.html(section), knownIds);
+    if (ids.size === 0) throw new Error(`DashScope web-search scope ${scope} has no bound models`);
+    for (const id of ids) {
+      const model = models.get(id);
+      if (model === undefined) continue;
+      const rate = publishedRate(
+        "tool_call",
+        price,
+        "thousand_requests",
+        input.source.id,
+        "USD per 1,000 web-search calls",
+        { deployment_scope: scope, operation: "web_search" },
+      );
+      models.set(id, merge(model, { ...model, pricing_state: "numeric", price_facts: [rate] }));
+      input.onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code: "web_search_rate_normalized",
+        sample: `${id}:${scope}`,
+      });
+    }
+  }
+}
+
 function cacheModels(body: string): Map<string, Set<string>> {
   const $ = load(body);
   const result = new Map<string, Set<string>>();
@@ -869,10 +1137,8 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-pricing") throw new Error("Wrong DashScope pricing extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const cacheBody = bundle.documents.find(
-    ({ url }) => new URL(url).pathname === "/help/en/model-studio/context-cache",
-  )?.body;
-  if (cacheBody === undefined) throw new Error("DashScope pricing bundle omitted context cache");
+  commercialEvidence(input, bundle);
+  const cacheBody = companion(bundle, "/help/en/model-studio/context-cache");
   const cache = cacheModels(cacheBody);
   const models = new Map<string, ProviderModel>();
   for (const table of tables(bundle.index.body)) {
@@ -890,6 +1156,19 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
           throw new Error(`DashScope pricing contradicts discontinued model ${id}`);
         if (!discontinued && modelRates.length === 0)
           throw new Error(`DashScope pricing omitted a supported price or disposition for ${id}`);
+        if (discontinued)
+          input.onPricingReconciliation?.({
+            disposition: "explicit_non_numeric",
+            reason_code: "discontinued_price_not_applicable",
+            sample: id,
+          });
+        else
+          for (const rate of modelRates)
+            input.onPricingReconciliation?.({
+              disposition: "normalized",
+              reason_code: "price_fact_normalized",
+              sample: `${id}:${rate.meter}:${rate.conditions.region ?? "all"}`,
+            });
         const model = baseModel({
           providerId: input.provider.id,
           id,
@@ -914,10 +1193,24 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
       }
     }
   }
+  webSearchRates(input, companion(bundle, "/help/en/model-studio/web-search"), models);
   for (const [key, idsForRegion] of cache) {
-    const region = key.split("\0")[1] ?? "";
+    const [mode = "", region = ""] = key.split("\0");
     for (const id of idsForRegion) {
       const current = models.get(id);
+      const hasBaseRate = current?.price_facts.some(
+        (item) =>
+          item.meter === "input_text" &&
+          item.conditions.region === region &&
+          item.conditions.promotion !== true &&
+          item.conditions.service_tier === undefined,
+      );
+      if (hasBaseRate !== true)
+        input.onPricingReconciliation?.({
+          disposition: "unbound",
+          reason_code: "cache_base_price_not_bound",
+          sample: `${id}:${mode}:${region}`,
+        });
       const model = baseModel({
         providerId: input.provider.id,
         id,
@@ -939,18 +1232,45 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   }
   for (const [id, model] of models) {
     const baseRates = model.price_facts.filter(
-      (item) => item.meter === "input_text" && item.conditions.promotion !== true,
+      (item) =>
+        item.meter === "input_text" &&
+        item.conditions.promotion !== true &&
+        item.conditions.service_tier === undefined,
     );
     const derived: SourcePriceFact[] = [];
     for (const item of baseRates) {
       const region = item.conditions.region;
       if (region === undefined) continue;
       if (cache.get(`Explicit cache\0${region}`)?.has(id)) {
-        derived.push(cacheRate(item, "cache_write_text", "1.25", "explicit_cache", 300));
-        derived.push(cacheRate(item, "cache_read_text", "0.1", "explicit_cache", 300));
+        const rates = [
+          cacheRate(item, "cache_write_text", "1.25", "explicit_cache", 300),
+          cacheRate(item, "cache_read_text", "0.1", "explicit_cache", 300),
+        ];
+        derived.push(...rates);
+        for (const rate of rates)
+          input.onPricingReconciliation?.({
+            disposition: "normalized",
+            reason_code: "cache_rate_normalized",
+            sample: `${id}:${rate.meter}:${region}`,
+          });
       }
-      if (cache.get(`Implicit cache\0${region}`)?.has(id))
-        derived.push(cacheRate(item, "cache_read_text", "0.2", "implicit_cache"));
+      if (cache.get(`Implicit cache\0${region}`)?.has(id)) {
+        if (id === "deepseek-v4-pro") {
+          input.onPricingReconciliation?.({
+            disposition: "unbound",
+            reason_code: "implicit_cache_price_not_public",
+            sample: `${id}:${region}`,
+          });
+          continue;
+        }
+        const rate = cacheRate(item, "cache_read_text", "0.2", "implicit_cache");
+        derived.push(rate);
+        input.onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "cache_rate_normalized",
+          sample: `${id}:${rate.meter}:${region}`,
+        });
+      }
     }
     if (derived.length > 0)
       models.set(id, merge(model, { ...model, pricing_state: "numeric", price_facts: derived }));

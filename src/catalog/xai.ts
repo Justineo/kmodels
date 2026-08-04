@@ -4,9 +4,14 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { orderedTasks } from "./task.ts";
 import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import {
   modalitySchema,
@@ -21,6 +26,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
@@ -339,6 +345,32 @@ function distinct<T extends { name: string }>(values: T[], category: string): T[
     models.set(value.name, value);
   }
   return [...models.values()];
+}
+
+function modelRegions(catalog: z.infer<typeof publicModelsSchema>): Map<string, string[]> {
+  const regions = new Map<string, string[]>();
+  for (const cluster of catalog.clusterConfigs) {
+    const models = [
+      ...cluster.languageModels,
+      ...cluster.embeddingModels,
+      ...cluster.imageGenerationModels,
+      ...cluster.audioModels,
+      ...cluster.videoGenerationModels,
+    ];
+    for (const value of models)
+      regions.set(value.name, unique([...(regions.get(value.name) ?? []), cluster.clusterName]));
+  }
+  return regions;
+}
+
+function regionalRates(rates: SourcePriceFact[], regions: string[]): SourcePriceFact[] {
+  if (regions.length === 0) throw new Error("xAI priced model omitted its public region");
+  return regions.flatMap((region) =>
+    rates.map((rate) => ({
+      ...rate,
+      conditions: { ...rate.conditions, region },
+    })),
+  );
 }
 
 function companion(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
@@ -799,6 +831,162 @@ function voicePrices(pricing: string): VoicePrices {
   };
 }
 
+function requireClaims(body: string, claims: readonly string[], message: string): void {
+  if (claims.some((claim) => !body.includes(claim))) throw new Error(message);
+}
+
+function accountingEvidence(
+  input: ParseInput,
+  llms: string,
+  pricing: string,
+  voice: VoicePrices,
+): SourceRawPricingFact {
+  requireClaims(
+    section(llms, "/developers/cost-tracking"),
+    [
+      "exact cost you were charged",
+      "`cost_in_usd_ticks`",
+      "after all applicable discounts",
+      "inclusive of all token costs and server-side tool invocation costs",
+      "1 USD = 10,000,000,000 ticks",
+      "Cost is only included in the final chunk",
+    ],
+    "xAI exact response-cost reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/advanced-api-usage/prompt-caching/usage-and-pricing"),
+    [
+      "`usage.prompt_tokens_details.cached_tokens`",
+      "`usage.input_tokens_details.cached_tokens`",
+      "Reasoning tokens | Full completion token price",
+      "total prompt tokens (including cached tokens)",
+    ],
+    "xAI cached-token accounting reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/advanced-api-usage/priority-processing"),
+    [
+      'service_tier: "priority"',
+      'response confirms `"priority"`',
+      "only billed at the priority rate",
+      '"cost_in_usd_ticks"',
+    ],
+    "xAI priority accounting reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/tools/tool-usage-details"),
+    [
+      "`server_side_tool_usage` - Successful Calls (Billable)",
+      "determines your billing",
+      "Only successful tool executions",
+      "`completion_tokens`",
+      "`prompt_tokens`",
+      "`reasoning_tokens`",
+      "`cached_prompt_text_tokens`",
+      "`prompt_image_tokens`",
+    ],
+    "xAI tool accounting reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/advanced-api-usage/batch-api"),
+    ["cost_in_usd_ticks", "total_cost_usd_ticks"],
+    "xAI Batch cost reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/rest-api-reference/management"),
+    ["management key", "https://management-api.x.ai"],
+    "xAI Management API reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/rest-api-reference/management/billing"),
+    [
+      "POST /v1/billing/teams/\\{team\\_id}/usage",
+      "Get historical usage of the API",
+      '"name": "usd"',
+      "TIME\\_UNIT\\_SECOND",
+      "`limitReached`",
+    ],
+    "xAI historical usage API reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/faq/billing"),
+    ["cost is calculated immediately", "inference endpoints add pre-defined tokens"],
+    "xAI billing timing reference drifted",
+  );
+  requireClaims(
+    section(llms, "/developers/rate-limits"),
+    ["tier is based on cumulative spend", "Rate limit tiers apply to text and embedding models"],
+    "xAI account-tier reference drifted",
+  );
+  requireClaims(
+    pricing,
+    [
+      "File storage",
+      "Collection storage",
+      "File downloads",
+      "geographical location, account limitations",
+    ],
+    "xAI auxiliary and availability pricing reference drifted",
+  );
+
+  const fee = pricing.match(
+    /caught before generation in the Responses API[\s\S]*?\$([\d.]+)\s+usage guideline violation fee per request/i,
+  )?.[1];
+  if (fee === undefined) throw new Error("xAI usage-guideline violation fee drifted");
+
+  input.onPricingReconciliation?.({
+    disposition: "raw",
+    reason_code: "usage_guideline_violation_fee",
+  });
+  for (const item of [
+    {
+      reason_code: "non_model_tts_price_unbound",
+      sample: `$${voice.speech} / 1M chars`,
+    },
+    {
+      reason_code: "non_model_stt_prices_unbound",
+      sample: `$${voice.transcription} / hr REST; $${voice.streamingTranscription} / hr streaming`,
+    },
+  ])
+    input.onPricingReconciliation?.({ disposition: "unbound", ...item });
+  for (const reason_code of [
+    "account_response_cost_out_of_catalog",
+    "account_usage_api_out_of_catalog",
+    "credits_and_limits_not_public_rates",
+    "auxiliary_storage_price_out_of_scope",
+    "spend_tier_affects_limits_not_rates",
+  ])
+    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
+
+  const voiceApi = section(llms, "/developers/rest-api-reference/inference/voice");
+  requireClaims(
+    voiceApi,
+    ["/v1/tts", "/v1/stt", "wss://api.x.ai/v1/realtime"],
+    "xAI Voice API reference drifted",
+  );
+  const voiceReturnsCost = voiceApi.includes("cost_in_usd_ticks");
+  input.onPricingReconciliation?.({
+    disposition: voiceReturnsCost ? "unsupported" : "excluded",
+    reason_code: voiceReturnsCost
+      ? "voice_response_cost_unmodeled"
+      : "voice_response_cost_not_documented",
+  });
+
+  return {
+    term_key: "usage_guideline_violation_fee",
+    impact: "base_price",
+    reason: "unknown_meter",
+    conditions: {},
+    source_ref: input.source.id,
+    raw: {
+      label: "Pre-generation Responses usage-guideline violation fee",
+      amount: fee,
+      denomination: "USD",
+      unit: "request",
+    },
+  };
+}
+
 function voiceRates(prices: VoicePrices, id: string, sourceId: string): SourcePriceFact[] {
   const rate = prices.realtime.get(id);
   if (rate === undefined) throw new Error(`xAI voice pricing omitted ${id}`);
@@ -894,6 +1082,9 @@ function currentModels(
     catalog.clusterConfigs.flatMap(({ videoGenerationModels }) => videoGenerationModels),
     "video",
   );
+  const regions = modelRegions(catalog);
+  const ratesFor = (id: string, rates: SourcePriceFact[]): SourcePriceFact[] =>
+    regionalRates(rates, regions.get(id) ?? []);
   const routable = [...language, ...embeddings, ...images, ...videos];
   const endpoints = endpointFacts(llms, routable);
   const multiAgent = multiAgentModels(llms, language);
@@ -907,6 +1098,7 @@ function currentModels(
   assertPublicPricing(pricing, language, images, videos);
   const prices = voicePrices(pricing);
   if (voice.length > 0) assertVoiceServices(prices, voice);
+  const violationFee = accountingEvidence(input, llms, pricing, prices);
   const terms = pricingTerms(pricing, language);
   const tools = toolRates(pricing, input.source.id);
   const names = displayNames(html);
@@ -957,35 +1149,44 @@ function currentModels(
       release_stage: releaseStage,
       pricing_state: "numeric",
       price_facts: [
-        ...textRates(
-          value,
-          input.source.id,
-          terms.batchMultipliers.get(value.name),
-          terms.priorityMultiplier,
+        ...ratesFor(
+          value.name,
+          textRates(
+            value,
+            input.source.id,
+            terms.batchMultipliers.get(value.name),
+            terms.priorityMultiplier,
+          ),
         ),
         ...tools,
       ],
+      raw_price_facts: endpoints.get(value.name)?.some(({ path }) => path === "/v1/responses")
+        ? [violationFee]
+        : [],
     });
   });
   const embeddingModels = embeddings.map((value) => {
-    const rates = [
-      exactRate(
-        "input_text",
-        value.promptTextTokenPrice,
-        4,
-        "million_tokens",
-        input.source.id,
-        "USD cents / 100M tokens",
-      ),
-      exactRate(
-        "input_image",
-        value.promptImageTokenPrice,
-        4,
-        "million_tokens",
-        input.source.id,
-        "USD cents / 100M tokens",
-      ),
-    ].filter(({ price }) => price !== "0");
+    const rates = ratesFor(
+      value.name,
+      [
+        exactRate(
+          "input_text",
+          value.promptTextTokenPrice,
+          4,
+          "million_tokens",
+          input.source.id,
+          "USD cents / 100M tokens",
+        ),
+        exactRate(
+          "input_image",
+          value.promptImageTokenPrice,
+          4,
+          "million_tokens",
+          input.source.id,
+          "USD cents / 100M tokens",
+        ),
+      ].filter(({ price }) => price !== "0"),
+    );
     return model(input, value.name, {
       ...details(value.name, value.aliases),
       version: value.version,
@@ -1019,7 +1220,7 @@ function currentModels(
       capabilities: { ...unknownCapabilities(), streaming: false, batch: true },
       status: "active",
       pricing_state: "numeric",
-      price_facts: rates,
+      price_facts: ratesFor(value.name, rates),
     });
   });
   const videoModels = videos.map((value) => {
@@ -1047,7 +1248,7 @@ function currentModels(
       capabilities: { ...unknownCapabilities(), batch: true },
       status: "active",
       pricing_state: "numeric",
-      price_facts: rates,
+      price_facts: ratesFor(value.name, rates),
     });
   });
   return [
@@ -1055,7 +1256,7 @@ function currentModels(
     ...embeddingModels,
     ...imageModels,
     ...videoModels,
-    ...voiceModels(input, llms, voice, prices, tools, releases),
+    ...voiceModels(input, llms, voice, prices, tools, releases, regions),
   ];
 }
 
@@ -1066,6 +1267,7 @@ function voiceModels(
   prices: VoicePrices,
   tools: SourcePriceFact[],
   releases: ReleaseSection[],
+  regions: Map<string, string[]>,
 ): ProviderModel[] {
   const voice = section(llms, "/developers/model-capabilities/audio/speech-to-speech");
   const tableStart = voice.indexOf("| Model | Description | |");
@@ -1135,7 +1337,10 @@ function voiceModels(
       release_date: releaseDate(releases, row.id, row.id),
       status: row.deprecated ? "deprecated" : "active",
       pricing_state: "numeric",
-      price_facts: [...voiceRates(prices, row.id, input.source.id), ...tools],
+      price_facts: [
+        ...regionalRates(voiceRates(prices, row.id, input.source.id), regions.get(row.id) ?? []),
+        ...tools,
+      ],
     });
   });
 }
@@ -1303,12 +1508,24 @@ function redirectedModels(models: ProviderModel[]): ProviderModel[] {
 export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const llms = companion(bundle, "/llms.txt");
-  return redirectedModels(
+  const models = redirectedModels(
     combine([
       ...currentModels(input, embeddedModels(bundle.index.body), bundle.index.body, llms),
       ...lifecycleModels(input, llms),
     ]),
   );
+  for (const model of models)
+    input.onPricingReconciliation?.({
+      disposition: model.price_facts.length > 0 ? "normalized" : "unresolved",
+      reason_code:
+        model.price_facts.length > 0
+          ? model.status === "legacy"
+            ? "redirect_price_set_bound"
+            : "public_price_set_bound"
+          : "model_price_set_unresolved",
+      sample: model.model_id,
+    });
+  return models;
 }
 
 export function parseXaiApi(input: ParseInput): ProviderModel[] {

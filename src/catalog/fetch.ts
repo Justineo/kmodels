@@ -53,6 +53,37 @@ const ollamaListSchema = z
   })
   .passthrough();
 const ollamaErrorSchema = z.strictObject({ error: z.string().min(1) });
+const vercelModelsTransportSchema = z.strictObject({
+  object: z.literal("list"),
+  data: z.array(
+    z
+      .object({
+        id: modelIdSchema.refine((value) => value.split("/").length === 2),
+        pricing: z.record(z.string(), z.unknown()),
+      })
+      .passthrough(),
+  ),
+});
+const vercelEndpointTransportSchema = z.strictObject({
+  data: z
+    .object({
+      id: modelIdSchema,
+      endpoints: z.array(
+        z
+          .object({
+            name: z.string().min(1),
+            provider_name: z.string().min(1),
+            uptime_last_15m: z.number().nullable().optional(),
+            uptime_last_1h: z.number().nullable().optional(),
+            uptime_last_1d: z.number().nullable().optional(),
+            latency_last_1h: z.unknown().nullable().optional(),
+            throughput_last_1h: z.unknown().nullable().optional(),
+          })
+          .passthrough(),
+      ),
+    })
+    .passthrough(),
+});
 
 export const sourceStateSchema = z.object({
   etag: z.string().optional(),
@@ -444,17 +475,11 @@ async function fetchAzureModels(
   return body;
 }
 
-async function fetchAzureRetailPrices(source: SourceManifest, products: string[]): Promise<string> {
-  if (products.length === 0) throw new Error("Azure Retail Prices product filter is empty");
+async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
   const url = new URL(source.url);
   url.searchParams.set("api-version", "2023-01-01-preview");
   url.searchParams.set("currencyCode", "USD");
-  url.searchParams.set(
-    "$filter",
-    `serviceName eq 'Foundry Models' and priceType eq 'Consumption' and (${products
-      .map((product) => `productName eq '${product.replaceAll("'", "''")}'`)
-      .join(" or ")})`,
-  );
+  url.searchParams.set("$filter", "serviceName eq 'Foundry Models' and priceType eq 'Consumption'");
   const prices = await fetchAzureRetailPages(source, "Azure Retail Prices", url, {
     items: 50_000,
     pages: 50,
@@ -669,7 +694,7 @@ function generatedFetchResult(body: string): FetchResult {
   };
 }
 
-export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] {
+function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): URL[] {
   const crawl = source.linkedDocuments;
   if (crawl === undefined) return [];
   const urls = new Map<string, URL>();
@@ -690,7 +715,7 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
       const suffix = crawl.discoverySuffix;
       if (suffix !== undefined && !url.pathname.endsWith(suffix)) return;
       const path = suffix === undefined ? url.pathname : url.pathname.slice(0, -suffix.length);
-      if (!crawl.path.test(path)) return;
+      if (!pathPattern.test(path)) return;
       url.pathname = `${path}${crawl.requestSuffix ?? ""}`;
       urls.set(url.href, url);
     } catch {
@@ -710,6 +735,13 @@ export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] 
     $("a[href]").each((_index, element) => add($(element).attr("href")));
   }
   const values = [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
+  return values;
+}
+
+export function linkedDocumentUrls(body: string, source: SourceManifest): URL[] {
+  const crawl = source.linkedDocuments;
+  if (crawl === undefined) return [];
+  const values = linkedUrls(body, source, crawl.path);
   assertItemCount("Linked documents", values.length, crawl.minDocuments, crawl.maxDocuments);
   return values;
 }
@@ -811,6 +843,126 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
   };
 }
 
+interface FetchedDocument {
+  key: string;
+  url: string;
+  payload: FetchPayload;
+}
+
+async function fetchConfiguredDocuments(
+  source: SourceManifest,
+  label: string,
+): Promise<FetchedDocument[]> {
+  const crawl = source.linkedDocuments;
+  if (
+    crawl === undefined ||
+    crawl.nestedIndexes !== undefined ||
+    crawl.minDocuments !== 0 ||
+    crawl.maxDocuments !== 0
+  )
+    throw new Error(`${label} documentation bundle is not reviewed`);
+  return mapConcurrent(crawl.documents ?? [], crawl.concurrency, async (document) => {
+    const key = `${source.id}/${document.id}`;
+    const url = checkedUrl(document.url, source);
+    const payload = await fetchPayload(
+      requestSource(source, key, url, document.format ?? source.format, document.maxResponseBytes),
+    );
+    return { key, url: url.href, payload };
+  });
+}
+
+async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  const extractor = source.extractor;
+  if (transport?.kind !== "vercel-models" || extractor.kind !== "vercel-catalog")
+    throw new Error("Invalid Vercel models transport");
+  const indexKey = `${source.id}/index`;
+  const index = await fetchPayload(
+    requestSource(
+      source,
+      indexKey,
+      checkedUrl(source.url, source),
+      "json",
+      source.maxResponseBytes,
+    ),
+  );
+  const list = vercelModelsTransportSchema.parse(json(index.body));
+  assertItemCount(
+    "Vercel models transport",
+    list.data.length,
+    extractor.minModels,
+    extractor.maxModels,
+  );
+  const ids = list.data.map(({ id }) => id);
+  if (new Set(ids).size !== ids.length) throw new Error("Vercel model IDs were not unique");
+  const slugOwners = new Map<string, string>();
+  for (const id of ids) {
+    const slug = id.split("/")[1];
+    if (slug === undefined) throw new Error("Vercel model ID omitted its slug");
+    const owner = slugOwners.get(slug);
+    if (owner !== undefined && owner !== id)
+      throw new Error(`Vercel model page slug ${slug} was ambiguous`);
+    slugOwners.set(slug, id);
+  }
+
+  const endpointDocuments = await mapConcurrent(ids, transport.concurrency, async (id) => {
+    const key = `${source.id}/endpoints/${sha256(id)}`;
+    const url = checkedUrl(`${source.url}/${id}/endpoints`, source);
+    if (url.hostname !== "ai-gateway.vercel.sh" || url.pathname !== `/v1/models/${id}/endpoints`)
+      throw new Error("Vercel endpoint URL left the reviewed API path");
+    const raw = await fetchPayload(
+      requestSource(source, key, url, "json", transport.maxEndpointBytes),
+    );
+    const body = normalizeVercelEndpointResponse(raw.body);
+    const payload = { ...raw, body, contentHash: sha256(body) };
+    return { key, url: url.href, payload };
+  });
+
+  const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
+  if (modelPageBase.href !== "https://vercel.com/ai-gateway/models/")
+    throw new Error("Vercel model-page base URL is not reviewed");
+  const missing = list.data.filter(({ pricing }) => Object.keys(pricing).length === 0);
+  assertItemCount(
+    "Vercel model pricing pages",
+    missing.length,
+    transport.minModelPages,
+    transport.maxModelPages,
+  );
+  const modelPages = await mapConcurrent(missing, transport.concurrency, async ({ id }) => {
+    const slug = id.split("/")[1];
+    if (slug === undefined) throw new Error("Vercel model ID omitted its page slug");
+    const key = `${source.id}/model-page/${sha256(id)}`;
+    const url = checkedUrl(new URL(slug, modelPageBase).href, source);
+    if (url.hostname !== "vercel.com" || url.pathname !== `/ai-gateway/models/${slug}`)
+      throw new Error("Vercel model page left the reviewed path");
+    const raw = await fetchPayload(
+      requestSource(source, key, url, "html", transport.maxModelPageBytes),
+    );
+    const body = normalizeVercelModelPage(raw.body);
+    const payload = { ...raw, body, contentHash: sha256(body) };
+    return { key, url: url.href, payload };
+  });
+
+  const documentation = await fetchConfiguredDocuments(source, "Vercel");
+  const documents = [...endpointDocuments, ...modelPages, ...documentation];
+  const body = JSON.stringify({
+    index: { url: source.url, body: index.body },
+    documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Vercel models bundle exceeded byte limit");
+  return {
+    body,
+    contentHash: sha256(body),
+    etag: index.etag,
+    lastModified: index.lastModified,
+    dependencies: [
+      observation(indexKey, index),
+      ...documents.map(({ key, payload }) => observation(key, payload)),
+    ],
+  };
+}
+
 function ollamaCloudIds(body: string): string[] {
   const $ = load(body);
   const ids = new Set<string>();
@@ -834,6 +986,69 @@ function json(body: string): unknown {
   return JSON.parse(body);
 }
 
+function normalizedText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function normalizeVercelModelPage(body: string): string {
+  const $ = load(body);
+  const title = normalizedText($("h1").first().text());
+  const tables = $("table");
+  if (title === "" || tables.length < 3 || normalizedText(tables.eq(0).text()) !== "Provider")
+    throw new Error("Vercel model page changed its primary pricing table");
+  const headers = [
+    "Provider",
+    ...tables
+      .eq(1)
+      .find("th,td")
+      .map((_index, cell) => normalizedText($(cell).text()))
+      .get(),
+  ];
+  const cells = tables.eq(2).find("td");
+  const values = cells.map((_index, cell) => normalizedText($(cell).text())).get();
+  if (
+    headers.length !== values.length ||
+    headers.some((header) => header === "") ||
+    new Set(headers).size !== headers.length
+  )
+    throw new Error("Vercel model page pricing columns changed shape");
+  const providerLinks = cells
+    .eq(0)
+    .find('a[href^="/ai-gateway/models/providers/"]')
+    .map((_index, anchor) => $(anchor).attr("href"))
+    .get();
+  if (providerLinks.length !== 1) throw new Error("Vercel model page omitted its route provider");
+  const provider = providerLinks[0]?.match(/^\/ai-gateway\/models\/providers\/([^/]+)$/)?.[1];
+  if (provider === undefined) throw new Error("Vercel model page route provider changed shape");
+  const titles = cells.toArray().map((cell) =>
+    $(cell)
+      .find("[title]")
+      .map((_titleIndex, titled) => normalizedText($(titled).attr("title") ?? ""))
+      .get()
+      .filter((value) => value !== ""),
+  );
+  return JSON.stringify({ title, provider, headers, values, titles });
+}
+
+export function normalizeVercelEndpointResponse(body: string): string {
+  const parsed = vercelEndpointTransportSchema.parse(json(body));
+  const endpoints = parsed.data.endpoints
+    .map(
+      ({
+        uptime_last_15m: _uptime15m,
+        uptime_last_1h: _uptime1h,
+        uptime_last_1d: _uptime1d,
+        latency_last_1h: _latency,
+        throughput_last_1h: _throughput,
+        ...stable
+      }) => stable,
+    )
+    .sort((left, right) =>
+      `${left.provider_name}\0${left.name}`.localeCompare(`${right.provider_name}\0${right.name}`),
+    );
+  return JSON.stringify({ data: { ...parsed.data, endpoints } });
+}
+
 export function normalizeOllamaList(body: string): string {
   const list = ollamaListSchema.parse(json(body));
   return JSON.stringify({
@@ -850,6 +1065,78 @@ export function normalizeOllamaResponse(status: 200 | 404 | 410, body: string): 
   if (match?.[1] === undefined)
     throw new Error("Ollama cloud retirement response omitted its request reference");
   return { error: match[1] };
+}
+
+function directOllamaCloudId(value: string): string | undefined {
+  const id = value.endsWith("-cloud")
+    ? value.slice(0, -"-cloud".length)
+    : value.endsWith(":cloud")
+      ? value.slice(0, -":cloud".length)
+      : undefined;
+  return id === undefined ? undefined : modelIdSchema.parse(id);
+}
+
+export function normalizeOllamaModelPage(model: string, body: string): string {
+  const family = modelIdSchema.parse(model);
+  const $ = load(body);
+  if (normalizedText($("title").first().text()) !== family)
+    throw new Error("Ollama model page identity changed shape");
+  const tagTexts = new Map<string, string[]>();
+  $('a[href^="/library/"]').each((_index, element) => {
+    const href = $(element).attr("href");
+    const raw = href?.match(/^\/library\/([a-z0-9][a-z0-9._:-]*)$/i)?.[1];
+    if (raw === undefined || !raw.startsWith(`${family}:`)) return;
+    const id = directOllamaCloudId(raw);
+    if (id === undefined) return;
+    const values = tagTexts.get(id) ?? [];
+    values.push(normalizedText($(element).text()));
+    tagTexts.set(id, values);
+  });
+  const tags = [...tagTexts]
+    .map(([id, texts]) => {
+      const labels = new Set(
+        texts.flatMap((text) => {
+          const match = text.match(/\b(Low|Medium|High|Extra High) Usage\b/i)?.[1];
+          return match === undefined ? [] : [match.toLowerCase()];
+        }),
+      );
+      if (texts.some((text) => /\bUsage\b/i.test(text)) && labels.size !== 1)
+        throw new Error("Ollama cloud usage level changed shape");
+      const [label] = labels;
+      return {
+        model: id,
+        ...(label === undefined ? {} : { label }),
+      };
+    })
+    .sort((left, right) => left.model.localeCompare(right.model));
+  if (tags.length === 0) throw new Error("Ollama cloud model page omitted Cloud tags");
+
+  const page = normalizedText($.root().text());
+  const cost = page.match(
+    /\bCost \/1M tokens \$((?:0|[1-9]\d*)(?:\.\d+)?)\s*input \$((?:0|[1-9]\d*)(?:\.\d+)?)\s*cached \$((?:0|[1-9]\d*)(?:\.\d+)?)\s*output\b/,
+  );
+  if (/\bCost \/1M tokens\b/.test(page) && cost === null)
+    throw new Error("Ollama cloud model cost changed shape");
+  if (
+    cost !== null &&
+    !/requires a Pro or Max subscription, and consumes extra usage credits/i.test(page)
+  )
+    throw new Error("Ollama cloud model cost applicability changed");
+  return JSON.stringify({
+    model: family,
+    tags,
+    ...(cost === null
+      ? {}
+      : {
+          cost: {
+            input: cost[1],
+            cached: cost[2],
+            output: cost[3],
+            unit: "1M tokens",
+            accountEligibility: "extra_usage_balance",
+          },
+        }),
+  });
 }
 
 async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
@@ -901,7 +1188,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     transport.maxModels,
   );
   const modelIds = [...new Set([...listed, ...catalogIds])].sort();
-  const documents = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
+  const details = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
     const key = `${source.id}/show/${sha256(model)}`;
     const showSource = {
       ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
@@ -912,14 +1199,35 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     const body = JSON.stringify(normalizeOllamaResponse(payload.status, payload.body));
     return { key, model, payload: { ...payload, body, contentHash: sha256(body) } };
   });
+  const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
+  if (modelPageBase.href !== "https://ollama.com/library/")
+    throw new Error("Ollama model-page base URL is not reviewed");
+  const pages = await mapConcurrent(catalogIds, transport.concurrency, async (model) => {
+    const key = `${source.id}/model-page/${sha256(model)}`;
+    const url = checkedUrl(new URL(model, modelPageBase).href, source);
+    if (url.hostname !== "ollama.com" || url.pathname !== `/library/${model}`)
+      throw new Error("Ollama model page left the reviewed path");
+    const raw = await fetchPayload(
+      requestSource(source, key, url, "html", transport.maxModelPageBytes),
+    );
+    const body = normalizeOllamaModelPage(model, raw.body);
+    return { key, model, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
+  });
+  const documents = await fetchConfiguredDocuments(source, "Ollama");
   const body = JSON.stringify({
     list: json(index.body),
     catalog: { url: catalogUrl.href, body: catalog.body },
-    documents: documents.map(({ model, payload }) => ({
+    pages: pages.map(({ model, url, payload }) => ({
+      model,
+      url,
+      body: json(payload.body),
+    })),
+    details: details.map(({ model, payload }) => ({
       model,
       status: payload.status,
       body: json(payload.body),
     })),
+    documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Ollama cloud bundle exceeded byte limit");
@@ -931,6 +1239,8 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     dependencies: [
       observation(indexKey, index),
       observation(catalogKey, catalog),
+      ...pages.map(({ key, payload }) => observation(key, payload)),
+      ...details.map(({ key, payload }) => observation(key, payload)),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
   };
@@ -947,7 +1257,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     return { ...payload, dependencies: [] };
   }
   if (source.transport?.kind === "azure-retail-prices") {
-    const body = await fetchAzureRetailPrices(source, source.transport.products);
+    const body = await fetchAzureRetailPrices(source);
     return generatedFetchResult(body);
   }
   if (source.transport?.kind === "azure-models") {
@@ -963,6 +1273,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     return generatedFetchResult(body);
   }
   if (source.transport?.kind === "huggingface-models") return fetchHuggingFaceModels(source);
+  if (source.transport?.kind === "vercel-models") return fetchVercelModels(source);
   if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
   const crawl = source.linkedDocuments;
@@ -974,8 +1285,54 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   const indexKey = `${source.id}/index`;
   const indexSource = linkedSource(source, indexKey, new URL(source.url));
   const index = await fetchPayload(indexSource);
-  const urls = linkedDocumentUrls(index.body, source);
-  const discovered = urls.map((url) => {
+  const nestedIndexUrls =
+    crawl.nestedIndexes === undefined
+      ? []
+      : linkedUrls(index.body, source, crawl.nestedIndexes.path);
+  if (crawl.nestedIndexes !== undefined)
+    assertItemCount(
+      "Nested linked indexes",
+      nestedIndexUrls.length,
+      crawl.nestedIndexes.minDocuments,
+      crawl.nestedIndexes.maxDocuments,
+    );
+  const nestedIndexes = await mapConcurrent(
+    nestedIndexUrls.map((url) => {
+      const filename = url.pathname.split("/").at(-1);
+      if (filename === undefined) throw new Error("Nested linked index URL omitted a filename");
+      return {
+        key: `${source.id}/index/${filename.replace(/\.(?:md|ts)$/, "")}`,
+        url,
+      };
+    }),
+    crawl.concurrency,
+    async ({ key, url }) => {
+      try {
+        const payload = await fetchPayload(linkedSource(source, key, url));
+        return { key, url: url.href, payload };
+      } catch (error) {
+        throw new Error(
+          `Nested linked index ${key} failed: ${
+            error instanceof Error ? error.message : "unknown fetch failure"
+          }`,
+        );
+      }
+    },
+  );
+  const urls = new Map<string, URL>();
+  for (const url of linkedUrls(index.body, source, crawl.path)) urls.set(url.href, url);
+  for (const nested of nestedIndexes)
+    for (const url of linkedUrls(nested.payload.body, source, crawl.path)) urls.set(url.href, url);
+  const discoveredUrls = [...urls.values()].sort((left, right) =>
+    left.href.localeCompare(right.href),
+  );
+  assertItemCount(
+    "Linked documents",
+    discoveredUrls.length,
+    crawl.minDocuments,
+    crawl.maxDocuments,
+  );
+  const discovered = discoveredUrls.map((url) => {
     const filename = url.pathname.split("/").at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
     const stem = filename.replace(/\.(?:md|ts)$/, "");
@@ -1022,7 +1379,10 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   });
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
-    documents: documents.map((document) => ({ url: document.url, body: document.payload.body })),
+    documents: [...nestedIndexes, ...documents].map((document) => ({
+      url: document.url,
+      body: document.payload.body,
+    })),
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Linked documents exceeded aggregate byte limit");
@@ -1033,6 +1393,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     lastModified: index.lastModified,
     dependencies: [
       observation(indexKey, index),
+      ...nestedIndexes.map((document) => observation(document.key, document.payload)),
       ...documents.map((document) => observation(document.key, document.payload)),
     ],
   };

@@ -141,6 +141,25 @@ The canonical pricing asset retains observations, source references, locators,
 raw source fields, and derivations for validation and audit. Those fields do
 not belong in the website runtime payload.
 
+Pricing information has four deliberate publication levels:
+
+1. Collection audit retains source attempts, extraction counts, input/output reconciliation,
+   bounded diagnostics, freshness, and the reviewed first-party evidence policy. This explains what
+   Kmodels saw and what it could not bind; it is not a provider commercial claim.
+2. Refresh reports aggregate those attempts into provider/model resolution coverage and actionable
+   warnings. Reports remain operational artifacts and are not a pricing API.
+3. Canonical catalog and pricing APIs retain only validated public commercial facts, exact source
+   references, bounded raw fallbacks, and the source records needed to audit provenance. They never
+   expose rejected candidates or credential-scoped observations.
+4. Website packs contain only the fields required to render the catalog, representative pricing,
+   and deferred model detail. They omit source policy, reconciliation, warnings, and raw collection
+   diagnostics.
+
+The bound catalog source records expose Kmodels' reviewed first-party pricing-source classification:
+source kind, permitted identity binding, and currentness semantics. This describes why a source is
+admissible; it is metadata about Kmodels' evidence boundary, not a provider price. Refresh summaries
+retain operational resolution coverage and reconciliation. Neither enters the UI packs.
+
 The website is built from three closed runtime payloads:
 
 - `/ui/catalog/index.json` contains only fields needed to render, search,
@@ -224,6 +243,11 @@ For one model, presentation uses this precedence:
    that the provider has no public hosted pricing offer for that model;
 2. otherwise, one or more matching books mean offers are available;
 3. otherwise, pricing is unknown.
+
+The refresh report separately measures this resolution boundary for every current provider model.
+That operational classification is audit and collection evidence, not a commercial assertion, so it
+does not enter the canonical pricing API or the website payload. The canonical resource continues to
+publish only provider-established offers, dispositions, and their evidence.
 
 `not_published` is not the same as either outcome above. It is an offer state:
 the offer exists, but the provider does not publish its price. `custom_quote`

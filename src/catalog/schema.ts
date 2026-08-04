@@ -3,10 +3,12 @@ import {
   deliveryModes,
   modalities,
   modelLifecycles,
+  modelLimitFields,
   modelReleaseStages,
   modelScopes,
   modelTasks,
 } from "./catalog-vocabulary.ts";
+import { sourcePricingEvidenceSchema } from "./source-pricing-policy.ts";
 
 const dateTime = z.iso.datetime({ offset: true });
 const modelDate = z.union([
@@ -46,6 +48,17 @@ export const modelRouteSchema = z.object({
   task: z.string().min(1),
   status: z.literal("live"),
 });
+
+const modelLimitsShape = {
+  context_tokens: z.number().int().nonnegative().optional(),
+  max_input_tokens: z.number().int().nonnegative().optional(),
+  max_output_tokens: z.number().int().nonnegative().optional(),
+  embedding_dimensions: z.array(z.number().int().positive()).optional(),
+  embedding_dimension_range: z
+    .object({ min: z.number().int().positive(), max: z.number().int().positive() })
+    .optional(),
+  recommended_embedding_dimensions: z.array(z.number().int().positive()).optional(),
+} satisfies Record<(typeof modelLimitFields)[number], z.ZodType>;
 
 export const providerModelSchema = z.object({
   provider_id: z.string().min(1),
@@ -89,16 +102,7 @@ export const providerModelSchema = z.object({
     effort_control: triStateSchema.default("unknown"),
     computer_use: triStateSchema.default("unknown"),
   }),
-  limits: z.object({
-    context_tokens: z.number().int().nonnegative().optional(),
-    max_input_tokens: z.number().int().nonnegative().optional(),
-    max_output_tokens: z.number().int().nonnegative().optional(),
-    embedding_dimensions: z.array(z.number().int().positive()).optional(),
-    embedding_dimension_range: z
-      .object({ min: z.number().int().positive(), max: z.number().int().positive() })
-      .optional(),
-    recommended_embedding_dimensions: z.array(z.number().int().positive()).optional(),
-  }),
+  limits: z.object(modelLimitsShape),
   release_date: modelDate.optional(),
   updated_date: modelDate.optional(),
   deprecated_at: z.string().optional(),
@@ -146,8 +150,9 @@ export const sourceRecordSchema = z.strictObject({
   stability: z.enum(["documented", "semi_structured", "undocumented"]),
   scope: z.enum(["global", "account", "region", "workspace", "runtime"]).default("global"),
   exhaustive: z.boolean().default(false),
-  role: z.enum(["catalog", "overlay", "inventory"]).default("catalog"),
+  role: z.enum(["catalog", "supplement", "overlay", "inventory"]).default("catalog"),
   field_paths: z.array(z.string()),
+  pricing_evidence: sourcePricingEvidenceSchema.optional(),
   observed_at: dateTime,
   etag: z.string().optional(),
   last_modified: z.string().optional(),
