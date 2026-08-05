@@ -30,11 +30,14 @@ Status: implemented
   separately show changes in resolved and unknown model counts. Catalog publication and pricing
   publication have separate columns because fresh catalog data can advance while failed pricing is
   retained. Summary enum cells use only emoji; the structured report retains stable machine-readable
-  values and a complete collapsible legend defines every icon. The legend
-  distinguishes a published semantic model update from a source content, extractor, or field-path
-  change and defines pricing coverage. Provider-specific model changes and operational details use
-  compact tables with zero counters omitted. Every changed model has one row with leaf-level
-  previous/current field values.
+  values and a collapsible set of compact legend tables defines every icon by column and boundary.
+  Coverage uses ✅ for resolved models and ❓ for unresolved models in both the current value and
+  delta. The legend distinguishes a published semantic model update from a source content,
+  extractor, or field-path change and defines pricing coverage. Every retained or withheld
+  candidate has a provider-local table naming the affected boundary, failed source or validation
+  stage, exact sanitized reason, and published fallback. Provider-specific model changes and
+  operational details use compact tables with zero counters omitted. Every changed model has one
+  row with leaf-level previous/current field values.
 - A recognized source-contract mismatch warns on its first occurrence with bounded path,
   mismatch kind, affected/observed counts, fingerprint, and public sample IDs
   when available. A second consecutive source failure adds persistence and,

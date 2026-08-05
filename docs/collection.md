@@ -155,8 +155,9 @@ Status: implemented
   added and removed model refs, changed refs and fields, leaf-level previous/current values for
   every changed model field, status and task transitions, exact changed sources, pricing outcomes,
   bounded per-provider pricing-resolution coverage, warnings, and the corresponding attempt
-  evidence. Pricing coverage distinguishes models with public offers,
-  exact not-applicable dispositions, and unresolved pricing. It also records resolved-model and
+  evidence, including sanitized source, provider-validation, and pricing failure messages needed to
+  explain every retained or withheld boundary. Pricing coverage distinguishes models with public
+  offers, exact not-applicable dispositions, and unresolved pricing. It also records resolved-model and
   unknown-model count deltas against the previous accepted catalog; an unresolved model is a
   Kmodels collection outcome, not a claim that the provider publishes no price. It never copies raw
   response data, exception stacks, credentials, or private unmatched IDs. Model comparison uses the

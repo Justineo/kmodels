@@ -672,7 +672,8 @@ For each provider:
 - a valid fresh partition advances with its matching catalog slice;
 - a failed pricing refresh retains the previously accepted pricing partition,
   preserves its verification time, and records the current attempt and reviewed
-  failure category; an independently valid fresh catalog slice may still advance
+  failure category plus its sanitized diagnostic reason in the refresh summary; an independently
+  valid fresh catalog slice may still advance
   when the retained pricing partition remains compatible with it;
 - a validated fresh-empty transition removes pricing while keeping the
   provider;

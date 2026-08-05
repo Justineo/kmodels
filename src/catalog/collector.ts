@@ -889,6 +889,7 @@ async function collectProvider(
     let pricing: ProviderPricingPartition | undefined;
     let pricingReplaySources: PricingReplaySource[] | undefined;
     let pricingFailure: PricingRefreshFailureCode | undefined;
+    let pricingFailureMessage: string | undefined;
     try {
       const expectedPricingSources = manifest.sources.filter(isRequiredPricingSource);
       const fetchedPricingSourceIds = new Set(pricingSources.map(({ source }) => source.id));
@@ -925,10 +926,11 @@ async function collectProvider(
         }
       }
     } catch (error) {
+      pricingFailureMessage = message(error);
       warnings.push({
         code: "pricing_invalid",
         provider_id: manifest.provider.id,
-        message: message(error),
+        message: pricingFailureMessage,
       });
       pricing = undefined;
       pricingFailure = "pricing_validation_failed";
@@ -973,7 +975,13 @@ async function collectProvider(
             ? { outcome: "accepted" }
             : pricingFailure === undefined
               ? { outcome: "not_observed" }
-              : { outcome: "failed", failure_code: pricingFailure },
+              : {
+                  outcome: "failed",
+                  failure_code: pricingFailure,
+                  ...(pricingFailureMessage === undefined
+                    ? {}
+                    : { message: pricingFailureMessage }),
+                },
       },
     };
   } catch (error) {
@@ -1002,7 +1010,7 @@ async function collectProvider(
         ...(candidateModels === undefined ? {} : { candidate_models: candidateModels }),
         ...(validationIssue === undefined ? {} : { validation_issue: validationIssue }),
         failure: { code: providerFailure, message: reason },
-        pricing: { outcome: "failed", failure_code: providerFailure },
+        pricing: { outcome: "failed", failure_code: providerFailure, message: reason },
       },
     };
   }
