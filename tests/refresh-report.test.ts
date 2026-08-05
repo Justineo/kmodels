@@ -66,6 +66,7 @@ describe("refresh report", () => {
               {
                 source_id: "example-catalog",
                 outcome: "parse_failed",
+                message: "required model field disappeared",
                 consecutive_failures: 3,
                 last_success_at: "2026-07-31T00:00:00.000Z",
                 contract_finding: {
@@ -121,9 +122,16 @@ describe("refresh report", () => {
                 },
               },
             ],
-            validation_issue: { code: "model_count_drop" },
-            failure: { code: "source_schema_changed" },
-            pricing: { outcome: "failed", failure_code: "source_schema_changed" },
+            validation_issue: { code: "model_count_drop", message: "model count fell below guard" },
+            failure: {
+              code: "source_schema_changed",
+              message: "required model field disappeared",
+            },
+            pricing: {
+              outcome: "failed",
+              failure_code: "source_schema_changed",
+              message: "required model field disappeared",
+            },
           },
         },
       ],
@@ -152,21 +160,26 @@ describe("refresh report", () => {
       "<code>limits.max_output_tokens</code>: <code>4096</code> → <em>missing</em>",
     );
     expect(output.markdown).toContain(
-      "| example | ⚠️ | 1 | +1 · −1 · ~1 | 9 | +2 · −1 · ~3 | ⚠️ | 🟰 | 2/3 · 1 unknown | resolved +1 · unknown −1 |",
+      "| example | ⚠️ | 1 | +1 · −1 · ~1 | 9 | +2 · −1 · ~3 | ⚠️ | 🟰 | ✅ 2/3 · ❓ 1 | ✅ +1 · ❓ −1 |",
     );
     expect(output.markdown).toContain("<summary>Legend</summary>");
-    expect(output.markdown).toContain("Model `~`: the same model identity remains");
-    expect(output.markdown).toContain("Source `~`: the same accepted source record remains");
-    expect(output.markdown).toContain("#### Catalog");
-    expect(output.markdown).toContain("⚠️ A required catalog input or provider validation failed");
-    expect(output.markdown).toContain("#### Pricing result");
+    expect(output.markdown).toContain("| Token | Models | Sources |");
+    expect(output.markdown).toContain("| Icon | Catalog | Pricing |");
+    expect(output.markdown).toContain("| Boundary | Atomic unit | Failure behavior |");
     expect(output.markdown).toContain("#### Pricing Δ");
-    expect(output.markdown).toContain("💰 Canonical commercial terms changed");
+    expect(output.markdown).toContain("| 💰 | Canonical commercial terms changed |");
     expect(output.markdown).toContain("#### Signals");
     expect(output.markdown).toContain(
-      "🔁 Persistent source failure: at least one source has failed",
+      "| 🔁 | Persistent failure | A source failed at least twice consecutively |",
     );
     expect(output.markdown).toContain("3 consecutive · 24.0h stale");
+    expect(output.markdown).toContain("#### Unaccepted candidates");
+    expect(output.markdown).toContain(
+      "| Catalog | ⚠️ | <code>example-catalog</code> · <code>parse_failed</code> | <code>source_schema_changed</code><br><code>required model field disappeared</code> | Previous accepted catalog slice |",
+    );
+    expect(output.markdown).toContain(
+      "| Pricing | ⚠️ | <code>example-catalog</code> · <code>parse_failed</code> | <code>source_schema_changed</code><br><code>required model field disappeared</code> | Previous accepted pricing partition |",
+    );
     expect(output.markdown).toContain("#### Details");
     expect(output.markdown).toContain("| Type | Source | Value |");
     expect(output.markdown).toContain(
@@ -182,18 +195,18 @@ describe("refresh report", () => {
     expect(output.markdown).toContain("`model_count_drop`");
     expect(output.markdown).toContain("| Pricing | — | `source_schema_changed` |");
     expect(output.markdown).toContain(
-      "| Extract | `example-catalog` | 2 models · 1 numeric · ?1 · facts 4/0 |",
+      "| Extract | `example-catalog` | 2 models · 1 numeric · ❓ 1 · facts 4/0 |",
     );
     expect(output.markdown).toContain(
-      "| Reconcile | `example-catalog` | `source_item` · 5 items · 2 normalized · 1 excluded · ?2 |",
+      "| Reconcile | `example-catalog` | `source_item` · 5 items · 2 normalized · 1 excluded · ❓ 2 |",
     );
     expect(output.markdown).toContain(
       "| Finding | `example-catalog` | `unbound` · `identity_not_found` |",
     );
     expect(output.markdown).toContain("| Finding | `example-catalog` | +1 omitted |");
-    expect(output.markdown).toContain("2/3 · 1 unknown");
-    expect(output.markdown).toContain("| Pricing coverage | — | 2/3 resolved · 1 unknown |");
-    expect(output.markdown).toContain("<summary>Unknown pricing examples (1/3)</summary>");
+    expect(output.markdown).toContain("✅ 2/3 · ❓ 1");
+    expect(output.markdown).toContain("| Pricing coverage | — | ✅ 2/3 · ❓ 1 |");
+    expect(output.markdown).toContain("<summary>❓ Pricing examples (1/3)</summary>");
     expect(output.markdown).toContain(
       "<summary>Pricing finding samples — <code>example-catalog</code> (1)</summary>",
     );
@@ -247,7 +260,9 @@ describe("refresh report", () => {
 
     expect(output.markdown).toContain("**🧾** · ✅");
     expect(output.markdown).toContain("| example | ✅ | 1 | — | — | ~1 | ✅ | 🧾 | — | — |");
-    expect(output.markdown).toContain("🧾 Commercial terms stayed the same, but provenance");
+    expect(output.markdown).toContain(
+      "| 🧾 | Commercial terms unchanged; provenance, freshness, publication, or attempt evidence changed |",
+    );
     expect(output.markdown).toContain(
       "| Contract | `example-catalog` | `accept_with_signal` · `unknown_field`",
     );
@@ -275,7 +290,11 @@ describe("refresh report", () => {
           attempt: {
             outcome: "accepted",
             sources: [],
-            pricing: { outcome: "failed", failure_code: "pricing_validation_failed" },
+            pricing: {
+              outcome: "failed",
+              failure_code: "pricing_validation_failed",
+              message: "offer has neither a state nor a base-price raw fact",
+            },
           },
         },
       ],
@@ -283,7 +302,7 @@ describe("refresh report", () => {
 
     expect(output.markdown).toContain("| example | ✅ | 1 | — | 1 | — | ⚠️ | 🧾 | — | — |");
     expect(output.markdown).toContain(
-      "Pricing ⚠️ with Pricing Δ 🧾 means old commercial terms were retained",
+      "| Pricing | ⚠️ | Pricing validation | <code>pricing_validation_failed</code><br><code>offer has neither a state nor a base-price raw fact</code> | Previous accepted pricing partition |",
     );
     expect(output.markdown).not.toContain("accepted | 1");
     expect(output.warnings).toContain("example: pricing attempt pricing_validation_failed");

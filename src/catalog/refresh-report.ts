@@ -67,6 +67,7 @@ const attemptSchema = z.object({
         "parse_failed",
         "skipped_not_configured",
       ]),
+      message: z.string().optional(),
       consecutive_failures: z.number().int().positive().optional(),
       last_success_at: z.iso.datetime({ offset: true }).optional(),
       contract_finding: sourceContractEvidenceSchema.optional(),
@@ -74,12 +75,13 @@ const attemptSchema = z.object({
       pricing_reconciliation: sourcePricingReconciliationSchema.optional(),
     }),
   ),
-  validation_issue: z.object({ code: z.string() }).optional(),
-  failure: z.object({ code: z.string() }).optional(),
+  validation_issue: z.object({ code: z.string(), message: z.string().optional() }).optional(),
+  failure: z.object({ code: z.string(), message: z.string().optional() }).optional(),
   pricing: z
     .object({
       outcome: z.enum(["accepted", "failed", "not_observed"]),
       failure_code: z.string().optional(),
+      message: z.string().optional(),
     })
     .optional(),
 });
@@ -235,7 +237,7 @@ function diffValue(added: number, removed: number, changed: number): string {
 
 function coverageValue(coverage: NonNullable<Provider["pricing_coverage"]>): string {
   const resolved = coverage.offer_models + coverage.not_applicable_models;
-  return `${resolved}/${coverage.current_models} · ${coverage.unknown_models} unknown`;
+  return `✅ ${resolved}/${coverage.current_models} · ❓ ${coverage.unknown_models}`;
 }
 
 function coverageDeltaValue(coverage: NonNullable<Provider["pricing_coverage"]>): string {
@@ -243,8 +245,8 @@ function coverageDeltaValue(coverage: NonNullable<Provider["pricing_coverage"]>)
   if (delta === undefined) return "—";
   if (delta.resolved_models === 0 && delta.unknown_models === 0) return "0";
   const parts = [
-    delta.resolved_models === 0 ? undefined : `resolved ${signedDelta(delta.resolved_models)}`,
-    delta.unknown_models === 0 ? undefined : `unknown ${signedDelta(delta.unknown_models)}`,
+    delta.resolved_models === 0 ? undefined : `✅ ${signedDelta(delta.resolved_models)}`,
+    delta.unknown_models === 0 ? undefined : `❓ ${signedDelta(delta.unknown_models)}`,
   ].filter((value): value is string => value !== undefined);
   return parts.join(" · ");
 }
@@ -313,6 +315,114 @@ function providerDetailTable(rows: ProviderDetailRow[]): string[] {
   ];
 }
 
+type RenderedProvider = Provider & {
+  publication: NonNullable<Provider["publication"]>;
+  pricing_publication: PricingPublication;
+};
+type UnacceptedCandidateRow = readonly [
+  boundary: string,
+  decision: string,
+  failedAt: string,
+  reason: string,
+  published: string,
+];
+
+function reasonValue(code: string | undefined, message: string | undefined): string {
+  const parts = [
+    code === undefined ? undefined : inlineCode(code),
+    message === undefined ? undefined : inlineCode(message),
+  ].filter((value): value is string => value !== undefined);
+  return parts.join("<br>") || "<em>No detailed reason recorded</em>";
+}
+
+function failedSourceValue(provider: RenderedProvider): string | undefined {
+  const sources =
+    provider.attempt?.sources.filter(({ outcome }) =>
+      ["fetch_failed", "parse_failed"].includes(outcome),
+    ) ?? [];
+  if (sources.length === 0) return undefined;
+  return sources
+    .map(({ source_id, outcome }) => `${inlineCode(source_id)} · ${inlineCode(outcome)}`)
+    .join("<br>");
+}
+
+function unacceptedCandidateTable(provider: RenderedProvider): string[] {
+  const rows: UnacceptedCandidateRow[] = [];
+  const failedSources =
+    provider.attempt?.sources.filter(({ outcome }) =>
+      ["fetch_failed", "parse_failed"].includes(outcome),
+    ) ?? [];
+  const catalogPublished =
+    provider.publication === "retained" ? "Previous accepted catalog slice" : "No catalog slice";
+
+  if (provider.publication === "retained" || provider.publication === "withheld") {
+    if (failedSources.length > 0) {
+      for (const source of failedSources)
+        rows.push([
+          "Catalog",
+          publicationDisplay[provider.publication],
+          `${inlineCode(source.source_id)} · ${inlineCode(source.outcome)}`,
+          reasonValue(
+            provider.attempt?.failure?.code,
+            source.message ?? provider.attempt?.failure?.message,
+          ),
+          catalogPublished,
+        ]);
+    } else if (provider.attempt?.validation_issue !== undefined) {
+      rows.push([
+        "Catalog",
+        publicationDisplay[provider.publication],
+        "Provider validation",
+        reasonValue(
+          provider.attempt.validation_issue.code,
+          provider.attempt.validation_issue.message ?? provider.attempt.failure?.message,
+        ),
+        catalogPublished,
+      ]);
+    } else {
+      rows.push([
+        "Catalog",
+        publicationDisplay[provider.publication],
+        "Provider refresh",
+        reasonValue(provider.attempt?.failure?.code, provider.attempt?.failure?.message),
+        catalogPublished,
+      ]);
+    }
+  }
+
+  if (provider.pricing_publication === "retained" || provider.pricing_publication === "withheld") {
+    const pricing = provider.attempt?.pricing;
+    const failedAt =
+      pricing?.failure_code === "pricing_validation_failed"
+        ? "Pricing validation"
+        : (failedSourceValue(provider) ??
+          (provider.attempt?.validation_issue === undefined
+            ? "Provider refresh"
+            : "Provider validation"));
+    rows.push([
+      "Pricing",
+      pricingPublicationDisplay[provider.pricing_publication],
+      failedAt,
+      reasonValue(pricing?.failure_code, pricing?.message ?? provider.attempt?.failure?.message),
+      provider.pricing_publication === "retained"
+        ? "Previous accepted pricing partition"
+        : "No pricing partition",
+    ]);
+  }
+
+  if (rows.length === 0) return [];
+  return [
+    "#### Unaccepted candidates",
+    "",
+    "| Boundary | Decision | Failed at | Reason | Published |",
+    "| --- | --- | --- | --- | --- |",
+    ...rows.map(
+      ([boundary, decision, failedAt, reason, published]) =>
+        `| ${table(boundary)} | ${decision} | ${table(failedAt)} | ${table(reason)} | ${table(published)} |`,
+    ),
+  ];
+}
+
 const legend = [
   "",
   "<details>",
@@ -320,62 +430,83 @@ const legend = [
   "",
   "#### Run",
   "",
-  "- The first header icon is the semantic outcome: 🔄 published model or commercial-pricing data changed; 🧾 only source, provenance, freshness, publication, or other evidence changed; 🟰 no accepted data or evidence changed.",
-  "- The second header icon is publication completeness: ✅ every publishable catalog and pricing candidate advanced or had no observation; ⚠️ at least one catalog or pricing candidate was retained or withheld.",
+  "| Position | Icon | Meaning |",
+  "| --- | --- | --- |",
+  "| Outcome | 🔄 | Published model or commercial-pricing data changed |",
+  "| Outcome | 🧾 | Only source, provenance, freshness, publication, or other evidence changed |",
+  "| Outcome | 🟰 | No accepted data or evidence changed |",
+  "| Completeness | ✅ | Every candidate advanced or had no observation |",
+  "| Completeness | ⚠️ | At least one catalog or pricing candidate was retained or withheld |",
   "",
   "#### Counts and deltas",
   "",
-  "- `Models` and `Sources` are current published counts. In their delta columns, `+` means added, `−` removed, and `~` updated/changed since the previous accepted catalog; `—` means no change.",
-  "- Model `~`: the same model identity remains, but at least one published semantic field changed. Observation time alone is not compared.",
-  "- Source `~`: the same accepted source record remains, but its content hash, extractor version, or declared field paths changed. A source change is input/evidence churn and does not necessarily change a model, so the two `~` counts need not match.",
+  "| Token | Models | Sources |",
+  "| --- | --- | --- |",
+  "| count | Current published models | Current accepted source records |",
+  "| `+` | Added identity | Added source |",
+  "| `−` | Removed identity | Removed source |",
+  "| `~` | Same identity; semantic field changed | Same source; content, extractor, or field paths changed |",
+  "| `—` | No change | No change |",
   "",
-  "#### Catalog",
+  "#### Publication",
   "",
-  "- ✅ Fresh validated catalog data was published for this provider.",
-  "- ⚠️ A required catalog input or provider validation failed, so the previous accepted catalog slice was retained. Required catalog sources form one provider-atomic candidate: mixing partial fresh inputs with retained inputs could create false removals, identities, or provenance. Optional and credential-scoped inventory sources may still be skipped without retaining the catalog.",
-  "- ⛔ The catalog candidate failed and no previous accepted catalog slice was available, so the provider was withheld.",
-  "- ⏭️ Catalog collection is intentionally not configured for this provider.",
-  "- ➖ The provider was intentionally removed from the published catalog.",
+  "| Icon | Catalog | Pricing |",
+  "| --- | --- | --- |",
+  "| ✅ | Fresh validated slice published | Fresh validated partition published |",
+  "| ⚠️ | Previous accepted slice retained after candidate failure | Previous accepted partition retained after attempt failure |",
+  "| ⛔ | Candidate failed; no previous slice to publish | Attempt failed; no previous partition to publish |",
+  "| ⏭️ | Collection not configured | No partition observed or configured |",
+  "| ➖ | Provider intentionally removed | Partition removed by validated transition |",
   "",
-  "#### Pricing result",
-  "",
-  "- ✅ A fresh validated pricing partition was published. Pricing is a separate provider-atomic boundary from catalog data.",
-  "- ⚠️ The pricing attempt failed, so the previous accepted pricing partition was retained. This can appear beside Catalog ✅ when fresh catalog data is valid but fresh pricing is not.",
-  "- ⛔ The pricing attempt failed and no previous accepted pricing partition was available.",
-  "- ⏭️ No pricing partition was observed or configured.",
-  "- ➖ Pricing was explicitly removed through a validated transition.",
+  "| Boundary | Atomic unit | Failure behavior |",
+  "| --- | --- | --- |",
+  "| Catalog | Required provider catalog inputs | Retain together; avoids false removals, identities, and provenance |",
+  "| Pricing | Provider pricing partition | Retain independently; Catalog ✅ can coexist with Pricing ⚠️ |",
+  "| Optional/scoped source | One optional inventory | May skip without retaining the catalog |",
   "",
   "#### Pricing Δ",
   "",
-  "- ⭕ Neither the previous nor current accepted pair has a pricing partition for this provider.",
-  "- ➕ A pricing partition was added.",
-  "- ➖ A pricing partition was removed.",
-  "- 💰 Canonical commercial terms changed.",
-  "- 🧾 Commercial terms stayed the same, but provenance, freshness, publication status, failed-attempt evidence, or other non-commercial data changed. Pricing ⚠️ with Pricing Δ 🧾 means old commercial terms were retained while the failed attempt was recorded.",
-  "- 🟰 The complete accepted pricing partition stayed the same.",
+  "| Icon | Meaning |",
+  "| --- | --- |",
+  "| ⭕ | No partition in either accepted pair |",
+  "| ➕ | Partition added |",
+  "| ➖ | Partition removed |",
+  "| 💰 | Canonical commercial terms changed |",
+  "| 🧾 | Commercial terms unchanged; provenance, freshness, publication, or attempt evidence changed |",
+  "| 🟰 | Complete accepted partition unchanged |",
   "",
   "#### Signals",
   "",
-  "- 🛡️ Drift guard: validation rejected an abrupt model-count drop.",
-  "- ⚠️ Contract mismatch: a source field or value owned by the projection became uninterpretable.",
-  "- 🧩 Unreviewed extension: fresh data was accepted after an unrelated extension was stripped.",
-  "- 📉 Coverage regression: reviewed item or field coverage fell below its threshold.",
-  "- 🧱 Possible structural change: an unclassified parse failure may indicate a source-structure change.",
-  "- 🔁 Persistent source failure: at least one source has failed twice or more consecutively.",
-  "- ❓ A future signal is not recognized by this report renderer.",
+  "| Icon | Signal | Meaning |",
+  "| --- | --- | --- |",
+  "| 🛡️ | Drift guard | Abrupt model-count drop rejected |",
+  "| ⚠️ | Contract mismatch | Owned source field or value became uninterpretable |",
+  "| 🧩 | Unreviewed extension | Fresh data accepted after unrelated extension was stripped |",
+  "| 📉 | Coverage regression | Reviewed item or field coverage fell below threshold |",
+  "| 🧱 | Possible structural change | Unclassified parse failure |",
+  "| 🔁 | Persistent failure | A source failed at least twice consecutively |",
+  "| ❓ | Unknown | Signal is not recognized by this renderer |",
   "",
   "#### Coverage",
   "",
-  "- Coverage is pricing resolution for current non-retired models: `resolved/current · unknown`. Resolved means a public offer or an explicit not-applicable disposition.",
-  "- Coverage Δ compares the accepted result with the previous accepted catalog. It reports resolved-model and unknown-model count changes separately; `0` means neither count changed and `—` means no comparable baseline was available.",
-  "- Duration is provider wall-clock time in seconds; `—` means the durable report did not record operational timing. Signals `—` means no review signal was emitted.",
+  "| Token | Coverage | Coverage Δ |",
+  "| --- | --- | --- |",
+  "| ✅ | Resolved/current; public offer or explicit not-applicable | Change in resolved models |",
+  "| ❓ | Unresolved models | Change in unresolved models |",
+  "| `0` | — | Neither count changed |",
+  "| `—` | No coverage data | No comparable baseline |",
   "",
   "#### Provider details",
   "",
-  "- Summary enums use icons only. Detail tables deliberately keep exact raw outcome and reason codes for diagnosis. Zero-valued counters are omitted.",
-  "- `Extract` summarizes parsed model states; `facts N/R` means normalized/raw facts. `Reconcile` summarizes the reviewed source-item partition; `?N` is the unresolved finding count.",
-  "- `Finding` gives disposition and reason code; bounded public samples are collapsed below the table. `Contract` gives disposition, mismatch kind and path, affected/observed items, expected and observed shapes, and fingerprint.",
-  "- `Source`, `Validation`, `Failure`, and `Pricing` retain their machine-readable outcome or failure code.",
+  "| Section | Content |",
+  "| --- | --- |",
+  "| Unaccepted candidates | Boundary, decision, failed stage/source, exact reason, published fallback |",
+  "| Model changes | One row per model with leaf-level before/after values |",
+  "| Extract | Parsed model states; `facts N/R` = normalized/raw facts |",
+  "| Reconcile / Finding | Source-item partition and bounded unresolved diagnostics |",
+  "| Contract | Disposition, mismatch, path, counts, shapes, fingerprint |",
+  "| Details | Exact machine-readable outcomes and reason codes; zero counters omitted |",
+  "| Duration | Provider wall-clock seconds; `—` when not recorded |",
   "",
   "</details>",
 ];
@@ -431,7 +562,7 @@ function pricingExtractionRows(source: SourceAttempt): ProviderDetailRow[] {
     pricing.custom_quote_models === 0 ? undefined : `${pricing.custom_quote_models} quote`,
     pricing.not_published_models === 0 ? undefined : `${pricing.not_published_models} unpublished`,
     pricing.not_applicable_models === 0 ? undefined : `${pricing.not_applicable_models} N/A`,
-    pricing.unknown_models === 0 ? undefined : `?${pricing.unknown_models}`,
+    pricing.unknown_models === 0 ? undefined : `❓ ${pricing.unknown_models}`,
     pricing.normalized_facts === 0 && pricing.raw_facts === 0
       ? undefined
       : `facts ${pricing.normalized_facts}/${pricing.raw_facts}`,
@@ -450,7 +581,7 @@ function pricingReconciliationRows(source: SourceAttempt): ProviderDetailRow[] {
     counts.raw === 0 ? undefined : `${counts.raw} raw`,
     counts.explicit_non_numeric === 0 ? undefined : `${counts.explicit_non_numeric} non-numeric`,
     counts.excluded === 0 ? undefined : `${counts.excluded} excluded`,
-    evidence.diagnostic_count === 0 ? undefined : `?${evidence.diagnostic_count}`,
+    evidence.diagnostic_count === 0 ? undefined : `❓ ${evidence.diagnostic_count}`,
   ].filter((value): value is string => value !== undefined);
   const rows: ProviderDetailRow[] = [
     ["Reconcile", `\`${source.source_id}\``, summary.join(" · ")],
@@ -633,15 +764,11 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       const examples = pricingCoverage.unknown_model_refs
         .map((modelRef) => `\`${modelRef}\``)
         .join(", ");
-      detailRows.push([
-        "Pricing coverage",
-        "—",
-        `${pricingCoverage.offer_models + pricingCoverage.not_applicable_models}/${pricingCoverage.current_models} resolved · ${pricingCoverage.unknown_models} unknown`,
-      ]);
+      detailRows.push(["Pricing coverage", "—", coverageValue(pricingCoverage)]);
       if (examples.length > 0 || omitted > 0)
         detailNotes.push(
           "<details>",
-          `<summary>Unknown pricing examples (${pricingCoverage.unknown_models}/${pricingCoverage.current_models})</summary>`,
+          `<summary>❓ Pricing examples (${pricingCoverage.unknown_models}/${pricingCoverage.current_models})</summary>`,
           "",
           `${examples}${omitted === 0 ? "" : `${examples.length === 0 ? "" : " "}(+${omitted} more)`}`,
           "",
@@ -673,13 +800,15 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     if (provider.attempt?.pricing?.outcome === "failed")
       detailRows.push(["Pricing", "—", `\`${provider.attempt.pricing.failure_code ?? "failed"}\``]);
 
+    const unacceptedTable = unacceptedCandidateTable(provider);
     const modelTable = modelChangeTable(provider);
     const detailTable = providerDetailTable(detailRows);
-    lines.push("", `### ${provider.provider_id}`, "", ...modelTable);
-    if (modelTable.length > 0 && detailTable.length > 0) lines.push("");
-    lines.push(...detailTable);
-    if (detailTable.length > 0 && detailNotes.length > 0) lines.push("");
-    lines.push(...detailNotes);
+    const sections = [unacceptedTable, modelTable, detailTable].filter(
+      (section) => section.length > 0,
+    );
+    lines.push("", `### ${provider.provider_id}`);
+    for (const section of sections) lines.push("", ...section);
+    if (detailNotes.length > 0) lines.push("", ...detailNotes);
   }
 
   return {

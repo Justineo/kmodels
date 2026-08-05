@@ -127,7 +127,11 @@ export interface ProviderRefreshAttempt {
   candidate_models?: ProviderModel[];
   validation_issue?: ProviderValidationIssue;
   failure?: { code: string; message: string };
-  pricing?: { outcome: "accepted" | "failed" | "not_observed"; failure_code?: string };
+  pricing?: {
+    outcome: "accepted" | "failed" | "not_observed";
+    failure_code?: string;
+    message?: string;
+  };
 }
 
 interface ProviderAttemptSummary {
