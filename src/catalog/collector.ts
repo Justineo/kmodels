@@ -1,7 +1,6 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
-import { mapConcurrent } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import {
   fetchSource,
@@ -1018,22 +1017,24 @@ async function collectProviders(
   results: ProviderResult[];
   durations: { provider_id: string; duration_ms: number }[];
 }> {
-  const collected = await mapConcurrent(manifests, 4, async (manifest) => {
-    const started = performance.now();
-    const result = await collectProvider(
-      manifest,
-      rebuildProvider === manifest.provider.id ? undefined : previous,
-      state,
-      observedAt,
-    );
-    return {
-      result,
-      duration: {
-        provider_id: manifest.provider.id,
-        duration_ms: Math.round(performance.now() - started),
-      },
-    };
-  });
+  const collected = await Promise.all(
+    manifests.map(async (manifest) => {
+      const started = performance.now();
+      const result = await collectProvider(
+        manifest,
+        rebuildProvider === manifest.provider.id ? undefined : previous,
+        state,
+        observedAt,
+      );
+      return {
+        result,
+        duration: {
+          provider_id: manifest.provider.id,
+          duration_ms: Math.round(performance.now() - started),
+        },
+      };
+    }),
+  );
   return {
     results: collected.map(({ result }) => result),
     durations: collected.map(({ duration }) => duration),
