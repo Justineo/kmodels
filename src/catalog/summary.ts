@@ -175,6 +175,10 @@ interface PricingCoverageSummary {
   raw_fact_models: number;
   unknown_model_refs: string[];
   unknown_model_refs_omitted: number;
+  delta?: {
+    resolved_models: number;
+    unknown_models: number;
+  };
 }
 
 interface PricingComparison {
@@ -468,6 +472,9 @@ export function summarizeRefresh(
       signals.push("possible_structural_change");
     if (sourceAttempts.some(({ consecutive_failures: failures }) => (failures ?? 0) >= 2))
       signals.push("persistent_source_failure");
+    const currentCoverage = pricingCoverage(providerId, current, currentPricing);
+    const previousCoverage =
+      previous === undefined ? undefined : pricingCoverage(providerId, previous, previousPricing);
     return {
       provider_id: providerId,
       status,
@@ -488,7 +495,21 @@ export function summarizeRefresh(
         current.sources.filter((source) => source.provider_id === providerId),
       ),
       pricing: pricingDiff(pricing.previous, pricing.current, providerId),
-      pricing_coverage: pricingCoverage(providerId, current, currentPricing),
+      pricing_coverage: {
+        ...currentCoverage,
+        ...(previousCoverage === undefined
+          ? {}
+          : {
+              delta: {
+                resolved_models:
+                  currentCoverage.offer_models +
+                  currentCoverage.not_applicable_models -
+                  previousCoverage.offer_models -
+                  previousCoverage.not_applicable_models,
+                unknown_models: currentCoverage.unknown_models - previousCoverage.unknown_models,
+              },
+            }),
+      },
       warning_codes: warningCodes,
       signals,
       ...(attempt === undefined
