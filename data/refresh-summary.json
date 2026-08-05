@@ -1,8 +1,8 @@
 {
-  "catalog_version": "b249ce3dbcf36d90487005a723dc9249f3c4942235828bba22a2b91e714b7170",
-  "generated_at": "2026-08-05T10:49:33.665Z",
+  "catalog_version": "10a2b075695664afa52943eccddd295a8ad8cf5b6136aa73d49400ff87076621",
+  "generated_at": "2026-08-05T11:40:30.891Z",
   "outcome": "changed",
-  "previous_catalog_version": "80fbabf00e349e3ef596c31091a9eb9305890cd08e705457b0ed6554c8460763",
+  "previous_catalog_version": "b249ce3dbcf36d90487005a723dc9249f3c4942235828bba22a2b91e714b7170",
   "providers": [
     {
       "attempt": {
@@ -443,9 +443,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 3,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -605,26 +605,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "cerebras-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-catalog"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1463,9 +1457,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1408,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1597,7 +1591,7 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
-                  "sample": "Qwen/Qwen3.6-27B:featherless-ai"
+                  "sample": "Qwen/Qwen2.5-7B-Instruct:featherless-ai"
                 }
               ],
               "disposition_counts": {
@@ -1616,19 +1610,17 @@
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1408,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "huggingface/chendelong/DirectSAM-1800px-0424"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 1,
         "changed_fields": {
           "capabilities": 1
@@ -1637,38 +1629,38 @@
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": false,
                 "path": "capabilities.structured_output",
                 "previous": true
               },
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.tool_call",
-                "previous": true
+                "previous": false
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen2.5-7B-Instruct"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
           }
         ],
         "current": 1538,
-        "previous": 1537,
+        "previous": 1538,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1536
+        "unchanged": 1537
       },
       "pricing": {
         "commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507",
-        "outcome": "commercial",
-        "previous_commercial_hash": "5159fd943bf9398a67f21ac556bf9a09fcfa460c30f4204040095a045d95bbb9"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "74e936cd7be2ee62fefd847e7796a1b2ff954aeca0acb23c020a9a7222776507"
       },
       "pricing_coverage": {
         "current_models": 1538,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 1
+          "unknown_models": 0
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -1706,20 +1698,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hub"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1731,7 +1711,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -3016,10 +2996,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 1,
+    "added_models": 0,
     "added_sources": 0,
     "changed_models": 1,
-    "changed_sources": 32,
+    "changed_sources": 29,
     "models": 3383,
     "pricing_accepted": 18,
     "pricing_not_observed": 0,
