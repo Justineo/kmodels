@@ -39,10 +39,12 @@ Status: implemented
   when available, last-success staleness. Unclassified parser failures and abrupt count loss
   remain `possible_structural_change`; automation never upgrades that heuristic
   into a factual schema-change claim.
-- Provider collection is work-conserving with four bounded workers. Completion
-  of a fast provider immediately starts the next provider instead of waiting
-  for the slowest member of a fixed batch. Source order inside a provider stays
-  deterministic because overlays and inventories can depend on catalog output.
+- Collection starts every provider concurrently because provider fetch, failure,
+  validation, and publication boundaries are independent. Total collection time
+  therefore approaches the slowest provider instead of accumulating behind a
+  shared provider-worker limit. Source order inside a provider stays deterministic
+  because overlays and inventories can depend on catalog output; multi-document
+  source transports retain their own reviewed concurrency limits.
 - Scheduled refresh validates only the generated catalog suite and production
   build. It does not rerun code-only unit and fixture tests when the checkout is
   unchanged. Push and pull-request CI runs those tests once. Generated-data
