@@ -88,6 +88,9 @@ const providerSchema = z.object({
   provider_id: z.string(),
   status: z.enum(["fresh", "stale", "unavailable", "not_configured", "removed"]),
   publication: z.enum(["accepted", "retained", "withheld", "not_configured", "removed"]).optional(),
+  pricing_publication: z
+    .enum(["accepted", "retained", "withheld", "not_observed", "removed"])
+    .optional(),
   models: diffSchema,
   sources: z.object({
     current: z.number().int().nonnegative().optional(),
@@ -149,28 +152,52 @@ const publicationByStatus: Record<Provider["status"], NonNullable<Provider["publ
   removed: "removed",
 };
 const publicationDisplay: Record<NonNullable<Provider["publication"]>, string> = {
-  accepted: "✅ accepted",
-  retained: "⚠️ retained",
-  withheld: "⛔ withheld",
-  not_configured: "⏭️ not configured",
-  removed: "➖ removed",
+  accepted: "✅",
+  retained: "⚠️",
+  withheld: "⛔",
+  not_configured: "⏭️",
+  removed: "➖",
+};
+type PricingPublication = NonNullable<Provider["pricing_publication"]>;
+const pricingPublicationDisplay: Record<PricingPublication, string> = {
+  accepted: "✅",
+  retained: "⚠️",
+  withheld: "⛔",
+  not_observed: "⏭️",
+  removed: "➖",
 };
 const pricingDisplay: Record<string, string> = {
-  none: "n/a",
-  added: "➕ added",
-  removed: "➖ removed",
-  commercial: "💰 terms changed",
-  provenance_only: "🧾 evidence changed",
-  unchanged: "0",
+  none: "⭕",
+  added: "➕",
+  removed: "➖",
+  commercial: "💰",
+  provenance_only: "🧾",
+  unchanged: "🟰",
 };
 const signalDisplay: Record<string, string> = {
-  drift_guard_triggered: "🛡️ drift guard",
-  breaking_contract_mismatch: "⚠️ contract mismatch",
-  unreviewed_extension: "🧩 unreviewed extension",
-  coverage_regression: "📉 coverage regression",
-  possible_structural_change: "🧱 possible structural change",
-  persistent_source_failure: "🔁 persistent source failure",
+  drift_guard_triggered: "🛡️",
+  breaking_contract_mismatch: "⚠️",
+  unreviewed_extension: "🧩",
+  coverage_regression: "📉",
+  possible_structural_change: "🧱",
+  persistent_source_failure: "🔁",
 };
+const outcomeDisplay = {
+  changed: "🔄",
+  evidence_only: "🧾",
+  unchanged: "🟰",
+} as const;
+const runPublicationDisplay = { complete: "✅", partial: "⚠️" } as const;
+
+function inferredPricingPublication(provider: Provider): PricingPublication {
+  if (provider.pricing_publication !== undefined) return provider.pricing_publication;
+  if (provider.pricing.outcome === "removed") return "removed";
+  if (provider.attempt?.pricing?.outcome === "accepted") return "accepted";
+  if (provider.attempt?.pricing?.outcome === "failed")
+    return provider.pricing.outcome === "none" ? "withheld" : "retained";
+  if (provider.attempt?.pricing?.outcome === "not_observed") return "not_observed";
+  return provider.pricing.outcome === "none" ? "not_observed" : "accepted";
+}
 
 function table(value: string): string {
   return value.replaceAll("|", "\\|");
@@ -291,46 +318,61 @@ const legend = [
   "<details>",
   "<summary>Legend</summary>",
   "",
-  "#### Deltas",
+  "#### Run",
+  "",
+  "- The first header icon is the semantic outcome: 🔄 published model or commercial-pricing data changed; 🧾 only source, provenance, freshness, publication, or other evidence changed; 🟰 no accepted data or evidence changed.",
+  "- The second header icon is publication completeness: ✅ every publishable catalog and pricing candidate advanced or had no observation; ⚠️ at least one catalog or pricing candidate was retained or withheld.",
+  "",
+  "#### Counts and deltas",
   "",
   "- `Models` and `Sources` are current published counts. In their delta columns, `+` means added, `−` removed, and `~` updated/changed since the previous accepted catalog; `—` means no change.",
   "- Model `~`: the same model identity remains, but at least one published semantic field changed. Observation time alone is not compared.",
   "- Source `~`: the same accepted source record remains, but its content hash, extractor version, or declared field paths changed. A source change is input/evidence churn and does not necessarily change a model, so the two `~` counts need not match.",
   "",
-  "#### Publication",
+  "#### Catalog",
   "",
-  "- ✅ `accepted`: the fresh candidate was published.",
-  "- ⚠️ `retained`: the provider update could not be published as a complete validated pair, so its previous accepted catalog and pricing data were kept.",
-  "- ⛔ `withheld`: no usable previous data was available and the candidate was not published.",
-  "- ⏭️ `not configured`: this provider is intentionally not configured for collection.",
-  "- ➖ `removed`: this provider is no longer in the published catalog.",
+  "- ✅ Fresh validated catalog data was published for this provider.",
+  "- ⚠️ A required catalog input or provider validation failed, so the previous accepted catalog slice was retained. Required catalog sources form one provider-atomic candidate: mixing partial fresh inputs with retained inputs could create false removals, identities, or provenance. Optional and credential-scoped inventory sources may still be skipped without retaining the catalog.",
+  "- ⛔ The catalog candidate failed and no previous accepted catalog slice was available, so the provider was withheld.",
+  "- ⏭️ Catalog collection is intentionally not configured for this provider.",
+  "- ➖ The provider was intentionally removed from the published catalog.",
   "",
-  "#### Pricing",
+  "#### Pricing result",
   "",
-  "- `n/a`: neither catalog has a pricing partition for this provider.",
-  "- ➕ `added`: a pricing partition was added.",
-  "- ➖ `removed`: a pricing partition was explicitly removed.",
-  "- 💰 `terms changed`: canonical commercial terms changed.",
-  "- 🧾 `evidence changed`: commercial terms stayed the same; only provenance, freshness, publication, or other non-commercial evidence changed.",
-  "- `0`: the complete pricing partition stayed the same.",
+  "- ✅ A fresh validated pricing partition was published. Pricing is a separate provider-atomic boundary from catalog data.",
+  "- ⚠️ The pricing attempt failed, so the previous accepted pricing partition was retained. This can appear beside Catalog ✅ when fresh catalog data is valid but fresh pricing is not.",
+  "- ⛔ The pricing attempt failed and no previous accepted pricing partition was available.",
+  "- ⏭️ No pricing partition was observed or configured.",
+  "- ➖ Pricing was explicitly removed through a validated transition.",
+  "",
+  "#### Pricing Δ",
+  "",
+  "- ⭕ Neither the previous nor current accepted pair has a pricing partition for this provider.",
+  "- ➕ A pricing partition was added.",
+  "- ➖ A pricing partition was removed.",
+  "- 💰 Canonical commercial terms changed.",
+  "- 🧾 Commercial terms stayed the same, but provenance, freshness, publication status, failed-attempt evidence, or other non-commercial data changed. Pricing ⚠️ with Pricing Δ 🧾 means old commercial terms were retained while the failed attempt was recorded.",
+  "- 🟰 The complete accepted pricing partition stayed the same.",
   "",
   "#### Signals",
   "",
-  "- `drift_guard_triggered`: validation rejected an abrupt model-count drop.",
-  "- `breaking_contract_mismatch`: a source field or value owned by the projection became uninterpretable.",
-  "- `unreviewed_extension`: fresh data was accepted after an unrelated extension was stripped.",
-  "- `coverage_regression`: reviewed item or field coverage fell below its threshold.",
-  "- `possible_structural_change`: an unclassified parse failure may indicate a source-structure change.",
-  "- `persistent_source_failure`: at least one source has failed twice or more consecutively.",
+  "- 🛡️ Drift guard: validation rejected an abrupt model-count drop.",
+  "- ⚠️ Contract mismatch: a source field or value owned by the projection became uninterpretable.",
+  "- 🧩 Unreviewed extension: fresh data was accepted after an unrelated extension was stripped.",
+  "- 📉 Coverage regression: reviewed item or field coverage fell below its threshold.",
+  "- 🧱 Possible structural change: an unclassified parse failure may indicate a source-structure change.",
+  "- 🔁 Persistent source failure: at least one source has failed twice or more consecutively.",
+  "- ❓ A future signal is not recognized by this report renderer.",
   "",
   "#### Coverage",
   "",
   "- Coverage is pricing resolution for current non-retired models: `resolved/current · unknown`. Resolved means a public offer or an explicit not-applicable disposition.",
-  "- Coverage Δ compares the accepted result with the previous accepted catalog. It reports resolved-model and unknown-model count changes separately.",
+  "- Coverage Δ compares the accepted result with the previous accepted catalog. It reports resolved-model and unknown-model count changes separately; `0` means neither count changed and `—` means no comparable baseline was available.",
+  "- Duration is provider wall-clock time in seconds; `—` means the durable report did not record operational timing. Signals `—` means no review signal was emitted.",
   "",
   "#### Provider details",
   "",
-  "- Detail tables keep raw outcome and reason codes. Zero-valued counters are omitted.",
+  "- Summary enums use icons only. Detail tables deliberately keep exact raw outcome and reason codes for diagnosis. Zero-valued counters are omitted.",
   "- `Extract` summarizes parsed model states; `facts N/R` means normalized/raw facts. `Reconcile` summarizes the reviewed source-item partition; `?N` is the unresolved finding count.",
   "- `Finding` gives disposition and reason code; bounded public samples are collapsed below the table. `Contract` gives disposition, mismatch kind and path, affected/observed items, expected and observed shapes, and fingerprint.",
   "- `Source`, `Validation`, `Failure`, and `Pricing` retain their machine-readable outcome or failure code.",
@@ -487,9 +529,13 @@ export function refreshReport(value: unknown): RefreshReportOutput {
   const providers = report.providers.map((provider) => ({
     ...provider,
     publication: provider.publication ?? publicationByStatus[provider.status],
+    pricing_publication: inferredPricingPublication(provider),
   }));
-  const retained = providers.filter(
+  const catalogRetained = providers.filter(
     ({ publication: state }) => state === "retained" || state === "withheld",
+  );
+  const pricingRetained = providers.filter(
+    ({ pricing_publication: state }) => state === "retained" || state === "withheld",
   );
   const changed = providers.filter(
     ({ models, sources, pricing }) =>
@@ -501,7 +547,10 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       sources.changed > 0 ||
       ["added", "removed", "commercial", "provenance_only"].includes(pricing.outcome),
   );
-  const publicationState = report.publication ?? (retained.length > 0 ? "partial" : "complete");
+  const publicationState =
+    catalogRetained.length > 0 || pricingRetained.length > 0
+      ? "partial"
+      : (report.publication ?? "complete");
   const durations = new Map(
     report.operational?.provider_durations.map(({ provider_id, duration_ms }) => [
       provider_id,
@@ -517,14 +566,15 @@ export function refreshReport(value: unknown): RefreshReportOutput {
   const lines = [
     "## Catalog refresh",
     "",
-    `**${outcome.replaceAll("_", " ")}** · ${publicationState} publication · ${report.generated_at} · \`${report.catalog_version.slice(0, 12)}\``,
+    `**${outcomeDisplay[outcome]}** · ${runPublicationDisplay[publicationState]} · ${report.generated_at} · \`${report.catalog_version.slice(0, 12)}\``,
     "",
-    "| Provider | Result | Models | Model Δ | Sources | Source Δ | Pricing Δ | Coverage | Coverage Δ | Duration | Signals |",
-    "| --- | --- | ---: | --- | ---: | --- | --- | --- | --- | ---: | --- |",
+    "| Provider | Catalog | Models | Model Δ | Sources | Source Δ | Pricing | Pricing Δ | Coverage | Coverage Δ | Duration | Signals |",
+    "| --- | --- | ---: | --- | ---: | --- | --- | --- | --- | --- | ---: | --- |",
     ...providers.map(
       ({
         provider_id,
         publication: state,
+        pricing_publication: pricingState,
         models,
         sources,
         pricing,
@@ -538,17 +588,14 @@ export function refreshReport(value: unknown): RefreshReportOutput {
           diffValue(models.added, models.removed, models.changed),
           sources.current === undefined ? "—" : String(sources.current),
           diffValue(sources.added, sources.removed, sources.changed),
-          table(pricingDisplay[pricing.outcome] ?? pricing.outcome.replaceAll("_", " ")),
+          pricingPublicationDisplay[pricingState],
+          pricingDisplay[pricing.outcome] ?? "❓",
           coverage === undefined ? "—" : coverageValue(coverage),
           coverage === undefined ? "—" : coverageDeltaValue(coverage),
           durations.has(provider_id)
             ? `${((durations.get(provider_id) ?? 0) / 1000).toFixed(1)}s`
             : "—",
-          table(
-            signals
-              .map((signal) => signalDisplay[signal] ?? signal.replaceAll("_", " "))
-              .join(", ") || "—",
-          ),
+          table(signals.map((signal) => signalDisplay[signal] ?? "❓").join(" ") || "—"),
         ].join(" | ")} |`,
     ),
     ...legend,
@@ -638,8 +685,8 @@ export function refreshReport(value: unknown): RefreshReportOutput {
   return {
     markdown: `${lines.join("\n")}\n`,
     warnings: [
-      ...retained.map(
-        ({ provider_id, publication: state }) => `${provider_id} publication was ${state}`,
+      ...catalogRetained.map(
+        ({ provider_id, publication: state }) => `${provider_id} catalog publication was ${state}`,
       ),
       ...providers.flatMap(({ provider_id, signals }) =>
         signals

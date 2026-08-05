@@ -163,6 +163,7 @@ describe("collection state", () => {
       unchanged: 1,
       changed_fields: {},
     });
+    expect(unchanged.providers[0]?.pricing_publication).toBe("not_observed");
     expect(unchanged.providers[0]?.pricing_coverage).toEqual({
       current_models: 1,
       offer_models: 0,
@@ -351,6 +352,7 @@ describe("collection state", () => {
           provider_id: "test",
           status: "stale",
           publication: "retained",
+          pricing_publication: "not_observed",
           models: { removed: 0 },
           signals: [
             "drift_guard_triggered",
@@ -450,6 +452,11 @@ describe("collection state", () => {
     expect(provenance.providers[0]?.pricing).toMatchObject({
       outcome: "provenance_only",
     });
+    expect(provenance).toMatchObject({
+      publication: "partial",
+      totals: { pricing_retained: 1 },
+      providers: [{ publication: "accepted", pricing_publication: "retained" }],
+    });
     expect(provenance.providers[0]?.pricing_coverage).toMatchObject({
       current_models: 1,
       offer_models: 0,
@@ -460,6 +467,9 @@ describe("collection state", () => {
     });
 
     const removed = summarizeRefresh(previous, current, pricing("Not offered", "fresh"), noPricing);
-    expect(removed.providers[0]?.pricing).toMatchObject({ outcome: "removed" });
+    expect(removed.providers[0]).toMatchObject({
+      pricing: { outcome: "removed" },
+      pricing_publication: "removed",
+    });
   });
 });

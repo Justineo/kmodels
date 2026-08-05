@@ -17,6 +17,7 @@ describe("refresh report", () => {
           provider_id: "example",
           status: "stale",
           publication: "retained",
+          pricing_publication: "retained",
           models: {
             current: 1,
             added: 1,
@@ -129,7 +130,7 @@ describe("refresh report", () => {
     });
 
     expect(output.warnings).toEqual([
-      "example publication was retained",
+      "example catalog publication was retained",
       "example: drift_guard_triggered",
       "example: coverage_regression",
       "example/example-catalog: reject missing_required_field at /video_capabilities/generate_audio (1/312 items; 0123456789abcdef)",
@@ -137,7 +138,7 @@ describe("refresh report", () => {
       "example/example-catalog: 3 consecutive failures; 24.0h stale",
       "example: pricing attempt source_schema_changed",
     ]);
-    expect(output.markdown).toContain("partial publication");
+    expect(output.markdown).toContain("**🟰** · ⚠️");
     expect(output.markdown).toContain("1.3s");
     expect(output.markdown).toContain("| + | <code>example/new</code> | — |");
     expect(output.markdown).toContain("| − | <code>example/old</code> | — |");
@@ -151,20 +152,19 @@ describe("refresh report", () => {
       "<code>limits.max_output_tokens</code>: <code>4096</code> → <em>missing</em>",
     );
     expect(output.markdown).toContain(
-      "| example | ⚠️ retained | 1 | +1 · −1 · ~1 | 9 | +2 · −1 · ~3 | 0 | 2/3 · 1 unknown | resolved +1 · unknown −1 |",
+      "| example | ⚠️ | 1 | +1 · −1 · ~1 | 9 | +2 · −1 · ~3 | ⚠️ | 🟰 | 2/3 · 1 unknown | resolved +1 · unknown −1 |",
     );
     expect(output.markdown).toContain("<summary>Legend</summary>");
     expect(output.markdown).toContain("Model `~`: the same model identity remains");
     expect(output.markdown).toContain("Source `~`: the same accepted source record remains");
-    expect(output.markdown).toContain("#### Publication");
-    expect(output.markdown).toContain(
-      "⚠️ `retained`: the provider update could not be published as a complete validated pair",
-    );
-    expect(output.markdown).toContain("#### Pricing");
-    expect(output.markdown).toContain("💰 `terms changed`: canonical commercial terms changed");
+    expect(output.markdown).toContain("#### Catalog");
+    expect(output.markdown).toContain("⚠️ A required catalog input or provider validation failed");
+    expect(output.markdown).toContain("#### Pricing result");
+    expect(output.markdown).toContain("#### Pricing Δ");
+    expect(output.markdown).toContain("💰 Canonical commercial terms changed");
     expect(output.markdown).toContain("#### Signals");
     expect(output.markdown).toContain(
-      "`persistent_source_failure`: at least one source has failed",
+      "🔁 Persistent source failure: at least one source has failed",
     );
     expect(output.markdown).toContain("3 consecutive · 24.0h stale");
     expect(output.markdown).toContain("#### Details");
@@ -212,6 +212,7 @@ describe("refresh report", () => {
           provider_id: "example",
           status: "fresh",
           publication: "accepted",
+          pricing_publication: "accepted",
           models: { current: 1, added: 0, removed: 0, changed: 0 },
           sources: { changed: 1 },
           pricing: { outcome: "provenance_only" },
@@ -244,19 +245,48 @@ describe("refresh report", () => {
       ],
     });
 
-    expect(output.markdown).toContain("complete publication");
-    expect(output.markdown).toContain(
-      "| example | ✅ accepted | 1 | — | — | ~1 | 🧾 evidence changed | — | — |",
-    );
-    expect(output.markdown).toContain(
-      "🧾 `evidence changed`: commercial terms stayed the same; only provenance",
-    );
+    expect(output.markdown).toContain("**🧾** · ✅");
+    expect(output.markdown).toContain("| example | ✅ | 1 | — | — | ~1 | ✅ | 🧾 | — | — |");
+    expect(output.markdown).toContain("🧾 Commercial terms stayed the same, but provenance");
     expect(output.markdown).toContain(
       "| Contract | `example-catalog` | `accept_with_signal` · `unknown_field`",
     );
     expect(output.warnings).toEqual([
       "example/example-catalog: accept_with_signal unknown_field at /future_field (1/1 items; 0123456789abcdef)",
     ]);
+  });
+
+  it("separates fresh catalog publication from retained pricing", () => {
+    const output = refreshReport({
+      generated_at: "2026-08-01T00:00:00.000Z",
+      catalog_version: "abcdef0123456789",
+      outcome: "evidence_only",
+      publication: "partial",
+      providers: [
+        {
+          provider_id: "example",
+          status: "fresh",
+          publication: "accepted",
+          pricing_publication: "retained",
+          models: { current: 1, added: 0, removed: 0, changed: 0 },
+          sources: { current: 1, added: 0, removed: 0, changed: 0 },
+          pricing: { outcome: "provenance_only" },
+          signals: [],
+          attempt: {
+            outcome: "accepted",
+            sources: [],
+            pricing: { outcome: "failed", failure_code: "pricing_validation_failed" },
+          },
+        },
+      ],
+    });
+
+    expect(output.markdown).toContain("| example | ✅ | 1 | — | 1 | — | ⚠️ | 🧾 | — | — |");
+    expect(output.markdown).toContain(
+      "Pricing ⚠️ with Pricing Δ 🧾 means old commercial terms were retained",
+    );
+    expect(output.markdown).not.toContain("accepted | 1");
+    expect(output.warnings).toContain("example: pricing attempt pricing_validation_failed");
   });
 
   it("renders the immediately preceding limit-change shape", () => {
