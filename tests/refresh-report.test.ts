@@ -287,4 +287,62 @@ describe("refresh report", () => {
       "<code>limits.context_tokens</code>: <code>128000</code> → <code>131072</code>",
     );
   });
+
+  it("groups every exact model field change beneath its provider", () => {
+    const output = refreshReport({
+      generated_at: "2026-08-01T00:00:00.000Z",
+      catalog_version: "abcdef0123456789",
+      providers: [
+        {
+          provider_id: "alpha",
+          status: "fresh",
+          models: {
+            current: 1,
+            added: 0,
+            removed: 0,
+            changed: 1,
+            changed_models: [
+              {
+                model_ref: "alpha/model-a",
+                fields: ["status"],
+                field_changes: [{ path: "status", previous: "preview", current: "active" }],
+              },
+            ],
+          },
+          sources: { changed: 0 },
+          pricing: { outcome: "unchanged" },
+        },
+        {
+          provider_id: "beta",
+          status: "fresh",
+          models: {
+            current: 1,
+            added: 0,
+            removed: 0,
+            changed: 1,
+            changed_models: [
+              {
+                model_ref: "beta/model-b",
+                fields: ["limits"],
+                field_changes: [
+                  { path: "limits.context_tokens", previous: 8_192, current: 16_384 },
+                ],
+              },
+            ],
+          },
+          sources: { changed: 0 },
+          pricing: { outcome: "unchanged" },
+        },
+      ],
+    });
+
+    expect(output.markdown).toContain("### alpha\n\n#### Model changes\n\n| Δ | Model | Details |");
+    expect(output.markdown).toContain(
+      '| ~ | <code>alpha/model-a</code> | <code>status</code>: <code>"preview"</code> → <code>"active"</code> |',
+    );
+    expect(output.markdown).toContain("### beta\n\n#### Model changes\n\n| Δ | Model | Details |");
+    expect(output.markdown).toContain(
+      "| ~ | <code>beta/model-b</code> | <code>limits.context_tokens</code>: <code>8192</code> → <code>16384</code> |",
+    );
+  });
 });
