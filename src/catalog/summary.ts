@@ -151,6 +151,7 @@ interface ProviderRefreshSummary {
   provider_id: string;
   status: "fresh" | "stale" | "unavailable" | "not_configured" | "removed";
   publication: "accepted" | "retained" | "withheld" | "not_configured" | "removed";
+  pricing_publication: "accepted" | "retained" | "withheld" | "not_observed" | "removed";
   models: ModelDiffSummary;
   sources: SourceDiffSummary;
   pricing: PricingDiffSummary;
@@ -238,6 +239,22 @@ function pricingCoverage(
   };
 }
 
+function pricingPublication(
+  providerId: string,
+  previous: PricingCatalog,
+  current: PricingCatalog,
+  attempt: ProviderRefreshAttempt | undefined,
+): ProviderRefreshSummary["pricing_publication"] {
+  const currentSnapshot = current.provider_snapshots.find(
+    ({ provider_id: owner }) => owner === providerId,
+  );
+  if (currentSnapshot?.publication === "fresh") return "accepted";
+  if (currentSnapshot?.publication === "retained") return "retained";
+  if (previous.provider_snapshots.some(({ provider_id: owner }) => owner === providerId))
+    return "removed";
+  return attempt?.pricing?.outcome === "failed" ? "withheld" : "not_observed";
+}
+
 export interface RefreshSummary {
   schema_version: 2;
   generated_at: string;
@@ -250,6 +267,11 @@ export interface RefreshSummary {
     accepted: number;
     retained: number;
     withheld: number;
+    pricing_accepted: number;
+    pricing_retained: number;
+    pricing_withheld: number;
+    pricing_not_observed: number;
+    pricing_removed: number;
     models: number;
     added_models: number;
     removed_models: number;
@@ -486,6 +508,7 @@ export function summarizeRefresh(
             : status === "unavailable"
               ? "withheld"
               : status,
+      pricing_publication: pricingPublication(providerId, previousPricing, currentPricing, attempt),
       models: modelDiff(
         oldModels,
         current.models.filter((model) => model.provider_id === providerId),
@@ -533,6 +556,21 @@ export function summarizeRefresh(
     accepted: providers.filter(({ publication }) => publication === "accepted").length,
     retained: providers.filter(({ publication }) => publication === "retained").length,
     withheld: providers.filter(({ publication }) => publication === "withheld").length,
+    pricing_accepted: providers.filter(
+      ({ pricing_publication: publication }) => publication === "accepted",
+    ).length,
+    pricing_retained: providers.filter(
+      ({ pricing_publication: publication }) => publication === "retained",
+    ).length,
+    pricing_withheld: providers.filter(
+      ({ pricing_publication: publication }) => publication === "withheld",
+    ).length,
+    pricing_not_observed: providers.filter(
+      ({ pricing_publication: publication }) => publication === "not_observed",
+    ).length,
+    pricing_removed: providers.filter(
+      ({ pricing_publication: publication }) => publication === "removed",
+    ).length,
     models: current.models.length,
     added_models: providers.reduce((total, provider) => total + provider.models.added, 0),
     removed_models: providers.reduce((total, provider) => total + provider.models.removed, 0),
@@ -559,7 +597,13 @@ export function summarizeRefresh(
     ...(previous === undefined ? {} : { previous_catalog_version: previous.catalog_version }),
     catalog_version: current.catalog_version,
     outcome: changed ? "changed" : evidenceChanged ? "evidence_only" : "unchanged",
-    publication: totals.retained > 0 || totals.withheld > 0 ? "partial" : "complete",
+    publication:
+      totals.retained > 0 ||
+      totals.withheld > 0 ||
+      totals.pricing_retained > 0 ||
+      totals.pricing_withheld > 0
+        ? "partial"
+        : "complete",
     totals,
     providers,
   };

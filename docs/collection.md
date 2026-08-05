@@ -94,7 +94,11 @@ Status: implemented
 - Quarantine empty successful responses; duplicate IDs, service families, endpoints, routes, or availability pairs; unresolved route provenance; invalid prices; model drops over 10%; service-family, price-rate, endpoint, route, or availability drops over 20%; and non-promotional price changes over 50%.
 - A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has been reviewed. Those rows are excluded from the old comparison baseline and are not preserved, while every unlisted deletion remains protected by the normal drift guard.
 - `KMODELS_REBUILD_PROVIDER` may remove the old comparison baseline for one reviewed parser migration. Every other provider still validates against its previous catalog.
-- Publication is failure-closed and provider-atomic. A rejected or suspicious provider keeps its last validated catalog; providers do not block one another.
+- Catalog publication is failure-closed and provider-atomic across required catalog inputs. A
+  rejected or suspicious provider keeps its last validated catalog; optional or credential-scoped
+  inventory sources may be skipped, and providers do not block one another. Pricing has a separate
+  provider-atomic publication decision, so valid fresh catalog data may advance while failed pricing
+  retains its previous accepted partition.
 - The collector classifies a retained pricing attempt with one finite public
   code: required source unavailable, reviewed source format changed, pricing
   validation failed, provider refresh failed, or no complete pricing snapshot
@@ -163,8 +167,9 @@ Status: implemented
   accepted source record but changes its content hash, extractor version, or declared field paths;
   that evidence churn does not by itself imply a changed model.
 - The run-level semantic outcome (`changed`, `evidence_only`, or `unchanged`) is independent of
-  publication completeness (`complete` or `partial`). A retained provider therefore cannot hide
-  behind an “unchanged” label, and provenance-only churn is not presented as a commercial change.
+  publication completeness (`complete` or `partial`). Catalog and pricing retention are reported
+  separately, either one makes the run partial, and neither can hide behind an “unchanged” label.
+  Provenance-only churn is not presented as a commercial change.
 - `breaking_contract_mismatch` means a field or value owned by the projection became
   uninterpretable; `unreviewed_extension` means fresh data was accepted after an unrelated
   extension was stripped; `coverage_regression` covers explicit item or field-coverage failures;

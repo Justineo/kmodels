@@ -27,9 +27,10 @@ Status: implemented
   called out explicitly and commits nothing.
 - The report's provider table pairs current model, source, and pricing-coverage counts with their
   deltas. Model and source deltas show only nonzero `+`, `−`, and `~` terms; coverage deltas
-  separately show changes in resolved and unknown model counts. Publication, pricing, and signal
-  results use an emoji plus a concise label so a partial run is scannable without discarding the
-  structured report's stable machine-readable meaning. A collapsible legend
+  separately show changes in resolved and unknown model counts. Catalog publication and pricing
+  publication have separate columns because fresh catalog data can advance while failed pricing is
+  retained. Summary enum cells use only emoji; the structured report retains stable machine-readable
+  values and a complete collapsible legend defines every icon. The legend
   distinguishes a published semantic model update from a source content, extractor, or field-path
   change and defines pricing coverage. Provider-specific model changes and operational details use
   compact tables with zero counters omitted. Every changed model has one row with leaf-level
