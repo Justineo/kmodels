@@ -563,7 +563,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v6",
+        extractorVersion: "anthropic-catalog-v7",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -886,7 +886,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v5",
+        extractorVersion: "databricks-catalog-v6",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1965,7 +1965,7 @@ export const manifests = [
           maxModels: 70,
           minPricingCoverage: 0.6,
         },
-        extractorVersion: "cohere-catalog-v5",
+        extractorVersion: "cohere-catalog-v6",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2934,7 +2934,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-catalog-v5",
+        extractorVersion: "cerebras-catalog-v6",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -3158,7 +3158,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v3",
+        extractorVersion: "ollama-cloud-v4",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

@@ -32,7 +32,8 @@ Status: current
   allowance sizes and an account's remaining balance are not public catalog facts.
 - Most Cloud model pages publish only an ordinal usage level (`low`, `medium`, `high`, or
   `extra high`). Preserve that level as a raw allowance fact; it is neither a currency amount
-  nor a stable multiplier and therefore leaves `pricing_state` as `unknown`.
+  nor a stable multiplier. The base price therefore remains `not_published`, while the raw fact
+  distinguishes this known allowance mechanic from a model with no commercial evidence.
 - `kimi-k3` is the current first-party exception: its page publishes extra-usage rates of
   `$3.00 / 1M` input tokens, `$0.30 / 1M` cached tokens, and `$15.00 / 1M` output tokens, and
   says that a Pro or Max subscription plus extra usage credits is required. Publish those
@@ -40,8 +41,8 @@ Status: current
   allowance consumption or other models.
 - Local-only Library weights use `not_applicable` for Ollama provider billing. The operator's
   compute and infrastructure cost is outside this provider price book. A hosted Cloud badge
-  without an exact dollar rate uses `not_published`; a bound usage level upgrades that state
-  to `unknown` because a non-monetary commercial fact is available.
+  without an exact dollar rate uses `not_published`; a bound usage level retains that state and
+  adds the non-monetary raw allowance fact.
 - Subscriptions automatically renew; taxes are account-specific; purchased extra-usage
   credits expire after one year. These terms affect account-effective cost but do not bind to
   a model meter.

@@ -6,6 +6,7 @@ const minimumReviewedObservationCount = 8_000;
 
 describe("Bedrock pricing resource calibration", () => {
   it("contains the complete committed observation corpus within its provider budget", async () => {
+    expect(pricingLimits.providerApplicabilityBytes).toBe(pricingLimits.providerPricingBytes);
     const pricing = (await generatedData()).pricing.data;
     const providerId = "amazon-bedrock";
     const books = pricing.books.filter(({ provider_id }) => provider_id === providerId);

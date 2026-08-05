@@ -54,6 +54,11 @@ Status: current
   fresh provider candidate, preserving the last valid snapshot instead of silently dropping price
   rows. Explicit price-list or page models absent from the current card catalog remain unbound because
   AWS billing surfaces can lead the callable catalog or retain stale products.
+- Bedrock's provider-wide applicability budget is 64 MiB, matching the provider partition budget.
+  The reviewed 2026-08-05 candidate required 33,716,751 bytes—only 162,319 bytes above the earlier
+  32 MiB calibration—while remaining within the partition, selector-work, variant, and observation
+  limits. Raising this aggregate budget preserves those independent safety bounds instead of
+  discarding a complete, otherwise valid price book.
 - A catalog model remains `unknown` when no current price product binds uniquely. Do not transfer prices from a similarly named generation, preview, or Stability utility operation.
 - Two current callable rows deliberately remain unresolved. `amazon.titan-embed-g1-text-02` has an
   exact model card but no exact current pricing-page or Price List identity; do not copy the price
