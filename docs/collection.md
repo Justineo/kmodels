@@ -152,9 +152,10 @@ Status: implemented
   every changed model field, status and task transitions, exact changed sources, pricing outcomes,
   bounded per-provider pricing-resolution coverage, warnings, and the corresponding attempt
   evidence. Pricing coverage distinguishes models with public offers,
-  exact not-applicable dispositions, and unresolved pricing; an unresolved model is a Kmodels
-  collection outcome, not a claim that the provider publishes no price. It never copies raw response
-  data, exception stacks, credentials, or private unmatched IDs. Model comparison uses the
+  exact not-applicable dispositions, and unresolved pricing. It also records resolved-model and
+  unknown-model count deltas against the previous accepted catalog; an unresolved model is a
+  Kmodels collection outcome, not a claim that the provider publishes no price. It never copies raw
+  response data, exception stacks, credentials, or private unmatched IDs. Model comparison uses the
   storage-visible JSON projection, so an omitted optional member and an explicitly `undefined`
   optional member cannot create a false model change.
 - Model and source changes are independent comparisons. A model update keeps the same model

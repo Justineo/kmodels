@@ -40,7 +40,7 @@ describe("refresh report", () => {
               },
             ],
           },
-          sources: { added: 2, removed: 1, changed: 3 },
+          sources: { current: 9, added: 2, removed: 1, changed: 3 },
           pricing: { outcome: "unchanged" },
           pricing_coverage: {
             current_models: 3,
@@ -51,6 +51,7 @@ describe("refresh report", () => {
             raw_fact_models: 0,
             unknown_model_refs: ["example/unknown"],
             unknown_model_refs_omitted: 0,
+            delta: { resolved_models: 1, unknown_models: -1 },
           },
           signals: [
             "drift_guard_triggered",
@@ -150,15 +151,17 @@ describe("refresh report", () => {
       "<code>limits.max_output_tokens</code>: <code>4096</code> → <em>missing</em>",
     );
     expect(output.markdown).toContain(
-      "| example | retained | 1 | +1 / −1 / ~1 | +2 / −1 / ~3 | unchanged |",
+      "| example | ⚠️ retained | 1 | +1 · −1 · ~1 | 9 | +2 · −1 · ~3 | 0 | 2/3 · 1 unknown | resolved +1 · unknown −1 |",
     );
     expect(output.markdown).toContain("<summary>Legend</summary>");
     expect(output.markdown).toContain("Model `~`: the same model identity remains");
     expect(output.markdown).toContain("Source `~`: the same accepted source record remains");
     expect(output.markdown).toContain("#### Publication");
-    expect(output.markdown).toContain("`retained`: the refresh did not replace this provider");
+    expect(output.markdown).toContain(
+      "⚠️ `retained`: the provider update could not be published as a complete validated pair",
+    );
     expect(output.markdown).toContain("#### Pricing");
-    expect(output.markdown).toContain("`commercial`: canonical commercial terms changed");
+    expect(output.markdown).toContain("💰 `terms changed`: canonical commercial terms changed");
     expect(output.markdown).toContain("#### Signals");
     expect(output.markdown).toContain(
       "`persistent_source_failure`: at least one source has failed",
@@ -188,8 +191,8 @@ describe("refresh report", () => {
       "| Finding | `example-catalog` | `unbound` · `identity_not_found` |",
     );
     expect(output.markdown).toContain("| Finding | `example-catalog` | +1 omitted |");
-    expect(output.markdown).toContain("2/3 · ?1");
-    expect(output.markdown).toContain("| Coverage | — | 2/3 resolved · ?1 |");
+    expect(output.markdown).toContain("2/3 · 1 unknown");
+    expect(output.markdown).toContain("| Pricing coverage | — | 2/3 resolved · 1 unknown |");
     expect(output.markdown).toContain("<summary>Unknown pricing examples (1/3)</summary>");
     expect(output.markdown).toContain(
       "<summary>Pricing finding samples — <code>example-catalog</code> (1)</summary>",
@@ -243,10 +246,10 @@ describe("refresh report", () => {
 
     expect(output.markdown).toContain("complete publication");
     expect(output.markdown).toContain(
-      "| example | accepted | 1 | +0 / −0 / ~0 | +0 / −0 / ~1 | provenance_only |",
+      "| example | ✅ accepted | 1 | — | — | ~1 | 🧾 evidence changed | — | — |",
     );
     expect(output.markdown).toContain(
-      "`provenance_only`: commercial terms stayed the same; only provenance",
+      "🧾 `evidence changed`: commercial terms stayed the same; only provenance",
     );
     expect(output.markdown).toContain(
       "| Contract | `example-catalog` | `accept_with_signal` · `unknown_field`",

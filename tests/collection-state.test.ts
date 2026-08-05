@@ -172,6 +172,7 @@ describe("collection state", () => {
       raw_fact_models: 0,
       unknown_model_refs: ["test/model"],
       unknown_model_refs_omitted: 0,
+      delta: { resolved_models: 0, unknown_models: 0 },
     });
 
     const changedModel = { ...unchangedModel, name: "Renamed model" };
@@ -214,6 +215,9 @@ describe("collection state", () => {
         removed: 0,
         changed: 1,
         unchanged: 0,
+      },
+      pricing_coverage: {
+        delta: { resolved_models: 0, unknown_models: 1 },
       },
     });
     expect(changed).toMatchObject({
@@ -452,6 +456,7 @@ describe("collection state", () => {
       not_applicable_models: 1,
       unknown_models: 0,
       unknown_model_refs: [],
+      delta: { resolved_models: 0, unknown_models: 0 },
     });
 
     const removed = summarizeRefresh(previous, current, pricing("Not offered", "fresh"), noPricing);

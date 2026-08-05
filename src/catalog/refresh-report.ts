@@ -90,6 +90,7 @@ const providerSchema = z.object({
   publication: z.enum(["accepted", "retained", "withheld", "not_configured", "removed"]).optional(),
   models: diffSchema,
   sources: z.object({
+    current: z.number().int().nonnegative().optional(),
     added: z.number().int().nonnegative().default(0),
     removed: z.number().int().nonnegative().default(0),
     changed: z.number().int().nonnegative(),
@@ -105,6 +106,12 @@ const providerSchema = z.object({
       raw_fact_models: z.number().int().nonnegative(),
       unknown_model_refs: z.array(z.string()),
       unknown_model_refs_omitted: z.number().int().nonnegative(),
+      delta: z
+        .object({
+          resolved_models: z.number().int(),
+          unknown_models: z.number().int(),
+        })
+        .optional(),
     })
     .optional(),
   signals: z.array(z.string()).default([]),
@@ -141,6 +148,29 @@ const publicationByStatus: Record<Provider["status"], NonNullable<Provider["publ
   not_configured: "not_configured",
   removed: "removed",
 };
+const publicationDisplay: Record<NonNullable<Provider["publication"]>, string> = {
+  accepted: "✅ accepted",
+  retained: "⚠️ retained",
+  withheld: "⛔ withheld",
+  not_configured: "⏭️ not configured",
+  removed: "➖ removed",
+};
+const pricingDisplay: Record<string, string> = {
+  none: "n/a",
+  added: "➕ added",
+  removed: "➖ removed",
+  commercial: "💰 terms changed",
+  provenance_only: "🧾 evidence changed",
+  unchanged: "0",
+};
+const signalDisplay: Record<string, string> = {
+  drift_guard_triggered: "🛡️ drift guard",
+  breaking_contract_mismatch: "⚠️ contract mismatch",
+  unreviewed_extension: "🧩 unreviewed extension",
+  coverage_regression: "📉 coverage regression",
+  possible_structural_change: "🧱 possible structural change",
+  persistent_source_failure: "🔁 persistent source failure",
+};
 
 function table(value: string): string {
   return value.replaceAll("|", "\\|");
@@ -161,6 +191,35 @@ function displayChangeValue(value: z.infer<typeof fieldChangeSchema>["previous"]
   const encoded = JSON.stringify(value);
   const bounded = encoded.length <= 240 ? encoded : `${encoded.slice(0, 239)}…`;
   return inlineCode(bounded);
+}
+
+function signedDelta(value: number): string {
+  return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
+}
+
+function diffValue(added: number, removed: number, changed: number): string {
+  const parts = [
+    added === 0 ? undefined : `+${added}`,
+    removed === 0 ? undefined : `−${removed}`,
+    changed === 0 ? undefined : `~${changed}`,
+  ].filter((value): value is string => value !== undefined);
+  return parts.join(" · ") || "—";
+}
+
+function coverageValue(coverage: NonNullable<Provider["pricing_coverage"]>): string {
+  const resolved = coverage.offer_models + coverage.not_applicable_models;
+  return `${resolved}/${coverage.current_models} · ${coverage.unknown_models} unknown`;
+}
+
+function coverageDeltaValue(coverage: NonNullable<Provider["pricing_coverage"]>): string {
+  const delta = coverage.delta;
+  if (delta === undefined) return "—";
+  if (delta.resolved_models === 0 && delta.unknown_models === 0) return "0";
+  const parts = [
+    delta.resolved_models === 0 ? undefined : `resolved ${signedDelta(delta.resolved_models)}`,
+    delta.unknown_models === 0 ? undefined : `unknown ${signedDelta(delta.unknown_models)}`,
+  ].filter((value): value is string => value !== undefined);
+  return parts.join(" · ");
 }
 
 function legacyChangeDetails(value: Provider["models"]["changed_models"][number]): string[] {
@@ -234,26 +293,26 @@ const legend = [
   "",
   "#### Deltas",
   "",
-  "- `Models` is the current published count. In both delta columns, `+` means added, `−` removed, and `~` updated/changed since the previous accepted catalog.",
+  "- `Models` and `Sources` are current published counts. In their delta columns, `+` means added, `−` removed, and `~` updated/changed since the previous accepted catalog; `—` means no change.",
   "- Model `~`: the same model identity remains, but at least one published semantic field changed. Observation time alone is not compared.",
   "- Source `~`: the same accepted source record remains, but its content hash, extractor version, or declared field paths changed. A source change is input/evidence churn and does not necessarily change a model, so the two `~` counts need not match.",
   "",
   "#### Publication",
   "",
-  "- `accepted`: the fresh candidate was published.",
-  "- `retained`: the refresh did not replace this provider; its previous accepted data was kept.",
-  "- `withheld`: no usable previous data was available and the candidate was not published.",
-  "- `not_configured`: this provider is intentionally not configured for collection.",
-  "- `removed`: this provider is no longer in the published catalog.",
+  "- ✅ `accepted`: the fresh candidate was published.",
+  "- ⚠️ `retained`: the provider update could not be published as a complete validated pair, so its previous accepted catalog and pricing data were kept.",
+  "- ⛔ `withheld`: no usable previous data was available and the candidate was not published.",
+  "- ⏭️ `not configured`: this provider is intentionally not configured for collection.",
+  "- ➖ `removed`: this provider is no longer in the published catalog.",
   "",
   "#### Pricing",
   "",
-  "- `none`: neither catalog has a pricing partition for this provider.",
-  "- `added`: a pricing partition was added.",
-  "- `removed`: a pricing partition was explicitly removed.",
-  "- `commercial`: canonical commercial terms changed.",
-  "- `provenance_only`: commercial terms stayed the same; only provenance, freshness, publication, or other non-commercial evidence changed.",
-  "- `unchanged`: the complete pricing partition stayed the same.",
+  "- `n/a`: neither catalog has a pricing partition for this provider.",
+  "- ➕ `added`: a pricing partition was added.",
+  "- ➖ `removed`: a pricing partition was explicitly removed.",
+  "- 💰 `terms changed`: canonical commercial terms changed.",
+  "- 🧾 `evidence changed`: commercial terms stayed the same; only provenance, freshness, publication, or other non-commercial evidence changed.",
+  "- `0`: the complete pricing partition stayed the same.",
   "",
   "#### Signals",
   "",
@@ -266,7 +325,8 @@ const legend = [
   "",
   "#### Coverage",
   "",
-  "- Coverage uses `resolved/current · ?unknown`. Resolved means a public offer or an explicit not-applicable disposition.",
+  "- Coverage is pricing resolution for current non-retired models: `resolved/current · unknown`. Resolved means a public offer or an explicit not-applicable disposition.",
+  "- Coverage Δ compares the accepted result with the previous accepted catalog. It reports resolved-model and unknown-model count changes separately.",
   "",
   "#### Provider details",
   "",
@@ -459,8 +519,8 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     "",
     `**${outcome.replaceAll("_", " ")}** · ${publicationState} publication · ${report.generated_at} · \`${report.catalog_version.slice(0, 12)}\``,
     "",
-    "| Provider | Publication | Models | Model Δ | Source Δ | Pricing Δ | Coverage | Duration | Signals |",
-    "| --- | --- | ---: | --- | ---: | --- | --- | ---: | --- |",
+    "| Provider | Result | Models | Model Δ | Sources | Source Δ | Pricing Δ | Coverage | Coverage Δ | Duration | Signals |",
+    "| --- | --- | ---: | --- | ---: | --- | --- | --- | --- | ---: | --- |",
     ...providers.map(
       ({
         provider_id,
@@ -473,18 +533,22 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       }) =>
         `| ${[
           table(provider_id),
-          state,
+          publicationDisplay[state],
           String(models.current),
-          `+${models.added} / −${models.removed} / ~${models.changed}`,
-          `+${sources.added} / −${sources.removed} / ~${sources.changed}`,
-          table(pricing.outcome),
-          coverage === undefined
-            ? "—"
-            : `${coverage.offer_models + coverage.not_applicable_models}/${coverage.current_models} · ?${coverage.unknown_models}`,
+          diffValue(models.added, models.removed, models.changed),
+          sources.current === undefined ? "—" : String(sources.current),
+          diffValue(sources.added, sources.removed, sources.changed),
+          table(pricingDisplay[pricing.outcome] ?? pricing.outcome.replaceAll("_", " ")),
+          coverage === undefined ? "—" : coverageValue(coverage),
+          coverage === undefined ? "—" : coverageDeltaValue(coverage),
           durations.has(provider_id)
             ? `${((durations.get(provider_id) ?? 0) / 1000).toFixed(1)}s`
             : "—",
-          table(signals.join(", ") || "—"),
+          table(
+            signals
+              .map((signal) => signalDisplay[signal] ?? signal.replaceAll("_", " "))
+              .join(", ") || "—",
+          ),
         ].join(" | ")} |`,
     ),
     ...legend,
@@ -523,9 +587,9 @@ export function refreshReport(value: unknown): RefreshReportOutput {
         .map((modelRef) => `\`${modelRef}\``)
         .join(", ");
       detailRows.push([
-        "Coverage",
+        "Pricing coverage",
         "—",
-        `${pricingCoverage.offer_models + pricingCoverage.not_applicable_models}/${pricingCoverage.current_models} resolved · ?${pricingCoverage.unknown_models}`,
+        `${pricingCoverage.offer_models + pricingCoverage.not_applicable_models}/${pricingCoverage.current_models} resolved · ${pricingCoverage.unknown_models} unknown`,
       ]);
       if (examples.length > 0 || omitted > 0)
         detailNotes.push(
