@@ -8,9 +8,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Refresh catalog"]
-    types: [completed]
 
 concurrency:
   group: void-production
@@ -18,7 +15,6 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       VOID_PROJECT: ${{ vars.VOID_PROJECT }}

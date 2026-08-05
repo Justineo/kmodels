@@ -1,6 +1,7 @@
 name: Refresh catalog
 
 permissions:
+  actions: write
   contents: write
 
 on:
@@ -84,12 +85,21 @@ jobs:
         run: vp run build
 
       - name: Commit validated changes
+        id: commit
         run: |
           git add data/catalog.json data/pricing.json.gz data/pricing-inputs.json.gz data/website-assets.json data/website-assets.pack data/export-assets.json data/export-assets.pack data/fetch-state.json data/quarantine.json data/refresh-summary.json
           if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore(data): refresh provider catalog" -m "Kmodels-Refresh-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy refreshed catalog
+        if: steps.commit.outputs.changed == 'true'
+        run: gh workflow run void-deploy.yml --ref main
+        env:
+          GH_TOKEN: ${{ github.token }}

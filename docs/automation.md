@@ -14,11 +14,12 @@ Status: implemented
   producing Actions run in a `Kmodels-Refresh-Run` trailer. Deployment checks
   out full history so the website generation-time link can resolve the latest
   catalog-producing commit and prefer that run, while manually produced catalog
-  commits fall back to their GitHub commit page. A successful refresh completion
-  triggers deployment explicitly because a push authenticated with the workflow
-  `GITHUB_TOKEN` does not emit another `push` workflow run. Deployment always
-  checks out the latest `main`, while ordinary human-authenticated pushes retain
-  their direct deployment trigger.
+  commits fall back to their GitHub commit page. After a refresh commits and
+  pushes changed data, it explicitly dispatches the dedicated deployment
+  workflow because a push authenticated with the workflow `GITHUB_TOKEN` does
+  not emit another `push` workflow run. Void accepts the dispatch workflow's
+  GitHub OIDC token; deployment always checks out the latest `main`, while
+  ordinary human-authenticated pushes retain their direct deployment trigger.
 - The collector owns failure classification and the safe public status
   projection. The workflow renders its structured report into the GitHub job
   summary, emits warnings for retained or withheld providers, and keeps the
