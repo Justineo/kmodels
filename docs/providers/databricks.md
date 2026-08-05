@@ -5,7 +5,13 @@ Status: current
 ## Sources and identity
 
 - The public AWS regional catalog is one atomic bundle rooted at the supported-model details page and fixed task, region, lifecycle, limit, API, priority-mode, pricing, and release references.
+- The API response usage contract contains exact prompt, completion, total, reasoning, cache-read,
+  and cache-creation token counters. Treat that complete field set as post-request cost evidence;
+  reject unreviewed additions, removals, or renames instead of silently losing a billing dimension.
 - Databricks explicitly delegates Gemini image-model amounts to two anchored sections of Google's official Gemini price book. Those sections are part of the same reviewed bundle; no other Google prices are imported.
+- The fixed Google pricing companion retains its reviewed `hl=en` query so the parsed headings remain
+  deterministic. Configured companion queries are allowed after HTTPS and host validation; fragments,
+  credentials, and custom ports remain forbidden.
 - Callable IDs come only from labeled endpoint names. The source is exhaustive only for the reviewed AWS regional page.
 - General purpose and Embeddings task sets must exactly cover the catalog IDs and agree across responsive copies. Unknown IDs, changed routes, or structural drift reject the provider.
 - Optional `GET /api/2.0/serving-endpoints` is workspace-scoped. Its host must be an allowlisted Databricks HTTPS origin; it cannot create/remove rows or retain raw workspace data.

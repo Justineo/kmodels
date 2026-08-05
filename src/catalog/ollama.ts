@@ -411,7 +411,7 @@ function applyPagePricing(model: ProviderModel, pricing: PagePricing | undefined
   if (pricing === undefined) return model;
   return {
     ...model,
-    pricing_state: pricing.rates.length > 0 ? "numeric" : "unknown",
+    pricing_state: pricing.rates.length > 0 ? "numeric" : "not_published",
     price_facts: pricing.rates,
     raw_price_facts: pricing.raw,
   };

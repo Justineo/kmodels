@@ -179,6 +179,7 @@ async function anthropicCatalog(
   batchGuideBody?: string,
   lifecycleBody?: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  structuredOutputsBody?: string,
 ): Promise<ProviderModel[]> {
   const value = manifest("anthropic");
   const source = value.sources[0];
@@ -227,7 +228,7 @@ async function anthropicCatalog(
       },
       {
         url: "https://platform.claude.com/docs/en/build-with-claude/structured-outputs.md",
-        body: await fixture("anthropic/structured-outputs.md"),
+        body: structuredOutputsBody ?? (await fixture("anthropic/structured-outputs.md")),
       },
       {
         url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
@@ -5305,9 +5306,27 @@ describe("Anthropic adapters", () => {
       "Anthropic batch model coverage drifted",
     );
   });
+
+  it("requires every structured-output ID to bind to the catalog", async () => {
+    const structured = (await fixture("anthropic/structured-outputs.md")).replace(
+      "`claude-sonnet-5`",
+      "`claude-unknown-5`",
+    );
+    await expect(
+      anthropicCatalog(undefined, undefined, undefined, undefined, structured),
+    ).rejects.toThrow("Anthropic structured-output model did not bind: claude-unknown-5");
+  });
 });
 
 describe("Databricks adapters", () => {
+  it("keeps the reviewed English locale selector on the Google price companion", () => {
+    const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
+    const companion = source?.linkedDocuments?.documents?.find(
+      ({ id }) => id === "google-image-pricing",
+    );
+    expect(companion?.url).toBe("https://ai.google.dev/gemini-api/docs/pricing?hl=en");
+  });
+
   it("combines labeled endpoints with lifecycle, limits, feature support, and DBU rates", async () => {
     const models = await databricksCatalog();
     const sol = models.find((model) => model.model_id === "databricks-gpt-5-6-sol");
@@ -7459,6 +7478,7 @@ describe("Cerebras adapter", () => {
       ["/models/openai-oss.md", "gpt", "md"],
       ["/models/gemma-4-31b.md", "gemma", "md"],
       ["/models/zai-glm-47.md", "glm", "md"],
+      ["/models/choose-a-model.md", "choose", "md"],
       ["/capabilities/prompt-caching.md", "cache", "md"],
       ["/api-reference/chat-completions.md", "chat-completions", "md"],
       ["/api-reference/completions.md", "completions", "md"],
@@ -9457,7 +9477,7 @@ describe("Ollama adapters", () => {
       capabilities: { reasoning: true, tool_call: true, streaming: true },
       limits: { context_tokens: 131072 },
       updated_date: "2025-08-05",
-      pricing_state: "unknown",
+      pricing_state: "not_published",
       raw_price_facts: [
         expect.objectContaining({
           term_key: "ollama_cloud_usage_level",

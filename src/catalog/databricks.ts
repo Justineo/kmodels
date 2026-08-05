@@ -289,7 +289,9 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
   });
   if (
     usageFields.size !== 1 ||
-    !usageFields.has("completion_tokens|prompt_tokens|total_tokens|reasoning_tokens") ||
+    !usageFields.has(
+      "completion_tokens|prompt_tokens|total_tokens|reasoning_tokens|cache_read_input_tokens|cache_creation_input_tokens",
+    ) ||
     !/service tier used for the request\. Returns "priority" if priority mode was requested, otherwise "default"/i.test(
       referenceText,
     )

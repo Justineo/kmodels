@@ -840,9 +840,15 @@ export function parseCerebrasCatalog(input: Input): ProviderModel[] {
   validateApiReferences(bundle);
   validateServiceTierPricing(bundle);
   const rows = catalogRows(bundle.index.body);
+  const cardPaths = new Set(rows.map(({ path }) => path));
+  const nonCardModelPaths = new Set(["/models/choose-a-model"]);
   const cardEntries = bundle.documents.flatMap((item) => {
     const pathname = new URL(item.url).pathname.replace(/\.md$/, "");
     if (!pathname.startsWith("/models/")) return [];
+    if (!cardPaths.has(pathname)) {
+      if (nonCardModelPaths.has(pathname)) return [];
+      throw new Error(`Cerebras source included an unreviewed model page: ${pathname}`);
+    }
     const id = item.body.match(/\bmodelId="([^"]+)"/)?.[1];
     if (id === undefined) throw new Error(`Cerebras model page ${pathname} omitted its Model ID`);
     return [[modelIdSchema.parse(id), item.body] as const];

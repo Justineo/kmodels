@@ -31,7 +31,7 @@ Status: current
 - Detailed rows in the current overview, and exact indexed cards with enabled API
   endpoints, establish active lifecycle state. Platform-only rows and legacy endpoint
   lists do not.
-- Preserve exact Chat V1/V2, OpenAI compatibility, Embed, Embed Jobs, Rerank, Audio Transcriptions, and legacy Generate routes. Limit Embed Jobs to its explicit request-model list.
+- Preserve exact Chat V1/V2, OpenAI compatibility, Embed, Embed Jobs, Rerank, Audio Transcriptions, and legacy Generate routes. Cohere currently links Audio Transcriptions through the exact versioned `/v2/reference/create-audio-transcription` alias while the canonical reference remains `/reference/create-audio-transcription`; both establish the same reviewed V2 operation. Limit Embed Jobs to its explicit request-model list.
 - Generic account inventory values such as chat/embed/rerank add tasks but not API versions. Zero context on image-only embeddings is unknown, not a zero-token limit.
 - Pricing joins prefer one exact active model over a deprecated date-less alias, then require one
   unique non-retired match. Responsive copies must agree.

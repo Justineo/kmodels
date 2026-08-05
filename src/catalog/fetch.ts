@@ -1345,13 +1345,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   });
   const configured = (crawl.documents ?? []).map((document) => {
     const url = checkedUrl(document.url, source);
-    if (
-      url.port !== "" ||
-      url.username !== "" ||
-      url.password !== "" ||
-      url.search !== "" ||
-      url.hash !== ""
-    )
+    if (url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "")
       throw new Error("Reviewed companion URL contained unsupported URL components");
     return {
       key: `${source.id}/${document.id}`,

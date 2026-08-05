@@ -1,5 +1,5 @@
 # Structured outputs
 
-<Note>
-  Structured outputs are generally available on the Claude API for Claude 4.5 and later models and [Claude Mythos Preview](https://anthropic.com/glasswing).
-</Note>
+## Compatibility
+
+- Supported models: `claude-fable-5`, `claude-mythos-5`, `claude-mythos-preview`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-sonnet-5`

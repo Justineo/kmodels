@@ -70,6 +70,7 @@ interface EndpointDefinition {
   operation: ModelTask;
   endpoint: ApiEndpoint;
   href?: string;
+  hrefAliases?: string[];
   labels: string[];
   modelList?: "embed_jobs" | "generate";
 }
@@ -144,6 +145,7 @@ const endpointDefinitions: EndpointDefinition[] = [
     operation: "transcription",
     endpoint: { name: "Audio Transcriptions", path: "v2/audio/transcriptions" },
     href: "/reference/create-audio-transcription",
+    hrefAliases: ["/v2/reference/create-audio-transcription"],
     labels: ["Audio Transcriptions"],
   },
   {
@@ -384,7 +386,8 @@ function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
             labels: definition.labels,
             modelIds,
           };
-    if (definition.href !== undefined) byHref.set(definition.href, reference);
+    for (const href of [definition.href, ...(definition.hrefAliases ?? [])])
+      if (href !== undefined) byHref.set(href, reference);
     for (const label of definition.labels) byLabel.set(label, reference);
   }
   return { byHref, byLabel };

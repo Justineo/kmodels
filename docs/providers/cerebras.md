@@ -7,6 +7,9 @@ Status: current
 - The unauthenticated public API and official Model Catalog are independent exhaustive sources for shared endpoints. The structured public API is the primary exact-ID price source; the public pricing page is an independently maintained corroborating source.
 - Callable IDs must be exact structured IDs or labeled model-card IDs. Dedicated endpoint weights and account-defined deployments do not create global rows.
 - Model Catalog Production/Preview sections own maturity when public API lifecycle flags disagree.
+- `/models/choose-a-model` is a reviewed selection guide, not a model card: it intentionally has no
+  `modelId`. Only exact model links from the Production/Preview catalog tables enter the card set;
+  any other newly discovered `/models/*` page still fails closed until classified.
 - Deprecations add only model lifecycle rows; parameter deprecations do not. Replacement links resolve through exact path/ID bindings in the current catalog or exact name/ID bindings in the change log. Unresolved, conflicting, or dangling replacements reject the source; there is no model allowlist.
 - Release dates require exact structural label/ID bindings. Historical models keep limits, prices, and dates unknown when current official sources no longer publish them.
 - Optional authenticated `/v1/models` is account-scoped validation. It cannot create/remove rows or retain raw data.
