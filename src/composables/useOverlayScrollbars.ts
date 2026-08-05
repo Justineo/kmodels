@@ -5,11 +5,11 @@ interface ScrollbarElements {
   target: HTMLElement | null;
   viewport: HTMLElement | null;
   slot?: HTMLElement | null;
-  coarseTouch?: boolean;
   axis?: "both" | "horizontal" | "vertical";
 }
 
 const CUSTOM_SCROLL_QUERY = "(any-hover: hover) and (any-pointer: fine)";
+const COARSE_TOUCH_QUERY = "(any-hover: none) and (any-pointer: coarse)";
 let overlayScrollbarsModule: Promise<typeof import("overlayscrollbars")> | undefined;
 
 function prefersNativeScrollbars(): boolean {
@@ -32,12 +32,13 @@ export function useOverlayScrollbars(elements: () => ScrollbarElements): () => v
   let instance: OverlayScrollbarsInstance | undefined;
   let instanceSlot: HTMLElement | null = null;
   let instanceMode: "standard" | "horizontal" | "vertical" | undefined;
-  let media: MediaQueryList | undefined;
+  let mediaQueries: MediaQueryList[] = [];
   let syncVersion = 0;
 
   async function syncCurrent(version: number): Promise<void> {
-    const { target, viewport, slot = null, coarseTouch = false, axis = "both" } = elements();
-    const mode = coarseTouch && axis !== "both" ? axis : "standard";
+    const { target, viewport, slot = null, axis = "both" } = elements();
+    const coarseTouch = axis !== "both" && window.matchMedia(COARSE_TOUCH_QUERY).matches;
+    const mode = coarseTouch ? axis : "standard";
     if (target === null || viewport === null || (prefersNativeScrollbars() && !coarseTouch)) {
       instance?.destroy();
       instance = undefined;
@@ -63,7 +64,6 @@ export function useOverlayScrollbars(elements: () => ScrollbarElements): () => v
       currentElements.target !== target ||
       currentElements.viewport !== viewport ||
       (currentElements.slot ?? null) !== slot ||
-      (currentElements.coarseTouch ?? false) !== coarseTouch ||
       (currentElements.axis ?? "both") !== axis ||
       (prefersNativeScrollbars() && !coarseTouch)
     )
@@ -106,14 +106,14 @@ export function useOverlayScrollbars(elements: () => ScrollbarElements): () => v
   }
 
   onMounted(() => {
-    media = window.matchMedia(CUSTOM_SCROLL_QUERY);
-    media.addEventListener("change", sync);
+    mediaQueries = [window.matchMedia(CUSTOM_SCROLL_QUERY), window.matchMedia(COARSE_TOUCH_QUERY)];
+    for (const query of mediaQueries) query.addEventListener("change", sync);
     sync();
   });
 
   onUnmounted(() => {
     syncVersion += 1;
-    media?.removeEventListener("change", sync);
+    for (const query of mediaQueries) query.removeEventListener("change", sync);
     instance?.destroy();
     instanceSlot = null;
     instanceMode = undefined;

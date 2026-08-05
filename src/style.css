@@ -570,11 +570,20 @@ kbd {
 .table-shell {
   width: 100%;
   height: 100%;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   overscroll-behavior: contain;
 }
 
-.mobile-table-scrollbar-slot {
+.table-vertical-scrollbar-slot {
+  position: absolute;
+  z-index: var(--layer-table-header);
+  inset: var(--layout-table-header-height) var(--space-0) var(--space-0) auto;
+  width: var(--space-5);
+}
+
+.table-vertical-scrollbar-slot > .os-scrollbar-horizontal,
+.table-scroll-host > .os-scrollbar-vertical {
   display: none;
 }
 
@@ -594,51 +603,32 @@ kbd {
 }
 
 .model-table {
+  display: grid;
   width: 100%;
+  height: 100%;
   min-width: var(--layout-table-min-width);
-  border-spacing: 0;
-  table-layout: fixed;
+  grid-template-rows: var(--layout-table-header-height) minmax(0, 1fr);
   text-align: left;
 }
 
-.model-table col.model-col {
-  width: 24%;
+.model-table thead,
+.model-table tbody {
+  display: block;
+  min-width: 0;
 }
 
-.model-table col.provider-col {
-  width: 14%;
+.model-table tbody {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
-.model-table col.tasks-col {
-  width: 10%;
-}
-
-.model-table col.status-col {
-  width: 8%;
-}
-
-.model-table col.context-col {
-  width: 8%;
-}
-
-.model-table col.input-col,
-.model-table col.cached-col,
-.model-table col.output-col {
-  width: 8%;
-}
-
-.model-table col.released-col {
-  width: 8%;
-}
-
-.model-table col.disclosure-col {
-  width: 4%;
+.model-table tr {
+  display: grid;
+  grid-template-columns: var(--layout-table-grid-columns);
 }
 
 .model-table th {
-  position: sticky;
-  z-index: var(--layer-table-header);
-  top: 0;
   height: var(--layout-table-header-height);
   padding: var(--space-0) var(--layout-table-cell-padding);
   border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
@@ -649,6 +639,26 @@ kbd {
   letter-spacing: var(--tracking-table);
   line-height: var(--line-height-none);
   white-space: nowrap;
+}
+
+.model-table th,
+.model-table .model-row > td {
+  display: grid;
+  align-content: center;
+}
+
+.model-table th.numeric,
+.model-table .model-row > td.numeric {
+  justify-items: end;
+}
+
+.price-status-cell {
+  grid-column: span 3;
+  justify-items: stretch;
+}
+
+.virtual-spacer td {
+  grid-column: 1 / -1;
 }
 
 .model-table th.numeric {
@@ -1623,31 +1633,10 @@ button.table-status-trigger {
   }
 
   .table-shell {
-    overflow-x: auto;
-    overflow-y: hidden;
     overscroll-behavior: none;
   }
 
-  .model-table {
-    display: grid;
-    height: 100%;
-    grid-template-rows: var(--layout-table-header-height) minmax(0, 1fr);
-  }
-
-  .model-table colgroup {
-    display: none;
-  }
-
-  .model-table thead,
   .model-table tbody {
-    display: block;
-    min-width: 0;
-  }
-
-  .model-table tbody {
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
     overscroll-behavior-x: auto;
     overscroll-behavior-y: none;
   }
@@ -1656,50 +1645,8 @@ button.table-status-trigger {
     touch-action: pan-x pan-y;
   }
 
-  .mobile-table-scrollbar-slot {
-    position: absolute;
-    z-index: var(--layer-table-header);
-    inset: var(--layout-table-header-height) var(--space-0) var(--space-0) auto;
-    display: block;
-    width: var(--space-5);
-  }
-
-  .mobile-table-scrollbar-slot .os-scrollbar.kmodels-scrollbar {
+  .table-vertical-scrollbar-slot .os-scrollbar.kmodels-scrollbar {
     --os-handle-interactive-area-offset: var(--space-2-5);
-  }
-
-  .mobile-table-scrollbar-slot > .os-scrollbar-horizontal,
-  .table-scroll-host > .os-scrollbar-vertical {
-    display: none;
-  }
-
-  .model-table tr {
-    display: grid;
-    grid-template-columns: var(--layout-table-grid-columns);
-  }
-
-  .model-table th {
-    position: static;
-  }
-
-  .model-table th,
-  .model-table .model-row > td {
-    display: grid;
-    align-content: center;
-  }
-
-  .model-table th.numeric,
-  .model-table .model-row > td.numeric {
-    justify-items: end;
-  }
-
-  .price-status-cell {
-    grid-column: span 3;
-    justify-items: stretch;
-  }
-
-  .virtual-spacer td {
-    grid-column: 1 / -1;
   }
 }
 
