@@ -1,8 +1,8 @@
 {
-  "catalog_version": "10a2b075695664afa52943eccddd295a8ad8cf5b6136aa73d49400ff87076621",
-  "generated_at": "2026-08-05T11:40:30.891Z",
+  "catalog_version": "771ceaffa5bf558c3a9e8d195eaeeb00c6cbed2bd737fa520c9e53fc7deb2e18",
+  "generated_at": "2026-08-05T12:33:37.204Z",
   "outcome": "changed",
-  "previous_catalog_version": "b249ce3dbcf36d90487005a723dc9249f3c4942235828bba22a2b91e714b7170",
+  "previous_catalog_version": "10a2b075695664afa52943eccddd295a8ad8cf5b6136aa73d49400ff87076621",
   "providers": [
     {
       "attempt": {
@@ -443,9 +443,9 @@
         },
         "sources": [
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 3,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -605,20 +605,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "cerebras-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cerebras-catalog"
           }
         ],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -1630,19 +1636,14 @@
             "field_changes": [
               {
                 "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              },
-              {
-                "current": true,
                 "path": "capabilities.tool_call",
-                "previous": false
+                "previous": true
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
+            "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
           }
         ],
         "current": 1538,
@@ -2999,7 +3000,7 @@
     "added_models": 0,
     "added_sources": 0,
     "changed_models": 1,
-    "changed_sources": 29,
+    "changed_sources": 30,
     "models": 3383,
     "pricing_accepted": 18,
     "pricing_not_observed": 0,
