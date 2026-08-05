@@ -61,6 +61,11 @@ export class TooltipCoordinator {
     this.cooldownUntil = Date.now() + this.cooldown;
   }
 
+  dismiss(): void {
+    this.cancelPending();
+    if (this.active !== undefined) this.release(this.active);
+  }
+
   private activate(client: TooltipClient): void {
     this.active = client;
     client.show();

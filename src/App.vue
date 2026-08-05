@@ -28,12 +28,12 @@ import ModelRow from "./components/ModelRow.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
 import UiIcon from "./components/UiIcon.vue";
 import UiTooltip from "./components/UiTooltip.vue";
+import { tooltipCoordinator } from "./composables/tooltip.ts";
 import { useOverlayScrollbars } from "./composables/useOverlayScrollbars.ts";
 import { detailsState } from "./details-state.ts";
 
 const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
-const COARSE_TOUCH_QUERY = "(any-hover: none) and (any-pointer: coarse)";
 
 type Theme = "light" | "dark";
 const LIFECYCLE_OPTIONS = modelLifecycles;
@@ -60,40 +60,29 @@ const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewpor
 const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
 const tableBody = useTemplateRef<HTMLTableSectionElement>("tableBody");
-const tableScrollbarSlot = useTemplateRef<HTMLDivElement>("tableScrollbarSlot");
+const tableVerticalScrollbarSlot = useTemplateRef<HTMLDivElement>("tableVerticalScrollbarSlot");
 const tableScrollOffset = ref(0);
 const tableViewportSize = ref(0);
-const usesNestedTableScroll = ref(window.matchMedia(COARSE_TOUCH_QUERY).matches);
 let tableResizeObserver: ResizeObserver | undefined;
-let tableScrollMedia: MediaQueryList | undefined;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let applyingRoute = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
-let tableHeaderHeight = 0;
 const updateFilterScrollbars = useOverlayScrollbars(() => ({
   target: filterScrollHost.value,
   viewport: filterScrollViewport.value,
 }));
-const updateTableScrollbars = useOverlayScrollbars(() => {
-  const coarseTouch = usesNestedTableScroll.value;
-  return {
-    target: tableScrollHost.value,
-    viewport: tableShell.value,
-    coarseTouch,
-    axis: coarseTouch ? "horizontal" : "both",
-  };
-});
-const updateTableBodyScrollbar = useOverlayScrollbars(() => {
-  const coarseTouch = usesNestedTableScroll.value;
-  return {
-    target: coarseTouch ? tableBody.value : null,
-    viewport: coarseTouch ? tableBody.value : null,
-    slot: coarseTouch ? tableScrollbarSlot.value : null,
-    coarseTouch,
-    axis: "vertical",
-  };
-});
+const updateTableHorizontalScrollbar = useOverlayScrollbars(() => ({
+  target: tableScrollHost.value,
+  viewport: tableShell.value,
+  axis: "horizontal",
+}));
+const updateTableVerticalScrollbar = useOverlayScrollbars(() => ({
+  target: tableBody.value,
+  viewport: tableBody.value,
+  slot: tableVerticalScrollbarSlot.value,
+  axis: "vertical",
+}));
 
 const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
 const selectedModel = computed(() => {
@@ -267,19 +256,14 @@ function handleFilterToggle(event: ToggleEvent): void {
   void nextTick(updateFilterScrollbars);
 }
 
+function dismissTooltips(): void {
+  tooltipCoordinator.dismiss();
+}
+
 function updateVirtualRange(): void {
-  const element = tableVerticalScrollElement();
+  const element = tableBody.value;
   tableScrollOffset.value = element?.scrollTop ?? 0;
-  const headerOffset = element === tableShell.value ? tableHeaderHeight : 0;
-  tableViewportSize.value = Math.max(0, (element?.clientHeight ?? 0) - headerOffset);
-}
-
-function handleTableBodyScroll(): void {
-  updateVirtualRange();
-}
-
-function tableVerticalScrollElement(): HTMLElement | null {
-  return usesNestedTableScroll.value ? tableBody.value : tableShell.value;
+  tableViewportSize.value = element?.clientHeight ?? 0;
 }
 
 function pixelToken(name: `--${string}`): number {
@@ -289,11 +273,10 @@ function pixelToken(name: `--${string}`): number {
 }
 
 function resetVirtualScroll(): void {
-  tableShell.value?.scrollTo({ top: 0 });
   tableBody.value?.scrollTo({ top: 0 });
   updateVirtualRange();
-  updateTableScrollbars();
-  updateTableBodyScrollbar();
+  updateTableHorizontalScrollbar();
+  updateTableVerticalScrollbar();
 }
 
 function syncRoute(): void {
@@ -363,14 +346,13 @@ function selectRelativeModel(offset: -1 | 1): void {
 }
 
 function scrollModelIntoView(index: number): void {
-  const element = tableVerticalScrollElement();
+  const element = tableBody.value;
   if (element === null) return;
-  const headerOffset = element === tableShell.value ? tableHeaderHeight : 0;
   element.scrollTop = nearestItemScrollOffset({
     index,
     itemSize: virtualItemSize,
     scrollOffset: element.scrollTop,
-    viewportSize: Math.max(0, element.clientHeight - headerOffset),
+    viewportSize: element.clientHeight,
   });
   updateVirtualRange();
 }
@@ -484,17 +466,14 @@ watch(
 onMounted(() => {
   reconcileRouteSelections();
   virtualItemSize = pixelToken("--layout-table-row-height");
-  tableHeaderHeight = pixelToken("--layout-table-header-height");
   window.addEventListener("keydown", handleShortcut);
   window.addEventListener("popstate", applyRoute);
-  tableScrollMedia = window.matchMedia(COARSE_TOUCH_QUERY);
-  tableScrollMedia.addEventListener("change", handleTableScrollModeChange);
-  const shell = tableShell.value;
-  if (shell !== null) {
+  window.addEventListener("resize", dismissTooltips);
+  window.addEventListener("scroll", dismissTooltips, true);
+  const body = tableBody.value;
+  if (body !== null) {
     tableResizeObserver = new ResizeObserver(updateVirtualRange);
-    tableResizeObserver.observe(shell);
-    const body = tableBody.value;
-    if (body !== null) tableResizeObserver.observe(body);
+    tableResizeObserver.observe(body);
   }
   updateVirtualRange();
   syncRoute();
@@ -509,14 +488,10 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener("keydown", handleShortcut);
   window.removeEventListener("popstate", applyRoute);
-  tableScrollMedia?.removeEventListener("change", handleTableScrollModeChange);
+  window.removeEventListener("resize", dismissTooltips);
+  window.removeEventListener("scroll", dismissTooltips, true);
   tableResizeObserver?.disconnect();
 });
-
-function handleTableScrollModeChange(event: MediaQueryListEvent): void {
-  usesNestedTableScroll.value = event.matches;
-  void nextTick(resetVirtualScroll);
-}
 </script>
 
 <template>
@@ -693,7 +668,6 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
           class="table-shell"
           :aria-label="`Model results, ${resultCountLabel}`"
           tabindex="0"
-          @scroll.passive="updateVirtualRange"
         >
           <div v-if="!hasResults" class="table-state">
             <p>No observed models match these filters.</p>
@@ -703,18 +677,6 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
             <caption class="visually-hidden">
               Observed models and representative published rates
             </caption>
-            <colgroup>
-              <col class="model-col" />
-              <col class="provider-col" />
-              <col class="tasks-col" />
-              <col class="status-col" />
-              <col class="context-col" />
-              <col class="input-col" />
-              <col class="cached-col" />
-              <col class="output-col" />
-              <col class="released-col" />
-              <col class="disclosure-col" />
-            </colgroup>
             <thead>
               <tr>
                 <th class="model-col" scope="col" :aria-sort="ariaSort('name')">
@@ -828,7 +790,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
               </tr>
             </thead>
 
-            <tbody ref="tableBody" @scroll.passive="handleTableBodyScroll">
+            <tbody ref="tableBody" @scroll.passive="updateVirtualRange">
               <tr v-if="virtualRange.paddingBefore > 0" class="virtual-spacer" aria-hidden="true">
                 <td colspan="10" :style="{ height: `${virtualRange.paddingBefore}px` }"></td>
               </tr>
@@ -869,7 +831,7 @@ function handleTableScrollModeChange(event: MediaQueryListEvent): void {
             </tbody>
           </table>
         </div>
-        <div ref="tableScrollbarSlot" class="mobile-table-scrollbar-slot"></div>
+        <div ref="tableVerticalScrollbarSlot" class="table-vertical-scrollbar-slot"></div>
       </div>
     </section>
   </main>

@@ -82,4 +82,24 @@ describe("tooltip coordinator", () => {
     vi.runAllTimers();
     expect(events).toEqual(["show"]);
   });
+
+  it("cancels pending and active tooltips when dismissed", () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    const coordinator = new TooltipCoordinator();
+    const client = {
+      show: () => events.push("show"),
+      hide: () => events.push("hide"),
+    };
+
+    coordinator.request(client);
+    coordinator.dismiss();
+    vi.runAllTimers();
+    expect(events).toEqual([]);
+
+    coordinator.request(client, true);
+    coordinator.dismiss();
+    coordinator.request(client);
+    expect(events).toEqual(["show", "hide", "show"]);
+  });
 });

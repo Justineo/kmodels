@@ -134,9 +134,12 @@ Status: implemented
   it immediately; once that window expires, warm-up is required again. Keyboard
   focus opens immediately, Escape dismisses the active tooltip, and dotted
   underlines mark terse text with additional explanation. Every tooltip
-  teleports into the document's dedicated tooltip layer and uses CSS anchor
-  positioning with viewport-aware fallback placement; components do not
-  calculate viewport coordinates or own scroll/resize listeners. Activating a
+  teleports into the document's dedicated tooltip layer and uses CSS Anchor
+  Positioning directly against its trigger for viewport-aware placement and
+  fallbacks. The table header is outside the table body's vertical scroll
+  container, so heading anchors never depend on browser sticky-anchor scroll
+  compensation. An application-level listener dismisses tooltips on scrolling
+  or viewport resizing. Activating a
   tooltip trigger dismisses its open tooltip; pointer hover cannot reopen it
   until the pointer leaves and enters the trigger again. Switching an open
   tooltip to another trigger through hover or focus does not consume that
@@ -157,16 +160,16 @@ Status: implemented
   enclosing grid items must opt into shrinking with `min-width: 0`, while the
   native scroll viewport stays at the available width, so the table's minimum
   width creates viewport overflow instead of expanding into clipped workspace.
-- On coarse touch devices without hover, keep the semantic table intact but
-  nest its scrollports by axis: the outer table viewport owns horizontal
-  scrolling for the header and body together, while `tbody` owns vertical
-  scrolling below the header. Suppress page zoom gestures while preserving
-  native page panning and momentum in both axes. Allow horizontal scroll chaining
-  from the non-overflowing axis of `tbody` to the outer viewport, while containing
-  vertical and outer-edge overscroll. Leave gesture direction locking to the
-  browser instead of replacing its scrolling physics in JavaScript. Because iOS
-  does not reliably expose an interactive scrollbar for a nested scrollport,
-  attach axis-specific OverlayScrollbars instances to the real outer and `tbody`
+- Keep the semantic table intact and nest its scrollports by axis on every
+  device: the outer table viewport owns horizontal scrolling for the header and
+  body together, while `tbody` owns vertical scrolling below the header. On
+  coarse touch devices, suppress page zoom gestures while preserving native page
+  panning and momentum in both axes. Allow horizontal scroll chaining from the
+  non-overflowing axis of `tbody` to the outer viewport, while containing vertical
+  and outer-edge overscroll. Leave gesture direction locking to the browser
+  instead of replacing its scrolling physics in JavaScript. Because iOS does not
+  reliably expose an interactive scrollbar for a nested scrollport, attach
+  axis-specific OverlayScrollbars instances to the real outer and `tbody`
   viewports. Keep the persistent horizontal scrollbar at the table edge and the
   vertical scrollbar below the header. They supply drag and track interactions
   without handling ordinary content panning.
@@ -232,9 +235,9 @@ Status: implemented
   data so its explicit viewports replace native scrollbars before the first
   rendered frame. On coarse touch devices without hover, do not request or
   initialize OverlayScrollbars for general surfaces; keep their native scrolling
-  and momentum. Initialize horizontal-only and vertical-only table instances
-  against the real outer and nested body viewports so touch users can drag
-  directly through wide and long result sets.
+  and momentum. The table's horizontal-only and vertical-only instances are the
+  exception: initialize them against the real outer and nested body viewports so
+  touch users can drag directly through wide and long result sets.
   Load the full closed-schema validator, inspector component, and inspector CSS
   asynchronously after that frame. Split non-core code instead of deferring core
   table data. Both browser graphs contain only browser-safe modules; canonical
@@ -293,12 +296,11 @@ Status: implemented
   result set. Do not use structural child-position selectors because virtual
   spacers and range slicing make the rendered child position unstable.
 - Implement range math in a small framework-neutral utility and render Vapor-native table markup. Do not add a VDOM virtualization dependency or dynamic measurement.
-- On coarse touch devices, virtual range calculation follows the independently
-  scrolling `tbody`; on other devices it follows the unified table viewport.
+- Virtual range calculation follows the independently scrolling `tbody`.
 - One Vapor composable uses explicit host/viewport pairs for the table, filter
   popover, and inspector. It initializes OverlayScrollbars only when a
   hover-capable pointer is available and otherwise leaves native touch scrollports
-  intact, except for the table's axis-specific mobile scrollbars. The library
+  intact, except for the table's axis-specific scrollbars. The library
   owns scrollbar chrome and direct handle/track interaction; Vue owns content
   and virtual range calculation.
 - The native select picker uses the same restrained scrollbar colors because it is not script-addressable.

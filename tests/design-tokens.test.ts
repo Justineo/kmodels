@@ -104,7 +104,9 @@ describe("design token contract", () => {
   it("keeps native horizontal table overflow inside the viewport", () => {
     expect(components).toMatch(/\.catalog-section\s*\{[^}]*min-width:\s*0;/s);
     expect(components).toMatch(/\.table-scroll-host\s*\{[^}]*min-width:\s*0;/s);
-    expect(components).toMatch(/\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow:\s*auto;/s);
+    expect(components).toMatch(
+      /\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s,
+    );
   });
 
   it("keeps virtual row striping independent of rendered child position", () => {
@@ -134,10 +136,19 @@ describe("design token contract", () => {
     expect(tooltip).toMatch(/\.ui-tooltip\s*\{[^}]*pointer-events:\s*auto;/s);
   });
 
-  it("keeps tooltip fallbacks valid when the preferred anchor area does not fit", () => {
+  it("keeps tooltip positioning CSS-owned", () => {
+    expect(tooltip).not.toMatch(/getBoundingClientRect|ui-tooltip-anchor/);
+    expect(tooltip).toMatch(/\.ui-tooltip\s*\{[^}]*position:\s*fixed;/s);
     expect(tooltip).toMatch(
       /position-try-fallbacks:\s*flip-block,\s*flip-inline,\s*flip-block flip-inline;/,
     );
+  });
+
+  it("dismisses tooltips when any scroll container moves", () => {
+    expect(app).toMatch(/window\.addEventListener\("resize", dismissTooltips\)/);
+    expect(app).toMatch(/window\.addEventListener\("scroll", dismissTooltips, true\)/);
+    expect(app).toMatch(/window\.removeEventListener\("resize", dismissTooltips\)/);
+    expect(app).toMatch(/window\.removeEventListener\("scroll", dismissTooltips, true\)/);
   });
 
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {
@@ -145,19 +156,24 @@ describe("design token contract", () => {
     expect(components).not.toMatch(/(?<!\.os-scrollbar)\.kmodels-scrollbar\s*\{/);
   });
 
-  it("separates mobile table scrolling by axis", () => {
+  it("keeps heading anchors outside the vertical table scroller", () => {
     expect(components).toMatch(
-      /\.table-shell\s*\{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;[^}]*overscroll-behavior:\s*none;/s,
+      /\.model-table\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*var\(--layout-table-header-height\) minmax\(0, 1fr\);/s,
     );
     expect(components).toMatch(
-      /\.model-table tbody\s*\{[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior-x:\s*auto;[^}]*overscroll-behavior-y:\s*none;/s,
+      /\.model-table tbody\s*\{[^}]*min-height:\s*0;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s,
     );
+    expect(components).not.toMatch(/\.model-table th\s*\{[^}]*position:\s*sticky;/s);
+    expect(app).toMatch(/<tbody ref="tableBody" @scroll\.passive="updateVirtualRange">/);
+  });
+
+  it("keeps coarse-pointer table scrolling touch-friendly", () => {
     expect(components).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
     expect(components).toMatch(
-      /\.mobile-table-scrollbar-slot\s*\{[^}]*inset:\s*var\(--layout-table-header-height\)[^}]*display:\s*block;/s,
+      /\.table-vertical-scrollbar-slot\s*\{[^}]*inset:\s*var\(--layout-table-header-height\)/s,
     );
     expect(components).toMatch(
-      /\.mobile-table-scrollbar-slot\s*>\s*\.os-scrollbar-horizontal,[^{]*\.table-scroll-host\s*>\s*\.os-scrollbar-vertical\s*\{[^}]*display:\s*none;/s,
+      /\.table-vertical-scrollbar-slot\s*>\s*\.os-scrollbar-horizontal,[^{]*\.table-scroll-host\s*>\s*\.os-scrollbar-vertical\s*\{[^}]*display:\s*none;/s,
     );
   });
 });
