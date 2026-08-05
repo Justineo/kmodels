@@ -1,8 +1,8 @@
 {
-  "catalog_version": "027a605a0f1bb3049e27de99740ff34eb49f967064762b78f4ac2b7ad44e9980",
-  "generated_at": "2026-08-05T21:25:12.880Z",
+  "catalog_version": "978a960cf92306322a160daaa7e245b9e1a235419c8af8f12cda3e904abeabc6",
+  "generated_at": "2026-08-05T22:22:06.904Z",
   "outcome": "changed",
-  "previous_catalog_version": "a2585878a230e8bc042a9f786f4282256212de3f8ed20639208b45ca274895f9",
+  "previous_catalog_version": "027a605a0f1bb3049e27de99740ff34eb49f967064762b78f4ac2b7ad44e9980",
   "providers": [
     {
       "attempt": {
@@ -1156,14 +1156,43 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 2,
+        "changed_fields": {
+          "description": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "Gemini 3.1 Pro Preview is a state-of-the-art hybrid reasoning model developed and trained by Google. It delivers strong reasoning and document intelligence, making it an overall smart model for complex workflows and tasks. It excels at complex reasoning, deep analysis, and multimodal understanding across a wide range of inputs and tasks.",
+                "path": "description",
+                "previous": "Gemini 3.1 Pro Preview is a state-of-the-art hybrid reasoning model developed and trained by Google. It delivers strong reasoning and document intelligence, making it an overall smart model for complex workflows and tasks. It excels at complex reasoning, deep analysis, and multimodal understanding across a wide range of inputs and tasks"
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "databricks/databricks-gemini-3-1-pro"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "Gemini 3.5 Flash Lite is the fastest and most cost-efficient model in the Gemini 3 series, developed and trained by Google. The model supports multimodal inputs with image capabilities, function calling, and structured output. Gemini 3.5 Flash Lite is optimized for high-throughput, cost-effective deployments.",
+                "path": "description",
+                "previous": "Gemini 3.5 Flash Lite is the fastest and most cost-efficient model in the Gemini 3 series, developed and trained by Google. Built for intelligence at scale, the model supports multimodal inputs with image capabilities, function calling, and structured output. Gemini 3.5 Flash Lite is optimized for high-throughput, cost-effective deployments."
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "databricks/databricks-gemini-3-5-flash-lite"
+          }
+        ],
         "current": 50,
         "previous": 50,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 50
+        "unchanged": 48
       },
       "pricing": {
         "commercial_hash": "978d76f687a2367bb31cdfabc27a7d3d2a031598ef3d5fd0c13e40728045d810",
@@ -1466,22 +1495,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1410,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1408,
+              "model_records": 1410,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1408
+              "unknown_models": 1410
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1408,
+              "diagnostic_count": 1410,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1530,11 +1559,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1408,
+                "unbound": 1410,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 1408,
+              "observed_items": 1410,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-hf-inference"
@@ -1558,7 +1587,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 100,
+              "diagnostic_count": 99,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -1606,11 +1635,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 205,
                 "raw": 0,
-                "unbound": 99,
+                "unbound": 98,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 312,
+              "observed_items": 311,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
@@ -1619,65 +1648,52 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1408,
+            "parsed_models": 1410,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 2,
+        "added": 2,
+        "added_model_refs": [
+          "huggingface/facebook/bart-large-xsum",
+          "huggingface/philschmid/bart-large-cnn-samsum"
+        ],
+        "changed": 1,
         "changed_fields": {
-          "capabilities": 2
+          "capabilities": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
+                "current": true,
+                "path": "capabilities.tool_call",
+                "previous": "unknown"
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen2.5-72B-Instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
           }
         ],
-        "current": 1539,
-        "previous": 1541,
-        "removed": 2,
-        "removed_model_refs": [
-          "huggingface/facebook/bart-large-xsum",
-          "huggingface/philschmid/bart-large-cnn-samsum"
-        ],
-        "unchanged": 1537
+        "current": 1541,
+        "previous": 1539,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1538
       },
       "pricing": {
-        "commercial_hash": "8360b9534edabffd2077921ca73684cb7b8e7b2055b930141a04ff83ae90bf10",
+        "commercial_hash": "40d83ca32ace5df83eb7a559a0b2af1ecee66aee97f1559c3517520fb435d38e",
         "outcome": "commercial",
-        "previous_commercial_hash": "40d83ca32ace5df83eb7a559a0b2af1ecee66aee97f1559c3517520fb435d38e"
+        "previous_commercial_hash": "8360b9534edabffd2077921ca73684cb7b8e7b2055b930141a04ff83ae90bf10"
       },
       "pricing_coverage": {
-        "current_models": 1539,
+        "current_models": 1541,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -2
+          "unknown_models": 2
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -1705,8 +1721,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1409,
-        "unknown_models": 1429
+        "unknown_model_refs_omitted": 1411,
+        "unknown_models": 1431
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -2405,9 +2421,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 93,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -2447,16 +2463,16 @@
             "source_id": "openai-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1,
             "source_id": "openai-overview"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 35,
             "source_id": "openai-deprecations"
           },
@@ -2562,32 +2578,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-deprecations"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -2610,7 +2607,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 6,
+            "consecutive_failures": 7,
             "last_success_at": "2026-08-05T15:43:07.133Z",
             "message": "Vercel model page pricing columns changed shape",
             "outcome": "fetch_failed",
@@ -2798,92 +2795,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "availability": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "global"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "us"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "eu"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "northamerica-northeast1"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "europe-west2"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "asia-northeast1"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "asia-south1"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "asia-southeast1"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "global"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "us"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "eu"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "europe-west2"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "asia-northeast1"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "asia-south1"
-                  },
-                  {
-                    "deployment_type": "managed_api",
-                    "region": "asia-southeast1"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "vertex/gemini-3.5-flash"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 99,
         "previous": 99,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 98
+        "unchanged": 99
       },
       "pricing": {
         "commercial_hash": "a2c04a3313a580e299015c110cd31bb9d026fba7981008d951ed1d395ed1c5d1",
@@ -3007,9 +2926,9 @@
             "source_id": "xai-api"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 6,
             "source_id": "xai-language-api"
           },
@@ -3067,8 +2986,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "xai-language-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -3080,7 +3005,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -3094,18 +3019,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 17,
-    "added_models": 0,
+    "added_models": 2,
     "added_sources": 0,
     "changed_models": 3,
-    "changed_sources": 34,
-    "models": 3385,
+    "changed_sources": 32,
+    "models": 3387,
     "pricing_accepted": 17,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
