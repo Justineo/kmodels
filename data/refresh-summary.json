@@ -1,8 +1,8 @@
 {
-  "catalog_version": "4dba3d7c709ebfd944896c166501852ce8daec1f573b1d85db4cf2a00f838500",
-  "generated_at": "2026-08-06T15:47:02.258Z",
+  "catalog_version": "437db3e243611780ba106ddc43ed039ad404926c9434a24d4e4880735e8ed5e9",
+  "generated_at": "2026-08-07T00:00:44.469Z",
   "outcome": "changed",
-  "previous_catalog_version": "e9acac337e64159ec7549ddbf2f89eabb15ed83b335464b30597e81731a110b4",
+  "previous_catalog_version": "4dba3d7c709ebfd944896c166501852ce8daec1f573b1d85db4cf2a00f838500",
   "providers": [
     {
       "attempt": {
@@ -134,7 +134,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 13,
+            "consecutive_failures": 14,
             "last_success_at": "2026-08-06T00:20:20.186Z",
             "message": "Anthropic computer-use coverage drifted",
             "outcome": "parse_failed",
@@ -212,7 +212,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 9,
+            "consecutive_failures": 10,
             "last_success_at": "2026-08-06T05:58:22.627Z",
             "message": "Azure OpenAI cache accounting contract drifted",
             "outcome": "parse_failed",
@@ -559,14 +559,43 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 2,
+        "changed_fields": {
+          "description": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "command-r-08-2024 is an update of the Command R model, delivered in August 2024. Find more information in the changelog",
+                "path": "description",
+                "previous": "command-r-08-2024 is an update of the Command R model, delivered in August 2024. Find more information here"
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "cohere/command-r-08-2024"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "command-r-plus-08-2024 is an update of the Command R+ model, delivered in August 2024. Find more information in the changelog",
+                "path": "description",
+                "previous": "command-r-plus-08-2024 is an update of the Command R+ model, delivered in August 2024. Find more information here"
+              }
+            ],
+            "fields": [
+              "description"
+            ],
+            "model_ref": "cohere/command-r-plus-08-2024"
+          }
+        ],
         "current": 43,
         "previous": 43,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 43
+        "unchanged": 41
       },
       "pricing": {
         "commercial_hash": "78f0b77c5d3399cba0ac7b2cca0af1f0802a16febaac5253ed316e3d1e9fc3d3",
@@ -1005,10 +1034,10 @@
             "source_id": "databricks-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 42,
+            "outcome": "changed",
+            "parsed_models": 43,
             "source_id": "databricks-api"
           }
         ]
@@ -1053,8 +1082,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "databricks-api"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1066,7 +1101,7 @@
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -1089,7 +1124,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 11,
+            "consecutive_failures": 12,
             "last_success_at": "2026-08-06T03:00:35.977Z",
             "message": "DeepSeek public pricing contract drifted",
             "outcome": "parse_failed",
@@ -1360,7 +1395,7 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 131,
-              "normalized_facts": 406,
+              "normalized_facts": 408,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
@@ -1404,25 +1439,25 @@
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
-                  "sample": "meta-llama/Llama-3.1-8B-Instruct:featherless-ai"
+                  "sample": "Qwen/Qwen2.5-7B-Instruct:featherless-ai"
                 },
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
-                  "sample": "Qwen/Qwen2.5-7B-Instruct:featherless-ai"
+                  "sample": "Qwen/Qwen3.6-27B:featherless-ai"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 203,
+                "normalized": 204,
                 "raw": 0,
                 "unbound": 99,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 310,
+              "observed_items": 311,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
@@ -1437,14 +1472,60 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 2,
+        "added": 1,
+        "added_model_refs": [
+          "huggingface/google/pegasus-cnn_dailymail"
+        ],
+        "changed": 15,
         "changed_fields": {
-          "capabilities": 1,
-          "updated_date": 1
+          "capabilities": 14,
+          "limits": 1
         },
         "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              },
+              {
+                "current": true,
+                "path": "capabilities.tool_call",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen2.5-7B-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-235B-A22B"
+          },
           {
             "field_changes": [
               {
@@ -1456,40 +1537,169 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/google/gemma-4-31B-it"
+            "model_ref": "huggingface/Qwen/Qwen3-Coder-480B-A35B-Instruct"
           },
           {
             "field_changes": [
               {
-                "current": "2026-08-06",
-                "path": "updated_date",
-                "previous": "2023-04-23"
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
               }
             ],
             "fields": [
-              "updated_date"
+              "capabilities"
             ],
-            "model_ref": "huggingface/lfoppiano/MatTPUSciBERT"
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": 262144,
+                "path": "limits.context_tokens"
+              }
+            ],
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.6-35B-A3B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.tool_call",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/aisingapore/Qwen-SEA-LION-v4-32B-IT"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-0528"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3-0324"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.tool_call",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/moonshotai/Kimi-K2-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/moonshotai/Kimi-K2-Instruct-0905"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.tool_call",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
           }
         ],
         "current": 1540,
-        "previous": 1541,
+        "previous": 1540,
         "removed": 1,
         "removed_model_refs": [
-          "huggingface/google/pegasus-cnn_dailymail"
+          "huggingface/chendelong/DirectSAM-1800px-0424"
         ],
-        "unchanged": 1538
+        "unchanged": 1524
       },
       "pricing": {
-        "commercial_hash": "7228e6194518ca0d648910d1464ac086a7e6cba40b9372ef500a2e152d41b720",
+        "commercial_hash": "08af541ca82146714c5243e46768c7bcf36e63d6b1d119b51c4f1fce0caf4c7b",
         "outcome": "commercial",
-        "previous_commercial_hash": "989d903a9a10ff432dba7fd528023a7c774307f9bbb1058eff7d0a4bc86187f9"
+        "previous_commercial_hash": "7228e6194518ca0d648910d1464ac086a7e6cba40b9372ef500a2e152d41b720"
       },
       "pricing_coverage": {
         "current_models": 1540,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -1
+          "unknown_models": 0
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -1705,9 +1915,9 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 12,
             "source_id": "kimi-releases"
           },
@@ -1760,26 +1970,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "kimi-api"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-releases"
           }
         ],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -2279,9 +2483,9 @@
             "source_id": "openai-deprecations"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 52,
             "source_id": "openai-data-residency"
           },
@@ -2339,14 +2543,87 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 2,
+        "changed_fields": {
+          "availability": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "Europe (EEA + Switzerland)"
+                  },
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "United States"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "Europe (EEA + Switzerland)"
+                  },
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "United Arab Emirates"
+                  },
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "United States"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "openai/gpt-4.1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "Europe (EEA + Switzerland)"
+                  },
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "United States"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "Europe (EEA + Switzerland)"
+                  },
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "United Arab Emirates"
+                  },
+                  {
+                    "deployment_type": "regional_processing",
+                    "region": "United States"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "availability"
+            ],
+            "model_ref": "openai/text-embedding-3-small"
+          }
+        ],
         "current": 103,
         "previous": 103,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 103
+        "unchanged": 101
       },
       "pricing": {
         "commercial_hash": "2ceac4e67ce4f154969da00a9991d44b7ff06feb92326f65f3cd233175f8fd1c",
@@ -2380,8 +2657,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 4,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-data-residency"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2405,7 +2688,7 @@
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -2428,7 +2711,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 22,
+            "consecutive_failures": 23,
             "last_success_at": "2026-08-05T15:43:07.133Z",
             "message": "Vercel model page pricing columns changed shape",
             "outcome": "fetch_failed",
@@ -2699,7 +2982,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 10,
+            "consecutive_failures": 11,
             "last_success_at": "2026-08-06T04:08:29.743Z",
             "message": "xAI structured and documented voice aliases differ",
             "outcome": "parse_failed",
@@ -2766,10 +3049,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 13,
-    "added_models": 0,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 2,
-    "changed_sources": 34,
+    "changed_models": 19,
+    "changed_sources": 35,
     "models": 3386,
     "pricing_accepted": 13,
     "pricing_not_observed": 0,
