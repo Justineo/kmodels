@@ -1,8 +1,8 @@
 {
-  "catalog_version": "456b1bac297f133814f1aaf4ce3a680ef89e5a06f25980a83ba832c3a90b2e3b",
-  "generated_at": "2026-08-07T14:21:34.117Z",
+  "catalog_version": "d8d75e02f35404267f048324bbe010f0a5f206262ecce61c4716e5986d242a48",
+  "generated_at": "2026-08-07T15:17:08.558Z",
   "outcome": "changed",
-  "previous_catalog_version": "2b918f3123dc9614af277f67ac79d5f2ab8b7728a4e358eec67549f52d7c3f81",
+  "previous_catalog_version": "456b1bac297f133814f1aaf4ce3a680ef89e5a06f25980a83ba832c3a90b2e3b",
   "providers": [
     {
       "attempt": {
@@ -134,7 +134,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 27,
+            "consecutive_failures": 28,
             "last_success_at": "2026-08-06T00:20:20.186Z",
             "message": "Anthropic computer-use coverage drifted",
             "outcome": "parse_failed",
@@ -212,7 +212,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 23,
+            "consecutive_failures": 24,
             "last_success_at": "2026-08-06T05:58:22.627Z",
             "message": "Azure OpenAI cache accounting contract drifted",
             "outcome": "parse_failed",
@@ -406,9 +406,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
@@ -465,14 +465,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -484,7 +478,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 4
       },
       "status": "fresh",
       "warning_codes": {
@@ -1089,7 +1083,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 25,
+            "consecutive_failures": 26,
             "last_success_at": "2026-08-06T03:00:35.977Z",
             "message": "DeepSeek public pricing contract drifted",
             "outcome": "parse_failed",
@@ -1278,22 +1272,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1405,
+            "parsed_models": 1406,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1405,
+              "model_records": 1406,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1405
+              "unknown_models": 1406
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1405,
+              "diagnostic_count": 1406,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1342,11 +1336,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1405,
+                "unbound": 1406,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 1405,
+              "observed_items": 1406,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-hf-inference"
@@ -1355,18 +1349,18 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 131,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 130,
+              "model_records": 131,
               "normalized_facts": 410,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 20
+              "unknown_models": 21
             },
             "pricing_reconciliation": {
               "basis": "source_item",
@@ -1431,15 +1425,19 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1405,
+            "parsed_models": 1406,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 1,
+        "added": 5,
         "added_model_refs": [
-          "huggingface/chendelong/DirectSAM-1800px-0424"
+          "huggingface/CohereLabs/command-a-translate-08-2025",
+          "huggingface/cahya/bert-base-indonesian-1.5G",
+          "huggingface/facebook/MEXMA",
+          "huggingface/facebook/detr-resnet-50-panoptic",
+          "huggingface/lighteternal/fact-or-opinion-xlmr-el"
         ],
         "changed": 2,
         "changed_fields": {
@@ -1449,15 +1447,15 @@
           {
             "field_changes": [
               {
-                "current": true,
-                "path": "capabilities.tool_call",
-                "previous": false
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.6V-FP8"
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
           },
           {
             "field_changes": [
@@ -1470,21 +1468,18 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
+            "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1535,
-        "previous": 1540,
-        "removed": 6,
+        "current": 1537,
+        "previous": 1535,
+        "removed": 3,
         "removed_model_refs": [
-          "huggingface/CohereLabs/command-a-translate-08-2025",
-          "huggingface/cahya/bert-base-indonesian-1.5G",
-          "huggingface/facebook/MEXMA",
-          "huggingface/facebook/detr-resnet-50-panoptic",
-          "huggingface/lighteternal/fact-or-opinion-xlmr-el",
-          "huggingface/nasa-impact/nasa-smd-ibm-st-v2"
+          "huggingface/JungleLee/bert-toxic-comment-classification",
+          "huggingface/MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+          "huggingface/openai/privacy-filter"
         ],
-        "unchanged": 1532
+        "unchanged": 1530
       },
       "pricing": {
         "commercial_hash": "577ef704f6a70e0c47a80668f2797e23d8a85b62b99efa62a1e63fc9182a456e",
@@ -1492,10 +1487,10 @@
         "previous_commercial_hash": "577ef704f6a70e0c47a80668f2797e23d8a85b62b99efa62a1e63fc9182a456e"
       },
       "pricing_coverage": {
-        "current_models": 1535,
+        "current_models": 1537,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -5
+          "unknown_models": 2
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -1523,8 +1518,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1405,
-        "unknown_models": 1425
+        "unknown_model_refs_omitted": 1407,
+        "unknown_models": 1427
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -2328,9 +2323,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 132,
             "source_id": "openai-api"
           }
@@ -2380,20 +2375,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -2416,7 +2404,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 36,
+            "consecutive_failures": 37,
             "last_success_at": "2026-08-05T15:43:07.133Z",
             "message": "Vercel model page pricing columns changed shape",
             "outcome": "fetch_failed",
@@ -2687,7 +2675,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 24,
+            "consecutive_failures": 25,
             "last_success_at": "2026-08-06T04:08:29.743Z",
             "message": "xAI structured and documented voice aliases differ",
             "outcome": "parse_failed",
@@ -2754,18 +2742,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 13,
-    "added_models": 1,
+    "added_models": 5,
     "added_sources": 0,
     "changed_models": 2,
-    "changed_sources": 31,
-    "models": 3381,
+    "changed_sources": 29,
+    "models": 3383,
     "pricing_accepted": 13,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 5,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 6,
+    "removed_models": 3,
     "removed_sources": 0,
     "retained": 5,
     "withheld": 0
