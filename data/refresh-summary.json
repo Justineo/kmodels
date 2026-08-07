@@ -1,8 +1,8 @@
 {
-  "catalog_version": "d82b782341ae12bddd7b78eb82aec63197300b9564433101a543405b3d3f5bc2",
-  "generated_at": "2026-08-07T08:23:12.030Z",
+  "catalog_version": "0d0b68dca3c5e9f4dfe2ed2e070492fda15c83e2e0fc10c9ed5fef3690680bbc",
+  "generated_at": "2026-08-07T09:20:16.015Z",
   "outcome": "changed",
-  "previous_catalog_version": "44dfec8f771d59b1089c312f508e5f29f8d48d3347fca36be89af9f0ec978d61",
+  "previous_catalog_version": "d82b782341ae12bddd7b78eb82aec63197300b9564433101a543405b3d3f5bc2",
   "providers": [
     {
       "attempt": {
@@ -70,8 +70,8 @@
       },
       "pricing": {
         "commercial_hash": "2a324cc3df52e6af47590cea5eb5cfb9f892d8d4d7fad1c2e19588c96b26c94f",
-        "outcome": "commercial",
-        "previous_commercial_hash": "e8e46f0cef9a837656949f5932d439371b414b4832e3abf0db58e9230f69eaad"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "2a324cc3df52e6af47590cea5eb5cfb9f892d8d4d7fad1c2e19588c96b26c94f"
       },
       "pricing_coverage": {
         "current_models": 126,
@@ -134,7 +134,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 21,
+            "consecutive_failures": 22,
             "last_success_at": "2026-08-06T00:20:20.186Z",
             "message": "Anthropic computer-use coverage drifted",
             "outcome": "parse_failed",
@@ -212,7 +212,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 17,
+            "consecutive_failures": 18,
             "last_success_at": "2026-08-06T05:58:22.627Z",
             "message": "Azure OpenAI cache accounting contract drifted",
             "outcome": "parse_failed",
@@ -1089,7 +1089,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 19,
+            "consecutive_failures": 20,
             "last_success_at": "2026-08-06T03:00:35.977Z",
             "message": "DeepSeek public pricing contract drifted",
             "outcome": "parse_failed",
@@ -1278,22 +1278,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1409,
+            "parsed_models": 1407,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1409,
+              "model_records": 1407,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1409
+              "unknown_models": 1407
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1409,
+              "diagnostic_count": 1407,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1342,11 +1342,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1409,
+                "unbound": 1407,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 1409,
+              "observed_items": 1407,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-hf-inference"
@@ -1355,22 +1355,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 130,
+            "parsed_models": 131,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 130,
+              "model_records": 131,
               "normalized_facts": 406,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 109,
+              "numeric_models": 110,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 21
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 99,
+              "diagnostic_count": 100,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -1418,11 +1418,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 203,
                 "raw": 0,
-                "unbound": 98,
+                "unbound": 99,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 309,
+              "observed_items": 310,
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
@@ -1431,42 +1431,102 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1409,
+            "parsed_models": 1407,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 1,
+        "added": 3,
         "added_model_refs": [
-          "huggingface/zai-org/GLM-4.7-FP8"
-        ],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 1539,
-        "previous": 1540,
-        "removed": 2,
-        "removed_model_refs": [
           "huggingface/FacebookAI/xlm-roberta-large",
-          "huggingface/moonshotai/Kimi-K2-Instruct"
+          "huggingface/moonshotai/Kimi-K2-Instruct",
+          "huggingface/openai/privacy-filter"
         ],
-        "unchanged": 1538
+        "changed": 4,
+        "changed_fields": {
+          "capabilities": 3,
+          "limits": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": 524288,
+                "path": "limits.context_tokens",
+                "previous": 1000000
+              }
+            ],
+            "fields": [
+              "limits"
+            ],
+            "model_ref": "huggingface/MiniMaxAI/MiniMax-M3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.tool_call",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
+          }
+        ],
+        "current": 1538,
+        "previous": 1539,
+        "removed": 4,
+        "removed_model_refs": [
+          "huggingface/deutsche-telekom/mt5-small-sum-de-mit-v1",
+          "huggingface/mfaytin/mask2former-satellite",
+          "huggingface/microsoft/deberta-v2-xlarge",
+          "huggingface/pszemraj/led-base-book-summary"
+        ],
+        "unchanged": 1531
       },
       "pricing": {
-        "commercial_hash": "47f32e69d5f9de927c53da1242e48d3ae5905582e033807755593581c603506c",
+        "commercial_hash": "531145fc332a4cc59c3f8fdd5edb1374dcdf3aa2ea2919a20954ab5dc847f375",
         "outcome": "commercial",
-        "previous_commercial_hash": "16936a0a3ee0ae9a2523c4a97f1ac030f32abfd2fbe1a7d3c6117783df59b985"
+        "previous_commercial_hash": "47f32e69d5f9de927c53da1242e48d3ae5905582e033807755593581c603506c"
       },
       "pricing_coverage": {
-        "current_models": 1539,
+        "current_models": 1538,
         "delta": {
-          "resolved_models": -1,
-          "unknown_models": 0
+          "resolved_models": 1,
+          "unknown_models": -2
         },
-        "normalized_rate_models": 109,
+        "normalized_rate_models": 110,
         "not_applicable_models": 0,
-        "offer_models": 109,
+        "offer_models": 110,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
@@ -1490,8 +1550,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1410,
-        "unknown_models": 1430
+        "unknown_model_refs_omitted": 1408,
+        "unknown_models": 1428
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -2376,7 +2436,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 30,
+            "consecutive_failures": 31,
             "last_success_at": "2026-08-05T15:43:07.133Z",
             "message": "Vercel model page pricing columns changed shape",
             "outcome": "fetch_failed",
@@ -2647,7 +2707,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 18,
+            "consecutive_failures": 19,
             "last_success_at": "2026-08-06T04:08:29.743Z",
             "message": "xAI structured and documented voice aliases differ",
             "outcome": "parse_failed",
@@ -2714,18 +2774,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 13,
-    "added_models": 1,
+    "added_models": 3,
     "added_sources": 0,
-    "changed_models": 0,
+    "changed_models": 4,
     "changed_sources": 30,
-    "models": 3385,
+    "models": 3384,
     "pricing_accepted": 13,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 5,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 4,
     "removed_sources": 0,
     "retained": 5,
     "withheld": 0
