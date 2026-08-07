@@ -219,7 +219,7 @@ export const rawPriceFactSchema = z
   .refine((fact) => Object.keys(fact).length > 0, { message: "Raw price fact is empty" });
 
 export const priceSourceLocatorSchema = z.strictObject({
-  kind: z.enum(["json_pointer", "sku", "table", "fragment", "provider_key"]),
+  kind: z.enum(["json_pointer", "meter", "sku", "table", "fragment", "provider_key"]),
   value: z.string(),
 });
 

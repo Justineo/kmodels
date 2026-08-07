@@ -45,6 +45,8 @@ export interface ParsedPricingSource {
   models: ParsedPricingModel[];
 }
 
+type PublishedPricingModel = Pick<ParsedProviderModel, "model_id" | "status" | "uid" | "version">;
+
 export function isPricingSource(source: SourceManifest): boolean {
   const declaresPricing = source.fields.includes("pricing");
   if (declaresPricing !== (source.pricingEvidence !== undefined))
@@ -72,49 +74,63 @@ interface AdapterContext {
   offers: Map<"usage" | "capacity", OfferBuilder>;
 }
 
+interface PricingBinding {
+  bookKey: string;
+  bookName: string;
+  model: ParsedPricingModel;
+  modelRefs: string[];
+}
+
 export function assembleParsedProviderPricing(
   providerId: string,
   observedAt: string,
   sources: readonly ParsedPricingSource[],
-  publishedModels: readonly Pick<ParsedProviderModel, "model_id" | "uid" | "version">[],
+  publishedModels: readonly PublishedPricingModel[],
   categoricalLabels: readonly PricingCategoricalLabel[] = [],
 ): ProviderPricingPartition | undefined {
   const publishedByUid = new Map(publishedModels.map((model) => [model.uid, model]));
-  const publishedByModelId = uniqueModelsById(publishedModels);
+  const publishedGroups = groupModelsById(publishedModels);
+  const pricingSources = sources.filter(({ source }) => isPricingSource(source));
+  const exactPriceRefs = new Set(
+    pricingSources.flatMap(({ source, models }) =>
+      source.pricingEvidence?.binding === "base_model_id"
+        ? []
+        : models.flatMap((model) => {
+            if (model.price_facts.length === 0) return [];
+            const published = resolvePublishedModel(model, publishedByUid, publishedGroups);
+            return published === undefined ? [] : [published.uid];
+          }),
+    ),
+  );
   const atoms = new Map<string, ProviderAtomRegistryEntry>();
   const labelIndex = categoricalLabelIndex(categoricalLabels);
   const contexts = new Map<string, AdapterContext>();
   const dispositions: AtomicModelDisposition[] = [];
-  for (const { source, models } of sources) {
-    if (!isPricingSource(source)) continue;
+  for (const { source, models } of pricingSources) {
     for (const model of models) {
-      const published =
-        publishedByUid.get(model.uid) ??
-        (model.version === undefined ? publishedByModelId.get(model.model_id) : undefined);
-      if (published === undefined || published === null) continue;
-      const bound =
-        published.uid === model.uid
-          ? model
-          : {
-              ...model,
-              model_id: published.model_id,
-              uid: published.uid,
-              ...(published.version === undefined ? {} : { version: published.version }),
-            };
+      const binding = pricingBinding(source, model, publishedByUid, publishedGroups);
+      if (binding === undefined) continue;
+      const { bookKey, bookName, model: bound } = binding;
+      const modelRefs =
+        source.pricingEvidence?.binding === "base_model_id"
+          ? binding.modelRefs.filter((modelRef) => !exactPriceRefs.has(modelRef))
+          : binding.modelRefs;
+      if (modelRefs.length === 0) continue;
       if (bound.pricing_state === "not_applicable") {
-        dispositions.push({
-          model_ref: bound.uid,
-          observation: {
-            source_ref: source.id,
-            locator: { kind: "provider_key", value: "pricing:model-state" },
-            establishes_model_ref: bound.uid,
-            raw: { label: "No public hosted pricing offer" },
-          },
-        });
+        for (const modelRef of modelRefs)
+          dispositions.push({
+            model_ref: modelRef,
+            observation: {
+              source_ref: source.id,
+              locator: { kind: "provider_key", value: "pricing:model-state" },
+              establishes_model_ref: modelRef,
+              raw: { label: "No public hosted pricing offer" },
+            },
+          });
         continue;
       }
-      const context = adapterContext(contexts, providerId, bound.uid, atoms, labelIndex);
-      addModelPricing(context, source, bound);
+      const context = adapterContext(contexts, providerId, bookKey, bookName, atoms, labelIndex);
+      addModelPricing(context, source, bound, modelRefs);
     }
   }
   const books = [...contexts.values()].flatMap(pricingBooks);
@@ -131,37 +147,85 @@ export function assembleParsedProviderPricing(
   });
 }
 
-function uniqueModelsById(
-  models: readonly Pick<ParsedProviderModel, "model_id" | "uid" | "version">[],
-): Map<string, Pick<ParsedProviderModel, "model_id" | "uid" | "version"> | null> {
-  const values = new Map<
-    string,
-    Pick<ParsedProviderModel, "model_id" | "uid" | "version"> | null
-  >();
+function groupModelsById(
+  models: readonly PublishedPricingModel[],
+): Map<string, PublishedPricingModel[]> {
+  const groups = new Map<string, PublishedPricingModel[]>();
   for (const model of models) {
-    const current = values.get(model.model_id);
-    values.set(
-      model.model_id,
-      current === undefined ? model : current === null || current.uid !== model.uid ? null : model,
-    );
+    const group = groups.get(model.model_id) ?? [];
+    group.push(model);
+    groups.set(model.model_id, group);
   }
-  return values;
+  return groups;
+}
+
+function pricingBinding(
+  source: SourceManifest,
+  model: ParsedPricingModel,
+  publishedByUid: ReadonlyMap<string, PublishedPricingModel>,
+  publishedGroups: ReadonlyMap<string, PublishedPricingModel[]>,
+): PricingBinding | undefined {
+  if (source.pricingEvidence?.binding === "base_model_id" && model.version === undefined) {
+    const published = publishedGroups
+      .get(model.model_id)
+      ?.filter(({ status }) => status !== "retired");
+    if (published === undefined || published.length === 0) return;
+    const modelRefs = published.map(({ uid }) => uid);
+    return {
+      bookKey: modelRefs.length === 1 ? `model:${modelRefs[0]}` : `base-model:${model.uid}`,
+      bookName:
+        modelRefs.length === 1
+          ? `Pricing for ${modelRefs[0]}`
+          : `Pricing for base model ${model.uid}`,
+      model,
+      modelRefs,
+    };
+  }
+
+  const published = resolvePublishedModel(model, publishedByUid, publishedGroups);
+  if (published === undefined) return;
+  const bound =
+    published.uid === model.uid
+      ? model
+      : {
+          ...model,
+          model_id: published.model_id,
+          uid: published.uid,
+          ...(published.version === undefined ? {} : { version: published.version }),
+        };
+  return {
+    bookKey: `model:${bound.uid}`,
+    bookName: `Pricing for ${bound.uid}`,
+    model: bound,
+    modelRefs: [bound.uid],
+  };
+}
+
+function resolvePublishedModel(
+  model: Pick<ParsedPricingModel, "model_id" | "uid" | "version">,
+  byUid: ReadonlyMap<string, PublishedPricingModel>,
+  groups: ReadonlyMap<string, PublishedPricingModel[]>,
+): PublishedPricingModel | undefined {
+  const exact = byUid.get(model.uid);
+  if (exact !== undefined || model.version !== undefined) return exact;
+  const matches = groups.get(model.model_id);
+  return matches?.length === 1 ? matches[0] : undefined;
 }
 
 function adapterContext(
   contexts: Map<string, AdapterContext>,
   providerId: string,
-  modelRef: string,
+  key: string,
+  name: string,
   atoms: Map<string, ProviderAtomRegistryEntry>,
   categoricalLabels: ReadonlyMap<string, string>,
 ): AdapterContext {
-  const key = `model:${modelRef}`;
   const current = contexts.get(key);
   if (current !== undefined) return current;
   const created: AdapterContext = {
     providerId,
     bookKey: key,
-    bookName: `Pricing for ${modelRef}`,
+    bookName: name,
     atoms,
     categoricalLabels,
     scopeBySource: new Map(),
@@ -175,17 +239,20 @@ function addModelPricing(
   context: AdapterContext,
   source: SourceManifest,
   model: ParsedPricingModel,
+  modelRefs: readonly string[],
 ): void {
-  for (const { sourceRate, normalizedRate } of normalizedSourceFacts(
-    context.providerId,
-    model.price_facts,
-  ))
-    addRate(context, source.id, model, sourceRate, normalizedRate);
-  for (const fact of model.raw_price_facts) addRaw(context, source.id, model, fact);
+  const rates = normalizedSourceFacts(context.providerId, model.price_facts);
   const hasUsageRate = model.price_facts.some((rate) => rateMode(rate) === "usage");
   const state = model.pricing_state;
-  if (!hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published"))
-    addState(context, source.id, model, state);
+  const publishesState =
+    !hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published");
+  if (rates.length === 0 && model.raw_price_facts.length === 0 && !publishesState) return;
+
+  addScope(context, source.id, modelRefs);
+  for (const { sourceRate, normalizedRate } of rates)
+    addRate(context, source.id, model, sourceRate, normalizedRate);
+  for (const fact of model.raw_price_facts) addRaw(context, source.id, model, fact);
+  if (publishesState) addState(context, source.id, state);
 }
 
 function addRaw(
@@ -197,7 +264,6 @@ function addRaw(
   const offer = offerBuilder(context, "usage");
   const term = rawTerm(offer, fact.term_key);
   const validity = publishedValidity(fact.conditions);
-  addScope(context, sourceRef, model.uid);
   offer.sourceRefs.add(sourceRef);
   term.source_refs.push(sourceRef);
   term.variants.push({
@@ -219,12 +285,10 @@ function addRaw(
 function addState(
   context: AdapterContext,
   sourceRef: string,
-  model: ParsedPricingModel,
   state: "free" | "custom_quote" | "not_published",
 ): void {
   const offer = offerBuilder(context, "usage");
   const applicability = unconditionalApplicability;
-  addScope(context, sourceRef, model.uid);
   offer.sourceRefs.add(sourceRef);
   offer.states.push({
     state,
@@ -258,7 +322,6 @@ function addRate(
   const fact = rawFact(sourceRate);
   const locator = rateLocator(model, sourceRate);
   const normalized = normalizeRate(context, normalizedRate);
-  addScope(context, sourceRef, model.uid);
   offer.sourceRefs.add(sourceRef);
   term.source_refs.push(sourceRef);
 
@@ -861,6 +924,7 @@ function rawFact(rate: SourcePriceFact): RawPriceFact {
 }
 
 function rateLocator(model: ParsedPricingModel, rate: SourcePriceFact): PriceSourceLocator {
+  if (rate.source_locator !== undefined) return rate.source_locator;
   return {
     kind: "provider_key",
     value: JSON.stringify([
@@ -874,9 +938,9 @@ function rateLocator(model: ParsedPricingModel, rate: SourcePriceFact): PriceSou
   };
 }
 
-function addScope(context: AdapterContext, sourceRef: string, modelRef: string): void {
+function addScope(context: AdapterContext, sourceRef: string, modelRefs: readonly string[]): void {
   const refs = context.scopeBySource.get(sourceRef) ?? new Set<string>();
-  refs.add(modelRef);
+  for (const modelRef of modelRefs) refs.add(modelRef);
   context.scopeBySource.set(sourceRef, refs);
 }
 

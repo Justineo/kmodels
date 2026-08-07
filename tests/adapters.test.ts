@@ -34,12 +34,22 @@ import { reconcileCatalog, validateProvider } from "../src/catalog/validation.ts
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 
+const azureApiFixtureSchema = z
+  .object({
+    regions: z.array(z.object({ location: z.string(), models: z.array(z.unknown()) })),
+  })
+  .passthrough();
+
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
 }
 
 async function expected(path: string): Promise<unknown> {
   return JSON.parse(await fixture(path));
+}
+
+async function azureApiFixture(): Promise<z.infer<typeof azureApiFixtureSchema>> {
+  return azureApiFixtureSchema.parse(JSON.parse(await fixture("azure/api.json")));
 }
 
 function manifest(providerId: string): ProviderManifest {
@@ -82,6 +92,34 @@ function azureRetailSource(
     ...configured,
     extractor: { kind: "azure-retail-prices", minModels, maxModels, minHandledRatio },
   };
+}
+
+function azurePublicPricingSource(minModels: number, maxModels: number): SourceManifest {
+  const configured = manifest("azure").sources.find(({ id }) => id === "azure-public-pricing");
+  if (configured === undefined || configured.extractor.kind !== "azure-public-pricing")
+    throw new Error("Missing Azure public-pricing source");
+  return {
+    ...configured,
+    extractor: { kind: "azure-public-pricing", minModels, maxModels },
+  };
+}
+
+function azureApiModels(
+  body: string,
+  reconciliation?: PricingReconciliationItem[],
+): ProviderModel[] {
+  const value = manifest("azure");
+  const source = value.sources.find(({ id }) => id === "azure-api");
+  if (source === undefined) throw new Error("Missing Azure API source");
+  return parseSource({
+    provider: provider(value),
+    source,
+    body,
+    observedAt,
+    ...(reconciliation === undefined
+      ? {}
+      : { onPricingReconciliation: (item) => reconciliation.push(item) }),
+  });
 }
 
 async function parsed(
@@ -3313,7 +3351,8 @@ describe("Azure adapters", () => {
   });
 
   it("parses the scoped ARM inventory and exact billing-meter price join", async () => {
-    const model = (await parsed("azure", "azure/api.json", "azure-api"))[0];
+    const reconciliation: PricingReconciliationItem[] = [];
+    const model = azureApiModels(await fixture("azure/api.json"), reconciliation)[0];
     expect({
       uid: model?.uid,
       description: model?.description,
@@ -3358,17 +3397,117 @@ describe("Azure adapters", () => {
           deployment_scope: "GlobalStandard",
         },
         source_ref: "azure-api",
+        source_locator: {
+          kind: "meter",
+          value: "11111111-1111-1111-1111-111111111111",
+        },
         derived: false,
         raw_price: "1.25",
         raw_unit: "1M Tokens",
         raw_validity: "2026-01-01T00:00:00Z",
       },
-      imagePrice: "2.5",
+      imagePrice: undefined,
       scope: "runtime_observation",
     });
+    expect(reconciliation).toEqual([
+      { disposition: "normalized", reason_code: "arm_direct_meter_bound" },
+      {
+        disposition: "unbound",
+        reason_code: "arm_meter_missing",
+        sample: "gpt-multi@2026-01-01 / GlobalStandard / Image Input Tokens",
+      },
+    ]);
     await expect(parsed("azure", "azure/broken-api.json", "azure-api")).rejects.toThrow(
       "contract mismatch",
     );
+  });
+
+  it("merges exact ARM model identities across discovered locations", async () => {
+    const bundle = await azureApiFixture();
+    const eastus = bundle.regions[0];
+    if (eastus === undefined) throw new Error("Missing fixture region");
+    const westus = z
+      .object({
+        kind: z.string().optional(),
+        model: z
+          .object({
+            lifecycleStatus: z.string().optional(),
+            capabilities: z.record(z.string(), z.string()),
+          })
+          .passthrough(),
+      })
+      .passthrough()
+      .parse(structuredClone(eastus.models[0]));
+    westus.kind = "Embedding";
+    westus.model.lifecycleStatus = "Preview";
+    westus.model.capabilities.streaming = "false";
+    bundle.regions.push({ location: "westus3", models: [westus] });
+    const models = azureApiModels(JSON.stringify(bundle));
+    expect(models).toHaveLength(1);
+    expect(models[0]?.availability).toEqual([
+      { region: "eastus", deployment_type: "GlobalStandard" },
+      { region: "westus3", deployment_type: "GlobalStandard" },
+    ]);
+    expect(models[0]?.price_facts).toHaveLength(1);
+    expect(models[0]).toMatchObject({
+      tasks: ["text_generation", "embeddings"],
+      status: "active",
+      release_stage: "unknown",
+      capabilities: { streaming: "unknown" },
+    });
+  });
+
+  it("normalizes the live ARM embedding TotalToken meter shape", () => {
+    const model = azureApiModels(
+      JSON.stringify({
+        regions: [
+          {
+            location: "eastus",
+            models: [
+              {
+                kind: "OpenAI",
+                model: {
+                  name: "text-embedding-3-small",
+                  version: "1",
+                  skus: [
+                    {
+                      name: "Standard",
+                      costs: [
+                        {
+                          name: "TotalToken",
+                          meterId: "embedding-meter",
+                          unit: "1K Tokens",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        ],
+        prices: [
+          {
+            currencyCode: "USD",
+            retailPrice: 0.02,
+            armRegionName: "eastus",
+            meterId: "embedding-meter",
+            meterName: "Tokens",
+            productName: "Foundry Models text-embedding-3-small",
+            skuName: "Standard",
+            serviceName: "Foundry Models",
+            unitOfMeasure: "1K Tokens",
+          },
+        ],
+      }),
+    )[0];
+    expect(model).toMatchObject({
+      uid: "azure/text-embedding-3-small@1",
+      tasks: ["embeddings"],
+      price_facts: [
+        expect.objectContaining({ meter: "embedding", unit: "thousand_tokens", price: "0.02" }),
+      ],
+    });
   });
 
   it("extracts current public retail rates without Azure credentials", async () => {
@@ -3441,6 +3580,71 @@ describe("Azure adapters", () => {
       ],
     });
     expect(models.some(({ model_id }) => model_id === "gpt-5")).toBe(false);
+  });
+
+  it("uses public Microsoft price pages at their published version scope", async () => {
+    const value = manifest("azure");
+    const source = azurePublicPricingSource(2, 2);
+    const llama = (version?: string): ProviderModel => ({
+      ...azurePricingModel("Llama-3.3-70B-Instruct", version),
+      service_families: ["Foundry Models sold by Azure"],
+    });
+    const catalogModels = [
+      azurePricingModel("gpt-4o", "2024-05-13"),
+      azurePricingModel("gpt-4o", "2024-08-06"),
+      llama(),
+      llama("1"),
+      llama("2"),
+    ];
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify({
+        index: {
+          url: source.url,
+          body: await fixture("azure/public-openai-pricing.html"),
+        },
+        documents: [
+          {
+            url: "https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/llama/",
+            body: await fixture("azure/public-llama-pricing.html"),
+          },
+        ],
+      }),
+      observedAt,
+      catalogModels,
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const gpt = models.find(({ model_id }) => model_id === "gpt-4o");
+    const llamaPrice = models.find(({ model_id }) => model_id === "Llama-3.3-70B-Instruct");
+    expect(models.map(({ uid }) => uid)).toEqual([
+      "azure/gpt-4o@2024-08-06",
+      "azure/Llama-3.3-70B-Instruct",
+    ]);
+    expect(gpt?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "2.5",
+          unit: "million_tokens",
+          conditions: {
+            region: "eastus",
+            deployment_scope: "GlobalStandard",
+          },
+        }),
+        expect.objectContaining({ meter: "cache_read_text", price: "1.25" }),
+        expect.objectContaining({ meter: "output_text", price: "10" }),
+      ]),
+    );
+    expect(gpt?.price_facts).toHaveLength(6);
+    expect(llamaPrice?.price_facts).toHaveLength(4);
+    expect(reconciliation).toEqual(
+      Array.from({ length: 5 }, () => ({
+        disposition: "normalized",
+        reason_code: "public_price_bound",
+      })),
+    );
   });
 
   it("normalizes official partner meters with provider-native billing units", () => {

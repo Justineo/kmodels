@@ -10,6 +10,11 @@ Status: implemented
   surface, or scoped meter inventory; how identities may bind; and whether the source is an explicit
   snapshot, an observed current publication, or scoped current inventory. A source without this
   policy cannot contribute pricing.
+- Pricing identity policy distinguishes exact IDs, documented aliases, reviewed unique joins,
+  direct meter IDs, and an explicit base-model-ID scope. The last is valid only for a first-party
+  price book that itself omits a version; it projects one shared fallback book onto matching
+  non-retired catalog tuples without exact numeric evidence and never rewrites those tuples into one
+  identity.
 - Discovered documents must match an exact same-host path policy. A source may declare one bounded
   level of nested indexes with its own exact path and count limits; only documents that satisfy the
   original content path may leave those indexes. Fixed companions require reviewed hosts, keys,
@@ -134,6 +139,9 @@ Status: implemented
   successful only with a stable reviewed reason. Public-source samples may contain a short public
   label, while authenticated or scoped sources suppress samples. This evidence is operational audit
   data only and never enters the accepted catalog, canonical pricing API, or website packs.
+- Reconciliation also retains a bounded `reason_counts` partition. This exposes successful binding
+  methods and deliberate exclusions as well as problems; disposition totals alone cannot
+  distinguish a direct meter join from a fallback grammar.
 - Treat every structured upstream response as a language recognized at the source boundary. The
   parser contract is consumer-driven: require the fields and closed vocabularies whose meaning the
   catalog actually owns, permit documented omission when absence means unknown, and reject a new

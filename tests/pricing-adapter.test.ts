@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
+import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import {
   assembleParsedProviderPricing,
   isRequiredPricingSource,
@@ -24,12 +24,22 @@ const sourceRef = "gemini-models";
 const modelRef = "gemini/test-model";
 const observedAt = "2026-07-28T00:00:00.000Z";
 
-function pricingManifest() {
+function pricingManifest(): { provider: ProviderManifest; source: SourceManifest } {
   const provider = manifests.find((manifest) => manifest.provider.id === providerId);
   const source = provider?.sources.find(({ id }) => id === sourceRef);
   if (provider === undefined || source === undefined)
     throw new Error("Gemini pricing manifest is missing");
   return { provider, source };
+}
+
+function baseModelPricingSource(id = sourceRef): SourceManifest {
+  const { source } = pricingManifest();
+  if (source.pricingEvidence === undefined) throw new Error("Gemini pricing policy is missing");
+  return {
+    ...source,
+    id,
+    pricingEvidence: { ...source.pricingEvidence, binding: "base_model_id" },
+  };
 }
 
 function model(): ParsedProviderModel {
@@ -139,6 +149,14 @@ function tokenRate(price: string, conditions: SourcePriceFact["conditions"]): So
   };
 }
 
+function withPriceSource(value: ParsedProviderModel, sourceId: string): ParsedProviderModel {
+  return {
+    ...value,
+    price_facts: value.price_facts.map((fact) => ({ ...fact, source_ref: sourceId })),
+    source_refs: [sourceId],
+  };
+}
+
 function source(): SourceRecord {
   return {
     id: sourceRef,
@@ -217,6 +235,11 @@ describe("parsed-source canonical pricing adapter", () => {
         unsupported: 0,
         unresolved: 0,
       },
+      reason_counts: {
+        bound: 1,
+        identity_not_found: 1,
+        not_base_inference: 1,
+      },
       diagnostic_count: 1,
       diagnostics: [
         {
@@ -259,6 +282,7 @@ describe("parsed-source canonical pricing adapter", () => {
     const azure = manifests.find(({ provider }) => provider.id === "azure");
     expect(azure?.sources.filter(isRequiredPricingSource).map(({ id }) => id)).toEqual([
       "azure-retail-prices",
+      "azure-public-pricing",
       "azure-claude-pricing",
     ]);
   });
@@ -270,6 +294,31 @@ describe("parsed-source canonical pricing adapter", () => {
       false,
     );
     expect(sourcePriceFactSchema.safeParse({ ...calculated, derived: false }).success).toBe(false);
+  });
+
+  it("uses a source-native commercial locator when one is available", () => {
+    const { source: pricingSource } = pricingManifest();
+    const parsedModel = model();
+    parsedModel.price_facts = [
+      {
+        ...tokenRate("1", {}),
+        source_locator: {
+          kind: "meter",
+          value: "11111111-1111-1111-1111-111111111111",
+        },
+      },
+    ];
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    const term = partition?.books[0]?.offers[0]?.terms[0];
+    expect(term?.kind === "rate" ? term.variants[0]?.observations[0]?.locator : undefined).toEqual({
+      kind: "meter",
+      value: "11111111-1111-1111-1111-111111111111",
+    });
   });
 
   it("omits absent optional conditions before canonicalization", () => {
@@ -746,5 +795,80 @@ describe("parsed-source canonical pricing adapter", () => {
         [published, { ...published, uid: `${modelRef}@2026-02-01`, version: "2026-02-01" }],
       ),
     ).toBeUndefined();
+  });
+
+  it("shares explicitly base-model pricing across every published version", () => {
+    const source = baseModelPricingSource();
+    const sourceModel = model();
+    const published = ["2026-01-01", "2026-02-01"].map((version) => ({
+      ...sourceModel,
+      uid: `${modelRef}@${version}`,
+      version,
+    }));
+    const retired = {
+      ...sourceModel,
+      uid: `${modelRef}@2025-01-01`,
+      version: "2025-01-01",
+      status: "retired" as const,
+    };
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [{ source, models: [sourceModel] }],
+      [...published, retired],
+    );
+    expect(partition?.books).toEqual([
+      expect.objectContaining({
+        book_key: `base-model:${modelRef}`,
+        scope: { kind: "models", model_refs: published.map(({ uid }) => uid) },
+        scope_observations: [
+          expect.objectContaining({
+            establishes: { kind: "models", model_refs: published.map(({ uid }) => uid) },
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("uses base-model pricing as a fallback when exact numeric evidence exists", () => {
+    const { source: exactSource } = pricingManifest();
+    const fallbackSource = baseModelPricingSource("gemini-base-model-pricing");
+    const exact = model();
+    const fallback = withPriceSource(model(), fallbackSource.id);
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [
+        { source: exactSource, models: [exact] },
+        { source: fallbackSource, models: [fallback] },
+      ],
+      [exact],
+    );
+    expect(partition?.books).toHaveLength(1);
+    expect(partition?.books[0]?.source_refs).toEqual([exactSource.id]);
+  });
+
+  it("limits shared base-model pricing to versions without exact numeric evidence", () => {
+    const { source: exactSource } = pricingManifest();
+    const fallbackSource = baseModelPricingSource("gemini-base-model-pricing");
+    const exact = { ...model(), uid: `${modelRef}@2026-01-01`, version: "2026-01-01" };
+    const sibling = { ...exact, uid: `${modelRef}@2026-02-01`, version: "2026-02-01" };
+    const fallback = withPriceSource(model(), fallbackSource.id);
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [
+        { source: exactSource, models: [exact] },
+        { source: fallbackSource, models: [fallback] },
+      ],
+      [exact, sibling],
+    );
+    expect(partition?.books).toHaveLength(2);
+    expect(
+      partition?.books.find(({ book_key }) => book_key === `model:${exact.uid}`)?.scope,
+    ).toEqual({ kind: "models", model_refs: [exact.uid] });
+    expect(
+      partition?.books.find(({ book_key }) => book_key === `base-model:${modelRef}`)?.scope,
+    ).toEqual({ kind: "models", model_refs: [sibling.uid] });
   });
 });

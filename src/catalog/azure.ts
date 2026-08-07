@@ -1,11 +1,24 @@
+import { load } from "cheerio";
 import { z } from "zod";
+import {
+  armCostMeterId,
+  azureArmSkuSchema,
+  type AzureArmCost,
+  type AzureArmSku,
+} from "./azure-commercial.ts";
 import { linkedBundleSchema } from "./bundle.ts";
+import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
+import { stableCompactJson } from "./io.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel, modelUid } from "./model.ts";
-import { multiplyDecimal } from "./pricing.ts";
+import { decimalsEqual, multiplyDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import {
+  sourcePriceFactKey,
+  type ParsedProviderModel as ProviderModel,
+  type SourcePriceFact,
+} from "./pricing-source.ts";
 import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
@@ -133,39 +146,19 @@ const azureApiEndpoints = {
 
 const azureModelSchema = z.object({
   kind: z.string().optional(),
-  skuName: z.string().optional(),
   description: z.string().optional(),
   model: z.object({
     name: modelIdSchema,
     version: z.string().min(1).optional(),
     format: z.string().optional(),
-    publisher: z.string().optional(),
     capabilities: z.record(z.string(), z.string()).optional(),
-    finetuneCapabilities: z.record(z.string(), z.string()).optional(),
     deprecation: z
       .object({ fineTune: z.string().optional(), inference: z.string().optional() })
       .optional(),
     lifecycleStatus: z
       .enum(["Stable", "Preview", "GenerallyAvailable", "Legacy", "Deprecating", "Deprecated"])
       .optional(),
-    skus: z
-      .array(
-        z.object({
-          name: z.string().min(1),
-          usageName: z.string().optional(),
-          deprecationDate: z.string().optional(),
-          cost: z
-            .array(
-              z.object({
-                name: z.string().optional(),
-                meterId: z.string().min(1),
-                unit: z.string().optional(),
-              }),
-            )
-            .optional(),
-        }),
-      )
-      .optional(),
+    skus: z.array(azureArmSkuSchema).optional(),
   }),
 });
 
@@ -188,15 +181,38 @@ const retailPriceSchema = z.object({
   type: z.literal("Consumption").optional(),
 });
 type RetailPrice = z.infer<typeof retailPriceSchema>;
+type RetailIdentity = Pick<RetailPrice, "productName" | "skuName">;
 
 const azureApiBundleSchema = z.object({
-  location: z.string().min(1),
-  models: z.array(z.unknown()).min(1),
+  regions: z
+    .array(
+      z.object({
+        location: z.string().regex(/^[a-z0-9-]+$/i),
+        models: z.array(z.unknown()),
+      }),
+    )
+    .min(1)
+    .superRefine((regions, context) => {
+      const locations = new Set<string>();
+      for (const [index, region] of regions.entries()) {
+        if (locations.has(region.location))
+          context.addIssue({
+            code: "custom",
+            path: [index, "location"],
+            message: "Azure API bundle contains a duplicate location",
+          });
+        locations.add(region.location);
+      }
+    }),
   prices: z.array(z.unknown()),
 });
 
 const azureRetailBundleSchema = z.object({
   prices: z.array(z.unknown()).min(1),
+});
+
+const azurePublicPriceAmountSchema = z.object({
+  regional: z.record(z.string().min(1), decimalValue),
 });
 
 function unique<T>(values: T[]): T[] {
@@ -585,7 +601,7 @@ function base(input: Input, id: string, version?: string): ProviderModel {
   };
 }
 
-function mergeTriState(left: boolean | "unknown", right: boolean | "unknown"): boolean | "unknown" {
+function mergeKnown<T>(left: T | "unknown", right: T | "unknown"): T | "unknown" {
   if (left === "unknown") return right;
   if (right === "unknown" || left === right) return left;
   return "unknown";
@@ -633,30 +649,30 @@ function mergeModel(left: ProviderModel, right: ProviderModel): ProviderModel {
       output: unique([...left.modalities.output, ...right.modalities.output]),
     },
     capabilities: {
-      reasoning: mergeTriState(left.capabilities.reasoning, right.capabilities.reasoning),
-      tool_call: mergeTriState(left.capabilities.tool_call, right.capabilities.tool_call),
-      structured_output: mergeTriState(
+      reasoning: mergeKnown(left.capabilities.reasoning, right.capabilities.reasoning),
+      tool_call: mergeKnown(left.capabilities.tool_call, right.capabilities.tool_call),
+      structured_output: mergeKnown(
         left.capabilities.structured_output,
         right.capabilities.structured_output,
       ),
-      streaming: mergeTriState(left.capabilities.streaming, right.capabilities.streaming),
-      batch: mergeTriState(left.capabilities.batch, right.capabilities.batch),
-      prompt_cache: mergeTriState(left.capabilities.prompt_cache, right.capabilities.prompt_cache),
-      fine_tuning: mergeTriState(left.capabilities.fine_tuning, right.capabilities.fine_tuning),
-      citations: mergeTriState(left.capabilities.citations, right.capabilities.citations),
-      code_execution: mergeTriState(
+      streaming: mergeKnown(left.capabilities.streaming, right.capabilities.streaming),
+      batch: mergeKnown(left.capabilities.batch, right.capabilities.batch),
+      prompt_cache: mergeKnown(left.capabilities.prompt_cache, right.capabilities.prompt_cache),
+      fine_tuning: mergeKnown(left.capabilities.fine_tuning, right.capabilities.fine_tuning),
+      citations: mergeKnown(left.capabilities.citations, right.capabilities.citations),
+      code_execution: mergeKnown(
         left.capabilities.code_execution,
         right.capabilities.code_execution,
       ),
-      context_management: mergeTriState(
+      context_management: mergeKnown(
         left.capabilities.context_management,
         right.capabilities.context_management,
       ),
-      effort_control: mergeTriState(
+      effort_control: mergeKnown(
         left.capabilities.effort_control,
         right.capabilities.effort_control,
       ),
-      computer_use: mergeTriState(left.capabilities.computer_use, right.capabilities.computer_use),
+      computer_use: mergeKnown(left.capabilities.computer_use, right.capabilities.computer_use),
     },
     limits: { ...left.limits, ...right.limits },
     availability: availability.length === 0 ? undefined : availability,
@@ -1261,6 +1277,7 @@ const retailQualifierTokens = new Set([
   "cchd",
   "cd",
   "completion",
+  "context",
   "creation",
   "data",
   "datazone",
@@ -1276,6 +1293,7 @@ const retailQualifierTokens = new Set([
   "inp",
   "inpt",
   "input",
+  "long",
   "longco",
   "million",
   "minute",
@@ -1288,6 +1306,7 @@ const retailQualifierTokens = new Set([
   "pp",
   "preview",
   "prompt",
+  "processing",
   "regional",
   "regnl",
   "rg",
@@ -1295,6 +1314,7 @@ const retailQualifierTokens = new Set([
   "second",
   "seconds",
   "shortco",
+  "short",
   "speech",
   "standard",
   "std",
@@ -1349,7 +1369,7 @@ function versionMarkers(version: string | undefined): string[] {
   const date = version.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   const semantic = version.match(/^[a-z]+(?=[-_])/i)?.[0]?.toLowerCase();
   return unique([
-    ...(normalized === "" ? [] : [normalized]),
+    ...(normalized === "" || /^\d{1,3}$/.test(version) ? [] : [normalized]),
     ...(digits.length >= 4 ? [digits, digits.slice(-4)] : []),
     ...(date === null ? [] : [`${date[2]}${date[3]}${date[1]}`]),
     ...(semantic === undefined || semantic === "preview" ? [] : [semantic]),
@@ -1460,7 +1480,7 @@ function modelSignatures(model: RetailCatalogModel, productScope: readonly strin
 }
 
 function retailProductCandidates(
-  price: RetailPrice,
+  price: RetailIdentity,
   catalogModels: readonly RetailCatalogModel[],
 ): { models: RetailCatalogModel[]; scope: readonly string[] } {
   if (price.productName.startsWith("Azure OpenAI"))
@@ -1483,7 +1503,7 @@ function isOpenAiRetailModel(model: RetailCatalogModel): boolean {
 }
 
 function catalogRetailModelIdentity(
-  price: RetailPrice,
+  price: RetailIdentity,
   catalogModels: readonly RetailCatalogModel[],
 ): { id: string; version?: string } | undefined {
   const sku = retailIdentityTokens(price.skuName);
@@ -1507,6 +1527,7 @@ function catalogRetailModelIdentity(
   if (modelIds.length !== 1) return;
   const id = modelIds[0];
   if (id === undefined) return;
+  if (explicitlyVersioned.length === 0) return { id };
   const versions = unique(best.map(({ model }) => model.version));
   return versions.length === 1 && versions[0] !== undefined ? { id, version: versions[0] } : { id };
 }
@@ -1559,7 +1580,7 @@ function retailMeter(
   const input = /\b(?:in|inp|inpt|input|prompt)\b/.test(value);
   const output = /\b(?:opt|out|outp|outpt|output|completion)\b/.test(value);
   const cache = /\b(?:cache|cached|cchd|cd)\b/.test(value);
-  const cacheWrite = cache && /\b(?:write|wr|creation)\b/.test(value);
+  const cacheWrite = cache && /\b(?:writes?|wr|creation)\b/.test(value);
   const text = /\b(?:text|txt)(?:\b|(?=\d))/.test(value);
   const image = !text && /\b(?:img|image)(?:\b|(?=\d))/.test(value);
   const audio = !text && !image && /\b(?:aud|audio|speech)(?:\b|(?=\d))/.test(value);
@@ -1591,9 +1612,13 @@ function retailMeter(
 }
 
 function retailConditions(price: RetailPrice): SourcePriceFact["conditions"] {
-  const sku = ` ${retailWords(price.skuName)} `;
+  return retailLabelConditions(price.skuName, price.armRegionName);
+}
+
+function retailLabelConditions(label: string, region: string): SourcePriceFact["conditions"] {
+  const sku = ` ${retailWords(label)} `;
   const batch = /\bbatch\b/.test(sku);
-  const priority = /\bpp\b/.test(sku);
+  const priority = /\b(?:pp|priority processing)\b/.test(sku);
   const global = /\b(?:global|glbl|gl)\b/.test(sku);
   const dataZone = /\b(?:data zone|datazone|dzone|dz|dzn)\b/.test(sku);
   const regional = /\b(?:regional|regnl|rgnl|rg)\b/.test(sku);
@@ -1602,28 +1627,28 @@ function retailConditions(price: RetailPrice): SourcePriceFact["conditions"] {
       ? `${global ? "Global" : dataZone ? "DataZone" : ""}${batch ? "Batch" : "Standard"}`
       : undefined;
   return {
-    ...(price.armRegionName === "" ? {} : { region: price.armRegionName }),
+    ...(region === "" ? {} : { region }),
     ...(deployment === undefined ? {} : { deployment_scope: deployment }),
     ...(batch ? { service_tier: "batch" } : priority ? { service_tier: "priority" } : {}),
-    ...(/\blongco\b/.test(sku)
+    ...(/\b(?:longco|long context)\b/.test(sku)
       ? { context_tier: "long_context" }
-      : /\bshortco\b/.test(sku)
+      : /\b(?:shortco|short context)\b/.test(sku)
         ? { context_tier: "short_context" }
         : {}),
   };
 }
 
-function isBaseRetailPrice(price: RetailPrice): boolean {
+function isBaseRetailPrice({ productName, skuName }: RetailIdentity): boolean {
   if (
     [
       "Azure OpenAI Free Meter",
       "Azure OpenAI PP FT GPT4s",
       "Foundry Local Azure Open AI",
       "Managed Compute",
-    ].includes(price.productName)
+    ].includes(productName)
   )
     return false;
-  const sku = ` ${retailWords(price.skuName)} `;
+  const sku = ` ${retailWords(skuName)} `;
   return (
     !/\b(?:available|fine tuned|finetuned|ft|grader|grdr|hosting|hstng|overage|provisioned|rft|training|trng)\b/.test(
       sku,
@@ -1658,6 +1683,7 @@ function retailPriceFact(
     unit,
     conditions,
     source_ref: sourceRef,
+    source_locator: { kind: "meter", value: price.meterId },
     derived: false,
     raw_price: price.retailPrice,
     raw_unit: price.unitOfMeasure,
@@ -1805,29 +1831,509 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
   return values.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
+interface AzurePublicPricingPage {
+  name: string;
+  productName: string;
+}
+
+const azurePublicPricingPages = new Map<string, AzurePublicPricingPage>([
+  ["/en-us/pricing/details/azure-openai/", { name: "Azure OpenAI", productName: "Azure OpenAI" }],
+  [
+    "/en-us/pricing/details/ai-foundry-models/model-router/",
+    { name: "Model Router", productName: "Azure OpenAI" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/deepseek/",
+    { name: "DeepSeek", productName: "Azure Deepseek Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/microsoft/",
+    { name: "Microsoft", productName: "Azure Phi Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/grok/",
+    { name: "Grok", productName: "Azure Grok Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/llama/",
+    { name: "Llama", productName: "Azure Llama Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/black-forest-labs/",
+    { name: "Black Forest Labs", productName: "Azure BFL Flux Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/mistral-ai/",
+    { name: "Mistral AI", productName: "Azure Mistral Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/cohere/",
+    { name: "Cohere", productName: "Cohere Models" },
+  ],
+  ["/en-us/pricing/details/ai-foundry-models/kimi/", { name: "Kimi", productName: "Azure Kimi" }],
+  [
+    "/en-us/pricing/details/ai-foundry-models/fireworks/",
+    { name: "Fireworks", productName: "Azure Fireworks Models" },
+  ],
+]);
+
+const azurePublicModelAliases = new Map<string, string>([
+  ["cohere embedded v4", "embed-v-4-0"],
+  ["kimi k2 5 thinking", "Kimi-K2.5"],
+  ["kimi k2 6 thinking", "Kimi-K2.6"],
+  ["llama 3 3 70b", "Llama-3.3-70B-Instruct"],
+  ["llama4 maverick 17b", "Llama-4-Maverick-17B-128E-Instruct-FP8"],
+  ["llama4 mavrick 17b", "Llama-4-Maverick-17B-128E-Instruct-FP8"],
+  ["mai image 2 efficient", "MAI-Image-2e"],
+  ["mistral ocr 4", "mistral-ocr-4-0"],
+  ["model router in azure ai foundry", "model-router"],
+  ["phi 4 mini", "Phi-4-mini-instruct"],
+  ["phi 4 multimodal audio", "Phi-4-multimodal-instruct"],
+  ["phi 4 multimodal text and image", "Phi-4-multimodal-instruct"],
+]);
+
+function azurePublicPage(rawUrl: string): AzurePublicPricingPage {
+  const url = new URL(rawUrl);
+  const page =
+    url.protocol === "https:" &&
+    url.hostname === "azure.microsoft.com" &&
+    url.search === "" &&
+    url.hash === ""
+      ? azurePublicPricingPages.get(url.pathname)
+      : undefined;
+  if (page === undefined) throw new Error("Azure public pricing bundle contained an unknown page");
+  return page;
+}
+
+function azurePublicAlias(label: string): string | undefined {
+  const key = retailWords(label)
+    .replace(/\b(?:data zone|datazone|global|regional)$/, "")
+    .replace(/\b(?:long|short) context\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return azurePublicModelAliases.get(key);
+}
+
+function azurePublicProductName(page: AzurePublicPricingPage, label: string): string {
+  return page.name === "Microsoft" && /^MAI\b/i.test(label) ? "MAI Models" : page.productName;
+}
+
+function azurePublicIdentity(
+  page: AzurePublicPricingPage,
+  label: string,
+  qualifiedLabel: string,
+  catalogModels: readonly RetailCatalogModel[],
+): { id: string; version?: string } | undefined {
+  const alias = azurePublicAlias(label);
+  if (
+    alias !== undefined &&
+    catalogModels.some((model) => model.model_id === alias && isRetailPricedModel(model))
+  )
+    return { id: alias };
+  return catalogRetailModelIdentity(
+    {
+      productName: azurePublicProductName(page, qualifiedLabel),
+      skuName: qualifiedLabel,
+    },
+    catalogModels,
+  );
+}
+
+const azurePublicRegionAliases: Readonly<Record<string, string>> = {
+  "asia-pacific-east": "eastasia",
+  "asia-pacific-southeast": "southeastasia",
+  "europe-north": "northeurope",
+  "europe-west": "westeurope",
+  "united-kingdom-south": "uksouth",
+  "united-kingdom-west": "ukwest",
+  "us-central": "centralus",
+  "us-east": "eastus",
+  "us-east-2": "eastus2",
+  "us-north-central": "northcentralus",
+  "us-south-central": "southcentralus",
+  "us-west": "westus",
+  "us-west-2": "westus2",
+  "us-west-3": "westus3",
+  "us-west-central": "westcentralus",
+};
+
+function azurePublicRegion(value: string): string {
+  if (!/^[a-z0-9-]+$/.test(value))
+    throw new Error("Azure public price contained an invalid region");
+  return azurePublicRegionAliases[value] ?? value.replaceAll("-", "");
+}
+
+function azurePublicUnit(
+  rawUnit: string,
+): { unit: SourcePriceFact["unit"]; scale?: string } | undefined {
+  const normalized = rawUnit.replace(/1,000,000/gi, "1M").replace(/1,000/gi, "1K");
+  const unit = retailUnit(normalized, normalized);
+  if (unit === undefined) return;
+  const scale = /\b(?:1k|thousand)\s+images?\b/i.test(normalized)
+    ? "0.001"
+    : /\b100\s+images?\b/i.test(normalized)
+      ? "0.01"
+      : undefined;
+  return { unit, ...(scale === undefined ? {} : { scale }) };
+}
+
+function azurePublicConditions(
+  label: string,
+  segment: string,
+  region: string,
+): SourcePriceFact["conditions"] {
+  const conditions = retailLabelConditions(`${label} ${segment}`, azurePublicRegion(region));
+  const resolution = `${label} ${segment}`.match(/\b\d{2,5}\s*[x×]\s*\d{2,5}\b/i)?.[0];
+  const quality = `${label} ${segment}`.match(/\b(?:low|medium|high|hd)\b/i)?.[0];
+  const modality = segment.match(/^\s*(text|image|audio|video)\b/i)?.[1]?.toLowerCase();
+  return {
+    ...conditions,
+    ...(resolution === undefined ? {} : { resolution: resolution.replace(/\s+/g, "") }),
+    ...(quality === undefined ? {} : { quality: quality.toLowerCase() }),
+    ...(modality === undefined ? {} : { modality }),
+  };
+}
+
+function azurePublicSample(...parts: string[]): string {
+  return parts.filter(Boolean).join(" / ").slice(0, 256);
+}
+
+function isAzurePublicBaseTable(label: string): boolean {
+  return !/managed compute|provisioned|fine-tuning|built-in tools/i.test(label);
+}
+
+export function parseAzurePublicPricing(input: Input): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "azure-public-pricing")
+    throw new Error("Wrong Azure public pricing extractor");
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const catalogModels = input.catalogModels;
+  if (catalogModels === undefined || catalogModels.length === 0)
+    throw new Error("Azure public pricing requires the public catalog");
+
+  const models = new Map<string, ProviderModel>();
+  const seenPages = new Set<string>();
+  for (const document of [bundle.index, ...bundle.documents]) {
+    const url = new URL(document.url);
+    const page = azurePublicPage(document.url);
+    if (seenPages.has(url.pathname))
+      throw new Error("Azure public pricing bundle duplicated a page");
+    seenPages.add(url.pathname);
+    const $ = load(document.body);
+    let baseItems = 0;
+    for (const table of $("table").toArray()) {
+      if ($(table).find("[data-amount]").length === 0) continue;
+      const tableLabel =
+        $(table).attr("aria-label") ??
+        htmlText($(table).closest("section").find("h2").first().text());
+      const headers = $(table)
+        .find("thead tr")
+        .first()
+        .find("th")
+        .map((_index, header) => htmlText($(header).text()))
+        .get();
+      for (const row of $(table).find("tbody tr").toArray()) {
+        const cells = $(row).find("td").toArray();
+        const rowLabel = htmlText($(cells[0]).text());
+        const firstPriceCell = cells.findIndex((cell) => $(cell).find("[data-amount]").length > 0);
+        const qualifiedLabel = cells
+          .slice(0, firstPriceCell < 0 ? 1 : firstPriceCell)
+          .map((cell) => htmlText($(cell).text()))
+          .filter(Boolean)
+          .join(" ");
+        const baseRow =
+          isAzurePublicBaseTable(tableLabel) &&
+          isBaseRetailPrice({
+            productName: azurePublicProductName(page, qualifiedLabel),
+            skuName: `${qualifiedLabel} ${tableLabel}`,
+          });
+        const identity = baseRow
+          ? azurePublicIdentity(page, rowLabel, qualifiedLabel, catalogModels)
+          : undefined;
+        for (const [cellIndex, cell] of cells.entries()) {
+          const header = headers[cellIndex] ?? "";
+          for (const priceElement of $(cell).find("[data-amount]").toArray()) {
+            if (!baseRow) {
+              input.onPricingReconciliation?.({
+                disposition: "excluded",
+                reason_code: "non_base_public_price",
+                sample: azurePublicSample(page.name, tableLabel, rowLabel, header),
+              });
+              continue;
+            }
+            baseItems += 1;
+            const contents = $(priceElement).parent().contents().toArray();
+            const elementIndex = contents.indexOf(priceElement);
+            let start = elementIndex;
+            while (start > 0) {
+              const previous = contents[start - 1];
+              if (previous?.type === "tag" && previous.name === "br") break;
+              start -= 1;
+            }
+            let end = elementIndex + 1;
+            while (end < contents.length) {
+              const next = contents[end];
+              if (next?.type === "tag" && next.name === "br") break;
+              end += 1;
+            }
+            const segment = htmlText(
+              contents
+                .slice(start, end)
+                .map((part) => $(part).text())
+                .join(" "),
+            );
+            const modality = contents
+              .slice(0, start)
+              .reverse()
+              .map((part) => htmlText($(part).text()))
+              .find((value) => /^(?:text|image|audio|video)$/i.test(value));
+            const priceLabel = modality === undefined ? segment : `${modality} ${segment}`.trim();
+            const sample = azurePublicSample(page.name, tableLabel, rowLabel, header, priceLabel);
+            const rawAmount = $(priceElement).attr("data-amount");
+            if (rawAmount === undefined) throw new Error("Azure public price omitted its amount");
+            const amounts = azurePublicPriceAmountSchema.parse(JSON.parse(rawAmount));
+            if (Object.keys(amounts.regional).length === 0) {
+              input.onPricingReconciliation?.({
+                disposition: "explicit_non_numeric",
+                reason_code: "public_price_unavailable",
+              });
+              continue;
+            }
+            if (identity === undefined) {
+              input.onPricingReconciliation?.({
+                disposition: "unbound",
+                reason_code: "public_price_identity_not_unique",
+                sample,
+              });
+              continue;
+            }
+            const rawUnit = `${header} ${priceLabel}`.trim();
+            const normalizedUnit = azurePublicUnit(rawUnit);
+            const meter =
+              normalizedUnit === undefined
+                ? undefined
+                : (retailMeter(`${qualifiedLabel} ${header} ${priceLabel}`, normalizedUnit.unit) ??
+                  retailDefaultMeter(identity, catalogModels));
+            if (normalizedUnit === undefined || meter === undefined) {
+              input.onPricingReconciliation?.({
+                disposition: "unsupported",
+                reason_code: "public_price_meter_or_unit_unsupported",
+                sample,
+              });
+              continue;
+            }
+            const { scale, unit } = normalizedUnit;
+            const locator = {
+              kind: "table" as const,
+              value: azurePublicSample(url.href, tableLabel, rowLabel, header, priceLabel),
+            };
+            const rates: SourcePriceFact[] = Object.entries(amounts.regional).map(
+              ([region, amount]) => ({
+                meter,
+                price: scale === undefined ? amount : multiplyDecimal(amount, scale),
+                currency: "USD",
+                unit,
+                conditions: azurePublicConditions(
+                  `${qualifiedLabel} ${header}`,
+                  priceLabel,
+                  region,
+                ),
+                source_ref: input.source.id,
+                source_locator: locator,
+                derived: scale !== undefined,
+                ...(scale === undefined ? {} : { derivation: `${amount} × ${scale}` }),
+                raw_price: amount,
+                raw_unit: rawUnit,
+              }),
+            );
+            const uid = modelUid(input.provider.id, identity.id, identity.version);
+            const current =
+              models.get(uid) ??
+              ({
+                ...base(input, identity.id, identity.version),
+                pricing_state: "numeric",
+              } satisfies ProviderModel);
+            const existing = new Map(
+              current.price_facts.map((fact) => [sourcePriceFactKey(fact), fact]),
+            );
+            for (const fact of rates) {
+              const key = sourcePriceFactKey(fact);
+              const previous = existing.get(key);
+              if (previous !== undefined && !decimalsEqual(previous.price, fact.price))
+                throw new Error(
+                  `Azure public pricing disagreed for ${uid} at ${key}: ${previous.price} versus ${fact.price}`,
+                );
+              if (previous === undefined) {
+                current.price_facts.push(fact);
+                existing.set(key, fact);
+              }
+            }
+            models.set(uid, current);
+            input.onPricingReconciliation?.({
+              disposition: "normalized",
+              reason_code: "public_price_bound",
+            });
+          }
+        }
+      }
+    }
+    if (baseItems === 0)
+      throw new Error(`Azure public pricing page ${page.name} has no base prices`);
+  }
+
+  const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  assertItemCount(
+    "Azure public-priced models",
+    values.length,
+    extractor.minModels,
+    extractor.maxModels,
+  );
+  return values;
+}
+
+function commercialWords(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function isBaseArmCost(sku: AzureArmSku, cost: AzureArmCost): boolean {
+  const value = commercialWords(`${sku.name} ${sku.usageName ?? ""} ${cost.name ?? ""}`);
+  return !/\b(?:fine tune|finetune|grader|hosting|provisioned|training)\b/.test(value);
+}
+
+function structuredArmMeter(
+  sku: AzureArmSku,
+  cost: AzureArmCost,
+  tasks: readonly ModelTask[],
+): SourcePriceFact["meter"] | undefined {
+  const name = commercialWords(cost.name ?? "").replaceAll(" ", "");
+  if (name.includes("nocachedcontexttoken")) return "input_text";
+  if (name.includes("cachedcontexttoken")) return "cache_read_text";
+  if (name.includes("generatedtoken")) return "output_text";
+  if (
+    tasks.includes("embeddings") &&
+    (name.includes("totaltoken") || name.includes("contexttoken"))
+  )
+    return "embedding";
+  if (name.includes("contexttoken") && commercialWords(sku.name).includes("batch"))
+    return "input_text";
+}
+
+function armCostConditions(
+  sku: AzureArmSku,
+  cost: AzureArmCost,
+): Pick<SourcePriceFact["conditions"], "context_tier" | "service_tier"> {
+  const skuName = commercialWords(sku.name);
+  const costName = commercialWords(cost.name ?? "");
+  return {
+    ...(costName.includes("priority")
+      ? { service_tier: "priority" }
+      : skuName.includes("batch")
+        ? { service_tier: "batch" }
+        : {}),
+    ...(costName.includes("long context")
+      ? { context_tier: "long_context" }
+      : costName.includes("short context")
+        ? { context_tier: "short_context" }
+        : {}),
+  };
+}
+
 function pricesFor(
   item: z.infer<typeof azureModelSchema>,
   pricesByMeter: ReadonlyMap<string, readonly RetailPrice[]>,
   location: string,
   sourceId: string,
+  tasks: readonly ModelTask[],
+  onReconciliation: Input["onPricingReconciliation"],
 ): SourcePriceFact[] {
   const rates: SourcePriceFact[] = [];
   for (const sku of item.model.skus ?? []) {
-    for (const cost of sku.cost ?? []) {
-      for (const price of pricesByMeter.get(cost.meterId) ?? []) {
+    for (const cost of sku.costs) {
+      const sample = `${item.model.name}${item.model.version === undefined ? "" : `@${item.model.version}`} / ${sku.name} / ${cost.name ?? "unnamed cost"}`;
+      if (!isBaseArmCost(sku, cost)) {
+        onReconciliation?.({
+          disposition: "excluded",
+          reason_code: "non_base_arm_cost_component",
+          sample,
+        });
+        continue;
+      }
+      const meterId = armCostMeterId(cost);
+      if (meterId === undefined) {
+        onReconciliation?.({
+          disposition: "unbound",
+          reason_code: "arm_meter_missing",
+          sample,
+        });
+        continue;
+      }
+      const prices = pricesByMeter.get(meterId) ?? [];
+      if (prices.length === 0) {
+        onReconciliation?.({
+          disposition: "unbound",
+          reason_code: "retail_meter_missing",
+          sample,
+        });
+        continue;
+      }
+      const structuredMeter = structuredArmMeter(sku, cost, tasks);
+      const structuredUnit =
+        cost.unit === undefined ? undefined : retailUnit(cost.unit, cost.name ?? cost.unit);
+      const costRates: SourcePriceFact[] = [];
+      let conflict = false;
+      let unsupported = false;
+      for (const price of prices) {
         const label = `${cost.name ?? ""} ${price.meterName} ${price.productName} ${price.skuName}`;
         const fact = retailPriceFact(
           price,
           label,
           {
+            ...retailConditions(price),
             region: price.armRegionName || location,
             deployment_scope: sku.name,
+            ...armCostConditions(sku, cost),
           },
           sourceId,
+          structuredMeter,
         );
-        if (fact === undefined) continue;
-        rates.push(fact);
+        if (fact === undefined) {
+          unsupported = true;
+          continue;
+        }
+        if (
+          (structuredMeter !== undefined && fact.meter !== structuredMeter) ||
+          (structuredUnit !== undefined && fact.unit !== structuredUnit)
+        ) {
+          conflict = true;
+          continue;
+        }
+        costRates.push(fact);
       }
+      if (conflict) {
+        onReconciliation?.({
+          disposition: "unresolved",
+          reason_code: "arm_retail_semantic_conflict",
+          sample,
+        });
+        continue;
+      }
+      if (unsupported || costRates.length === 0) {
+        onReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "arm_cost_component_unsupported",
+          sample,
+        });
+        continue;
+      }
+      rates.push(...costRates);
+      onReconciliation?.({
+        disposition: "normalized",
+        reason_code: "arm_direct_meter_bound",
+      });
     }
   }
   return [
@@ -1840,20 +2346,72 @@ function pricesFor(
   ];
 }
 
+function azureApiModelId(item: unknown): string | undefined {
+  if (item === null || typeof item !== "object") return undefined;
+  const model = Reflect.get(item, "model");
+  if (model === null || typeof model !== "object") return undefined;
+  const name = Reflect.get(model, "name");
+  return typeof name === "string" ? name : undefined;
+}
+
+function uniqueAzureApiModels(models: z.infer<typeof azureModelSchema>[]) {
+  return [...new Map(models.map((item) => [stableCompactJson(item), item])).values()];
+}
+
+function mergeScopedOptional<T>(left: T | undefined, right: T | undefined): T | undefined {
+  if (left === undefined) return right;
+  if (right === undefined || stableCompactJson(left) === stableCompactJson(right)) return left;
+  return undefined;
+}
+
+function mergeAzureApiModels(models: ProviderModel[]): ProviderModel[] {
+  const merged = new Map<string, ProviderModel>();
+  for (const incoming of models) {
+    const current = merged.get(incoming.uid);
+    if (current === undefined) {
+      merged.set(incoming.uid, incoming);
+      continue;
+    }
+    const priceFacts = new Map<string, SourcePriceFact>();
+    for (const fact of [...current.price_facts, ...incoming.price_facts]) {
+      const key = sourcePriceFactKey(fact);
+      const existing = priceFacts.get(key);
+      if (existing !== undefined && stableCompactJson(existing) !== stableCompactJson(fact))
+        throw new Error(`Azure API price facts disagreed across locations for ${incoming.uid}`);
+      priceFacts.set(key, fact);
+    }
+    const prices = [...priceFacts.values()].sort((left, right) =>
+      sourcePriceFactKey(left).localeCompare(sourcePriceFactKey(right)),
+    );
+    const contextTokens = mergeScopedOptional(
+      current.limits.context_tokens,
+      incoming.limits.context_tokens,
+    );
+    const maxOutputTokens = mergeScopedOptional(
+      current.limits.max_output_tokens,
+      incoming.limits.max_output_tokens,
+    );
+    merged.set(incoming.uid, {
+      ...mergeModel(current, incoming),
+      description: mergeScopedOptional(current.description, incoming.description),
+      raw_type: mergeScopedOptional(current.raw_type, incoming.raw_type),
+      tasks: orderedTasks([...current.tasks, ...incoming.tasks]),
+      limits: {
+        ...(contextTokens === undefined ? {} : { context_tokens: contextTokens }),
+        ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
+      },
+      retired_at: mergeScopedOptional(current.retired_at, incoming.retired_at),
+      status: mergeKnown(current.status, incoming.status),
+      release_stage: mergeKnown(current.release_stage, incoming.release_stage),
+      pricing_state: prices.length === 0 ? "unknown" : "numeric",
+      price_facts: prices,
+    });
+  }
+  return [...merged.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
 export function parseAzureApi(input: Input): ProviderModel[] {
   const bundle = azureApiBundleSchema.parse(JSON.parse(input.body));
-  const models = recognizeItems({
-    label: "Azure API model",
-    items: bundle.models,
-    schema: azureModelSchema,
-    modelId: (item) => {
-      if (item === null || typeof item !== "object") return undefined;
-      const model = Reflect.get(item, "model");
-      if (model === null || typeof model !== "object") return undefined;
-      const name = Reflect.get(model, "name");
-      return typeof name === "string" ? name : undefined;
-    },
-  });
   const prices = recognizeItems({
     label: "Azure API retail price",
     items: bundle.prices,
@@ -1862,56 +2420,75 @@ export function parseAzureApi(input: Input): ProviderModel[] {
   const pricesByMeter = new Map<string, RetailPrice[]>();
   for (const price of prices)
     pricesByMeter.set(price.meterId, [...(pricesByMeter.get(price.meterId) ?? []), price]);
-  return models.map((item) => {
-    const raw = new Map(
-      Object.entries(item.model.capabilities ?? {}).map(([key, value]) => [
-        key.toLowerCase(),
-        value,
-      ]),
+  const models: ProviderModel[] = bundle.regions.flatMap(({ location, models: rawModels }) => {
+    const regionModels = uniqueAzureApiModels(
+      recognizeItems({
+        label: `Azure API model (${location})`,
+        items: rawModels,
+        schema: azureModelSchema,
+        modelId: azureApiModelId,
+      }),
     );
-    const supports = (keys: string[]): boolean => booleanCapability(raw, keys) === true;
-    const tasks: ModelTask[] = [];
-    if (supports(["chatCompletion", "completion", "responses"])) tasks.push("text_generation");
-    if (supports(["assistants", "agentsV2"])) tasks.push("text_generation");
-    if (supports(["realtime"])) tasks.push("speech_to_speech");
-    const classified = modelTasks(item.model.name, item.kind ?? item.model.format ?? "", "");
-    const modelTasksValue = orderedTasks(
-      tasks.length === 0 ? classified : [...tasks, ...classified],
-    );
-    const retiredAt = item.model.deprecation?.inference?.slice(0, 10);
-    if (retiredAt !== undefined && !z.iso.date().safeParse(retiredAt).success)
-      throw new Error("Azure API inference retirement date changed shape");
-    const status = apiStatus(item.model.lifecycleStatus, retiredAt, input.observedAt);
-    const rates = pricesFor(item, pricesByMeter, bundle.location, input.source.id);
-    return {
-      ...base(input, item.model.name, item.model.version),
-      description: item.description,
-      tasks: modelTasksValue,
-      modalities: modelModalities(item.kind ?? item.model.format ?? "", "", modelTasksValue),
-      capabilities: {
-        ...unknownCapabilities(),
-        tool_call: booleanCapability(raw, ["toolCalling", "functionCalling"]),
-        structured_output: booleanCapability(raw, ["jsonSchemaResponse", "jsonObjectResponse"]),
-        streaming: booleanCapability(raw, ["streaming"]),
-        batch: booleanCapability(raw, ["batch"]),
-        prompt_cache: booleanCapability(raw, ["promptCaching"]),
-        fine_tuning: booleanCapability(raw, ["fineTune", "globalFineTune"]),
-        reasoning: booleanCapability(raw, ["reasoning"]),
-        computer_use: booleanCapability(raw, ["computerUse"]),
-      },
-      limits: {
-        context_tokens: integerCapability(raw, ["maxContextToken"]),
-        max_output_tokens: integerCapability(raw, ["maxOutputToken"]),
-      },
-      retired_at: retiredAt,
-      ...status,
-      pricing_state: rates.length === 0 ? "unknown" : "numeric",
-      price_facts: rates,
-      availability: (item.model.skus ?? []).map((sku) => ({
-        region: bundle.location,
-        deployment_type: sku.name,
-      })),
-      scope: "runtime_observation",
-    };
+    return regionModels.map((item) => {
+      const raw = new Map(
+        Object.entries(item.model.capabilities ?? {}).map(([key, value]) => [
+          key.toLowerCase(),
+          value,
+        ]),
+      );
+      const supports = (keys: string[]): boolean => booleanCapability(raw, keys) === true;
+      const tasks: ModelTask[] = [];
+      if (supports(["chatCompletion", "completion", "responses"])) tasks.push("text_generation");
+      if (supports(["assistants", "agentsV2"])) tasks.push("text_generation");
+      if (supports(["realtime"])) tasks.push("speech_to_speech");
+      const rawType = item.kind ?? item.model.format ?? "";
+      const classified = modelTasks(item.model.name, rawType, "");
+      const modelTasksValue = orderedTasks(
+        tasks.length === 0 ? classified : [...tasks, ...classified],
+      );
+      const retiredAt = item.model.deprecation?.inference?.slice(0, 10);
+      if (retiredAt !== undefined && !z.iso.date().safeParse(retiredAt).success)
+        throw new Error("Azure API inference retirement date changed shape");
+      const status = apiStatus(item.model.lifecycleStatus, retiredAt, input.observedAt);
+      const rates = pricesFor(
+        item,
+        pricesByMeter,
+        location,
+        input.source.id,
+        modelTasksValue,
+        input.onPricingReconciliation,
+      );
+      return {
+        ...base(input, item.model.name, item.model.version),
+        description: item.description,
+        tasks: modelTasksValue,
+        modalities: modelModalities(rawType, "", modelTasksValue),
+        capabilities: {
+          ...unknownCapabilities(),
+          tool_call: booleanCapability(raw, ["toolCalling", "functionCalling"]),
+          structured_output: booleanCapability(raw, ["jsonSchemaResponse", "jsonObjectResponse"]),
+          streaming: booleanCapability(raw, ["streaming"]),
+          batch: booleanCapability(raw, ["batch"]),
+          prompt_cache: booleanCapability(raw, ["promptCaching"]),
+          fine_tuning: booleanCapability(raw, ["fineTune", "globalFineTune"]),
+          reasoning: booleanCapability(raw, ["reasoning"]),
+          computer_use: booleanCapability(raw, ["computerUse"]),
+        },
+        limits: {
+          context_tokens: integerCapability(raw, ["maxContextToken"]),
+          max_output_tokens: integerCapability(raw, ["maxOutputToken"]),
+        },
+        retired_at: retiredAt,
+        ...status,
+        pricing_state: rates.length === 0 ? "unknown" : "numeric",
+        price_facts: rates,
+        availability: (item.model.skus ?? []).map((sku) => ({
+          region: location,
+          deployment_type: sku.name,
+        })),
+        scope: "runtime_observation" as const,
+      };
+    });
   });
+  return mergeAzureApiModels(models);
 }

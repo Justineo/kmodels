@@ -33,6 +33,7 @@ export type Extractor =
       maxModels: number;
       minHandledRatio: number;
     }
+  | { kind: "azure-public-pricing"; minModels: number; maxModels: number }
   | { kind: "azure-claude-pricing"; minModels: number; maxModels: number }
   | { kind: "azure-api" }
   | { kind: "gemini-catalog"; minModels: number; maxModels: number }
@@ -170,14 +171,21 @@ export interface SourceManifest {
     | { scheme: "bearer"; env: string }
     | { scheme: "header"; env: string; header: string }
     | { scheme: "aws"; envs: [string, string] }
-    | { scheme: "azure"; envs: [string, string, string, string, string] }
+    | { scheme: "azure"; envs: [string, string, string] }
     | { scheme: "google-service-account"; env: string };
   headers?: { name: string; value: string }[];
   transport?:
     | { kind: "aws-bedrock"; region: string }
     | { kind: "databricks"; hostEnv: string }
     | { kind: "azure-retail-prices" }
-    | { kind: "azure-models"; subscriptionEnv: string; locationEnv: string }
+    | {
+        kind: "azure-models";
+        subscriptionEnv: string;
+        concurrency: number;
+        maxLocations: number;
+        maxModels: number;
+        maxModelsPerLocation: number;
+      }
     | { kind: "google-model-garden"; publishers: string[] }
     | { kind: "huggingface-models"; maxPages: number; maxModels: number }
     | {
@@ -1296,6 +1304,45 @@ export const manifests = [
         transport: { kind: "azure-retail-prices" },
       },
       {
+        id: "azure-public-pricing",
+        url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "azure-public-pricing", minModels: 40, maxModels: 250 },
+        extractorVersion: "azure-public-pricing-v1",
+        pricingEvidence: firstPartyPricing("price_book", "base_model_id"),
+        fields: ["pricing"],
+        allowedHosts: ["azure.microsoft.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 5,
+          documents: [
+            "model-router",
+            "deepseek",
+            "microsoft",
+            "grok",
+            "llama",
+            "black-forest-labs",
+            "mistral-ai",
+            "cohere",
+            "kimi",
+            "fireworks",
+          ].map((id) => ({
+            id,
+            url: `https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/${id}/`,
+            maxResponseBytes: mebibytes(2),
+          })),
+        },
+      },
+      {
         id: "azure-claude-pricing",
         url: "https://platform.claude.com/docs/en/about-claude/pricing.md",
         type: "website",
@@ -1318,13 +1365,13 @@ export const manifests = [
       },
       {
         id: "azure-api",
-        url: "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/locations/location/models?api-version=2025-06-01",
+        url: "https://management.azure.com/subscriptions/00000000-0000-0000-0000-000000000000/providers/Microsoft.CognitiveServices/resourceTypes?api-version=2021-04-01",
         type: "api",
         access: "authenticated",
         format: "json",
         stability: "documented",
         extractor: { kind: "azure-api" },
-        extractorVersion: "azure-api-v2",
+        extractorVersion: "azure-api-v3",
         pricingEvidence: firstPartyPricing("scoped_meter_inventory", "meter_id", "scoped_current"),
         fields: [
           "model_id",
@@ -1341,25 +1388,22 @@ export const manifests = [
           "retired_at",
         ],
         allowedHosts: ["management.azure.com", "login.microsoftonline.com", "prices.azure.com"],
-        maxResponseBytes: mebibytes(32),
-        scope: "region",
+        maxResponseBytes: mebibytes(64),
+        scope: "account",
         exhaustive: false,
         role: "inventory",
         optional: true,
         auth: {
           scheme: "azure",
-          envs: [
-            "AZURE_TENANT_ID",
-            "AZURE_CLIENT_ID",
-            "AZURE_CLIENT_SECRET",
-            "AZURE_SUBSCRIPTION_ID",
-            "AZURE_LOCATION",
-          ],
+          envs: ["AZURE_TENANT_ID", "AZURE_CLIENT_ID", "AZURE_CLIENT_SECRET"],
         },
         transport: {
           kind: "azure-models",
           subscriptionEnv: "AZURE_SUBSCRIPTION_ID",
-          locationEnv: "AZURE_LOCATION",
+          concurrency: 6,
+          maxLocations: 64,
+          maxModels: 50_000,
+          maxModelsPerLocation: 5_000,
         },
       },
     ],

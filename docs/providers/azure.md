@@ -14,6 +14,11 @@ Status: current
   product-name allowlist. New Microsoft and Marketplace product families must therefore reach the
   extractor automatically. The inventory covers public Foundry meters across regions and SKUs; it
   does not establish negotiated discounts or subscription-specific availability.
+- Collect Microsoft's public Azure OpenAI and Foundry model-family pricing pages as a second
+  unauthenticated first-party price book. Fetch the reviewed page set atomically and read the
+  embedded regional decimal maps rather than the client-rendered `$-` placeholders. This source is
+  the production fallback for model IDs and version groups that the Retail SKU vocabulary cannot
+  bind; Marketplace Discovery API access is not required.
 - Collect Claude-in-Foundry rates from Anthropic's official pricing page. Its dedicated Microsoft
   Foundry section says Azure Marketplace CCU conversion uses the same public per-model and
   per-feature rates, with the same 1.1x US Data Zone multiplier. This is a delegated first-party
@@ -22,7 +27,15 @@ Status: current
 - Keep fixed Microsoft commercial-policy companions for Foundry cost attribution, Azure OpenAI
   prompt-cache accounting, Claude CCU billing, and Cost Management freshness. They are drift guards
   for what the numeric books can and cannot establish; they do not create prices by themselves.
-- Enable optional ARM inventory with `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_SUBSCRIPTION_ID`, and `AZURE_LOCATION`. Missing credentials must not suppress public retail pricing.
+- Enable optional ARM inventory with `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
+  `AZURE_CLIENT_SECRET`, and `AZURE_SUBSCRIPTION_ID`. The transport discovers the subscription's
+  canonical regions and intersects them with the locations advertised for Cognitive Services
+  accounts; `Global` is not a Models API location. It then collects every discovered regional
+  Models inventory with bounded concurrency. Missing credentials must not suppress public retail
+  pricing.
+- Foundry MCP is preview comparison evidence only. Its catalog/details tools may audit model,
+  region, and price coverage, but their changing tool contract and user/project authorization do
+  not make them a production collector or a fallback price source.
 
 ## Mapping
 
@@ -32,8 +45,12 @@ Status: current
 - Keep exact `{region, deployment_type}` pairs, lifecycle versions, and replacements. The retired-model archive may mark an existing public tuple retired but never recreates an archive-only catalog row.
 - Keep maturity separate from availability: Preview maps to `active` + `preview`, and GA maps to `active` + `stable`. Customer-facing Legacy and Deprecated map to canonical `legacy` and `deprecated`; customer-facing Retired maps to canonical `retired`.
 - The Models API uses different lifecycle words: `Deprecating` means canonical `deprecated`, while API `Deprecated` means canonical `retired`. Its `deprecation.inference` value is the inference retirement date, not `deprecated_at`; once that exact date is effective, canonical status is `retired` even if a lifecycle label or public schedule row lags.
+- Merge repeated ARM identities before applying the subscription-scoped inventory. Tasks,
+  modalities, prices, and exact `{region, deployment_type}` pairs are additive. A scalar observed in
+  only one region may fill an unknown, but conflicting descriptions, limits, lifecycle stages, or
+  capabilities collapse to unknown instead of letting region order choose a global value.
 - A positive row in the current Assistants availability matrix establishes active support for that exact tuple. The retired-model archive takes precedence when the overview still carries a stale availability column.
-- Retail SKU parsing is a reviewed provider grammar, not fuzzy matching. Azure OpenAI product
+- Retail SKU parsing is a reviewed fallback grammar, not fuzzy matching. Azure OpenAI product
   families bind only to Azure OpenAI catalog rows. Reviewed partner and sold-by-Azure product
   families first constrain publisher/family scope and then match normalized ordered SKU tokens
   against current IDs, names, and documented aliases, with a small shared abbreviation, release
@@ -42,6 +59,16 @@ Status: current
   the retail unit and a unique task/meter interpretation agree. In particular, Cohere rerank search
   units, document/OCR pages, and FLUX megapixels retain their provider-native denominator.
 - Bind a retail row only to an exact catalog version, an existing versionless tuple, or the sole public version of a model. A versionless SKU shared by several versions remains unmodeled. When a SKU omits a meter dimension, a unique task-to-meter relation may supply it; text generation never guesses input versus output.
+- Bind Microsoft pricing-page rows at the identity granularity Microsoft publishes. A row that
+  prints a version binds only that exact tuple. A row that prints only a base model ID creates one
+  shared base-model fallback book whose scope is every matching non-retired catalog tuple without
+  exact numeric evidence; it does not manufacture a version-specific claim. A small reviewed alias
+  map covers only documented page omissions or spelling differences such as Llama's omitted
+  `Instruct` suffix. All other non-unique labels remain unbound.
+- Treat the page book as a fallback, not a competing duplicate. If an exact tuple already has a
+  numeric Retail, delegated, or direct-meter book, remove it from the page book's scope. Keep the
+  remaining shared base-model scope separate from exact books so an exact Retail observation cannot
+  accidentally widen to sibling versions.
 - Every returned Consumption row receives one reconciliation disposition. Fine-tuning, provisioned
   throughput, managed compute, Foundry Local, and free-meter rows are deliberately excluded from
   model base pricing; base rows are normalized, unbound, ambiguous, or unsupported. Interpretation
@@ -51,15 +78,44 @@ Status: current
   being guessed and prevents a plausible output-model count from hiding input-row loss.
 - Preserve the retail region, deployment class, service tier, context tier, native unit, and effective-start label. The Retail Prices endpoint establishes that returned consumption rows are the current snapshot, so its effective-start label is retained as raw evidence rather than treated as a historical-only validity constraint.
 - When one exact SKU family contains an unequal explicit long-context row, its otherwise identical unqualified row is the standard context tier. This reviewed pair rule does not apply to ambiguous or unmatched retail rows.
-- Optional ARM inventory is subscription/region scoped. It may enrich exact model tuples and provides the strongest meter-ID join for that configured scope, but it cannot define the global catalog or the complete public price book.
+- Optional ARM inventory is subscription scoped and spans every Cognitive Services account region
+  advertised to that subscription at observation time. It may enrich exact model tuples, preserves
+  every observed `{region, deployment_type}` pair, and provides the strongest meter-ID join for that
+  subscription, but it cannot define the global catalog or the complete public price book. Regional
+  responses are one failure-closed source bundle: a failed or structurally inconsistent location
+  retains the previous accepted inventory instead of publishing a partial current availability map.
+
+## ARM meter binding
+
+- Keep model identity, billing identity, and price observations separate. An ARM/Retail join applies
+  to the exact model/version, region, and deployment SKU it observes. ARM SKU names and Retail
+  `meterId` values are rate evidence and never become model IDs.
+- Normalize both ARM wire spellings at the source boundary. Microsoft documents `skus[].cost`, while
+  the observed 2025-06-01 Location Models response uses `skus[].costs`. Accept either spelling, but
+  reject the source when both appear with different arrays. Empty `meterId` strings are absence, not
+  identifiers.
+- The only authenticated pricing join is ARM model/version + region + SKU + cost component + direct
+  `meterId`, followed by the matching public Retail Prices meter. A cost without a direct meter stays
+  unbound. The collector does not request billing-account or billing-profile access and never uses
+  account-eligible Marketplace catalog data to build the public price book.
+- Structured ARM cost components provide an independent semantics check. Reviewed mappings include
+  uncached context to text input, cached context to cache read, generated tokens to text output,
+  batch context to text input, and embedding total/context tokens to embedding usage. A disagreement
+  with the Retail meter or unit rejects that cost component. Hosting, provisioned, training,
+  fine-tuning, and grader components are deliberately outside base usage pricing.
+- Canonical rate observations use the public Retail `meterId` as a source-native `meter` locator.
+  Reconciliation retains complete reason counts, including direct-meter, missing-meter,
+  missing-Retail-meter, unsupported-component, and semantic-conflict outcomes.
 
 ## Public estimate and account-exact cost
 
-- The Retail Prices API publishes Microsoft retail prices without discount. It is sufficient for a
-  list-price estimate only after the gateway knows the exact deployed model/version, region,
-  deployment SKU, meter, modality, context tier, cache outcome, batch/priority mode, and native
-  quantity. The request's `model` value is normally a customer deployment name, so a deployment-to-
-  model/version/SKU inventory join is required before applying the public book.
+- The Retail Prices API and Microsoft pricing pages publish prices without account discounts.
+  Kmodels exposes rates for either the exact base model/version or an explicitly shared base-model
+  scope, plus region, Azure pricing scope/SKU, meter, modality, context tier, batch/priority mode,
+  and native quantity. Deployment names and deployment resource IDs are deliberately outside this
+  catalog. A consumer must already know the base model selected for the request; when the selected
+  deployment also fixes a version, exact-version books take precedence over a shared base-model
+  fallback. Kmodels does not infer either identity from a customer-defined alias.
 - Azure's authenticated Price Sheet API is the first-party source for contract-specific meter
   prices. Cost Details exposes `PayGPrice`, negotiated `UnitPrice`, actual `EffectivePrice`, quantity,
   pricing model, marketplace publisher, billing/pricing currency, and actual or amortized cost.
@@ -97,18 +153,25 @@ Status: current
 ## Extraction and reconciliation
 
 - Refresh is deterministic and non-LLM: bounded Markdown-table grammars own catalog and delegated
-  Claude prices; fixed OpenAPI operation/path and usage markers own response contracts; the Retail
-  Prices transport follows every bounded page; exact meter IDs own authenticated ARM price joins;
-  fixed policy phrases fail closed when accounting semantics change.
-- The current first-party audit returned 223 public model/version tuples and 29,237 Foundry
+  Claude prices; a bounded HTML-table grammar owns Microsoft pricing-page regional maps; fixed
+  OpenAPI operation/path and usage markers own response contracts; the Retail Prices transport
+  follows every bounded page; provider metadata and subscription locations define the bounded ARM
+  region set; exact direct ARM meter IDs own scoped joins; fixed policy phrases fail closed when
+  accounting semantics change.
+- The checked-in first-party audit returned 223 public model/version tuples and 29,237 Foundry
   Consumption rows. The reviewed retail grammar normalized 19,110 source rows into 18,934 unique
   facts on 109 model tuples, excluded 4,803 non-base rows, and left 3,864 rows unbound, 1,446
   version-ambiguous, and 14 unsupported. The only unsupported signature is Azure's generic legacy
-  `Az-GPT-3.5-turbo Tokens` meter, which does not say input versus output. Across the 177 active
-  catalog tuples, the retail and delegated Claude books price 98 and leave 79 unknown. This is
-  intentionally not presented as 100% price coverage: the Retail API often leads the public model
+  `Az-GPT-3.5-turbo Tokens` meter, which does not say input versus output. Across 189 non-retired
+  catalog tuples, the retail and delegated Claude books normalize rates for 108 and leave 81
+  unknown. This is intentionally not presented as 100% price coverage: the Retail API often leads the public model
   catalog, abbreviates identities, or omits a version shared by several current catalog rows. Such
   rows stay visible in reconciliation instead of becoming guessed prices.
+- The reviewed Microsoft pricing-page extractor classifies all 1,171 embedded price fields: 612
+  normalized, 358 deliberately excluded non-base fields, 5 explicit unavailable values, 192
+  unbound identities, and 4 unsupported meter/unit shapes. Its 13,240 regional facts on 110 parsed
+  models add normalized fallback books for 36 non-retired tuples in the checked-in catalog,
+  projecting coverage from 108/189 to 144/189 without Marketplace credentials.
 - The missing Claude family was a genuine first-party extraction gap: Microsoft delegates the rate
   to Anthropic, and Anthropic publishes a Microsoft Foundry-specific CCU section. The dedicated
   overlay now normalizes 13 public price rows into 85 facts for 12 offered models, including the
