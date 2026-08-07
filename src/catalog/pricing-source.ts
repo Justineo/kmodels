@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { rawPriceFactSchema, rawPricingReasonSchema } from "./pricing-schema.ts";
+import {
+  priceSourceLocatorSchema,
+  rawPriceFactSchema,
+  rawPricingReasonSchema,
+} from "./pricing-schema.ts";
 import { rawPricingImpacts, standardPriceMeters } from "./pricing-vocabulary.ts";
 import { providerModelSchema, type ProviderModel } from "./schema.ts";
 
@@ -71,6 +75,7 @@ export const sourcePriceFactSchema = z
     ]),
     conditions: sourcePriceConditionsSchema,
     source_ref: z.string().min(1),
+    source_locator: priceSourceLocatorSchema.optional(),
     derived: z.boolean(),
     derivation: z.string().optional(),
     raw_price: z.string().optional(),
@@ -133,9 +138,10 @@ export function sourceRawPricingFactKey(fact: SourceRawPricingFact): string {
 }
 
 function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {
-  const { derivation, raw_price, raw_unit, raw_validity, ...required } = fact;
+  const { derivation, raw_price, raw_unit, raw_validity, source_locator, ...required } = fact;
   return sourcePriceFactSchema.parse({
     ...required,
+    ...(source_locator === undefined ? {} : { source_locator }),
     ...(derivation === undefined ? {} : { derivation }),
     ...(raw_price === undefined ? {} : { raw_price }),
     ...(raw_unit === undefined ? {} : { raw_unit }),

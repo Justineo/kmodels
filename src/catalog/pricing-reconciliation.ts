@@ -18,10 +18,11 @@ const pricingReconciliationProblemSchema = z.enum([
   "unsupported",
   "unresolved",
 ]);
+const pricingReconciliationReasonCodeSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
 
 export const pricingReconciliationItemSchema = z.strictObject({
   disposition: z.enum(pricingReconciliationDispositions),
-  reason_code: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+  reason_code: pricingReconciliationReasonCodeSchema,
   sample: z.string().min(1).max(256).optional(),
 });
 
@@ -36,18 +37,25 @@ const dispositionCountsSchema = z.strictObject({
   unresolved: z.number().int().nonnegative(),
 });
 
+const reasonCountsSchema = z
+  .record(pricingReconciliationReasonCodeSchema, z.number().int().positive())
+  .refine((counts) => Object.keys(counts).length <= 64, {
+    message: "Pricing reconciliation has too many reason codes",
+  });
+
 export const sourcePricingReconciliationSchema = z
   .strictObject({
     basis: z.enum(["source_item", "model_output"]),
     unit: z.string().min(1).max(96),
     observed_items: z.number().int().nonnegative(),
     disposition_counts: dispositionCountsSchema,
+    reason_counts: reasonCountsSchema.optional(),
     diagnostic_count: z.number().int().nonnegative(),
     diagnostics: z
       .array(
         z.strictObject({
           disposition: pricingReconciliationProblemSchema,
-          reason_code: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+          reason_code: pricingReconciliationReasonCodeSchema,
           sample: z.string().min(1).max(256).optional(),
         }),
       )
@@ -60,6 +68,16 @@ export const sourcePricingReconciliationSchema = z
         code: "custom",
         path: ["observed_items"],
         message: "Pricing reconciliation dispositions must partition observed items",
+      });
+    if (
+      value.reason_counts !== undefined &&
+      Object.values(value.reason_counts).reduce((sum, count) => sum + count, 0) !==
+        value.observed_items
+    )
+      context.addIssue({
+        code: "custom",
+        path: ["reason_counts"],
+        message: "Pricing reconciliation reasons must partition observed items",
       });
     const problemCount =
       value.disposition_counts.unbound +
@@ -129,7 +147,11 @@ export function sourcePricingReconciliation(
     pricingReconciliationItemSchema.parse(item),
   );
   const dispositionCounts = emptyDispositionCounts();
-  for (const { disposition } of items) dispositionCounts[disposition] += 1;
+  const reasonCounts: Record<string, number> = {};
+  for (const { disposition, reason_code } of items) {
+    dispositionCounts[disposition] += 1;
+    reasonCounts[reason_code] = (reasonCounts[reason_code] ?? 0) + 1;
+  }
   const problems = items.filter(
     ({ disposition }) => pricingReconciliationProblemSchema.safeParse(disposition).success,
   );
@@ -138,6 +160,7 @@ export function sourcePricingReconciliation(
     unit: basis === "source_item" ? "reviewed source pricing item" : "parsed model record",
     observed_items: items.length,
     disposition_counts: dispositionCounts,
+    reason_counts: reasonCounts,
     diagnostic_count: problems.length,
     diagnostics: problems.slice(0, 8).map(({ disposition, reason_code, sample }) => ({
       disposition,

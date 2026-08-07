@@ -5,6 +5,8 @@ import { promisify } from "node:util";
 import { load } from "cheerio";
 import { z } from "zod";
 import { fetchBedrockInventory } from "./bedrock.ts";
+import { armCostMeterId, azureArmSkuSchema } from "./azure-commercial.ts";
+import { azureModelLocations } from "./azure-locations.ts";
 import { mapConcurrent } from "./concurrency.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -13,20 +15,19 @@ import { assertItemCount } from "./source-contract.ts";
 
 const execute = promisify(execFile);
 
+type AzureModelsTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "azure-models" }
+>;
+
 const azureTokenSchema = z.object({ access_token: z.string().min(1) });
-const azureModelsPageSchema = z.object({
+const azureArmPageSchema = z.object({
   value: z.array(z.unknown()),
   nextLink: z.string().nullable().optional(),
 });
-const azureMeterSchema = z.object({
+const azureCommercialInventorySchema = z.object({
   model: z.object({
-    skus: z
-      .array(
-        z.object({
-          cost: z.array(z.object({ meterId: z.string().min(1) })).optional(),
-        }),
-      )
-      .optional(),
+    skus: z.array(azureArmSkuSchema).optional(),
   }),
 });
 const azurePricesPageSchema = z.object({
@@ -346,6 +347,33 @@ function azurePageUrl(raw: string, pathPrefix: string): URL {
   return url;
 }
 
+async function fetchAzureArmItems(
+  source: SourceManifest,
+  label: string,
+  first: URL,
+  path: string,
+  headers: string[],
+  limits: { items: number; pages: number },
+): Promise<unknown[]> {
+  const items: unknown[] = [];
+  let next: URL | undefined = first;
+  let pages = 0;
+  while (next !== undefined) {
+    if (pages === limits.pages) throw new Error(`${label} exceeded page limit`);
+    const page = azureArmPageSchema.parse(
+      await cloudJson(label, next, source.maxResponseBytes, headers),
+    );
+    items.push(...page.value);
+    if (items.length > limits.items) throw new Error(`${label} exceeded item limit`);
+    next =
+      page.nextLink === undefined || page.nextLink === null
+        ? undefined
+        : azurePageUrl(page.nextLink, path);
+    pages += 1;
+  }
+  return items;
+}
+
 function retailPageUrl(raw: string): URL {
   const url = new URL(raw);
   if (
@@ -387,8 +415,7 @@ async function fetchAzureRetailPages(
 
 async function fetchAzureModels(
   source: SourceManifest,
-  subscriptionEnv: string,
-  locationEnv: string,
+  transport: AzureModelsTransport,
 ): Promise<string> {
   const auth = source.auth;
   if (auth?.scheme !== "azure") throw new Error("Azure transport requires Azure credentials");
@@ -396,12 +423,10 @@ async function fetchAzureModels(
   const tenant = environment(tenantEnv);
   const client = environment(clientEnv);
   const secret = environment(secretEnv);
-  const subscription = environment(subscriptionEnv);
-  const location = environment(locationEnv);
+  const subscription = environment(transport.subscriptionEnv);
   if (!/^[0-9a-f-]{36}$/i.test(tenant) || !/^[0-9a-f-]{36}$/i.test(client))
     throw new Error("Azure tenant and client IDs must be GUIDs");
-  if (!/^[0-9a-f-]{36}$/i.test(subscription) || !/^[a-z0-9-]+$/i.test(location))
-    throw new Error("Azure subscription or location is invalid");
+  if (!/^[0-9a-f-]{36}$/i.test(subscription)) throw new Error("Azure subscription is invalid");
 
   const tokenUrl = new URL(`/${tenant}/oauth2/v2.0/token`, "https://login.microsoftonline.com");
   const token = azureTokenSchema.parse(
@@ -418,38 +443,65 @@ async function fetchAzureModels(
       ],
     ),
   );
-  const path = `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/locations/${location}/models`;
-  let next: URL | undefined = new URL(
-    `${path}?api-version=2025-06-01`,
+  const authorizationHeaders = [
+    "Accept: application/json",
+    `Authorization: Bearer ${token.access_token}`,
+  ];
+  const resourceTypesUrl = new URL(
+    `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/resourceTypes?api-version=2021-04-01`,
     "https://management.azure.com",
   );
-  const models: unknown[] = [];
-  for (let pageCount = 0; next !== undefined && pageCount < 20; pageCount += 1) {
-    const page = azureModelsPageSchema.parse(
-      await cloudJson("Azure", next, source.maxResponseBytes, [
-        "Accept: application/json",
-        `Authorization: Bearer ${token.access_token}`,
-      ]),
-    );
-    models.push(...page.value);
-    if (models.length > 5_000) throw new Error("Azure Models API exceeded item limit");
-    next =
-      page.nextLink === undefined || page.nextLink === null
-        ? undefined
-        : azurePageUrl(page.nextLink, path);
-    if (pageCount === 19 && next !== undefined)
-      throw new Error("Azure Models API exceeded page limit");
-  }
-  if (models.length === 0) throw new Error("Azure Models API returned no models");
+  const subscriptionLocationsPath = `/subscriptions/${subscription}/locations`;
+  const subscriptionLocationsUrl = new URL(
+    `${subscriptionLocationsPath}?api-version=2022-12-01`,
+    "https://management.azure.com",
+  );
+  const subscriptionLocations = await fetchAzureArmItems(
+    source,
+    "Azure subscription locations",
+    subscriptionLocationsUrl,
+    subscriptionLocationsPath,
+    authorizationHeaders,
+    { items: 1_000, pages: 10 },
+  );
+  const resourceTypes = await cloudJson(
+    "Azure Cognitive Services resource types",
+    resourceTypesUrl,
+    source.maxResponseBytes,
+    authorizationHeaders,
+  );
+  const locations = azureModelLocations(resourceTypes, subscriptionLocations);
+  if (locations.length > transport.maxLocations)
+    throw new Error("Azure Models API exceeded location limit");
 
-  const meterIds = unique(
+  const regions = await mapConcurrent(locations, transport.concurrency, async (location) => {
+    const path = `/subscriptions/${subscription}/providers/Microsoft.CognitiveServices/locations/${location}/models`;
+    const first = new URL(`${path}?api-version=2025-06-01`, "https://management.azure.com");
+    const models = await fetchAzureArmItems(
+      source,
+      `Azure Models (${location})`,
+      first,
+      path,
+      authorizationHeaders,
+      { items: transport.maxModelsPerLocation, pages: 20 },
+    );
+    return { location, models };
+  });
+  const modelCount = regions.reduce((sum, { models }) => sum + models.length, 0);
+  if (modelCount === 0) throw new Error("Azure Models API returned no models");
+  if (modelCount > transport.maxModels)
+    throw new Error("Azure Models API exceeded total item limit");
+
+  const commercialCosts = regions.flatMap(({ models }) =>
     models.flatMap((item) => {
-      const parsed = azureMeterSchema.safeParse(item);
-      return parsed.success
-        ? (parsed.data.model.skus ?? []).flatMap((sku) =>
-            (sku.cost ?? []).map((cost) => cost.meterId),
-          )
-        : [];
+      const parsed = azureCommercialInventorySchema.safeParse(item);
+      return parsed.success ? (parsed.data.model.skus ?? []).flatMap(({ costs }) => costs) : [];
+    }),
+  );
+  const meterIds = unique(
+    commercialCosts.flatMap((cost) => {
+      const meterId = armCostMeterId(cost);
+      return meterId === undefined ? [] : [meterId];
     }),
   );
   const prices: unknown[] = [];
@@ -469,7 +521,7 @@ async function fetchAzureModels(
       })),
     );
   }
-  const body = JSON.stringify({ location, models, prices });
+  const body = JSON.stringify({ regions, prices });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Azure inventory bundle exceeded byte limit");
   return body;
@@ -1261,11 +1313,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     return generatedFetchResult(body);
   }
   if (source.transport?.kind === "azure-models") {
-    const body = await fetchAzureModels(
-      source,
-      source.transport.subscriptionEnv,
-      source.transport.locationEnv,
-    );
+    const body = await fetchAzureModels(source, source.transport);
     return generatedFetchResult(body);
   }
   if (source.transport?.kind === "google-model-garden") {

@@ -111,6 +111,12 @@ describe("refresh report", () => {
                     unsupported: 1,
                     unresolved: 0,
                   },
+                  reason_counts: {
+                    identity_not_found: 1,
+                    non_base_row: 1,
+                    normalized_meter: 2,
+                    unsupported_meter: 1,
+                  },
                   diagnostic_count: 2,
                   diagnostics: [
                     {
@@ -199,6 +205,9 @@ describe("refresh report", () => {
     );
     expect(output.markdown).toContain(
       "| Reconcile | `example-catalog` | `source_item` · 5 items · 2 normalized · 1 excluded · ❓ 2 |",
+    );
+    expect(output.markdown).toContain(
+      "| Reasons | `example-catalog` | `normalized_meter` 2 · `identity_not_found` 1 · `non_base_row` 1 · `unsupported_meter` 1 |",
     );
     expect(output.markdown).toContain(
       "| Finding | `example-catalog` | `unbound` · `identity_not_found` |",

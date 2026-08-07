@@ -520,7 +520,7 @@ function requiredEnvs(source: SourceManifest): string[] {
     source.transport?.kind === "databricks"
       ? [source.transport.hostEnv]
       : source.transport?.kind === "azure-models"
-        ? [source.transport.subscriptionEnv, source.transport.locationEnv]
+        ? [source.transport.subscriptionEnv]
         : [];
   return [...new Set([...auth, ...transport])];
 }

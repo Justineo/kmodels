@@ -149,8 +149,10 @@ Pricing information has four deliberate publication levels:
 2. Refresh reports aggregate those attempts into provider/model resolution coverage and actionable
    warnings. Reports remain operational artifacts and are not a pricing API.
 3. Canonical catalog and pricing APIs retain only validated public commercial facts, exact source
-   references, bounded raw fallbacks, and the source records needed to audit provenance. They never
-   expose rejected candidates or credential-scoped observations.
+   references, bounded raw fallbacks, and the source records needed to audit provenance. A scoped
+   authenticated inventory may contribute only positive facts reduced to non-secret public model,
+   scope, and commercial identifiers. Rejected candidates, raw authenticated bodies, account
+   resources, principals, subscriptions, and private identifiers never enter the canonical pair.
 4. Website packs contain only the fields required to render the catalog, representative pricing,
    and deferred model detail. They omit source policy, reconciliation, warnings, and raw collection
    diagnostics.
@@ -266,6 +268,16 @@ A book has:
 `scope.model_refs` is the current exact model projection used by the website.
 Scope observations collectively cover that projection and cannot widen beyond
 their observed subjects.
+
+Identity granularity follows the admitted source rather than a universal
+version requirement. Version-labeled evidence creates an exact model/version
+book. A reviewed first-party price book that explicitly publishes only a base
+model ID may create one shared book scoped to the non-retired catalog tuples
+with that exact provider model ID that lack exact numeric evidence. The shared
+scope does not merge catalog identities or claim that a particular version was
+named by the source. Exact numeric books remove their tuple from the fallback
+scope, so exact evidence cannot compete with a base-model rate or leak to
+sibling versions.
 
 ### Offers
 
@@ -433,6 +445,11 @@ claim. Value observations retain:
 - a bounded locator;
 - the bounded raw commercial fields needed to audit the assertion;
 - the exact applicability established by a normalized observation.
+
+When a structured billing catalog publishes a stable meter identifier, parsed source facts carry
+that source-native locator into the canonical observation. Synthetic provider-key locators remain
+the fallback for documents without such an identifier. A locator is audit evidence and never part
+of normalized rate identity.
 
 Evidence is collective where a bounded exact result combines several official
 facts. Each attached observation must establish one declared input, and the set

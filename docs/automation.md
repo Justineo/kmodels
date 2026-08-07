@@ -76,7 +76,9 @@ Status: implemented
   for explicit absence/removal/withdrawal intents and pair-bound safety
   findings. Scheduled source adapters cannot create it; an unresolved finding
   must be resupplied for every attempted build until a safe pair commits.
-- Provider secrets are optional. Missing secrets skip only their scoped inventories.
+- Provider secrets are optional. Missing secrets skip only their scoped inventories. Azure uses the
+  same subscription Reader service principal locally and in Actions and discovers every applicable
+  region from subscription metadata.
 - Deployment uses the pinned `void` dependency and GitHub OIDC. `void.json` deploys static `dist/`; `VOID_PROJECT` is the only repository variable.
 - Renovate uses the Shanghai timezone, a seven-day minimum release age, grouped automerge for
   non-major updates, and isolated manual major updates. Its custom package-manager matcher keeps

@@ -5,6 +5,7 @@ import {
   parseAzureApi,
   parseAzureCatalog,
   parseAzureClaudePricing,
+  parseAzurePublicPricing,
   parseAzureRetailPrices,
 } from "./azure.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
@@ -1528,6 +1529,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseAzureCatalog(input);
     case "azure-retail-prices":
       return parseAzureRetailPrices(input);
+    case "azure-public-pricing":
+      return parseAzurePublicPricing(input);
     case "azure-claude-pricing":
       return parseAzureClaudePricing(input);
     case "azure-api":

@@ -11,6 +11,7 @@ const sourcePricingEvidenceKinds = [
 const sourcePricingBindingMethods = [
   "exact_id",
   "exact_or_documented_alias",
+  "base_model_id",
   "reviewed_unique_join",
   "meter_id",
 ] as const;

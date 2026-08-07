@@ -593,6 +593,15 @@ function pricingReconciliationRows(source: SourceAttempt): ProviderDetailRow[] {
       ],
     ),
   ];
+  const reasons = Object.entries(evidence.reason_counts ?? {}).sort(
+    ([leftCode, leftCount], [rightCode, rightCount]) =>
+      rightCount - leftCount || leftCode.localeCompare(rightCode),
+  );
+  if (reasons.length > 0) {
+    const shown = reasons.slice(0, 8).map(([reason, count]) => `\`${reason}\` ${count}`);
+    if (reasons.length > shown.length) shown.push(`+${reasons.length - shown.length} reasons`);
+    rows.push(["Reasons", `\`${source.source_id}\``, shown.join(" · ")]);
+  }
   const omitted = evidence.diagnostic_count - evidence.diagnostics.length;
   if (omitted > 0) rows.push(["Finding", `\`${source.source_id}\``, `+${omitted} omitted`]);
   return rows;
