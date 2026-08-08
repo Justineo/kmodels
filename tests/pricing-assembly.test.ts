@@ -197,6 +197,45 @@ describe("canonical pricing canonical assembly", () => {
     ]);
   });
 
+  it("uses reviewed fact precedence only when the winner covers the losing scope", () => {
+    const authoritative = rate(unconditionalApplicability, "authoritative");
+    authoritative.resolution_policy = "exact_product_page_over_informational_feed";
+    const term = assemble(input([authoritative, rate(region("US"), "lower-priority", "400000")]))
+      .books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+    expect(term.variants).toHaveLength(1);
+    expect(term.variants[0]!.observations[0]!.locator.value).toBe("authoritative");
+    expect(term.raw_variants).toEqual([
+      expect.objectContaining({
+        impact: "informational",
+        reason: "superseded_value",
+        resolution_policy: "exact_product_page_over_informational_feed",
+      }),
+    ]);
+  });
+
+  it("does not let a narrower reviewed fact erase a broader claim", () => {
+    const authoritative = rate(region("US"), "authoritative");
+    authoritative.resolution_policy = "scoped_page_over_feed";
+    const term = assemble(
+      input([authoritative, rate(unconditionalApplicability, "broader", "400000")]),
+    ).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+    expect(term.variants).toEqual([]);
+    expect(term.raw_variants[0]).toMatchObject({ reason: "conflicting_values" });
+  });
+
+  it("does not choose between unequal reviewed facts", () => {
+    const first = rate(unconditionalApplicability, "first");
+    first.resolution_policy = "exact_page_over_feed";
+    const second = rate(unconditionalApplicability, "second", "400000");
+    second.resolution_policy = "exact_page_over_feed";
+    const term = assemble(input([first, second])).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+    expect(term.variants).toEqual([]);
+    expect(term.raw_variants[0]).toMatchObject({ reason: "conflicting_values" });
+  });
+
   it("keeps unequal values in disjoint validity intervals", () => {
     const introductory = rate(unconditionalApplicability, "introductory");
     introductory.validity = { until: { value: "2026-08-31", precision: "date" } };

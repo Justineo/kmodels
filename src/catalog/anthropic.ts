@@ -449,16 +449,6 @@ function callable(item: ProviderModel): boolean {
   return item.api_endpoints?.some(({ path }) => path === messagesEndpoint.path) === true;
 }
 
-function generation(item: ProviderModel): [number, number] | undefined {
-  const match = item.model_id.match(/^claude-[a-z]+-(\d+)(?:-(\d+))?(?:-|$)/);
-  return match?.[1] === undefined ? undefined : [Number(match[1]), Number(match[2] ?? 0)];
-}
-
-function atLeast(item: ProviderModel, major: number, minor: number): boolean {
-  const value = generation(item);
-  return value !== undefined && (value[0] > major || (value[0] === major && value[1] >= minor));
-}
-
 function requireMentions(
   value: string | undefined,
   models: Map<string, ProviderModel>,
@@ -467,6 +457,26 @@ function requireMentions(
   const matches = value === undefined ? [] : mentioned(value, models);
   if (matches.length === 0) throw new Error(message);
   return matches;
+}
+
+function listedModels(
+  body: string,
+  models: Map<string, ProviderModel>,
+  capability: string,
+): ProviderModel[] {
+  const list = body
+    .split(/\r?\n/)
+    .find((line) => line.startsWith("- Supported models:"))
+    ?.match(/^- Supported models: (`[^`]+`(?:, `[^`]+`)*)$/)?.[1];
+  if (list === undefined) throw new Error(`Anthropic ${capability} coverage drifted`);
+  const ids = [...list.matchAll(/`([^`]+)`/g)].map((match) => modelIdSchema.parse(match[1]));
+  if (ids.length === 0 || new Set(ids).size !== ids.length)
+    throw new Error(`Anthropic ${capability} coverage drifted`);
+  return ids.map((id) => {
+    const model = models.get(id);
+    if (model === undefined) throw new Error(`Anthropic ${capability} model did not bind: ${id}`);
+    return model;
+  });
 }
 
 function capabilities(
@@ -503,48 +513,8 @@ function capabilities(
     throw new Error("Anthropic context-editing coverage drifted");
   for (const item of supported) item.capabilities.context_management = true;
 
-  const structuredLine = bodies.structuredOutputs
-    .split(/\r?\n/)
-    .find((line) => line.startsWith("- Supported models:"));
-  if (structuredLine !== undefined) {
-    const structuredList = structuredLine.match(
-      /^- Supported models: (`[^`]+`(?:, `[^`]+`)*)$/,
-    )?.[1];
-    if (structuredList === undefined)
-      throw new Error("Anthropic structured-output coverage drifted");
-    const ids = [...structuredList.matchAll(/`([^`]+)`/g)].map((match) =>
-      modelIdSchema.parse(match[1]),
-    );
-    if (ids.length === 0 || new Set(ids).size !== ids.length)
-      throw new Error("Anthropic structured-output coverage drifted");
-    const structured = new Set(
-      ids.map((id) => {
-        const item = models.get(id);
-        if (item === undefined)
-          throw new Error(`Anthropic structured-output model did not bind: ${id}`);
-        return item.model_id;
-      }),
-    );
-    for (const item of supported)
-      item.capabilities.structured_output = structured.has(item.model_id);
-  } else {
-    const inclusiveLine = bodies.structuredOutputs
-      .split(/\r?\n/)
-      .find((line) =>
-        line.includes("Structured outputs are generally available on the Claude API for"),
-      );
-    const structuredText = inclusiveLine === undefined ? undefined : text(inclusiveLine);
-    if (
-      structuredText === undefined ||
-      !structuredText.includes(
-        "Structured outputs are generally available on the Claude API for Claude 4.5 and later models and Claude Mythos Preview.",
-      )
-    )
-      throw new Error("Anthropic structured-output coverage drifted");
-    for (const item of supported)
-      item.capabilities.structured_output =
-        atLeast(item, 4, 5) || mentioned(structuredText, models).includes(item);
-  }
+  const structured = new Set(listedModels(bodies.structuredOutputs, models, "structured-output"));
+  for (const item of supported) item.capabilities.structured_output = structured.has(item);
 
   const codeTable = tables(bodies.codeExecution).find(
     (table) => table.headers.join("|") === "Model|Tool versions",
@@ -567,21 +537,14 @@ function capabilities(
   ))
     if (callable(item)) item.capabilities.code_execution = true;
 
-  const computerSection = bodies.computerUse.match(
-    /Computer use is in beta and requires .*?:\s*([\s\S]*?)\n\s*Reach out through/,
-  )?.[1];
-  const computerModels = requireMentions(
-    computerSection,
-    models,
-    "Anthropic computer-use coverage drifted",
-  );
+  const computerModels = new Set([
+    ...listedModels(bodies.computerUse, models, "computer-use"),
+    ...mentioned(bodies.computerUse.match(/<Note>([\s\S]*?)<\/Note>/)?.[1] ?? "", models),
+  ]);
   for (const item of supported) item.capabilities.computer_use = false;
   for (const item of computerModels) if (callable(item)) item.capabilities.computer_use = true;
 
-  const effortLine = bodies.effort
-    .split(/\r?\n/)
-    .find((line) => line.includes("The effort parameter is supported by"));
-  const effortModels = requireMentions(effortLine, models, "Anthropic effort coverage drifted");
+  const effortModels = listedModels(bodies.effort, models, "effort");
   for (const item of supported) item.capabilities.effort_control = false;
   for (const item of effortModels) if (callable(item)) item.capabilities.effort_control = true;
 

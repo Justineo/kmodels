@@ -1296,7 +1296,27 @@ function voiceModels(
   )?.[1];
   if (latestAlias === undefined) throw new Error("xAI Realtime endpoint evidence changed");
   const alias = rows.find(({ id }) => id === latestAlias);
-  const latestModel = alias?.description.match(/Alias for `(grok-[^`]+)`/)?.[1];
+  const aliasDescription = alias?.description.match(
+    /^Alias for `(grok-[^`]+)`\.(?:\s*Updates to `(grok-[^`]+)` on (January|February|March|April|May|June|July|August|September|October|November|December) (\d{1,2}), (\d{4})\.)?$/,
+  );
+  const initialAlias = aliasDescription?.[1];
+  const updatedAlias = aliasDescription?.[2];
+  const transitionMonth = monthNumber.get(aliasDescription?.[3]?.toLowerCase() ?? "");
+  const transitionDay = aliasDescription?.[4];
+  const transitionYear = aliasDescription?.[5];
+  let latestModel = initialAlias;
+  if (updatedAlias !== undefined) {
+    if (
+      transitionMonth === undefined ||
+      transitionDay === undefined ||
+      transitionYear === undefined
+    )
+      throw new Error("xAI voice model table was incomplete");
+    const transitionDate = `${transitionYear}-${String(transitionMonth).padStart(2, "0")}-${transitionDay.padStart(2, "0")}`;
+    if (new Date(`${transitionDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== transitionDate)
+      throw new Error("xAI voice model table was incomplete");
+    if (input.observedAt.slice(0, 10) >= transitionDate) latestModel = updatedAlias;
+  }
   const models = rows.filter(({ id }) => id !== latestAlias);
   if (
     latestModel === undefined ||

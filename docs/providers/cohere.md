@@ -97,6 +97,12 @@ Status: current
 - Refresh is deterministic and non-LLM. Labeled model IDs own identity; typed RSC pricing products,
   exact legacy sentences, reviewed Model Vault grids, and model-card pricing blocks own commercial
   facts. Fixed accounting phrases and response-schema fields fail closed when their semantics drift.
+- Cohere's generated Markdown may place all Embed Job model/dimension entries on one bullet line.
+  Parse only the bounded dimension list and stop before the following request fields; backticked enum
+  values elsewhere on the page are not model IDs. Streaming accounting requires `message-end`,
+  `usage`, and `billed_units`; `cached_tokens` is no longer claimed by that streaming reference and
+  remains guarded only where Cohere publishes it. The current transcription contract is validated by
+  its exact successful text response and absence of `billed_units`.
 - The earlier extractor normalized rates but silently skipped unmatched pricing products, did not
   audit duplicate or retired price inputs, and did not fetch account/usage companions. It also
   silently discarded the internally inconsistent Command A card. The current extractor partitions

@@ -141,6 +141,54 @@ const priceListSchema = z.object({
   }),
 });
 
+const marketplaceRateCardSchema = z.object({
+  dimensionKey: z.string().regex(/^[A-Z0-9]+_InputTokenCount(?:_Global)?$/),
+  displayName: z.enum([
+    "Price per 1 million input tokens",
+    "Price per 1 million input tokens Global",
+  ]),
+  description: z.enum([
+    "Price per 1 million input tokens",
+    "Price per 1 million input tokens Global",
+  ]),
+  dimensionLabels: z
+    .array(
+      z.object({
+        type: z.literal("REGION"),
+        value: z.string().regex(/^[a-z]{2}(?:-[a-z]+)+-\d$/),
+        displayName: z.string().min(1),
+      }),
+    )
+    .length(1),
+  unit: z.literal("Units"),
+  price: decimalSchema,
+});
+
+const marketplacePricingTermSchema = z.object({
+  termType: z.literal("UsageBasedPricingTerm"),
+  currencyCode: z.literal("USD"),
+  rateCards: z.array(marketplaceRateCardSchema).length(46),
+  rateCardCount: z.literal(46),
+  totalRateCards: z.literal(46),
+});
+
+const marketplaceQuerySchema = z.object({
+  state: z.object({
+    data: z.object({
+      summary: z.object({
+        vendor: z.object({ vendorName: z.literal("Cohere") }),
+        pricingModel: z.literal("USAGE"),
+        terms: z.array(z.unknown()).min(1),
+      }),
+    }),
+  }),
+});
+
+const marketplacePageContextSchema = z.object({
+  routeParams: z.object({ listingId: z.literal("prodview-j3fgisven2yrs") }),
+  dehydratedState: z.object({ queries: z.array(z.unknown()) }),
+});
+
 const apiDateSchema = z.iso.datetime({ offset: true });
 const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING", "AUDIO", "SPEECH", "VIDEO"]);
 const customizationSchema = z.enum([
@@ -1213,6 +1261,79 @@ function mergeBedrockModels(current: ProviderModel, incoming: ProviderModel): Pr
   };
 }
 
+function cohereEmbedMarketplaceRates(body: string, sourceId: string): SourcePriceFact[] {
+  const page = load(body);
+  if (
+    page("title").text().trim() !== "AWS Marketplace: Cohere Embed 4 Model (Amazon Bedrock Edition)"
+  )
+    throw new Error("Bedrock Cohere Embed 4 Marketplace identity changed");
+  const contexts = page("script#vike_pageContext")
+    .map((_index, element) => page(element).text())
+    .get();
+  if (contexts.length !== 1 || contexts[0] === undefined)
+    throw new Error("Bedrock Cohere Embed 4 Marketplace state was not unique");
+  const context = marketplacePageContextSchema.parse(JSON.parse(contexts[0]));
+  const queries = context.dehydratedState.queries.flatMap((query) => {
+    const parsed = marketplaceQuerySchema.safeParse(query);
+    return parsed.success ? [parsed.data] : [];
+  });
+  const pricingTerms = queries.flatMap((query) =>
+    query.state.data.summary.terms.flatMap((term) => {
+      const parsed = marketplacePricingTermSchema.safeParse(term);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+  if (pricingTerms.length === 0)
+    throw new Error("Bedrock Cohere Embed 4 Marketplace pricing term was missing");
+  const cardSets = new Map(
+    pricingTerms.map((term) => [stableJson(term.rateCards), term.rateCards] as const),
+  );
+  if (cardSets.size !== 1)
+    throw new Error("Bedrock Cohere Embed 4 Marketplace pricing terms disagreed");
+  const cards = [...cardSets.values()][0]!;
+  const regional = new Set<string>();
+  const global = new Set<string>();
+  const keys = new Set<string>();
+  const rates = cards.map((card): SourcePriceFact => {
+    const isGlobal = card.dimensionKey.endsWith("_Global");
+    if (isGlobal !== card.displayName.endsWith(" Global"))
+      throw new Error("Bedrock Cohere Embed 4 Marketplace scope changed");
+    if (card.description !== card.displayName)
+      throw new Error("Bedrock Cohere Embed 4 Marketplace description changed");
+    const region = card.dimensionLabels[0]!.value;
+    const key = `${isGlobal ? "global" : "in-region"}:${region}`;
+    if (keys.has(key)) throw new Error("Bedrock Cohere Embed 4 Marketplace duplicated a region");
+    keys.add(key);
+    (isGlobal ? global : regional).add(region);
+    return {
+      meter: "input_text",
+      price: card.price,
+      currency: "USD",
+      unit: "million_tokens",
+      conditions: {
+        region,
+        deployment_scope: isGlobal ? "global_cross_region" : "in_region",
+      },
+      source_ref: sourceId,
+      source_locator: {
+        kind: "table",
+        value: `prodview-j3fgisven2yrs:${card.dimensionKey}`,
+      },
+      derived: false,
+      raw_price: card.price,
+      raw_unit: card.displayName,
+      resolution_policy: "bedrock_marketplace_product_page_over_price_list",
+    };
+  });
+  if (
+    regional.size !== 23 ||
+    global.size !== 23 ||
+    [...regional].some((region) => !global.has(region))
+  )
+    throw new Error("Bedrock Cohere Embed 4 Marketplace region coverage changed");
+  return rates;
+}
+
 function parsePrices(
   documents: z.infer<typeof linkedBundleSchema>["documents"],
   cards: Card[],
@@ -1328,6 +1449,34 @@ function parsePrices(
         }
       }
     }
+  }
+  const cohereMarketplace = documents.filter((document) => {
+    const url = new URL(document.url);
+    return (
+      url.hostname === "aws.amazon.com" && url.pathname === "/marketplace/pp/prodview-j3fgisven2yrs"
+    );
+  });
+  if (cohereMarketplace.length > 1)
+    throw new Error("Bedrock Cohere Embed 4 Marketplace document was duplicated");
+  const marketplaceDocument = cohereMarketplace[0];
+  if (marketplaceDocument !== undefined) {
+    const id = "cohere.embed-v4:0";
+    if (!cards.some((card) => card.ids.has(id)))
+      throw new Error("Bedrock Cohere Embed 4 Marketplace model was not callable");
+    const marketplaceRates = cohereEmbedMarketplaceRates(marketplaceDocument.body, sourceId);
+    requiredDimensions += marketplaceRates.length;
+    handledDimensions += marketplaceRates.length;
+    const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
+    for (const marketplaceRate of marketplaceRates) {
+      const overrodePriceList = setReviewedPageRate(rates, marketplaceRate);
+      onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code: overrodePriceList
+          ? "marketplace_product_rate_overrode_price_list"
+          : "marketplace_product_rate_bound",
+      });
+    }
+    byId.set(id, rates);
   }
   const publicPage = documents.find(
     ({ url }) =>

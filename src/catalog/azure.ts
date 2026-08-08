@@ -906,9 +906,12 @@ function validateAccountingDocs(bundle: z.infer<typeof linkedBundleSchema>): voi
   const caching = document(bundle, "/how-to-prompt-caching-content.md");
   if (
     !caching.includes("cache reads are billed at a") ||
-    !caching.includes("usage response doesn't report cache writes separately") ||
     !caching.includes("`cached_tokens`") ||
-    !caching.includes("There's no opt-out support for prompt caching")
+    !caching.includes("`cache_write_tokens`") ||
+    !caching.includes("GPT-5.6 models and later model families") ||
+    !caching.includes("cache writes can incur charges") ||
+    !caching.includes("Prompt caching is enabled by default for supported models") ||
+    !caching.includes("doesn't use prompt caching or incur cache-write charges")
   )
     throw new Error("Azure OpenAI cache accounting contract drifted");
 

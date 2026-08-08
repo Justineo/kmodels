@@ -571,7 +571,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v7",
+        extractorVersion: "anthropic-catalog-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -756,7 +756,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v11",
+        extractorVersion: "bedrock-catalog-v12",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -808,6 +808,12 @@ export const manifests = [
               url: "https://aws.amazon.com/bedrock/pricing/",
               format: "html",
               maxResponseBytes: mebibytes(8),
+            },
+            {
+              id: "bedrock-cohere-embed-v4-marketplace",
+              url: "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",
+              format: "html",
+              maxResponseBytes: mebibytes(1),
             },
             {
               id: "pricing-bedrock",
@@ -1029,7 +1035,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v9",
+        extractorVersion: "vercel-catalog-v10",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1181,7 +1187,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "azure-catalog", minModels: 120, maxModels: 300 },
-        extractorVersion: "azure-catalog-v5",
+        extractorVersion: "azure-catalog-v6",
         fields: [
           "model_id",
           "version",
@@ -2009,7 +2015,7 @@ export const manifests = [
           maxModels: 70,
           minPricingCoverage: 0.6,
         },
-        extractorVersion: "cohere-catalog-v6",
+        extractorVersion: "cohere-catalog-v7",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2189,7 +2195,10 @@ export const manifests = [
       docs_url: "https://docs.mistral.ai/models/overview",
       catalog_scope: "global",
     },
-    pricingCategoricalLabels: pricingLabels("operation", { ocr: "OCR" }),
+    pricingCategoricalLabels: [
+      ...pricingLabels("operation", { ocr: "OCR" }),
+      ...pricingLabels("billing_currency", { EUR: "EUR", USD: "USD" }),
+    ],
     sources: [
       {
         id: "mistral-models",
@@ -2205,7 +2214,7 @@ export const manifests = [
           maxModels: 90,
           minPricingCoverage: 0.9,
         },
-        extractorVersion: "mistral-catalog-v7",
+        extractorVersion: "mistral-catalog-v8",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2539,7 +2548,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v6",
+        extractorVersion: "xai-catalog-v7",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3296,7 +3305,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 2, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v7",
+        extractorVersion: "deepseek-catalog-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3336,12 +3345,12 @@ export const manifests = [
             },
             {
               id: "token-usage",
-              url: "https://api-docs.deepseek.com/quick_start/token_usage",
+              url: "https://api-docs.deepseek.com/quick_start/token_usage/",
               maxResponseBytes: mebibytes(1),
             },
             {
               id: "context-cache",
-              url: "https://api-docs.deepseek.com/guides/kv_cache",
+              url: "https://api-docs.deepseek.com/guides/kv_cache/",
               maxResponseBytes: mebibytes(1),
             },
             {
@@ -3351,22 +3360,22 @@ export const manifests = [
             },
             {
               id: "rate-limit",
-              url: "https://api-docs.deepseek.com/quick_start/rate_limit",
+              url: "https://api-docs.deepseek.com/quick_start/rate_limit/",
               maxResponseBytes: mebibytes(1),
             },
             {
               id: "error-codes",
-              url: "https://api-docs.deepseek.com/quick_start/error_codes",
+              url: "https://api-docs.deepseek.com/quick_start/error_codes/",
               maxResponseBytes: mebibytes(1),
             },
             {
               id: "responses-guide",
-              url: "https://api-docs.deepseek.com/guides/responses_api",
+              url: "https://api-docs.deepseek.com/guides/responses_api/",
               maxResponseBytes: mebibytes(1),
             },
             {
               id: "anthropic-guide",
-              url: "https://api-docs.deepseek.com/guides/anthropic_api",
+              url: "https://api-docs.deepseek.com/guides/anthropic_api/",
               maxResponseBytes: mebibytes(1),
             },
           ],

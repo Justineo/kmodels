@@ -127,11 +127,14 @@ Status: current
   provider-side one-minute exact-cost reconciliation process, account billing modes,
   usage response limits, unpublished live-route prices, and the official routing-default
   conflict. These are now fixed companions and source-item reconciliation contracts.
-- The live first-party sources currently yield 1,410 concrete `hf-inference` models,
-  all unbound on public cost. The chat router yields 130 models, of which 110 have
-  numeric offers, with 404 normalized token-rate facts. Its 298 live backends partition
-  into 202 normalized price sets and 96 unbound prices, plus seven excluded provider-wide
-  commercial/account observations and one ambiguous routing-policy conflict.
+- The live first-party sources currently yield 1,408 concrete `hf-inference` models,
+  all unbound on public cost. The chat router yields 131 models, of which 110 have
+  numeric offers. Its live backends partition into 205 normalized price sets and 98
+  unpublished prices, plus seven excluded provider-wide
+  commercial/account observations and one ambiguous routing-policy conflict. At model level this is
+  1,429 unknown prices: all 1,408 compute-billed `hf-inference` identities plus 21 router models for
+  which every live backend omits a price. Neither group can be repaired with a representative token
+  rate without inventing a hardware/runtime binding or a route offer.
 - Third-party books remain audit-only. The current LiteLLM snapshot has no direct
   Hugging Face gateway price entries, so ccusage has no independent HF route book.
   models.dev flattens the gateway to 56 model-level prices: only 37 match a currently

@@ -9,6 +9,8 @@ import { providerModelSchema, type ProviderModel } from "./schema.ts";
 
 const decimal = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 
+const resolutionPolicySchema = z.string().regex(/^[a-z][a-z0-9_]*$/);
+
 const sourcePriceConditionsInputSchema = z.object({
   region: z.string().optional(),
   endpoint: z.string().optional(),
@@ -28,6 +30,7 @@ const sourcePriceConditionsInputSchema = z.object({
   quality: z.string().optional(),
   style: z.string().optional(),
   billing_period: z.string().optional(),
+  billing_currency: z.string().optional(),
   account_eligibility: z.string().optional(),
   audio: z.boolean().optional(),
   voice_control: z.boolean().optional(),
@@ -81,6 +84,7 @@ export const sourcePriceFactSchema = z
     raw_price: z.string().optional(),
     raw_unit: z.string().optional(),
     raw_validity: z.string().optional(),
+    resolution_policy: resolutionPolicySchema.optional(),
   })
   .superRefine(({ derived, derivation }, context) => {
     if (
@@ -138,9 +142,18 @@ export function sourceRawPricingFactKey(fact: SourceRawPricingFact): string {
 }
 
 function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {
-  const { derivation, raw_price, raw_unit, raw_validity, source_locator, ...required } = fact;
+  const {
+    derivation,
+    raw_price,
+    raw_unit,
+    raw_validity,
+    resolution_policy,
+    source_locator,
+    ...required
+  } = fact;
   return sourcePriceFactSchema.parse({
     ...required,
+    ...(resolution_policy === undefined ? {} : { resolution_policy }),
     ...(source_locator === undefined ? {} : { source_locator }),
     ...(derivation === undefined ? {} : { derivation }),
     ...(raw_price === undefined ? {} : { raw_price }),

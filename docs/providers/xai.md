@@ -14,7 +14,8 @@ Status: current
   models, lifecycle redirects, capability-wide statements, request examples, and the
   accounting contracts described below. Structured fixed-point prices must agree with
   the public tables, but hidden payload discount fields are not commercial evidence.
-- Redirected exact IDs remain separate `legacy` rows because their slugs continue to
+- Dated alias transitions in the public voice table are evaluated against the observation time and
+  must agree with the structured service alias at that same point in time. Redirected exact IDs remain separate `legacy` rows because their slugs continue to
   resolve. Their effective pricing is derived from the single documented redirect
   target from the redirect date. Voice configuration names without documented request
   model parameters do not become IDs.

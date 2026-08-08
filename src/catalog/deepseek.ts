@@ -259,9 +259,8 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     bundle.index.body,
     [
       "bill based on the total number of input and output tokens",
-      "peak/off-peak pricing policy",
-      "prices will be 2x the regular prices",
-      "effective date will be subject to the official announcement",
+      "raise the overall pricing for DeepSeek API services in the near future",
+      "specific pricing plan will be subject to official notice",
       "expense = number of tokens × price",
       "preference for using the granted balance first",
       "most recent pricing information",
@@ -269,7 +268,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "DeepSeek public pricing contract drifted",
   );
   requireClaims(
-    companion(bundle, "/quick_start/token_usage", "token usage"),
+    companion(bundle, "/quick_start/token_usage/", "token usage"),
     [
       "units we use for billing",
       "actual number of tokens processed each time is based on the model's return",
@@ -278,7 +277,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "DeepSeek token-usage contract drifted",
   );
   requireClaims(
-    companion(bundle, "/guides/kv_cache", "context cache"),
+    companion(bundle, "/guides/kv_cache/", "context cache"),
     [
       "enabled by default for all users",
       "prompt_cache_hit_tokens",
@@ -301,7 +300,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "DeepSeek balance API contract drifted",
   );
   requireClaims(
-    companion(bundle, "/quick_start/rate_limit", "rate-limit"),
+    companion(bundle, "/quick_start/rate_limit/", "rate-limit"),
     [
       "account level, regardless of which API Key is used",
       "There is no additional cost for capacity expansion",
@@ -311,12 +310,12 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "DeepSeek account-quota contract drifted",
   );
   requireClaims(
-    companion(bundle, "/quick_start/error_codes", "error-code"),
+    companion(bundle, "/quick_start/error_codes/", "error-code"),
     ["402 - Insufficient Balance", "check your account's balance"],
     "DeepSeek insufficient-balance contract drifted",
   );
   requireClaims(
-    companion(bundle, "/guides/responses_api", "Responses guide"),
+    companion(bundle, "/guides/responses_api/", "Responses guide"),
     [
       "server-side web search tool call",
       "service_tier",
@@ -327,7 +326,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "DeepSeek Responses accounting contract drifted",
   );
   requireClaims(
-    companion(bundle, "/guides/anthropic_api", "Anthropic compatibility"),
+    companion(bundle, "/guides/anthropic_api/", "Anthropic compatibility"),
     [
       "unsupported model name",
       "automatically map it to the deepseek-v4-flash model",
@@ -347,7 +346,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
   ])
     input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
   for (const reason_code of [
-    "upcoming_peak_policy_not_effective",
+    "future_price_increase_not_effective",
     "web_search_fee_not_published",
     "anthropic_model_mapping_not_bound",
   ])

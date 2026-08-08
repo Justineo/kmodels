@@ -1058,6 +1058,10 @@ export function normalizeVercelModelPage(body: string): string {
   ];
   const cells = tables.eq(2).find("td");
   const values = cells.map((_index, cell) => normalizedText($(cell).text())).get();
+  if (headers.at(-1) === "" && values.at(-1) === "") {
+    headers.pop();
+    values.pop();
+  }
   if (
     headers.length !== values.length ||
     headers.some((header) => header === "") ||
@@ -1072,13 +1076,16 @@ export function normalizeVercelModelPage(body: string): string {
   if (providerLinks.length !== 1) throw new Error("Vercel model page omitted its route provider");
   const provider = providerLinks[0]?.match(/^\/ai-gateway\/models\/providers\/([^/]+)$/)?.[1];
   if (provider === undefined) throw new Error("Vercel model page route provider changed shape");
-  const titles = cells.toArray().map((cell) =>
-    $(cell)
-      .find("[title]")
-      .map((_titleIndex, titled) => normalizedText($(titled).attr("title") ?? ""))
-      .get()
-      .filter((value) => value !== ""),
-  );
+  const titles = cells
+    .toArray()
+    .slice(0, values.length)
+    .map((cell) =>
+      $(cell)
+        .find("[title]")
+        .map((_titleIndex, titled) => normalizedText($(titled).attr("title") ?? ""))
+        .get()
+        .filter((value) => value !== ""),
+    );
   return JSON.stringify({ title, provider, headers, values, titles });
 }
 

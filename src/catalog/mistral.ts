@@ -636,7 +636,7 @@ function directRate(
   modelTasks: ModelTask[],
   sourceId: string,
 ): SourcePriceFact {
-  const conditions: SourcePriceFact["conditions"] = {};
+  const conditions: SourcePriceFact["conditions"] = { billing_currency: "USD" };
   let unit: SourcePriceFact["unit"];
   let meter: SourcePriceFact["meter"];
   if (price.denominator === "/M Tokens") {
@@ -803,7 +803,7 @@ function pageRate(
   let meter: SourcePriceFact["meter"];
   let unit: SourcePriceFact["unit"];
   let normalizedPrice = price;
-  const conditions: SourcePriceFact["conditions"] = {};
+  const conditions: SourcePriceFact["conditions"] = { billing_currency: currency };
   if (label === "Input (/M tokens)") {
     meter = model.tasks.includes("embeddings") ? "embedding" : "input_text";
     unit = "million_tokens";

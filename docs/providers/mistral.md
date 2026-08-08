@@ -42,7 +42,9 @@ Status: current
 - Preserve native token, character, duration, and page rates. Public-page audio
   generation is per 1,000 characters and is normalized to the shared per-million-
   character unit. Preserve both published USD and EUR rather than applying an
-  exchange rate.
+  exchange rate. Every amount carries `billing_currency=USD` or `EUR`; currency is
+  an explicit offer selector, so parallel list currencies do not overlap during
+  conflict analysis.
 - Derive Batch rates only for models with explicit Batch support, using the published
   50% multiplier. Derive cache-read rates only for supported Chat/FIM models, using
   the published 10% input-price multiplier. Use decimal-string arithmetic and retain
@@ -129,6 +131,10 @@ Status: current
   free; and it still prices both input/output for retired Mixtral 8x7B and 8x22B.
   These facts remain visible diagnostics and do not revive retired offers or choose a
   conflicting current rate.
+- Canonical compilation now retains the USD and EUR facts as applicability-qualified
+  alternatives. It produces no commercial raw conflict and no current unknown-priced
+  model; source-level disagreements listed above remain reconciliation diagnostics
+  rather than being mistaken for cross-currency conflicts.
 - Third-party books remain audit-only. A value absent from this catalog is imported
   only after an exact current first-party model/offer source is added to this
   deterministic pipeline. Historical aliases or unsupported values in ccusage,

@@ -42,6 +42,11 @@ Status: current
 - Derive long-context and cache-write prices only from published multipliers with decimal-string arithmetic.
 - Explicit open-weight models use `not_applicable`. An explicitly free hosted moderation model uses
   a free offer. Absent or unparseable hosted prices remain `unknown`.
+- The current refresh has five unknown-priced rows, each explained by exact source boundaries:
+  deprecated `gpt-4-1106-preview` and `sora-2-2025-10-06` survive only through lifecycle evidence;
+  `gpt-4o-2024-11-20` and `gpt-4o-tts` are present on support/API surfaces but have no exact current
+  price row; and `gpt-5.4-cyber` is an exact current pricing-table identity whose input, cached-input,
+  and output cells are all `-`. Family and successor prices are not inherited.
 - Map exact Tools support to `computer_use` and code-execution capabilities, and explicit
   `reasoning.effort` value lists to effort control. Account-tier rate-limit tables do not fit
   model-global scalar limits. Tool/service rows and fine-tuning rows are reconciled but excluded

@@ -216,7 +216,7 @@ const accountingReferences: readonly {
   },
   {
     documentPath: "/reference/chat-stream.md",
-    markers: [/message-end[\s\S]*usage[\s\S]*billed_units/, /cached_tokens/],
+    markers: [/message-end[\s\S]*usage[\s\S]*billed_units/],
     message: "Cohere streaming usage reference drifted",
   },
   {
@@ -238,7 +238,7 @@ const accountingReferences: readonly {
   },
   {
     documentPath: "/reference/create-audio-transcription.md",
-    markers: [/audio_transcriptions_create_Response_200[\s\S]*The transcribed text/],
+    markers: [/### 200[\s\S]*successful response[\s\S]*The transcribed text/i],
     forbiddenMarkers: [/billed_units/],
     message: "Cohere transcription response reference drifted",
   },
@@ -343,7 +343,7 @@ function listedModelIds(
   const section =
     kind === "embed_jobs"
       ? body.match(
-          /Available models and corresponding embedding dimensions:\s*((?:\s*-\s+`[^`]+`[^\n]*(?:\n|$))+)/,
+          /Available models and corresponding embedding dimensions:\s*((?:-\s+`[^`]+`\s*:\s*\d+\s*)+)/,
         )?.[1]
       : text(body).match(/Currently available models are (.*?)(?: Smaller,|$)/)?.[1];
   if (section === undefined) throw new Error(`Cohere ${kind} model list drifted`);

@@ -2,6 +2,9 @@
 
 For supported models, cache reads are billed at a discount on input token pricing.
 
-For `gpt-5.6` models, the usage response doesn't report cache writes separately. Use `cached_tokens` to monitor cache reads.
+On GPT-5.6 models and later model families, cache writes can incur charges in addition to discounted
+cache reads. Standard deployments report cache reads in `cached_tokens` and cache writes in
+`cache_write_tokens`.
 
-There's no opt-out support for prompt caching.
+In explicit mode, a request without explicit breakpoints doesn't use prompt caching or incur cache-write charges.
+Prompt caching is enabled by default for supported models.

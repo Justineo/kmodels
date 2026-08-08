@@ -294,12 +294,14 @@ export const rawPricingReasonSchema = z.enum([
   "target_rate_not_normalized",
   "selector_limit",
   "conflicting_values",
+  "superseded_value",
   "unsupported_structure",
 ]);
 
 export const rawPricingVariantSchema = z.strictObject({
   impact: z.enum(rawPricingImpacts),
   reason: rawPricingReasonSchema,
+  resolution_policy: nonEmptyString.optional(),
   possible_scope: priceApplicabilitySchema.optional(),
   validity: publishedValiditySchema.optional(),
   observations: z.array(rawPriceObservationSchema).min(1),
