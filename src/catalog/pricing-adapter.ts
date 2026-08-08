@@ -91,6 +91,20 @@ export function assembleParsedProviderPricing(
   const publishedByUid = new Map(publishedModels.map((model) => [model.uid, model]));
   const publishedGroups = groupModelsById(publishedModels);
   const pricingSources = sources.filter(({ source }) => isPricingSource(source));
+  const numericAuthorityByModel = new Map<string, number>();
+  for (const { source, models } of pricingSources) {
+    for (const model of models) {
+      if (!model.price_facts.some((rate) => rateMode(rate) === "usage")) continue;
+      const binding = pricingBinding(source, model, publishedByUid, publishedGroups);
+      if (binding === undefined) continue;
+      const authority = pricingEvidencePriority(source);
+      for (const modelRef of binding.modelRefs)
+        numericAuthorityByModel.set(
+          modelRef,
+          Math.max(numericAuthorityByModel.get(modelRef) ?? 0, authority),
+        );
+    }
+  }
   const exactPriceRefs = new Set(
     pricingSources.flatMap(({ source, models }) =>
       source.pricingEvidence?.binding === "base_model_id"
@@ -111,10 +125,17 @@ export function assembleParsedProviderPricing(
       const binding = pricingBinding(source, model, publishedByUid, publishedGroups);
       if (binding === undefined) continue;
       const { bookKey, bookName, model: bound } = binding;
-      const modelRefs =
+      const candidateModelRefs =
         source.pricingEvidence?.binding === "base_model_id"
           ? binding.modelRefs.filter((modelRef) => !exactPriceRefs.has(modelRef))
           : binding.modelRefs;
+      const authority = pricingEvidencePriority(source);
+      const modelRefs =
+        bound.pricing_state === "not_published" && bound.price_facts.length === 0
+          ? candidateModelRefs.filter(
+              (modelRef) => (numericAuthorityByModel.get(modelRef) ?? 0) <= authority,
+            )
+          : candidateModelRefs;
       if (modelRefs.length === 0) continue;
       if (bound.pricing_state === "not_applicable") {
         for (const modelRef of modelRefs)
@@ -145,6 +166,22 @@ export function assembleParsedProviderPricing(
     dispositions,
     books,
   });
+}
+
+function pricingEvidencePriority(source: SourceManifest): number {
+  switch (source.pricingEvidence?.kind) {
+    case "billing_catalog":
+    case "scoped_meter_inventory":
+      return 4;
+    case "price_book":
+      return 3;
+    case "model_catalog":
+      return 2;
+    case "commercial_terms":
+      return 1;
+    case undefined:
+      return 0;
+  }
 }
 
 function groupModelsById(
@@ -347,6 +384,9 @@ function addRate(
   term.variants.push({
     price: normalized.price,
     applicability: normalized.applicability,
+    ...(sourceRate.resolution_policy === undefined
+      ? {}
+      : { resolution_policy: sourceRate.resolution_policy }),
     ...(normalized.validity === undefined ? {} : { validity: normalized.validity }),
     observation: normalizedObservation(sourceRef, locator, fact, normalized.applicability),
   });
@@ -749,6 +789,7 @@ function rateApplicability(
     "style",
     "capacity",
     "billing_period",
+    "billing_currency",
     "account_eligibility",
   ] as const;
   for (const key of categorical) {

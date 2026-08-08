@@ -465,7 +465,11 @@ function validateRateTerm(
     validateNormalizedVariant(variant, variant.observations, book, context, path, true);
   }
   term.raw_variants.forEach((variant) => {
-    if (variant.impact !== "base_price") fail(path, "rate raw variant must affect base price");
+    if (
+      variant.impact !== "base_price" &&
+      !(variant.impact === "informational" && variant.reason === "superseded_value")
+    )
+      fail(path, "rate raw variant has invalid impact");
     if (variant.reason === "target_rate_not_normalized")
       fail(path, "target-rate fallback may appear only on an allowance");
     validateRawVariant(variant, book, context, path);
@@ -585,6 +589,11 @@ function validateRawVariant(
   context: ProviderValidation,
   path: string,
 ): void {
+  if (
+    (variant.reason === "superseded_value") !== (variant.resolution_policy !== undefined) ||
+    (variant.reason === "superseded_value" && variant.impact !== "informational")
+  )
+    fail(path, "superseded raw variant has invalid resolution metadata");
   validateValidity(variant.validity, path);
   if (variant.possible_scope !== undefined)
     validateApplicability(variant.possible_scope, book, context, path);
@@ -1026,6 +1035,7 @@ function compareRawVariants(left: RawPricingVariant, right: RawPricingVariant): 
   return (
     compareUtf8(left.impact, right.impact) ||
     compareUtf8(left.reason, right.reason) ||
+    compareOptionalCanonical(left.resolution_policy, right.resolution_policy) ||
     compareOptionalCanonical(left.possible_scope, right.possible_scope) ||
     compareOptionalCanonical(left.validity, right.validity) ||
     compareCanonicalValues(left.observations, right.observations)
@@ -1036,6 +1046,7 @@ function rawVariantGroupKey(variant: RawPricingVariant): string {
   return canonicalJson([
     variant.impact,
     variant.reason,
+    ...optionalComponent(variant.resolution_policy),
     ...optionalComponent(variant.possible_scope),
     ...optionalComponent(variant.validity),
   ]);

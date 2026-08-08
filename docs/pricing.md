@@ -523,6 +523,41 @@ provider recommendation or a choice of cheapest offer. Without that exact
 evidence, the dimension remains missing and overlapping unequal values fall
 back to raw.
 
+### Reviewed per-fact precedence
+
+Conflict resolution is fact-local. A checked-in parser may attach a named
+`resolution_policy` to an exact rate fact when a full audit establishes that one
+first-party surface controls an unmarked weaker surface. Assembly applies that
+policy only inside the same logical rate term and only when the reviewed fact
+contains the complete applicability of the weaker fact and has exactly the same
+published validity. All reviewed candidates must agree on both value and policy.
+
+A narrower fact never erases a broader claim, one reviewed fact never overrides
+another reviewed fact, and incomparable validity or applicability still
+produces the ordinary `conflicting_values` fallback. A safely shadowed value
+remains in the canonical audit trail as an informational `superseded_value` raw
+variant with the policy name; it is excluded from commercial equality and
+completeness. This makes the decision repeatable during refresh without hiding
+its losing evidence.
+
+Applicability differences must be modeled before precedence. Parallel billing
+currencies, regions, routes, tiers, and other selectors are alternatives rather
+than conflicting values; for example, a source that publishes both USD and EUR
+rates carries `billing_currency` on each fact instead of treating denomination
+as an implicit selector.
+
+Source-kind precedence is deliberately narrower than rate precedence. For the
+same exact model, a numeric usage fact suppresses a lower-ranked source's bare
+`not_published` state. The reviewed order is billing catalog or scoped meter
+inventory, price book, model catalog, then commercial terms. It never chooses
+between unequal numeric amounts, turns absence into free, or overrides
+`not_applicable`; those cases still fail closed.
+
+These policies are code and review data, not a learned score. A full audit
+rechecks their source semantics and may revise or remove them. Ordinary catalog
+refresh reuses the checked-in rules, dynamically parses the current values, and
+rejects changed source shapes, tied winners, or newly incomparable facts.
+
 The commercial projection removes observations, names, source refs, snapshot
 freshness, and informational raw facts. It retains every field that can change
 selection, amount, units, allowances, compatibility, or model disposition.
@@ -724,7 +759,7 @@ Changes to pricing semantics must update:
 Required behavior tests cover:
 
 - semantic equality under source reordering and compaction;
-- conflict and raw-fallback containment;
+- conflict, reviewed precedence, losing-evidence audit, and raw-fallback containment;
 - partial applicability evaluation;
 - exact unit/rational conversion boundaries;
 - model outcomes and conservative table cells;

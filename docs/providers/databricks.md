@@ -47,7 +47,11 @@ Status: current
 ## Extraction and reconciliation
 
 - Each open-model row, partner-model row, promotion note, Priority support entry, delegated image-price section, and account-specific-discount boundary receives a source-item disposition. Rows outside the reviewed callable catalog are explicitly excluded; missing exact Priority amounts are raw; numeric rows are normalized. Unbound, ambiguous, unsupported, or unresolved source items fail the refresh report.
-- The current public catalog leaves only Inkling without a first-party current amount. A retired model may also remain unknown without reducing current-model coverage. Absence of a price is not converted to `not_published` unless Databricks says so explicitly.
+- The current public catalog leaves two active rows without a first-party current amount: Inkling and
+  the newly listed `databricks-kimi-k3`. Both have exact callable catalog/API identity but no matching
+  Databricks price row. A retired model may also remain unknown without reducing current-model
+  coverage. Absence of a price is not converted to `not_published` unless Databricks says so
+  explicitly, and Moonshot's own price book cannot establish the Databricks commercial surface.
 - ccusage, LiteLLM, and models.dev are comparison-only diagnostics. ccusage inherits LiteLLM's price snapshot; LiteLLM converts Databricks DBU values with an assumed USD-per-DBU value; models.dev mixes authenticated inventory with upstream/manual USD costs. Their values are not used to fill catalog gaps because they collapse Databricks conditions and cannot establish account-exact cost.
 
 ## Kong AI Gateway

@@ -87,6 +87,37 @@ const videoPriceSchema = z
   .strict();
 
 const videoTokenTierSchema = z.object({ cost_per_million_tokens: decimal }).strict();
+const videoTokenPairSchema = z
+  .object({
+    no_video_input: videoTokenTierSchema,
+    with_video_input: videoTokenTierSchema,
+  })
+  .strict();
+const videoTokenPricingSchema = z
+  .union([
+    videoTokenPairSchema.extend({ notes: z.string().min(1) }).strict(),
+    z
+      .object({
+        tiers: z
+          .array(
+            videoTokenPairSchema
+              .extend({ resolution: z.enum(["480p", "720p", "1080p", "4k"]) })
+              .strict(),
+          )
+          .min(1)
+          .refine(
+            (tiers) => new Set(tiers.map(({ resolution }) => resolution)).size === tiers.length,
+            "Video-token resolutions must be unique",
+          ),
+        notes: z.string().min(1),
+      })
+      .strict(),
+  ])
+  .transform((value) =>
+    "tiers" in value
+      ? value.tiers
+      : [{ no_video_input: value.no_video_input, with_video_input: value.with_video_input }],
+  );
 
 const pricingSchema = tokenPriceSchema
   .extend({
@@ -98,14 +129,7 @@ const pricingSchema = tokenPriceSchema
     image: decimal.optional(),
     image_dimension_quality_pricing: z.array(imagePriceSchema).optional(),
     video_duration_pricing: z.array(videoPriceSchema).optional(),
-    video_token_pricing: z
-      .object({
-        no_video_input: videoTokenTierSchema,
-        with_video_input: videoTokenTierSchema,
-        notes: z.string().min(1),
-      })
-      .strict()
-      .optional(),
+    video_token_pricing: videoTokenPricingSchema.optional(),
     speech_input_character_cost: decimal.optional(),
     transcription_duration_cost_per_second: decimal.optional(),
     realtime_client_message_cost: decimal.optional(),
@@ -161,6 +185,7 @@ const tagSchema = z.enum([
   "explicit-caching",
   "fast",
   "file-input",
+  "free",
   "image-generation",
   "implicit-caching",
   "reasoning",
@@ -264,14 +289,7 @@ const endpointPricingSchema = endpointTokenPriceSchema
     audio_input_token_cost: decimal.optional(),
     audio_output_token_cost: decimal.optional(),
     video_duration_pricing: z.array(videoPriceSchema).optional(),
-    video_token_pricing: z
-      .object({
-        no_video_input: videoTokenTierSchema,
-        with_video_input: videoTokenTierSchema,
-        notes: z.string().min(1),
-      })
-      .strict()
-      .optional(),
+    video_token_pricing: videoTokenPricingSchema.optional(),
     speech_input_character_cost: decimal.optional(),
     transcription_duration_cost_per_second: decimal.optional(),
     realtime_client_message_cost: decimal.optional(),
@@ -444,14 +462,18 @@ function addTokenRates(
   conditions: SourcePriceFact["conditions"] = {},
 ): void {
   if (tiers !== undefined && tiers.length > 0) {
-    for (const tier of tiers)
+    for (const [index, tier] of tiers.entries()) {
+      const previous = tiers[index - 1];
+      const minimum =
+        previous?.max !== undefined && tier.min === previous.max - 1 ? previous.max : tier.min;
       rates.push(
         tokenRate(meter, tier.cost, sourceId, {
           ...conditions,
-          context_min_tokens: tier.min,
+          context_min_tokens: minimum,
           context_max_tokens: tier.max === undefined ? undefined : tier.max - 1,
         }),
       );
+    }
     return;
   }
   if (price !== undefined) rates.push(tokenRate(meter, price, sourceId, conditions));
@@ -522,6 +544,35 @@ function nonzero(value: string | undefined): string | undefined {
   return value === "0" ? undefined : value;
 }
 
+function videoTokenRates(
+  tiers: z.infer<typeof videoTokenPricingSchema> | undefined,
+  sourceId: string,
+  conditions: SourcePriceFact["conditions"] = {},
+): SourcePriceFact[] {
+  if (tiers === undefined) return [];
+  return tiers.flatMap((tier) =>
+    (
+      [
+        [false, tier.no_video_input],
+        [true, tier.with_video_input],
+      ] as const
+    ).map(([videoInput, price]) =>
+      publishedRate(
+        "video_generation",
+        price.cost_per_million_tokens,
+        "million_tokens",
+        sourceId,
+        "million video tokens",
+        {
+          ...conditions,
+          ...("resolution" in tier ? { resolution: tier.resolution } : {}),
+          video_input: videoInput,
+        },
+      ),
+    ),
+  );
+}
+
 function endpointUsagePrice(item: Item, value: EndpointPrice): TokenPrice {
   const allowFreeInput = item.pricing.input === "0";
   const allowFreeOutput = item.pricing.output === "0";
@@ -536,12 +587,14 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
   const rates: SourcePriceFact[] = [];
   const value = endpoint.pricing;
   const regions = endpoint.inference_regions ?? [];
+  const hasRegionalPricing =
+    regions.length > 0 || Object.keys(item.pricing.regional ?? {}).length > 0;
   const hasFast =
     item.pricing.fast !== undefined ||
     Object.values(item.pricing.regional ?? {}).some(({ fast }) => fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
     route_provider: endpoint.provider_name,
-    region: regions.length === 0 ? undefined : "default",
+    region: hasRegionalPricing ? "default" : undefined,
     service_tier: hasFast ? "standard" : undefined,
   };
   const transcriptionAudioPrice =
@@ -588,6 +641,7 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
       sourceId,
       {
         route_provider: endpoint.provider_name,
+        region: hasRegionalPricing ? "default" : undefined,
         ...(contextMax === undefined ? {} : { context_max_tokens: contextMax }),
       },
     );
@@ -604,6 +658,7 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
         sourceId,
         {
           route_provider: endpoint.provider_name,
+          region: hasRegionalPricing ? "default" : undefined,
           context_min_tokens: tier.long_context.threshold + 1,
         },
       );
@@ -638,21 +693,7 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
         voice_control: hasVoiceControl ? (variant.voice_control ?? false) : undefined,
       }),
     );
-  if (value.video_token_pricing !== undefined)
-    for (const [videoInput, tier] of [
-      [false, value.video_token_pricing.no_video_input],
-      [true, value.video_token_pricing.with_video_input],
-    ] as const)
-      rates.push(
-        publishedRate(
-          "video_generation",
-          tier.cost_per_million_tokens,
-          "million_tokens",
-          sourceId,
-          "million video tokens",
-          { ...baseConditions, video_input: videoInput },
-        ),
-      );
+  rates.push(...videoTokenRates(value.video_token_pricing, sourceId, baseConditions));
   if (value.speech_input_character_cost !== undefined)
     rates.push(
       publishedRate(
@@ -747,7 +788,7 @@ function modelPageRates(
   item: Item,
   page: ModelPageDocument,
   sourceId: string,
-): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[] } {
+): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[]; free: boolean } {
   if (page.title !== item.name) throw new Error(`Vercel model page title disagreed for ${item.id}`);
   const cells = new Map(page.headers.map((header, index) => [header, page.values[index] ?? ""]));
   const titles = new Map(page.headers.map((header, index) => [header, page.titles[index] ?? []]));
@@ -755,10 +796,14 @@ function modelPageRates(
     throw new Error(`Vercel model page omitted the provider column for ${item.id}`);
   const rates: SourcePriceFact[] = [];
   const raw: SourceRawPricingFact[] = [];
-  const pricePattern = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP)(\*)?(?:\+(\d+) more)?$/;
+  const freeHeaders = ["Input", "Output"].filter((header) => cells.get(header) === "Free");
+  const free = freeHeaders.length === 2;
+  if (freeHeaders.length !== 0 && (!free || !item.tags?.includes("free")))
+    throw new Error(`Vercel model page free pricing disagreed for ${item.id}`);
+  const pricePattern = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP|sec)(\*)?(?:\+(\d+) more)?$/;
   for (const header of ["Input", "Output", "Cache", "Web Search"] as const) {
     const value = cells.get(header);
-    if (value === undefined || value === "" || value === "—") continue;
+    if (value === undefined || value === "" || value === "—" || value === "Free") continue;
     const match = value.match(pricePattern);
     if (match?.[1] === undefined || match[2] === undefined)
       throw new Error(`Vercel model page price changed shape for ${item.id}: ${header}`);
@@ -796,6 +841,12 @@ function modelPageRates(
       );
       continue;
     }
+    if (item.type === "video" && header === "Output" && unit === "sec") {
+      rates.push(
+        publishedRate("video_generation", amount, "second", sourceId, "second", conditions),
+      );
+      continue;
+    }
     if (unit === "M" && (header === "Input" || header === "Output" || header === "Cache")) {
       const meter: SourcePriceFact["meter"] =
         header === "Input" ? "input_text" : header === "Output" ? "output_text" : "cache_read_text";
@@ -815,9 +866,9 @@ function modelPageRates(
     }
     throw new Error(`Vercel model page price could not be normalized for ${item.id}: ${header}`);
   }
-  if (rates.length === 0 && raw.length === 0)
+  if (rates.length === 0 && raw.length === 0 && !free)
     throw new Error(`Vercel model page contained no usable pricing for ${item.id}`);
-  return { rates, raw };
+  return { rates, raw, free };
 }
 
 function routes(item: Item, endpoints: readonly Endpoint[], sourceId: string): ModelRoute[] {
@@ -928,26 +979,7 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
         voice_control: hasVoiceControl ? (variant.voice_control ?? false) : undefined,
       }),
     );
-  if (value.video_token_pricing !== undefined) {
-    rates.push(
-      publishedRate(
-        "video_generation",
-        value.video_token_pricing.no_video_input.cost_per_million_tokens,
-        "million_tokens",
-        sourceId,
-        "million video tokens",
-        { video_input: false },
-      ),
-      publishedRate(
-        "video_generation",
-        value.video_token_pricing.with_video_input.cost_per_million_tokens,
-        "million_tokens",
-        sourceId,
-        "million video tokens",
-        { video_input: true },
-      ),
-    );
-  }
+  rates.push(...videoTokenRates(value.video_token_pricing, sourceId));
   if (value.speech_input_character_cost !== undefined)
     rates.push(
       publishedRate(
@@ -1077,12 +1109,23 @@ function model(
   }));
   const routeRates = routeRateGroups.flatMap(({ rates: values }) => values);
   const pagePricing =
-    page === undefined ? { rates: [], raw: [] } : modelPageRates(item, page, input.source.id);
+    page === undefined
+      ? { rates: [], raw: [], free: false }
+      : modelPageRates(item, page, input.source.id);
+  const explicitlyFree = tags.includes("free");
+  if (
+    explicitlyFree &&
+    (catalogRates.length > 0 ||
+      routeRates.length > 0 ||
+      pagePricing.rates.length > 0 ||
+      pagePricing.raw.length > 0)
+  )
+    throw new Error(`Vercel free pricing conflicted with a paid offer for ${item.id}`);
   input.onPricingReconciliation?.(
     catalogRates.length === 0
       ? {
           disposition: "explicit_non_numeric",
-          reason_code: "catalog_price_empty",
+          reason_code: explicitlyFree ? "catalog_price_free" : "catalog_price_empty",
           sample: item.id,
         }
       : { disposition: "normalized", reason_code: "catalog_price_object", sample: item.id },
@@ -1111,6 +1154,12 @@ function model(
     input.onPricingReconciliation?.({
       disposition: "raw",
       reason_code: "model_page_ambiguous_variants",
+      sample: item.id,
+    });
+  if (pagePricing.free)
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "model_page_free",
       sample: item.id,
     });
   const rates = [
@@ -1186,8 +1235,13 @@ function model(
       region,
       deployment_type: "regional_inference",
     })),
-    pricing_state:
-      rates.length > 0 ? "numeric" : pagePricing.raw.length > 0 ? "unknown" : "not_published",
+    pricing_state: explicitlyFree
+      ? "free"
+      : rates.length > 0
+        ? "numeric"
+        : pagePricing.raw.length > 0
+          ? "unknown"
+          : "not_published",
     price_facts: rates,
     raw_price_facts: pagePricing.raw,
   };

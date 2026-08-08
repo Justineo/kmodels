@@ -6,7 +6,8 @@ Status: current
 
 - The exhaustive public bundle contains the official model-card index, every bounded publisher
   sub-index linked from it, reviewed same-host cards, Mantle service regions, three AWS Price List
-  offers, and the official Bedrock pricing page. Publisher sub-indexes are necessary because AWS can
+  offers, the official Bedrock pricing page, and the exact AWS Marketplace product page for Cohere
+  Embed 4. Publisher sub-indexes are necessary because AWS can
   publish a card there before adding it to the top-level table; this was observed for GPT-5.6 Sol,
   Terra, and Luna. The structured `current/index.json` inventories remain the primary billing
   denominator; the public pricing page is the current exact overlay for reviewed model/rate tables
@@ -42,6 +43,14 @@ Status: current
   Image Services per-generation tables. Stability service rates retain their three published US
   regions and geo deployment scope; no model-name or region defaults are inferred outside that
   table.
+- The Cohere Embed 4 Marketplace product page is an exact product/ID companion. Its current usage
+  term contains 46 dynamically parsed rate cards: in-region and global input-token prices for 23
+  regions. Duplicate hydrated copies are accepted only when their complete card sets are identical;
+  changed identity, vendor, unit, region pairing, card count, or unequal copies reject refresh.
+  These product-specific cards carry the reviewed
+  `bedrock_marketplace_product_page_over_price_list` fact policy. They may supersede only a weaker
+  overlapping bulk-feed value whose entire scope they cover; the bulk value remains informational
+  audit evidence.
 - `AmazonBedrockFoundationModels` is the Marketplace billing representation and omits the callable endpoint. AWS documents identical per-token pricing across Runtime and Mantle, so endpoint is not a commercial condition for its on-demand per-token facts; bind them to each exact Programmatic Access ID and supported deployment type without duplicating endpoint variants. Service per-token facts without an explicit Mantle SKU use the exact Runtime ID but likewise omit endpoint as a price condition, allowing Marketplace base prices and service-only context tiers to resolve together. Preserve explicit Mantle, batch, reserved, provisioned, and TPM endpoint distinctions from their SKU.
 - Compare overlapping AWS decimal prices numerically rather than by source formatting, so `3.0000000000` and a converted `0.003` per 1K tokens agree without weakening unequal-price conflict detection.
 - AWS unit labels are interpreted only with exact billing evidence. This includes `Search Units`, `Input Images`, `Text Requests`, and an `Embeddings` unit whose dimension explicitly says `InputTokenCount`; generic `Units` still requires its SKU/description to identify tokens, searches, seconds, images, requests, or capacity.
@@ -60,10 +69,12 @@ Status: current
   limits. Raising this aggregate budget preserves those independent safety bounds instead of
   discarding a complete, otherwise valid price book.
 - A catalog model remains `unknown` when no current price product binds uniquely. Do not transfer prices from a similarly named generation, preview, or Stability utility operation.
-- Two current callable rows deliberately remain unresolved. `amazon.titan-embed-g1-text-02` has an
-  exact model card but no exact current pricing-page or Price List identity; do not copy the price
-  from Titan Embeddings G1 Text or Titan Text Embeddings V2. Claude Mythos Preview is gated and the
-  pricing page labels it `non-GA`; that is not evidence of a zero price or a public numeric offer.
+- The current refresh deliberately leaves three callable rows unresolved.
+  `amazon.titan-embed-g1-text-02` has an exact model card but no exact current pricing-page or Price
+  List identity; do not copy the price from Titan Embeddings G1 Text or Titan Text Embeddings V2.
+  `openai.gpt-5.5` and `openai.gpt-5.6-sol` are present in current OpenAI publisher cards, but neither
+  the Bedrock pricing page nor the AWS Price List supplies an exact current rate for those callable
+  IDs. OpenAI's direct-platform rates are a different commercial surface and cannot fill the gap.
 - Map inventory enums only through reviewed semantics. New enum values fail closed. Regional streaming evidence remains scoped.
 - Model-card dates are calendar-validated. A present but malformed launch, legacy, or exact EOL date
   rejects the provider candidate instead of disappearing as an unknown date.
@@ -105,6 +116,12 @@ Status: current
 - AWS Price List documentation calls its Query/Bulk data informational and says the service pricing
   page controls when they differ. The normalizer therefore records a reviewed page-over-Price-List
   replacement instead of silently accepting both values or rejecting fresh data.
+- The Cohere Embed 4 product page publishes USD 0.12 per million input tokens consistently across
+  its 46 regional/global cards. Three bulk-feed `Embeddings` dimensions instead decode to USD
+  0.0000000200 per input token for narrower Runtime regions. The exact product page wins through the
+  same fact-local containment rule; the three unequal bulk values are retained as
+  `superseded_value`, so this upstream disagreement no longer makes the model commercially
+  incomplete and is still auditable.
 
 ## External comparison
 

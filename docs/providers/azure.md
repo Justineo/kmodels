@@ -133,8 +133,10 @@ Status: current
 - Azure OpenAI chat and Responses results expose input/prompt, output/completion, total, reasoning,
   audio, and cached-input token breakdowns on the applicable operation. Cache hits appear as
   `cached_tokens`. Prompt caching is automatic and has no opt-out on supported models.
-- That response is not always a complete billing event. On `gpt-5.6` and later, cache writes are
-  billed but the usage response does not report cache writes separately. Specialized image, video,
+- That response is not always a complete billing event. On `gpt-5.6` and later, cache writes can be
+  billed and Standard pay-as-you-go responses report them as `cache_write_tokens`; older families
+  do not have a separate write charge. Prompt caching defaults to implicit mode, while explicit mode
+  without a breakpoint performs no cache read or write. Specialized image, video,
   speech, page, search, provisioned-capacity, and add-on meters also require their operation-native
   outcome or Azure meter telemetry; a generic token total cannot reconstruct them.
 - Claude's native Messages response is stronger for cache accounting: it reports uncached input,
@@ -172,6 +174,14 @@ Status: current
   unbound identities, and 4 unsupported meter/unit shapes. Its 13,240 regional facts on 110 parsed
   models add normalized fallback books for 36 non-retired tuples in the checked-in catalog,
   projecting coverage from 108/189 to 144/189 without Marketplace credentials.
+- The remaining 45 non-retired tuples are not one parser failure. They partition into catalog-only
+  partner/community versions, new Microsoft image/media models, legacy/deprecated tuples retained by
+  lifecycle sources, and versioned or versionless Azure OpenAI rows for which neither Retail nor the
+  public page publishes a unique exact binding. The unresolved set includes exact IDs from Cohere,
+  FLUX, Fireworks, Grok, Llama, MAI, Mistral, OpenAI media/embedding, Sora, TimeGEN, and Tsuzumi.
+  Upstream-provider prices and versionless third-party aliases are not Azure commercial evidence, so
+  those 45 remain unknown until Microsoft publishes an exact row or authenticated ARM exposes a
+  matching meter ID.
 - The missing Claude family was a genuine first-party extraction gap: Microsoft delegates the rate
   to Anthropic, and Anthropic publishes a Microsoft Foundry-specific CCU section. The dedicated
   overlay now normalizes 13 public price rows into 85 facts for 12 offered models, including the

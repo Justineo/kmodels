@@ -39,6 +39,10 @@ const azureApiFixtureSchema = z
     regions: z.array(z.object({ location: z.string(), models: z.array(z.unknown()) })),
   })
   .passthrough();
+const linkedBundleFixtureSchema = z.object({
+  index: z.object({ url: z.string(), body: z.string() }),
+  documents: z.array(z.object({ url: z.string(), body: z.string() })),
+});
 
 async function fixture(path: string): Promise<string> {
   return readFile(new URL(`./fixtures/${path}`, import.meta.url), "utf8");
@@ -46,6 +50,10 @@ async function fixture(path: string): Promise<string> {
 
 async function expected(path: string): Promise<unknown> {
   return JSON.parse(await fixture(path));
+}
+
+function linkedBundle(body: string): z.infer<typeof linkedBundleFixtureSchema> {
+  return linkedBundleFixtureSchema.parse(JSON.parse(body));
 }
 
 async function azureApiFixture(): Promise<z.infer<typeof azureApiFixtureSchema>> {
@@ -138,33 +146,33 @@ async function parsed(
 
 const deepseekCommercialDocuments = [
   [
-    "quick_start/token_usage",
+    "quick_start/token_usage/",
     "token-usage.html",
     "units we use for billing",
     "token-usage contract drifted",
   ],
-  ["guides/kv_cache", "cache.html", "best-effort", "context-cache contract drifted"],
+  ["guides/kv_cache/", "cache.html", "best-effort", "context-cache contract drifted"],
   ["api/get-user-balance", "balance.html", "total_balance", "balance API contract drifted"],
   [
-    "quick_start/rate_limit",
+    "quick_start/rate_limit/",
     "rate-limit.html",
     "no additional cost",
     "account-quota contract drifted",
   ],
   [
-    "quick_start/error_codes",
+    "quick_start/error_codes/",
     "error-codes.html",
     "402 - Insufficient Balance",
     "insufficient-balance contract drifted",
   ],
   [
-    "guides/responses_api",
+    "guides/responses_api/",
     "responses-guide.html",
     "service_tier",
     "Responses accounting contract drifted",
   ],
   [
-    "guides/anthropic_api",
+    "guides/anthropic_api/",
     "anthropic-guide.html",
     "deepseek-v4-pro",
     "Anthropic compatibility contract drifted",
@@ -1854,52 +1862,67 @@ describe("Mistral adapters", () => {
             meter: "input_text",
             price: "1.5",
             unit: "million_tokens",
-            conditions: {},
+            conditions: { billing_currency: "USD" },
             derived: false,
           },
           {
             meter: "output_text",
             price: "7.5",
             unit: "million_tokens",
-            conditions: {},
+            conditions: { billing_currency: "USD" },
             derived: false,
           },
           {
             meter: "input_text",
             price: "0.75",
             unit: "million_tokens",
-            conditions: { service_tier: "batch" },
+            conditions: { billing_currency: "USD", service_tier: "batch" },
             derived: true,
           },
           {
             meter: "output_text",
             price: "3.75",
             unit: "million_tokens",
-            conditions: { service_tier: "batch" },
+            conditions: { billing_currency: "USD", service_tier: "batch" },
             derived: true,
           },
           {
             meter: "cache_read_text",
             price: "0.15",
             unit: "million_tokens",
-            conditions: {},
+            conditions: { billing_currency: "USD" },
             derived: true,
           },
         ],
         eur: [
-          { meter: "input_text", price: "1.25", conditions: {}, derived: false },
+          {
+            meter: "input_text",
+            price: "1.25",
+            conditions: { billing_currency: "EUR" },
+            derived: false,
+          },
           {
             meter: "input_text",
             price: "0.625",
-            conditions: { service_tier: "batch" },
+            conditions: { billing_currency: "EUR", service_tier: "batch" },
             derived: true,
           },
-          { meter: "cache_read_text", price: "0.125", conditions: {}, derived: true },
-          { meter: "output_text", price: "6.4", conditions: {}, derived: false },
+          {
+            meter: "cache_read_text",
+            price: "0.125",
+            conditions: { billing_currency: "EUR" },
+            derived: true,
+          },
+          {
+            meter: "output_text",
+            price: "6.4",
+            conditions: { billing_currency: "EUR" },
+            derived: false,
+          },
           {
             meter: "output_text",
             price: "3.2",
-            conditions: { service_tier: "batch" },
+            conditions: { billing_currency: "EUR", service_tier: "batch" },
             derived: true,
           },
         ],
@@ -1923,37 +1946,56 @@ describe("Mistral adapters", () => {
             meter: "input_image",
             price: "4",
             unit: "thousand_pages",
-            conditions: { operation: "ocr" },
+            conditions: { billing_currency: "USD", operation: "ocr" },
           },
           {
             meter: "input_image",
             price: "5",
             unit: "thousand_pages",
-            conditions: { operation: "document_annotation" },
+            conditions: { billing_currency: "USD", operation: "document_annotation" },
           },
           {
             meter: "input_image",
             price: "2",
             unit: "thousand_pages",
-            conditions: { operation: "ocr", service_tier: "batch" },
+            conditions: {
+              billing_currency: "USD",
+              operation: "ocr",
+              service_tier: "batch",
+            },
           },
           {
             meter: "input_image",
             price: "2.5",
             unit: "thousand_pages",
-            conditions: { operation: "document_annotation", service_tier: "batch" },
+            conditions: {
+              billing_currency: "USD",
+              operation: "document_annotation",
+              service_tier: "batch",
+            },
           },
         ],
         eur: [
-          { price: "3.5", conditions: { operation: "ocr" } },
+          { price: "3.5", conditions: { billing_currency: "EUR", operation: "ocr" } },
           {
             price: "1.75",
-            conditions: { operation: "ocr", service_tier: "batch" },
+            conditions: {
+              billing_currency: "EUR",
+              operation: "ocr",
+              service_tier: "batch",
+            },
           },
-          { price: "4.38", conditions: { operation: "document_annotation" } },
+          {
+            price: "4.38",
+            conditions: { billing_currency: "EUR", operation: "document_annotation" },
+          },
           {
             price: "2.19",
-            conditions: { operation: "document_annotation", service_tier: "batch" },
+            conditions: {
+              billing_currency: "EUR",
+              operation: "document_annotation",
+              service_tier: "batch",
+            },
           },
         ],
       },
@@ -3342,8 +3384,8 @@ describe("Azure adapters", () => {
 
   it("rejects drift in the reviewed accounting boundaries", async () => {
     const caching = (await fixture("azure/prompt-caching.md")).replace(
-      "doesn't report cache writes separately",
-      "reports every cache write",
+      "`cache_write_tokens`",
+      "`written_tokens`",
     );
     await expect(
       azureCatalog(undefined, undefined, { "prompt-caching.md": caching }),
@@ -5926,6 +5968,7 @@ describe("xAI adapter", () => {
     });
     expect(models.find(({ model_id }) => model_id === "grok-voice-think-fast-2.0")).toMatchObject({
       version: "1.0",
+      aliases: [],
       capabilities: { reasoning: true, effort_control: true },
       price_facts: expect.arrayContaining([
         expect.objectContaining({ meter: "input_audio", price: "0.08", unit: "minute" }),
@@ -5955,6 +5998,29 @@ describe("xAI adapter", () => {
       replacement_model_ids: ["grok-imagine-image-quality"],
       pricing_state: "numeric",
     });
+  });
+
+  it("applies a documented dated voice-alias transition at observation time", async () => {
+    const models = await xaiCatalog(
+      "xai/models-voice-services.txt",
+      (body) =>
+        body
+          .replace(
+            '"name":"grok-voice-think-fast-1.0","version":"1.0","inputModalities":["TEXT","AUDIO"],"outputModalities":["TEXT","AUDIO"],"aliases":["grok-voice-latest"]',
+            '"name":"grok-voice-think-fast-1.0","version":"1.0","inputModalities":["TEXT","AUDIO"],"outputModalities":["TEXT","AUDIO"],"aliases":[]',
+          )
+          .replace(
+            '"name":"grok-voice-think-fast-2.0","version":"1.0","inputModalities":["TEXT","AUDIO"],"outputModalities":["TEXT","AUDIO"],"aliases":[]',
+            '"name":"grok-voice-think-fast-2.0","version":"1.0","inputModalities":["TEXT","AUDIO"],"outputModalities":["TEXT","AUDIO"],"aliases":["grok-voice-latest"]',
+          ),
+      (body) => body.replace("August 5, 2026", "July 20, 2026"),
+    );
+    expect(
+      models.find(({ model_id }) => model_id === "grok-voice-think-fast-1.0")?.aliases,
+    ).toEqual([]);
+    expect(
+      models.find(({ model_id }) => model_id === "grok-voice-think-fast-2.0")?.aliases,
+    ).toEqual(["grok-voice-latest"]);
   });
 
   it("keeps standard, long-context, batch, priority, media, and tool rates distinct", async () => {
@@ -6223,12 +6289,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    const fixtureBundle = z
-      .object({
-        index: z.object({ url: z.string(), body: z.string() }),
-        documents: z.array(z.object({ url: z.string(), body: z.string() })),
-      })
-      .parse(JSON.parse(await fixture("document/bedrock.json")));
+    const fixtureBundle = linkedBundle(await fixture("document/bedrock.json"));
     const haiku = fixtureBundle.documents.find((document) =>
       document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
     );
@@ -6332,24 +6393,14 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    const bundle = z
-      .object({
-        index: z.object({ url: z.string(), body: z.string() }),
-        documents: z.array(z.object({ url: z.string(), body: z.string() })),
-      })
-      .parse(
-        JSON.parse(
-          (await fixture("document/bedrock-sonnet-pricing.json"))
-            .replace(
-              "USE1-Claude4Sonnet-input-tokens-cross-region-global",
-              "USE1-Claude4Sonnet-input-tokens",
-            )
-            .replace(
-              "Claude4Sonnet input tokens cross region global",
-              "Claude4Sonnet input tokens",
-            ),
-        ),
-      );
+    const bundle = linkedBundle(
+      (await fixture("document/bedrock-sonnet-pricing.json"))
+        .replace(
+          "USE1-Claude4Sonnet-input-tokens-cross-region-global",
+          "USE1-Claude4Sonnet-input-tokens",
+        )
+        .replace("Claude4Sonnet input tokens cross region global", "Claude4Sonnet input tokens"),
+    );
     const structured = bundle.documents.find((document) =>
       document.body.includes("USE1-Claude4Sonnet-input-tokens"),
     );
@@ -6402,6 +6453,112 @@ describe("document adapter", () => {
     });
   });
 
+  it("uses the exact Cohere Embed 4 Marketplace rate card to resolve weaker dimensions", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    const command = bundle.documents.find((document) =>
+      document.url.endsWith("model-card-cohere-command-r.md"),
+    );
+    if (command === undefined) throw new Error("Missing Cohere Bedrock card fixture");
+    bundle.documents.push({
+      url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-cohere-embed-v4.md",
+      body: command.body
+        .replaceAll("Command R", "Cohere Embed 4")
+        .replaceAll("cohere.command-r-v1:0", "cohere.embed-v4:0"),
+    });
+    const regions = `
+      ap-northeast-1 ap-northeast-2 ap-northeast-3 ap-south-1 ap-south-2
+      ap-southeast-1 ap-southeast-2 ap-southeast-3 ap-southeast-4 ca-central-1
+      eu-central-1 eu-central-2 eu-north-1 eu-south-1 eu-south-2 eu-west-1 eu-west-2 eu-west-3
+      sa-east-1 us-east-1 us-east-2 us-west-1 us-west-2
+    `
+      .trim()
+      .split(/\s+/);
+    const rateCards = regions.flatMap((region, index) =>
+      [false, true].map((global) => ({
+        dimensionKey: `R${index}_InputTokenCount${global ? "_Global" : ""}`,
+        displayName: `Price per 1 million input tokens${global ? " Global" : ""}`,
+        description: `Price per 1 million input tokens${global ? " Global" : ""}`,
+        dimensionLabels: [{ type: "REGION", value: region, displayName: region }],
+        unit: "Units",
+        price: "0.12000000",
+      })),
+    );
+    const pageContext = {
+      routeParams: { listingId: "prodview-j3fgisven2yrs" },
+      dehydratedState: {
+        queries: Array.from({ length: 2 }, () => ({
+          state: {
+            data: {
+              summary: {
+                vendor: { vendorName: "Cohere" },
+                pricingModel: "USAGE",
+                terms: [
+                  {
+                    termType: "UsageBasedPricingTerm",
+                    currencyCode: "USD",
+                    rateCards,
+                    rateCardCount: 46,
+                    totalRateCards: 46,
+                  },
+                ],
+              },
+            },
+          },
+        })),
+      },
+    };
+    bundle.documents.push({
+      url: "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",
+      body: `<title>AWS Marketplace: Cohere Embed 4 Model (Amazon Bedrock Edition)</title><script id="vike_pageContext">${JSON.stringify(pageContext)}</script>`,
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    const model = models.find(({ model_id }) => model_id === "cohere.embed-v4:0");
+    if (model === undefined) throw new Error("Missing Cohere Embed 4 fixture model");
+    expect(model.price_facts).toHaveLength(46);
+    model.price_facts.push({
+      meter: "input_text",
+      price: "0.0000000200",
+      currency: "USD",
+      unit: "token",
+      conditions: {
+        deployment_scope: "in_region",
+        endpoint: "bedrock-runtime",
+        region: "us-east-1",
+      },
+      source_ref: source.id,
+      derived: false,
+      raw_price: "0.0000000200",
+      raw_unit: "Embeddings",
+    });
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models: [model] }],
+      [model],
+      value.pricingCategoricalLabels,
+    );
+    const term = partition?.books[0]?.offers[0]?.terms.find(
+      (candidate) => candidate.kind === "rate" && candidate.meter.value === "input_text",
+    );
+    if (term?.kind !== "rate") throw new Error("Missing Cohere Embed 4 input term");
+    expect(term.variants).not.toHaveLength(0);
+    expect(term.raw_variants).toEqual([
+      expect.objectContaining({
+        impact: "informational",
+        reason: "superseded_value",
+        resolution_policy: "bedrock_marketplace_product_page_over_price_list",
+      }),
+    ]);
+  });
+
   it("keeps Bedrock latency configuration separate from service tier and context tier", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -6436,12 +6593,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    const bundle = z
-      .object({
-        index: z.object({ url: z.string(), body: z.string() }),
-        documents: z.array(z.object({ url: z.string(), body: z.string() })),
-      })
-      .parse(JSON.parse(await fixture("document/bedrock.json")));
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
     const haiku = bundle.documents.find((document) =>
       document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
     );
@@ -6564,12 +6716,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    const bundle = z
-      .object({
-        index: z.object({ url: z.string(), body: z.string() }),
-        documents: z.array(z.object({ url: z.string(), body: z.string() })),
-      })
-      .parse(JSON.parse(await fixture("document/bedrock-pricing-identity.json")));
+    const bundle = linkedBundle(await fixture("document/bedrock-pricing-identity.json"));
     const nova = bundle.documents.find((document) =>
       document.url.endsWith("model-card-amazon-amazon-nova-multimodal-embeddings.md"),
     );
@@ -6999,12 +7146,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock catalog source");
-    const bundle = z
-      .object({
-        index: z.object({ url: z.string(), body: z.string() }),
-        documents: z.array(z.object({ url: z.string(), body: z.string() })),
-      })
-      .parse(JSON.parse(await fixture("document/bedrock.json")));
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
     const card = bundle.documents.find((document) =>
       document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
     );
@@ -7169,10 +7311,11 @@ describe("Vercel adapter", () => {
         normalizeVercelModelPage(`
           <h1>Rerank One</h1>
           <table><tr><th>Provider</th></tr></table>
-          <table><tr><th>Input</th></tr></table>
+          <table><tr><th>Input</th><th></th></tr></table>
           <table><tr>
             <td><a href="/ai-gateway/models/providers/acme">Acme</a></td>
             <td><span title="Per 1,000 queries">$2/K</span></td>
+            <td></td>
           </tr></table>
         `),
       ),
@@ -7424,6 +7567,25 @@ describe("Vercel adapter", () => {
     });
   });
 
+  it("repairs the reviewed one-token overlap in half-open route tiers", async () => {
+    const model = (
+      await vercelCatalog("vercel/pricing.json", (body) =>
+        body.replace('"min": 0, "max": 32000', '"min": 0, "max": 32001'),
+      )
+    )[0];
+    expect(
+      model?.price_facts
+        .filter(({ meter }) => meter === "cache_read_text")
+        .map(({ conditions }) => ({
+          min: conditions.context_min_tokens,
+          max: conditions.context_max_tokens,
+        })),
+    ).toEqual([
+      { min: 0, max: 32000 },
+      { min: 32001, max: undefined },
+    ]);
+  });
+
   it("keeps regional and fast rates as disjoint alternatives", async () => {
     const model = (await vercelCatalog("vercel/pricing.json")).find(
       ({ model_id }) => model_id === "acme/regional-fast-1",
@@ -7439,6 +7601,44 @@ describe("Vercel adapter", () => {
       { price: "1.1", conditions: { region: "us", service_tier: "standard" } },
       { price: "2.2", conditions: { region: "us", service_tier: "fast" } },
     ]);
+  });
+
+  it("keeps resolution-specific video-token tiers distinct", async () => {
+    const model = (
+      await vercelCatalog("vercel/pricing.json", (body) =>
+        body.replace(
+          `"no_video_input": { "cost_per_million_tokens": "7" },
+          "with_video_input": { "cost_per_million_tokens": "4.3" },`,
+          `"tiers": [
+            {
+              "resolution": "480p",
+              "no_video_input": { "cost_per_million_tokens": "7" },
+              "with_video_input": { "cost_per_million_tokens": "4.3" }
+            },
+            {
+              "resolution": "1080p",
+              "no_video_input": { "cost_per_million_tokens": "7.7" },
+              "with_video_input": { "cost_per_million_tokens": "4.7" }
+            }
+          ],`,
+        ),
+      )
+    ).find(({ model_id }) => model_id === "acme/video-token-1");
+    expect(model?.price_facts.map(({ price, conditions }) => ({ price, conditions }))).toEqual([
+      { price: "7", conditions: { resolution: "480p", video_input: false } },
+      { price: "4.3", conditions: { resolution: "480p", video_input: true } },
+      { price: "7.7", conditions: { resolution: "1080p", video_input: false } },
+      { price: "4.7", conditions: { resolution: "1080p", video_input: true } },
+    ]);
+  });
+
+  it("publishes the official free tag as an exact free disposition", async () => {
+    const model = (
+      await vercelCatalog("vercel/normal.json", (body) =>
+        body.replace('"tags": ["vision"]', '"tags": ["free"]'),
+      )
+    )[0];
+    expect(model).toMatchObject({ pricing_state: "free", price_facts: [] });
   });
 
   it("normalizes specialized modalities, lifecycle, and native pricing units", async () => {
@@ -8390,14 +8590,14 @@ describe("DeepSeek adapters", () => {
       { id: "responses", url: "https://api-docs.deepseek.com/api/create-response" },
       {
         id: "token-usage",
-        url: "https://api-docs.deepseek.com/quick_start/token_usage",
+        url: "https://api-docs.deepseek.com/quick_start/token_usage/",
       },
-      { id: "context-cache", url: "https://api-docs.deepseek.com/guides/kv_cache" },
+      { id: "context-cache", url: "https://api-docs.deepseek.com/guides/kv_cache/" },
       { id: "balance", url: "https://api-docs.deepseek.com/api/get-user-balance" },
-      { id: "rate-limit", url: "https://api-docs.deepseek.com/quick_start/rate_limit" },
-      { id: "error-codes", url: "https://api-docs.deepseek.com/quick_start/error_codes" },
-      { id: "responses-guide", url: "https://api-docs.deepseek.com/guides/responses_api" },
-      { id: "anthropic-guide", url: "https://api-docs.deepseek.com/guides/anthropic_api" },
+      { id: "rate-limit", url: "https://api-docs.deepseek.com/quick_start/rate_limit/" },
+      { id: "error-codes", url: "https://api-docs.deepseek.com/quick_start/error_codes/" },
+      { id: "responses-guide", url: "https://api-docs.deepseek.com/guides/responses_api/" },
+      { id: "anthropic-guide", url: "https://api-docs.deepseek.com/guides/anthropic_api/" },
     ]);
     const models = await deepseekCatalog();
     expect(models.map(({ model_id }) => model_id)).toEqual([
@@ -8528,7 +8728,7 @@ describe("DeepSeek adapters", () => {
       expect.arrayContaining([
         expect.objectContaining({
           disposition: "unbound",
-          reason_code: "upcoming_peak_policy_not_effective",
+          reason_code: "future_price_increase_not_effective",
         }),
         expect.objectContaining({
           disposition: "unbound",
@@ -8548,7 +8748,7 @@ describe("DeepSeek adapters", () => {
     const catalog = await fixture("deepseek/catalog.html");
     await expect(
       deepseekCatalog({
-        catalog: catalog.replace("2x the regular prices", "variable prices"),
+        catalog: catalog.replace("raise the overall pricing", "change the overall pricing"),
       }),
     ).rejects.toThrow("public pricing contract drifted");
   });

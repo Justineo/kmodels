@@ -2,6 +2,8 @@
 
 POST https://api.cohere.com/v2/audio/transcriptions
 
-audio_transcriptions_create_Response_200
+### 200
+
+A successful response.
 
 The transcribed text.

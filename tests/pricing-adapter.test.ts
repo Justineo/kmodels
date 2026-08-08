@@ -848,6 +848,63 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(partition?.books[0]?.source_refs).toEqual([exactSource.id]);
   });
 
+  it("suppresses a lower-authority not-published state when an exact price book has rates", () => {
+    const { source: exactSource } = pricingManifest();
+    if (exactSource.pricingEvidence === undefined)
+      throw new Error("Gemini pricing policy is missing");
+    const commercialSource: SourceManifest = {
+      ...exactSource,
+      id: "gemini-commercial-terms",
+      pricingEvidence: { ...exactSource.pricingEvidence, kind: "commercial_terms" },
+    };
+    const exact = model();
+    const notPublished: ParsedProviderModel = {
+      ...withPriceSource(model(), commercialSource.id),
+      pricing_state: "not_published",
+      price_facts: [],
+    };
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [
+        { source: commercialSource, models: [notPublished] },
+        { source: exactSource, models: [exact] },
+      ],
+      [exact],
+    );
+    expect(partition?.books[0]?.source_refs).toEqual([exactSource.id]);
+    expect(partition?.books[0]?.offers[0]?.states.every(({ state }) => state === "numeric")).toBe(
+      true,
+    );
+  });
+
+  it("keeps a higher-authority not-published state when only commercial terms have rates", () => {
+    const { source: exactSource } = pricingManifest();
+    if (exactSource.pricingEvidence === undefined)
+      throw new Error("Gemini pricing policy is missing");
+    const commercialSource: SourceManifest = {
+      ...exactSource,
+      id: "gemini-commercial-terms",
+      pricingEvidence: { ...exactSource.pricingEvidence, kind: "commercial_terms" },
+    };
+    const numeric = withPriceSource(model(), commercialSource.id);
+    const notPublished: ParsedProviderModel = {
+      ...withPriceSource(model(), exactSource.id),
+      pricing_state: "not_published",
+      price_facts: [],
+    };
+    const partition = assembleParsedProviderPricing(
+      providerId,
+      observedAt,
+      [
+        { source: commercialSource, models: [numeric] },
+        { source: exactSource, models: [notPublished] },
+      ],
+      [numeric],
+    );
+    expect(partition?.books[0]?.source_refs).toEqual([commercialSource.id, exactSource.id]);
+  });
+
   it("limits shared base-model pricing to versions without exact numeric evidence", () => {
     const { source: exactSource } = pricingManifest();
     const fallbackSource = baseModelPricingSource("gemini-base-model-pricing");

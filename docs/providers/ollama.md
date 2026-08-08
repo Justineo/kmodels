@@ -87,6 +87,16 @@ Status: current
   excluded or unbound evidence. Collection fails on new indexed commercial pages, changed
   price-card structure, or a newly documented cached-token field so the mapping is reviewed
   rather than silently guessed.
+- Pricing evidence is ranked at the exact model-state boundary. A numeric `price_book` fact suppresses
+  only a lower-authority `commercial_terms` claim that the price is not published; it does not
+  override another amount, a local `not_applicable` disposition, or a different model. This resolves
+  Kimi K3's generic Library absence against its exact Cloud rate card while preserving the source
+  reconciliation record and conditional `extra_usage_balance` applicability.
+- The sole current unknown-priced row, `gemini-3-flash-preview`, is a retained observation from the
+  non-exhaustive Library with both Library and Cloud family evidence, but the current bundle has
+  neither a current Cloud rate/page nor local-weight evidence. That is insufficient to prove either
+  hosted `not_published` or local `not_applicable`; the row remains unknown until Ollama publishes
+  current channel or commercial evidence.
 
 ## Kong AI Gateway
 

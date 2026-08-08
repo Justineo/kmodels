@@ -23,6 +23,11 @@ Status: current
 - Validate the OpenAPI server, response-format enum, streaming type, function-tool reference, prompt-cache field, thinking controls, effort values, discriminator mapping, request enum, non-streaming/streaming token-usage fields, and interrupted-stream warning before publishing capabilities.
 - Map prose-only output ceilings from the OpenAPI field description only when a published display name resolves uniquely to an exact discriminator ID; do not encode a model-specific limit table.
 - Attach `/v1/batches` only to exact Batch pricing rows while the fixed create-batch reference retains its reviewed operation and payload endpoint.
+- `moonshot-v1-auto` is callable in the OpenAPI contract but is absent from both regional price
+  tables. The three concrete Moonshot V1 context variants have unequal rates, and the public
+  contract does not publish a billable context threshold or resolved-model field for the automatic
+  selector. Copying one variant or unioning all three would be ambiguous, so this is the sole
+  current unknown-priced Kimi row.
 - Preserve `legacy` for models still callable only by existing users; do not flatten it into deprecation.
 - Do not convert API object creation timestamps into first-public-availability dates.
 

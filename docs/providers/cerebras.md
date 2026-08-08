@@ -32,6 +32,10 @@ Status: current
 - A single unconditional rate is valid only while the official service-tier guide says all tiers are billed equally. A change to that policy rejects the source instead of silently flattening tiered billing.
 - `reasoning_effort` is positive effort-control evidence only when the exact parameter appears on the model card. Absence remains unknown.
 - Credits are allowances. Dedicated capacity without stable shared IDs stays outside model pricing. The Batch API remains private preview and its current guide publishes no current rate, so a historical launch discount does not become current pricing or model capability evidence.
+- All 12 unknown-priced rows in the current refresh are deprecated identities retained only by
+  lifecycle or release history. None appears in the current structured price source or current
+  public pricing table. Copying a successor's rate or preserving an old launch price would turn
+  historical evidence into a false current offer, so no parser change can resolve them safely.
 - Account-tier rate limits and per-request image limits do not fit the provider-neutral scalar model limits and are not flattened into them. API creation values are not model dates.
 
 ## Cost boundary

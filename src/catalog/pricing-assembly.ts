@@ -115,6 +115,7 @@ export interface AtomicPriceState {
 export interface AtomicRateVariant {
   price: UnitPrice;
   applicability: PriceApplicability;
+  resolution_policy?: string;
   validity?: PublishedValidity;
   observation: NormalizedPriceObservation;
 }
@@ -131,6 +132,7 @@ export interface AtomicAllowanceVariant {
 export interface AtomicRawVariant {
   impact: RawPricingVariant["impact"];
   reason: RawPricingVariant["reason"];
+  resolution_policy?: string;
   possible_scope?: PriceApplicability;
   validity?: PublishedValidity;
   observation: RawPriceObservation;
@@ -365,10 +367,12 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
     }
     normalizedVariants.push({ ...variant, ...normalized });
   }
-  const conflicts = unequalOverlapIndexes(normalizedVariants, (variant) =>
+  const resolution = resolveRatePrecedence(normalizedVariants);
+  raw.push(...resolution.shadowed);
+  const conflicts = unequalOverlapIndexes(resolution.retained, (variant) =>
     canonicalJson(variant.price),
   );
-  for (const [index, item] of normalizedVariants.entries()) {
+  for (const [index, item] of resolution.retained.entries()) {
     if (conflicts.has(index)) {
       raw.push(toRawAtomic(item, "base_price", "conflicting_values", item.applicability));
       continue;
@@ -399,6 +403,51 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
     });
   }
   return { variants: result, raw };
+}
+
+function resolveRatePrecedence(variants: AtomicRateVariant[]): {
+  retained: AtomicRateVariant[];
+  shadowed: AtomicRawVariant[];
+} {
+  const shadowed = new Map<number, string>();
+  const payloads = variants.map(({ price }) => canonicalJson(price));
+  for (const [index, variant] of variants.entries()) {
+    if (variant.resolution_policy !== undefined) continue;
+    const dominators = variants.flatMap((candidate, candidateIndex) => {
+      const policy = candidate.resolution_policy;
+      if (
+        candidateIndex === index ||
+        policy === undefined ||
+        payloads[candidateIndex] === payloads[index] ||
+        canonicalJson(optionalValue(candidate.validity)) !==
+          canonicalJson(optionalValue(variant.validity)) ||
+        !applicabilityContainedIn(variant.applicability, candidate.applicability)
+      )
+        return [];
+      return [{ policy, payload: payloads[candidateIndex]! }];
+    });
+    if (dominators.length === 0) continue;
+    if (
+      new Set(dominators.map(({ payload }) => payload)).size !== 1 ||
+      new Set(dominators.map(({ policy }) => policy)).size !== 1
+    )
+      continue;
+    shadowed.set(index, dominators[0]!.policy);
+  }
+  return {
+    retained: variants.filter((_variant, index) => !shadowed.has(index)),
+    shadowed: variants.flatMap((variant, index) => {
+      const policy = shadowed.get(index);
+      return policy === undefined
+        ? []
+        : [
+            {
+              ...toRawAtomic(variant, "informational", "superseded_value", variant.applicability),
+              resolution_policy: policy,
+            },
+          ];
+    }),
+  };
 }
 
 function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
@@ -622,6 +671,7 @@ function groupRaw(variants: AtomicRawVariant[]): RawPricingVariant[] {
       canonicalJson([
         item.impact,
         item.reason,
+        ...optionalValue(item.resolution_policy),
         ...optionalValue(item.possible_scope),
         ...optionalValue(item.validity),
       ]),
@@ -633,6 +683,7 @@ function groupRaw(variants: AtomicRawVariant[]): RawPricingVariant[] {
     return {
       impact: first.impact,
       reason: first.reason,
+      ...optional("resolution_policy", first.resolution_policy),
       ...optional("possible_scope", first.possible_scope),
       ...optional("validity", first.validity),
       observations: sortUnique(
@@ -775,6 +826,7 @@ function expandRaw(variant: RawPricingVariant | AtomicRawVariant): AtomicRawVari
   return variant.observations.map((observation) => ({
     impact: variant.impact,
     reason: variant.reason,
+    ...optional("resolution_policy", variant.resolution_policy),
     ...optional("possible_scope", variant.possible_scope),
     ...optional("validity", variant.validity),
     observation,
@@ -810,9 +862,10 @@ function sortAllowanceVariants(variants: PriceAllowanceVariant[]): PriceAllowanc
 function sortRawVariants(variants: RawPricingVariant[]): RawPricingVariant[] {
   return sortByCanonicalKey(
     variants,
-    ({ impact, reason, possible_scope, validity, observations }) => [
+    ({ impact, reason, resolution_policy, possible_scope, validity, observations }) => [
       impact,
       reason,
+      ...optionalValue(resolution_policy),
       ...optionalValue(possible_scope),
       ...optionalValue(validity),
       observations,
