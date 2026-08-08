@@ -1,8 +1,8 @@
 {
-  "catalog_version": "90e809311309fee6e4ad195c3d188525c0fd3ca3a9ccb7e03fe5f323298abe8d",
-  "generated_at": "2026-08-08T22:06:10.229Z",
+  "catalog_version": "5f273aa03e4ceab9a18792ec24ca0491d337ff8882323dcc6f51071cd39bea01",
+  "generated_at": "2026-08-08T23:06:48.547Z",
   "outcome": "changed",
-  "previous_catalog_version": "bbf5f3360b97743d9c58a62b3a011ee772cf7bfebb63531d22287fbe9abd54fe",
+  "previous_catalog_version": "90e809311309fee6e4ad195c3d188525c0fd3ca3a9ccb7e03fe5f323298abe8d",
   "providers": [
     {
       "attempt": {
@@ -1736,9 +1736,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1408,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1824,7 +1824,7 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 131,
-              "normalized_facts": 410,
+              "normalized_facts": 412,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
@@ -1880,13 +1880,13 @@
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 205,
+                "normalized": 206,
                 "raw": 0,
                 "unbound": 98,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 311,
+              "observed_items": 312,
               "reason_counts": {
                 "account_credits_not_public_rates": 1,
                 "auto_routing_policy_conflict": 1,
@@ -1896,7 +1896,7 @@
                 "partner_mapping_catalog_out_of_scope": 1,
                 "provider_cost_api_not_user_accessible": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 205,
+                "route_price_normalized": 206,
                 "route_price_not_published": 98
               },
               "unit": "reviewed source pricing item"
@@ -1913,31 +1913,27 @@
         ]
       },
       "models": {
-        "added": 3,
-        "added_model_refs": [
-          "huggingface/embaas/sentence-transformers-e5-large-v2",
-          "huggingface/jhu-clsp/mmBERT-base",
-          "huggingface/microsoft/deberta-v3-large"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 1539,
-        "previous": 1536,
+        "previous": 1539,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1536
+        "unchanged": 1539
       },
       "pricing": {
-        "commercial_hash": "8ced445dcacd2087a6805120b889ee766ca9498cf8e30bd1001b151ade8e3592",
-        "outcome": "provenance_only",
+        "commercial_hash": "2e24ab1e6bb2af120c049303ef46046151996139b511c92fa9834fa75b35f612",
+        "outcome": "commercial",
         "previous_commercial_hash": "8ced445dcacd2087a6805120b889ee766ca9498cf8e30bd1001b151ade8e3592"
       },
       "pricing_coverage": {
         "current_models": 1539,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 3
+          "unknown_models": 0
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -1975,14 +1971,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2000,7 +1990,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2999,290 +2989,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "routes": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "alibaba",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "azure",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepseek",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "digitalocean",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "gmicloud",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "wafer",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "alibaba",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "azure",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepseek",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "digitalocean",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "gmicloud",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-flash",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/deepseek/deepseek-v4-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "alibaba",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepseek",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "gmicloud",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "wafer",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "alibaba",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "deepseek",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "fireworks",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "gmicloud",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "vercel-models",
-                    "status": "live",
-                    "task": "language"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "vercel/deepseek/deepseek-v4-flash-0731"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 323,
         "previous": 323,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 321
+        "unchanged": 323
       },
       "pricing": {
         "commercial_hash": "787f5eeda815871e55e0cfac03ea43dbcd480a291646b62e05fc8d5ee75487d1",
-        "outcome": "commercial",
-        "previous_commercial_hash": "10eee0e6747a84ee8411725c8ae6bedfedc1f5ed9f0141de002013cc05f15aeb"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "787f5eeda815871e55e0cfac03ea43dbcd480a291646b62e05fc8d5ee75487d1"
       },
       "pricing_coverage": {
         "current_models": 323,
@@ -3703,10 +3422,10 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 3,
+    "added_models": 0,
     "added_sources": 0,
-    "changed_models": 2,
-    "changed_sources": 33,
+    "changed_models": 0,
+    "changed_sources": 32,
     "models": 3394,
     "pricing_accepted": 18,
     "pricing_not_observed": 0,
