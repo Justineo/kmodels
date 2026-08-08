@@ -1,8 +1,8 @@
 {
-  "catalog_version": "51d36190fdd9937eea1529abe7fcaa5b80c590fcec9014c974fcca1d43f3c849",
-  "generated_at": "2026-08-07T23:11:05.739Z",
+  "catalog_version": "231fb3aff4eb281a33215aff73035fe9ab086dc90e5e5af4870031f079ca56ed",
+  "generated_at": "2026-08-08T00:10:48.987Z",
   "outcome": "changed",
-  "previous_catalog_version": "69d860f917b8a50ac0ec4cd9cbce75ef3061005309737f39ba2a701312459247",
+  "previous_catalog_version": "51d36190fdd9937eea1529abe7fcaa5b80c590fcec9014c974fcca1d43f3c849",
   "providers": [
     {
       "attempt": {
@@ -65,30 +65,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
-        "changed_fields": {
-          "description": 1
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "Claude Sonnet 5 is the most capable Sonnet model from Anthropic, built for coding, agents, and professional work at scale. It brings near-Opus intelligence to the model teams run every day, with the same balance of capability, cost, and speed teams already rely on Sonnet for.",
-                "path": "description",
-                "previous": "Claude Sonnet 5 is Anthropic's most capable Sonnet model yet, built for coding, agents, and professional work at scale. It brings near-Opus intelligence to the model teams run every day, with the same balance of capability, cost, and speed teams already rely on Sonnet for."
-              }
-            ],
-            "fields": [
-              "description"
-            ],
-            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-5"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 132,
         "previous": 132,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 131
+        "unchanged": 132
       },
       "pricing": {
         "commercial_hash": "2a324cc3df52e6af47590cea5eb5cfb9f892d8d4d7fad1c2e19588c96b26c94f",
@@ -156,7 +140,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 36,
+            "consecutive_failures": 37,
             "last_success_at": "2026-08-06T00:20:20.186Z",
             "message": "Anthropic computer-use coverage drifted",
             "outcome": "parse_failed",
@@ -234,7 +218,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 32,
+            "consecutive_failures": 33,
             "last_success_at": "2026-08-06T05:58:22.627Z",
             "message": "Azure OpenAI cache accounting contract drifted",
             "outcome": "parse_failed",
@@ -553,7 +537,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 2,
+            "consecutive_failures": 3,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1046,9 +1030,9 @@
             "source_id": "databricks-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 44,
             "source_id": "databricks-api"
           }
@@ -1095,14 +1079,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "databricks-api"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1114,7 +1092,7 @@
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -1137,7 +1115,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 34,
+            "consecutive_failures": 35,
             "last_success_at": "2026-08-06T03:00:35.977Z",
             "message": "DeepSeek public pricing contract drifted",
             "outcome": "parse_failed",
@@ -1512,19 +1490,61 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 3,
+        "changed_fields": {
+          "capabilities": 3
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.tool_call",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/CohereLabs/c4ai-command-r7b-arabic-02-2025"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.tool_call",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.tool_call",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-5.1-FP8"
+          }
+        ],
         "current": 1540,
         "previous": 1540,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1540
+        "unchanged": 1537
       },
       "pricing": {
         "commercial_hash": "2e24ab1e6bb2af120c049303ef46046151996139b511c92fa9834fa75b35f612",
-        "outcome": "commercial",
-        "previous_commercial_hash": "0290c62fdf189ba9e572bae386899f517972d3e5f0e9d691023709db3fff8198"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "2e24ab1e6bb2af120c049303ef46046151996139b511c92fa9834fa75b35f612"
       },
       "pricing_coverage": {
         "current_models": 1540,
@@ -2460,9 +2480,9 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 132,
             "source_id": "openai-api"
           }
@@ -2512,20 +2532,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 6,
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -2548,7 +2561,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 45,
+            "consecutive_failures": 46,
             "last_success_at": "2026-08-05T15:43:07.133Z",
             "message": "Vercel model page pricing columns changed shape",
             "outcome": "fetch_failed",
@@ -2839,7 +2852,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 33,
+            "consecutive_failures": 34,
             "last_success_at": "2026-08-06T04:08:29.743Z",
             "message": "xAI structured and documented voice aliases differ",
             "outcome": "parse_failed",
@@ -2908,8 +2921,8 @@
     "accepted": 12,
     "added_models": 0,
     "added_sources": 0,
-    "changed_models": 1,
-    "changed_sources": 30,
+    "changed_models": 3,
+    "changed_sources": 28,
     "models": 3387,
     "pricing_accepted": 12,
     "pricing_not_observed": 0,
