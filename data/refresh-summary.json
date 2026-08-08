@@ -1,8 +1,8 @@
 {
-  "catalog_version": "e1a3e5847b12b934c988ccac9760b38ad69af97b5c42e7da75be923a2fdd6557",
-  "generated_at": "2026-08-08T08:12:05.184Z",
+  "catalog_version": "96073681c2565e6580d423c962bb024344bdaec71c0872c823a68517bc30c3e6",
+  "generated_at": "2026-08-08T09:13:54.274Z",
   "outcome": "changed",
-  "previous_catalog_version": "36eb6d8722cafe33acf7896eeb37f18b14aa0fdd1039401a54d6a3579f296f92",
+  "previous_catalog_version": "e1a3e5847b12b934c988ccac9760b38ad69af97b5c42e7da75be923a2fdd6557",
   "providers": [
     {
       "attempt": {
@@ -140,7 +140,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 45,
+            "consecutive_failures": 46,
             "last_success_at": "2026-08-06T00:20:20.186Z",
             "message": "Anthropic computer-use coverage drifted",
             "outcome": "parse_failed",
@@ -218,7 +218,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 41,
+            "consecutive_failures": 42,
             "last_success_at": "2026-08-06T05:58:22.627Z",
             "message": "Azure OpenAI cache accounting contract drifted",
             "outcome": "parse_failed",
@@ -537,7 +537,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 11,
+            "consecutive_failures": 12,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1115,7 +1115,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 43,
+            "consecutive_failures": 44,
             "last_success_at": "2026-08-06T03:00:35.977Z",
             "message": "DeepSeek public pricing contract drifted",
             "outcome": "parse_failed",
@@ -1409,7 +1409,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 99,
+              "diagnostic_count": 100,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -1457,11 +1457,11 @@
                 "explicit_non_numeric": 0,
                 "normalized": 204,
                 "raw": 0,
-                "unbound": 98,
+                "unbound": 99,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 310,
+              "observed_items": 311,
               "reason_counts": {
                 "account_credits_not_public_rates": 1,
                 "auto_routing_policy_conflict": 1,
@@ -1472,7 +1472,7 @@
                 "provider_cost_api_not_user_accessible": 1,
                 "response_exact_cost_not_documented": 1,
                 "route_price_normalized": 204,
-                "route_price_not_published": 98
+                "route_price_not_published": 99
               },
               "unit": "reviewed source pricing item"
             },
@@ -1490,11 +1490,24 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
+        "changed": 2,
         "changed_fields": {
-          "capabilities": 1
+          "capabilities": 2
         },
         "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
+          },
           {
             "field_changes": [
               {
@@ -1506,19 +1519,19 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
           }
         ],
         "current": 1540,
         "previous": 1540,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 1539
+        "unchanged": 1538
       },
       "pricing": {
-        "commercial_hash": "ad86cc68579c7bbe366e8a06b1994e4d5fe5475b998aedecfb829aa677539c15",
+        "commercial_hash": "0d15f70fe8e1b0fa55b1cffb32a6b2f0d722cdf273d405d4f0b59126064597c2",
         "outcome": "commercial",
-        "previous_commercial_hash": "cd9eb17b927fa3f88261d211a47e2640c36822e6cd8a0dfd07b662bc5bd077ff"
+        "previous_commercial_hash": "ad86cc68579c7bbe366e8a06b1994e4d5fe5475b998aedecfb829aa677539c15"
       },
       "pricing_coverage": {
         "current_models": 1540,
@@ -2535,7 +2548,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 54,
+            "consecutive_failures": 55,
             "last_success_at": "2026-08-05T15:43:07.133Z",
             "message": "Vercel model page pricing columns changed shape",
             "outcome": "fetch_failed",
@@ -2826,7 +2839,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 42,
+            "consecutive_failures": 43,
             "last_success_at": "2026-08-06T04:08:29.743Z",
             "message": "xAI structured and documented voice aliases differ",
             "outcome": "parse_failed",
@@ -2895,7 +2908,7 @@
     "accepted": 12,
     "added_models": 0,
     "added_sources": 0,
-    "changed_models": 1,
+    "changed_models": 2,
     "changed_sources": 28,
     "models": 3387,
     "pricing_accepted": 12,
