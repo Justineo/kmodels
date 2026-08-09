@@ -40,6 +40,9 @@ Status: implemented
   never let it disappear because the model table parsed successfully.
 - Third-party registries may be used only as read-only coverage and drift comparisons. They cannot
   contribute production identities, prices, aliases, dates, or fallback values.
+- Product and consumer documentation may guide ontology review, but collectors
+  must not fetch or validate a downstream consumer's model tables, configuration
+  examples, or compatibility lists as catalog or pricing dependencies.
 
 ## Source roles and scope
 
@@ -53,6 +56,11 @@ Status: implemented
 - Only an exhaustive global catalog supports a completeness claim.
 - Optional authenticated sources use named environment variables. Collection loads ignored `.env` values without overriding the process environment.
 - Missing credentials or an optional-source failure emits a structured warning and does not weaken a successful global refresh.
+- An optional public pricing overlay may declare `pricingRequired`. Its failure still
+  allows an independently valid catalog slice to advance, but makes the fresh pricing
+  bundle incomplete so publication retains the previous compatible pricing partition.
+  This keeps pricebook completeness independent from catalog availability without
+  silently replacing a previously broad pricebook with a partial one.
 - Never snapshot or publish authenticated raw responses. Redact source URLs, cloud principals, account IDs, email identities, and unmatched private identifiers from diagnostics.
 
 ## Identity matching
@@ -84,6 +92,10 @@ Status: implemented
 - Do not use conditional requests: a `304` cannot be parsed without retaining the old body.
 - Bounded multi-document fetches assign the next item to the first free slot while preserving
   deterministic result order.
+- Fixed reviewed companions do not depend on index discovery, so transports start them with the
+  root index request and keep their configured concurrency bound. Discovered documents still wait
+  for the validated index and nested indexes. Output and dependency order remain canonical rather
+  than completion-ordered.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
 - Raw replay requires a separately configured external artifact system. The
@@ -139,6 +151,9 @@ Status: implemented
   successful only with a stable reviewed reason. Public-source samples may contain a short public
   label, while authenticated or scoped sources suppress samples. This evidence is operational audit
   data only and never enters the accepted catalog, canonical pricing API, or website packs.
+- Rows excluded by the catalog boundary contribute only aggregate disposition
+  and reason counts. Their identities, routes, and commercial fields remain
+  process-local and are not persisted as observations or fallback records.
 - Reconciliation also retains a bounded `reason_counts` partition. This exposes successful binding
   methods and deliberate exclusions as well as problems; disposition totals alone cannot
   distinguish a direct meter join from a fallback grammar.

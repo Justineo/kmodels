@@ -7,7 +7,10 @@ Status: current
 - The exhaustive public bundle contains the official model-card index, every bounded publisher
   sub-index linked from it, reviewed same-host cards, Mantle service regions, three AWS Price List
   offers, the official Bedrock pricing page, and the exact AWS Marketplace product page for Cohere
-  Embed 4. Publisher sub-indexes are necessary because AWS can
+  Embed 4. It also pins 16 official API, usage, cache, service-tier, logging, CUR, Price List, and
+  billing-latency contracts that justify the catalog and gateway accounting rules below. Refresh
+  requires the complete companion set and validates its reviewed semantic invariants; these facts
+  are no longer documentation-only assumptions. Publisher sub-indexes are necessary because AWS can
   publish a card there before adding it to the top-level table; this was observed for GPT-5.6 Sol,
   Terra, and Luna. The structured `current/index.json` inventories remain the primary billing
   denominator; the public pricing page is the current exact overlay for reviewed model/rate tables
@@ -16,7 +19,11 @@ Status: current
 - Runtime and Mantle IDs remain distinct unless their exact ID is identical. When both publish one identical endpoint label/path, emit that public fact once while retaining endpoint-specific price and availability conditions.
 - Preserve an explicit per-card API path. GPT-5.6 uses `openai/v1/responses`, which must not be
   collapsed into the otherwise common Mantle `v1/responses` route.
-- Optional `ListFoundationModels` in `us-east-1` is regional authenticated validation. It may enrich exact public IDs but cannot create rows, define global availability, or retain raw data.
+- Optional `ListFoundationModels` in `us-east-1` is regional authenticated validation. It may enrich
+  exact public IDs but cannot create rows, define global availability, or retain raw data. Require
+  the documented foundation-model ARN and its exact `modelId` suffix; accept only the current
+  first-party enum sets (`TEXT|IMAGE|EMBEDDING`, `FINE_TUNING|CONTINUED_PRE_TRAINING|DISTILLATION`,
+  and `ON_DEMAND|PROVISIONED`).
 - Enable it with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` for temporary credentials. The identity needs `bedrock:ListFoundationModels` on `Resource: "*"`.
 
 ## Mapping
@@ -24,6 +31,9 @@ Status: current
 - Bind API, lifecycle, capability, and availability facts to the matching programmatic ID. Unknown modality/API/endpoint labels reject the provider; negative API rows add no positive evidence.
 - Keep exact `{region, deployment_type}` pairs. Runtime geo/global evidence requires its exact inference-profile alias. Mantle remains in-region and must intersect with the service-region table. Never form cross-products.
 - `Legacy` is callable-but-restricted, not deprecated. An exact EOL date becomes canonical `retired` when effective even if a stale model card still says `Legacy`; “No sooner than” is not an exact retirement date and never triggers that transition.
+- `publicExtendedAccessTime` is an official API lifecycle timestamp for the higher-priced portion of
+  a legacy period. Validate its shape but do not map it to canonical deprecation or retirement; a
+  rate is publishable only when an official commercial source supplies the corresponding price.
 - RAG is service-level. `Invoke` does not imply response streaming. Native Rerank additionally requires its model-specific sample.
 - Price joins require one unique official identity or exact ID occurrence. If an inference product omits an identity attribute, match its usage-type tokens against the official card name only when that normalized family identifies one model; an explicit but different version/name never falls back to family matching. Repeated cards are equivalent only when their exact Programmatic Access IDs, endpoints, and deployment types agree.
 - Preserve region, endpoint, routing class, tier, cache TTL, context threshold, media conditions, capacity direction, unit, and effective date. Preserve provider image subtypes such as standard and document images as operations when they select different rates.
@@ -40,8 +50,11 @@ Status: current
   that replacement receives its own reconciliation reason. Page-only identities remain visible as
   unbound reconciliation findings until a current model card supplies the callable ID.
 - The reviewed page overlay currently owns exact OpenAI Frontier token/cache tables and Stability AI
-  Image Services per-generation tables. Stability service rates retain their three published US
-  regions and geo deployment scope; no model-name or region defaults are inferred outside that
+  Image Services per-generation tables. OpenAI's two-row table header is interpreted structurally:
+  the short group (`Short Context Window (272K)`) applies through 272,000 tokens and the long group
+  (`Long Context Window (1M)`) applies from 272,001 through 1,000,000. Duplicate meter labels stay distinct
+  through those exact applicability ranges. Stability service rates retain their three published
+  US regions and geo deployment scope; no model-name or region defaults are inferred outside that
   table.
 - The Cohere Embed 4 Marketplace product page is an exact product/ID companion. Its current usage
   term contains 46 dynamically parsed rate cards: in-region and global input-token prices for 23
@@ -61,20 +74,21 @@ Status: current
   usage-derived identity, must be normalized or deliberately excluded as
   customization/training/storage. Any other unmatched identity, target, unit, or meter rejects the
   fresh provider candidate, preserving the last valid snapshot instead of silently dropping price
-  rows. Explicit price-list or page models absent from the current card catalog remain unbound because
-  AWS billing surfaces can lead the callable catalog or retain stale products.
+  rows. An identity inferred only from usage text remains unbound and rejects refresh. An explicit
+  Price List product absent from the current callable card catalog is instead recorded as
+  `price_product_absent_from_current_catalog` and excluded: AWS's current feeds contain both
+  billing-leading and retained stale products, and neither supplies a callable ID. A reviewed public
+  page row absent the card catalog remains unbound because it is a narrower current signal.
 - Bedrock's provider-wide applicability budget is 64 MiB, matching the provider partition budget.
-  The reviewed 2026-08-05 candidate required 33,716,751 bytes—only 162,319 bytes above the earlier
-  32 MiB calibration—while remaining within the partition, selector-work, variant, and observation
-  limits. Raising this aggregate budget preserves those independent safety bounds instead of
-  discarding a complete, otherwise valid price book.
+  This leaves room for the complete price book while the independent partition, selector-work,
+  variant, and observation limits remain enforced.
 - A catalog model remains `unknown` when no current price product binds uniquely. Do not transfer prices from a similarly named generation, preview, or Stability utility operation.
-- The current refresh deliberately leaves three callable rows unresolved.
+- The current refresh deliberately leaves one callable row unresolved.
   `amazon.titan-embed-g1-text-02` has an exact model card but no exact current pricing-page or Price
   List identity; do not copy the price from Titan Embeddings G1 Text or Titan Text Embeddings V2.
-  `openai.gpt-5.5` and `openai.gpt-5.6-sol` are present in current OpenAI publisher cards, but neither
-  the Bedrock pricing page nor the AWS Price List supplies an exact current rate for those callable
-  IDs. OpenAI's direct-platform rates are a different commercial surface and cannot fill the gap.
+  The official Bedrock pricing page now resolves `openai.gpt-5.5` and `openai.gpt-5.6-sol`, including
+  the latter's short/long-context split. OpenAI's direct-platform rates remain a different commercial
+  surface and cannot fill Bedrock gaps.
 - Map inventory enums only through reviewed semantics. New enum values fail closed. Regional streaming evidence remains scoped.
 - Model-card dates are calendar-validated. A present but malformed launch, legacy, or exact EOL date
   rejects the provider candidate instead of disappearing as an unknown date.
@@ -92,9 +106,10 @@ Status: current
   model-specific, no-charge preflight for input tokens, not a final billed-cost response.
 - `InvokeModel` usage fields remain model-native rather than one uniform response schema. For
   `bedrock-runtime`, optional model invocation logging supplies per-request model ID, operation,
-  Region, identity, input/output token counts, and cache counts; logging is disabled by default and
-  does not cover `bedrock-mantle`. Mantle APIs instead expose their OpenAI- or Anthropic-compatible
-  response usage, while Mantle CloudWatch token metrics are aggregate observations.
+  Region, identity, and input/output token counts; logging is disabled by default and does not cover
+  `bedrock-mantle`. Do not claim cache counters from the current invocation-log schema. Mantle APIs
+  instead expose their OpenAI- or Anthropic-compatible response usage, while Mantle CloudWatch token
+  metrics are aggregate observations.
 - The public pricing page and Price List APIs establish public commercial rates, not an account's
   net invoice. Private Marketplace offers, enterprise/private discounts, credits, free-tier
   eligibility, tax, refund timing, and the allocation or amortization of Reserved/Provisioned
@@ -128,23 +143,18 @@ Status: current
 - ccusage is not a Bedrock billing catalog or Bedrock invocation-log reader. Its calculated costs use
   an embedded/refreshed LiteLLM snapshot and optional user overrides, so it adds no independent AWS
   evidence.
-- The current LiteLLM map covers many Bedrock IDs but flattens much of AWS's region, endpoint,
-  routing, context, and capacity surface. Its `amazon.titan-embed-g1-text-02` value copies a simple
-  token rate without an exact first-party binding, and its zero rates for
-  `anthropic.claude-mythos-preview` must not be interpreted as free service.
-- The current models.dev Bedrock provider lists the GPT-5.6 family with public token/cache rates but
-  omits the two unresolved models above and primarily models language-model SDK use rather than the
-  complete AWS billing denominator. It does not replace the Price List's regional/tier variants.
+- LiteLLM flattens much of AWS's region, endpoint, routing, context, and capacity surface. models.dev
+  has no Bedrock implementation in its hourly sync registry, so its TOML rows are reviewed repository
+  data rather than an automatic official crawl. Neither can fill an unbound first-party identity or
+  replace applicability-qualified AWS prices.
+- HashiCorp's official AWS Terraform provider now exposes an
+  `aws_bedrock_foundation_models` data source that directly calls regional `ListFoundationModels`.
+  It is a useful independent check on the API inventory and its current enums, but its flattened
+  schema omits lifecycle and all pricing, cards, aliases, deployment pairs, and billing conditions.
+- AWS Labs' official AWS Pricing MCP server calls the Price List Query/Bulk APIs (`get_products`,
+  `list_price_lists`, and price-list file URLs) and is useful for interactive drift investigation.
+  It uses the same informational billing denominator already collected here, does not join products
+  to model-card callable IDs, and its natural-language MCP workflow is not needed for unattended
+  refresh. The underlying AWS APIs remain fully automatable without an LLM.
 - These sources remain read-only drift checks. No third-party identity, price, alias, date, or
   fallback enters collection.
-
-## Kong AI Gateway
-
-- Compatibility requires exact model/API evidence for Converse, InvokeModel, provider-specific invocation, StartAsyncInvoke, or native surfaces plus region and endpoint scope.
-- Batch, files, and RAG are service-level. Native rerank also depends on format.
-- Do not infer support for audio transcription, moderation, realtime, or other tasks from Bedrock membership.
-- Permission-denied optional inventory remains an explicit account-availability gap; fix IAM rather than weakening collection.
-- Cost-based routing uses the request's prospective public rate and, after completion, the resolved
-  response usage/configuration. Account-net-cost routing is possible only with an explicit local
-  contract/commitment model; delayed Cost Explorer or CUR totals can calibrate that model but cannot
-  select the current request's route.

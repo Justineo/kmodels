@@ -1,0 +1,140 @@
+{
+  "models": [
+    {
+      "entityResourceName": "azure-openai",
+      "entityId": "azureml://registries/azure-openai/type/models/objectId/gpt-multi/version/2026-01-01",
+      "kind": "Versioned",
+      "properties": {
+        "id": "gpt-multi:2026-01-01",
+        "name": "gpt-multi",
+        "isAnonymous": false
+      },
+      "annotations": {
+        "archived": false,
+        "description": "Portal fallback description.",
+        "labels": ["latest"],
+        "tags": {
+          "deploymentOptions": "UnifiedEndpointMaaS,AOAI,Serverless API,Instant"
+        },
+        "systemCatalogData": {
+          "publisher": "OpenAI",
+          "displayName": "GPT Multi",
+          "summary": "A portal-enriched multimodal model.",
+          "inferenceTasks": ["chat-completion", "responses"],
+          "inputModalities": ["text", "image"],
+          "outputModalities": ["text"],
+          "modelCapabilities": ["reasoning", "streaming", "tool-calling"],
+          "featuresSupported": ["function_calling"],
+          "supportsToolCalling": true,
+          "enableBatch": true,
+          "textContextWindow": 256000,
+          "maxInputTokens": 240000,
+          "maxOutputTokens": 16000,
+          "lifecycle": "Generally Available",
+          "preview": false,
+          "inferenceLegacyDate": null,
+          "inferenceDeprecationDate": "2027-06-01T00:00:00+00:00",
+          "inferenceRetirementDate": "2027-09-01T00:00:00+00:00",
+          "isDirectFromAzure": true,
+          "deploymentOptions": ["UnifiedEndpointMaaS", "AOAI"],
+          "deploymentSku": [
+            {
+              "name": "GlobalStandard",
+              "locations": ["EASTUS", "WESTUS3"]
+            },
+            {
+              "name": "DataZoneStandard",
+              "locations": ["EASTUS"]
+            }
+          ],
+          "azureOpenAIModelName": "gpt-multi",
+          "azureOpenAIVersion": "2026-01-01"
+        }
+      }
+    },
+    {
+      "entityResourceName": "azure-openai",
+      "entityId": "azureml://registries/azure-openai/type/models/objectId/gpt-multi/version/2026-03-01",
+      "kind": "Versioned",
+      "properties": {
+        "id": "gpt-multi:2026-03-01",
+        "name": "gpt-multi",
+        "isAnonymous": false
+      },
+      "annotations": {
+        "archived": false,
+        "labels": ["default", "latest"],
+        "tags": {
+          "deploymentOptions": "UnifiedEndpointMaaS,AOAI"
+        },
+        "systemCatalogData": {
+          "publisher": "OpenAI",
+          "displayName": "GPT Multi Preview",
+          "summary": "A newly published portal version.",
+          "inferenceTasks": ["chat-completion"],
+          "inputModalities": ["text"],
+          "outputModalities": ["text"],
+          "modelCapabilities": ["streaming"],
+          "featuresSupported": [],
+          "supportsToolCalling": false,
+          "enableBatch": false,
+          "textContextWindow": 128000,
+          "maxInputTokens": null,
+          "maxOutputTokens": 8192,
+          "lifecycle": "Preview",
+          "preview": true,
+          "inferenceLegacyDate": null,
+          "inferenceDeprecationDate": null,
+          "inferenceRetirementDate": null,
+          "isDirectFromAzure": true,
+          "deploymentOptions": ["UnifiedEndpointMaaS", "AOAI"],
+          "deploymentSku": null,
+          "azureOpenAIModelName": "gpt-multi",
+          "azureOpenAIVersion": "2026-03-01"
+        }
+      }
+    },
+    {
+      "entityResourceName": "azureml",
+      "entityId": "azureml://registries/azureml/type/models/objectId/portal-only/version/1",
+      "kind": "Versioned",
+      "properties": {
+        "id": "portal-only:1",
+        "name": "portal-only",
+        "isAnonymous": false
+      },
+      "annotations": {
+        "archived": false,
+        "labels": ["latest"],
+        "tags": {
+          "deploymentOptions": "UnifiedEndpointMaaS"
+        },
+        "systemCatalogData": {
+          "publisher": "Unreviewed Publisher",
+          "displayName": "Portal Only",
+          "summary": "This base identity is absent from the reviewed documentation catalog.",
+          "inferenceTasks": ["text-generation"],
+          "inputModalities": ["text"],
+          "outputModalities": ["text"],
+          "modelCapabilities": [],
+          "featuresSupported": [],
+          "supportsToolCalling": null,
+          "enableBatch": null,
+          "textContextWindow": 4096,
+          "maxInputTokens": null,
+          "maxOutputTokens": 1024,
+          "lifecycle": null,
+          "preview": null,
+          "inferenceLegacyDate": null,
+          "inferenceDeprecationDate": null,
+          "inferenceRetirementDate": null,
+          "isDirectFromAzure": null,
+          "deploymentOptions": ["UnifiedEndpointMaaS"],
+          "deploymentSku": null,
+          "azureOpenAIModelName": null,
+          "azureOpenAIVersion": null
+        }
+      }
+    }
+  ]
+}

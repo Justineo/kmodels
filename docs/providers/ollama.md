@@ -1,110 +1,97 @@
 # Ollama
 
-Status: current
+## Official source topology and refresh
 
-## First-party discovery and identity
+- Production refresh uses only first-party Ollama surfaces. The non-exhaustive Library at
+  `https://ollama.com/library` supplies current family identities, descriptions, capability badges,
+  and update dates. An untagged family name is callable as its default/`latest` tag; the collector
+  never invents size, quantization, `:cloud`, `-cloud`, or community-namespace identities.
+- Ollama Cloud is one atomic bundle: public `GET https://ollama.com/api/tags`, the Cloud-filtered
+  Library search, every current Cloud family page, and `POST https://ollama.com/api/show` for the
+  union of exact list IDs and family-page IDs. Family pages provide the authoritative mapping from
+  Library tags such as `name:cloud` or `name-cloud` to direct Cloud API IDs. A missing page, list
+  detail, or union detail rejects the source.
+- Fixed first-party companions include both official `llms.txt` indexes, canonical Markdown for the
+  API introduction, list/show contracts, usage, authentication, Cloud routing, OpenAI/Anthropic
+  compatibility, web search, tool calling, thinking, and vision, plus raw OpenAPI, pricing, and
+  terms. The indexes are discovery sentinels: a new commercial, billing, quota, cache, or usage page
+  fails collection until reviewed.
+- Ollama documents the local base as `http://localhost:11434/api` and the same Cloud API at
+  `https://ollama.com/api`. The API is not strictly versioned, but is expected to remain stable and
+  backwards compatible; rare deprecations are announced in GitHub release notes. Release notes are
+  policy evidence, not a structured exhaustive model-history feed, so they do not create rows.
+- Refresh is deterministic and requires no LLM. It uses exact URLs and hosts, bounded response and
+  model counts, schema validation, semantic assertions, normalized page/API payloads, and atomic
+  dependency hashes. CI never authenticates or contacts an arbitrary local runtime.
 
-- Treat both official `llms.txt` indexes as discovery roots. The site index must continue to
-  expose pricing and the Library; the documentation index is scanned for new commercial,
-  usage, caching, quota, batch, and billing pages. A newly indexed relevant page fails the
-  collection until it is classified.
-- The non-exhaustive official Library publishes exact callable family names; omitted tags
-  select `latest`. Never synthesize size, quantization, `:cloud`, `-cloud`, or community IDs.
-  Community namespaces remain outside the reviewed catalog.
-- Cloud `/api/tags`, the Cloud-filtered Library, every Cloud family page, and `/api/show` for
-  every exact ID are one atomic source. The family pages publish the relationship between
-  Library tags such as `kimi-k3:cloud` and direct Cloud API IDs such as `kimi-k3`. A missing
-  page or detail rejects the source.
-- Exact catalog probes may add aliases or validate retired Cloud presence. Retain independent
-  Library and Cloud source/service-family evidence for exact overlaps.
-- Do not authenticate or contact arbitrary local runtimes in CI.
+## Identity, API contract, and resilient matching
+
+- The official List Models contract fixes `GET /api/tags`, operation ID `list`, `ListResponse`, and
+  `ModelSummary`. The collector owns `name`, `model`, `modified_at`, `size`, `digest`, and the detail
+  shape, and accepts the documented optional `remote_model` and `remote_host` fields. Those optional
+  transport fields do not manufacture a second catalog identity.
+- The official Show Model Details contract fixes `POST /api/show`, operation ID `show`,
+  `ShowRequest`, and `ShowResponse`. Capabilities, `model_info`, modification time, and exact parent
+  identity provide tasks, modalities, context/embedding limits, updates, and Cloud identity checks.
+  Documented optional parameters, license, and template fields are recognized but do not imply
+  provider-neutral semantics.
+- Raw OpenAPI is independently checked for version 3.1.0, current document version 0.1.0, local
+  server and bearer scheme, Tags/Show requests and responses, Generate/Chat/Embed routes, and native
+  prompt/output usage counters. New unrelated endpoints do not fail collection.
+- Additive top-level fields in list items or successful Show responses are accepted with bounded
+  source-contract diagnostics so ordinary API evolution does not interrupt refresh. Changes to
+  owned nested details, types, capability enums, identities, counts, status codes, or envelope shape
+  fail closed. Request-specific UUIDs in 410 retirement errors and unordered list ordering are
+  removed before hashing; family pages are reduced to exact Cloud tags, usage levels, and rate cards.
+- Library and Cloud are independent channels. Exact overlaps retain both source and service-family
+  evidence. A Cloud retirement is published only for an exact identity with no current Library
+  evidence; current Library presence keeps the global row active.
+
+## Model boundary
+
+- The public Library is curated and non-exhaustive. Ollama publishes no stable global endpoint for
+  every community namespace and every tag. `/api/tags` on a local daemon describes that operator's
+  installed state, not Ollama's global offer, and therefore cannot fill this boundary in CI.
+- Cloud docs say models may be deprecated and retired. Current list/page/detail probes capture
+  visible transitions and exact 410 responses, but no first-party public API exposes complete
+  disappeared-model history. Historical Cloud completeness remains intentionally bounded rather
+  than reconstructed from downstream catalogs.
 
 ## Public price coverage
 
-- The pricing page publishes account plans and allowance mechanics, not a general per-model
-  dollar rate book: Free is `$0`; Pro is `$20/month` or `$200/year`; Max is `$100/month` with
-  new sign-ups paused; Team is `$25/seat/month` with a five-seat minimum and included usage;
-  Enterprise is custom. Session limits reset every five hours, weekly limits every seven days,
-  and concurrency also varies by plan.
-- Individual allowance consumption depends on the model and the counts of input, cached-input,
-  and output tokens. Team usage consumes the seat allowance first and then the shared extra
-  usage balance at the model token rate. Pro and Max can add an extra usage balance. Exact
-  allowance sizes and an account's remaining balance are not public catalog facts.
-- Most Cloud model pages publish only an ordinal usage level (`low`, `medium`, `high`, or
-  `extra high`). Preserve that level as a raw allowance fact; it is neither a currency amount
-  nor a stable multiplier. The base price therefore remains `not_published`, while the raw fact
-  distinguishes this known allowance mechanic from a model with no commercial evidence.
-- `kimi-k3` is the current first-party exception: its page publishes extra-usage rates of
-  `$3.00 / 1M` input tokens, `$0.30 / 1M` cached tokens, and `$15.00 / 1M` output tokens, and
-  says that a Pro or Max subscription plus extra usage credits is required. Publish those
-  exact rates with `account_eligibility=extra_usage_balance`; do not apply them to included
-  allowance consumption or other models.
-- Local-only Library weights use `not_applicable` for Ollama provider billing. The operator's
-  compute and infrastructure cost is outside this provider price book. A hosted Cloud badge
-  without an exact dollar rate uses `not_published`; a bound usage level retains that state and
-  adds the non-monetary raw allowance fact.
-- Subscriptions automatically renew; taxes are account-specific; purchased extra-usage
-  credits expire after one year. These terms affect account-effective cost but do not bind to
-  a model meter.
+- The pricing page publishes plans and allowance mechanics, not a general per-model dollar price
+  book: Free is `$0`; Pro is `$20/month` or `$200/year`; Max is `$100/month` with new sign-ups
+  paused; Team is `$25/seat/month` with a five-seat minimum and included usage; Enterprise is
+  custom. Session limits reset every five hours, weekly limits every seven days, and concurrency
+  varies by plan.
+- Individual allowance consumption depends on model plus input, cached-input, and output tokens.
+  Most Cloud pages publish only `low`, `medium`, `high`, or `extra high` usage. Preserve this ordinal
+  label as a raw allowance fact; it is neither currency nor a stable multiplier. Those rows remain
+  `not_published` rather than receiving a guessed rate.
+- An exact per-model rate card can supply numeric facts when published; other Cloud rows retain their
+  official usage-level raw fact and remain `not_published`.
+- Local-only weights are `not_applicable` to Ollama provider billing; operator compute and
+  infrastructure are outside this price book. A Cloud offer without an exact dollar rate is
+  `not_published`. Plans, allowances, taxes, automatic renewal, one-year extra-credit expiry, and
+  custom Enterprise terms remain account-level or excluded reconciliation evidence.
 
-## Request, response, and account boundaries
+## Request, response, and cost boundary
 
-- The callable model and actual input/output volume come from each request and response.
-  Native generate/chat responses return `prompt_eval_count` and `eval_count`; streaming puts
-  them in the final `done: true` chunk. OpenAI compatibility accepts
-  `stream_options.include_usage`.
-- Native OpenAPI does not return cached-input token count even though the pricing page says
-  cached input affects usage. Consequently even `kimi-k3` cannot be reconstructed exactly
-  from a normal API response when cache reads occur.
-- Anthropic compatibility reports `usage.input_tokens` and `usage.output_tokens`, but Ollama
-  documents those counts as tokenizer approximations and does not support prompt caching.
-- Thinking controls, vision input, and client-executed tool follow-up requests can change work
-  performed or token volume. The first-party docs do not publish separate thinking- or
-  image-token accounting rules; tool execution itself is client-side. Do not invent monetary
-  meters from these feature flags.
-- The public official indexes document neither a Usage/Costs ledger API nor its freshness.
-  Settings can show account usage, but that UI is not a stable machine-readable source. Plan,
-  included allowance, balance, negotiated Enterprise terms, taxes, and credit expiry therefore
-  remain account-level facts unavailable to unauthenticated collection.
-- A gateway may estimate a published marginal token charge after the response where an exact
-  rate and all billed counters exist. It cannot derive Ollama's account-effective cost before
-  the request, and there is no documented cost API suitable for request-time cost-based load
-  balancing.
+- Native Generate/Chat responses return `prompt_eval_count` and `eval_count`; streaming emits them
+  in the final `done: true` chunk. OpenAI compatibility can include usage. Anthropic compatibility
+  reports approximate tokenizer counts and does not support prompt caching.
+- Native OpenAPI still exposes no cached-input token count even though pricing says cached input
+  affects usage. Consequently even Kimi K3 cannot be reconstructed exactly from a normal response
+  when cache reads occur. No public Usage/Costs ledger API or freshness contract is documented.
+- Thinking, vision input, and client-executed tool follow-ups can alter work or token volume. Ollama
+  publishes no separate thinking/image billing meter, and tool execution is client-side. A gateway
+  may estimate a published marginal token charge only when an exact rate and every billed counter
+  exist; it cannot derive account-effective allowance cost before a request.
 
-## Mapping
+## Comparator audit
 
-- Library and Cloud lifecycle are separate. A current Library family remains globally active
-  even if its Cloud channel retires.
-- Publish Cloud lifecycle only for an exact ID without current Library evidence. A
-  channel-scoped lifecycle resource is required before exposing suppressed Cloud retirement
-  history completely.
-- Sort the unordered Cloud list and remove only the request-specific retired-response UUID
-  before hashing. Normalize each family page to exact Cloud tags, usage levels, and rate cards;
-  discard navigation and page chrome before hashing.
-- Explicit Library/API update fields become `updated_date`, not release.
-- Reconciliation records every Cloud model as numeric, raw, or explicit non-numeric and records
-  account plans, allowances, unsupported counters, and undocumented billing surfaces as
-  excluded or unbound evidence. Collection fails on new indexed commercial pages, changed
-  price-card structure, or a newly documented cached-token field so the mapping is reviewed
-  rather than silently guessed.
-- Pricing evidence is ranked at the exact model-state boundary. A numeric `price_book` fact suppresses
-  only a lower-authority `commercial_terms` claim that the price is not published; it does not
-  override another amount, a local `not_applicable` disposition, or a different model. This resolves
-  Kimi K3's generic Library absence against its exact Cloud rate card while preserving the source
-  reconciliation record and conditional `extra_usage_balance` applicability.
-- The sole current unknown-priced row, `gemini-3-flash-preview`, is a retained observation from the
-  non-exhaustive Library with both Library and Cloud family evidence, but the current bundle has
-  neither a current Cloud rate/page nor local-weight evidence. That is insufficient to prove either
-  hosted `not_published` or local `not_applicable`; the row remains unknown until Ollama publishes
-  current channel or commercial evidence.
-
-## Kong AI Gateway
-
-- Kong uses `/api/chat` for streaming generation and `/api/embed` for non-streaming embeddings
-  on a configured upstream.
-- Compatibility requires the configured host, exact accepted tag, matching operation, and
-  current runtime availability.
-- Library families, Cloud IDs, and pulled local tags are different scope claims. General API
-  references and normalized tasks do not create per-model endpoints.
-- Do not manufacture tagged Kong examples from family rows or claim that an operator has pulled
-  them.
+- models.dev contains an Ollama Cloud generator, but its provider sync does not run it; the published
+  files are therefore manual comparison data. LiteLLM's Ollama entries primarily describe local
+  models and flatten provider cost to zero, which cannot represent Cloud plan and allowance
+  semantics. Other gateway catalogs describe their own routes, not Ollama's offer. None is production
+  authority.

@@ -19,7 +19,12 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
+import {
+  assertCoverage,
+  assertItemCount,
+  recognizeItems,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -35,6 +40,7 @@ interface Input {
   body: string;
   observedAt: string;
   catalogModels?: readonly RetailCatalogModel[];
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -210,6 +216,117 @@ const azureApiBundleSchema = z.object({
 const azureRetailBundleSchema = z.object({
   prices: z.array(z.unknown()).min(1),
 });
+
+const azurePortalTaskSchema = z.enum([
+  "audio-generation",
+  "automatic-speech-recognition",
+  "chat-completion",
+  "completions",
+  "data-generation",
+  "embeddings",
+  "image-classification",
+  "image-to-image",
+  "image-to-text",
+  "responses",
+  "speech-to-text",
+  "speech-translation",
+  "summarization",
+  "text-classification",
+  "text-generation",
+  "text-to-image",
+  "text-to-speech",
+  "translation",
+]);
+type AzurePortalTask = z.infer<typeof azurePortalTaskSchema>;
+const azurePortalTaskMap: Readonly<Record<AzurePortalTask, readonly ModelTask[]>> = {
+  "audio-generation": ["audio_generation"],
+  "automatic-speech-recognition": ["transcription"],
+  "chat-completion": ["text_generation"],
+  completions: ["text_generation"],
+  "data-generation": ["text_generation"],
+  embeddings: ["embeddings"],
+  "image-classification": ["classification"],
+  "image-to-image": ["image_generation"],
+  "image-to-text": ["text_generation"],
+  responses: ["text_generation"],
+  "speech-to-text": ["transcription"],
+  "speech-translation": ["translation"],
+  summarization: ["text_generation"],
+  "text-classification": ["classification"],
+  "text-generation": ["text_generation"],
+  "text-to-image": ["image_generation"],
+  "text-to-speech": ["speech_synthesis"],
+  translation: ["translation"],
+};
+const azurePortalInputModalitySchema = z.enum(["audio", "image", "pdf", "text"]);
+const azurePortalOutputModalitySchema = z.enum(["audio", "embeddings", "image", "text"]);
+const azurePortalLifecycleSchema = z.enum([
+  "Deprecated",
+  "Generally Available",
+  "Generally available",
+  "Legacy",
+  "Preview",
+  "Retired",
+]);
+const azurePortalDateSchema = z.iso.datetime({ offset: true }).nullable().optional();
+const azurePortalModelSchema = z.object({
+  entityResourceName: z.string().min(1),
+  entityId: z.string().min(1),
+  kind: z.literal("Versioned"),
+  properties: z.object({
+    id: z.string().min(3),
+    name: modelIdSchema,
+    isAnonymous: z.literal(false),
+  }),
+  annotations: z.object({
+    archived: z.literal(false),
+    description: z.string().nullable().optional(),
+    labels: z.array(z.string()).refine((labels) => labels.includes("latest")),
+    tags: z.object({
+      deploymentOptions: z.string().refine((value) =>
+        value
+          .split(",")
+          .map((item) => item.trim())
+          .includes("UnifiedEndpointMaaS"),
+      ),
+    }),
+    systemCatalogData: z.object({
+      publisher: z.string().min(1).nullable().optional(),
+      displayName: z.string().min(1),
+      summary: z.string().min(1).nullable().optional(),
+      inferenceTasks: z.array(azurePortalTaskSchema).min(1),
+      inputModalities: z.array(azurePortalInputModalitySchema).nullable().optional(),
+      outputModalities: z.array(azurePortalOutputModalitySchema).nullable().optional(),
+      modelCapabilities: z.array(z.string().min(1)).nullable().optional(),
+      featuresSupported: z.array(z.string().min(1)).nullable().optional(),
+      supportsToolCalling: z.boolean().nullable().optional(),
+      enableBatch: z.boolean().nullable().optional(),
+      textContextWindow: z.number().int().positive().nullable().optional(),
+      maxInputTokens: z.number().int().positive().nullable().optional(),
+      maxOutputTokens: z.number().int().positive().nullable().optional(),
+      lifecycle: azurePortalLifecycleSchema.nullable().optional(),
+      preview: z.boolean().nullable().optional(),
+      inferenceLegacyDate: azurePortalDateSchema,
+      inferenceDeprecationDate: azurePortalDateSchema,
+      inferenceRetirementDate: azurePortalDateSchema,
+      isDirectFromAzure: z.boolean().nullable().optional(),
+      deploymentOptions: z.array(z.string().min(1)).nullable().optional(),
+      deploymentSku: z
+        .array(
+          z.object({
+            name: z.string().min(1),
+            locations: z.array(z.string().regex(/^[A-Za-z0-9-]+$/)),
+          }),
+        )
+        .nullable()
+        .optional(),
+      azureOpenAIModelName: z.string().min(1).nullable().optional(),
+      azureOpenAIVersion: z.string().min(1).nullable().optional(),
+    }),
+  }),
+});
+type AzurePortalModel = z.infer<typeof azurePortalModelSchema>;
+const azurePortalBundleSchema = z.object({ models: z.array(z.unknown()).min(1) });
 
 const azurePublicPriceAmountSchema = z.object({
   regional: z.record(z.string().min(1), decimalValue),
@@ -997,6 +1114,213 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
   }));
   assertItemCount("Azure model catalog", values.length, extractor.minModels, extractor.maxModels);
   return values.sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+function azurePortalModelId(item: unknown): string | undefined {
+  if (item === null || typeof item !== "object") return undefined;
+  const properties = Reflect.get(item, "properties");
+  if (properties === null || typeof properties !== "object") return undefined;
+  const name = Reflect.get(properties, "name");
+  return typeof name === "string" ? name : undefined;
+}
+
+function azurePortalIdentity(item: AzurePortalModel): { id: string; version: string } {
+  const separator = item.properties.id.lastIndexOf(":");
+  if (separator < 1 || separator === item.properties.id.length - 1)
+    throw new Error("Azure portal model ID omitted its exact version");
+  const id = item.properties.id.slice(0, separator);
+  const version = item.properties.id.slice(separator + 1);
+  if (
+    !modelIdSchema.safeParse(id).success ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(version) ||
+    item.properties.name !== id
+  )
+    throw new Error("Azure portal model identity changed shape");
+  return { id, version };
+}
+
+function azurePortalServiceFamilies(
+  catalogModels: readonly RetailCatalogModel[],
+  id: string,
+  version: string,
+): string[] | undefined {
+  const candidates = catalogModels.filter((model) => model.model_id === id);
+  const exact = candidates.filter((model) => model.version === version);
+  const versioned = candidates.filter((model) => model.version !== undefined);
+  const eligible = exact.some((model) => model.service_families !== undefined)
+    ? exact
+    : versioned.some((model) => model.service_families !== undefined)
+      ? versioned
+      : candidates;
+  const families = new Map<string, string[]>();
+  for (const candidate of eligible) {
+    if (candidate.service_families === undefined) continue;
+    const value = [...new Set(candidate.service_families)].sort();
+    families.set(stableCompactJson(value), value);
+  }
+  return families.size === 1 ? [...families.values()][0] : undefined;
+}
+
+function azurePortalFeatureSet(item: AzurePortalModel): Set<string> {
+  const catalog = item.annotations.systemCatalogData;
+  return new Set(
+    [...(catalog.modelCapabilities ?? []), ...(catalog.featuresSupported ?? [])].map((value) =>
+      value.toLowerCase().replaceAll("_", "-"),
+    ),
+  );
+}
+
+function azurePortalBoolean(
+  explicit: boolean | null | undefined,
+  observed: boolean,
+): boolean | "unknown" {
+  if (explicit === null || explicit === undefined) return observed ? true : "unknown";
+  return observed && !explicit ? "unknown" : explicit;
+}
+
+function azurePortalDate(value: string | null | undefined): string | undefined {
+  return value === null || value === undefined ? undefined : value.slice(0, 10);
+}
+
+function azurePortalStatus(
+  item: AzurePortalModel,
+  observedAt: string,
+): Pick<ProviderModel, "deprecated_at" | "release_stage" | "retired_at" | "status"> {
+  const catalog = item.annotations.systemCatalogData;
+  const legacyAt = azurePortalDate(catalog.inferenceLegacyDate);
+  const deprecatedAt = azurePortalDate(catalog.inferenceDeprecationDate);
+  const retiredAt = azurePortalDate(catalog.inferenceRetirementDate);
+  const today = observedAt.slice(0, 10);
+  let status: ProviderModel["status"] = "unknown";
+  let releaseStage: ProviderModel["release_stage"] = "unknown";
+  if (catalog.lifecycle === "Generally Available" || catalog.lifecycle === "Generally available") {
+    status = "active";
+    releaseStage = "stable";
+  } else if (catalog.lifecycle === "Preview" || catalog.preview === true) {
+    status = "active";
+    releaseStage = "preview";
+  } else if (catalog.lifecycle === "Legacy") {
+    status = "legacy";
+  } else if (catalog.lifecycle === "Deprecated") {
+    status = "deprecated";
+  } else if (catalog.lifecycle === "Retired") {
+    status = "retired";
+  }
+  if (legacyAt !== undefined && legacyAt <= today) status = "legacy";
+  if (deprecatedAt !== undefined && deprecatedAt <= today) status = "deprecated";
+  if (retiredAt !== undefined && retiredAt <= today) status = "retired";
+  return {
+    status,
+    release_stage: releaseStage,
+    ...(deprecatedAt === undefined ? {} : { deprecated_at: deprecatedAt }),
+    ...(retiredAt === undefined ? {} : { retired_at: retiredAt }),
+  };
+}
+
+export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
+  const extractor = input.source.extractor;
+  if (extractor.kind !== "azure-portal-catalog")
+    throw new Error("Wrong Azure portal catalog extractor");
+  if (input.catalogModels === undefined)
+    throw new Error("Azure portal supplement requires the public catalog");
+  const bundle = azurePortalBundleSchema.parse(JSON.parse(input.body));
+  const rows = recognizeItems({
+    label: "Azure portal model",
+    items: bundle.models,
+    schema: azurePortalModelSchema,
+    modelId: azurePortalModelId,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
+  const models = new Map<string, ProviderModel>();
+  for (const item of rows) {
+    const { id, version } = azurePortalIdentity(item);
+    const documented = input.catalogModels.some(
+      (model) => model.model_id === id && model.version === version,
+    );
+    const serviceFamilyValues = azurePortalServiceFamilies(input.catalogModels, id, version);
+    if (serviceFamilyValues === undefined) continue;
+    const catalog = item.annotations.systemCatalogData;
+    const lifecycle = documented
+      ? ({
+          status: "unknown",
+          release_stage: "unknown",
+        } satisfies Pick<ProviderModel, "release_stage" | "status">)
+      : azurePortalStatus(item, input.observedAt);
+    const featureSet = azurePortalFeatureSet(item);
+    const hasFeature = (...values: string[]): boolean =>
+      values.some((value) => featureSet.has(value));
+    const tasks = orderedTasks(
+      item.annotations.systemCatalogData.inferenceTasks.flatMap((task) => [
+        ...azurePortalTaskMap[task],
+      ]),
+    );
+    const modalities = {
+      input: unique((catalog.inputModalities ?? []).map((value): Modality => value)),
+      output: unique(
+        (catalog.outputModalities ?? []).map(
+          (value): Modality => (value === "embeddings" ? "embedding" : value),
+        ),
+      ),
+    };
+    const availability = [
+      ...new Map(
+        (catalog.deploymentSku ?? []).flatMap(({ name, locations }) =>
+          locations.map((region): [string, NonNullable<ProviderModel["availability"]>[number]] => [
+            `${name}\0${region.toLowerCase()}`,
+            { region: region.toLowerCase(), deployment_type: name },
+          ]),
+        ),
+      ).values(),
+    ].sort((left, right) =>
+      `${left.deployment_type}\0${left.region}`.localeCompare(
+        `${right.deployment_type}\0${right.region}`,
+      ),
+    );
+    const model: ProviderModel = {
+      ...base(input, id, version),
+      name: catalog.displayName,
+      description: catalog.summary ?? item.annotations.description ?? undefined,
+      service_families: serviceFamilyValues,
+      tasks,
+      modalities,
+      capabilities: {
+        ...unknownCapabilities(),
+        reasoning: hasFeature("reasoning") ? true : "unknown",
+        tool_call: azurePortalBoolean(
+          catalog.supportsToolCalling,
+          hasFeature("tool-calling", "function-calling"),
+        ),
+        streaming: hasFeature("streaming") ? true : "unknown",
+        batch: azurePortalBoolean(catalog.enableBatch, hasFeature("batch")),
+        fine_tuning: hasFeature("fine-tuning") ? true : "unknown",
+        computer_use: hasFeature("computer-use") ? true : "unknown",
+      },
+      limits: {
+        ...(catalog.textContextWindow === undefined || catalog.textContextWindow === null
+          ? {}
+          : { context_tokens: catalog.textContextWindow }),
+        ...(catalog.maxInputTokens === undefined || catalog.maxInputTokens === null
+          ? {}
+          : { max_input_tokens: catalog.maxInputTokens }),
+        ...(catalog.maxOutputTokens === undefined || catalog.maxOutputTokens === null
+          ? {}
+          : { max_output_tokens: catalog.maxOutputTokens }),
+      },
+      ...lifecycle,
+      pricing_state: "unknown",
+      ...(availability.length === 0 ? {} : { availability }),
+    };
+    if (models.has(model.uid)) throw new Error(`Azure portal repeated model ${model.uid}`);
+    models.set(model.uid, model);
+  }
+  const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  assertItemCount(
+    "Azure portal catalog supplement",
+    values.length,
+    extractor.minModels,
+    extractor.maxModels,
+  );
+  return values;
 }
 
 const azureClaudeMonths = new Map([
@@ -1897,15 +2221,21 @@ const azurePublicModelAliases = new Map<string, string>([
 
 function azurePublicPage(rawUrl: string): AzurePublicPricingPage {
   const url = new URL(rawUrl);
-  const page =
-    url.protocol === "https:" &&
-    url.hostname === "azure.microsoft.com" &&
-    url.search === "" &&
-    url.hash === ""
-      ? azurePublicPricingPages.get(url.pathname)
-      : undefined;
-  if (page === undefined) throw new Error("Azure public pricing bundle contained an unknown page");
-  return page;
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "azure.microsoft.com" ||
+    url.search !== "" ||
+    url.hash !== ""
+  )
+    throw new Error("Azure public pricing bundle contained an unknown page");
+  const page = azurePublicPricingPages.get(url.pathname);
+  if (page !== undefined) return page;
+  const family = url.pathname.match(
+    /^\/en-us\/pricing\/details\/ai-foundry-models\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/,
+  )?.[1];
+  if (family === undefined || ["aoai", "fine-tuning-models"].includes(family))
+    throw new Error("Azure public pricing bundle contained an unknown page");
+  return { name: family, productName: "" };
 }
 
 function azurePublicAlias(label: string): string | undefined {

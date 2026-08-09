@@ -1,0 +1,72 @@
+{
+  "index": {
+    "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards.md",
+    "body": "# Model cards"
+  },
+  "documents": [
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.md",
+      "body": "Information previously on this page has moved to [models at a glance](model-cards.md)."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListFoundationModels.md",
+      "body": "GET /foundation-models?byProvider={{byProvider}} HTTP/1.1\n{ \"modelSummaries\": [{ \"modelArn\": \"string\", \"modelId\": \"string\" }] }"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_FoundationModelSummary.md",
+      "body": "** customizationsSupported **\nValid Values: `FINE_TUNING | CONTINUED_PRE_TRAINING | DISTILLATION`\n** inferenceTypesSupported **\nValid Values: `ON_DEMAND | PROVISIONED`\n** inputModalities **\nValid Values: `TEXT | IMAGE | EMBEDDING`\n** outputModalities **\nValid Values: `TEXT | IMAGE | EMBEDDING`"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_FoundationModelLifecycle.md",
+      "body": "** status **\nValid Values: `ACTIVE | LEGACY`\n** endOfLifeTime **\n** legacyTime **\n** publicExtendedAccessTime ** is the portion where users should expect higher pricing.\n** startOfLifeTime **"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.md",
+      "body": "{ \"performanceConfig\": {}, \"serviceTier\": {}, \"usage\": { \"cacheDetails\": [], \"cacheReadInputTokens\": 0, \"cacheWriteInputTokens\": 0, \"inputTokens\": 0, \"outputTokens\": 0, \"totalTokens\": 0 } }"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.md",
+      "body": "POST /model/{{modelId}}/count-tokens HTTP/1.1\n{ \"inputTokens\": number }"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.md",
+      "body": "Amazon Bedrock offers four service tiers for model inference: Reserved, Priority, Standard, and Flex. Reserved automatically overflows to the Standard tier. \"service\\_tier\" : \"reserved | priority | default | flex\". ResolvedServiceTier shows the actual tier that served your requests."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.md",
+      "body": "Converse accepts `serviceTier`. Usage includes `cacheReadInputTokens`, `cacheWriteInputTokens`, \"inputTokens\", and \"outputTokens\"."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.md",
+      "body": "The response includes `cacheDetails`. The `inputTokens` field represents only the non-cached input tokens. total input tokens = inputTokens + cacheReadInputTokens + cacheWriteInputTokens"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/count-tokens.md",
+      "body": "CountTokens doesn't incur charges. Token counting is model-specific and will match the token count that would be charged. Mantle uses /anthropic/v1/messages/count_tokens."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.md",
+      "body": "Model invocation logging is disabled by default and is only supported for calls made through the `bedrock-runtime` endpoint. Calls through the `bedrock-mantle` endpoint, are not currently captured.\n| requestId | Description |\n| region | Description |\n| operation | Description |\n| modelId | Description |\n| identity.arn | Description |\n| input.inputTokenCount | Description |\n| output.outputTokenCount | Description |"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/cost-management.md",
+      "body": "Invocation logs only provide per-request detail. The finest grain is per usage type per day; they do not produce a per-request row."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/cost-mgmt-understanding-cur-data.md",
+      "body": "Input tokens, Output tokens, Cache read tokens, and Cache write tokens are separate. Both reports aggregate Amazon Bedrock cost by usage type over an hour or a day; neither carries a per-`requestId` identifier."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.md",
+      "body": "The Price List Query API and Price List Bulk API provide pricing details for informational purposes only. AWS charges the prices on the *service pricing page*."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/bulk-api-reading-price-list-files.md",
+      "body": "The service index includes \"currentVersionUrl\", the URL for the most up-to-date service price list file."
+    },
+    {
+      "url": "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/view-billing-dashboard.md",
+      "body": "It can take up to 24 hours for data to appear and data is refreshed at least once every 24 hours."
+    }
+  ]
+}

@@ -19,6 +19,30 @@ type AzureModelsTransport = Extract<
   NonNullable<SourceManifest["transport"]>,
   { kind: "azure-models" }
 >;
+type AzurePortalModelsTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "azure-portal-models" }
+>;
+type GeminiModelsTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "gemini-models" }
+>;
+type CohereModelsTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "cohere-models" }
+>;
+type DashscopeDeployableModelsTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "dashscope-deployable-models" }
+>;
+type FeatherlessModelsTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "featherless-models" }
+>;
+type GoogleModelGardenTransport = Extract<
+  NonNullable<SourceManifest["transport"]>,
+  { kind: "google-model-garden" }
+>;
 
 const azureTokenSchema = z.object({ access_token: z.string().min(1) });
 const azureArmPageSchema = z.object({
@@ -34,6 +58,23 @@ const azurePricesPageSchema = z.object({
   Items: z.array(z.unknown()),
   NextPageLink: z.string().nullable().optional(),
 });
+const emptyAzurePortalErrorMapSchema = z
+  .record(z.string(), z.unknown())
+  .refine((value) => Object.keys(value).length === 0, "Azure portal search was partial");
+const azurePortalPageSchema = z.object({
+  indexEntitiesResponse: z.object({
+    totalCount: z.number().int().nonnegative(),
+    value: z.array(z.unknown()),
+    continuationToken: z.string().nullable(),
+    resourcesNotQueriedReasons: emptyAzurePortalErrorMapSchema,
+    numberOfEntityContainersNotQueried: z.null(),
+    shardErrors: z.null(),
+  }),
+  regionalErrors: emptyAzurePortalErrorMapSchema,
+  resourceSkipReasons: emptyAzurePortalErrorMapSchema,
+  shardErrors: emptyAzurePortalErrorMapSchema,
+  numberOfResourcesNotIncludedInSearch: z.literal(0),
+});
 const googleServiceAccountSchema = z.object({
   type: z.literal("service_account"),
   project_id: z.string().min(1),
@@ -47,7 +88,44 @@ const googleModelsPageSchema = z.object({
   publisherModels: z.array(z.unknown()).default([]),
   nextPageToken: z.string().min(1).optional(),
 });
+const geminiModelsPageSchema = z.object({
+  models: z.array(z.unknown()).default([]),
+  nextPageToken: z.string().min(1).optional(),
+});
+const cohereModelsPageSchema = z.object({
+  models: z.array(z.unknown()),
+  next_page_token: z.string().min(1).optional(),
+});
+const dashscopeDeploymentPageSchema = z.strictObject({
+  request_id: z.string().min(1).optional(),
+  output: z.strictObject({
+    page_no: z.number().int().min(1),
+    page_size: z.number().int().min(1).max(100),
+    total: z.number().int().nonnegative(),
+    models: z.array(
+      z.strictObject({
+        model_name: modelIdSchema,
+        plans: z.array(
+          z.strictObject({
+            plan: z.enum(["mu", "cu", "ptu", "ptu_v2", "lora"]),
+            templates: z.array(z.unknown()).optional(),
+          }),
+        ),
+      }),
+    ),
+  }),
+});
 const huggingFaceModelsPageSchema = z.array(z.unknown());
+const featherlessModelsPageSchema = z.object({
+  data: z.array(z.unknown()),
+  total: z.number().int().nonnegative(),
+  pagination: z.object({
+    current_page: z.number().int().positive(),
+    per_page: z.number().int().positive(),
+    total_items: z.number().int().nonnegative(),
+    total_pages: z.number().int().nonnegative(),
+  }),
+});
 const ollamaListSchema = z
   .object({
     models: z.array(z.object({ model: modelIdSchema }).passthrough()),
@@ -543,6 +621,119 @@ async function fetchAzureRetailPrices(source: SourceManifest): Promise<string> {
   return body;
 }
 
+async function fetchAzurePortalModels(
+  source: SourceManifest,
+  transport: AzurePortalModelsTransport,
+): Promise<string> {
+  const extractor = source.extractor;
+  if (extractor.kind !== "azure-portal-catalog")
+    throw new Error("Azure portal transport requires the portal catalog extractor");
+  const url = checkedUrl(source.url, source);
+  if (
+    url.href !== "https://ai.azure.com/api/westus2/ux/v1.0/entities/crossRegion" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== ""
+  )
+    throw new Error("Azure portal model search URL is not reviewed");
+  if (
+    transport.registries.length === 0 ||
+    transport.registries.length > 32 ||
+    new Set(transport.registries).size !== transport.registries.length ||
+    transport.registries.some((registry) => !/^[A-Za-z0-9-]+$/.test(registry))
+  )
+    throw new Error("Azure portal registry set is invalid");
+  if (
+    !Number.isInteger(transport.pageSize) ||
+    transport.pageSize < 1 ||
+    transport.pageSize > 100 ||
+    !Number.isInteger(transport.maxPages) ||
+    transport.maxPages < 1 ||
+    !Number.isInteger(transport.maxModels) ||
+    transport.maxModels < transport.pageSize
+  )
+    throw new Error("Azure portal pagination limits are invalid");
+
+  const models: unknown[] = [];
+  const seenTokens = new Set<string>();
+  let continuationToken: string | undefined;
+  let expectedTotal: number | undefined;
+  for (let pageCount = 0; pageCount < transport.maxPages; pageCount += 1) {
+    const requestBody = JSON.stringify({
+      resourceIds: transport.registries.map((resourceId) => ({
+        resourceId,
+        entityContainerType: "Registry",
+      })),
+      indexEntitiesRequest: {
+        filters: [
+          { field: "kind", operator: "eq", values: ["Versioned"] },
+          { field: "properties/isAnonymous", operator: "ne", values: ["true"] },
+          { field: "annotations/archived", operator: "ne", values: ["true"] },
+          { field: "properties/userProperties/is-promptflow", operator: "notexists" },
+          { field: "labels", operator: "eq", values: ["latest"] },
+          {
+            field: "annotations/tags/deploymentOptions",
+            operator: "contains",
+            values: ["UnifiedEndpointMaaS"],
+          },
+          { field: "type", operator: "eq", values: ["models"] },
+        ],
+        freeTextSearch: "",
+        order: [{ field: "usage/popularity", direction: "Desc" }],
+        pageSize: transport.pageSize,
+        facets: [],
+        includeTotalResultCount: true,
+        searchBuilder: "AppendPrefix",
+        ...(continuationToken === undefined ? {} : { continuationToken }),
+      },
+    });
+    const response = await fetchPost(source, requestBody);
+    if (response.status !== 200)
+      throw new Error(`Azure portal model search HTTP ${response.status}`);
+    let value: unknown;
+    try {
+      value = JSON.parse(response.body);
+    } catch {
+      throw new Error("Azure portal model search returned invalid JSON");
+    }
+    const page = azurePortalPageSchema.parse(value);
+    const { totalCount, value: items, continuationToken: rawToken } = page.indexEntitiesResponse;
+    if (expectedTotal === undefined) {
+      expectedTotal = totalCount;
+      assertItemCount(
+        "Azure portal model search",
+        expectedTotal,
+        extractor.minModels,
+        extractor.maxModels,
+      );
+      if (expectedTotal > transport.maxModels)
+        throw new Error("Azure portal model search exceeded item limit");
+    } else if (totalCount !== expectedTotal) {
+      throw new Error("Azure portal model-search total changed during pagination");
+    }
+    if (items.length === 0 && models.length < expectedTotal)
+      throw new Error("Azure portal model search returned an empty intermediate page");
+    models.push(...items);
+    if (models.length > expectedTotal || models.length > transport.maxModels)
+      throw new Error("Azure portal model search exceeded its declared total");
+    const next = rawToken === null || rawToken.trim() === "" ? undefined : rawToken;
+    if (models.length === expectedTotal) {
+      if (next !== undefined)
+        throw new Error("Azure portal model search continued past its declared total");
+      const body = JSON.stringify({ models });
+      if (Buffer.byteLength(body) > source.maxResponseBytes)
+        throw new Error("Azure portal model bundle exceeded byte limit");
+      return body;
+    }
+    if (next === undefined)
+      throw new Error("Azure portal model search ended before its declared total");
+    if (seenTokens.has(next)) throw new Error("Azure portal model search repeated a page token");
+    seenTokens.add(next);
+    continuationToken = next;
+  }
+  throw new Error("Azure portal model search exceeded page limit");
+}
+
 function base64url(value: string): string {
   return Buffer.from(value).toString("base64url");
 }
@@ -597,21 +788,42 @@ async function googleAccessToken(
 
 async function fetchGoogleModelGarden(
   source: SourceManifest,
-  publishers: string[],
+  transport: GoogleModelGardenTransport,
 ): Promise<string> {
+  if (
+    !Number.isInteger(transport.pageSize) ||
+    transport.pageSize <= 0 ||
+    !Number.isInteger(transport.maxPages) ||
+    transport.maxPages <= 0 ||
+    !Number.isInteger(transport.maxModelsPerPublisher) ||
+    transport.maxModelsPerPublisher <= 0 ||
+    !Number.isInteger(transport.concurrency) ||
+    transport.concurrency <= 0
+  )
+    throw new Error("Invalid Model Garden transport bounds");
   const credential = await googleAccessToken(source);
-  const results = await Promise.all(
-    publishers.map(async (publisher) => {
+  const results = await mapConcurrent(
+    transport.publishers,
+    transport.concurrency,
+    async (publisher) => {
       if (!/^[a-z0-9-]+$/.test(publisher)) throw new Error("Invalid Model Garden publisher");
       const models: unknown[] = [];
       let pageToken: string | undefined;
-      for (let pageCount = 0; pageCount < 20; pageCount += 1) {
+      const requestedPageTokens = new Set<string>();
+      for (let pageCount = 0; pageCount < transport.maxPages; pageCount += 1) {
+        if (pageToken !== undefined) {
+          if (requestedPageTokens.has(pageToken))
+            throw new Error("Model Garden publisher repeated a page token");
+          requestedPageTokens.add(pageToken);
+        }
         const url = new URL(
           `/v1beta1/publishers/${publisher}/models`,
           "https://aiplatform.googleapis.com",
         );
-        url.searchParams.set("pageSize", "300");
+        url.searchParams.set("pageSize", String(transport.pageSize));
         url.searchParams.set("view", "PUBLISHER_MODEL_VIEW_BASIC");
+        url.searchParams.set("languageCode", "en");
+        url.searchParams.set("listAllVersions", "false");
         if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
         const page = googleModelsPageSchema.parse(
           await cloudJson("Google", url, source.maxResponseBytes, [
@@ -621,13 +833,15 @@ async function fetchGoogleModelGarden(
           ]),
         );
         models.push(...page.publisherModels);
-        if (models.length > 5_000) throw new Error("Model Garden publisher exceeded item limit");
+        if (models.length > transport.maxModelsPerPublisher)
+          throw new Error("Model Garden publisher exceeded item limit");
         pageToken = page.nextPageToken;
         if (pageToken === undefined) break;
-        if (pageCount === 19) throw new Error("Model Garden publisher exceeded page limit");
+        if (pageCount === transport.maxPages - 1)
+          throw new Error("Model Garden publisher exceeded page limit");
       }
       return { publisher, models };
-    }),
+    },
   );
   if (results.every((result) => result.models.length === 0))
     throw new Error("Vertex Model Garden API returned no models");
@@ -775,14 +989,14 @@ function linkedUrls(body: string, source: SourceManifest, pathPattern: RegExp): 
     }
   };
   const indexFormat = crawl.indexFormat ?? source.format;
-  if (indexFormat === "markdown")
+  if (indexFormat === "markdown" || indexFormat === "mixed")
     for (const match of body.matchAll(/(?<!!)\[[^\]]+\]\(([^)\s]+)\)/g)) add(match[1]);
   if (indexFormat === "typescript")
     for (const match of body.matchAll(
       /^\s*import\s+(?:[^'"\n]+\s+from\s+)?['"]([^'"]+)['"];?\s*$/gm,
     ))
       add(match[1]);
-  if (indexFormat === "html") {
+  if (indexFormat === "html" || indexFormat === "mixed") {
     const $ = load(body);
     $("a[href]").each((_index, element) => add($(element).attr("href")));
   }
@@ -849,6 +1063,126 @@ function huggingFaceModelsUrl(raw: string, source: SourceManifest): URL {
   return url;
 }
 
+function huggingFacePartnerUrl(source: SourceManifest, provider: string): URL {
+  const base = checkedUrl(source.url, source);
+  if (
+    base.hostname !== "huggingface.co" ||
+    base.port !== "" ||
+    base.username !== "" ||
+    base.password !== "" ||
+    base.pathname !== "/api/partners/hf-inference/models" ||
+    base.hash !== "" ||
+    base.searchParams.size !== 1 ||
+    base.searchParams.get("status") !== "live" ||
+    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(provider)
+  )
+    throw new Error("Hugging Face partner transport left the reviewed API contract");
+  const url = new URL(base);
+  url.pathname = `/api/partners/${provider}/models`;
+  return url;
+}
+
+async function fetchHuggingFacePartnerModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  const extractor = source.extractor;
+  const crawl = source.linkedDocuments;
+  const taskIndex = crawl?.documents?.[0];
+  if (
+    transport?.kind !== "huggingface-partner-models" ||
+    extractor.kind !== "huggingface-mapping" ||
+    !Number.isInteger(transport.concurrency) ||
+    transport.concurrency < 1 ||
+    transport.concurrency > transport.providers.length ||
+    transport.providers.length > 64 ||
+    !Number.isSafeInteger(transport.maxPartnerBytes) ||
+    transport.maxPartnerBytes < 1 ||
+    transport.maxPartnerBytes > source.maxResponseBytes ||
+    new Set(transport.providers).size !== transport.providers.length ||
+    transport.providers.join("\0") !== extractor.providers.join("\0") ||
+    crawl === undefined ||
+    crawl.indexFormat !== "mixed" ||
+    crawl.requestSuffix !== ".md" ||
+    crawl.discoverySuffix !== undefined ||
+    crawl.nestedIndexes !== undefined ||
+    crawl.documents?.length !== 1 ||
+    taskIndex === undefined ||
+    taskIndex.id !== "task-index" ||
+    taskIndex.format !== "markdown" ||
+    !Number.isSafeInteger(crawl.maxDocumentBytes) ||
+    (crawl.maxDocumentBytes ?? 0) < 1
+  )
+    throw new Error("Invalid Hugging Face partner transport");
+  const taskIndexKey = `${source.id}/${taskIndex.id}`;
+  const taskIndexUrl = checkedUrl(taskIndex.url, source);
+  if (
+    taskIndexUrl.hostname !== "huggingface.co" ||
+    taskIndexUrl.port !== "" ||
+    taskIndexUrl.username !== "" ||
+    taskIndexUrl.password !== "" ||
+    taskIndexUrl.pathname !== "/docs/inference-providers/en/tasks/index.md" ||
+    taskIndexUrl.search !== "" ||
+    taskIndexUrl.hash !== ""
+  )
+    throw new Error("Hugging Face task index left the reviewed documentation path");
+  const [partners, taskIndexPayload] = await Promise.all([
+    mapConcurrent(transport.providers, transport.concurrency, async (provider) => {
+      const key = `${source.id}/${provider}`;
+      const url = huggingFacePartnerUrl(source, provider);
+      const payload = await fetchPayload(
+        requestSource(source, key, url, "json", transport.maxPartnerBytes),
+      );
+      const models = z.record(z.string(), z.unknown()).parse(JSON.parse(payload.body));
+      return { provider, models, payload, key };
+    }),
+    fetchPayload(
+      requestSource(
+        source,
+        taskIndexKey,
+        taskIndexUrl,
+        taskIndex.format,
+        taskIndex.maxResponseBytes,
+      ),
+    ),
+  ]);
+  const taskUrls = linkedDocumentUrls(taskIndexPayload.body, {
+    ...source,
+    url: taskIndexUrl.href,
+  });
+  const taskDocuments = await mapConcurrent(taskUrls, crawl.concurrency, async (url) => {
+    const slug = /\/([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/.exec(url.pathname)?.[1];
+    if (slug === undefined)
+      throw new Error("Hugging Face task document left the reviewed slug grammar");
+    const key = `${source.id}/task/${slug}`;
+    const payload = await fetchPayload(
+      requestSource(
+        source,
+        key,
+        url,
+        "markdown",
+        crawl.maxDocumentBytes ?? source.maxResponseBytes,
+      ),
+    );
+    return { key, url: url.href, payload };
+  });
+  const body = JSON.stringify({
+    partners: partners.map(({ provider, models }) => ({ provider, models })),
+    documents: taskDocuments.map(({ url, payload }) => ({ url, body: payload.body })),
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Hugging Face partner bundle exceeded byte limit");
+  return {
+    body,
+    contentHash: sha256(body),
+    etag: undefined,
+    lastModified: undefined,
+    dependencies: [
+      ...partners.map(({ key, payload }) => observation(key, payload)),
+      observation(taskIndexKey, taskIndexPayload),
+      ...taskDocuments.map(({ key, payload }) => observation(key, payload)),
+    ],
+  };
+}
+
 async function fetchHuggingFacePage(
   source: SourceManifest,
   key: string,
@@ -895,10 +1229,399 @@ async function fetchHuggingFaceModels(source: SourceManifest): Promise<FetchResu
   };
 }
 
+function featherlessModelsUrl(
+  source: SourceManifest,
+  transport: FeatherlessModelsTransport,
+  page: number,
+): URL {
+  const url = checkedUrl(source.url, source);
+  const allowed = new Set(["status", "page", "per_page"]);
+  if (
+    url.hostname !== "api.featherless.ai" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/v1/models" ||
+    url.hash !== "" ||
+    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+    url.searchParams.get("status") !== "active"
+  )
+    throw new Error("Featherless pagination left the reviewed active-model query");
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("per_page", String(transport.pageSize));
+  return url;
+}
+
+async function fetchFeatherlessModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  if (transport?.kind !== "featherless-models")
+    throw new Error("Invalid Featherless models transport");
+  if (
+    !Number.isInteger(transport.pageSize) ||
+    transport.pageSize < 1 ||
+    transport.pageSize > 1000 ||
+    !Number.isInteger(transport.maxPages) ||
+    transport.maxPages < 1 ||
+    !Number.isInteger(transport.maxModels) ||
+    transport.maxModels < 1 ||
+    !Number.isInteger(transport.concurrency) ||
+    transport.concurrency < 1 ||
+    !Number.isInteger(transport.maxPageBytes) ||
+    transport.maxPageBytes < 1
+  )
+    throw new Error("Invalid Featherless pagination bounds");
+  const fetchPage = async (
+    page: number,
+  ): Promise<{
+    key: string;
+    payload: FetchPayload;
+    parsed: z.infer<typeof featherlessModelsPageSchema>;
+  }> => {
+    const key = `${source.id}/page-${page}`;
+    const url = featherlessModelsUrl(source, transport, page);
+    const payload = await fetchPayload(
+      requestSource(source, key, url, "json", transport.maxPageBytes),
+    );
+    const parsed = featherlessModelsPageSchema.parse(JSON.parse(payload.body));
+    if (parsed.pagination.current_page !== page)
+      throw new Error("Featherless returned a mismatched page number");
+    return { key, payload, parsed };
+  };
+
+  const configured = source.linkedDocuments?.documents ?? [];
+  const documentsPromise = mapConcurrent(
+    configured,
+    source.linkedDocuments?.concurrency ?? 1,
+    async (document) => {
+      const key = `${source.id}/${document.id}`;
+      const url = checkedUrl(document.url, source);
+      if (url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "")
+        throw new Error("Featherless companion URL contained unsupported URL components");
+      const payload = await fetchPayload(
+        requestSource(source, key, url, document.format ?? "html", document.maxResponseBytes),
+      );
+      return { key, url: url.href, payload };
+    },
+  );
+  const [first, documents] = await Promise.all([fetchPage(1), documentsPromise]);
+  const totalPages = first.parsed.pagination.total_pages;
+  if (totalPages < 1 || totalPages > transport.maxPages)
+    throw new Error("Featherless models exceeded page limit");
+  if (
+    first.parsed.total > transport.maxModels ||
+    first.parsed.pagination.total_items > transport.maxModels
+  )
+    throw new Error("Featherless models exceeded model limit");
+  const remaining = await mapConcurrent(
+    Array.from({ length: totalPages - 1 }, (_value, index) => index + 2),
+    transport.concurrency,
+    fetchPage,
+  );
+  const pages = [first, ...remaining];
+  const models = pages.flatMap(({ parsed }) => parsed.data);
+  assertItemCount("Featherless active models", models.length, 1, transport.maxModels);
+
+  const body = JSON.stringify({
+    index: {
+      url: source.url,
+      body: JSON.stringify({ data: models }),
+    },
+    documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
+  });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error("Featherless models bundle exceeded byte limit");
+  return {
+    body,
+    contentHash: sha256(body),
+    etag: first.payload.etag,
+    lastModified: first.payload.lastModified,
+    dependencies: [
+      ...pages.map(({ key, payload }) => observation(key, payload)),
+      ...documents.map(({ key, payload }) => observation(key, payload)),
+    ],
+  };
+}
+
+interface TokenPage {
+  models: unknown[];
+  nextPageToken?: string;
+}
+
+async function fetchTokenPaginatedModels(
+  source: SourceManifest,
+  transport: { pageSize: number; maxPages: number; maxModels: number },
+  name: string,
+  pageUrl: (pageToken: string | undefined) => URL,
+  parsePage: (body: string) => TokenPage,
+): Promise<FetchResult> {
+  if (
+    !Number.isInteger(transport.pageSize) ||
+    transport.pageSize < 1 ||
+    transport.pageSize > 1000 ||
+    !Number.isInteger(transport.maxPages) ||
+    transport.maxPages < 1 ||
+    !Number.isInteger(transport.maxModels) ||
+    transport.maxModels < transport.pageSize
+  )
+    throw new Error(`Invalid ${name} pagination bounds`);
+
+  const models: unknown[] = [];
+  const pages: { key: string; payload: FetchPayload }[] = [];
+  const tokens = new Set<string>();
+  let pageToken: string | undefined;
+  for (let index = 0; index < transport.maxPages; index += 1) {
+    const key = `${source.id}/page-${index + 1}`;
+    const payload = await fetchPayload(
+      requestSource(source, key, pageUrl(pageToken), "json", source.maxResponseBytes),
+    );
+    const page = parsePage(payload.body);
+    models.push(...page.models);
+    assertItemCount(`${name} transport`, models.length, 0, transport.maxModels);
+    pages.push({ key, payload });
+    if (page.nextPageToken === undefined) {
+      pageToken = undefined;
+      break;
+    }
+    if (tokens.has(page.nextPageToken)) throw new Error(`${name} pagination repeated a token`);
+    tokens.add(page.nextPageToken);
+    pageToken = page.nextPageToken;
+  }
+  if (pageToken !== undefined) throw new Error(`${name} exceeded page limit`);
+  assertItemCount(`${name} transport`, models.length, 1, transport.maxModels);
+  const body = JSON.stringify({ models });
+  if (Buffer.byteLength(body) > source.maxResponseBytes)
+    throw new Error(`${name} bundle exceeded byte limit`);
+  return {
+    body,
+    contentHash: sha256(body),
+    etag: pages[0]?.payload.etag,
+    lastModified: pages[0]?.payload.lastModified,
+    dependencies: pages.map(({ key, payload }) => observation(key, payload)),
+  };
+}
+
+function geminiModelsUrl(
+  source: SourceManifest,
+  transport: GeminiModelsTransport,
+  pageToken: string | undefined,
+): URL {
+  const url = checkedUrl(source.url, source);
+  if (
+    url.hostname !== "generativelanguage.googleapis.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/v1beta/models" ||
+    url.search !== "" ||
+    url.hash !== ""
+  )
+    throw new Error("Gemini models pagination left the reviewed endpoint");
+  url.searchParams.set("pageSize", String(transport.pageSize));
+  if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
+  return url;
+}
+
+async function fetchGeminiModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  if (transport?.kind !== "gemini-models") throw new Error("Invalid Gemini models transport");
+  return fetchTokenPaginatedModels(
+    source,
+    transport,
+    "Gemini models",
+    (pageToken) => geminiModelsUrl(source, transport, pageToken),
+    (body) => {
+      const page = geminiModelsPageSchema.parse(JSON.parse(body));
+      return {
+        models: page.models,
+        ...(page.nextPageToken === undefined ? {} : { nextPageToken: page.nextPageToken }),
+      };
+    },
+  );
+}
+
+function cohereModelsUrl(
+  source: SourceManifest,
+  transport: CohereModelsTransport,
+  pageToken: string | undefined,
+): URL {
+  const url = checkedUrl(source.url, source);
+  if (
+    url.hostname !== "api.cohere.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/v1/models" ||
+    url.search !== "" ||
+    url.hash !== ""
+  )
+    throw new Error("Cohere models pagination left the reviewed endpoint");
+  url.searchParams.set("page_size", String(transport.pageSize));
+  if (pageToken !== undefined) url.searchParams.set("page_token", pageToken);
+  return url;
+}
+
+async function fetchCohereModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  if (transport?.kind !== "cohere-models") throw new Error("Invalid Cohere models transport");
+  return fetchTokenPaginatedModels(
+    source,
+    transport,
+    "Cohere models",
+    (pageToken) => cohereModelsUrl(source, transport, pageToken),
+    (body) => {
+      const page = cohereModelsPageSchema.parse(JSON.parse(body));
+      if (page.models.length === 0 && page.next_page_token !== undefined)
+        throw new Error("Cohere models pagination returned an empty intermediate page");
+      return {
+        models: page.models,
+        ...(page.next_page_token === undefined ? {} : { nextPageToken: page.next_page_token }),
+      };
+    },
+  );
+}
+
+function dashscopeDeploymentUrl(
+  source: SourceManifest,
+  transport: DashscopeDeployableModelsTransport,
+  pageNo: number,
+): URL {
+  const url = checkedUrl(source.url, source);
+  const allowed = new Set(["page_no", "page_size", "version", "model_source"]);
+  if (
+    url.hostname !== "dashscope-intl.aliyuncs.com" ||
+    url.port !== "" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/api/v1/deployments/models" ||
+    url.hash !== "" ||
+    url.searchParams.size !== allowed.size ||
+    [...url.searchParams.keys()].some((key) => !allowed.has(key)) ||
+    url.searchParams.get("page_no") !== "1" ||
+    url.searchParams.get("page_size") !== String(transport.pageSize) ||
+    url.searchParams.get("version") !== "v1.0" ||
+    url.searchParams.get("model_source") !== "base"
+  )
+    throw new Error("DashScope deployment pagination left the reviewed endpoint");
+  url.searchParams.set("page_no", String(pageNo));
+  return url;
+}
+
+async function fetchDashscopeDeployableModels(source: SourceManifest): Promise<FetchResult> {
+  const transport = source.transport;
+  const extractor = source.extractor;
+  if (
+    transport?.kind !== "dashscope-deployable-models" ||
+    extractor.kind !== "dashscope-api" ||
+    !Number.isInteger(transport.pageSize) ||
+    transport.pageSize < 1 ||
+    transport.pageSize > 100 ||
+    !Number.isInteger(transport.maxPages) ||
+    transport.maxPages < 1 ||
+    !Number.isInteger(transport.maxModels) ||
+    transport.maxModels < transport.pageSize ||
+    transport.pageSize * transport.maxPages < transport.maxModels
+  )
+    throw new Error("Invalid DashScope deployment pagination bounds");
+
+  const models: z.infer<typeof dashscopeDeploymentPageSchema>["output"]["models"] = [];
+  const pages: { key: string; payload: FetchPayload }[] = [];
+  const ids = new Set<string>();
+  let expectedTotal: number | undefined;
+  let requestId: string | undefined;
+  for (let pageNo = 1; pageNo <= transport.maxPages; pageNo += 1) {
+    const key = `${source.id}/page-${pageNo}`;
+    const url = dashscopeDeploymentUrl(source, transport, pageNo);
+    const payload = await fetchPayload(
+      requestSource(source, key, url, "json", source.maxResponseBytes),
+    );
+    let value: unknown;
+    try {
+      value = JSON.parse(payload.body);
+    } catch {
+      throw new Error("DashScope deployment API returned invalid JSON");
+    }
+    const page = dashscopeDeploymentPageSchema.parse(value);
+    if (page.output.page_no !== pageNo || page.output.page_size !== transport.pageSize)
+      throw new Error("DashScope deployment API contradicted the requested page");
+    if (expectedTotal === undefined) {
+      expectedTotal = page.output.total;
+      requestId = page.request_id;
+      assertItemCount(
+        "DashScope deployment API",
+        expectedTotal,
+        extractor.minModels,
+        extractor.maxModels,
+      );
+      if (expectedTotal > transport.maxModels)
+        throw new Error("DashScope deployment API exceeded item limit");
+    } else if (page.output.total !== expectedTotal) {
+      throw new Error("DashScope deployment total changed during pagination");
+    }
+    const expectedPageItems = Math.min(transport.pageSize, expectedTotal - models.length);
+    if (page.output.models.length !== expectedPageItems)
+      throw new Error("DashScope deployment API returned a partial page");
+    for (const model of page.output.models) {
+      if (ids.has(model.model_name))
+        throw new Error("DashScope deployment API repeated a model ID");
+      ids.add(model.model_name);
+      models.push(model);
+    }
+    pages.push({ key, payload });
+    if (models.length === expectedTotal) {
+      const body = JSON.stringify({
+        ...(requestId === undefined ? {} : { request_id: requestId }),
+        output: {
+          page_no: 1,
+          page_size: Math.max(1, expectedTotal),
+          total: expectedTotal,
+          models,
+        },
+      });
+      if (Buffer.byteLength(body) > source.maxResponseBytes)
+        throw new Error("DashScope deployment bundle exceeded byte limit");
+      return {
+        body,
+        contentHash: sha256(body),
+        etag: pages[0]?.payload.etag,
+        lastModified: pages[0]?.payload.lastModified,
+        dependencies: pages.map(({ key: pageKey, payload: pagePayload }) =>
+          observation(pageKey, pagePayload),
+        ),
+      };
+    }
+  }
+  throw new Error("DashScope deployment API exceeded page limit");
+}
+
 interface FetchedDocument {
   key: string;
   url: string;
   payload: FetchPayload;
+}
+
+interface DocumentEntry {
+  key: string;
+  url: URL;
+  format: SourceManifest["format"];
+  maxResponseBytes: number;
+}
+
+async function fetchDocumentEntry(
+  source: SourceManifest,
+  entry: DocumentEntry,
+): Promise<FetchedDocument> {
+  try {
+    const payload = await fetchPayload(
+      linkedSource(source, entry.key, entry.url, entry.maxResponseBytes, entry.format),
+    );
+    return { key: entry.key, url: entry.url.href, payload };
+  } catch (error) {
+    throw new Error(
+      `Linked document ${entry.key} failed: ${
+        error instanceof Error ? error.message : "unknown fetch failure"
+      }`,
+    );
+  }
 }
 
 async function fetchConfiguredDocuments(
@@ -929,15 +1652,18 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
   if (transport?.kind !== "vercel-models" || extractor.kind !== "vercel-catalog")
     throw new Error("Invalid Vercel models transport");
   const indexKey = `${source.id}/index`;
-  const index = await fetchPayload(
-    requestSource(
-      source,
-      indexKey,
-      checkedUrl(source.url, source),
-      "json",
-      source.maxResponseBytes,
+  const [index, documentation] = await Promise.all([
+    fetchPayload(
+      requestSource(
+        source,
+        indexKey,
+        checkedUrl(source.url, source),
+        "json",
+        source.maxResponseBytes,
+      ),
     ),
-  );
+    fetchConfiguredDocuments(source, "Vercel"),
+  ]);
   const list = vercelModelsTransportSchema.parse(json(index.body));
   assertItemCount(
     "Vercel models transport",
@@ -995,7 +1721,6 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     return { key, url: url.href, payload };
   });
 
-  const documentation = await fetchConfiguredDocuments(source, "Vercel");
   const documents = [...endpointDocuments, ...modelPages, ...documentation];
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
@@ -1220,9 +1945,10 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     "html",
     source.maxResponseBytes,
   );
-  const [rawIndex, catalog] = await Promise.all([
+  const [rawIndex, catalog, documents] = await Promise.all([
     fetchPayload(indexSource),
     fetchPayload(catalogSource),
+    fetchConfiguredDocuments(source, "Ollama"),
   ]);
   const indexBody = normalizeOllamaList(rawIndex.body);
   const index = {
@@ -1272,7 +1998,6 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     const body = normalizeOllamaModelPage(model, raw.body);
     return { key, model, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
   });
-  const documents = await fetchConfiguredDocuments(source, "Ollama");
   const body = JSON.stringify({
     list: json(index.body),
     catalog: { url: catalogUrl.href, body: catalog.body },
@@ -1315,6 +2040,10 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     const payload = await fetchPayload(configured);
     return { ...payload, dependencies: [] };
   }
+  if (source.transport?.kind === "azure-portal-models") {
+    const body = await fetchAzurePortalModels(source, source.transport);
+    return generatedFetchResult(body);
+  }
   if (source.transport?.kind === "azure-retail-prices") {
     const body = await fetchAzureRetailPrices(source);
     return generatedFetchResult(body);
@@ -1324,10 +2053,17 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     return generatedFetchResult(body);
   }
   if (source.transport?.kind === "google-model-garden") {
-    const body = await fetchGoogleModelGarden(source, source.transport.publishers);
+    const body = await fetchGoogleModelGarden(source, source.transport);
     return generatedFetchResult(body);
   }
+  if (source.transport?.kind === "gemini-models") return fetchGeminiModels(source);
+  if (source.transport?.kind === "cohere-models") return fetchCohereModels(source);
+  if (source.transport?.kind === "dashscope-deployable-models")
+    return fetchDashscopeDeployableModels(source);
+  if (source.transport?.kind === "huggingface-partner-models")
+    return fetchHuggingFacePartnerModels(source);
   if (source.transport?.kind === "huggingface-models") return fetchHuggingFaceModels(source);
+  if (source.transport?.kind === "featherless-models") return fetchFeatherlessModels(source);
   if (source.transport?.kind === "vercel-models") return fetchVercelModels(source);
   if (source.transport?.kind === "ollama-cloud") return fetchOllamaCloud(source);
 
@@ -1339,7 +2075,26 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
 
   const indexKey = `${source.id}/index`;
   const indexSource = linkedSource(source, indexKey, new URL(source.url));
-  const index = await fetchPayload(indexSource);
+  const configured = (crawl.documents ?? []).map((document): DocumentEntry => {
+    const url = checkedUrl(document.url, source);
+    if (url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "")
+      throw new Error("Reviewed companion URL contained unsupported URL components");
+    return {
+      key: `${source.id}/${document.id}`,
+      url,
+      format: document.format ?? source.format,
+      maxResponseBytes: document.maxResponseBytes,
+    };
+  });
+  if (new Set(configured.map(({ key }) => key)).size !== configured.length)
+    throw new Error("Linked document keys must be unique");
+  const configuredPromise = mapConcurrent(configured, crawl.concurrency, (entry) =>
+    fetchDocumentEntry(source, entry),
+  );
+  const [index, configuredDocuments] = await Promise.all([
+    fetchPayload(indexSource),
+    configuredPromise,
+  ]);
   const nestedIndexUrls =
     crawl.nestedIndexes === undefined
       ? []
@@ -1353,7 +2108,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     );
   const nestedIndexes = await mapConcurrent(
     nestedIndexUrls.map((url) => {
-      const filename = url.pathname.split("/").at(-1);
+      const filename = url.pathname.split("/").filter(Boolean).at(-1);
       if (filename === undefined) throw new Error("Nested linked index URL omitted a filename");
       return {
         key: `${source.id}/index/${filename.replace(/\.(?:md|ts)$/, "")}`,
@@ -1387,8 +2142,8 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
     crawl.minDocuments,
     crawl.maxDocuments,
   );
-  const discovered = discoveredUrls.map((url) => {
-    const filename = url.pathname.split("/").at(-1);
+  const discovered = discoveredUrls.map((url): DocumentEntry => {
+    const filename = url.pathname.split("/").filter(Boolean).at(-1);
     if (filename === undefined) throw new Error("Linked document URL omitted a filename");
     const stem = filename.replace(/\.(?:md|ts)$/, "");
     return {
@@ -1398,34 +2153,13 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
     };
   });
-  const configured = (crawl.documents ?? []).map((document) => {
-    const url = checkedUrl(document.url, source);
-    if (url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "")
-      throw new Error("Reviewed companion URL contained unsupported URL components");
-    return {
-      key: `${source.id}/${document.id}`,
-      url,
-      format: document.format ?? source.format,
-      maxResponseBytes: document.maxResponseBytes,
-    };
-  });
   const entries = [...discovered, ...configured];
   if (new Set(entries.map((entry) => entry.key)).size !== entries.length)
     throw new Error("Linked document keys must be unique");
-  const documents = await mapConcurrent(entries, crawl.concurrency, async (entry) => {
-    try {
-      const payload = await fetchPayload(
-        linkedSource(source, entry.key, entry.url, entry.maxResponseBytes, entry.format),
-      );
-      return { key: entry.key, url: entry.url.href, payload };
-    } catch (error) {
-      throw new Error(
-        `Linked document ${entry.key} failed: ${
-          error instanceof Error ? error.message : "unknown fetch failure"
-        }`,
-      );
-    }
-  });
+  const discoveredDocuments = await mapConcurrent(discovered, crawl.concurrency, (entry) =>
+    fetchDocumentEntry(source, entry),
+  );
+  const documents = [...discoveredDocuments, ...configuredDocuments];
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
     documents: [...nestedIndexes, ...documents].map((document) => ({

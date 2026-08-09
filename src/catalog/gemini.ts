@@ -107,8 +107,28 @@ const apiItemSchema = z.object({
   topK: z.number().int().optional(),
 });
 const apiListSchema = z.object({
-  models: z.array(z.unknown()).min(1).max(1000),
+  models: z.array(z.unknown()).min(1).max(5_000),
   nextPageToken: z.string().min(1).optional(),
+});
+const discoveryMethodSchema = z.object({
+  httpMethod: z.enum(["GET", "POST"]),
+  path: z.string().min(1),
+  parameters: z.record(z.string(), z.unknown()).optional(),
+  response: z.object({ $ref: z.string().min(1) }),
+});
+const discoverySchema = z.object({
+  rootUrl: z.literal("https://generativelanguage.googleapis.com/"),
+  version: z.literal("v1beta"),
+  revision: z.string().regex(/^\d{8}$/),
+  resources: z.object({
+    models: z.object({ methods: z.record(z.string(), discoveryMethodSchema) }),
+  }),
+  schemas: z.object({
+    Model: z.object({ properties: z.record(z.string(), z.unknown()) }),
+    ListModelsResponse: z.object({ properties: z.record(z.string(), z.unknown()) }),
+    GenerateContentResponse: z.object({ properties: z.record(z.string(), z.unknown()) }),
+    UsageMetadata: z.object({ properties: z.record(z.string(), z.unknown()) }),
+  }),
 });
 
 function unique<T>(values: T[]): T[] {
@@ -1208,7 +1228,11 @@ function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSche
     !billing.includes("Prepay and Postpay") ||
     !billing.includes("approximately 10 minute billing pipeline latency") ||
     !/cost details are available within a day.*more than 24 hours/i.test(billing) ||
-    !/paid API key.*charged for AI Studio usage/i.test(billing)
+    !/paid API key.*charged for AI Studio usage/i.test(billing) ||
+    !billing.includes("Dashboard > Usage") ||
+    !/group by SKU.*Services filter to Gemini API/i.test(billing) ||
+    !/API keys.*have no independent billing settings/i.test(billing) ||
+    !/400 or 500 error.*won't be charged.*count against your quota/i.test(billing)
   )
     throw new Error("Gemini billing-account contract drifted");
 
@@ -1225,7 +1249,6 @@ function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSche
     throw new Error("Gemini cache accounting contract drifted");
 
   const tokens = documentText(bundle, "/gemini-api/docs/tokens");
-  const generateContent = documentText(bundle, "/api/generate-content");
   const interactions = documentText(bundle, "/api/interactions-api");
   if (
     ![
@@ -1235,16 +1258,6 @@ function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSche
       "total_cached_tokens",
       "total_tool_use_tokens",
     ].every((field) => tokens.includes(field)) ||
-    ![
-      "promptTokenCount",
-      "cachedContentTokenCount",
-      "candidatesTokenCount",
-      "toolUsePromptTokenCount",
-      "thoughtsTokenCount",
-      "promptTokensDetails",
-      "cacheTokensDetails",
-      "serviceTier",
-    ].every((field) => generateContent.includes(field)) ||
     ![
       "input_tokens_by_modality",
       "output_tokens_by_modality",
@@ -1277,35 +1290,106 @@ function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSche
 
   const accountPricing = documentText(bundle, "/billing/docs/how-to/get-pricing-information-api");
   const billingExport = documentText(bundle, "/billing/docs/how-to/export-data-bigquery-tables");
+  const skuGroup = documentText(
+    bundle,
+    "/skus/sku-groups/google-developer-program-premium-genai-credit",
+  );
   if (
     !accountPricing.includes("custom prices associated with your Cloud Billing account") ||
     !billingExport.includes("no delivery or latency guarantees") ||
-    !billingExport.includes("once each day")
+    !billingExport.includes("once each day") ||
+    !/Gemini API\s*\(AEFD-7695-64FA\)/.test(skuGroup) ||
+    !skuGroup.includes("SKU ID")
   )
-    throw new Error("Google Cloud account-pricing or cost-export contract drifted");
+    throw new Error("Google Cloud Gemini billing identity or cost-export contract drifted");
 }
 
-function validateMethodDocumentation(body: string): void {
-  const $ = load(body);
-  const heading = exactHeading($, "h2", "REST Resource: v1beta.models");
-  if (heading.length === 0) throw new Error("Gemini model method table changed");
-  const observed = new Map<string, string>();
-  heading
-    .nextUntil("h2")
-    .find("table tbody tr")
-    .each((_index, row) => {
-      const cells = $(row).find("td");
-      if (cells.length < 2) return;
-      const name = text(cells.eq(0).find("code").first().text());
-      const route = text(cells.eq(1).find("code").first().text());
-      if (name !== "") observed.set(name, route);
-    });
-  for (const [name, fact] of methodFacts)
+function validateDiscovery(body: string): void {
+  const discovery = discoverySchema.parse(JSON.parse(body));
+  const methods = discovery.resources.models.methods;
+  for (const name of [
+    "asyncBatchEmbedContent",
+    "batchEmbedContents",
+    "batchGenerateContent",
+    "countTokens",
+    "embedContent",
+    "generateContent",
+    "predict",
+    "predictLongRunning",
+    "streamGenerateContent",
+  ]) {
+    const method = methods[name];
     if (
-      fact.pathField !== undefined &&
-      observed.get(name) !== `POST /v1beta/{${fact.pathField}=models/*}:${name}`
+      method === undefined ||
+      method.httpMethod !== "POST" ||
+      method.path !== `v1beta/{+model}:${name}`
     )
-      throw new Error(`Gemini model method changed: ${name}`);
+      throw new Error(`Gemini Discovery model method changed: ${name}`);
+  }
+  const list = methods.list;
+  const get = methods.get;
+  if (
+    list === undefined ||
+    list.httpMethod !== "GET" ||
+    list.path !== "v1beta/models" ||
+    list.response.$ref !== "ListModelsResponse" ||
+    list.parameters?.pageSize === undefined ||
+    list.parameters.pageToken === undefined ||
+    get === undefined ||
+    get.httpMethod !== "GET" ||
+    get.path !== "v1beta/{+name}" ||
+    get.response.$ref !== "Model"
+  )
+    throw new Error("Gemini Discovery model inventory contract changed");
+
+  const modelFields = discovery.schemas.Model.properties;
+  if (
+    ![
+      "name",
+      "baseModelId",
+      "version",
+      "displayName",
+      "description",
+      "inputTokenLimit",
+      "outputTokenLimit",
+      "supportedGenerationMethods",
+      "thinking",
+    ].every((field) => modelFields[field] !== undefined)
+  )
+    throw new Error("Gemini Discovery Model schema changed");
+
+  const listFields = discovery.schemas.ListModelsResponse.properties;
+  if (listFields.models === undefined || listFields.nextPageToken === undefined)
+    throw new Error("Gemini Discovery pagination schema changed");
+
+  const usageFields = discovery.schemas.UsageMetadata.properties;
+  if (
+    ![
+      "promptTokenCount",
+      "cachedContentTokenCount",
+      "candidatesTokenCount",
+      "toolUsePromptTokenCount",
+      "thoughtsTokenCount",
+      "promptTokensDetails",
+      "cacheTokensDetails",
+      "serviceTier",
+    ].every((field) => usageFields[field] !== undefined)
+  )
+    throw new Error("Gemini Discovery usage schema changed");
+  const tiers = z.object({ enum: z.array(z.string()) }).safeParse(usageFields.serviceTier);
+  if (
+    !tiers.success ||
+    !["standard", "flex", "priority"].every((tier) => tiers.data.enum.includes(tier))
+  )
+    throw new Error("Gemini Discovery service tiers changed");
+
+  const responseFields = discovery.schemas.GenerateContentResponse.properties;
+  if (
+    !["usageMetadata", "modelVersion", "responseId", "modelStatus"].every(
+      (field) => responseFields[field] !== undefined,
+    )
+  )
+    throw new Error("Gemini Discovery response observability changed");
 }
 
 function validateLiveDocumentation(body: string): void {
@@ -1377,6 +1461,7 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "gemini-catalog") throw new Error("Wrong Gemini catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  validateDiscovery(document(bundle, "/$discovery/rest"));
   validateAccountingDocumentation(bundle);
   const indexCards = cards(bundle.index.body);
   const models = new Map<string, ProviderModel>();
@@ -1413,7 +1498,6 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
       item.aliases = unique(aliases.filter((alias) => alias !== id && !models.has(alias)));
   }
   applyChangelog(models, document(bundle, "/gemini-api/docs/changelog"));
-  validateMethodDocumentation(document(bundle, "/api/all-methods"));
   validateLiveDocumentation(document(bundle, "/api/live"));
   const agents = applyInteractions(
     models,

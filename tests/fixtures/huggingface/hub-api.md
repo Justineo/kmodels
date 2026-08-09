@@ -1,5 +1,11 @@
 # Hub API
 
+## List OpenAI-compatible models
+
+Use `https://router.huggingface.co/v1/models` to list the current chat-completion catalog.
+To retrieve a single model, provide its model ID. A router backend is `live` or `error`.
+Each Hub mapping has a status (`staging` or `live`).
+
 Use `inference_provider=all` and expand `inferenceProviderMapping` for model routing mappings.
 The model router exposes per-provider pricing, context length, latency, and throughput when
 available.

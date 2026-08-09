@@ -8,6 +8,7 @@ import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
+import { yamlBlock } from "./yaml.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { classifyModelTasks } from "./task.ts";
 
@@ -409,6 +410,117 @@ function validateAccountingReferences(documents: LinkedDocument[]): void {
   }
 }
 
+function requireYamlBlock(
+  body: string,
+  label: string,
+  indentation: number,
+  markers: readonly RegExp[],
+): void {
+  const block = yamlBlock(body, label, indentation);
+  if (block === undefined || markers.some((marker) => !marker.test(block)))
+    throw new Error(`Cohere OpenAPI reference drifted: ${label}`);
+}
+
+function validateOpenApi(documents: LinkedDocument[]): void {
+  const matches = documents.filter(({ url }) => {
+    const value = new URL(url);
+    return (
+      value.hostname === "raw.githubusercontent.com" &&
+      value.pathname === "/cohere-ai/cohere-developer-experience/main/cohere-openapi.yaml" &&
+      value.search === "" &&
+      value.hash === ""
+    );
+  });
+  const document = matches[0];
+  if (
+    matches.length !== 1 ||
+    document === undefined ||
+    !/^openapi:\s+3\.[01]\.\d+\s*$/m.test(document.body) ||
+    !/^\s+- url: https:\/\/api\.cohere\.com\s*$/m.test(document.body)
+  )
+    throw new Error("Cohere OpenAPI reference drifted: document");
+
+  const operations = [
+    ["/v1/chat", "chat", "post"],
+    ["/v2/chat", "chatv2", "post"],
+    ["/v1/embed", "embed", "post"],
+    ["/v2/embed", "embedv2", "post"],
+    ["/v1/embed-jobs", "create-embed-job", "post"],
+    ["/v1/rerank", "rerank", "post"],
+    ["/v2/rerank", "rerankv2", "post"],
+    ["/v2/audio/transcriptions", "create-transcription", "post"],
+  ] as const;
+  for (const [path, operationId, method] of operations)
+    requireYamlBlock(document.body, path, 2, [
+      new RegExp(`^ {4}${method}:\\s*$`, "m"),
+      new RegExp(`^ {6}operationId: ${operationId}\\s*$`, "m"),
+    ]);
+
+  requireYamlBlock(document.body, "/v1/models", 2, [
+    /^ {4}get:\s*$/m,
+    /^ {6}operationId: list-models\s*$/m,
+    /^ {8}- name: page_size\s*$/m,
+    /max value of `1000`/,
+    /^ {8}- name: page_token\s*$/m,
+    /next_page_token/,
+    /^ {8}- name: endpoint\s*$/m,
+    /#\/components\/schemas\/CompatibleEndpoint/,
+    /^ {8}- name: default_only\s*$/m,
+    /#\/components\/schemas\/ListModelsResponse/,
+  ]);
+  requireYamlBlock(document.body, "ApiMeta", 4, [
+    /^ {8}billed_units:\s*$/m,
+    /^ {12}images:\s*$/m,
+    /^ {12}input_tokens:\s*$/m,
+    /^ {12}image_tokens:\s*$/m,
+    /^ {12}output_tokens:\s*$/m,
+    /^ {12}search_units:\s*$/m,
+    /^ {12}classifications:\s*$/m,
+    /^ {8}tokens:\s*$/m,
+    /^ {8}cached_tokens:\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "Usage", 4, [
+    /^ {8}billed_units:\s*$/m,
+    /^ {12}input_tokens:\s*$/m,
+    /^ {12}output_tokens:\s*$/m,
+    /^ {12}search_units:\s*$/m,
+    /^ {12}classifications:\s*$/m,
+    /^ {8}tokens:\s*$/m,
+    /^ {8}cached_tokens:\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "ChatResponseV2", 4, [
+    /^ {8}usage:\s*$/m,
+    /#\/components\/schemas\/Usage/,
+  ]);
+  requireYamlBlock(document.body, "CompatibleEndpoint", 4, [
+    /^ {8}- chat\s*$/m,
+    /^ {8}- embed\s*$/m,
+    /^ {8}- classify\s*$/m,
+    /^ {8}- summarize\s*$/m,
+    /^ {8}- rerank\s*$/m,
+    /^ {8}- rate\s*$/m,
+    /^ {8}- generate\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "GetModelResponse", 4, [
+    /^ {8}name:\s*$/m,
+    /^ {8}is_deprecated:\s*$/m,
+    /^ {8}endpoints:\s*$/m,
+    /^ {8}finetuned:\s*$/m,
+    /^ {8}context_length:\s*$/m,
+    /^ {8}tokenizer_url:\s*$/m,
+    /^ {8}default_endpoints:\s*$/m,
+    /^ {8}features:\s*$/m,
+    /^ {8}sampling_defaults:\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "ListModelsResponse", 4, [
+    /^ {6}required:\s*$/m,
+    /^ {8}- models\s*$/m,
+    /^ {8}models:\s*$/m,
+    /#\/components\/schemas\/GetModelResponse/,
+    /^ {8}next_page_token:\s*$/m,
+  ]);
+}
+
 function withEndpoints(current: ProviderModel, values: ApiEndpoint[]): ProviderModel {
   if (values.length === 0) return current;
   const merged = new Map(
@@ -632,8 +744,52 @@ function cardMatchesPath(id: string, pathname: string): boolean {
     value
       .replace(/-\d{2}-\d{4}$/, "")
       .toLowerCase()
+      .replace(/[+]/g, "plus")
       .replace(/[^a-z0-9]+/g, "");
   return page !== undefined && normalized(id) === normalized(page);
+}
+
+function documentedCardId(
+  observedId: string,
+  title: string | undefined,
+  url: URL,
+  documents: LinkedDocument[],
+  models: Map<string, ProviderModel>,
+): string | undefined {
+  if (title === undefined || !cardMatchesPath(title, url.pathname)) return undefined;
+  const escapedTitle = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `${escapedTitle} is [^.]{0,300}?through the SDK with ([a-z0-9](?:[a-z0-9._-]*[a-z0-9])?)\\b`,
+    "gi",
+  );
+  const candidates = new Set<string>();
+  for (const document of documents) {
+    if (!new URL(document.url).pathname.includes("/changelog")) continue;
+    const prose = text(load(document.body).text());
+    for (const match of prose.matchAll(pattern)) {
+      const parsed = modelIdSchema.safeParse(match[1]);
+      if (
+        parsed.success &&
+        parsed.data !== observedId &&
+        cardMatchesPath(parsed.data, url.pathname) &&
+        models.has(parsed.data)
+      )
+        candidates.add(parsed.data);
+    }
+  }
+  const candidate = [...candidates][0];
+  if (candidates.size !== 1 || candidate === undefined) return undefined;
+  const observedIdHasOwnCard = documents.some((document) => {
+    const documentUrl = new URL(document.url);
+    if (documentUrl.href === url.href || !documentUrl.pathname.startsWith("/docs/")) return false;
+    const $ = load(document.body);
+    return (
+      cardId($) === observedId &&
+      cardMatchesPath(observedId, documentUrl.pathname) &&
+      cardMatchesPath(cardTitle($) ?? "", documentUrl.pathname)
+    );
+  });
+  return observedIdHasOwnCard ? candidate : undefined;
 }
 
 function addRate(
@@ -673,9 +829,16 @@ function modelCard(
   url: URL,
   body: string,
   references: EndpointReferences,
+  documents: LinkedDocument[],
 ): void {
   const $ = load(body);
-  const id = cardId($);
+  const observedId = cardId($);
+  const title = cardTitle($);
+  const documentedId =
+    observedId === undefined || cardMatchesPath(observedId, url.pathname)
+      ? undefined
+      : documentedCardId(observedId, title, url, documents, models);
+  const id = documentedId ?? observedId;
   const pricing = text(
     $(".fern-card")
       .filter((_index, card) => text($(card).text()).startsWith("Pricing"))
@@ -699,7 +862,12 @@ function modelCard(
       });
     return;
   }
-  const title = cardTitle($);
+  if (documentedId !== undefined)
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "model_card_documented_id_override",
+      sample: `${url.pathname}: ${observedId} -> ${documentedId}`,
+    });
   const description = text(
     $("h2")
       .filter((_index, heading) => text($(heading).text()) === "Description")
@@ -1512,6 +1680,7 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   if (linkedDocuments === undefined) throw new Error("Cohere catalog requires linked documents");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
+  validateOpenApi(bundle.documents);
   const references = endpointReferences(bundle.documents);
   validateAccountingReferences(bundle.documents);
   const modelDocuments = indexedModelDocuments(
@@ -1523,7 +1692,7 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   rootTables(input, models, exactDocument(bundle.documents, "/docs/models").body, references);
   for (const document of modelDocuments) {
     const url = new URL(document.url);
-    modelCard(input, models, url, document.body, references);
+    modelCard(input, models, url, document.body, references, bundle.documents);
     if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
       transcribePage(input, models, url, document.body, references);
   }

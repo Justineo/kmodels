@@ -1,0 +1,44 @@
+<main>
+  <h1>Monitor Unity AI Gateway cost</h1>
+  <p>Cost attribution uses <code>system.billing.usage</code>.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Field</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>usage_metadata.ai_gateway.endpoint_name</td>
+        <td>Model service.</td>
+      </tr>
+      <tr>
+        <td>usage_metadata.ai_gateway.endpoint_id</td>
+        <td>Service ID.</td>
+      </tr>
+      <tr>
+        <td>usage_metadata.ai_gateway.destination_model</td>
+        <td>Destination model.</td>
+      </tr>
+      <tr>
+        <td>usage_metadata.ai_gateway.destination_id</td>
+        <td>Destination ID.</td>
+      </tr>
+      <tr>
+        <td>identity_metadata.run_by</td>
+        <td>Requester.</td>
+      </tr>
+      <tr>
+        <td>custom_tags</td>
+        <td>Tags.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>
+    For external models, Databricks computes the estimated USD spend for each request from its token
+    usage and the external provider's published prices. Spend is aggregated hourly in
+    <code>system.ai_gateway.external_model_spend</code>. These figures might not reflect your final
+    provider invoice.
+  </p>
+</main>

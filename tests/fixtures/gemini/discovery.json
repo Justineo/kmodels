@@ -1,0 +1,105 @@
+{
+  "rootUrl": "https://generativelanguage.googleapis.com/",
+  "version": "v1beta",
+  "revision": "20260806",
+  "resources": {
+    "models": {
+      "methods": {
+        "asyncBatchEmbedContent": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:asyncBatchEmbedContent",
+          "response": { "$ref": "Operation" }
+        },
+        "batchEmbedContents": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:batchEmbedContents",
+          "response": { "$ref": "BatchEmbedContentsResponse" }
+        },
+        "batchGenerateContent": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:batchGenerateContent",
+          "response": { "$ref": "Operation" }
+        },
+        "countTokens": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:countTokens",
+          "response": { "$ref": "CountTokensResponse" }
+        },
+        "embedContent": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:embedContent",
+          "response": { "$ref": "EmbedContentResponse" }
+        },
+        "generateContent": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:generateContent",
+          "response": { "$ref": "GenerateContentResponse" }
+        },
+        "predict": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:predict",
+          "response": { "$ref": "PredictResponse" }
+        },
+        "predictLongRunning": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:predictLongRunning",
+          "response": { "$ref": "Operation" }
+        },
+        "streamGenerateContent": {
+          "httpMethod": "POST",
+          "path": "v1beta/{+model}:streamGenerateContent",
+          "response": { "$ref": "GenerateContentResponse" }
+        },
+        "list": {
+          "httpMethod": "GET",
+          "path": "v1beta/models",
+          "parameters": { "pageSize": {}, "pageToken": {} },
+          "response": { "$ref": "ListModelsResponse" }
+        },
+        "get": {
+          "httpMethod": "GET",
+          "path": "v1beta/{+name}",
+          "response": { "$ref": "Model" }
+        }
+      }
+    }
+  },
+  "schemas": {
+    "Model": {
+      "properties": {
+        "name": {},
+        "baseModelId": {},
+        "version": {},
+        "displayName": {},
+        "description": {},
+        "inputTokenLimit": {},
+        "outputTokenLimit": {},
+        "supportedGenerationMethods": {},
+        "thinking": {}
+      }
+    },
+    "ListModelsResponse": {
+      "properties": { "models": {}, "nextPageToken": {} }
+    },
+    "GenerateContentResponse": {
+      "properties": {
+        "usageMetadata": {},
+        "modelVersion": {},
+        "responseId": {},
+        "modelStatus": {}
+      }
+    },
+    "UsageMetadata": {
+      "properties": {
+        "promptTokenCount": {},
+        "cachedContentTokenCount": {},
+        "candidatesTokenCount": {},
+        "toolUsePromptTokenCount": {},
+        "thoughtsTokenCount": {},
+        "promptTokensDetails": {},
+        "cacheTokensDetails": {},
+        "serviceTier": { "enum": ["unspecified", "standard", "flex", "priority"] }
+      }
+    }
+  }
+}

@@ -7,22 +7,36 @@ Status: current
 - The non-exhaustive public catalog is one atomic website bundle rooted at Cohere's
   Models section index. That machine-readable index discovers same-section HTML model
   pages without a family-name allowlist; the overview, pricing, lifecycle, changelog,
-  API, compatibility, and legacy references are reviewed companions.
+  API, compatibility, and legacy references are reviewed companions. Cohere's public
+  developer-experience repository is a second first-party surface: its one-way-synced
+  OpenAPI document is fetched in the same atomic bundle.
 - Every indexed model page must be fetched exactly once. Model-document, total-model,
   and current-pricing coverage bounds reject partial indexes and silent source drift.
 - Callable IDs come only from labeled Cohere model fields; adjacent cloud IDs and paths never become IDs.
 - Tables must remain under a reviewed Command, Embed, Rerank, Audio, or Aya section. Unknown sections, labels, links, or routes reject the provider.
-- Model-card facts apply only when the labeled ID agrees with its page path. This
-  deliberately rejects internally inconsistent cards instead of binding facts by title.
+- Model-card facts normally apply only when the labeled ID agrees with its page path.
+  One narrow documented exception handles an upstream identity defect: the title and
+  path must agree, a same-product release note must supply one exact SDK ID already in
+  the overview, and the incorrectly labeled ID must have its own path-matching card.
+  Without all three independent checks, the card remains ambiguous and contributes no
+  facts or prices.
 - Lifecycle headings supply their own dates and semantics. Effective retirements become
   retired only after the effective date; earlier observations remain deprecated.
   Task-qualified and tabular replacement lists bind only exact IDs.
-- Optional `/v1/models?page_size=1000` is account-scoped. Pagination, empty data, or malformed items fail it; it cannot create rows, infer API versions, or retain raw data.
+- Optional `/v1/models` is account-scoped. The transport requests the documented maximum
+  page size of 1,000 and follows `next_page_token` through bounded, repeated-token-safe
+  pagination before parsing one aggregate. Empty intermediate pages, excess pages/models,
+  malformed items, or an incomplete aggregate fail it; it cannot create rows, infer API
+  versions, or retain raw data.
 - Enable the optional inventory with `COHERE_API_KEY`.
 - Fixed first-party companions cover the public pricing policy, evaluation/production-key rules,
   account billing errors, dashboard usage and invoice permissions, native and streaming Chat usage,
   Embed and asynchronous Embed Job billing metadata, Rerank search units, and the transcription
   response. These are accounting drift guards and never create model identity.
+- The official OpenAPI companion independently guards native V1/V2 Chat, Embed, Embed Jobs,
+  Rerank, Audio Transcriptions, the Models pagination contract, model response fields, and
+  V1/V2 usage schemas. Required semantic keys are checked inside their indentation-bounded
+  YAML objects, so additive fields do not break refresh while moved or removed contract fields do.
 
 ## Mapping
 
@@ -96,7 +110,8 @@ Status: current
 
 - Refresh is deterministic and non-LLM. Labeled model IDs own identity; typed RSC pricing products,
   exact legacy sentences, reviewed Model Vault grids, and model-card pricing blocks own commercial
-  facts. Fixed accounting phrases and response-schema fields fail closed when their semantics drift.
+  facts. Fixed accounting phrases, the first-party OpenAPI, and response-schema fields fail closed
+  when their semantics drift.
 - Cohere's generated Markdown may place all Embed Job model/dimension entries on one bullet line.
   Parse only the bounded dimension list and stop before the following request fields; backticked enum
   values elsewhere on the page are not model IDs. Streaming accounting requires `message-end`,
@@ -106,34 +121,48 @@ Status: current
 - The earlier extractor normalized rates but silently skipped unmatched pricing products, did not
   audit duplicate or retired price inputs, and did not fetch account/usage companions. It also
   silently discarded the internally inconsistent Command A card. The current extractor partitions
-  all reviewed pricing inputs, validates response billing fields, and surfaces that conflict.
-- The live bundle contains 43 identities and 36 non-retired rows: 14 have numeric facts, seven are
-  explicitly free, and 15 remain unknown. It emits 37 normalized model facts. Source reconciliation
-  partitions 61 reviewed items into 33 normalized, 16 explicit non-numeric, ten excluded, and two
-  ambiguous items, with no unbound, raw, unsupported, or unresolved item.
-- Both ambiguous items are the two token prices on `/docs/command-a`: the page path/title says
-  Command A, but its labeled ID is `command-a-plus-05-2026`; meanwhile the dedicated pricing page
-  and Command A+ card say that ID is free within limits. Neither amount is bound to
-  `command-a-03-2025` or Command A+. This is an upstream first-party conflict, not a parser gap.
+  all reviewed pricing inputs, validates the published OpenAPI and response billing fields, and
+  resolves only the reviewed multi-document identity defect described above.
+- The live bundle contains 43 identities and 36 non-retired rows: 15 have numeric facts, seven are
+  explicitly free, and 14 remain unknown. Sixteen current rows carry at least one price fact, and
+  the bundle emits 39 model price facts overall. Source reconciliation partitions 62 reviewed items
+  into 35 normalized, 16 explicit non-numeric, and 11 excluded items, with no unbound, ambiguous,
+  raw, unsupported, or unresolved item.
+- `/docs/command-a` still has an upstream defect: its path, title, 256K/8K specifications, and
+  `$2.50/$10` rates describe Command A, but its labeled ID is
+  `command-a-plus-05-2026`. The overview independently maps Command A to
+  `command-a-03-2025`; the Command A release note says to use that exact SDK ID; and the separate
+  Command A+ card correctly owns `command-a-plus-05-2026` and says the API offer is free within
+  limits. Those checks bind the two card rates to `command-a-03-2025` and record the bad label as
+  excluded evidence. Any missing or changed corroboration restores the two ambiguous diagnostics.
 - Current first-party evidence intentionally leaves the v3 Embed and Rerank usage prices, nightly
   aliases, Tiny Aya variants, Aya Vision 32B, and Summarize unknown because the dedicated current
   pricing page publishes no exact current usage offer for them. Model Vault capacity alone does not
   establish a hosted per-request rate.
 - ccusage remains comparison-only because it delegates Cohere prices to LiteLLM. The inspected
   LiteLLM snapshot has 22 direct Cohere entries and 17 exact non-retired overlaps after removing its
-  `cohere/` prefix. It fills several of our unknowns with old Command A, Embed v3, and Rerank v3
-  amounts, but provides no source provenance and contains a 1,000x outlier for
-  `embed-multilingual-light-v3.0`. models.dev has no native Cohere provider price book in the
-  inspected snapshot; its Cohere-labelled rows belong to gateways such as OpenRouter, Vercel, or
-  Azure and are different commercial surfaces.
+  `cohere/` prefix and including its separate `cohere_chat` namespace. It supplies third-party
+  prices for seven rows that remain unknown here: one nightly alias, four Embed v3 models, and two
+  Rerank v3 models. Its single shared JSON map has no per-row source provenance and contains a
+  1,000x outlier for `embed-multilingual-light-v3.0`. Updates arrive through repository edits/PRs;
+  LiteLLM's newer catalog API is another delivery surface for that maintained metadata, not a
+  first-party Cohere feed.
+- models.dev now has a native, hand-authored Cohere provider with 14 rows. Eleven overlap our 36
+  non-retired rows exactly, two are rows Cohere has retired here, and one is the open-weight
+  `command-r7b-arabic-02-2025`, which current hosted-model documentation does not establish as a
+  Cohere API ID. Nine current overlaps carry prices. Eight agree with the first-party evidence used
+  here; `command-a-plus-05-2026` incorrectly carries `$2.50/$10` even though Cohere's dedicated A+
+  card says free within rate limits. Its Cohere directory is not registered in models.dev's hourly
+  provider-sync modules, so the general hourly automation framework does not make these rows an
+  automatically refreshed Cohere price book.
+- Portkey's community-maintained Cohere file has 19 model keys besides its default: 18 exactly match
+  our full catalog, 13 match non-retired rows, and `command-r7b` is a date-less alias rather than an
+  exact ID. It contributes six third-party prices where first-party current rates remain unknown,
+  but flattens Rerank's search price into a request-token-shaped field and has had only manual Cohere
+  file changes in the inspected history. Its hosted config can refresh gateway caches, but that is
+  distribution of the community file, not extraction from Cohere.
 - First-party sources support the overlapping Command R/R+/R7B, Embed 4, Rerank 4, free-model, and
   Model Vault facts already extracted here. They do not currently support importing the extra
-  third-party v3/nightly prices as exact Cohere-hosted current rates. The conflicted Command A page
-  explains why third-party books commonly show `$2.50/$10`, but its broken identity prevents a safe
-  exact binding.
-
-## Kong AI Gateway
-
-- Intersect lifecycle and account evidence with exact Chat V1, legacy Generate, Embed version, or Rerank version evidence.
-- Broad generation cannot distinguish Chat from Generate.
-- Transcription remains valid provider data but is outside Kong's current Cohere matrix.
+  third-party v3/nightly prices as exact Cohere-hosted current rates. They also show why a comparator
+  can copy a plausible amount onto the wrong A-family ID: page-level identity must be reconciled
+  across the overview, release note, and dedicated sibling card rather than trusted in isolation.

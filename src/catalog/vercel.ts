@@ -1038,6 +1038,15 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
 function validateDocumentation(documents: ReadonlyMap<string, string>): void {
   const requirements = new Map<string, string[]>([
     [
+      "/docs/ai-gateway/models-and-providers.md",
+      [
+        "https://ai-gateway.vercel.sh/v1/models",
+        "This endpoint requires no authentication",
+        "GET /v1/models/{creator}/{model}/endpoints",
+        "returns per-provider pricing, supported parameters, uptime, throughput, and latency",
+      ],
+    ],
+    [
       "/docs/ai-gateway/pricing.md",
       [
         "AI Gateway charges no markup and no platform fee on tokens.",
@@ -1051,6 +1060,50 @@ function validateDocumentation(documents: ReadonlyMap<string, string>): void {
     [
       "/docs/ai-gateway/models-and-providers/provider-options.md",
       ["`order`, `only`, and `sort`", "sort: 'cost'", "caching: 'auto'"],
+    ],
+    [
+      "/docs/ai-gateway/models-and-providers/provider-filtering-and-ordering.md",
+      [
+        "The `gateway.cost` value is the inference cost for this request",
+        "does not include other charges that may apply",
+        "`'cost'`",
+        "`'ttft'`",
+        "`'tps'`",
+        "providers are always sorted last, regardless",
+      ],
+    ],
+    [
+      "/docs/ai-gateway/models-and-providers/fast-mode.md",
+      [
+        "higher per-token cost",
+        "falls back to the base model",
+        "not merely routed to a fast variant slug",
+        "weren't billed at the fast rate",
+      ],
+    ],
+    [
+      "/docs/ai-gateway/models-and-providers/service-tiers.md",
+      [
+        "best-effort routing hint, not a hard guarantee",
+        "billed at the default rate",
+        "bills the request at the tier the provider actually served",
+      ],
+    ],
+    [
+      "/docs/ai-gateway/security-and-compliance/regional-inference.md",
+      [
+        "Pinning a region can raise what a request costs.",
+        "passes the provider's regional price straight through",
+        "adds no AI Gateway markup",
+      ],
+    ],
+    [
+      "/docs/ai-gateway/authentication-and-byok/byok.md",
+      [
+        "fallback usage is billed against your credits balance",
+        "Spend through your own credentials isn't counted in",
+        "your actual costs may vary",
+      ],
     ],
     [
       "/docs/ai-gateway/sdks-and-apis/rest-api.md",
@@ -1072,6 +1125,15 @@ function validateDocumentation(documents: ReadonlyMap<string, string>): void {
     [
       "/docs/ai-gateway/observability-and-spend/logs.md",
       ["refreshing every 5 seconds", "about 90 seconds", "Fallback Path", "Cache Write"],
+    ],
+    [
+      "/docs/ai-gateway/observability-and-spend/usage.md",
+      [
+        "`GET /v1/credits`",
+        "remaining credit balance and lifetime spend",
+        "`GET /v1/generation`",
+        "cost, latency, finish reason, and token usage",
+      ],
     ],
   ]);
   for (const [path, markers] of requirements) {

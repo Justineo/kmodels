@@ -1,5 +1,7 @@
 # Flagship Model Kimi K3 Pricing
 
+<Warning>The web search is currently being updated. This documentation is outdated.</Warning>
+
 <DocTable
 columns={[
 { title: "Model" },

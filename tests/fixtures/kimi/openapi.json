@@ -1,6 +1,40 @@
 {
   "servers": [{ "url": "https://api.moonshot.ai" }],
   "paths": {
+    "/v1/models": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "object": { "type": "string", "example": "list" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "object": { "type": "string", "example": "model" },
+                          "created": { "type": "integer" },
+                          "owned_by": { "type": "string" },
+                          "context_length": { "type": "integer" },
+                          "supports_image_in": { "type": "boolean" },
+                          "supports_video_in": { "type": "boolean" },
+                          "supports_reasoning": { "type": "boolean" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/chat/completions": {
       "post": {
         "requestBody": {
@@ -41,10 +75,41 @@
           }
         }
       }
+    },
+    "/v1/tokenizers/estimate-token-count": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EstimateRequest" }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "EstimateRequest": {
+        "properties": {
+          "model": {
+            "enum": [
+              "kimi-k3",
+              "kimi-k2.7-code",
+              "kimi-k2.7-code-highspeed",
+              "kimi-k2.6",
+              "kimi-k2.5",
+              "moonshot-v1-8k",
+              "moonshot-v1-32k",
+              "moonshot-v1-128k",
+              "moonshot-v1-auto",
+              "moonshot-v1-8k-vision-preview",
+              "moonshot-v1-32k-vision-preview",
+              "moonshot-v1-128k-vision-preview"
+            ]
+          }
+        }
+      },
       "ToolDefinition": {
         "properties": {
           "type": { "enum": ["function"] }

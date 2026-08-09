@@ -190,36 +190,272 @@ const marketplacePageContextSchema = z.object({
 });
 
 const apiDateSchema = z.iso.datetime({ offset: true });
-const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING", "AUDIO", "SPEECH", "VIDEO"]);
-const customizationSchema = z.enum([
-  "FINE_TUNING",
-  "PREFERENCE_FINE_TUNING",
-  "CONTINUED_PRE_TRAINING",
-  "DISTILLATION",
-]);
-const inferenceTypeSchema = z.enum(["ON_DEMAND", "PROVISIONED", "INFERENCE_PROFILE"]);
+const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING"]);
+const customizationSchema = z.enum(["FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]);
+const inferenceTypeSchema = z.enum(["ON_DEMAND", "PROVISIONED"]);
+const foundationModelArnSchema = z
+  .string()
+  .regex(/^arn:aws(?:-[^:]+)?:bedrock:[a-z0-9-]{1,20}::foundation-model\/[a-z0-9./:-]+$/);
 
 const lifecycleSchema = z
   .object({
     status: z.enum(["ACTIVE", "LEGACY"]),
     startOfLifeTime: apiDateSchema.optional(),
     legacyTime: apiDateSchema.optional(),
+    publicExtendedAccessTime: apiDateSchema.optional(),
     endOfLifeTime: apiDateSchema.optional(),
   })
   .optional();
 
-const apiItemSchema = z.object({
-  modelId: modelIdSchema,
-  modelName: z.string().min(1).optional(),
-  inputModalities: z.array(apiModalitySchema).optional(),
-  outputModalities: z.array(apiModalitySchema).optional(),
-  customizationsSupported: z.array(customizationSchema).optional(),
-  inferenceTypesSupported: z.array(inferenceTypeSchema).optional(),
-  responseStreamingSupported: z.boolean().optional(),
-  modelLifecycle: lifecycleSchema,
-});
+const apiItemSchema = z
+  .object({
+    modelArn: foundationModelArnSchema,
+    modelId: modelIdSchema,
+    modelName: z.string().min(1).optional(),
+    providerName: z.string().min(1).optional(),
+    inputModalities: z.array(apiModalitySchema).optional(),
+    outputModalities: z.array(apiModalitySchema).optional(),
+    customizationsSupported: z.array(customizationSchema).optional(),
+    inferenceTypesSupported: z.array(inferenceTypeSchema).optional(),
+    responseStreamingSupported: z.boolean().optional(),
+    modelLifecycle: lifecycleSchema,
+  })
+  .superRefine((item, context) => {
+    const arnId = item.modelArn.match(/::foundation-model\/(.+)$/)?.[1];
+    if (arnId !== item.modelId)
+      context.addIssue({
+        code: "custom",
+        path: ["modelArn"],
+        message: "Bedrock foundation-model ARN did not match modelId",
+      });
+  });
 
 const apiSchema = z.object({ modelSummaries: z.array(apiItemSchema).min(1) });
+
+const bedrockContractPaths = [
+  "/bedrock/latest/userguide/models-supported.md",
+  "/bedrock/latest/APIReference/API_ListFoundationModels.md",
+  "/bedrock/latest/APIReference/API_FoundationModelSummary.md",
+  "/bedrock/latest/APIReference/API_FoundationModelLifecycle.md",
+  "/bedrock/latest/APIReference/API_runtime_Converse.md",
+  "/bedrock/latest/APIReference/API_runtime_CountTokens.md",
+  "/bedrock/latest/userguide/service-tiers-inference.md",
+  "/bedrock/latest/userguide/conversation-inference.md",
+  "/bedrock/latest/userguide/prompt-caching.md",
+  "/bedrock/latest/userguide/count-tokens.md",
+  "/bedrock/latest/userguide/model-invocation-logging.md",
+  "/bedrock/latest/userguide/cost-management.md",
+  "/bedrock/latest/userguide/cost-mgmt-understanding-cur-data.md",
+  "/awsaccountbilling/latest/aboutv2/price-changes.md",
+  "/awsaccountbilling/latest/aboutv2/bulk-api-reading-price-list-files.md",
+  "/awsaccountbilling/latest/aboutv2/view-billing-dashboard.md",
+] as const;
+
+type BedrockDocuments = z.infer<typeof linkedBundleSchema>["documents"];
+
+function exactDocument(documents: BedrockDocuments, path: string): string | undefined {
+  const matches = documents.filter((document) => {
+    const url = new URL(document.url);
+    return url.hostname === "docs.aws.amazon.com" && url.pathname === path;
+  });
+  if (matches.length > 1) throw new Error(`Bedrock catalog duplicated official document: ${path}`);
+  return matches[0]?.body;
+}
+
+function requireDocumentFacts(name: string, body: string, facts: readonly RegExp[]): void {
+  for (const fact of facts)
+    if (!fact.test(body)) throw new Error(`Bedrock ${name} contract drifted: ${fact.source}`);
+}
+
+function documentedValues(body: string, field: string): string[] {
+  const match = body.match(
+    new RegExp(
+      `\\*\\*\\s*${field}\\s*\\*\\*[\\s\\S]{0,1200}?Valid Values:\\s*\u0060([^\u0060]+)\u0060`,
+    ),
+  );
+  if (match?.[1] === undefined)
+    throw new Error(`Bedrock FoundationModelSummary omitted ${field} valid values`);
+  return match[1].split("|").map((value) => value.trim());
+}
+
+function requireDocumentedValues(body: string, field: string, expected: string[]): void {
+  const values = documentedValues(body, field);
+  if (values.length !== expected.length || values.some((value, index) => value !== expected[index]))
+    throw new Error(`Bedrock FoundationModelSummary ${field} enum contract drifted`);
+}
+
+function validateBedrockContracts(documents: BedrockDocuments): void {
+  const found = new Map(
+    bedrockContractPaths.flatMap((path) => {
+      const body = exactDocument(documents, path);
+      return body === undefined ? [] : [[path, body] as const];
+    }),
+  );
+  if (found.size === 0) return;
+  if (found.size !== bedrockContractPaths.length) {
+    const missing = bedrockContractPaths.filter((path) => !found.has(path));
+    throw new Error(`Bedrock catalog omitted official contract documents: ${missing.join(", ")}`);
+  }
+  const body = (path: (typeof bedrockContractPaths)[number]): string => {
+    const value = found.get(path);
+    if (value === undefined) throw new Error(`Bedrock catalog omitted official document: ${path}`);
+    return value;
+  };
+
+  for (const [name, path, facts] of [
+    [
+      "canonical model catalog",
+      "/bedrock/latest/userguide/models-supported.md",
+      [/has moved to \[models at a glance\]\(model-cards\.md\)/],
+    ],
+    [
+      "ListFoundationModels",
+      "/bedrock/latest/APIReference/API_ListFoundationModels.md",
+      [/GET \/foundation-models\?/, /"modelSummaries"/, /"modelArn"/, /"modelId"/],
+    ],
+  ] as const)
+    requireDocumentFacts(name, body(path), facts);
+  const summary = body("/bedrock/latest/APIReference/API_FoundationModelSummary.md");
+  requireDocumentedValues(summary, "customizationsSupported", [
+    "FINE_TUNING",
+    "CONTINUED_PRE_TRAINING",
+    "DISTILLATION",
+  ]);
+  requireDocumentedValues(summary, "inferenceTypesSupported", ["ON_DEMAND", "PROVISIONED"]);
+  for (const field of ["inputModalities", "outputModalities"])
+    requireDocumentedValues(summary, field, ["TEXT", "IMAGE", "EMBEDDING"]);
+  const lifecycle = body("/bedrock/latest/APIReference/API_FoundationModelLifecycle.md");
+  requireDocumentedValues(lifecycle, "status", ["ACTIVE", "LEGACY"]);
+  for (const [name, path, facts] of [
+    [
+      "foundation-model lifecycle",
+      "/bedrock/latest/APIReference/API_FoundationModelLifecycle.md",
+      [
+        /\*\* endOfLifeTime \*\*/,
+        /\*\* legacyTime \*\*/,
+        /\*\* publicExtendedAccessTime \*\*/,
+        /\*\* startOfLifeTime \*\*/,
+        /higher pricing/,
+      ],
+    ],
+    [
+      "Converse response",
+      "/bedrock/latest/APIReference/API_runtime_Converse.md",
+      [
+        /"performanceConfig"/,
+        /"serviceTier"/,
+        /"cacheDetails"/,
+        /"cacheReadInputTokens"/,
+        /"cacheWriteInputTokens"/,
+        /"inputTokens"/,
+        /"outputTokens"/,
+        /"totalTokens"/,
+      ],
+    ],
+    [
+      "CountTokens operation",
+      "/bedrock/latest/APIReference/API_runtime_CountTokens.md",
+      [/POST \/model\/\{\{modelId\}\}\/count-tokens/, /"inputTokens": number/],
+    ],
+    [
+      "service tier",
+      "/bedrock/latest/userguide/service-tiers-inference.md",
+      [
+        /four service tiers[^\n]*Reserved, Priority, Standard, and Flex/,
+        /automatically overflows to the Standard tier/,
+        /service\\?_tier/,
+        /"reserved \| priority \| default \| flex"/,
+        /ResolvedServiceTier shows the actual tier that served your requests/,
+      ],
+    ],
+    [
+      "conversation usage",
+      "/bedrock/latest/userguide/conversation-inference.md",
+      [
+        /`serviceTier`/,
+        /`cacheReadInputTokens`/,
+        /`cacheWriteInputTokens`/,
+        /"inputTokens"/,
+        /"outputTokens"/,
+      ],
+    ],
+    [
+      "prompt-cache accounting",
+      "/bedrock/latest/userguide/prompt-caching.md",
+      [
+        /`cacheDetails`/,
+        /`inputTokens` field represents only the non-cached input tokens/,
+        /inputTokens \+ cacheReadInputTokens \+ cacheWriteInputTokens/,
+      ],
+    ],
+    [
+      "token-counting guide",
+      "/bedrock/latest/userguide/count-tokens.md",
+      [
+        /doesn't incur charges/,
+        /Token counting is model-specific/,
+        /will match the token count that would be charged/,
+        /\/anthropic\/v1\/messages\/count_tokens/,
+      ],
+    ],
+    [
+      "invocation logging",
+      "/bedrock/latest/userguide/model-invocation-logging.md",
+      [
+        /disabled by default/,
+        /only supported for calls made through the `bedrock-runtime` endpoint/,
+        /`bedrock-mantle` endpoint, are not currently captured/,
+        /\| requestId \|/,
+        /\| region \|/,
+        /\| operation \|/,
+        /\| modelId \|/,
+        /\| identity\.arn \|/,
+        /\| input\.inputTokenCount \|/,
+        /\| output\.outputTokenCount \|/,
+      ],
+    ],
+    [
+      "cost-management grain",
+      "/bedrock/latest/userguide/cost-management.md",
+      [
+        /finest grain is per usage type per day/,
+        /they do not produce a per-request row/,
+        /Invocation logs only/,
+      ],
+    ],
+    [
+      "CUR accounting",
+      "/bedrock/latest/userguide/cost-mgmt-understanding-cur-data.md",
+      [
+        /Input tokens/,
+        /Output tokens/,
+        /Cache read tokens/,
+        /Cache write tokens/,
+        /aggregate Amazon Bedrock cost[^\n]*over an hour or a day/,
+        /neither carries a per-`requestId` identifier/,
+      ],
+    ],
+    [
+      "Price List precedence",
+      "/awsaccountbilling/latest/aboutv2/price-changes.md",
+      [
+        /Price List Query API and Price List Bulk API provide pricing details for informational purposes only/,
+        /AWS charges the prices on the \*service pricing page\*/,
+      ],
+    ],
+    [
+      "Price List current-version",
+      "/awsaccountbilling/latest/aboutv2/bulk-api-reading-price-list-files.md",
+      [/"currentVersionUrl"/, /most up-to-date service price list file/],
+    ],
+    [
+      "billing latency",
+      "/awsaccountbilling/latest/aboutv2/view-billing-dashboard.md",
+      [/take up to 24 hours/, /refreshed at least once every 24 hours/],
+    ],
+  ] as const)
+    requireDocumentFacts(name, body(path), facts);
+}
 
 const months = new Map([
   ["jan", 1],
@@ -312,29 +548,46 @@ function tokens(value: string | undefined): number | undefined {
 }
 
 function markdownCells(line: string): string[] {
-  return line
-    .trim()
-    .replace(/^\||\|$/g, "")
+  const escapedPipe = "\u0000";
+  const value = line.trim();
+  if (!value.startsWith("|")) return [];
+  return value
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .replaceAll("\\|", escapedPipe)
     .split("|")
-    .map((cell) => cell.replaceAll("**", "").replaceAll("`", "").trim());
+    .map((cell) =>
+      cell.replaceAll(escapedPipe, "|").replaceAll("**", "").replaceAll("`", "").trim(),
+    );
 }
 
 function markdownTable(
   body: string,
   requiredHeaders: string[],
 ): { header: string[]; rows: string[][] } | undefined {
-  const lines = body.split("\n");
-  const headerIndex = lines.findIndex((line) => {
-    const cells = markdownCells(line);
-    return requiredHeaders.every((header) => cells.includes(header));
-  });
-  if (headerIndex < 0) return undefined;
-  const rows: string[][] = [];
-  for (const line of lines.slice(headerIndex + 2)) {
-    if (!line.trim().startsWith("|")) break;
-    rows.push(markdownCells(line));
+  const lines = body.split(/\r?\n/);
+  const matches: { header: string[]; rows: string[][] }[] = [];
+  for (let index = 0; index + 1 < lines.length; index += 1) {
+    const header = markdownCells(lines[index] ?? "");
+    if (!requiredHeaders.every((required) => header.includes(required))) continue;
+    const separator = markdownCells(lines[index + 1] ?? "");
+    if (separator.length < header.length || !separator.every((cell) => /^:?-{3,}:?$/.test(cell)))
+      continue;
+    const rows: string[][] = [];
+    let cursor = index + 2;
+    while (lines[cursor]?.trim().startsWith("|")) {
+      const cells = markdownCells(lines[cursor] ?? "");
+      if (cells.length !== header.length)
+        throw new Error("Bedrock Markdown table contained an irregular row");
+      rows.push(cells);
+      cursor += 1;
+    }
+    matches.push({ header, rows });
+    index = cursor - 1;
   }
-  return { header: markdownCells(lines[headerIndex] ?? ""), rows };
+  if (matches.length > 1)
+    throw new Error(`Bedrock document duplicated Markdown table: ${requiredHeaders.join(", ")}`);
+  return matches[0];
 }
 
 function tableLabel(cell: string): string | undefined {
@@ -481,15 +734,9 @@ function cardAvailability(body: string): BedrockAvailability[] {
 }
 
 function mantleRegions(documents: z.infer<typeof linkedBundleSchema>["documents"]): Set<string> {
-  const document = documents.find((item) => {
-    const url = new URL(item.url);
-    return (
-      url.hostname === "docs.aws.amazon.com" &&
-      url.pathname === "/bedrock/latest/userguide/bedrock-mantle.md"
-    );
-  });
+  const document = exactDocument(documents, "/bedrock/latest/userguide/bedrock-mantle.md");
   if (document === undefined) throw new Error("Bedrock catalog omitted Mantle regions");
-  const content = section(document.body, "Supported Regions and Endpoints");
+  const content = section(document, "Supported Regions and Endpoints");
   if (content === undefined) throw new Error("Bedrock Mantle guide omitted supported regions");
   const table = markdownTable(content, ["Region", "Endpoint"]);
   if (table === undefined) throw new Error("Bedrock Mantle guide omitted its region table");
@@ -1478,10 +1725,12 @@ function parsePrices(
     }
     byId.set(id, rates);
   }
-  const publicPage = documents.find(
-    ({ url }) =>
-      new URL(url).hostname === "aws.amazon.com" && new URL(url).pathname === "/bedrock/pricing/",
-  );
+  const publicPages = documents.filter(({ url }) => {
+    const parsed = new URL(url);
+    return parsed.hostname === "aws.amazon.com" && parsed.pathname === "/bedrock/pricing/";
+  });
+  if (publicPages.length > 1) throw new Error("Bedrock public pricing document was duplicated");
+  const publicPage = publicPages[0];
   if (publicPage !== undefined) {
     const page = load(publicPage.body);
     const openAiHeading = page("h2#OpenAI").first();
@@ -1502,11 +1751,58 @@ function parsePrices(
     let reviewedTables = 0;
     openAi.find("table").each((_tableIndex, table) => {
       const rows = page(table).find("tr");
-      const headers = rows
-        .first()
-        .children("th,td")
-        .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
-        .get();
+      const rowCells = (index: number): string[] =>
+        rows
+          .eq(index)
+          .children("th,td")
+          .map((_cellIndex, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+          .get();
+      let headers = rowCells(0);
+      let dataRows = rows.slice(1);
+      let contextConditions: Array<
+        { label: string; contextMinTokens?: number; contextMaxTokens?: number } | undefined
+      > = headers.map(() => undefined);
+      const secondHeaders = rowCells(1);
+      if (headers[0] === "" && secondHeaders[0] === "OpenAI models") {
+        const groups = rows
+          .eq(0)
+          .children("th,td")
+          .map((_cellIndex, cell) => ({
+            label: page(cell).text().replace(/\s+/g, " ").trim(),
+            colspan: Number(page(cell).attr("colspan") ?? "1"),
+          }))
+          .get();
+        if (
+          groups.length !== 3 ||
+          groups[0]?.label !== "" ||
+          groups[0].colspan !== 1 ||
+          !groups.every(({ colspan }) => Number.isInteger(colspan) && colspan > 0)
+        )
+          throw new Error("Bedrock OpenAI pricing context header changed");
+        const short = groups[1]?.label.match(/^Short Context Window \((\d+(?:\.\d+)?[KM])\)$/);
+        const long = groups[2]?.label.match(/^Long Context Window \((\d+(?:\.\d+)?[KM])\)$/);
+        const shortMaximum = tokens(short?.[1]);
+        const longMaximum = tokens(long?.[1]);
+        if (shortMaximum === undefined || longMaximum === undefined || shortMaximum >= longMaximum)
+          throw new Error("Bedrock OpenAI pricing context ranges changed");
+        contextConditions = groups.flatMap(({ label, colspan }, index) =>
+          Array.from({ length: colspan }, () =>
+            index === 0
+              ? undefined
+              : index === 1
+                ? { label, contextMaxTokens: shortMaximum }
+                : {
+                    label,
+                    contextMinTokens: shortMaximum + 1,
+                    contextMaxTokens: longMaximum,
+                  },
+          ),
+        );
+        if (contextConditions.length !== secondHeaders.length)
+          throw new Error("Bedrock OpenAI pricing context columns changed");
+        headers = secondHeaders;
+        dataRows = rows.slice(2);
+      }
       if (
         headers[0] !== "OpenAI models" ||
         !headers.includes("Price per 1M input tokens") ||
@@ -1546,10 +1842,11 @@ function parsePrices(
                 index,
                 meter,
                 cacheTtl: header.includes("30m cache write") ? 1_800 : undefined,
+                context: contextConditions[index],
               },
             ];
       });
-      rows.slice(1).each((_rowIndex, row) => {
+      dataRows.each((_rowIndex, row) => {
         const cells = page(row)
           .children("th,td")
           .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
@@ -1609,6 +1906,12 @@ function parsePrices(
                     region,
                     deployment_scope: "in_region",
                     service_tier: "standard",
+                    ...(column.context?.contextMinTokens === undefined
+                      ? {}
+                      : { context_min_tokens: column.context.contextMinTokens }),
+                    ...(column.context?.contextMaxTokens === undefined
+                      ? {}
+                      : { context_max_tokens: column.context.contextMaxTokens }),
                     ...(column.cacheTtl === undefined
                       ? {}
                       : { cache_ttl_seconds: column.cacheTtl }),
@@ -1616,7 +1919,10 @@ function parsePrices(
                   source_ref: sourceId,
                   derived: false,
                   raw_price: raw,
-                  raw_unit: headers[column.index],
+                  raw_unit:
+                    column.context === undefined
+                      ? headers[column.index]
+                      : `${column.context.label}: ${headers[column.index] ?? column.meter}`,
                 }) || overrodePriceList;
             byId.set(id, rates);
           }
@@ -1745,6 +2051,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   if (input.source.extractor.kind !== "bedrock-catalog")
     throw new Error("Bedrock catalog parser received the wrong extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  validateBedrockContracts(bundle.documents);
   const supportedMantleRegions = mantleRegions(bundle.documents);
   const cards = bundle.documents
     .filter((document) => {
@@ -1833,9 +2140,7 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
 function apiModality(value: z.infer<typeof apiModalitySchema>): Modality {
   if (value === "TEXT") return "text";
   if (value === "IMAGE") return "image";
-  if (value === "EMBEDDING") return "embedding";
-  if (value === "VIDEO") return "video";
-  return "audio";
+  return "embedding";
 }
 
 function apiModalities(values: z.infer<typeof apiModalitySchema>[] | undefined): Modality[] {
@@ -1869,9 +2174,7 @@ export function parseBedrockApi(input: ParseInput): ProviderModel[] {
         fine_tuning:
           item.customizationsSupported === undefined
             ? "unknown"
-            : item.customizationsSupported.some(
-                (value) => value === "FINE_TUNING" || value === "PREFERENCE_FINE_TUNING",
-              ),
+            : item.customizationsSupported.includes("FINE_TUNING"),
       },
       release_date: apiDate(item.modelLifecycle?.startOfLifeTime),
       deprecated_at: apiDate(item.modelLifecycle?.legacyTime),

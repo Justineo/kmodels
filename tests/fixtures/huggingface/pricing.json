@@ -9,7 +9,7 @@
       "architecture": { "input_modalities": ["text", "image"], "output_modalities": ["text"] },
       "providers": [
         {
-          "provider": "route-a",
+          "provider": "deepinfra",
           "status": "live",
           "context_length": 65536,
           "supports_tools": true,
@@ -17,7 +17,7 @@
           "pricing": { "input": 0.25, "output": 1.5 }
         },
         {
-          "provider": "route-b",
+          "provider": "fireworks-ai",
           "status": "live",
           "context_length": 131072,
           "supports_tools": false,
@@ -25,12 +25,12 @@
           "pricing": { "input": 0.3, "output": 1.7 }
         },
         {
-          "provider": "unpriced-route",
+          "provider": "featherless-ai",
           "status": "live",
           "context_length": 32768
         },
         {
-          "provider": "unavailable-route",
+          "provider": "groq",
           "status": "error",
           "context_length": 999999,
           "supports_tools": true,
@@ -47,7 +47,7 @@
       "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
       "providers": [
         {
-          "provider": "free-route",
+          "provider": "publicai",
           "status": "live",
           "is_free": true,
           "pricing": { "input": 0, "output": "0.0" }
@@ -60,7 +60,7 @@
       "created": 1700000000,
       "owned_by": "org",
       "architecture": { "input_modalities": ["text"], "output_modalities": ["text"] },
-      "providers": [{ "provider": "unavailable-route", "status": "error" }]
+      "providers": [{ "provider": "groq", "status": "error" }]
     }
   ]
 }

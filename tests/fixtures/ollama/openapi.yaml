@@ -1,3 +1,47 @@
+openapi: 3.1.0
+info:
+  title: Ollama API
+  version: 0.1.0
+servers:
+  - url: http://localhost:11434
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+  schemas:
+    ShowRequest:
+      properties:
+        model: { type: string }
+    ShowResponse:
+      properties:
+        parameters: { type: string }
+        license: { type: string }
+        modified_at: { type: string }
+        details: { type: object }
+        template: { type: string }
+        capabilities: { type: array }
+        model_info: { type: object }
+    ModelSummary:
+      properties:
+        name: { type: string }
+        model: { type: string }
+        remote_model: { type: string }
+        remote_host: { type: string }
+        modified_at: { type: string }
+        size: { type: integer }
+        digest: { type: string }
+        details: { type: object }
+    ListResponse:
+      properties:
+        models:
+          items:
+            $ref: "#/components/schemas/ModelSummary"
+    Usage:
+      properties:
+        prompt_eval_count: { type: integer }
+        eval_count: { type: integer }
 paths:
   /api/generate:
     post: {}
@@ -5,11 +49,20 @@ paths:
     post: {}
   /api/embed:
     post: {}
-components:
-  schemas:
-    Usage:
-      properties:
-        prompt_eval_count:
-          type: integer
-        eval_count:
-          type: integer
+  /api/tags:
+    get:
+      operationId: list
+      responses:
+        "200":
+          schema:
+            $ref: "#/components/schemas/ListResponse"
+  /api/show:
+    post:
+      operationId: show
+      requestBody:
+        schema:
+          $ref: "#/components/schemas/ShowRequest"
+      responses:
+        "200":
+          schema:
+            $ref: "#/components/schemas/ShowResponse"

@@ -71,6 +71,46 @@ describe("task taxonomy", () => {
     ]);
   });
 
+  it("keeps similarity and classification route evidence in distinct task families", () => {
+    const normalized = normalizeModelTasks({
+      ...model(),
+      tasks: ["reranking", "classification"],
+      routes: [
+        {
+          source_ref: "test-source",
+          provider: "hf-inference",
+          provider_model_id: "similarity-model",
+          task: "sentence-similarity",
+          status: "live",
+        },
+        {
+          source_ref: "test-source",
+          provider: "hf-inference",
+          provider_model_id: "classifier-model",
+          task: "text-classification",
+          status: "live",
+        },
+      ],
+    });
+
+    expect(normalized.task_evidence).toEqual([
+      {
+        task: "reranking",
+        source_ref: "test-source",
+        namespace: "test.task",
+        raw_value: "sentence-similarity",
+        kind: "provider_task",
+      },
+      {
+        task: "classification",
+        source_ref: "test-source",
+        namespace: "test.task",
+        raw_value: "text-classification",
+        kind: "provider_task",
+      },
+    ]);
+  });
+
   it("migrates the former operations field at the storage boundary", () => {
     expect(
       migrateCatalogStorage({

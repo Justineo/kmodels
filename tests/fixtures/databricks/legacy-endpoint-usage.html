@@ -1,0 +1,57 @@
+<main>
+  <h1>Configure governance on model serving endpoints (legacy)</h1>
+  <p>
+    Usage tracking shares <code>system.serving.endpoint_usage</code> and
+    <code>system.serving.served_entities</code>.
+  </p>
+  <p>
+    The input and output token count are estimated as (<code>text_length</code>+1)/4 if the token
+    count is not returned by the model.
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>Column name</th>
+        <th>Description</th>
+        <th>Type</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>account_id</td>
+        <td>Account.</td>
+        <td>STRING</td>
+      </tr>
+      <tr>
+        <td>workspace_id</td>
+        <td>Workspace.</td>
+        <td>STRING</td>
+      </tr>
+      <tr>
+        <td>databricks_request_id</td>
+        <td>Request ID.</td>
+        <td>STRING</td>
+      </tr>
+      <tr>
+        <td>request_time</td>
+        <td>Request time.</td>
+        <td>TIMESTAMP</td>
+      </tr>
+      <tr>
+        <td>input_token_count</td>
+        <td>The token count of the input.</td>
+        <td>LONG</td>
+      </tr>
+      <tr>
+        <td>output_token_count</td>
+        <td>The token count of the output.</td>
+        <td>LONG</td>
+      </tr>
+      <tr>
+        <td>served_entity_id</td>
+        <td>Served entity.</td>
+        <td>STRING</td>
+      </tr>
+    </tbody>
+  </table>
+</main>

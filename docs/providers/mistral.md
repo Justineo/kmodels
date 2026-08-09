@@ -20,12 +20,21 @@ Status: current
   the [Admin Billing API](https://docs.mistral.ai/api/endpoint/beta/admin/billing),
   account billing, and subscriptions. They are accounting drift guards and do not
   create model identities.
+- The OpenAPI companion is parsed as indentation-bounded YAML contracts rather than
+  searched as one unbounded string. The collector guards `GET /v1/models`, its
+  `ModelList`, base/fine-tuned cards and capability vocabulary, plus the exact usage
+  schemas used by chat/FIM/embeddings, OCR, transcription, speech streams, and
+  Conversations. A marker copied into an unrelated schema cannot satisfy a missing
+  field in the reviewed block.
 - Callable identity count and numeric/free current-pricing coverage must stay within
   reviewed bounds. Coverage is measured after coalescing repeated model/version
   identities and applying exact public price-card supplements.
 - Optional `/v1/models` is account-scoped. Ignore private fine-tunes; overlay only
   exact public base models or unambiguous aliases. It cannot create rows or retain raw
-  data, and API `created` is not a release date. Enable it with `MISTRAL_API_KEY`.
+  data, and API `created` is not a release date. `BaseModelCard.type` is optional in
+  the official schema, so its documented `base` default is accepted; an unreviewed
+  list-level field such as a future pagination cursor rejects the inventory instead
+  of silently truncating it. Enable it with `MISTRAL_API_KEY`.
 
 ## Mapping
 
@@ -86,13 +95,19 @@ Status: current
 
 - Chat/FIM/Embeddings responses use the official `UsageInfo` schema with prompt,
   completion, and total tokens. Prompt-cache responses additionally expose cached
-  prompt tokens; calculate uncached input as prompt tokens minus cached tokens.
+  prompt tokens through the documented direct count and/or prompt-token detail
+  object; calculate uncached input as prompt tokens minus cached tokens. Streaming
+  completion chunks retain the same usage schema.
 - Transcription returns `UsageInfo`, including audio seconds where applicable. OCR
-  returns pages processed. These synchronous response facts refine the gateway's
-  estimate immediately after completion.
-- Text-to-speech returns audio data but no documented usage object. The gateway must
-  measure the submitted characters itself for the public character-based rate.
-  Agent/tool request counts likewise require endpoint-specific accounting.
+  returns pages processed. Transcription stream completion exposes the same usage
+  object. These synchronous response facts refine the gateway's estimate immediately
+  after completion.
+- Non-streaming text-to-speech returns audio data without a usage object, while the
+  streaming done event now carries token `UsageInfo`. Neither response reports the
+  submitted character count used by the public character-based rate, so the gateway
+  must still measure input characters itself. Conversation usage separately reports
+  connector tokens and per-connector counts; other Agent/tool charges still require
+  endpoint-specific accounting.
 - Pre-route load balancing should therefore use a locally cached first-party rate
   book, account/zone policy, and request parameters. Post-response accounting should
   replace predicted units with returned token/cache/audio/page usage. Later compare
@@ -114,37 +129,31 @@ Status: current
   state, retired price, and recognized provider-service charge gets a disposition.
   Numeric/free model coverage is a separate output guard and cannot hide skipped
   input rows.
-- The earlier extractor missed first-party information because it treated embedded
-  repository prices as the complete rate book, did not fetch the official pricing or
-  Admin billing surfaces, and measured only model-level output coverage. The revised
-  flow explicitly classifies sources as catalog, price-book supplement, accounting
-  contract, or account inventory, then reconciles source observations before
-  validating output coverage.
-- The live first-party bundle currently yields 59 rows and 58 unique identities: 37
-  rows have numeric offers, 21 are not applicable, and one remains not published. It
-  retains 157 USD and 76 EUR direct-or-derived facts. Reconciliation partitions the
-  reviewed inputs into 104 normalized, 24 explicit non-numeric, 53 excluded, and six
-  ambiguous observations, with no raw, unsupported, or unbound item.
-- The six live ambiguities are upstream disagreements, not missing parser mappings.
+- Sources are classified as catalog, price-book supplement, accounting contract, or account
+  inventory, and their observations are reconciled before output coverage is accepted.
+- The public repository is itself a published artifact: its checked-in release
+  workflow creates a PR to `platform-docs-public` from tagged documentation releases.
+  The collector follows the raw `main` index and every exact import on each refresh,
+  so additions and retirements require no hand-maintained model allowlist or LLM
+  interpretation. Schema, count, bundle-size, pricing-coverage, and reconciliation
+  guards stop publication when that upstream mechanism changes shape.
+- Live ambiguities are retained as upstream disagreements, not treated as missing parser mappings.
   The repository publishes Voxtral Small output at `$0.30/M` while the pricing page
   publishes `$0.40/M`; the pricing page advertises retired Leanstral as temporarily
   free; and it still prices both input/output for retired Mixtral 8x7B and 8x22B.
   These facts remain visible diagnostics and do not revive retired offers or choose a
   conflicting current rate.
-- Canonical compilation now retains the USD and EUR facts as applicability-qualified
+- Canonical compilation retains USD and EUR facts as applicability-qualified
   alternatives. It produces no commercial raw conflict and no current unknown-priced
   model; source-level disagreements listed above remain reconciliation diagnostics
   rather than being mistaken for cross-currency conflicts.
+
+## Comparator audit
+
 - Third-party books remain audit-only. A value absent from this catalog is imported
   only after an exact current first-party model/offer source is added to this
   deterministic pipeline. Historical aliases or unsupported values in ccusage,
   LiteLLM, or models.dev do not establish a current Mistral-hosted price.
-
-## Kong AI Gateway
-
-- Candidates require active lifecycle, acceptable maturity, and exact
-  Chat/Completions or Embeddings endpoint evidence.
-- Function calling also requires positive tool-call capability.
-- Transcription, speech synthesis, OCR, moderation, FIM, Batch, and agent endpoints
-  remain outside the current Kong matrix.
-- Do not restore absent aliases from Kong examples.
+- models.dev's Mistral TOML and LiteLLM's monolithic cost map are manually maintained comparison
+  surfaces. They flatten lifecycle, multi-currency, non-token, Batch, and cache conditions and do not
+  establish a current Mistral-hosted offer.

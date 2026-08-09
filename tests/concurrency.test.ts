@@ -24,4 +24,11 @@ describe("bounded concurrency", () => {
       "positive safe integer",
     );
   });
+
+  it("preserves undefined task results", async () => {
+    await expect(mapConcurrent([0, 1], 2, async () => undefined)).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+  });
 });

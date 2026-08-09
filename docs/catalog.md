@@ -12,10 +12,26 @@ different providers remain distinct.
 
 The catalog records facts observed from allowlisted official sources. Global presence means presence in an official global catalog, not availability to one account, region, deployment, or runtime. `exhaustive` separately records whether the source claims completeness. Missing price means unknown, never free.
 
+Catalog membership is a Kmodels product decision expressed in provider-neutral
+model and workload terms. A downstream consumer may inform that boundary, but
+no consumer's current feature set, allowlist, compatibility flag, configuration
+shape, or routing policy enters the canonical catalog or price book. Consumer
+compatibility is a separate, versioned projection over accepted provider facts.
+
 The repository ships:
 
 1. A deterministic collector that produces versioned static JSON without an LLM or inference call.
 2. A static Vue website that reads that JSON.
+
+For artifact ecosystems, a technically deployable repository and a productized
+model candidate are different sets. A broad deployment inventory is therefore
+route evidence, not automatic catalog membership. Admission requires a current
+official route plus deterministic positive product evidence defined by that
+provider, such as membership in a bounded official product catalog, exact
+recommendation or featured-use documentation, or corroborating live offers from
+independent providers. The rule must be refreshable without model IDs, Top-N
+cuts, popularity scores, workload exclusions, or an LLM. Price availability is
+commercial coverage after admission and never an admission requirement.
 
 ## Publication profiles
 
@@ -64,6 +80,10 @@ with provenance.
 - Merge repeated observations of one tuple. Union additive sets and conditioned facts; apply overlays only to declared fields. Reject incompatible facts from one source.
 - Never merge bare IDs across providers, collapse a canonical ID through an alias, or merge distinct callable IDs that share a display name.
 - An exact catalog ID always owns a row even when another row lists it as an alias.
+- A source row outside the reviewed catalog boundary is discarded before model
+  construction. It cannot survive as a hidden model, route, offer, raw price
+  fallback, or historical catalog row. Collection audit may retain only bounded
+  aggregate counts and stable exclusion reasons, never the excluded row.
 - `account_availability` remains `unknown`; scoped inventories cannot establish global availability.
 
 ## Tasks, delivery, and routes

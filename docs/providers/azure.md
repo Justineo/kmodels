@@ -9,16 +9,28 @@ Status: current
 - Keep internal provider ID `azure`. Join versioned, versionless, and case-only evidence only when exact or unambiguous. Keep ambiguous versionless rows separate.
 - Preserve exact, multi-valued service families: Azure OpenAI, Foundry Models sold by Azure, and partner/community models.
 - Do not duplicate these rows into an `azure-openai` provider without a separate authoritative standalone catalog.
+- Supplement the documentation bundle from the anonymous first-party Foundry Explorer request used
+  by `ai.azure.com`. The reviewed request searches 11 core registries for non-anonymous,
+  non-archived, latest `Versioned` model entities whose deployment options contain
+  `UnifiedEndpointMaaS`. Follow its opaque continuation token with 50-row pages, require a stable
+  declared total of 50–150, reject every partial-registry or shard error, and cap the request at five
+  pages/250 rows. This embedded endpoint is official but undocumented, so its request grammar,
+  response contract, and fixed portal user-agent headers are explicit failure-closed source
+  boundaries. The larger Explorer registry list currently mixes production publishers with dev,
+  staging, preview, and private registries and is not copied wholesale into the public catalog.
 - Collect current USD consumption rates from the public, unauthenticated Azure Retail Prices API.
   Query the complete `Foundry Models` Consumption inventory and follow pagination; do not maintain a
   product-name allowlist. New Microsoft and Marketplace product families must therefore reach the
   extractor automatically. The inventory covers public Foundry meters across regions and SKUs; it
   does not establish negotiated discounts or subscription-specific availability.
 - Collect Microsoft's public Azure OpenAI and Foundry model-family pricing pages as a second
-  unauthenticated first-party price book. Fetch the reviewed page set atomically and read the
-  embedded regional decimal maps rather than the client-rendered `$-` placeholders. This source is
-  the production fallback for model IDs and version groups that the Retail SKU vocabulary cannot
-  bind; Marketplace Discovery API access is not required.
+  unauthenticated first-party price book. The Microsoft family page is the bounded discovery index:
+  follow 9–20 same-host `/pricing/details/ai-foundry-models/<family>/` links, exclude the AOAI
+  indirection and fine-tuning-only page, and fetch the Azure OpenAI page as a fixed companion. This
+  makes a newly published family reach the extractor without a manifest edit while a removed index,
+  path change, or implausible family count fails closed. Read the embedded regional decimal maps
+  rather than the client-rendered `$-` placeholders. This source is the production fallback for
+  model IDs and version groups that the Retail SKU vocabulary cannot bind.
 - Collect Claude-in-Foundry rates from Anthropic's official pricing page. Its dedicated Microsoft
   Foundry section says Azure Marketplace CCU conversion uses the same public per-model and
   per-feature rates, with the same 1.1x US Data Zone multiplier. This is a delegated first-party
@@ -36,6 +48,18 @@ Status: current
 - Foundry MCP is preview comparison evidence only. Its catalog/details tools may audit model,
   region, and price coverage, but their changing tool contract and user/project authorization do
   not make them a production collector or a fallback price source.
+- The Azure Marketplace Catalog Discovery APIs are also official and expose products, plans,
+  availability, meters, and prices, but the data-plane APIs require a separately issued
+  `X-API-Key` and the ARM variant is tenant scoped. They are useful candidates for a future optional
+  overlay after a credentialed response can be reviewed; they are not a hidden unauthenticated
+  fallback and must not be guessed into the current public book.
+- Microsoft's “11,000+ models” catalog statement includes managed-compute/open-weight discovery and
+  is not the denominator for serverless pay-as-you-go models. The anonymous portal search currently
+  reports 11,219 latest model entities before the `UnifiedEndpointMaaS` filter but only 95 in the
+  reviewed serverless subset. The embedded API is neither documented nor a billing-identity API;
+  it cannot make the broad portal total a pricing denominator. Keep the public serverless catalog
+  explicitly non-exhaustive and use the authenticated Location Models API for a subscription's
+  actual regional inventory.
 
 ## Mapping
 
@@ -44,6 +68,18 @@ Status: current
 - Other Foundry rows do not inherit Azure OpenAI endpoints from a task or type.
 - Keep exact `{region, deployment_type}` pairs, lifecycle versions, and replacements. The retired-model archive may mark an existing public tuple retired but never recreates an archive-only catalog row.
 - Keep maturity separate from availability: Preview maps to `active` + `preview`, and GA maps to `active` + `stable`. Customer-facing Legacy and Deprecated map to canonical `legacy` and `deprecated`; customer-facing Retired maps to canonical `retired`.
+- Portal identity comes only from the last-colon split of exact `properties.id` (`model:version`),
+  cross-checked against `properties.name`. Do not use the numeric artifact `properties.version` or
+  substitute `azureOpenAIVersion`: the live portal has two speech rows where that subsidiary value
+  names an older Azure OpenAI version. A portal row may enrich an exact documentation tuple. It may
+  create a newer version only when the base model already exists and the exact or sibling versioned
+  documentation tuples establish one service family. A wholly new base ID or a family conflict is
+  excluded, so the broad portal cannot silently widen reviewed provider scope.
+- The documented lifecycle remains authoritative for an exact tuple; the undocumented portal never
+  reactivates or retires it. For a portal-only newer version, use the portal's lifecycle and exact
+  effective legacy/deprecation/retirement dates, plus its tasks, modalities, declared capabilities,
+  token limits, and exact deployment-SKU locations. Unknown inference-task values fail closed rather
+  than being forced into the nearest task.
 - The Models API uses different lifecycle words: `Deprecating` means canonical `deprecated`, while API `Deprecated` means canonical `retired`. Its `deprecation.inference` value is the inference retirement date, not `deprecated_at`; once that exact date is effective, canonical status is `retired` even if a lifecycle label or public schedule row lags.
 - Merge repeated ARM identities before applying the subscription-scoped inventory. Tasks,
   modalities, prices, and exact `{region, deployment_type}` pairs are additive. A scalar observed in
@@ -65,6 +101,9 @@ Status: current
   exact numeric evidence; it does not manufacture a version-specific claim. A small reviewed alias
   map covers only documented page omissions or spelling differences such as Llama's omitted
   `Instruct` suffix. All other non-unique labels remain unbound.
+- A newly discovered family slug is not an identity hint. Until its product-family vocabulary is
+  reviewed, its rows search only non-Azure-OpenAI catalog tuples and must still produce one best
+  ordered-token identity; an ambiguous label remains unbound and pricing never creates a model.
 - Treat the page book as a fallback, not a competing duplicate. If an exact tuple already has a
   numeric Retail, delegated, or direct-meter book, remove it from the page book's scope. Keep the
   remaining shared base-model scope separate from exact books so an exact Retail observation cannot
@@ -155,54 +194,42 @@ Status: current
 ## Extraction and reconciliation
 
 - Refresh is deterministic and non-LLM: bounded Markdown-table grammars own catalog and delegated
-  Claude prices; a bounded HTML-table grammar owns Microsoft pricing-page regional maps; fixed
-  OpenAPI operation/path and usage markers own response contracts; the Retail Prices transport
-  follows every bounded page; provider metadata and subscription locations define the bounded ARM
-  region set; exact direct ARM meter IDs own scoped joins; fixed policy phrases fail closed when
-  accounting semantics change.
-- The checked-in first-party audit returned 223 public model/version tuples and 29,237 Foundry
-  Consumption rows. The reviewed retail grammar normalized 19,110 source rows into 18,934 unique
-  facts on 109 model tuples, excluded 4,803 non-base rows, and left 3,864 rows unbound, 1,446
-  version-ambiguous, and 14 unsupported. The only unsupported signature is Azure's generic legacy
-  `Az-GPT-3.5-turbo Tokens` meter, which does not say input versus output. Across 189 non-retired
-  catalog tuples, the retail and delegated Claude books normalize rates for 108 and leave 81
-  unknown. This is intentionally not presented as 100% price coverage: the Retail API often leads the public model
-  catalog, abbreviates identities, or omits a version shared by several current catalog rows. Such
-  rows stay visible in reconciliation instead of becoming guessed prices.
-- The reviewed Microsoft pricing-page extractor classifies all 1,171 embedded price fields: 612
-  normalized, 358 deliberately excluded non-base fields, 5 explicit unavailable values, 192
-  unbound identities, and 4 unsupported meter/unit shapes. Its 13,240 regional facts on 110 parsed
-  models add normalized fallback books for 36 non-retired tuples in the checked-in catalog,
-  projecting coverage from 108/189 to 144/189 without Marketplace credentials.
-- The remaining 45 non-retired tuples are not one parser failure. They partition into catalog-only
-  partner/community versions, new Microsoft image/media models, legacy/deprecated tuples retained by
-  lifecycle sources, and versioned or versionless Azure OpenAI rows for which neither Retail nor the
-  public page publishes a unique exact binding. The unresolved set includes exact IDs from Cohere,
-  FLUX, Fireworks, Grok, Llama, MAI, Mistral, OpenAI media/embedding, Sora, TimeGEN, and Tsuzumi.
-  Upstream-provider prices and versionless third-party aliases are not Azure commercial evidence, so
-  those 45 remain unknown until Microsoft publishes an exact row or authenticated ARM exposes a
-  matching meter ID.
+  Claude prices; bounded same-host HTML-link discovery and an HTML-table grammar own Microsoft
+  pricing-page regional maps; the portal transport owns a fixed registry/filter request and opaque
+  continuation tokens; fixed OpenAPI operation/path and usage markers own response contracts; the
+  Retail Prices transport follows every bounded page; provider metadata and subscription locations
+  define the bounded ARM region set; exact direct ARM meter IDs own scoped joins; fixed policy
+  phrases fail closed when accounting semantics change. Trailing-slash family links derive distinct
+  source keys from their last non-empty path segment, so normal Azure URL style cannot collapse every
+  discovered page into one cache key.
+- Page totals, continuation, source eligibility, and accepted-row counts are bounded; drift retains
+  the prior accepted Azure provider instead of publishing a partial portal overlay. The Retail API
+  often leads the public catalog, abbreviates identities, or omits a version shared by several
+  current rows. Those observations remain unbound or ambiguous instead of becoming guessed prices.
+- Unknown-priced tuples are not necessarily parser failures. Portal-newer versions do not
+  inherit a sibling's price merely because the family is shared. The unresolved set partitions into
+  catalog-only partner/community versions, new Microsoft image/media and speech versions,
+  legacy/deprecated tuples retained by lifecycle sources, and versioned or versionless Azure OpenAI
+  rows for which neither Retail nor the public page publishes a unique exact binding. It includes
+  exact IDs from Cohere, FLUX, Fireworks, Grok, Llama, MAI, Mistral, OpenAI audio/embedding, Sora,
+  TimeGEN, and Tsuzumi. Upstream-provider prices and versionless third-party aliases are not Azure
+  commercial evidence, so these remain unknown until Microsoft publishes an exact row or
+  authenticated ARM exposes a matching meter ID.
 - The missing Claude family was a genuine first-party extraction gap: Microsoft delegates the rate
   to Anthropic, and Anthropic publishes a Microsoft Foundry-specific CCU section. The dedicated
-  overlay now normalizes 13 public price rows into 85 facts for 12 offered models, including the
+  overlay now normalizes 12 public price rows into 80 facts for 11 offered models, including the
   documented 1.1x US Data Zone variants for the three catalog models that advertise that deployment,
   while preserving promotion validity and private-offer uncertainty.
 - ccusage is comparison-only and reads local coding-agent usage through an embedded/refreshed
   LiteLLM price snapshot; it does not read Azure deployments, Retail Prices, Cost Details, or CCU
-  billing. LiteLLM currently exposes hundreds of `azure`, `azure_ai`, and `azure_text` aliases,
-  including regional and media variants; models.dev exposes two overlapping Azure provider books.
-  Both flatten or duplicate deployment/version dimensions and cannot establish an account's meter
-  binding or net charge. They may point to a real first-party rate, but that is useful only as a lead
-  to the Microsoft/Anthropic source and never as evidence to fill this catalog.
-
-## Kong AI Gateway
-
-Compatibility requires all of:
-
-1. Azure OpenAI service-family evidence.
-2. An exact endpoint for the requested operation.
-3. Active lifecycle and acceptable maturity.
-4. A compatible region/deployment pair.
-5. The user's deployment-name binding.
-
-Legacy Completions in the service specification is not model support without an exact positive relation.
+  billing. LiteLLM currently exposes 319 `azure`, `azure_ai`, and `azure_text` aliases (219, 97, and
+  3 respectively) from its community-maintained monolithic map; its hosted catalog rereads the
+  GitHub map frequently, but that is publication freshness rather than upstream Azure discovery.
+  models.dev exposes two manually curated overlapping books (`azure`: 82 and
+  `azure-cognitive-services`: 68); its hourly sync workflow has no Azure provider adapter, so the
+  Azure TOML files are not produced from Retail Prices or Location Models. Portkey's open books are
+  broader (`azure-openai`: 167 and `azure-ai`: 258) and its gateways refresh the central JSON every
+  24 hours, but the repository files are community-maintained, contain no per-row Azure source
+  locator, and similarly flatten deployment/version/region scope. None can establish an account's
+  meter binding or net charge. They may point to a real first-party rate, but that is useful only as
+  a lead to the Microsoft/Anthropic source and never as evidence to fill this catalog.
