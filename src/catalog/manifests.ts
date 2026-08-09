@@ -175,6 +175,7 @@ export interface SourceManifest {
   scope?: "global" | "account" | "region" | "workspace" | "runtime";
   exhaustive?: boolean;
   role?: "catalog" | "supplement" | "overlay" | "inventory";
+  fillOnly?: boolean;
   optional?: boolean;
   pricingRequired?: true;
   auth?:
@@ -428,11 +429,12 @@ const dashscopeCatalogSource = (
   format: "markdown",
   stability: "documented",
   extractor: { kind: "dashscope-catalog", category, minModels, maxModels },
-  extractorVersion: "dashscope-catalog-v3",
+  extractorVersion: "dashscope-catalog-v5",
   fields: [
     "model_id",
     "description",
     "tasks",
+    "delivery_modes",
     "modalities",
     "capabilities",
     "limits",
@@ -538,7 +540,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v6",
+        extractorVersion: "openai-catalog-v7",
         fields: [
           "model_id",
           "name",
@@ -782,7 +784,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v9",
+        extractorVersion: "anthropic-catalog-v10",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -824,6 +826,10 @@ export const manifests = [
             [
               "model-ids-and-versions",
               "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions.md",
+            ],
+            [
+              "fable-mythos-launch",
+              "https://platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
             ],
             ["models-list", "https://platform.claude.com/docs/en/api/models/list.md"],
             ["messages-create", "https://platform.claude.com/docs/en/api/messages/create.md"],
@@ -1604,6 +1610,7 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "supplement",
+        fillOnly: true,
         headers: [
           { name: "X-Ms-User-Agent", value: "AzureMachineLearningWorkspacePortal/3.0" },
           { name: "x-ms-useragent", value: "AzureMachineLearningWorkspacePortal/3.0" },
@@ -3013,11 +3020,11 @@ export const manifests = [
       }),
       ...pricingLabels("modality", {
         "image/video": "Image / video",
-        "text + audioaudio only billed": "Text + audio (audio only billed)",
+        "text + audio audio only billed": "Text + audio (audio only billed)",
         "text/image": "Text / image",
         "text/image/video": "Text / image / video",
-        "textmultimodal input": "Text (multimodal input)",
-        "texttext-only input": "Text (text-only input)",
+        "text multimodal input": "Text (multimodal input)",
+        "text text-only input": "Text (text-only input)",
       }),
       ...pricingLabels("operation", {
         "1_1landscape_video": "1:1 landscape video",
@@ -3070,7 +3077,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v5",
+        extractorVersion: "dashscope-pricing-v6",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

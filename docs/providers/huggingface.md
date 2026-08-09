@@ -4,12 +4,14 @@ Status: current
 
 ## Sources and identity
 
-- Global presence comes only from Hugging Face-operated public services. The
-  OpenAI-compatible router is a bounded current product catalog. The partner
-  mapping registries are a much broader deployment inventory; they contribute
-  routes only for rows that also meet the positive product boundary below. Both
-  surfaces use the exact `namespace/repository` ID. An ordinary Hub repository
-  is never a catalog model merely because it can be deployed.
+- Global presence comes only from Hugging Face-operated public catalog surfaces.
+  The HF Inference live mapping is the first-party serving catalog for Hugging
+  Face's own hosted inference service, while the OpenAI-compatible router is a
+  bounded current routed-product catalog. Other partner mapping registries are a
+  much broader deployment inventory; they contribute routes only for rows that
+  meet the partner product boundary below. All surfaces use the exact
+  `namespace/repository` ID. An ordinary Hub repository is never a catalog model
+  merely because it can be deployed.
 - The mapping collector calls
   `GET /api/partners/{provider}/models?status=live` for the 18 partners linked by
   the official Inference Providers overview: Baseten, Cerebras, Cohere, DeepInfra,
@@ -18,29 +20,35 @@ Status: current
   documented as public, complete, and grouped by task. `huggingface-hf-inference`
   remains the stable historical source key even though it now aggregates every
   partner mapping registry.
-- A concrete `live` mapping proves callability, but not by itself that the Hub
-  artifact belongs in a compact reusable model catalog. Registration is partly
-  mechanical: it requires a real Hub repository and matching pipeline tag, and
-  large providers can consequently expose thousands of per-artifact deployments.
-  Treating that registry as the product catalog made one Featherless inventory
-  dominate Kmodels even though peer catalogs intentionally publish much smaller
-  product surfaces.
-- Catalog membership is the deterministic union of three positive signals: an
-  exact row in the router catalog; an exact model with live mappings from at
-  least two distinct integrated providers; or an exact live mapping named in an
-  official Inference Providers task page as a `Recommended model` or in that
-  page's bounded `InferenceSnippet` provider mapping. Router rows are collected
-  independently, so the mapping parser itself emits the latter two sets and all
-  their concrete routes. Distinct providers are corroborating productization,
-  not a popularity score. Official task-page evidence preserves specialized
-  single-provider image, video, audio, retrieval, and traditional-ML candidates.
+- A concrete `hf-inference` `live` mapping is sufficient first-party evidence
+  that Hugging Face currently serves the exact model. Do not require a second
+  provider, router listing, recommendation, popularity threshold, or public
+  model-specific price for those rows. This preserves specialized and traditional
+  hosted workloads without an opinionated ranking rule.
+- A concrete third-party `live` mapping proves callability but not by itself that
+  the Hub artifact belongs in a compact reusable model catalog. Partner
+  registration is partly mechanical: it requires a real Hub repository and
+  matching pipeline tag, and large providers can consequently expose thousands
+  of per-artifact deployments. Treating every partner registry as a product
+  catalog made one Featherless inventory dominate Kmodels even though peer
+  catalogs intentionally publish much smaller product surfaces.
+- Catalog membership is therefore the deterministic union of four positive
+  signals: an exact `hf-inference` live mapping; an exact row in the router
+  catalog; an exact model with live mappings from at least two distinct integrated
+  providers; or an exact live mapping named in an official Inference Providers
+  task page as a `Recommended model` or in that page's bounded
+  `InferenceSnippet` provider mapping. Router rows are collected independently,
+  so the mapping parser emits the first, third, and fourth sets together with all
+  their concrete routes. Distinct partners corroborate productization, not
+  popularity. Official task-page evidence preserves specialized single-partner
+  image, video, audio, retrieval, and traditional-ML candidates.
 - Task pages are discovered on every refresh from the official task index and
   exact-joined to the live registries. There is no hard-coded task list, model
   allowlist, model-name heuristic, download/like threshold, modality cutoff, or
-  Top-N. A new official task page or featured model enters mechanically; a new
-  raw deployment does not. Generated per-artifact pages, provider IDs copied
-  from the artifact, and the generic warm/trending model browser are not
-  additional admission signals.
+  Top-N. A new HF Inference live model, official task page, or featured partner
+  model enters mechanically; a new uncorroborated partner deployment does not.
+  Generated per-artifact pages, provider IDs copied from the artifact, and the
+  generic warm/trending model browser are not additional admission signals.
 - The fixed overview and the official `huggingface_hub` provider registry are
   independent inventory drift guards. The SDK registry currently has the same 18
   routed partners plus `openai`; the latter is an SDK integration and has no public
@@ -51,8 +59,9 @@ Status: current
 - The router source bundles fixed first-party documentation for the Hub and mapping
   APIs, provider selection, pricing, Chat Completions, Responses, partner validation
   and billing, the Python inference client, and Hub billing. Those companions guard
-  semantics and accounting. Only the task-index documents described above supply
-  bounded product evidence, and only by exact join to a current live mapping.
+  semantics and accounting. For partner-only rows, only the task-index documents
+  described above supply bounded single-partner product evidence, and only by
+  exact join to a current live mapping.
 - Featherless's unauthenticated native `GET /v1/models?status=active` catalog is a
   provider-operated pricing overlay, not presence evidence. Pagination requests the
   documented maximum of 1,000 rows and follows the returned page count with bounded
@@ -85,13 +94,17 @@ Status: current
 
 ## Routes and mapping
 
-- Task is not an admission filter. A task page may supply exact positive product
-  evidence, but its task label never admits or rejects a row. Once a candidate is
-  admitted, preserve all its concrete live routes, including classification,
-  fill-mask, extractive QA, segmentation, object detection, and unknown future tasks.
-  This avoids using a coarse pipeline tag to discard prompt guards, moderation models,
-  cross-encoder rerankers, turn detectors, or future workloads that share a traditional
-  task API.
+- Task is not an admission filter. An HF Inference live mapping is admitted for
+  every task; a task page may separately supply exact positive product evidence
+  for a partner-only row, but its task label never admits or rejects by workload.
+  Once a candidate is admitted, preserve all its concrete live routes, including
+  classification, fill-mask, extractive QA, segmentation, object detection, and
+  unknown future tasks. This avoids using a coarse pipeline tag to discard prompt
+  guards, moderation models, cross-encoder rerankers, turn detectors, or future
+  workloads that share a traditional task API.
+- An exact `translation` route maps to canonical translation. Fill-mask, extractive
+  question-answering, and table-question-answering remain callable raw routes but do not become
+  text generation merely because they return text.
 - `feature-extraction` is normalized as embeddings. `sentence-similarity` and
   `text-ranking` are normalized as reranking because their callable result is a score,
   not an embedding vector. Classification pipeline tags remain classification;
@@ -214,12 +227,12 @@ Status: current
   retained rather than silently collapsing coverage.
 - Every admitted concrete mapping receives a price disposition. `hf-inference`
   routes use `hf_inference_compute_price_unbound`, partner routes use
-  `partner_route_price_not_published`. A valid single-provider inventory row without
+  `partner_route_price_not_published`. A valid single-partner inventory row without
   positive product evidence contributes only the aggregate reason
-  `single_provider_inventory_without_product_evidence`; its model ID, routes, and prices
-  are discarded. Invalid and non-identity rows are likewise aggregate diagnostics. A
-  later exact router or Featherless offer can make an admitted model numeric without
-  pretending that the mapping registry itself published a price.
+  `single_partner_inventory_without_product_evidence`; its model ID, routes, and
+  prices are discarded. Invalid and non-identity rows are likewise aggregate
+  diagnostics. A later exact router or Featherless offer can make an admitted model
+  numeric without pretending that the mapping registry itself published a price.
 - Every router backend also receives one disposition: live priced/free offers are
   normalized, live unpriced offers are unbound, and error offers are excluded. Account
   credits, controls, BYOK, provider-side exact-cost retrieval, and dashboard history
@@ -257,15 +270,18 @@ Status: current
   remains an ordinary Kmodels model fact regardless of whether a particular consumer
   release implements it. No Kong field or current feature appears in this boundary.
 - Hugging Face Hub size and generic HTTP callability do not define this catalog. An
-  ordinary repository, a `staging` mapping, a single-provider inventory row without
+  ordinary repository, a `staging` mapping, a single-partner inventory row without
   positive product evidence, a dynamic tag filter without one exact identity, and a
-  malformed or credential-like ID remain outside it. Excluded rows are not retained as
-  hidden history, routes, source references, prices, or raw fallbacks.
+  malformed or credential-like ID remain outside it. A current `hf-inference` live
+  row is first-party hosted-service evidence rather than an uncorroborated partner
+  row. Excluded rows are not retained as hidden history, routes, source references,
+  prices, or raw fallbacks.
 - Price availability also does not define membership. An admitted official live route
   may remain unknown-priced, while a provider-native priced model with no admitted HF
   candidate remains outside this catalog. Presence and commercial coverage refresh
-  independently; provider corroboration and bounded official task features establish
-  productization, while popularity, task family, and pricing coverage do not.
+  independently; HF-operated live serving, provider corroboration, and bounded
+  official task features establish productization, while popularity, task family,
+  and pricing coverage do not.
 - A downstream cost calculation should retain canonical model ID, selected route
   provider, routing policy, bill-to target, BYOK versus HF-routed billing,
   input/output usage, and request ID. Unknown or mismatched task/endpoint

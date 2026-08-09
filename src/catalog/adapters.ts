@@ -1308,6 +1308,7 @@ function openAiMarkdownModel(
   const tools = openAiListSection(body, "Supported tools");
   const feature = (name: string): boolean | "unknown" =>
     features === undefined ? "unknown" : features.has(name);
+  const pricedCachedInput = /^\|\s*Cached input\s*\|\s*\$\d+(?:\.\d+)?\s*\|/im.test(body);
   const tool = (names: string[]): boolean | "unknown" =>
     tools === undefined ? "unknown" : names.some((value) => tools.has(value));
   const description = [...body.slice(0, body.indexOf("Model ID:")).matchAll(/^> (.+)$/gm)]
@@ -1337,7 +1338,7 @@ function openAiMarkdownModel(
       structured_output: feature("structured_outputs"),
       streaming: feature("streaming"),
       batch: endpointEvidence.endpoints.some(({ path }) => path === "v1/batch"),
-      prompt_cache: feature("prompt_caching"),
+      prompt_cache: pricedCachedInput || feature("prompt_caching"),
       fine_tuning: endpointEvidence.endpoints.some(({ path }) => path === "v1/fine-tuning"),
       code_execution: tool(["code_interpreter", "hosted_shell"]),
       effort_control:

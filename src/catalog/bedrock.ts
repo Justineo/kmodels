@@ -10,6 +10,11 @@ import { decimalsEqual, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
+  zodContractEvidence,
+  type SourceContractEvidence,
+  type ZodContractObservation,
+} from "./source-contract.ts";
+import {
   modalitySchema,
   type Modality,
   type ModelTask,
@@ -23,6 +28,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -190,16 +196,21 @@ const marketplacePageContextSchema = z.object({
 });
 
 const apiDateSchema = z.iso.datetime({ offset: true });
-const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING"]);
-const customizationSchema = z.enum(["FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]);
-const inferenceTypeSchema = z.enum(["ON_DEMAND", "PROVISIONED"]);
+const apiModalitySchema = z.enum(["TEXT", "IMAGE", "EMBEDDING", "AUDIO", "SPEECH", "VIDEO"]);
+const customizationSchema = z.enum([
+  "FINE_TUNING",
+  "PREFERENCE_FINE_TUNING",
+  "CONTINUED_PRE_TRAINING",
+  "DISTILLATION",
+]);
+const inferenceTypeSchema = z.enum(["ON_DEMAND", "PROVISIONED", "INFERENCE_PROFILE"]);
 const foundationModelArnSchema = z
   .string()
   .regex(/^arn:aws(?:-[^:]+)?:bedrock:[a-z0-9-]{1,20}::foundation-model\/[a-z0-9./:-]+$/);
 
 const lifecycleSchema = z
   .object({
-    status: z.enum(["ACTIVE", "LEGACY"]),
+    status: z.string().min(1),
     startOfLifeTime: apiDateSchema.optional(),
     legacyTime: apiDateSchema.optional(),
     publicExtendedAccessTime: apiDateSchema.optional(),
@@ -213,10 +224,10 @@ const apiItemSchema = z
     modelId: modelIdSchema,
     modelName: z.string().min(1).optional(),
     providerName: z.string().min(1).optional(),
-    inputModalities: z.array(apiModalitySchema).optional(),
-    outputModalities: z.array(apiModalitySchema).optional(),
-    customizationsSupported: z.array(customizationSchema).optional(),
-    inferenceTypesSupported: z.array(inferenceTypeSchema).optional(),
+    inputModalities: z.array(z.string().min(1)).optional(),
+    outputModalities: z.array(z.string().min(1)).optional(),
+    customizationsSupported: z.array(z.string().min(1)).optional(),
+    inferenceTypesSupported: z.array(z.string().min(1)).optional(),
     responseStreamingSupported: z.boolean().optional(),
     modelLifecycle: lifecycleSchema,
   })
@@ -231,6 +242,13 @@ const apiItemSchema = z
   });
 
 const apiSchema = z.object({ modelSummaries: z.array(apiItemSchema).min(1) });
+const reviewedApiEnumsSchema = z.object({
+  inputModalities: z.array(apiModalitySchema).optional(),
+  outputModalities: z.array(apiModalitySchema).optional(),
+  customizationsSupported: z.array(customizationSchema).optional(),
+  inferenceTypesSupported: z.array(inferenceTypeSchema).optional(),
+  modelLifecycle: z.object({ status: z.enum(["ACTIVE", "LEGACY"]) }).optional(),
+});
 
 const bedrockContractPaths = [
   "/bedrock/latest/userguide/models-supported.md",
@@ -280,7 +298,7 @@ function documentedValues(body: string, field: string): string[] {
 
 function requireDocumentedValues(body: string, field: string, expected: string[]): void {
   const values = documentedValues(body, field);
-  if (values.length !== expected.length || values.some((value, index) => value !== expected[index]))
+  if (expected.some((value) => !values.includes(value)))
     throw new Error(`Bedrock FoundationModelSummary ${field} enum contract drifted`);
 }
 
@@ -2140,15 +2158,44 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
 function apiModality(value: z.infer<typeof apiModalitySchema>): Modality {
   if (value === "TEXT") return "text";
   if (value === "IMAGE") return "image";
-  return "embedding";
+  if (value === "EMBEDDING") return "embedding";
+  if (value === "VIDEO") return "video";
+  return "audio";
 }
 
-function apiModalities(values: z.infer<typeof apiModalitySchema>[] | undefined): Modality[] {
-  return unique((values ?? []).map(apiModality));
+function apiModalities(values: string[] | undefined): Modality[] {
+  return unique(
+    (values ?? []).flatMap((value) => {
+      const parsed = apiModalitySchema.safeParse(value);
+      return parsed.success ? [apiModality(parsed.data)] : [];
+    }),
+  );
+}
+
+function fineTuning(values: string[] | undefined): ProviderModel["capabilities"]["fine_tuning"] {
+  if (values === undefined) return "unknown";
+  if (values.some((value) => value === "FINE_TUNING" || value === "PREFERENCE_FINE_TUNING"))
+    return true;
+  return values.every((value) => customizationSchema.safeParse(value).success) ? false : "unknown";
 }
 
 export function parseBedrockApi(input: ParseInput): ProviderModel[] {
   const { modelSummaries } = apiSchema.parse(JSON.parse(input.body));
+  const enumObservations: ZodContractObservation[] = [];
+  for (const [itemIndex, item] of modelSummaries.entries()) {
+    const result = reviewedApiEnumsSchema.safeParse(item);
+    if (!result.success)
+      enumObservations.push({
+        error: result.error,
+        input: item,
+        itemIndex,
+        modelId: item.modelId,
+      });
+  }
+  if (enumObservations.length > 0)
+    input.onContractFinding?.(
+      zodContractEvidence(enumObservations, modelSummaries.length, "accept_with_signal"),
+    );
   return modelSummaries.map((item) => {
     const status: ProviderModel["status"] =
       item.modelLifecycle?.status === "ACTIVE"
@@ -2171,10 +2218,7 @@ export function parseBedrockApi(input: ParseInput): ProviderModel[] {
       capabilities: {
         ...unknownCapabilities(),
         streaming: item.responseStreamingSupported ?? "unknown",
-        fine_tuning:
-          item.customizationsSupported === undefined
-            ? "unknown"
-            : item.customizationsSupported.includes("FINE_TUNING"),
+        fine_tuning: fineTuning(item.customizationsSupported),
       },
       release_date: apiDate(item.modelLifecycle?.startOfLifeTime),
       deprecated_at: apiDate(item.modelLifecycle?.legacyTime),

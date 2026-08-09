@@ -2,7 +2,7 @@
 
 ### June 30, 2026
 
-- We've launched **Claude Sonnet 5** (`claude-sonnet-5`), the next generation of the Sonnet family.
+- We've launched **Claude Sonnet 5** (`claude-sonnet-5`), the next generation of the Sonnet family with the same platform features as Claude Opus 4.8.
 
 ### June 9, 2026
 

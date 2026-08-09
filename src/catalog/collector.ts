@@ -179,6 +179,23 @@ export interface SourceGroup {
   models: ParsedProviderModel[];
 }
 
+interface InventoryRetention {
+  models: ParsedProviderModel[];
+  count: number;
+}
+
+function mergeBy<T>(
+  current: readonly T[] | undefined,
+  incoming: readonly T[] | undefined,
+  key: (value: T) => string,
+): T[] {
+  return [
+    ...new Map(
+      [...(current ?? []), ...(incoming ?? [])].map((value) => [key(value), value]),
+    ).values(),
+  ];
+}
+
 function known<T extends string | boolean>(current: T, incoming: T, fillOnly: boolean): T {
   return incoming === "unknown" || (fillOnly && current !== "unknown") ? current : incoming;
 }
@@ -200,11 +217,9 @@ function mergePriceFacts(
   incoming: ParsedProviderModel,
 ): SourcePriceFact[] {
   if (incoming.price_facts.length === 0) return incoming.price_facts;
-  return [
-    ...new Map(
-      [...current.price_facts, ...incoming.price_facts].map((fact) => [priceFactKey(fact), fact]),
-    ).values(),
-  ].sort((left, right) => priceFactKey(left).localeCompare(priceFactKey(right)));
+  return mergeBy(current.price_facts, incoming.price_facts, priceFactKey).sort((left, right) =>
+    priceFactKey(left).localeCompare(priceFactKey(right)),
+  );
 }
 
 function mergeRawPriceFacts(
@@ -212,14 +227,9 @@ function mergeRawPriceFacts(
   incoming: ParsedProviderModel,
 ): SourceRawPricingFact[] {
   if (incoming.raw_price_facts.length === 0) return incoming.raw_price_facts;
-  return [
-    ...new Map(
-      [...current.raw_price_facts, ...incoming.raw_price_facts].map((fact) => [
-        JSON.stringify(fact),
-        fact,
-      ]),
-    ).values(),
-  ].sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return mergeBy(current.raw_price_facts, incoming.raw_price_facts, JSON.stringify).sort(
+    (left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)),
+  );
 }
 
 function applyFields(
@@ -228,7 +238,7 @@ function applyFields(
   source: SourceManifest,
 ): ParsedProviderModel {
   const fields = new Set(source.fields);
-  const fillOnly = source.role === "inventory";
+  const fillOnly = source.role === "inventory" || source.fillOnly === true;
   const incomingModalities =
     incoming.modalities.input.length + incoming.modalities.output.length > 0;
   const incomingOperations = incoming.tasks.length > 0;
@@ -238,6 +248,18 @@ function applyFields(
     incoming.pricing_state !== "unknown";
   const applyPricing =
     fields.has("pricing") && incomingPricing && (!fillOnly || current.pricing_state === "unknown");
+  const applyDeliveryEvidence =
+    fields.has("delivery_modes") ||
+    fields.has("api_endpoints") ||
+    fields.has("tasks") ||
+    fields.has("capabilities");
+  const deliveryEvidence = applyDeliveryEvidence
+    ? mergeBy(
+        current.delivery_mode_evidence,
+        incoming.delivery_mode_evidence,
+        deliveryModeEvidenceKey,
+      )
+    : current.delivery_mode_evidence;
   const serviceFamilies = [
     ...new Set([...(current.service_families ?? []), ...(incoming.service_families ?? [])]),
   ].sort();
@@ -259,19 +281,14 @@ function applyFields(
       fields.has("tasks") && incomingOperations
         ? [...new Set([...current.tasks, ...incoming.tasks])]
         : current.tasks,
+    task_evidence:
+      fields.has("tasks") || fields.has("routes")
+        ? mergeBy(current.task_evidence, incoming.task_evidence, stableJson)
+        : current.task_evidence,
     delivery_modes: fields.has("delivery_modes")
       ? [...new Set([...(current.delivery_modes ?? []), ...(incoming.delivery_modes ?? [])])]
       : current.delivery_modes,
-    delivery_mode_evidence: fields.has("delivery_modes")
-      ? [
-          ...new Map(
-            [
-              ...(current.delivery_mode_evidence ?? []),
-              ...(incoming.delivery_mode_evidence ?? []),
-            ].map((evidence) => [deliveryModeEvidenceKey(evidence), evidence]),
-          ).values(),
-        ]
-      : current.delivery_mode_evidence,
+    delivery_mode_evidence: deliveryEvidence,
     raw_type: fields.has("tasks")
       ? optional(current.raw_type, incoming.raw_type, fillOnly)
       : current.raw_type,
@@ -281,23 +298,14 @@ function applyFields(
         : serviceFamilies
       : current.service_families,
     api_endpoints: fields.has("api_endpoints")
-      ? [
-          ...new Map(
-            [...(current.api_endpoints ?? []), ...(incoming.api_endpoints ?? [])].map(
-              (endpoint) => [apiEndpointKey(endpoint), endpoint],
-            ),
-          ).values(),
-        ].sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)))
+      ? mergeBy(current.api_endpoints, incoming.api_endpoints, apiEndpointKey).sort((left, right) =>
+          apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+        )
       : current.api_endpoints,
     routes: fields.has("routes")
-      ? [
-          ...new Map(
-            [...(current.routes ?? []), ...(incoming.routes ?? [])].map((route) => [
-              modelRouteKey(route),
-              route,
-            ]),
-          ).values(),
-        ].sort((left, right) => modelRouteKey(left).localeCompare(modelRouteKey(right)))
+      ? mergeBy(current.routes, incoming.routes, modelRouteKey).sort((left, right) =>
+          modelRouteKey(left).localeCompare(modelRouteKey(right)),
+        )
       : current.routes,
     modalities:
       fields.has("modalities") && incomingModalities
@@ -396,14 +404,11 @@ function applyFields(
     price_facts: applyPricing ? mergePriceFacts(current, incoming) : current.price_facts,
     raw_price_facts: applyPricing ? mergeRawPriceFacts(current, incoming) : current.raw_price_facts,
     availability: fields.has("availability")
-      ? [
-          ...new Map(
-            [...(current.availability ?? []), ...(incoming.availability ?? [])].map((item) => [
-              `${item.region}\u0000${item.deployment_type}`,
-              item,
-            ]),
-          ).values(),
-        ].sort((left, right) =>
+      ? mergeBy(
+          current.availability,
+          incoming.availability,
+          ({ deployment_type, region }) => `${region}\u0000${deployment_type}`,
+        ).sort((left, right) =>
           `${left.deployment_type}\u0000${left.region}`.localeCompare(
             `${right.deployment_type}\u0000${right.region}`,
           ),
@@ -412,6 +417,50 @@ function applyFields(
     source_refs: [...new Set([...current.source_refs, ...incoming.source_refs])],
     observed_at: incoming.observed_at,
     last_seen_at: incoming.last_seen_at,
+  };
+}
+
+export function retainInventoryFacts(
+  models: ParsedProviderModel[],
+  previous: ProviderModel[],
+  source: SourceManifest,
+): InventoryRetention {
+  const oldByUid = new Map(
+    previous
+      .filter((model) => model.source_refs.includes(source.id))
+      .map((model) => [model.uid, model]),
+  );
+  let count = 0;
+  return {
+    models: models.map((model) => {
+      const old = oldByUid.get(model.uid);
+      if (old === undefined) return model;
+      const incoming: ParsedProviderModel = {
+        ...old,
+        task_evidence: old.task_evidence?.filter(({ source_ref }) => source_ref === source.id),
+        delivery_mode_evidence: old.delivery_mode_evidence?.filter(
+          ({ source_ref }) => source_ref === source.id,
+        ),
+        routes: old.routes?.filter(({ source_ref }) => source_ref === source.id),
+        source_refs: [],
+        observed_at: model.observed_at,
+        last_seen_at: model.last_seen_at,
+        pricing_state: "unknown",
+        price_facts: [],
+        raw_price_facts: [],
+      };
+      const applied = applyFields(model, incoming, source);
+      const next = {
+        ...applied,
+        source_refs: model.source_refs,
+        observed_at: model.observed_at,
+        last_seen_at: model.last_seen_at,
+      };
+      if (stableJson(next) === stableJson(model)) return model;
+      count += 1;
+      return { ...next, source_refs: [...new Set([...model.source_refs, source.id])] };
+    }),
+    count,
   };
 }
 
@@ -668,6 +717,7 @@ async function collectProvider(
     const overlays: SourceGroup[] = [];
     const inventories: SourceGroup[] = [];
     const pricingSources: SourceGroup[] = [];
+    const unavailableInventories: SourceManifest[] = [];
     const sources: SourceRecord[] = [];
     for (const source of manifest.sources) {
       const role = source.role ?? "catalog";
@@ -685,7 +735,10 @@ async function collectProvider(
             `Required credential(s) ${credentialLabel(source)} are not configured; the scoped inventory was skipped.`,
           ),
         );
-        if (source.optional) continue;
+        if (source.optional) {
+          if (role === "inventory") unavailableInventories.push(source);
+          continue;
+        }
         providerFailure = "source_unavailable";
         throw new Error(`Missing credential for ${source.id}`);
       }
@@ -711,7 +764,10 @@ async function collectProvider(
           ...failureState,
           ...(evidence === undefined ? {} : { contract_finding: evidence }),
         });
-        if (source.optional) continue;
+        if (source.optional) {
+          if (role === "inventory") unavailableInventories.push(source);
+          continue;
+        }
         providerFailure = evidence === undefined ? "source_unavailable" : "source_schema_changed";
         throw error;
       }
@@ -734,7 +790,9 @@ async function collectProvider(
           onPricingReconciliation: (item) => {
             pricingReconciliationItems.push(item);
           },
-        });
+        })
+          .map(normalizeModelTasks)
+          .map(normalizeDeliveryModes);
       } catch (error) {
         const failureState = recordSourceFailure(state, source.id, observedAt, result);
         const evidence = contractEvidence(error);
@@ -748,7 +806,10 @@ async function collectProvider(
           ...failureState,
           ...(evidence === undefined ? {} : { contract_finding: evidence }),
         });
-        if (source.optional) continue;
+        if (source.optional) {
+          if (role === "inventory") unavailableInventories.push(source);
+          continue;
+        }
         providerFailure = "source_schema_changed";
         throw error;
       }
@@ -846,6 +907,19 @@ async function collectProvider(
         );
       candidate = applyGroups(candidate, [inventory], false);
     }
+    for (const source of unavailableInventories) {
+      const retention = retainInventoryFacts(candidate, comparableOldModels, source);
+      candidate = retention.models;
+      if (retention.count > 0)
+        warnings.push(
+          sourceWarning(
+            "inventory_fallback",
+            manifest.provider.id,
+            source.id,
+            `Retained the last successful inventory enrichment for ${retention.count} ${retention.count === 1 ? "model" : "models"}.`,
+          ),
+        );
+    }
     candidate = candidate
       .map(normalizeModelReleaseStage)
       .map(normalizeModelTasks)
@@ -876,6 +950,11 @@ async function collectProvider(
             const oldSource = oldSourceById.get(id);
             return oldSource !== undefined && oldSource.extractor_version !== extractor_version;
           })
+          .map(({ id }) => id),
+      ),
+      releaseDate: new Set(
+        manifest.sources
+          .filter(({ fields }) => fields.includes("release_date"))
           .map(({ id }) => id),
       ),
     };

@@ -75,6 +75,11 @@ Status: current
   create a newer version only when the base model already exists and the exact or sibling versioned
   documentation tuples establish one service family. A wholly new base ID or a family conflict is
   excluded, so the broad portal cannot silently widen reviewed provider scope.
+- For an existing documented tuple, the undocumented portal is fill-only: it adds missing limits
+  and other declared facts but cannot replace a known public or authenticated scalar. A portal-only
+  newer tuple still retains its own complete portal facts. This prevents a portal deployment
+  default such as a 4,096-token output setting from replacing a documented 128,000-token model
+  limit.
 - The documented lifecycle remains authoritative for an exact tuple; the undocumented portal never
   reactivates or retires it. For a portal-only newer version, use the portal's lifecycle and exact
   effective legacy/deprecation/retirement dates, plus its tasks, modalities, declared capabilities,

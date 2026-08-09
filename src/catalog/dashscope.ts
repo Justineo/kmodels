@@ -146,7 +146,7 @@ function pricingCellKind(
   if (/mode/i.test(raw)) return "mode";
   if (
     dashscopeRegion(raw) !== undefined ||
-    /^(?:International|Global|Chinese mainland|China \(mainland\)|EU|Japan)$/i.test(raw)
+    /^(?:International|Global|Chinese mainland|China \(mainland\)|EU|Japan|US)$/i.test(raw)
   )
     return "scope";
   if (/audio=|video type|Audio video|Silent video/i.test(raw)) return "type";
@@ -295,7 +295,7 @@ function rowOperations(
     result.push("text_generation");
   if (category === "image") result.push("image_generation");
   if (category === "video") result.push("video_generation");
-  if (category === "asr") result.push("transcription");
+  if (category === "asr" || category === "omni") result.push("transcription");
   if (category === "tts") result.push("speech_synthesis");
   if (category === "embedding")
     result.push(/rerank/i.test(rawType ?? id) ? "reranking" : "embeddings");
@@ -504,6 +504,7 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
       if (rowIds.length === 0)
         throw new Error(`DashScope ${extractor.category} model cell changed shape`);
       for (const id of rowIds) {
+        const realtime = /WebSocket|realtime/i.test(api ?? "");
         const context = tokenCount(value(table, row, /^Context(?:$| \/)/i));
         const output = tokenCount(value(table, row, /^Max output(?:$| \/)/i));
         const dimensionLimits = dimensions(value(table, row, /^Dimension(?:$| \/)/i));
@@ -519,7 +520,20 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
           ...model,
           description: value(table, row, /^(?:Description|Use case|Use cases)(?:$| \/)/i),
           tasks: rowOperations(extractor.category, id, rawType, api, table.headings),
-          raw_type: rawType,
+          raw_type: rawType ?? api,
+          delivery_modes: realtime ? ["realtime"] : undefined,
+          delivery_mode_evidence:
+            !realtime || api === undefined
+              ? undefined
+              : [
+                  {
+                    mode: "realtime",
+                    source_ref: input.source.id,
+                    namespace: `${input.provider.id}.api`,
+                    raw_value: api,
+                    kind: "provider_type",
+                  },
+                ],
           modalities: rowModalities(extractor.category, table, row, rawType),
           capabilities: {
             ...model.capabilities,
@@ -878,9 +892,27 @@ function dashscopeRegion(raw: string): string | undefined {
   return raw === "China (Hong Kong)" ? "Hong Kong (China)" : raw;
 }
 
+const deploymentRegions = new Map([
+  ["international", "Singapore"],
+  ["chinese mainland", "China (Beijing)"],
+  ["china (mainland)", "China (Beijing)"],
+  ["eu", "Germany (Frankfurt)"],
+  ["japan", "Japan (Tokyo)"],
+  ["us", "US (Virginia)"],
+]);
+
+function deploymentRegion(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const direct = dashscopeRegion(raw);
+  if (direct !== undefined) return direct;
+  return deploymentRegions.get(raw.toLowerCase());
+}
+
 function priceConditions(table: Table, row: Cell[], header: string): SourcePriceFact["conditions"] {
-  const region = table.headings.map(dashscopeRegion).find((item) => item !== undefined);
   const deployment = value(table, row, /^Deployment (?:scope|region)|^Service deployment scope/i);
+  const region =
+    table.headings.map(dashscopeRegion).find((item) => item !== undefined) ??
+    deploymentRegion(deployment);
   const tier = value(table, row, /^Input token(?:s| range) per request/i);
   const range = tier
     ?.replace(/,/g, "")
@@ -1647,7 +1679,11 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         });
-        const region = modelRates[0]?.conditions.region;
+        const regions = unique(
+          modelRates.flatMap(({ conditions }) =>
+            conditions.region === undefined ? [] : [conditions.region],
+          ),
+        );
         add(models, {
           ...model,
           aliases: equivalentIds(idCell),
@@ -1658,7 +1694,9 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
           pricing_state: discontinued ? "not_applicable" : "numeric",
           price_facts: modelRates,
           availability:
-            region === undefined ? undefined : [{ region, deployment_type: "model_api" }],
+            regions.length === 0
+              ? undefined
+              : regions.map((region) => ({ region, deployment_type: "model_api" })),
           scope: "regional_catalog",
         });
       }

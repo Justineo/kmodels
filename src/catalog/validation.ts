@@ -142,6 +142,7 @@ interface ReconciliationSources {
   catalog: ReadonlySet<string>;
   exhaustive: ReadonlySet<string>;
   recomputed: ReadonlySet<string>;
+  releaseDate?: ReadonlySet<string>;
 }
 
 export function reconcileCatalog(
@@ -159,13 +160,17 @@ export function reconcileCatalog(
     );
   const observed = candidate.map((model) => {
     const old = previousByUid.get(model.uid);
-    return old === undefined
-      ? model
-      : {
-          ...model,
-          first_seen_at: old.first_seen_at,
-          source_refs: [...new Set([...sourceRefs(old), ...model.source_refs])],
-        };
+    if (old === undefined) return model;
+    const releaseDateRefs =
+      model.release_date === undefined && old.release_date !== undefined
+        ? old.source_refs.filter((sourceId) => sources.releaseDate?.has(sourceId) === true)
+        : [];
+    return {
+      ...model,
+      first_seen_at: old.first_seen_at,
+      release_date: releaseDateRefs.length === 0 ? model.release_date : old.release_date,
+      source_refs: [...new Set([...sourceRefs(old), ...releaseDateRefs, ...model.source_refs])],
+    };
   });
   const missing = previous.flatMap((model) => {
     if (candidateByUid.has(model.uid)) return [];

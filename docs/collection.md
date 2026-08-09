@@ -52,10 +52,18 @@ Status: implemented
   otherwise they fill the matched row. Overlays may replace only declared fields on existing rows.
   This keeps a non-exhaustive lifecycle or price-book supplement from splitting a documented alias
   while still admitting an exact current identity omitted by the primary catalog.
+- A supplement can declare `fillOnly` when its source is suitable for discovering new exact rows
+  and filling missing fields but is lower-authority than the primary catalog for known scalar facts.
+  This does not leave a generic conflict unresolved: fresh primary values win mechanically, while a
+  supplement-created row still retains all of its own facts.
 - Account, region, workspace, and runtime inventories are scoped validation. They may fill fields the public catalog leaves undisclosed and add positive set-valued facts to exact public matches, but never override a known global fact or create or remove a global row.
 - Only an exhaustive global catalog supports a completeness claim.
 - Optional authenticated sources use named environment variables. Collection loads ignored `.env` values without overriding the process environment.
-- Missing credentials or an optional-source failure emits a structured warning and does not weaken a successful global refresh.
+- Missing credentials or an optional inventory failure emits a structured warning. For exact
+  public matches, the collector retains the last successful source-declared enrichment only where
+  the fresh public candidate is missing or unknown; fresh known scalar facts still win. This keeps
+  a transient credential, transport, or parser failure from turning known capabilities and dates
+  into unknown while preserving the older source record's observation time.
 - An optional public pricing overlay may declare `pricingRequired`. Its failure still
   allows an independently valid catalog slice to advance, but makes the fresh pricing
   bundle incomplete so publication retains the previous compatible pricing partition.
@@ -78,6 +86,9 @@ Status: implemented
   copied into the website UI payload.
 - Provenance is additive. Every successful allowlisted source that exactly matches a published model remains in `source_refs`.
 - A successfully fetched new extractor version recomputes that source's observations. Rows and provenance omitted by the new interpretation are not retained as if the obsolete extractor had still observed them; ordinary omissions from an unchanged non-exhaustive extractor remain protected.
+- An exact official release date is an immutable observation. If a later rolling or recomputed
+  source omits it, retain the previous date and its release-date source reference; a newly observed
+  exact date still replaces it and therefore supports an explicit upstream correction.
 - Publish the latest successful record for each referenced source. If an optional source is skipped, retain its last validated record.
 - Omit sources that match no published model.
 - After a replacement source succeeds, remove rows and references backed only by source IDs no longer present in the manifest.
