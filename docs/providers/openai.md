@@ -4,32 +4,62 @@ Status: current
 
 ## Sources and identity
 
-- `/api/docs/models/all` is the exhaustive global catalog. Follow only 80–140 exact same-host model-card links.
-- Accept IDs, aliases, snapshots, facts, endpoint cards, and card-local prices only from the
-  matching card. Disabled cards add no evidence; an unknown endpoint label/path rejects the
-  provider.
-- The public Markdown price book is a non-exhaustive catalog supplement. Bind its exact IDs,
-  current card aliases, and unique exact card display names to catalog models. A model-rate row
-  whose identity matches none of those may create a minimal current row; this admits models such
-  as `gpt-5-search-api` that OpenAI prices and documents outside `/models/all`. It fills cards that
-  link out for pricing and adds explicit Batch, Flex, and Fast tiers. A card's numeric price block
-  remains the Standard authority; price-book Standard rows only fill cards with no numeric facts.
+- `/api/docs/models/all.md` is the exhaustive global catalog. Follow only 80–140 exact same-host
+  Markdown model-card links. The Markdown cards are the primary semantic source for IDs, display
+  names, descriptions, documented routed aliases, snapshots, modalities, limits, endpoints,
+  capabilities, and lifecycle badges. Require the card's `Model ID` to agree with its URL and the
+  index to agree exactly with the fetched card set.
+- Endpoint tables are complete matrices, not positive-only lists. Accept only the reviewed exact
+  endpoint label/route pairs and exact `Supported`/`Not supported` states. A new route, a renamed
+  route, or an omitted reviewed row rejects the provider. Supported-feature and supported-tool
+  lists are positive lists; unknown additions are retained as reviewable source changes without
+  breaking unrelated extraction.
+- Keep the rendered HTML cards in the optional `openai-overview` overlay only because the
+  Markdown serialization currently omits the Standard/Batch labels for duplicated price tables.
+  Bind every HTML card to an exact Markdown-catalog ID. This isolates DOM drift to pricing, so a
+  failed HTML price refresh cannot invalidate an otherwise valid Markdown catalog refresh. The
+  stable source ID is retained even though the overlay no longer owns alias discovery.
+- The public Markdown price book is a non-exhaustive catalog supplement. An exact model-ID row is
+  its own official identity and creates a minimal current row when that ID is absent from the model
+  catalog; do not collapse a differently priced snapshot into a card alias. Bind non-ID labels only
+  through a unique exact card display name or documented alias. This admits models such as
+  `gpt-5-search-api` that OpenAI prices and documents outside `/models/all`. It fills cards that link
+  out for pricing and adds explicit Batch, Flex, and Fast tiers. A card's numeric price block remains
+  the Standard authority; price-book Standard rows only fill cards with no numeric facts.
 - Account for every reviewed model-rate row in the price book. Rows used by the catalog are
   normalized; duplicate Standard rows and out-of-scope fine-tuning/tool prices are deliberately
   excluded; unmatched, ambiguous, or unsupported rows remain bounded reconciliation findings. An
   output model count is not a substitute for this input-row denominator.
-- `/api/docs/models` is alias-only. `/api/docs/deprecations` is a non-exhaustive lifecycle
-  supplement because `/models/all` can omit a model whose future shutdown table proves it remains
-  callable. ISO dates and exact English month dates are accepted. A future-shutdown row may create
-  a missing public identity; an already retired or fine-tuned identity may only update an existing
-  exact catalog row. In a `snapshot | aliases` cell, retain one snapshot identity and attach the
-  remaining codes as aliases. “Legacy” alone is not deprecation.
+- `/api/docs/models` currently exposes the same catalog rather than a separate alias authority.
+  Accept an alias only from explicit matching-card prose such as “the `…` alias routes requests” or
+  from that card's Snapshots list; do not infer family aliases from names or IDs.
+- `/api/docs/deprecations.md` is a non-exhaustive lifecycle supplement because the current model
+  catalog can omit a model whose future shutdown table proves it remains callable. ISO dates and
+  exact English month dates are accepted. A future-shutdown row may create a missing public
+  identity; an already retired or fine-tuned identity may only update an existing exact catalog
+  row. In a `snapshot | aliases` cell, retain one snapshot identity and attach the remaining codes
+  as aliases. “Legacy” alone is not deprecation.
 - The data-residency support matrix is a non-exhaustive catalog supplement for exact model/
   snapshot IDs, API endpoints, and `{region, regional_processing}` availability. Preserve the
   matrix's United Arab Emirates snapshot exceptions instead of widening the row-level region list.
   Service-only rows do not create models.
 - Authenticated `GET /v1/models` is account-scoped validation. Private rows and absence never change the global catalog, and raw responses are not retained.
 - Enable the optional inventory with `OPENAI_API_KEY`.
+
+## Official index and API contract
+
+- Fetch `/api/docs/llms.txt`, `/api/reference/llms.txt`, the reviewed commercial guides, and the
+  first-party `openai/openai-openapi` specification atomically with the Markdown catalog. The
+  first-party GitHub repository is an official repository source; no third-party catalog is used
+  as production evidence.
+- The documentation index is a change detector. Every indexed pricing, cost, spend, usage, Batch,
+  Fast, Flex, caching, rate-limit, and model-comparison page must be in the reviewed companion set.
+  A newly indexed commercial page rejects the source until its relevance and mapping are reviewed.
+- The OpenAPI contract must continue to expose the reviewed Models, Chat Completions, Responses,
+  organization Costs, and organization Usage operations. Compare the complete set of
+  `/organization/usage/*` paths, not only a minimum count, so a new billable meter becomes an
+  explicit review signal. Also require the cache-write, uncached, modality, service-tier, and
+  response-usage fields used by the accounting boundary below.
 
 ## Mapping
 
@@ -72,9 +102,14 @@ Status: current
   cost-based load balancing. Route on a public-price estimate before the request and correct the
   estimate from the response; do not wait for Costs API data.
 
-## Kong AI Gateway
+## External comparators
 
-- Derive compatibility endpoint by endpoint; broad `text_generation` does not distinguish Chat Completions, Completions, Responses, or Assistants.
-- Kong covers generation, completions, embeddings, files, batches, assistants/responses, speech, transcription, translation, image, realtime, and video. Moderation is outside its current OpenAI matrix.
-- Files and batches are service-level operations. Agent behavior stays in endpoint and capability evidence.
-- Treat Kong examples as configuration examples, not recommendations or lifecycle evidence.
+- [models.dev](https://github.com/anomalyco/models.dev) is coverage-only evidence. Its OpenAI sync
+  uses authenticated `/v1/models` to monitor account-visible availability while preserving
+  community-authored TOML facts and deliberately not treating absence as lifecycle evidence. That
+  confirms the API inventory boundary above, but its curated facts and PR-based updates are not an
+  acceptable production source for this provider.
+- [LiteLLM's model catalog](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json)
+  is also coverage-only evidence. Its broad community-maintained JSON and frequently refreshed
+  hosted view are useful for finding IDs or meters to investigate in official sources, but never
+  supply or override a Kmodels fact.

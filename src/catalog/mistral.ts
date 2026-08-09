@@ -1,7 +1,7 @@
 import * as ts from "typescript";
 import { load } from "cheerio";
 import { z } from "zod";
-import { linkedBundleSchema } from "./bundle.ts";
+import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
@@ -15,6 +15,7 @@ import {
 } from "./pricing-source.ts";
 import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
+import { yamlBlock } from "./yaml.ts";
 
 interface Input {
   provider: Provider;
@@ -85,18 +86,6 @@ const accountingReferences: readonly {
   message: string;
 }[] = [
   {
-    path: "/mistralai/platform-docs-public/main/openapi.yaml",
-    markers: [
-      /UsageInfo:[\s\S]*prompt_tokens:[\s\S]*completion_tokens:[\s\S]*total_tokens:/,
-      /PromptTokensDetails:[\s\S]*^\s+cached_tokens:/m,
-      /UsageInfo:[\s\S]*prompt_audio_seconds:/,
-      /OCRUsageInfo:[\s\S]*pages_processed:/,
-      /TranscriptionResponse:[\s\S]*usage:[\s\S]*UsageInfo/,
-      /SpeechResponse:[\s\S]*audio_data:/,
-    ],
-    message: "Mistral endpoint usage schema drifted",
-  },
-  {
     path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/admin-api/usage-metrics/page.mdx",
     markers: [
       /Billing usage.*cost and consumption for your Organization over a billing period/is,
@@ -148,24 +137,43 @@ const accountingReferences: readonly {
   },
 ];
 
-const apiCapabilitiesSchema = z.object({
-  completion_chat: z.boolean().optional(),
-  function_calling: z.boolean().optional(),
-  reasoning: z.boolean().optional(),
-  completion_fim: z.boolean().optional(),
-  fine_tuning: z.boolean().optional(),
-  vision: z.boolean().optional(),
-  ocr: z.boolean().optional(),
-  classification: z.boolean().optional(),
-  moderation: z.boolean().optional(),
-  audio: z.boolean().optional(),
-  audio_transcription: z.boolean().optional(),
-  audio_transcription_realtime: z.boolean().optional(),
-  audio_speech: z.boolean().optional(),
-  unified_resources: z.boolean().optional(),
-});
+const apiCapabilityNames = [
+  "completion_chat",
+  "function_calling",
+  "reasoning",
+  "completion_fim",
+  "fine_tuning",
+  "vision",
+  "ocr",
+  "classification",
+  "moderation",
+  "audio",
+  "audio_transcription",
+  "audio_transcription_realtime",
+  "audio_speech",
+  "unified_resources",
+] as const;
+
+const apiCapabilitiesSchema = z
+  .object({
+    completion_chat: z.boolean().optional(),
+    function_calling: z.boolean().optional(),
+    reasoning: z.boolean().optional(),
+    completion_fim: z.boolean().optional(),
+    fine_tuning: z.boolean().optional(),
+    vision: z.boolean().optional(),
+    ocr: z.boolean().optional(),
+    classification: z.boolean().optional(),
+    moderation: z.boolean().optional(),
+    audio: z.boolean().optional(),
+    audio_transcription: z.boolean().optional(),
+    audio_transcription_realtime: z.boolean().optional(),
+    audio_speech: z.boolean().optional(),
+    unified_resources: z.boolean().optional(),
+  })
+  .strict();
 const apiDateSchema = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
-const apiBaseSchema = z.object({
+const apiCommonShape = {
   id: modelIdSchema,
   object: z.literal("model").optional(),
   created: z.number().int().nonnegative().optional(),
@@ -177,21 +185,30 @@ const apiBaseSchema = z.object({
   aliases: z.array(modelIdSchema).optional(),
   deprecation: apiDateSchema.nullable().optional(),
   deprecation_replacement_model: modelIdSchema.nullable().optional(),
-  type: z.literal("base"),
-});
-const apiFineTunedSchema = z.object({
-  id: modelIdSchema,
-  capabilities: apiCapabilitiesSchema,
-  type: z.literal("fine-tuned"),
-  job: z.string().min(1),
-  root: z.string().min(1),
-  archived: z.boolean().optional(),
-});
-const apiItemSchema = z.discriminatedUnion("type", [apiBaseSchema, apiFineTunedSchema]);
-const apiListSchema = z.object({
-  object: z.literal("list").optional(),
-  data: z.array(z.unknown()).min(1),
-});
+  default_model_temperature: z.number().finite().nullable().optional(),
+};
+const apiBaseSchema = z
+  .object({
+    ...apiCommonShape,
+    type: z.literal("base").default("base"),
+  })
+  .strict();
+const apiFineTunedSchema = z
+  .object({
+    ...apiCommonShape,
+    type: z.literal("fine-tuned").default("fine-tuned"),
+    job: z.string().min(1),
+    root: z.string().min(1),
+    archived: z.boolean().optional(),
+  })
+  .strict();
+const apiItemSchema = z.union([apiFineTunedSchema, apiBaseSchema]);
+const apiListSchema = z
+  .object({
+    object: z.literal("list").optional(),
+    data: z.array(z.unknown()).min(1),
+  })
+  .strict();
 
 const monthNumbers = new Map(
   [
@@ -1134,6 +1151,143 @@ function publicPricing(input: Input, models: ProviderModel[], body: string): voi
   }
 }
 
+function requireYamlBlock(
+  body: string,
+  label: string,
+  indentation: number,
+  markers: readonly RegExp[],
+  forbiddenMarkers: readonly RegExp[] = [],
+): string {
+  const block = yamlBlock(body, label, indentation);
+  if (
+    block === undefined ||
+    markers.some((marker) => !marker.test(block)) ||
+    forbiddenMarkers.some((marker) => marker.test(block))
+  )
+    throw new Error(`Mistral OpenAPI reference drifted: ${label}`);
+  return block;
+}
+
+function usageReferenceMarkers(property = "usage"): RegExp[] {
+  return [
+    new RegExp(`^ {8}${property}:\\s*$`, "m"),
+    /^ {10}\$ref: ["']#\/components\/schemas\/UsageInfo["']\s*$/m,
+  ];
+}
+
+function validateOpenApi(documents: readonly { url: string; body: string }[]): void {
+  const matches = documents.filter(({ url }) => {
+    const value = new URL(url);
+    return (
+      value.hostname === "raw.githubusercontent.com" &&
+      value.pathname === "/mistralai/platform-docs-public/main/openapi.yaml" &&
+      value.search === "" &&
+      value.hash === ""
+    );
+  });
+  const document = matches[0];
+  if (
+    matches.length !== 1 ||
+    document === undefined ||
+    !/^openapi:\s+3\.1\.\d+\s*$/m.test(document.body)
+  )
+    throw new Error("Mistral OpenAPI reference drifted: document");
+
+  requireYamlBlock(document.body, "/v1/models", 2, [
+    /^ {4}get:\s*$/m,
+    /^ {6}operationId: list_models_v1_models_get\s*$/m,
+    /^ {16}\$ref: ["']#\/components\/schemas\/ModelList["']\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "BaseModelCard", 4, [
+    /^ {8}id:\s*$/m,
+    /^ {8}capabilities:\s*\n {10}\$ref: ["']#\/components\/schemas\/ModelCapabilities["']\s*$/m,
+    /^ {8}aliases:\s*$/m,
+    /^ {8}deprecation:\s*$/m,
+    /^ {8}deprecation_replacement_model:\s*$/m,
+    /^ {8}type:\s*[\s\S]*^ {10}const: base\s*$/m,
+    /^ {6}required:\s*$/m,
+    /^ {6,8}- id\s*$/m,
+    /^ {6,8}- capabilities\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "FTModelCard", 4, [
+    /^ {8}type:\s*[\s\S]*^ {10}const: fine-tuned\s*$/m,
+    /^ {8}job:\s*$/m,
+    /^ {8}root:\s*$/m,
+    /^ {6}required:\s*$/m,
+    /^ {6,8}- id\s*$/m,
+    /^ {6,8}- capabilities\s*$/m,
+    /^ {6,8}- job\s*$/m,
+    /^ {6,8}- root\s*$/m,
+  ]);
+  const capabilityBlock = requireYamlBlock(document.body, "ModelCapabilities", 4, [
+    /^ {6}properties:\s*$/m,
+    /^ {8}completion_chat:\s*$/m,
+    /^ {8}function_calling:\s*$/m,
+    /^ {8}completion_fim:\s*$/m,
+    /^ {8}fine_tuning:\s*$/m,
+    /^ {8}vision:\s*$/m,
+    /^ {8}ocr:\s*$/m,
+    /^ {8}classification:\s*$/m,
+    /^ {8}moderation:\s*$/m,
+    /^ {8}audio:\s*$/m,
+    /^ {8}audio_transcription:\s*$/m,
+  ]);
+  const documentedCapabilities = capabilityBlock
+    .split(/\r?\n/)
+    .flatMap((line) => line.match(/^ {8}([a-z][a-z0-9_]*):\s*$/)?.[1] ?? []);
+  if (documentedCapabilities.some((name) => !apiCapabilityNames.some((known) => known === name)))
+    throw new Error("Mistral OpenAPI reference drifted: ModelCapabilities");
+  requireYamlBlock(document.body, "ModelList", 4, [
+    /^ {8}object:\s*$/m,
+    /^ {8}data:\s*$/m,
+    /^ {12}oneOf:\s*$/m,
+    /^ {12,14}- \$ref: ["']#\/components\/schemas\/BaseModelCard["']\s*$/m,
+    /^ {12,14}- \$ref: ["']#\/components\/schemas\/FTModelCard["']\s*$/m,
+    /^ {12}discriminator:\s*\n {14}propertyName: type\s*$/m,
+  ]);
+
+  requireYamlBlock(document.body, "PromptTokensDetails", 4, [/^ {8}cached_tokens:\s*$/m]);
+  const usageInfo = requireYamlBlock(document.body, "UsageInfo", 4, [
+    /^ {8}prompt_tokens:\s*$/m,
+    /^ {8}completion_tokens:\s*$/m,
+    /^ {8}total_tokens:\s*$/m,
+    /^ {8}prompt_audio_seconds:\s*$/m,
+  ]);
+  if (
+    !/^ {8}num_cached_tokens:\s*$/m.test(usageInfo) &&
+    !/^ {8}prompt_tokens?_details:\s*$/m.test(usageInfo)
+  )
+    throw new Error("Mistral OpenAPI reference drifted: UsageInfo");
+  requireYamlBlock(document.body, "ResponseBase", 4, usageReferenceMarkers());
+  requireYamlBlock(document.body, "CompletionChunk", 4, usageReferenceMarkers());
+  requireYamlBlock(document.body, "OCRUsageInfo", 4, [/^ {8}pages_processed:\s*$/m]);
+  requireYamlBlock(document.body, "OCRResponse", 4, [
+    /^ {8}usage_info:\s*$/m,
+    /^ {10}\$ref: ["']#\/components\/schemas\/OCRUsageInfo["']\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "TranscriptionResponse", 4, usageReferenceMarkers());
+  requireYamlBlock(document.body, "TranscriptionStreamDone", 4, usageReferenceMarkers());
+  requireYamlBlock(
+    document.body,
+    "SpeechResponse",
+    4,
+    [/^ {8}audio_data:\s*$/m],
+    [/^ {8}usage:\s*$/m],
+  );
+  requireYamlBlock(document.body, "SpeechStreamDone", 4, usageReferenceMarkers());
+  requireYamlBlock(document.body, "ConversationUsageInfo", 4, [
+    /^ {8}prompt_tokens:\s*$/m,
+    /^ {8}completion_tokens:\s*$/m,
+    /^ {8}total_tokens:\s*$/m,
+    /^ {8}connector_tokens:\s*$/m,
+    /^ {8}connectors:\s*$/m,
+  ]);
+  requireYamlBlock(document.body, "ConversationResponse", 4, [
+    /^ {8}usage:\s*$/m,
+    /^ {10}\$ref: ["']#\/components\/schemas\/ConversationUsageInfo["']\s*$/m,
+  ]);
+}
+
 function validateAccountingReferences(documents: readonly { url: string; body: string }[]): void {
   for (const reference of accountingReferences) {
     const matches = documents.filter(
@@ -1183,16 +1337,10 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   const observed = new Set(drafts.map((draft) => draft.sourceSlug));
   if (drafts.length !== expected.size || [...expected].some((slug) => !observed.has(slug)))
     throw new Error("Mistral index and model documents disagree");
+  validateOpenApi(bundle.documents);
   validateAccountingReferences(bundle.documents);
-  const document = (path: string): string => {
-    const matches = bundle.documents.filter(
-      (candidate) => new URL(candidate.url).pathname === path,
-    );
-    const match = matches[0];
-    if (matches.length !== 1 || match === undefined)
-      throw new Error(`Mistral bundle did not contain exactly one ${path}`);
-    return match.body;
-  };
+  const document = (path: string): string =>
+    linkedDocumentBody(bundle, path, `Mistral bundle did not contain exactly one ${path}`);
   const endpointsByFeature = featureEndpoints(
     document("/mistralai/platform-docs-public/main/src/schema/models/schema.ts"),
     document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),

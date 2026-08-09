@@ -1,5 +1,7 @@
 # 旗舰模型 Kimi K3 定价
 
+<Warning>联网搜索正在更新升级中，当前文档已经过时。</Warning>
+
 <DocTable
 columns={[
 { title: "模型" },

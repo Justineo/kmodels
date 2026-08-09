@@ -4,6 +4,12 @@ Status: implemented
 
 Kmodels supplies model evidence to Kong AI Gateway 2.0. It is not a Kong model allowlist. Provider sources remain authoritative for identity and model facts; Kong documentation remains authoritative for adapters, capabilities, upstream APIs, and native formats.
 
+This document is design guidance for a downstream compatibility projection.
+The canonical catalog and price book contain no Kong-specific source dependency,
+field, allowlist, configuration shape, or compatibility decision. Kong's product
+direction may inform review of Kmodels' provider-neutral workload ontology, but
+it never establishes or removes a provider model or price fact.
+
 ## Compatibility
 
 - Compatibility is versioned and route-specific. It requires the Kong provider, Kong capability, upstream surface or native format, exact provider ID or official alias, lifecycle, and every required region, deployment, account, or runtime scope.
@@ -15,4 +21,4 @@ Kmodels supplies model evidence to Kong AI Gateway 2.0. It is not a Kong model a
 - Cloud platforms, gateways, publishers, and runtimes are distinct. A base model does not prove a deployment name, an artifact does not prove a self-hosted route, and a library entry does not prove installation.
 - Keep accurate provider tasks even when Kong does not support them. Consumers derive the supported intersection without deleting provider facts.
 
-Provider-specific intersections and documentation drift belong in the matching [provider document](../design.md#providers).
+Provider-specific intersections belong in a separate versioned consumer projection, not in provider collection rules or documents.

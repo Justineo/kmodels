@@ -10,7 +10,7 @@ import type {
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
-import { assertItemCount } from "./source-contract.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { classifyModelTasks } from "./task.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -19,6 +19,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -33,7 +34,7 @@ const capabilitySchema = z.enum([
   "tools",
   "vision",
 ]);
-const detailsSchema = z.object({
+const detailsSchema = z.strictObject({
   parent_model: z.string(),
   format: z.string(),
   family: z.string(),
@@ -44,21 +45,28 @@ const detailsSchema = z.object({
 const listItemSchema = z.object({
   name: modelIdSchema,
   model: modelIdSchema,
+  remote_model: modelIdSchema.optional(),
+  remote_host: z.url().optional(),
   modified_at: z.iso.datetime({ offset: true }),
   size: z.number().int().nonnegative(),
   digest: z.string().regex(/^[a-f0-9]{12,64}$/),
   details: detailsSchema,
 });
-const listSchema = z.object({ models: z.array(listItemSchema) });
-const showSchema = z
-  .object({
-    capabilities: z.array(capabilitySchema).min(1),
-    details: detailsSchema,
-    model_info: z.record(z.string(), z.unknown()),
-    modified_at: z.iso.datetime({ offset: true }),
-    retirement_on: z.iso.datetime({ offset: true }).optional(),
-  })
-  .passthrough();
+const listSchema = z.strictObject({ models: z.array(z.unknown()) });
+const showSchema = z.object({
+  parameters: z.string().optional(),
+  license: z.string().optional(),
+  modified_at: z.iso.datetime({ offset: true }),
+  details: detailsSchema,
+  template: z.string().optional(),
+  capabilities: z.array(capabilitySchema).min(1),
+  model_info: z.record(z.string(), z.unknown()),
+  retirement_on: z.iso.datetime({ offset: true }).optional(),
+});
+type OllamaCloudListItem = z.infer<typeof listItemSchema>;
+type OllamaCloudShow = z.infer<typeof showSchema>;
+const listItemRootKeys = Object.keys(listItemSchema.shape);
+const showRootKeys = Object.keys(showSchema.shape);
 const errorSchema = z.strictObject({ error: z.string().min(1) });
 const usageSchema = z.strictObject({
   model: modelIdSchema,
@@ -240,11 +248,10 @@ function number(info: Record<string, unknown>, key: string): number | undefined 
 function cloudModel(
   input: ParseInput,
   id: string,
-  raw: unknown,
-  listed?: z.infer<typeof listItemSchema>,
+  show: OllamaCloudShow,
+  listed?: OllamaCloudListItem,
   library = false,
 ): ProviderModel {
-  const show = showSchema.parse(raw);
   if (listed !== undefined && listed.name !== listed.model)
     throw new Error("Ollama cloud list identity mismatch");
   if (show.details.parent_model !== id) throw new Error("Ollama cloud model identity mismatch");
@@ -508,6 +515,39 @@ function commercialEvidence(bundle: z.infer<typeof bundleSchema>): PricingReconc
   validateCommercialIndexes(bundle);
   requireClaims(
     bundle,
+    "https://docs.ollama.com/api/introduction.md",
+    [
+      /http:\/\/localhost:11434\/api/,
+      /https:\/\/ollama\.com\/api/,
+      /API isn't strictly versioned.*expected to be stable and backwards compatible.*Deprecations are rare.*release notes/,
+    ],
+    "API introduction",
+  );
+  requireClaims(
+    bundle,
+    "https://docs.ollama.com/api/tags.md",
+    [
+      /\/api\/tags.*operationId: list/,
+      /#\/components\/schemas\/ListResponse/,
+      /#\/components\/schemas\/ModelSummary/,
+      /name:.*model:.*remote_model:.*remote_host:.*modified_at:.*size:.*digest:.*details:/,
+      /format:.*family:.*families:.*parameter_size:.*quantization_level:/,
+    ],
+    "list-model API",
+  );
+  requireClaims(
+    bundle,
+    "https://docs.ollama.com/api-reference/show-model-details.md",
+    [
+      /\/api\/show.*operationId: show/,
+      /#\/components\/schemas\/ShowRequest/,
+      /#\/components\/schemas\/ShowResponse/,
+      /parameters:.*license:.*modified_at:.*details:.*template:.*capabilities:.*model_info:/,
+    ],
+    "show-model API",
+  );
+  requireClaims(
+    bundle,
     "https://ollama.com/pricing",
     [
       /Free.*\$0/,
@@ -546,7 +586,23 @@ function commercialEvidence(bundle: z.infer<typeof bundleSchema>): PricingReconc
   const openapi = requireClaims(
     bundle,
     "https://docs.ollama.com/openapi.yaml",
-    [/\/api\/generate:/, /\/api\/chat:/, /\/api\/embed:/, /prompt_eval_count:/, /eval_count:/],
+    [
+      /openapi: 3\.1\.0/,
+      /version: 0\.1\.0/,
+      /url: http:\/\/localhost:11434/,
+      /bearerAuth:.*type: http.*scheme: bearer.*bearerFormat: API Key/,
+      /ShowRequest:.*model:/,
+      /ShowResponse:.*parameters:.*license:.*modified_at:.*details:.*template:.*capabilities:.*model_info:/,
+      /ModelSummary:.*name:.*model:.*remote_model:.*remote_host:.*modified_at:.*size:.*digest:.*details:/,
+      /ListResponse:.*models:.*ModelSummary/,
+      /\/api\/generate:/,
+      /\/api\/chat:/,
+      /\/api\/embed:/,
+      /\/api\/tags:.*operationId: list.*ListResponse/,
+      /\/api\/show:.*operationId: show.*ShowRequest.*ShowResponse/,
+      /prompt_eval_count:/,
+      /eval_count:/,
+    ],
     "OpenAPI usage",
   );
   if (/cached_tokens|cache_read|cached input/i.test(openapi))
@@ -645,10 +701,18 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
   if (bundle.catalog.url !== "https://ollama.com/search?c=cloud")
     throw new Error("Ollama cloud bundle contained an unexpected catalog URL");
   const list = listSchema.parse(bundle.list);
+  const listItems = recognizeItems({
+    label: "Ollama cloud list items",
+    items: list.models,
+    schema: listItemSchema,
+    modelId: "model",
+    rootKeys: listItemRootKeys,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
   const { minModels, maxModels } = input.source.extractor;
-  assertItemCount("Ollama cloud models", list.models.length, minModels, maxModels);
-  const listed = new Map(list.models.map((item) => [item.model, item]));
-  if (listed.size !== list.models.length)
+  assertItemCount("Ollama cloud models", listItems.length, minModels, maxModels);
+  const listed = new Map(listItems.map((item) => [item.model, item]));
+  if (listed.size !== listItems.length)
     throw new Error("Ollama cloud list contained duplicate IDs");
   const catalog = new Map(
     libraryItems(bundle.catalog.body)
@@ -669,17 +733,44 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
   const expected = new Set([...listed.keys(), ...catalog.keys()]);
   if (details.size !== expected.size || [...expected].some((id) => !details.has(id)))
     throw new Error("Ollama cloud bundle omitted model details");
+  const successfulDetails = bundle.details.filter(({ status }) => status === 200);
+  const showItems = recognizeItems({
+    label: "Ollama cloud show responses",
+    items: successfulDetails.map(({ body }) => body),
+    schema: showSchema,
+    modelId: (item) => {
+      if (item === null || typeof item !== "object") return undefined;
+      const rawDetails = Reflect.get(item, "details");
+      if (rawDetails === null || typeof rawDetails !== "object") return undefined;
+      const parentModel = Reflect.get(rawDetails, "parent_model");
+      return typeof parentModel === "string" ? parentModel : undefined;
+    },
+    rootKeys: showRootKeys,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
+  const shows = new Map(
+    successfulDetails.map((detail, index) => {
+      const show = showItems[index];
+      if (show === undefined) throw new Error("Ollama cloud show recognition lost an item");
+      return [detail.model, show] as const;
+    }),
+  );
 
-  const models = list.models.map((item) => {
+  const models = listItems.map((item) => {
     const detail = details.get(item.model);
     if (detail?.status !== 200) throw new Error("Ollama cloud listed model was unavailable");
-    return cloudModel(input, item.model, detail.body, item, catalog.has(item.model));
+    const show = shows.get(item.model);
+    if (show === undefined) throw new Error("Ollama cloud listed model details were unavailable");
+    return cloudModel(input, item.model, show, item, catalog.has(item.model));
   });
   for (const [id, item] of catalog) {
     if (listed.has(id)) continue;
     const detail = details.get(id);
-    if (detail?.status === 200) models.push(cloudModel(input, id, detail.body, undefined, true));
-    else if (detail?.status === 410) models.push(retiredModel(input, item, detail.body));
+    if (detail?.status === 200) {
+      const show = shows.get(id);
+      if (show === undefined) throw new Error("Ollama cloud catalog details were unavailable");
+      models.push(cloudModel(input, id, show, undefined, true));
+    } else if (detail?.status === 410) models.push(retiredModel(input, item, detail.body));
     else if (detail?.status !== 404)
       throw new Error("Ollama cloud catalog probe returned an unexpected status");
   }

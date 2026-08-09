@@ -1,12 +1,12 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { linkedBundleSchema } from "./bundle.ts";
+import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
-import { assertItemCount } from "./source-contract.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -14,10 +14,13 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
+const modelsPath = "/v1/models";
 const chatPath = "/v1/chat/completions";
+const estimatePath = "/v1/tokenizers/estimate-token-count";
 const batchPath = "/v1/batches";
 const batchApiDocument = "/docs/api/batch-create";
 const cacheDocument = "/docs/guide/use-context-caching-feature-of-kimi-api";
@@ -25,6 +28,17 @@ const refSchema = z.string().regex(/^#\/components\/schemas\/[A-Za-z0-9]+$/);
 const openApiSchema = z.object({
   servers: z.array(z.object({ url: z.url() })).length(1),
   paths: z.object({
+    [modelsPath]: z.object({
+      get: z.object({
+        responses: z.object({
+          "200": z.object({
+            content: z.object({
+              "application/json": z.object({ schema: z.unknown() }),
+            }),
+          }),
+        }),
+      }),
+    }),
     [chatPath]: z.object({
       post: z.object({
         requestBody: z.object({
@@ -49,6 +63,15 @@ const openApiSchema = z.object({
         }),
       }),
     }),
+    [estimatePath]: z.object({
+      post: z.object({
+        requestBody: z.object({
+          content: z.object({
+            "application/json": z.object({ schema: z.object({ $ref: refSchema }) }),
+          }),
+        }),
+      }),
+    }),
   }),
   components: z.object({ schemas: z.record(z.string(), z.unknown()) }),
 });
@@ -67,6 +90,14 @@ const includeUsageSchema = z.object({
   default: z.literal(false),
   description: z.string().min(1),
 });
+const typedObjectSchema = z.object({
+  type: z.literal("object"),
+  properties: z.record(z.string(), z.unknown()),
+});
+const typedArraySchema = z.object({ type: z.literal("array"), items: z.unknown() });
+const typedStringSchema = z.object({ type: z.literal("string") });
+const typedIntegerSchema = z.object({ type: z.literal("integer") });
+const typedBooleanSchema = z.object({ type: z.literal("boolean") });
 const priceRowsSchema = z.array(z.array(z.string()).min(5).max(6)).min(1);
 type PriceColumn = "model" | "unit" | "cache" | "input" | "output" | "context";
 const priceColumns = new Map<string, PriceColumn>([
@@ -85,22 +116,21 @@ const priceColumns = new Map<string, PriceColumn>([
   ["上下文窗口", "context"],
   ["Context Window", "context"],
 ]);
-const apiSchema = z.object({
-  object: z.literal("list"),
-  data: z
-    .array(
-      z.object({
-        id: modelIdSchema,
-        object: z.literal("model"),
-        created: z.number().int().nonnegative(),
-        owned_by: z.string().min(1),
-        context_length: z.number().int().positive(),
-        supports_image_in: z.boolean().optional(),
-        supports_video_in: z.boolean().optional(),
-        supports_reasoning: z.boolean().optional(),
-      }),
-    )
-    .min(1),
+const apiSchema = z
+  .object({
+    object: z.literal("list"),
+    data: z.array(z.unknown()).min(1),
+  })
+  .strict();
+const apiItemSchema = z.object({
+  id: modelIdSchema,
+  object: z.literal("model"),
+  created: z.number().int().nonnegative(),
+  owned_by: z.string().min(1),
+  context_length: z.number().int().positive(),
+  supports_image_in: z.boolean().optional(),
+  supports_video_in: z.boolean().optional(),
+  supports_reasoning: z.boolean().optional(),
 });
 
 function bounded(
@@ -124,11 +154,62 @@ function componentName(ref: string): string {
   return name;
 }
 
+function exactPropertyNames(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  label: string,
+): void {
+  const observed = Object.keys(value).sort();
+  const reviewed = [...expected].sort();
+  if (observed.join("\0") !== reviewed.join("\0"))
+    throw new Error(`Kimi OpenAPI changed ${label}: ${observed.join(", ")}`);
+}
+
+function validateModelListSchema(spec: z.infer<typeof openApiSchema>): void {
+  const schema = spec.paths[modelsPath].get.responses["200"].content["application/json"].schema;
+  const root = typedObjectSchema.parse(schema).properties;
+  exactPropertyNames(root, ["object", "data"], "List Models response fields");
+  z.object({ type: z.literal("string"), example: z.literal("list") }).parse(root.object);
+  const data = typedArraySchema.parse(root.data);
+  const item = typedObjectSchema.parse(data.items).properties;
+  exactPropertyNames(
+    item,
+    [
+      "id",
+      "object",
+      "created",
+      "owned_by",
+      "context_length",
+      "supports_image_in",
+      "supports_video_in",
+      "supports_reasoning",
+    ],
+    "List Models item fields",
+  );
+  typedStringSchema.parse(item.id);
+  z.object({ type: z.literal("string"), example: z.literal("model") }).parse(item.object);
+  typedIntegerSchema.parse(item.created);
+  typedStringSchema.parse(item.owned_by);
+  typedIntegerSchema.parse(item.context_length);
+  typedBooleanSchema.parse(item.supports_image_in);
+  typedBooleanSchema.parse(item.supports_video_in);
+  typedBooleanSchema.parse(item.supports_reasoning);
+}
+
+function estimateModelIds(spec: z.infer<typeof openApiSchema>): string[] {
+  const ref = spec.paths[estimatePath].post.requestBody.content["application/json"].schema.$ref;
+  return modelPropertySchema.parse(properties(spec.components.schemas[componentName(ref)]).model)
+    .enum;
+}
+
 function outputLimits(value: unknown): { name: string; max: number }[] {
   const { description } = maxCompletionSchema.parse(value);
   const matches = [
     ...description.matchAll(
       /(?:^|[.;:]\s+)for (.+?) it defaults to ([\d,]+) and can be set up to ([\d,]+)/gi,
+    ),
+    ...description.matchAll(
+      /(?:^|[。；：]\s*)([A-Za-z][A-Za-z0-9 ._-]+?)\s+默认为\s*([\d,]+)，最大可设置为\s*([\d,]+)/g,
     ),
   ];
   if (matches.length === 0) throw new Error("Kimi OpenAPI changed output limit descriptions");
@@ -185,8 +266,8 @@ function requestFacts(
     throw new Error("Kimi OpenAPI changed streaming schema");
   const includeUsage = includeUsageSchema.parse(properties(common.stream_options).include_usage);
   if (
-    !/entire request/i.test(includeUsage.description) ||
-    !/interrupted/i.test(includeUsage.description)
+    !/(?:entire request|整个请求)/i.test(includeUsage.description) ||
+    !/(?:interrupted|流中断)/i.test(includeUsage.description)
   )
     throw new Error("Kimi OpenAPI changed streaming usage semantics");
   const toolRef = z.object({ items: referenceSchema }).parse(common.tools).items.$ref;
@@ -245,10 +326,15 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
   if (extractor.kind !== "kimi-openapi") throw new Error("Wrong kimi-openapi extractor");
   if (spec.servers[0]?.url !== extractor.baseUrl)
     throw new Error("Kimi OpenAPI changed its server");
+  validateModelListSchema(spec);
   validateUsageSchemas(spec);
   const mapping =
     spec.paths[chatPath].post.requestBody.content["application/json"].schema.discriminator.mapping;
   const entries = Object.entries(mapping);
+  const estimateIds = estimateModelIds(spec).sort();
+  const chatIds = entries.map(([id]) => id).sort();
+  if (estimateIds.join("\0") !== chatIds.join("\0"))
+    throw new Error("Kimi OpenAPI token estimator disagrees with Chat model IDs");
   const facts = new Map<string, ReturnType<typeof requestFacts>>();
   for (const ref of new Set(Object.values(mapping)))
     facts.set(ref, requestFacts(ref, spec.components.schemas));
@@ -369,7 +455,9 @@ function tokenCount(value: string): number | undefined {
     if (!Number.isSafeInteger(result)) throw new Error(`Invalid Kimi token count: ${value}`);
     return result;
   }
-  const scaled = value.match(/(\d+(?:\.\d+)?)\s*(万|[kKmM])\s*(?:token|上下文)/)?.slice(1);
+  const scaled = value
+    .match(/(\d+(?:\.\d+)?)\s*(万|[kKmM])(?:\s*-?\s*(?:token|上下文)|\s*$)/i)
+    ?.slice(1);
   if (scaled === undefined) return undefined;
   const [raw, suffix] = scaled;
   if (raw === undefined || suffix === undefined) return undefined;
@@ -377,6 +465,17 @@ function tokenCount(value: string): number | undefined {
   const result = Number(raw) * multiplier;
   if (!Number.isSafeInteger(result)) throw new Error(`Invalid Kimi token count: ${value}`);
   return result;
+}
+
+function catalogContextTokens(value: string): number | undefined {
+  const context = "(?:上下文(?:长度|窗口)?|context(?:\\s+(?:length|window))?)";
+  const quantity = "(?:[\\d,]+(?:\\.\\d+)?\\s*(?:万|[kKmM])?(?:\\s*-?\\s*tokens?)?)";
+  const before = value.match(new RegExp(`(${quantity})\\s*${context}`, "i"))?.[1];
+  const after = value.match(
+    new RegExp(`${context}\\s*(?:[:：]|of|is)?\\s*(${quantity})`, "i"),
+  )?.[1];
+  const observed = before ?? after;
+  return observed === undefined ? undefined : tokenCount(observed);
 }
 
 function catalogModel(
@@ -389,8 +488,8 @@ function catalogModel(
   releaseStage: ProviderModel["release_stage"] = "unknown",
 ): ProviderModel {
   const prose = description ?? "";
-  const media = /视觉|图片/.test(prose) ? ["image" as const] : [];
-  const video = /视频输入/.test(prose) ? ["video" as const] : [];
+  const media = /视觉|图片|visual|image/i.test(prose) ? ["image" as const] : [];
+  const video = /视频输入|video input/i.test(prose) ? ["video" as const] : [];
   return {
     ...baseModel({
       providerId: input.provider.id,
@@ -404,9 +503,9 @@ function catalogModel(
     modalities: { input: ["text", ...media, ...video], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
-      reasoning: /思考|推理/.test(prose) ? true : "unknown",
+      reasoning: /思考|推理|thinking|reasoning/i.test(prose) ? true : "unknown",
     },
-    limits: { context_tokens: tokenCount(prose) },
+    limits: { context_tokens: catalogContextTokens(prose) },
     status,
     release_stage: releaseStage,
     retired_at: retiredAt,
@@ -414,39 +513,100 @@ function catalogModel(
   };
 }
 
+interface RetirementNotice {
+  id: string;
+  date: string;
+  replacement: string;
+}
+
+function retiredSeriesNotice(body: string): RetirementNotice | undefined {
+  const chinese = body.match(
+    /`([^`]+)` 系列模型已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
+  );
+  if (
+    chinese?.[1] !== undefined &&
+    chinese[2] !== undefined &&
+    chinese[3] !== undefined &&
+    chinese[4] !== undefined &&
+    chinese[5] !== undefined
+  )
+    return {
+      id: modelIdSchema.parse(chinese[1]),
+      date: modelDate(chinese[2], chinese[3], chinese[4]),
+      replacement: modelIdSchema.parse(chinese[5]),
+    };
+  const english = body.match(
+    /The `([^`]+)` series models were officially discontinued on \*\*([A-Z][a-z]+ \d{1,2}, \d{4})\*\*.*\[([^\]]+)\]/,
+  );
+  const date = english?.[2] === undefined ? undefined : englishDate(english[2]);
+  if (english?.[1] === undefined || date === undefined || english[3] === undefined)
+    return undefined;
+  return {
+    id: modelIdSchema.parse(english[1]),
+    date,
+    replacement: modelIdSchema.parse(english[3]),
+  };
+}
+
+function retiredModelNotice(line: string): RetirementNotice | undefined {
+  const chinese = line.match(
+    /^>\s*`([^`]+)` 已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
+  );
+  if (
+    chinese?.[1] !== undefined &&
+    chinese[2] !== undefined &&
+    chinese[3] !== undefined &&
+    chinese[4] !== undefined &&
+    chinese[5] !== undefined
+  )
+    return {
+      id: modelIdSchema.parse(chinese[1]),
+      date: modelDate(chinese[2], chinese[3], chinese[4]),
+      replacement: modelIdSchema.parse(chinese[5]),
+    };
+  const english = line.match(
+    /^>\s*`([^`]+)` was officially discontinued on \*\*([A-Z][a-z]+ \d{1,2}, \d{4})\*\*.*\[([^\]]+)\]/,
+  );
+  const date = english?.[2] === undefined ? undefined : englishDate(english[2]);
+  if (english?.[1] === undefined || date === undefined || english[3] === undefined)
+    return undefined;
+  return {
+    id: modelIdSchema.parse(english[1]),
+    date,
+    replacement: modelIdSchema.parse(english[3]),
+  };
+}
+
 export function parseKimiCatalog(input: Input): ProviderModel[] {
   const tables = markdownTables(input.body).filter(
-    (table) => table.headers[0] === "模型名称" && table.headers[1] === "描述",
+    (table) =>
+      (table.headers[0] === "模型名称" && table.headers[1] === "描述") ||
+      (table.headers[0] === "Model Name" && table.headers[1] === "Description"),
   );
   if (tables.length !== 3) throw new Error("Kimi model catalog table structure changed");
   const restriction = input.body
     .split(/\r?\n/)
-    .find((line) => line.includes("已停止向新注册用户开放"));
+    .find((line) =>
+      /已停止向新注册用户开放|no longer available to newly registered users/i.test(line),
+    );
   if (restriction === undefined) throw new Error("Kimi restricted-model notice is missing");
-  const restricted = [...restriction.matchAll(/`([^`]+)`(\s*系列模型)?/g)].map((match) => ({
-    id: modelIdSchema.parse(match[1]),
-    series: match[2] !== undefined,
-  }));
-  if (restricted.length === 0) throw new Error("Kimi restricted-model notice omitted model IDs");
-  const retiredNotice = input.body.match(
-    /`([^`]+)` 系列模型已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
+  const restricted = [...restriction.matchAll(/`([^`]+)`(\s*系列模型|\s+series)?/gi)].map(
+    (match) => ({
+      id: modelIdSchema.parse(match[1]),
+      series: match[2] !== undefined,
+    }),
   );
-  if (
-    retiredNotice?.[1] === undefined ||
-    retiredNotice[2] === undefined ||
-    retiredNotice[3] === undefined ||
-    retiredNotice[4] === undefined ||
-    retiredNotice[5] === undefined
-  )
-    throw new Error("Kimi retired-series date is missing");
-  const retiredSeries = modelIdSchema.parse(retiredNotice[1]);
-  const retiredAt = modelDate(retiredNotice[2], retiredNotice[3], retiredNotice[4]);
-  const retiredReplacement = modelIdSchema.parse(retiredNotice[5]);
+  if (restricted.length === 0) throw new Error("Kimi restricted-model notice omitted model IDs");
+  const retiredNotice = retiredSeriesNotice(input.body);
+  if (retiredNotice === undefined) throw new Error("Kimi retired-series date is missing");
+  const retiredSeries = retiredNotice.id;
+  const retiredAt = retiredNotice.date;
+  const retiredReplacement = retiredNotice.replacement;
   const models = tables.flatMap((table) =>
     table.rows.map((row) => {
       const id = exactCode(row[0] ?? "");
       const description = row[1]?.trim() || undefined;
-      const retired = table.section === "已下线模型";
+      const retired = table.section === "已下线模型" || table.section === "Deprecated Models";
       if (retired && id !== retiredSeries && !id.startsWith(`${retiredSeries}-`))
         throw new Error(`Kimi retired table contains ${id} outside ${retiredSeries}`);
       const legacy = restricted.some(({ id: restrictedId, series }) =>
@@ -467,26 +627,16 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
   const retiredLines = input.body
     .split(/\r?\n/)
     .filter(
-      (line) => line.startsWith(">") && !line.includes("系列模型") && /已于.*下线/.test(line),
+      (line) =>
+        line.startsWith(">") &&
+        !/系列模型|series models/i.test(line) &&
+        /已于.*下线|was officially discontinued/i.test(line),
     );
   for (const line of retiredLines) {
-    const retired = line.match(
-      /^>\s*`([^`]+)` 已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
-    );
-    if (
-      retired?.[1] === undefined ||
-      retired[2] === undefined ||
-      retired[3] === undefined ||
-      retired[4] === undefined ||
-      retired[5] === undefined
-    )
-      throw new Error(`Kimi retired-model notice changed: ${line}`);
-    const id = modelIdSchema.parse(retired[1]);
-    const replacement = modelIdSchema.parse(retired[5]);
+    const retired = retiredModelNotice(line);
+    if (retired === undefined) throw new Error(`Kimi retired-model notice changed: ${line}`);
     models.push(
-      catalogModel(input, id, undefined, "retired", modelDate(retired[2], retired[3], retired[4]), [
-        replacement,
-      ]),
+      catalogModel(input, retired.id, undefined, "retired", retired.date, [retired.replacement]),
     );
   }
   if (new Set(models.map(({ model_id }) => model_id)).size !== models.length)
@@ -734,14 +884,8 @@ function mergePricing(current: ProviderModel, incoming: ProviderModel): Provider
   };
 }
 
-type LinkedBundle = z.infer<typeof linkedBundleSchema>;
-
 function companion(bundle: LinkedBundle, path: string, label: string): string {
-  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === path);
-  const [match] = matches;
-  if (matches.length !== 1 || match === undefined)
-    throw new Error(`Kimi pricing omitted the ${label} reference`);
-  return match.body;
+  return linkedDocumentBody(bundle, path, `Kimi pricing omitted the ${label} reference`);
 }
 
 function requireClaims(body: string, claims: readonly RegExp[], message: string): void {
@@ -774,6 +918,7 @@ function commercialIndexPath(path: string): boolean {
     /^\/docs\/guide\/[^/]*(?:billing|payment|cost|spend|budget)[^/]*$/.test(normalized)
   )
     return true;
+  if (normalized === "/docs/agreement/modeluse") return true;
   return normalized === "/docs/introduction";
 }
 
@@ -922,6 +1067,13 @@ function commercialEvidence(
   validateCommercialIndex(bundle, new URL(input.source.url).origin);
   const china = extractor.region === "China";
   requireClaims(
+    bundle.index.body,
+    china
+      ? [/联网搜索/, /更新升级中/, /文档已经过时/]
+      : [/web search/i, /currently being updated/i, /documentation is outdated/i],
+    "Kimi K3 web-search warning drifted",
+  );
+  requireClaims(
     companion(bundle, "/docs/pricing/chat", "billing"),
     china
       ? [/对 Input 和 Output 均实行按量计费/, /计算 Token API/, /限时免费/]
@@ -1020,6 +1172,18 @@ function commercialEvidence(
     "Kimi request-accounting contract drifted",
   );
   requireClaims(
+    companion(bundle, "/docs/agreement/modeluse", "commercial terms"),
+    china
+      ? [/产品定价、类型/, /官网网页\/订购页面公示为准/, /价格调整说明/, /网站价格页面公示/]
+      : [
+          /pricing set forth on the pricing page or in an applicable Order Form/i,
+          /Pricing Changes/,
+          /after the effective date/i,
+          /Promotions/,
+        ],
+    "Kimi commercial terms drifted",
+  );
+  requireClaims(
     companion(bundle, "/docs/guide/use-batch-inference", "Batch console"),
     [/Tier1/, china ? /以上/ : /or above/i],
     "Kimi Batch account-eligibility contract drifted",
@@ -1046,6 +1210,8 @@ function commercialEvidence(
     { disposition: "unbound", reason_code: "stream_interruption_usage_unavailable" },
     { disposition: "unbound", reason_code: "enterprise_terms_not_published" },
     { disposition: "unbound", reason_code: "formula_web_search_billing_trigger_ambiguous" },
+    { disposition: "unbound", reason_code: "formula_tool_promotion_end_not_published" },
+    { disposition: "unbound", reason_code: "web_search_documentation_outdated" },
   ];
   if (!batchGuide.includes("cached_tokens"))
     reconciliation.push({
@@ -1283,9 +1449,17 @@ export function parseKimiReleases(input: Input): ProviderModel[] {
 
 export function parseKimiApi(input: Input): ProviderModel[] {
   const list = apiSchema.parse(JSON.parse(input.body));
-  if (new Set(list.data.map(({ id }) => id)).size !== list.data.length)
+  const items = recognizeItems({
+    label: "Kimi model inventory item",
+    items: list.data,
+    schema: apiItemSchema,
+    modelId: "id",
+    rootKeys: Object.keys(apiItemSchema.shape),
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
+  if (new Set(items.map(({ id }) => id)).size !== items.length)
     throw new Error("Kimi API returned duplicate model IDs");
-  const models = list.data.map(
+  const models = items.map(
     (item): ProviderModel => ({
       ...baseModel({
         providerId: input.provider.id,

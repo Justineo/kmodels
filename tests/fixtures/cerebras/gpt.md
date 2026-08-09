@@ -2,6 +2,8 @@
 
 > A fast reasoning model.
 
+Model ID: `gpt-oss-120b`. Pricing: $0.35 per million input tokens, $0.75 per million output tokens.
+
 Use the `reasoning_effort` parameter to control reasoning.
 
 <ModelInfo

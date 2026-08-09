@@ -6,14 +6,13 @@ const providerTaskMappings = new Map<string, readonly ModelTask[]>([
   ["conversational", ["text_generation"]],
   ["text-generation", ["text_generation"]],
   ["summarization", ["text_generation"]],
-  ["question-answering", ["text_generation"]],
-  ["table-question-answering", ["text_generation"]],
-  ["fill-mask", ["text_generation"]],
+  ["text-to-text-generation", ["text_generation"]],
   ["document-question-answering", ["text_generation"]],
+  ["image-text-to-text", ["text_generation"]],
   ["image-to-text", ["text_generation"]],
   ["visual-question-answering", ["text_generation"]],
   ["feature-extraction", ["embeddings"]],
-  ["sentence-similarity", ["embeddings"]],
+  ["sentence-similarity", ["reranking"]],
   ["text-ranking", ["reranking"]],
   ["automatic-speech-recognition", ["transcription"]],
   ["text-to-speech", ["speech_synthesis"]],
@@ -22,6 +21,7 @@ const providerTaskMappings = new Map<string, readonly ModelTask[]>([
   ["text-to-image", ["image_generation"]],
   ["image-to-image", ["image_generation"]],
   ["text-to-video", ["video_generation"]],
+  ["image-text-to-video", ["video_generation"]],
   ["image-to-video", ["video_generation"]],
   ["audio-classification", ["classification"]],
   ["image-classification", ["classification"]],
@@ -38,6 +38,10 @@ export function orderedTasks(tasks: ModelTask[]): ModelTask[] {
   return [...new Set(tasks)].sort(
     (left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0),
   );
+}
+
+export function providerTasks(task: string): ModelTask[] {
+  return [...(providerTaskMappings.get(task) ?? [])];
 }
 
 function evidenceKey(evidence: TaskEvidence): string {
@@ -66,7 +70,7 @@ function taskEvidence(model: ProviderModel, tasks: ModelTask[]): TaskEvidence[] 
     }
   }
   for (const route of model.routes ?? []) {
-    for (const task of providerTaskMappings.get(route.task) ?? []) {
+    for (const task of providerTasks(route.task)) {
       if (!tasks.includes(task)) continue;
       const item: TaskEvidence = {
         task,

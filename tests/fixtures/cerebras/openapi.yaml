@@ -1,0 +1,64 @@
+openapi: 3.1.0
+servers:
+  - url: https://api.cerebras.ai
+security:
+  - BearerAuth: []
+paths:
+  /v1/chat/completions:
+    post:
+      operationId: createChatCompletion
+      parameters:
+        - name: Content-Encoding
+          description: gzip
+        - name: queue_threshold
+          description: Private Preview
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+          application/vnd.msgpack:
+            schema:
+              $ref: "#/components/schemas/ChatCompletionRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatCompletionResponse"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    ChatCompletionRequest:
+      properties:
+        prompt_cache_key:
+          type: string
+        reasoning_effort:
+          type: string
+        service_tier:
+          type: string
+        tool_choice:
+          type: string
+    ChatCompletionResponse:
+      properties:
+        service_tier:
+          type: string
+        service_tier_used:
+          type: string
+        usage:
+          properties:
+            image_tokens:
+              type: integer
+            prompt_tokens_details:
+              properties:
+                cached_tokens:
+                  type: integer
+            completion_tokens_details:
+              properties:
+                rejected_prediction_tokens:
+                  type: integer
+                reasoning_tokens:
+                  type: integer

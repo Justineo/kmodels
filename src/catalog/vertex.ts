@@ -52,6 +52,55 @@ type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 type LinkedDocument = { url: string; body: string };
 type Reconcile = Input["onPricingReconciliation"];
 
+const discoveryMethodSchema = z.object({
+  httpMethod: z.enum(["GET", "POST"]),
+  path: z.string().min(1),
+  parameters: z.record(z.string(), z.unknown()).optional(),
+  response: z.object({ $ref: z.string().min(1) }),
+});
+const vertexDiscoverySchema = z.object({
+  rootUrl: z.literal("https://aiplatform.googleapis.com/"),
+  version: z.literal("v1beta1"),
+  revision: z.string().regex(/^\d{8}$/),
+  resources: z.object({
+    publishers: z.object({
+      resources: z.object({
+        models: z.object({ methods: z.record(z.string(), discoveryMethodSchema) }),
+      }),
+    }),
+    projects: z.object({
+      resources: z.object({
+        locations: z.object({
+          resources: z.object({
+            publishers: z.object({
+              resources: z.object({
+                models: z.object({ methods: z.record(z.string(), discoveryMethodSchema) }),
+              }),
+            }),
+          }),
+        }),
+      }),
+    }),
+  }),
+  schemas: z.object({
+    GoogleCloudAiplatformV1beta1PublisherModel: z.object({
+      properties: z.record(z.string(), z.unknown()),
+    }),
+    GoogleCloudAiplatformV1beta1ListPublisherModelsResponse: z.object({
+      properties: z.record(z.string(), z.unknown()),
+    }),
+    GoogleCloudAiplatformV1beta1GenerateContentResponseUsageMetadata: z.object({
+      properties: z.record(z.string(), z.unknown()),
+    }),
+    GoogleCloudAiplatformV1beta1GroundingMetadata: z.object({
+      properties: z.record(z.string(), z.unknown()),
+    }),
+    GoogleCloudAiplatformV1beta1GenerateContentResponse: z.object({
+      properties: z.record(z.string(), z.unknown()),
+    }),
+  }),
+});
+
 const endpoints = {
   generate: {
     name: "generateContent",
@@ -126,19 +175,6 @@ const endpointReferences: Readonly<
       "/gemini-enterprise-agent-platform/models/music/generate-music",
       [/publishers\/google\/models\/lyria-002:predict/],
       "Vertex music prediction reference drifted",
-    ],
-    [
-      "/gemini-enterprise-agent-platform/reference/rest/v1/GenerateContentResponse",
-      [
-        /promptTokenCount.*candidatesTokenCount.*toolUsePromptTokenCount.*thoughtsTokenCount.*cachedContentTokenCount.*promptTokensDetails.*cacheTokensDetails.*candidatesTokensDetails.*toolUsePromptTokensDetails.*trafficType/,
-        /ON_DEMAND.*ON_DEMAND_PRIORITY.*ON_DEMAND_FLEX.*ON_DEMAND_OFF_PEAK.*PROVISIONED_THROUGHPUT/,
-      ],
-      "Vertex Gemini usage response reference drifted",
-    ],
-    [
-      "/gemini-enterprise-agent-platform/reference/rest/v1/GroundingMetadata",
-      [/webSearchQueries.*imageSearchQueries.*groundingChunks.*groundingSupports/],
-      "Vertex grounding response reference drifted",
     ],
     [
       "/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
@@ -336,6 +372,131 @@ function reference(
 function validateEndpointReferences(sourceId: string, documents: LinkedDocument[]): void {
   for (const [path, patterns, message] of endpointReferences[sourceId] ?? [])
     reference(documents, path, patterns, message);
+}
+
+function validateDiscovery(sourceId: string, documents: LinkedDocument[]): void {
+  if (sourceId !== "vertex-google-models") return;
+  const document = documents.find((item) => {
+    const url = new URL(item.url);
+    return (
+      url.hostname === "aiplatform.googleapis.com" &&
+      url.pathname === "/$discovery/rest" &&
+      url.searchParams.get("version") === "v1beta1"
+    );
+  });
+  if (document === undefined) throw new Error("Missing Vertex Discovery document");
+  let value: unknown;
+  try {
+    value = JSON.parse(document.body);
+  } catch {
+    throw new Error("Vertex Discovery document returned invalid JSON");
+  }
+  const discovery = vertexDiscoverySchema.parse(value);
+  const list = discovery.resources.publishers.resources.models.methods.list;
+  if (
+    list?.httpMethod !== "GET" ||
+    list.path !== "v1beta1/{+parent}/models" ||
+    list.response.$ref !== "GoogleCloudAiplatformV1beta1ListPublisherModelsResponse" ||
+    !["pageSize", "pageToken", "view", "listAllVersions", "languageCode"].every(
+      (field) => list.parameters?.[field] !== undefined,
+    )
+  )
+    throw new Error("Vertex Model Garden inventory contract changed");
+  const views = z.object({ enum: z.array(z.string()) }).safeParse(list.parameters?.view);
+  if (
+    !views.success ||
+    ![
+      "PUBLISHER_MODEL_VIEW_BASIC",
+      "PUBLISHER_MODEL_VIEW_FULL",
+      "PUBLISHER_MODEL_VERSION_VIEW_BASIC",
+    ].every((view) => views.data.enum.includes(view))
+  )
+    throw new Error("Vertex Model Garden views changed");
+
+  const publisherFields = discovery.schemas.GoogleCloudAiplatformV1beta1PublisherModel.properties;
+  if (
+    ![
+      "name",
+      "launchStage",
+      "versionState",
+      "versionId",
+      "supportedActions",
+      "frameworks",
+      "openSourceCategory",
+      "predictSchemata",
+    ].every((field) => publisherFields[field] !== undefined)
+  )
+    throw new Error("Vertex PublisherModel schema changed");
+  const listFields =
+    discovery.schemas.GoogleCloudAiplatformV1beta1ListPublisherModelsResponse.properties;
+  if (listFields.publisherModels === undefined || listFields.nextPageToken === undefined)
+    throw new Error("Vertex Model Garden pagination schema changed");
+
+  const methods =
+    discovery.resources.projects.resources.locations.resources.publishers.resources.models.methods;
+  const routes = new Map<string, string>([
+    ["generateContent", "v1beta1/{+model}:generateContent"],
+    ["streamGenerateContent", "v1beta1/{+model}:streamGenerateContent"],
+    ["embedContent", "v1beta1/{+model}:embedContent"],
+    ["countTokens", "v1beta1/{+endpoint}:countTokens"],
+    ["predict", "v1beta1/{+endpoint}:predict"],
+    ["predictLongRunning", "v1beta1/{+endpoint}:predictLongRunning"],
+    ["rawPredict", "v1beta1/{+endpoint}:rawPredict"],
+    ["streamRawPredict", "v1beta1/{+endpoint}:streamRawPredict"],
+  ]);
+  for (const [name, path] of routes) {
+    const method = methods[name];
+    if (method?.httpMethod !== "POST" || method.path !== path)
+      throw new Error(`Vertex ${name} Discovery route changed`);
+  }
+
+  const usageFields =
+    discovery.schemas.GoogleCloudAiplatformV1beta1GenerateContentResponseUsageMetadata.properties;
+  if (
+    ![
+      "promptTokenCount",
+      "cachedContentTokenCount",
+      "candidatesTokenCount",
+      "totalTokenCount",
+      "toolUsePromptTokenCount",
+      "thoughtsTokenCount",
+      "promptTokensDetails",
+      "cacheTokensDetails",
+      "candidatesTokensDetails",
+      "toolUsePromptTokensDetails",
+      "trafficType",
+    ].every((field) => usageFields[field] !== undefined)
+  )
+    throw new Error("Vertex usage schema changed");
+  const trafficTypes = z.object({ enum: z.array(z.string()) }).safeParse(usageFields.trafficType);
+  if (
+    !trafficTypes.success ||
+    ![
+      "ON_DEMAND",
+      "ON_DEMAND_PRIORITY",
+      "ON_DEMAND_FLEX",
+      "ON_DEMAND_OFFPEAK",
+      "PROVISIONED_THROUGHPUT",
+    ].every((trafficType) => trafficTypes.data.enum.includes(trafficType))
+  )
+    throw new Error("Vertex usage traffic types changed");
+
+  const groundingFields =
+    discovery.schemas.GoogleCloudAiplatformV1beta1GroundingMetadata.properties;
+  if (
+    !["webSearchQueries", "imageSearchQueries", "groundingChunks", "groundingSupports"].every(
+      (field) => groundingFields[field] !== undefined,
+    )
+  )
+    throw new Error("Vertex grounding schema changed");
+  const responseFields =
+    discovery.schemas.GoogleCloudAiplatformV1beta1GenerateContentResponse.properties;
+  if (
+    !["usageMetadata", "modelVersion", "responseId", "createTime", "candidates"].every(
+      (field) => responseFields[field] !== undefined,
+    )
+  )
+    throw new Error("Vertex response observability schema changed");
 }
 
 function modelDate(value: string): string | undefined {
@@ -1195,13 +1356,20 @@ function pageTokenEquivalence(value: string): PageTokenEquivalence | undefined {
     : { inputTokensPerPage, outputTokensPerPage };
 }
 
+// SKU-group names corroborate meter identity only; numeric rates come from the Vertex price book.
 function pricingEvidence(
   models: Map<string, Evidence>,
   documents: LinkedDocument[],
+  sourceId: string,
 ): PricingEvidence {
   const skuUnits = new Map<string, Set<SourcePriceFact["unit"] | undefined>>();
   const pageTokenEquivalences = new Map<string, PageTokenEquivalence>();
+  const expectedSkuGroups = new Set(["/skus/sku-groups/gen-ai", "/skus/sku-groups/gen-ai-v2"]);
+  const observedSkuGroups = new Set<string>();
   for (const document of documents) {
+    const documentPath = new URL(document.url).pathname;
+    const isSkuGroup = expectedSkuGroups.has(documentPath);
+    let skuRows = 0;
     const $ = load(document.body);
     $(".devsite-article-body table").each((_index, tableElement) => {
       const table = $(tableElement);
@@ -1227,8 +1395,14 @@ function pricingEvidence(
           const service = text(cells.eq(serviceIndex).text());
           const skuName = text(cells.eq(nameIndex).text());
           const skuId = text(cells.eq(idIndex).text());
-          if (!service.startsWith("Gemini API") || !/^[0-9A-F]{4}(?:-[0-9A-F]{4}){2}$/.test(skuId))
-            return;
+          if (!isSkuGroup) return;
+          if (
+            !/^Vertex AI\s*\(C7E2-9256-1C43\)$/.test(service) ||
+            skuName === "" ||
+            !/^[0-9A-F]{4}(?:-[0-9A-F]{4}){2}$/.test(skuId)
+          )
+            throw new Error("Vertex billing SKU group contract changed");
+          skuRows += 1;
           const target = embeddedPriceTarget(models, skuName);
           if (target === undefined) return;
           const rateMeters = meters(skuName, false);
@@ -1246,7 +1420,16 @@ function pricingEvidence(
           }
         });
     });
+    if (isSkuGroup) {
+      if (skuRows === 0) throw new Error("Vertex billing SKU group returned no reviewed rows");
+      observedSkuGroups.add(documentPath);
+    }
   }
+  if (
+    sourceId === "vertex-google-models" &&
+    [...expectedSkuGroups].some((path) => !observedSkuGroups.has(path))
+  )
+    throw new Error("Missing Vertex billing SKU group");
   const canonicalUnits = new Map<string, SourcePriceFact["unit"]>();
   for (const [key, units] of skuUnits) {
     const unit = [...units][0];
@@ -2225,6 +2408,7 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
   if (extractor.kind !== "vertex-catalog") throw new Error("Wrong Vertex catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   validateEndpointReferences(input.source.id, bundle.documents);
+  validateDiscovery(input.source.id, bundle.documents);
   const models = new Map<string, Evidence>();
   parseIndexInventory(models, input, bundle.index.body);
   const configured = new Set(
@@ -2267,7 +2451,7 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
       models,
       input.source.id,
       pricing.body,
-      pricingEvidence(models, bundle.documents),
+      pricingEvidence(models, bundle.documents, input.source.id),
       claudeWebSearch?.body,
       groundingReferences,
       input.onPricingReconciliation,

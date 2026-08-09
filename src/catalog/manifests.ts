@@ -4,7 +4,7 @@ import type { Provider, ProviderModel, SourceAccess, SourceFormat, SourceKind } 
 
 export type Extractor =
   | { kind: "openai-catalog" }
-  | { kind: "openai-overview" }
+  | { kind: "openai-model-pricing" }
   | { kind: "openai-api" }
   | { kind: "openai-deprecations" }
   | { kind: "openai-data-residency"; minModels: number; maxModels: number }
@@ -17,8 +17,16 @@ export type Extractor =
   | { kind: "cerebras-lifecycle"; minModels: number; maxModels: number }
   | { kind: "cerebras-releases"; minModels: number; maxModels: number }
   | { kind: "cerebras-api"; minModels: number; maxModels: number }
-  | { kind: "huggingface-mapping"; provider: string; minModels: number; maxModels: number }
+  | {
+      kind: "huggingface-mapping";
+      providers: string[];
+      minModels: number;
+      maxModels: number;
+      minRoutes: number;
+      maxRoutes: number;
+    }
   | { kind: "huggingface-router"; minModels: number; maxModels: number }
+  | { kind: "huggingface-featherless"; minModels: number; maxModels: number }
   | { kind: "huggingface-hub"; minModels: number; maxModels: number }
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
@@ -27,6 +35,7 @@ export type Extractor =
   | { kind: "databricks-catalog"; minModels: number; maxModels: number }
   | { kind: "databricks-api" }
   | { kind: "azure-catalog"; minModels: number; maxModels: number }
+  | { kind: "azure-portal-catalog"; minModels: number; maxModels: number }
   | {
       kind: "azure-retail-prices";
       minModels: number;
@@ -103,7 +112,7 @@ export type Extractor =
 
 export interface LinkedDocuments {
   path: RegExp;
-  indexFormat?: "html" | "markdown" | "typescript";
+  indexFormat?: "html" | "markdown" | "typescript" | "mixed";
   nestedIndexes?: {
     path: RegExp;
     minDocuments: number;
@@ -167,6 +176,7 @@ export interface SourceManifest {
   exhaustive?: boolean;
   role?: "catalog" | "supplement" | "overlay" | "inventory";
   optional?: boolean;
+  pricingRequired?: true;
   auth?:
     | { scheme: "bearer"; env: string }
     | { scheme: "header"; env: string; header: string }
@@ -179,6 +189,13 @@ export interface SourceManifest {
     | { kind: "databricks"; hostEnv: string }
     | { kind: "azure-retail-prices" }
     | {
+        kind: "azure-portal-models";
+        registries: string[];
+        pageSize: number;
+        maxPages: number;
+        maxModels: number;
+      }
+    | {
         kind: "azure-models";
         subscriptionEnv: string;
         concurrency: number;
@@ -186,8 +203,32 @@ export interface SourceManifest {
         maxModels: number;
         maxModelsPerLocation: number;
       }
-    | { kind: "google-model-garden"; publishers: string[] }
+    | {
+        kind: "google-model-garden";
+        publishers: string[];
+        pageSize: number;
+        maxPages: number;
+        maxModelsPerPublisher: number;
+        concurrency: number;
+      }
+    | { kind: "gemini-models"; pageSize: number; maxPages: number; maxModels: number }
+    | { kind: "cohere-models"; pageSize: number; maxPages: number; maxModels: number }
+    | { kind: "dashscope-deployable-models"; pageSize: number; maxPages: number; maxModels: number }
+    | {
+        kind: "huggingface-partner-models";
+        providers: string[];
+        concurrency: number;
+        maxPartnerBytes: number;
+      }
     | { kind: "huggingface-models"; maxPages: number; maxModels: number }
+    | {
+        kind: "featherless-models";
+        pageSize: number;
+        maxPages: number;
+        maxModels: number;
+        concurrency: number;
+        maxPageBytes: number;
+      }
     | {
         kind: "vercel-models";
         modelPageBaseUrl: string;
@@ -249,6 +290,24 @@ export type ProviderManifest = ProviderManifestBase &
 
 const mebibytes = (value: number): number => value * 1024 * 1024;
 
+type FixedDocument = readonly [
+  id: string,
+  url: string,
+  maxResponseMebibytes?: number,
+  format?: SourceFormat,
+];
+
+function fixedDocuments(
+  entries: readonly FixedDocument[],
+): NonNullable<LinkedDocuments["documents"]> {
+  return entries.map(([id, url, maxResponseMebibytes = 1, format]) => ({
+    id,
+    url,
+    maxResponseBytes: mebibytes(maxResponseMebibytes),
+    ...(format === undefined ? {} : { format }),
+  }));
+}
+
 type StandardPriceDimension = Extract<PriceDimension, { namespace: "kmodels" }>["value"];
 
 function pricingLabels(
@@ -275,7 +334,7 @@ const xaiApiSource = (
   format: "json",
   stability: "documented",
   extractor: { kind: "xai-api", category },
-  extractorVersion: "xai-api-v1",
+  extractorVersion: "xai-api-v2",
   fields,
   allowedHosts: ["api.x.ai"],
   maxResponseBytes: mebibytes(4),
@@ -286,6 +345,27 @@ const xaiApiSource = (
   auth: { scheme: "bearer", env: "XAI_API_KEY" },
 });
 
+export const huggingFacePartnerIds = [
+  "baseten",
+  "cerebras",
+  "cohere",
+  "deepinfra",
+  "fal-ai",
+  "featherless-ai",
+  "fireworks-ai",
+  "groq",
+  "hf-inference",
+  "novita",
+  "nscale",
+  "ovhcloud",
+  "publicai",
+  "replicate",
+  "scaleway",
+  "together",
+  "wavespeed",
+  "zai-org",
+] as const;
+
 const huggingFaceInferenceSource: SourceManifest = {
   id: "huggingface-hf-inference",
   url: "https://huggingface.co/api/partners/hf-inference/models?status=live",
@@ -295,18 +375,43 @@ const huggingFaceInferenceSource: SourceManifest = {
   stability: "documented",
   extractor: {
     kind: "huggingface-mapping",
-    provider: "hf-inference",
-    minModels: 500,
-    maxModels: 3_000,
+    providers: [...huggingFacePartnerIds],
+    minModels: 1,
+    maxModels: 100_000,
+    minRoutes: 1,
+    maxRoutes: 200_000,
   },
-  extractorVersion: "huggingface-mapping-v3",
+  extractorVersion: "huggingface-mapping-v8",
   pricingEvidence: firstPartyPricing("commercial_terms", "exact_id"),
   fields: ["model_id", "routes", "tasks", "modalities", "pricing", "status"],
   allowedHosts: ["huggingface.co"],
-  maxResponseBytes: mebibytes(8),
+  maxResponseBytes: mebibytes(64),
   scope: "global",
   exhaustive: true,
   role: "catalog",
+  transport: {
+    kind: "huggingface-partner-models",
+    providers: [...huggingFacePartnerIds],
+    concurrency: 6,
+    maxPartnerBytes: mebibytes(32),
+  },
+  linkedDocuments: {
+    indexFormat: "mixed",
+    path: /^\/docs\/inference-providers\/en\/tasks\/[a-z0-9]+(?:-[a-z0-9]+)*$/,
+    minDocuments: 10,
+    maxDocuments: 128,
+    concurrency: 6,
+    maxDocumentBytes: mebibytes(4),
+    requestSuffix: ".md",
+    documents: [
+      {
+        id: "task-index",
+        url: "https://huggingface.co/docs/inference-providers/en/tasks/index.md",
+        format: "markdown",
+        maxResponseBytes: mebibytes(1),
+      },
+    ],
+  },
 };
 
 const dashscopeCatalogSource = (
@@ -317,13 +422,13 @@ const dashscopeCatalogSource = (
   maxModels: number,
 ): SourceManifest => ({
   id,
-  url: `https://www.alibabacloud.com/help/en/model-studio/${path}`,
+  url: `https://www.alibabacloud.com/help/en/model-studio/${path.replace(/\/$/, "")}.md`,
   type: "website",
   access: "public",
-  format: "html",
-  stability: "semi_structured",
+  format: "markdown",
+  stability: "documented",
   extractor: { kind: "dashscope-catalog", category, minModels, maxModels },
-  extractorVersion: "dashscope-catalog-v2",
+  extractorVersion: "dashscope-catalog-v3",
   fields: [
     "model_id",
     "description",
@@ -355,7 +460,7 @@ const kimiPricingSource = (
   format: "markdown",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 8, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v4",
+  extractorVersion: "kimi-pricing-v5",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -402,6 +507,7 @@ const kimiPricingSource = (
         ["organization", "/docs/guide/org-best-practice"],
         ["product-plans", "/docs/guide/product-plans"],
         ["introduction", "/docs/introduction"],
+        ["terms", "/docs/agreement/modeluse"],
         ["documentation-index", "/docs/llms.txt"],
       ] as const
     ).map(([id, path]) => ({
@@ -425,14 +531,14 @@ export const manifests = [
     sources: [
       {
         id: "openai-models",
-        url: "https://developers.openai.com/api/docs/models/all",
+        url: "https://developers.openai.com/api/docs/models/all.md",
         type: "website",
+        source: ["website", "repository"],
         access: "public",
-        format: "html",
+        format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v5",
-        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
+        extractorVersion: "openai-catalog-v6",
         fields: [
           "model_id",
           "name",
@@ -443,15 +549,137 @@ export const manifests = [
           "modalities",
           "capabilities",
           "limits",
-          "pricing",
           "status",
           "release_stage",
         ],
-        allowedHosts: ["developers.openai.com"],
-        maxResponseBytes: mebibytes(64),
+        allowedHosts: ["developers.openai.com", "raw.githubusercontent.com"],
+        maxResponseBytes: mebibytes(32),
         scope: "global",
         exhaustive: true,
         role: "catalog",
+        linkedDocuments: {
+          indexFormat: "markdown",
+          path: /^\/api\/docs\/models\/[a-z0-9._-]+$/,
+          minDocuments: 80,
+          maxDocuments: 140,
+          concurrency: 8,
+          maxDocumentBytes: mebibytes(1),
+          discoverySuffix: ".md",
+          requestSuffix: ".md",
+          documents: (
+            [
+              [
+                "documentation-index",
+                "https://developers.openai.com/api/docs/llms.txt",
+                "markdown",
+                1,
+              ],
+              [
+                "reference-index",
+                "https://developers.openai.com/api/reference/llms.txt",
+                "markdown",
+                1,
+              ],
+              [
+                "model-comparison",
+                "https://developers.openai.com/api/docs/models/compare.md",
+                "markdown",
+                1,
+              ],
+              ["pricing", "https://developers.openai.com/api/docs/pricing.md", "markdown", 1],
+              [
+                "deprecations",
+                "https://developers.openai.com/api/docs/deprecations.md",
+                "markdown",
+                2,
+              ],
+              [
+                "data-controls",
+                "https://developers.openai.com/api/docs/guides/your-data.md",
+                "markdown",
+                1,
+              ],
+              ["batch", "https://developers.openai.com/api/docs/guides/batch.md", "markdown", 1],
+              [
+                "cost-optimization",
+                "https://developers.openai.com/api/docs/guides/cost-optimization.md",
+                "markdown",
+                1,
+              ],
+              [
+                "fast-mode",
+                "https://developers.openai.com/api/docs/guides/fast-mode.md",
+                "markdown",
+                1,
+              ],
+              [
+                "flex-processing",
+                "https://developers.openai.com/api/docs/guides/flex-processing.md",
+                "markdown",
+                1,
+              ],
+              [
+                "prompt-caching",
+                "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+                "markdown",
+                1,
+              ],
+              [
+                "rate-limits",
+                "https://developers.openai.com/api/docs/guides/rate-limits.md",
+                "markdown",
+                1,
+              ],
+              [
+                "realtime-costs",
+                "https://developers.openai.com/api/docs/guides/realtime-costs.md",
+                "markdown",
+                1,
+              ],
+              [
+                "spend-limits",
+                "https://developers.openai.com/api/docs/guides/spend-limits.md",
+                "markdown",
+                1,
+              ],
+              [
+                "terraform-rate-limits-and-spend",
+                "https://developers.openai.com/api/docs/guides/terraform/rate-limits-and-spend.md",
+                "markdown",
+                1,
+              ],
+              [
+                "openapi",
+                "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
+                "mixed",
+                16,
+              ],
+            ] as const
+          ).map(([id, url, format, maxResponseMebibytes]) => ({
+            id,
+            url,
+            format,
+            maxResponseBytes: mebibytes(maxResponseMebibytes),
+          })),
+        },
+      },
+      {
+        id: "openai-overview",
+        url: "https://developers.openai.com/api/docs/models/all",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "openai-model-pricing" },
+        extractorVersion: "openai-model-pricing-v1",
+        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
+        fields: ["model_id", "tasks", "pricing"],
+        allowedHosts: ["developers.openai.com"],
+        maxResponseBytes: mebibytes(64),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
         linkedDocuments: {
           path: /^\/api\/docs\/models\/[a-z0-9._-]+$/,
           minDocuments: 80,
@@ -461,31 +689,14 @@ export const manifests = [
         },
       },
       {
-        id: "openai-overview",
-        url: "https://developers.openai.com/api/docs/models",
-        type: "website",
-        access: "public",
-        format: "html",
-        stability: "semi_structured",
-        extractor: { kind: "openai-overview" },
-        extractorVersion: "openai-overview-v1",
-        fields: ["aliases"],
-        allowedHosts: ["developers.openai.com"],
-        maxResponseBytes: mebibytes(4),
-        scope: "global",
-        exhaustive: false,
-        role: "overlay",
-        optional: true,
-      },
-      {
         id: "openai-deprecations",
-        url: "https://developers.openai.com/api/docs/deprecations",
+        url: "https://developers.openai.com/api/docs/deprecations.md",
         type: "website",
         access: "public",
-        format: "html",
+        format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-deprecations" },
-        extractorVersion: "openai-deprecations-v2",
+        extractorVersion: "openai-deprecations-v3",
         fields: ["aliases", "status", "release_stage", "retired_at", "replacement_model_ids"],
         allowedHosts: ["developers.openai.com"],
         maxResponseBytes: mebibytes(8),
@@ -571,7 +782,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v8",
+        extractorVersion: "anthropic-catalog-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -597,94 +808,89 @@ export const manifests = [
         exhaustive: true,
         role: "catalog",
         linkedDocuments: {
-          path: /^\/docs\/en\/about-claude\/(?:pricing|model-deprecations|models\/introducing-claude-fable-5-and-claude-mythos-5)$/,
-          minDocuments: 3,
-          maxDocuments: 3,
-          concurrency: 3,
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 6,
           maxDocumentBytes: mebibytes(2),
-          requestSuffix: ".md",
-          documents: [
-            {
-              id: "messages-create",
-              url: "https://platform.claude.com/docs/en/api/messages/create.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "message-batches-create",
-              url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "batch-processing",
-              url: "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "citations",
-              url: "https://platform.claude.com/docs/en/build-with-claude/citations.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "pdf-support",
-              url: "https://platform.claude.com/docs/en/build-with-claude/pdf-support.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "context-editing",
-              url: "https://platform.claude.com/docs/en/build-with-claude/context-editing.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "structured-outputs",
-              url: "https://platform.claude.com/docs/en/build-with-claude/structured-outputs.md",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "code-execution",
-              url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "computer-use",
-              url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "effort",
-              url: "https://platform.claude.com/docs/en/build-with-claude/effort.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "prompt-caching",
-              url: "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "glossary",
-              url: "https://platform.claude.com/docs/en/about-claude/glossary.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "thinking",
-              url: "https://platform.claude.com/docs/en/build-with-claude/thinking.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "tool-use",
-              url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use.md",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "fast-mode",
-              url: "https://platform.claude.com/docs/en/build-with-claude/fast-mode.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "release-notes",
-              url: "https://platform.claude.com/docs/en/release-notes/overview.md",
-              maxResponseBytes: mebibytes(4),
-            },
-          ],
+          documents: fixedDocuments([
+            ["documentation-index", "https://platform.claude.com/llms.txt"],
+            ["pricing", "https://platform.claude.com/docs/en/about-claude/pricing.md", 2],
+            [
+              "model-deprecations",
+              "https://platform.claude.com/docs/en/about-claude/model-deprecations.md",
+              2,
+            ],
+            [
+              "model-ids-and-versions",
+              "https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions.md",
+            ],
+            ["models-list", "https://platform.claude.com/docs/en/api/models/list.md"],
+            ["messages-create", "https://platform.claude.com/docs/en/api/messages/create.md"],
+            [
+              "message-batches-create",
+              "https://platform.claude.com/docs/en/api/messages/batches/create.md",
+            ],
+            [
+              "batch-processing",
+              "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
+            ],
+            ["citations", "https://platform.claude.com/docs/en/build-with-claude/citations.md"],
+            ["pdf-support", "https://platform.claude.com/docs/en/build-with-claude/pdf-support.md"],
+            [
+              "context-editing",
+              "https://platform.claude.com/docs/en/build-with-claude/context-editing.md",
+            ],
+            [
+              "structured-outputs",
+              "https://platform.claude.com/docs/en/build-with-claude/structured-outputs.md",
+              2,
+            ],
+            [
+              "code-execution",
+              "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
+            ],
+            [
+              "computer-use",
+              "https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool.md",
+            ],
+            ["effort", "https://platform.claude.com/docs/en/build-with-claude/effort.md"],
+            [
+              "prompt-caching",
+              "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md",
+              2,
+            ],
+            ["glossary", "https://platform.claude.com/docs/en/about-claude/glossary.md"],
+            ["thinking", "https://platform.claude.com/docs/en/build-with-claude/thinking.md"],
+            [
+              "tool-use",
+              "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools.md",
+              2,
+            ],
+            ["fast-mode", "https://platform.claude.com/docs/en/build-with-claude/fast-mode.md"],
+            ["service-tiers", "https://platform.claude.com/docs/en/api/service-tiers.md"],
+            [
+              "data-residency",
+              "https://platform.claude.com/docs/en/manage-claude/data-residency.md",
+            ],
+            [
+              "usage-cost-api",
+              "https://platform.claude.com/docs/en/manage-claude/usage-cost-api.md",
+            ],
+            [
+              "messages-usage-report",
+              "https://platform.claude.com/docs/en/api/admin/usage_report/retrieve_messages.md",
+            ],
+            [
+              "cost-report",
+              "https://platform.claude.com/docs/en/api/admin/cost_report/retrieve.md",
+            ],
+            [
+              "fallback-credit",
+              "https://platform.claude.com/docs/en/build-with-claude/fallback-credit.md",
+            ],
+            ["release-notes", "https://platform.claude.com/docs/en/release-notes/overview.md", 4],
+          ]),
         },
       },
       {
@@ -756,7 +962,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v12",
+        extractorVersion: "bedrock-catalog-v13",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -797,40 +1003,98 @@ export const manifests = [
           maxDocuments: 200,
           concurrency: 8,
           maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "bedrock-mantle",
-              url: "https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "bedrock-public-pricing",
-              url: "https://aws.amazon.com/bedrock/pricing/",
-              format: "html",
-              maxResponseBytes: mebibytes(8),
-            },
-            {
-              id: "bedrock-cohere-embed-v4-marketplace",
-              url: "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",
-              format: "html",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "pricing-bedrock",
-              url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/index.json",
-              maxResponseBytes: mebibytes(20),
-            },
-            {
-              id: "pricing-foundation-models",
-              url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
-              maxResponseBytes: mebibytes(8),
-            },
-            {
-              id: "pricing-service",
-              url: "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
-              maxResponseBytes: mebibytes(2),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "bedrock-mantle",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.md",
+            ],
+            [
+              "bedrock-model-catalog-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.md",
+            ],
+            [
+              "bedrock-list-foundation-models-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_ListFoundationModels.md",
+            ],
+            [
+              "bedrock-foundation-model-summary-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_FoundationModelSummary.md",
+            ],
+            [
+              "bedrock-foundation-model-lifecycle-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_FoundationModelLifecycle.md",
+            ],
+            [
+              "bedrock-converse-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.md",
+            ],
+            [
+              "bedrock-count-tokens-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.md",
+            ],
+            [
+              "bedrock-service-tiers-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.md",
+            ],
+            [
+              "bedrock-conversation-usage-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/conversation-inference.md",
+            ],
+            [
+              "bedrock-prompt-caching-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.md",
+            ],
+            [
+              "bedrock-token-counting-guide-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/count-tokens.md",
+            ],
+            [
+              "bedrock-invocation-logging-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.md",
+            ],
+            [
+              "bedrock-cost-management-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/cost-management.md",
+            ],
+            [
+              "bedrock-cur-contract",
+              "https://docs.aws.amazon.com/bedrock/latest/userguide/cost-mgmt-understanding-cur-data.md",
+            ],
+            [
+              "aws-price-list-precedence-contract",
+              "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/price-changes.md",
+            ],
+            [
+              "aws-price-list-bulk-contract",
+              "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/bulk-api-reading-price-list-files.md",
+            ],
+            [
+              "aws-billing-latency-contract",
+              "https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/view-billing-dashboard.md",
+            ],
+            ["bedrock-public-pricing", "https://aws.amazon.com/bedrock/pricing/", 8, "html"],
+            [
+              "bedrock-cohere-embed-v4-marketplace",
+              "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",
+              1,
+              "html",
+            ],
+            [
+              "pricing-bedrock",
+              "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/index.json",
+              20,
+            ],
+            [
+              "pricing-foundation-models",
+              "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
+              8,
+            ],
+            [
+              "pricing-service",
+              "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
+              2,
+            ],
+          ]),
         },
       },
       {
@@ -841,7 +1105,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "bedrock-api" },
-        extractorVersion: "bedrock-api-v3",
+        extractorVersion: "bedrock-api-v4",
         fields: [
           "name",
           "modalities",
@@ -900,7 +1164,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v6",
+        extractorVersion: "databricks-catalog-v7",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -930,58 +1194,59 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: [
-            {
-              id: "overview",
-              url: "https://docs.databricks.com/aws/en/machine-learning/model-serving/foundation-model-overview",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "lifecycle",
-              url: "https://docs.databricks.com/aws/en/machine-learning/retired-models-policy",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "pricing-open",
-              url: "https://www.databricks.com/product/pricing/foundation-model-serving",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "pricing-partner",
-              url: "https://www.databricks.com/product/pricing/proprietary-foundation-model-serving",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "priority-mode",
-              url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/priority-mode",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "google-image-pricing",
-              url: "https://ai.google.dev/gemini-api/docs/pricing?hl=en",
-              maxResponseBytes: mebibytes(4),
-            },
-            {
-              id: "limits",
-              url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-reference",
-              url: "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "model-types",
-              url: "https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "release-feed",
-              url: "https://docs.databricks.com/aws/en/feed.xml",
-              maxResponseBytes: mebibytes(2),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "overview",
+              "https://docs.databricks.com/aws/en/machine-learning/model-serving/foundation-model-overview",
+              2,
+            ],
+            [
+              "lifecycle",
+              "https://docs.databricks.com/aws/en/machine-learning/retired-models-policy",
+            ],
+            [
+              "pricing-open",
+              "https://www.databricks.com/product/pricing/foundation-model-serving",
+              2,
+            ],
+            [
+              "pricing-partner",
+              "https://www.databricks.com/product/pricing/proprietary-foundation-model-serving",
+              2,
+            ],
+            [
+              "priority-mode",
+              "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/priority-mode",
+            ],
+            ["google-image-pricing", "https://ai.google.dev/gemini-api/docs/pricing?hl=en", 4],
+            [
+              "limits",
+              "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/limits",
+            ],
+            [
+              "api-reference",
+              "https://docs.databricks.com/aws/en/machine-learning/foundation-model-apis/api-reference",
+              2,
+            ],
+            [
+              "model-types",
+              "https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models",
+            ],
+            ["system-tables", "https://docs.databricks.com/aws/en/admin/system-tables"],
+            ["billing-usage", "https://docs.databricks.com/aws/en/admin/system-tables/billing"],
+            ["list-pricing", "https://docs.databricks.com/aws/en/admin/system-tables/pricing"],
+            [
+              "model-serving-cost",
+              "https://docs.databricks.com/aws/en/admin/system-tables/model-serving-cost",
+            ],
+            [
+              "legacy-endpoint-usage",
+              "https://docs.databricks.com/aws/en/ai-gateway/configure-ai-gateway-endpoints",
+            ],
+            ["ai-gateway-usage", "https://docs.databricks.com/aws/en/ai-gateway/usage-tracking"],
+            ["ai-gateway-cost", "https://docs.databricks.com/aws/en/ai-gateway/cost-observability"],
+            ["release-feed", "https://docs.databricks.com/aws/en/feed.xml", 2],
+          ]),
         },
       },
       {
@@ -1035,7 +1300,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v10",
+        extractorVersion: "vercel-catalog-v11",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1073,38 +1338,75 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 6,
-          documents: [
-            {
-              id: "pricing-policy",
-              url: "https://vercel.com/docs/ai-gateway/pricing.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "provider-options",
-              url: "https://vercel.com/docs/ai-gateway/models-and-providers/provider-options.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "rest-api",
-              url: "https://vercel.com/docs/ai-gateway/sdks-and-apis/rest-api.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "custom-reporting",
-              url: "https://vercel.com/docs/ai-gateway/observability-and-spend/custom-reporting.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "logs",
-              url: "https://vercel.com/docs/ai-gateway/observability-and-spend/logs.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "models-and-providers",
+              "https://vercel.com/docs/ai-gateway/models-and-providers.md",
+              1,
+              "markdown",
+            ],
+            ["pricing-policy", "https://vercel.com/docs/ai-gateway/pricing.md", 1, "markdown"],
+            [
+              "provider-options",
+              "https://vercel.com/docs/ai-gateway/models-and-providers/provider-options.md",
+              1,
+              "markdown",
+            ],
+            [
+              "provider-filtering-and-ordering",
+              "https://vercel.com/docs/ai-gateway/models-and-providers/provider-filtering-and-ordering.md",
+              1,
+              "markdown",
+            ],
+            [
+              "fast-mode",
+              "https://vercel.com/docs/ai-gateway/models-and-providers/fast-mode.md",
+              1,
+              "markdown",
+            ],
+            [
+              "service-tiers",
+              "https://vercel.com/docs/ai-gateway/models-and-providers/service-tiers.md",
+              1,
+              "markdown",
+            ],
+            [
+              "regional-inference",
+              "https://vercel.com/docs/ai-gateway/security-and-compliance/regional-inference.md",
+              1,
+              "markdown",
+            ],
+            [
+              "byok",
+              "https://vercel.com/docs/ai-gateway/authentication-and-byok/byok.md",
+              1,
+              "markdown",
+            ],
+            [
+              "rest-api",
+              "https://vercel.com/docs/ai-gateway/sdks-and-apis/rest-api.md",
+              1,
+              "markdown",
+            ],
+            [
+              "custom-reporting",
+              "https://vercel.com/docs/ai-gateway/observability-and-spend/custom-reporting.md",
+              1,
+              "markdown",
+            ],
+            [
+              "logs",
+              "https://vercel.com/docs/ai-gateway/observability-and-spend/logs.md",
+              1,
+              "markdown",
+            ],
+            [
+              "usage",
+              "https://vercel.com/docs/ai-gateway/observability-and-spend/usage.md",
+              1,
+              "markdown",
+            ],
+          ]),
         },
       },
     ],
@@ -1213,73 +1515,117 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 7,
-          documents: [
-            {
-              id: "direct-others",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-azure-direct-others.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "partners",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-partners.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "lifecycle",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-model-retirement-schedule-content.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "retired",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-retired-models-content.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "standard",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-standard.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "provisioned",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-provisioned.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "batch",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-batch.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "openai-v1",
-              url: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-v1-generated.yaml",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "openai-v1-preview",
-              url: "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-preview-generated.yaml",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "foundry-costs",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/concepts/manage-costs.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "openai-prompt-caching",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/how-to-prompt-caching-content.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "claude-billing",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/concepts/claude-models-billing.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "cost-management-automation",
-              url: "https://raw.githubusercontent.com/MicrosoftDocs/azure-docs/main/articles/cost-management-billing/costs/manage-automation.md",
-              maxResponseBytes: mebibytes(1),
-            },
+          documents: fixedDocuments([
+            [
+              "direct-others",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-azure-direct-others.md",
+            ],
+            [
+              "partners",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/models-partners.md",
+            ],
+            [
+              "lifecycle",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-model-retirement-schedule-content.md",
+            ],
+            [
+              "retired",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/concepts-retired-models-content.md",
+            ],
+            [
+              "standard",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-standard.md",
+            ],
+            [
+              "provisioned",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-provisioned.md",
+            ],
+            [
+              "batch",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/includes/model-matrix/deployments-batch.md",
+            ],
+            [
+              "openai-v1",
+              "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-v1-generated.yaml",
+              2,
+            ],
+            [
+              "openai-v1-preview",
+              "https://raw.githubusercontent.com/Azure/azure-rest-api-specs/main/specification/ai/data-plane/OpenAI.v1/azure-v1-preview-generated.yaml",
+              2,
+            ],
+            [
+              "foundry-costs",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/concepts/manage-costs.md",
+            ],
+            [
+              "openai-prompt-caching",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/openai/includes/how-to-prompt-caching-content.md",
+            ],
+            [
+              "claude-billing",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-ai-docs/main/articles/foundry/foundry-models/concepts/claude-models-billing.md",
+            ],
+            [
+              "cost-management-automation",
+              "https://raw.githubusercontent.com/MicrosoftDocs/azure-docs/main/articles/cost-management-billing/costs/manage-automation.md",
+            ],
+          ]),
+        },
+      },
+      {
+        id: "azure-portal-models",
+        url: "https://ai.azure.com/api/westus2/ux/v1.0/entities/crossRegion",
+        type: "api",
+        source: ["api", "website"],
+        access: "public",
+        format: "json",
+        stability: "undocumented",
+        extractor: { kind: "azure-portal-catalog", minModels: 50, maxModels: 150 },
+        extractorVersion: "azure-portal-catalog-v1",
+        fields: [
+          "model_id",
+          "version",
+          "name",
+          "description",
+          "tasks",
+          "service_families",
+          "modalities",
+          "capabilities",
+          "limits",
+          "availability",
+          "status",
+          "release_stage",
+          "deprecated_at",
+          "retired_at",
+        ],
+        allowedHosts: ["ai.azure.com"],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: false,
+        role: "supplement",
+        headers: [
+          { name: "X-Ms-User-Agent", value: "AzureMachineLearningWorkspacePortal/3.0" },
+          { name: "x-ms-useragent", value: "AzureMachineLearningWorkspacePortal/3.0" },
+        ],
+        transport: {
+          kind: "azure-portal-models",
+          registries: [
+            "azure-openai",
+            "azureml-msr",
+            "azureml",
+            "azureml-meta",
+            "azureml-mistral",
+            "nvidia-ai",
+            "azureml-nixtla",
+            "azureml-core42",
+            "azureml-cohere",
+            "azureml-restricted",
+            "HuggingFace",
           ],
+          pageSize: 50,
+          maxPages: 5,
+          maxModels: 250,
         },
       },
       {
@@ -1311,13 +1657,13 @@ export const manifests = [
       },
       {
         id: "azure-public-pricing",
-        url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+        url: "https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/microsoft/",
         type: "website",
         access: "public",
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "azure-public-pricing", minModels: 40, maxModels: 250 },
-        extractorVersion: "azure-public-pricing-v1",
+        extractorVersion: "azure-public-pricing-v2",
         pricingEvidence: firstPartyPricing("price_book", "base_model_id"),
         fields: ["pricing"],
         allowedHosts: ["azure.microsoft.com"],
@@ -1326,26 +1672,18 @@ export const manifests = [
         exhaustive: false,
         role: "overlay",
         linkedDocuments: {
-          path: /^$/,
-          minDocuments: 0,
-          maxDocuments: 0,
+          path: /^\/en-us\/pricing\/details\/ai-foundry-models\/(?!(?:aoai|fine-tuning-models|microsoft)\/$)[a-z0-9]+(?:-[a-z0-9]+)*\/$/,
+          minDocuments: 9,
+          maxDocuments: 20,
           concurrency: 5,
+          maxDocumentBytes: mebibytes(2),
           documents: [
-            "model-router",
-            "deepseek",
-            "microsoft",
-            "grok",
-            "llama",
-            "black-forest-labs",
-            "mistral-ai",
-            "cohere",
-            "kimi",
-            "fireworks",
-          ].map((id) => ({
-            id,
-            url: `https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/${id}/`,
-            maxResponseBytes: mebibytes(2),
-          })),
+            {
+              id: "azure-openai",
+              url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+              maxResponseBytes: mebibytes(8),
+            },
+          ],
         },
       },
       {
@@ -1446,7 +1784,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v6",
+        extractorVersion: "gemini-catalog-v7",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -1467,7 +1805,12 @@ export const manifests = [
           "replacement_model_ids",
         ],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
-        allowedHosts: ["ai.google.dev", "docs.cloud.google.com"],
+        allowedHosts: [
+          "ai.google.dev",
+          "cloud.google.com",
+          "docs.cloud.google.com",
+          "generativelanguage.googleapis.com",
+        ],
         maxResponseBytes: mebibytes(32),
         scope: "global",
         exhaustive: true,
@@ -1478,119 +1821,59 @@ export const manifests = [
           maxDocuments: 60,
           concurrency: 8,
           maxDocumentBytes: mebibytes(1),
-          documents: [
-            {
-              id: "pricing",
-              url: "https://ai.google.dev/gemini-api/docs/pricing",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "deprecations",
-              url: "https://ai.google.dev/gemini-api/docs/deprecations",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "changelog",
-              url: "https://ai.google.dev/gemini-api/docs/changelog",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "gemma-api",
-              url: "https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "gemma-card",
-              url: "https://ai.google.dev/gemma/docs/core/model_card_4",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "interactions-overview",
-              url: "https://ai.google.dev/gemini-api/docs/interactions-overview",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "interactions-api",
-              url: "https://ai.google.dev/api/interactions-api",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "all-methods",
-              url: "https://ai.google.dev/api/all-methods",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "live-api",
-              url: "https://ai.google.dev/api/live",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "billing",
-              url: "https://ai.google.dev/gemini-api/docs/billing",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "implicit-caching",
-              url: "https://ai.google.dev/gemini-api/docs/caching",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "explicit-caching",
-              url: "https://ai.google.dev/gemini-api/docs/generate-content/caching",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "tokens",
-              url: "https://ai.google.dev/gemini-api/docs/tokens",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "generate-content-api",
-              url: "https://ai.google.dev/api/generate-content",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "flex-inference",
-              url: "https://ai.google.dev/gemini-api/docs/flex-inference",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "priority-inference",
-              url: "https://ai.google.dev/gemini-api/docs/priority-inference",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "google-search",
-              url: "https://ai.google.dev/gemini-api/docs/google-search",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "google-maps",
-              url: "https://ai.google.dev/gemini-api/docs/maps-grounding",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "cloud-pricing-api",
-              url: "https://docs.cloud.google.com/billing/docs/how-to/get-pricing-information-api",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "cloud-billing-export",
-              url: "https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables",
-              maxResponseBytes: mebibytes(2),
-            },
-          ],
+          documents: fixedDocuments([
+            ["pricing", "https://ai.google.dev/gemini-api/docs/pricing"],
+            ["deprecations", "https://ai.google.dev/gemini-api/docs/deprecations"],
+            ["changelog", "https://ai.google.dev/gemini-api/docs/changelog"],
+            ["gemma-api", "https://ai.google.dev/gemma/docs/core/gemma_on_gemini_api"],
+            ["gemma-card", "https://ai.google.dev/gemma/docs/core/model_card_4", 2],
+            [
+              "interactions-overview",
+              "https://ai.google.dev/gemini-api/docs/interactions-overview",
+            ],
+            ["interactions-api", "https://ai.google.dev/api/interactions-api", 2],
+            [
+              "discovery",
+              "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
+              1,
+              "json",
+            ],
+            ["live-api", "https://ai.google.dev/api/live"],
+            ["billing", "https://ai.google.dev/gemini-api/docs/billing"],
+            ["implicit-caching", "https://ai.google.dev/gemini-api/docs/caching"],
+            ["explicit-caching", "https://ai.google.dev/gemini-api/docs/generate-content/caching"],
+            ["tokens", "https://ai.google.dev/gemini-api/docs/tokens"],
+            ["flex-inference", "https://ai.google.dev/gemini-api/docs/flex-inference"],
+            ["priority-inference", "https://ai.google.dev/gemini-api/docs/priority-inference"],
+            ["google-search", "https://ai.google.dev/gemini-api/docs/google-search"],
+            ["google-maps", "https://ai.google.dev/gemini-api/docs/maps-grounding"],
+            [
+              "cloud-pricing-api",
+              "https://docs.cloud.google.com/billing/docs/how-to/get-pricing-information-api",
+              2,
+            ],
+            [
+              "cloud-billing-export",
+              "https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables",
+              2,
+            ],
+            [
+              "cloud-sku-group",
+              "https://cloud.google.com/skus/sku-groups/google-developer-program-premium-genai-credit",
+              2,
+            ],
+          ]),
         },
       },
       {
         id: "gemini-api",
-        url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+        url: "https://generativelanguage.googleapis.com/v1beta/models",
         type: "api",
         access: "authenticated",
         format: "json",
         stability: "documented",
         extractor: { kind: "gemini-api" },
-        extractorVersion: "gemini-api-v2",
+        extractorVersion: "gemini-api-v3",
         fields: [
           "name",
           "description",
@@ -1607,6 +1890,7 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "header", env: "GEMINI_API_KEY", header: "x-goog-api-key" },
+        transport: { kind: "gemini-models", pageSize: 1000, maxPages: 5, maxModels: 5_000 },
       },
     ],
     supersededModelIds: ["gemini-2.5-flash-preview-09-2025", "gemini-flash-latest"],
@@ -1645,7 +1929,7 @@ export const manifests = [
           maxModelDocuments: 40,
           minPricingCoverage: 0.8,
         },
-        extractorVersion: "vertex-catalog-v5",
+        extractorVersion: "vertex-catalog-v6",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1665,7 +1949,7 @@ export const manifests = [
           "retired_at",
           "replacement_model_ids",
         ],
-        allowedHosts: ["docs.cloud.google.com", "cloud.google.com"],
+        allowedHosts: ["docs.cloud.google.com", "cloud.google.com", "aiplatform.googleapis.com"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
         maxResponseBytes: mebibytes(48),
         scope: "region",
@@ -1678,118 +1962,106 @@ export const manifests = [
           maxDocuments: 40,
           concurrency: 8,
           maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "lifecycle",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "imagen",
-              url: "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/4-0-generate",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "generate-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "embedding-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-multimodal-embeddings",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "text-embedding-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "image-api",
-              url: "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/generate-images",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "video-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/video/generate-videos-from-text",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "music-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "pricing",
-              url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
-              maxResponseBytes: mebibytes(6),
-            },
-            {
-              id: "billing-skus",
-              url: "https://cloud.google.com/skus/sku-groups/select-google-cloud-offerings",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "usage-response",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/GenerateContentResponse",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "grounding-response",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/GroundingMetadata",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "grounding-search",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "grounding-maps",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-maps",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "grounding-data",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-vertex-ai-search",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "standard-paygo",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/standard-paygo",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "flex-paygo",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/flex-paygo",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "priority-paygo",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/priority-paygo",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "provisioned-throughput-routing",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/provisioned-throughput/use-provisioned-throughput",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "provisioned-throughput-accounting",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/provisioned-throughput/measure-provisioned-throughput",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "cloud-pricing-api",
-              url: "https://docs.cloud.google.com/billing/docs/how-to/get-pricing-information-api",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "cloud-billing-export",
-              url: "https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage",
-              maxResponseBytes: mebibytes(2),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "lifecycle",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/model-versions",
+              2,
+            ],
+            [
+              "imagen",
+              "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/models/imagen/4-0-generate",
+              2,
+            ],
+            [
+              "generate-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start",
+              2,
+            ],
+            [
+              "embedding-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-multimodal-embeddings",
+              2,
+            ],
+            [
+              "text-embedding-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
+              2,
+            ],
+            [
+              "image-api",
+              "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/generate-images",
+              2,
+            ],
+            [
+              "video-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/video/generate-videos-from-text",
+              2,
+            ],
+            [
+              "music-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music",
+              2,
+            ],
+            [
+              "pricing",
+              "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+              6,
+            ],
+            ["billing-skus", "https://cloud.google.com/skus/sku-groups/gen-ai", 2],
+            ["billing-skus-v2", "https://cloud.google.com/skus/sku-groups/gen-ai-v2", 2],
+            ["discovery", "https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1", 6],
+            [
+              "grounding-search",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
+              2,
+            ],
+            [
+              "grounding-maps",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-maps",
+              2,
+            ],
+            [
+              "grounding-data",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-vertex-ai-search",
+              2,
+            ],
+            [
+              "standard-paygo",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/standard-paygo",
+              2,
+            ],
+            [
+              "flex-paygo",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/flex-paygo",
+              2,
+            ],
+            [
+              "priority-paygo",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/priority-paygo",
+              2,
+            ],
+            [
+              "provisioned-throughput-routing",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/provisioned-throughput/use-provisioned-throughput",
+              2,
+            ],
+            [
+              "provisioned-throughput-accounting",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/provisioned-throughput/measure-provisioned-throughput",
+              2,
+            ],
+            [
+              "cloud-pricing-api",
+              "https://docs.cloud.google.com/billing/docs/how-to/get-pricing-information-api",
+              2,
+            ],
+            [
+              "cloud-billing-export",
+              "https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage",
+              2,
+            ],
+          ]),
         },
       },
       {
@@ -1841,38 +2113,38 @@ export const manifests = [
           maxDocuments: 45,
           concurrency: 8,
           maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "claude-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "claude-web-search",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/web-search",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "grok-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "llama-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "deprecations",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/partner-models",
-              maxResponseBytes: mebibytes(4),
-            },
-            {
-              id: "pricing",
-              url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
-              maxResponseBytes: mebibytes(6),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "claude-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
+              2,
+            ],
+            [
+              "claude-web-search",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/web-search",
+              2,
+            ],
+            [
+              "grok-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+              2,
+            ],
+            [
+              "llama-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/llama/use-llama",
+              2,
+            ],
+            [
+              "deprecations",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/partner-models",
+              4,
+            ],
+            [
+              "pricing",
+              "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+              6,
+            ],
+          ]),
         },
       },
       {
@@ -1923,28 +2195,28 @@ export const manifests = [
           maxDocuments: 40,
           concurrency: 8,
           maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "open-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "text-embedding-api",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "deprecations",
-              url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/open-models",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "pricing",
-              url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
-              maxResponseBytes: mebibytes(6),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "open-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
+              2,
+            ],
+            [
+              "text-embedding-api",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
+              2,
+            ],
+            [
+              "deprecations",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/deprecations/open-models",
+              2,
+            ],
+            [
+              "pricing",
+              "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+              6,
+            ],
+          ]),
         },
       },
       {
@@ -1966,6 +2238,10 @@ export const manifests = [
         auth: { scheme: "google-service-account", env: "GOOGLE_SERVICE_ACCOUNT_JSON" },
         transport: {
           kind: "google-model-garden",
+          pageSize: 300,
+          maxPages: 20,
+          maxModelsPerPublisher: 5_000,
+          concurrency: 4,
           publishers: [
             "google",
             "anthropic",
@@ -2006,6 +2282,7 @@ export const manifests = [
         id: "cohere-models",
         url: "https://docs.cohere.com/docs/models/llms.txt",
         type: "website",
+        source: ["website", "repository"],
         access: "public",
         format: "mixed",
         stability: "semi_structured",
@@ -2015,7 +2292,7 @@ export const manifests = [
           maxModels: 70,
           minPricingCoverage: 0.6,
         },
-        extractorVersion: "cohere-catalog-v7",
+        extractorVersion: "cohere-catalog-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2033,7 +2310,7 @@ export const manifests = [
           "retired_at",
           "replacement_model_ids",
         ],
-        allowedHosts: ["docs.cohere.com", "cohere.com"],
+        allowedHosts: ["docs.cohere.com", "cohere.com", "raw.githubusercontent.com"],
         maxResponseBytes: mebibytes(48),
         scope: "global",
         exhaustive: false,
@@ -2046,129 +2323,49 @@ export const manifests = [
           maxDocuments: 30,
           concurrency: 6,
           maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "overview",
-              url: "https://docs.cohere.com/docs/models",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "deprecations",
-              url: "https://docs.cohere.com/docs/deprecations",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "pricing",
-              url: "https://cohere.com/pricing",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "pricing-policy",
-              url: "https://docs.cohere.com/docs/how-does-cohere-pricing-work.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "rate-limits",
-              url: "https://docs.cohere.com/docs/rate-limits.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "billing-errors",
-              url: "https://docs.cohere.com/reference/errors.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "teams-and-roles",
-              url: "https://docs.cohere.com/reference/teams-and-roles.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "changelog",
-              url: "https://docs.cohere.com/v2/changelog",
-              maxResponseBytes: mebibytes(3),
-            },
-            {
-              id: "release-command-a",
-              url: "https://docs.cohere.com/changelog/command-a",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "release-command-r7b",
-              url: "https://docs.cohere.com/changelog/command-r-7b/",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "release-command-r",
-              url: "https://docs.cohere.com/v1/changelog/command-gets-refreshed",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "release-rerank-v3-5",
-              url: "https://docs.cohere.com/changelog/rerank-v3.5",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "api-chat-v2",
-              url: "https://docs.cohere.com/reference/chat.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-chat-v1",
-              url: "https://docs.cohere.com/reference/chat-v1.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-chat-stream-v2",
-              url: "https://docs.cohere.com/reference/chat-stream.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-embed-v2",
-              url: "https://docs.cohere.com/reference/embed.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-embed-jobs",
-              url: "https://docs.cohere.com/reference/create-embed-job.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-embed-job-result",
-              url: "https://docs.cohere.com/reference/get-embed-job.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-rerank-v2",
-              url: "https://docs.cohere.com/reference/rerank.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-transcription-v2",
-              url: "https://docs.cohere.com/reference/create-audio-transcription.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-openai-compatibility",
-              url: "https://docs.cohere.com/docs/compatibility-api.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "api-generate-v1",
-              url: "https://docs.cohere.com/v1/reference/generate.md",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            ["overview", "https://docs.cohere.com/docs/models", 2],
+            ["deprecations", "https://docs.cohere.com/docs/deprecations", 2],
+            ["pricing", "https://cohere.com/pricing", 2],
+            ["pricing-policy", "https://docs.cohere.com/docs/how-does-cohere-pricing-work.md"],
+            ["rate-limits", "https://docs.cohere.com/docs/rate-limits.md"],
+            ["billing-errors", "https://docs.cohere.com/reference/errors.md"],
+            ["teams-and-roles", "https://docs.cohere.com/reference/teams-and-roles.md"],
+            ["changelog", "https://docs.cohere.com/v2/changelog", 3],
+            ["release-command-a", "https://docs.cohere.com/changelog/command-a", 2],
+            ["release-command-r7b", "https://docs.cohere.com/changelog/command-r-7b/", 2],
+            ["release-command-r", "https://docs.cohere.com/v1/changelog/command-gets-refreshed", 2],
+            ["release-rerank-v3-5", "https://docs.cohere.com/changelog/rerank-v3.5", 2],
+            ["api-chat-v2", "https://docs.cohere.com/reference/chat.md"],
+            ["api-chat-v1", "https://docs.cohere.com/reference/chat-v1.md"],
+            ["api-chat-stream-v2", "https://docs.cohere.com/reference/chat-stream.md"],
+            ["api-embed-v2", "https://docs.cohere.com/reference/embed.md"],
+            ["api-embed-jobs", "https://docs.cohere.com/reference/create-embed-job.md"],
+            ["api-embed-job-result", "https://docs.cohere.com/reference/get-embed-job.md"],
+            ["api-rerank-v2", "https://docs.cohere.com/reference/rerank.md"],
+            [
+              "api-transcription-v2",
+              "https://docs.cohere.com/reference/create-audio-transcription.md",
+            ],
+            ["api-openai-compatibility", "https://docs.cohere.com/docs/compatibility-api.md"],
+            ["api-generate-v1", "https://docs.cohere.com/v1/reference/generate.md"],
+            [
+              "openapi",
+              "https://raw.githubusercontent.com/cohere-ai/cohere-developer-experience/main/cohere-openapi.yaml",
+              2,
+            ],
+          ]),
         },
       },
       {
         id: "cohere-api",
-        url: "https://api.cohere.com/v1/models?page_size=1000",
+        url: "https://api.cohere.com/v1/models",
         type: "api",
         access: "authenticated",
         format: "json",
         stability: "documented",
         extractor: { kind: "cohere-api" },
-        extractorVersion: "cohere-api-v2",
+        extractorVersion: "cohere-api-v3",
         fields: ["model_id", "tasks", "api_endpoints", "limits", "status"],
         allowedHosts: ["api.cohere.com"],
         maxResponseBytes: mebibytes(8),
@@ -2177,6 +2374,7 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "COHERE_API_KEY" },
+        transport: { kind: "cohere-models", pageSize: 1000, maxPages: 10, maxModels: 5000 },
       },
     ],
     supersededIdKinds: ["source_generated"],
@@ -2214,7 +2412,7 @@ export const manifests = [
           maxModels: 90,
           minPricingCoverage: 0.9,
         },
-        extractorVersion: "mistral-catalog-v8",
+        extractorVersion: "mistral-catalog-v9",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2248,63 +2446,47 @@ export const manifests = [
           maxDocuments: 90,
           concurrency: 8,
           maxDocumentBytes: mebibytes(1),
-          documents: [
-            {
-              id: "model-schema",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/schema.ts",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "model-endpoints",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "prompt-caching",
-              url: "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "batch-processing",
-              url: "https://docs.mistral.ai/studio-api/batch-processing.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "public-pricing",
-              url: "https://mistral.ai/pricing/api/",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "api-schema",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "admin-usage",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/admin-api/usage-metrics/page.mdx",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "admin-billing-api",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/api/endpoint/beta/admin/billing/page.mdx",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "account-billing",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/billing/page.mdx",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "account-plans",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/subscriptions/page.mdx",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "regional-inference",
-              url: "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/regional-inference/page.mdx",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "model-schema",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/schema.ts",
+            ],
+            [
+              "model-endpoints",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts",
+            ],
+            [
+              "prompt-caching",
+              "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching.md",
+            ],
+            ["batch-processing", "https://docs.mistral.ai/studio-api/batch-processing.md"],
+            ["public-pricing", "https://mistral.ai/pricing/api/", 2],
+            [
+              "api-schema",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml",
+              2,
+            ],
+            [
+              "admin-usage",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/admin-api/usage-metrics/page.mdx",
+            ],
+            [
+              "admin-billing-api",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/api/endpoint/beta/admin/billing/page.mdx",
+            ],
+            [
+              "account-billing",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/billing/page.mdx",
+            ],
+            [
+              "account-plans",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/subscriptions/page.mdx",
+            ],
+            [
+              "regional-inference",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/regional-inference/page.mdx",
+            ],
+          ]),
         },
       },
       {
@@ -2315,7 +2497,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "mistral-api" },
-        extractorVersion: "mistral-api-v2",
+        extractorVersion: "mistral-api-v3",
         fields: [
           "name",
           "description",
@@ -2363,7 +2545,7 @@ export const manifests = [
         format: "mixed",
         stability: "documented",
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
-        extractorVersion: "llama-catalog-v4",
+        extractorVersion: "llama-catalog-v5",
         pricingEvidence: firstPartyPricing("commercial_terms", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2421,6 +2603,11 @@ export const manifests = [
               maxResponseBytes: mebibytes(1),
             },
             {
+              id: "llama-api-async-chat-example",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/async_chat.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
               id: "llama-api-tool-example",
               url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/examples/tool_call.py",
               maxResponseBytes: mebibytes(1),
@@ -2433,6 +2620,21 @@ export const manifests = [
             {
               id: "llama-api-client",
               url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/_client.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-models",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/resources/models.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-model",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/types/llama_model.py",
+              maxResponseBytes: mebibytes(1),
+            },
+            {
+              id: "llama-api-model-list-response",
+              url: "https://raw.githubusercontent.com/meta-llama/llama-api-python/main/src/llama_api_client/types/model_list_response.py",
               maxResponseBytes: mebibytes(1),
             },
             {
@@ -2506,7 +2708,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "llama-api" },
-        extractorVersion: "llama-api-v1",
+        extractorVersion: "llama-api-v2",
         fields: ["model_id", "status"],
         allowedHosts: ["api.llama.com"],
         maxResponseBytes: mebibytes(4),
@@ -2548,7 +2750,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v7",
+        extractorVersion: "xai-catalog-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -2640,11 +2842,12 @@ export const manifests = [
         id: "huggingface-router",
         url: "https://router.huggingface.co/v1/models",
         type: "api",
+        source: ["api", "website", "repository"],
         access: "public",
         format: "json",
         stability: "documented",
-        extractor: { kind: "huggingface-router", minModels: 50, maxModels: 500 },
-        extractorVersion: "huggingface-router-v4",
+        extractor: { kind: "huggingface-router", minModels: 1, maxModels: 10_000 },
+        extractorVersion: "huggingface-router-v7",
         pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
         fields: [
           "tasks",
@@ -2655,7 +2858,7 @@ export const manifests = [
           "pricing",
           "status",
         ],
-        allowedHosts: ["router.huggingface.co", "huggingface.co"],
+        allowedHosts: ["router.huggingface.co", "huggingface.co", "raw.githubusercontent.com"],
         maxResponseBytes: mebibytes(16),
         scope: "global",
         exhaustive: true,
@@ -2665,56 +2868,100 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: [
-            {
-              id: "pricing",
-              url: "https://huggingface.co/docs/inference-providers/en/pricing.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "overview",
-              url: "https://huggingface.co/docs/inference-providers/en/index.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "hub-api",
-              url: "https://huggingface.co/docs/inference-providers/en/hub-api.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "chat-completion",
-              url: "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "responses-api",
-              url: "https://huggingface.co/docs/inference-providers/en/guides/responses-api.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "provider-registration",
-              url: "https://huggingface.co/docs/inference-providers/en/register-as-a-provider.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "sdk-inference",
-              url: "https://huggingface.co/docs/huggingface_hub/en/guides/inference.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "hub-billing",
-              url: "https://huggingface.co/docs/hub/en/billing.md",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "pricing",
+              "https://huggingface.co/docs/inference-providers/en/pricing.md",
+              1,
+              "markdown",
+            ],
+            [
+              "overview",
+              "https://huggingface.co/docs/inference-providers/en/index.md",
+              1,
+              "markdown",
+            ],
+            [
+              "hub-api",
+              "https://huggingface.co/docs/inference-providers/en/hub-api.md",
+              1,
+              "markdown",
+            ],
+            [
+              "chat-completion",
+              "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
+              1,
+              "markdown",
+            ],
+            [
+              "responses-api",
+              "https://huggingface.co/docs/inference-providers/en/guides/responses-api.md",
+              1,
+              "markdown",
+            ],
+            [
+              "provider-registration",
+              "https://huggingface.co/docs/inference-providers/en/register-as-a-provider.md",
+              1,
+              "markdown",
+            ],
+            [
+              "sdk-inference",
+              "https://huggingface.co/docs/huggingface_hub/en/guides/inference.md",
+              1,
+              "markdown",
+            ],
+            [
+              "sdk-provider-registry",
+              "https://raw.githubusercontent.com/huggingface/huggingface_hub/main/src/huggingface_hub/inference/_providers/__init__.py",
+              1,
+              "markdown",
+            ],
+            ["hub-billing", "https://huggingface.co/docs/hub/en/billing.md", 1, "markdown"],
+          ]),
+        },
+      },
+      {
+        id: "huggingface-featherless",
+        url: "https://api.featherless.ai/v1/models?status=active&page=1&per_page=1000",
+        type: "api",
+        source: ["api", "website"],
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "huggingface-featherless", minModels: 1, maxModels: 50_000 },
+        extractorVersion: "huggingface-featherless-v1",
+        pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
+        fields: ["limits", "pricing"],
+        allowedHosts: ["api.featherless.ai", "featherless.ai"],
+        maxResponseBytes: mebibytes(64),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+        pricingRequired: true,
+        transport: {
+          kind: "featherless-models",
+          pageSize: 1000,
+          maxPages: 500,
+          maxModels: 50_000,
+          concurrency: 6,
+          maxPageBytes: mebibytes(4),
+        },
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          documents: fixedDocuments([
+            ["models-api", "https://featherless.ai/docs/api-reference-models", 4, "html"],
+            [
+              "request-pricing",
+              "https://featherless.ai/docs/request-pricing-and-credits",
+              4,
+              "html",
+            ],
+          ]),
         },
       },
       {
@@ -2724,15 +2971,15 @@ export const manifests = [
         access: "public",
         format: "json",
         stability: "documented",
-        extractor: { kind: "huggingface-hub", minModels: 500, maxModels: 3_000 },
-        extractorVersion: "huggingface-hub-v1",
+        extractor: { kind: "huggingface-hub", minModels: 1, maxModels: 50_000 },
+        extractorVersion: "huggingface-hub-v2",
         fields: ["updated_date"],
         allowedHosts: ["huggingface.co"],
-        maxResponseBytes: mebibytes(4),
+        maxResponseBytes: mebibytes(16),
         scope: "global",
         exhaustive: false,
         role: "overlay",
-        transport: { kind: "huggingface-models", maxPages: 5, maxModels: 3_000 },
+        transport: { kind: "huggingface-models", maxPages: 100, maxModels: 50_000 },
       },
     ],
     warnOnMissing: {
@@ -2792,13 +3039,13 @@ export const manifests = [
     sources: [
       {
         id: "dashscope-recommended",
-        url: "https://www.alibabacloud.com/help/en/model-studio/models",
+        url: "https://www.alibabacloud.com/help/en/model-studio/models.md",
         type: "website",
         access: "public",
-        format: "html",
-        stability: "semi_structured",
+        format: "markdown",
+        stability: "documented",
         extractor: { kind: "dashscope-recommended", minModels: 15, maxModels: 60 },
-        extractorVersion: "dashscope-recommended-v1",
+        extractorVersion: "dashscope-recommended-v2",
         fields: ["api_endpoints", "availability"],
         allowedHosts: ["www.alibabacloud.com"],
         maxResponseBytes: mebibytes(1),
@@ -2817,13 +3064,13 @@ export const manifests = [
       dashscopeCatalogSource("dashscope-embedding", "embedding-rerank-model/", "embedding", 5, 25),
       {
         id: "dashscope-pricing",
-        url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+        url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing.md",
         type: "website",
         access: "public",
-        format: "html",
-        stability: "semi_structured",
+        format: "markdown",
+        stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v4",
+        extractorVersion: "dashscope-pricing-v5",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -2846,74 +3093,62 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: [
-            {
-              id: "context-cache",
-              url: "https://www.alibabacloud.com/help/en/model-studio/context-cache",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "batch-inference",
-              url: "https://www.alibabacloud.com/help/en/model-studio/batch-inference/",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "chat-completions",
-              url: "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "responses-api",
-              url: "https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "web-search",
-              url: "https://www.alibabacloud.com/help/en/model-studio/web-search",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "billing",
-              url: "https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "model-usage",
-              url: "https://www.alibabacloud.com/help/en/model-studio/model-usage-statistics",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "savings-plans",
-              url: "https://www.alibabacloud.com/help/en/model-studio/savings-plan-and-resource-package",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "billing-plans",
-              url: "https://www.alibabacloud.com/help/en/model-studio/more-tools",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "base-url",
-              url: "https://www.alibabacloud.com/help/en/model-studio/base-url",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "billing-api",
-              url: "https://www.alibabacloud.com/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill",
-              maxResponseBytes: mebibytes(2),
-            },
-          ],
+          documents: fixedDocuments([
+            [
+              "context-cache",
+              "https://www.alibabacloud.com/help/en/model-studio/context-cache.md",
+              2,
+            ],
+            [
+              "batch-inference",
+              "https://www.alibabacloud.com/help/en/model-studio/batch-inference.md",
+              2,
+            ],
+            [
+              "chat-completions",
+              "https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md",
+              2,
+            ],
+            [
+              "responses-api",
+              "https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api.md",
+              2,
+            ],
+            ["web-search", "https://www.alibabacloud.com/help/en/model-studio/web-search.md", 2],
+            [
+              "billing",
+              "https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management.md",
+              2,
+            ],
+            [
+              "model-usage",
+              "https://www.alibabacloud.com/help/en/model-studio/model-usage-statistics.md",
+              2,
+            ],
+            [
+              "savings-plans",
+              "https://www.alibabacloud.com/help/en/model-studio/savings-plan-and-resource-package.md",
+              2,
+            ],
+            ["billing-plans", "https://www.alibabacloud.com/help/en/model-studio/more-tools.md", 2],
+            ["base-url", "https://www.alibabacloud.com/help/en/model-studio/base-url.md", 2],
+            [
+              "billing-api",
+              "https://www.alibabacloud.com/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill.md",
+              2,
+            ],
+          ]),
         },
       },
       {
         id: "dashscope-lifecycle",
-        url: "https://www.alibabacloud.com/help/en/model-studio/model-depreciation",
+        url: "https://www.alibabacloud.com/help/en/model-studio/model-depreciation.md",
         type: "website",
         access: "public",
-        format: "html",
-        stability: "semi_structured",
+        format: "markdown",
+        stability: "documented",
         extractor: { kind: "dashscope-lifecycle", minModels: 15, maxModels: 150 },
-        extractorVersion: "dashscope-lifecycle-v1",
+        extractorVersion: "dashscope-lifecycle-v2",
         fields: [
           "model_id",
           "tasks",
@@ -2930,13 +3165,13 @@ export const manifests = [
       },
       {
         id: "dashscope-releases",
-        url: "https://www.alibabacloud.com/help/en/model-studio/newly-released-models",
+        url: "https://www.alibabacloud.com/help/en/model-studio/newly-released-models.md",
         type: "website",
         access: "public",
-        format: "html",
-        stability: "semi_structured",
+        format: "markdown",
+        stability: "documented",
         extractor: { kind: "dashscope-releases", minModels: 150, maxModels: 500 },
-        extractorVersion: "dashscope-releases-v1",
+        extractorVersion: "dashscope-releases-v2",
         fields: ["release_date"],
         allowedHosts: ["www.alibabacloud.com"],
         maxResponseBytes: mebibytes(1),
@@ -2951,14 +3186,20 @@ export const manifests = [
         access: "authenticated",
         format: "json",
         stability: "documented",
-        extractor: { kind: "dashscope-api", minModels: 1, maxModels: 100 },
-        extractorVersion: "dashscope-api-v1",
+        extractor: { kind: "dashscope-api", minModels: 1, maxModels: 500 },
+        extractorVersion: "dashscope-api-v2",
         fields: ["availability"],
         allowedHosts: ["dashscope-intl.aliyuncs.com"],
         maxResponseBytes: mebibytes(2),
         scope: "region",
         exhaustive: false,
         role: "inventory",
+        transport: {
+          kind: "dashscope-deployable-models",
+          pageSize: 100,
+          maxPages: 5,
+          maxModels: 500,
+        },
         optional: true,
         auth: { scheme: "bearer", env: "DASHSCOPE_API_KEY" },
       },
@@ -2987,7 +3228,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-catalog-v6",
+        extractorVersion: "cerebras-catalog-v8",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -3039,12 +3280,18 @@ export const manifests = [
                 ["metrics-api", "/api-reference/metrics/retrieve-metrics.md"],
                 ["dedicated", "/dedicated/overview.md"],
                 ["aws-marketplace", "/integrations/aws-marketplace.md"],
+                ["api-versions", "/api-reference/versions.md"],
               ] as const
             ).map(([id, path]) => ({
               id,
               url: `https://inference-docs.cerebras.ai${path}`,
               maxResponseBytes: mebibytes(1),
             })),
+            {
+              id: "openapi",
+              url: "https://inference-docs.cerebras.ai/api-reference/openapi.yaml",
+              maxResponseBytes: mebibytes(1),
+            },
             {
               id: "pricing",
               url: "https://inference-docs.cerebras.ai/support/pricing.md",
@@ -3062,7 +3309,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "cerebras-public", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-public-v1",
+        extractorVersion: "cerebras-public-v2",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -3074,11 +3321,33 @@ export const manifests = [
           "limits",
           "pricing",
         ],
-        allowedHosts: ["api.cerebras.ai"],
+        allowedHosts: ["api.cerebras.ai", "inference-docs.cerebras.ai"],
         maxResponseBytes: mebibytes(1),
         scope: "global",
         exhaustive: true,
         role: "catalog",
+        linkedDocuments: {
+          indexFormat: "markdown",
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 3,
+          documents: fixedDocuments([
+            ["openrouter", "https://api.cerebras.ai/public/v1/models?format=openrouter", 1, "json"],
+            [
+              "huggingface",
+              "https://api.cerebras.ai/public/v1/models?format=huggingface",
+              1,
+              "json",
+            ],
+            [
+              "public-models-contract",
+              "https://inference-docs.cerebras.ai/api-reference/models/public-models.md",
+              1,
+              "markdown",
+            ],
+          ]),
+        },
       },
       {
         id: "cerebras-lifecycle",
@@ -3109,18 +3378,10 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 2,
-          documents: [
-            {
-              id: "model-catalog",
-              url: "https://inference-docs.cerebras.ai/models/overview.md",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "change-log",
-              url: "https://inference-docs.cerebras.ai/support/change-log.md",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            ["model-catalog", "https://inference-docs.cerebras.ai/models/overview.md"],
+            ["change-log", "https://inference-docs.cerebras.ai/support/change-log.md"],
+          ]),
         },
       },
       {
@@ -3147,7 +3408,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "cerebras-api", minModels: 1, maxModels: 20 },
-        extractorVersion: "cerebras-api-v1",
+        extractorVersion: "cerebras-api-v2",
         fields: ["model_id"],
         allowedHosts: ["api.cerebras.ai"],
         maxResponseBytes: mebibytes(1),
@@ -3211,7 +3472,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v4",
+        extractorVersion: "ollama-cloud-v5",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3253,6 +3514,13 @@ export const manifests = [
               ["docs-index", "https://docs.ollama.com/llms.txt", "markdown"],
               ["pricing", "https://ollama.com/pricing", "html"],
               ["terms", "https://ollama.com/terms", "html"],
+              ["api-introduction", "https://docs.ollama.com/api/introduction.md", "markdown"],
+              ["list-models", "https://docs.ollama.com/api/tags.md", "markdown"],
+              [
+                "show-model-details",
+                "https://docs.ollama.com/api-reference/show-model-details.md",
+                "markdown",
+              ],
               ["openapi", "https://docs.ollama.com/openapi.yaml", "markdown"],
               ["usage", "https://docs.ollama.com/api/usage.md", "markdown"],
               [
@@ -3305,7 +3573,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 2, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v8",
+        extractorVersion: "deepseek-catalog-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3332,53 +3600,18 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: [
-            {
-              id: "chat-completions",
-              url: "https://api-docs.deepseek.com/api/create-chat-completion",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "responses",
-              url: "https://api-docs.deepseek.com/api/create-response",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "token-usage",
-              url: "https://api-docs.deepseek.com/quick_start/token_usage/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "context-cache",
-              url: "https://api-docs.deepseek.com/guides/kv_cache/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "balance",
-              url: "https://api-docs.deepseek.com/api/get-user-balance",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "rate-limit",
-              url: "https://api-docs.deepseek.com/quick_start/rate_limit/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "error-codes",
-              url: "https://api-docs.deepseek.com/quick_start/error_codes/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "responses-guide",
-              url: "https://api-docs.deepseek.com/guides/responses_api/",
-              maxResponseBytes: mebibytes(1),
-            },
-            {
-              id: "anthropic-guide",
-              url: "https://api-docs.deepseek.com/guides/anthropic_api/",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            ["chat-completions", "https://api-docs.deepseek.com/api/create-chat-completion"],
+            ["responses", "https://api-docs.deepseek.com/api/create-response"],
+            ["model-inventory", "https://api-docs.deepseek.com/api/list-models"],
+            ["token-usage", "https://api-docs.deepseek.com/quick_start/token_usage/"],
+            ["context-cache", "https://api-docs.deepseek.com/guides/kv_cache/"],
+            ["balance", "https://api-docs.deepseek.com/api/get-user-balance"],
+            ["rate-limit", "https://api-docs.deepseek.com/quick_start/rate_limit/"],
+            ["error-codes", "https://api-docs.deepseek.com/quick_start/error_codes/"],
+            ["responses-guide", "https://api-docs.deepseek.com/guides/responses_api/"],
+            ["anthropic-guide", "https://api-docs.deepseek.com/guides/anthropic_api/"],
+          ]),
         },
       },
       {
@@ -3389,8 +3622,8 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-updates", minModels: 4, maxModels: 10 },
-        extractorVersion: "deepseek-updates-v2",
-        fields: ["release_date", "updated_date"],
+        extractorVersion: "deepseek-updates-v3",
+        fields: ["release_date", "updated_date", "release_stage"],
         allowedHosts: ["api-docs.deepseek.com"],
         maxResponseBytes: mebibytes(1),
         scope: "global",
@@ -3405,7 +3638,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "deepseek-api", minModels: 1, maxModels: 20 },
-        extractorVersion: "deepseek-api-v2",
+        extractorVersion: "deepseek-api-v3",
         fields: ["model_id"],
         allowedHosts: ["api.deepseek.com"],
         maxResponseBytes: mebibytes(1),
@@ -3446,9 +3679,30 @@ export const manifests = [
           minModels: 8,
           maxModels: 30,
         },
-        extractorVersion: "kimi-openapi-v3",
+        extractorVersion: "kimi-openapi-v4",
         fields: ["model_id", "tasks", "modalities", "api_endpoints", "capabilities", "limits"],
         allowedHosts: ["platform.kimi.ai"],
+        maxResponseBytes: mebibytes(2),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "kimi-china-openapi",
+        url: "https://platform.kimi.com/docs/openapi.json",
+        type: "website",
+        access: "public",
+        format: "json",
+        stability: "documented",
+        extractor: {
+          kind: "kimi-openapi",
+          baseUrl: "https://api.moonshot.cn",
+          minModels: 8,
+          maxModels: 30,
+        },
+        extractorVersion: "kimi-openapi-v4",
+        fields: ["model_id", "tasks", "modalities", "api_endpoints", "capabilities", "limits"],
+        allowedHosts: ["platform.kimi.com"],
         maxResponseBytes: mebibytes(2),
         scope: "global",
         exhaustive: false,
@@ -3462,7 +3716,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v2",
+        extractorVersion: "kimi-catalog-v3",
         fields: [
           "model_id",
           "description",
@@ -3476,6 +3730,33 @@ export const manifests = [
           "replacement_model_ids",
         ],
         allowedHosts: ["platform.kimi.com"],
+        maxResponseBytes: mebibytes(1),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+      },
+      {
+        id: "kimi-international-catalog",
+        url: "https://platform.kimi.ai/docs/models",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
+        extractorVersion: "kimi-catalog-v3",
+        fields: [
+          "model_id",
+          "description",
+          "tasks",
+          "modalities",
+          "capabilities",
+          "limits",
+          "status",
+          "release_stage",
+          "retired_at",
+          "replacement_model_ids",
+        ],
+        allowedHosts: ["platform.kimi.ai"],
         maxResponseBytes: mebibytes(1),
         scope: "global",
         exhaustive: false,
@@ -3511,24 +3792,11 @@ export const manifests = [
           maxDocuments: 0,
           concurrency: 2,
           maxDocumentBytes: mebibytes(2),
-          documents: [
-            {
-              id: "research",
-              url: "https://www.kimi.com/blog/",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "code",
-              url: "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html",
-              maxResponseBytes: mebibytes(2),
-            },
-            {
-              id: "catalog",
-              url: "https://platform.kimi.com/docs/models",
-              format: "markdown",
-              maxResponseBytes: mebibytes(1),
-            },
-          ],
+          documents: fixedDocuments([
+            ["research", "https://www.kimi.com/blog/", 2],
+            ["code", "https://www.kimi.com/code/docs/en/kimi-code/whats-new.html", 2],
+            ["catalog", "https://platform.kimi.com/docs/models", 1, "markdown"],
+          ]),
         },
       },
       {
@@ -3539,7 +3807,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "kimi-api", minModels: 1, maxModels: 50 },
-        extractorVersion: "kimi-api-v1",
+        extractorVersion: "kimi-api-v2",
         fields: ["model_id", "modalities", "capabilities", "limits"],
         allowedHosts: ["api.moonshot.ai"],
         maxResponseBytes: mebibytes(1),
@@ -3548,6 +3816,24 @@ export const manifests = [
         role: "inventory",
         optional: true,
         auth: { scheme: "bearer", env: "MOONSHOT_API_KEY" },
+      },
+      {
+        id: "kimi-china-api",
+        url: "https://api.moonshot.cn/v1/models",
+        type: "api",
+        access: "authenticated",
+        format: "json",
+        stability: "documented",
+        extractor: { kind: "kimi-api", minModels: 1, maxModels: 50 },
+        extractorVersion: "kimi-api-v2",
+        fields: ["model_id", "modalities", "capabilities", "limits"],
+        allowedHosts: ["api.moonshot.cn"],
+        maxResponseBytes: mebibytes(1),
+        scope: "account",
+        exhaustive: false,
+        role: "inventory",
+        optional: true,
+        auth: { scheme: "bearer", env: "MOONSHOT_CN_API_KEY" },
       },
     ],
     warnOnMissing: {

@@ -1,6 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import { linkedBundleSchema } from "./bundle.ts";
+import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -19,18 +19,22 @@ interface Input {
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
-const listSchema = z.object({
-  object: z.literal("list"),
-  data: z
-    .array(
-      z.object({
-        id: modelIdSchema,
-        object: z.literal("model"),
-        owned_by: z.string().min(1),
-      }),
-    )
-    .min(1),
-});
+const listSchema = z
+  .object({
+    object: z.literal("list"),
+    data: z
+      .array(
+        z
+          .object({
+            id: modelIdSchema,
+            object: z.literal("model"),
+            owned_by: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(1),
+  })
+  .strict();
 
 const chatEndpoint = { name: "Chat Completions", path: "/chat/completions" };
 const responsesEndpoint = { name: "Responses", path: "/responses" };
@@ -237,16 +241,91 @@ function responseModelIds(body: string): Set<string> {
   return evidence.modelIds;
 }
 
+function schemaProperty(element: ReturnType<ReturnType<typeof load>>): string {
+  return htmlText(element.find("strong.openapi-schema__property").first().text());
+}
+
+function inventoryReferenceModelIds(body: string): Set<string> {
+  const $ = load(body);
+  const article = $("article");
+  const operations = article.find("pre.openapi__method-endpoint");
+  const operation = operations.first();
+  if (
+    operations.length !== 1 ||
+    htmlText(operation.find(".badge").first().text()) !== "GET" ||
+    htmlText(operation.find("h2.openapi__method-endpoint-path").first().text()) !== "/models"
+  )
+    throw new Error("DeepSeek model-inventory reference changed operation");
+
+  const schemaItems = article.find(".openapi-schema__list-item").toArray();
+  const rootItems = schemaItems.filter(
+    (element) => $(element).parents(".openapi-schema__list-item").length === 0,
+  );
+  const rootNames = rootItems.map((element) => schemaProperty($(element)));
+  if (rootNames.join("\0") !== "object\0data")
+    throw new Error("DeepSeek model-inventory reference changed response schema");
+  const rootObject = rootItems[0];
+  const data = rootItems[1];
+  if (
+    rootObject === undefined ||
+    data === undefined ||
+    !/Possible values:\s*\[list\]/i.test(htmlText($(rootObject).text()))
+  )
+    throw new Error("DeepSeek model-inventory reference changed response schema");
+  const itemNames = $(data)
+    .find(".openapi-schema__list-item")
+    .toArray()
+    .filter((element) => $(element).parents(".openapi-schema__list-item").first().get(0) === data)
+    .map((element) => schemaProperty($(element)));
+  if (itemNames.join("\0") !== "id\0object\0owned_by")
+    throw new Error("DeepSeek model-inventory reference changed response schema");
+  const itemObject = $(data)
+    .find(".openapi-schema__list-item")
+    .toArray()
+    .find((element) => schemaProperty($(element)) === "object");
+  if (
+    itemObject === undefined ||
+    !/Possible values:\s*\[model\]/i.test(htmlText($(itemObject).text()))
+  )
+    throw new Error("DeepSeek model-inventory reference changed response schema");
+
+  const examples = article
+    .find(".openapi-code__response-samples-container pre code")
+    .toArray()
+    .flatMap((element) => {
+      const parsedJson = z
+        .string()
+        .transform((value, context): unknown => {
+          try {
+            return JSON.parse(value);
+          } catch {
+            context.addIssue({ code: "custom", message: "Invalid JSON" });
+            return z.NEVER;
+          }
+        })
+        .safeParse($(element).text());
+      if (!parsedJson.success) return [];
+      const parsed = listSchema.safeParse(parsedJson.data);
+      return parsed.success ? [parsed.data] : [];
+    })
+    .filter(({ data: models }) =>
+      models.every(({ id, owned_by }) => id !== "string" && owned_by !== "string"),
+    );
+  const [example] = examples;
+  if (examples.length !== 1 || example === undefined)
+    throw new Error("DeepSeek model-inventory reference omitted the current example");
+  const ids = example.data.map(({ id }) => id);
+  if (new Set(ids).size !== ids.length)
+    throw new Error("DeepSeek model-inventory reference returned duplicate model IDs");
+  return new Set(ids);
+}
+
 function companion(
   bundle: z.infer<typeof linkedBundleSchema>,
   path: string,
   label: string,
 ): string {
-  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === path);
-  const [match] = matches;
-  if (matches.length !== 1 || match === undefined)
-    throw new Error(`DeepSeek catalog omitted the ${label} reference`);
-  return match.body;
+  return linkedDocumentBody(bundle, path, `DeepSeek catalog omitted the ${label} reference`);
 }
 
 function requireClaims(body: string, claims: readonly string[], message: string): void {
@@ -461,8 +540,10 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   commercialEvidence(input, bundle);
   const chatDocument = companion(bundle, "/api/create-chat-completion", "Chat Completions");
   const responsesDocument = companion(bundle, "/api/create-response", "Responses");
+  const inventoryDocument = companion(bundle, "/api/list-models", "model inventory");
   const chatIds = chatModelIds(chatDocument);
   const responseIds = responseModelIds(responsesDocument);
+  const inventoryIds = inventoryReferenceModelIds(inventoryDocument);
   const modelTables = htmlTables(bundle.index.body).filter(
     (item) => item.headers[0] === "MODEL" && item.headers[1] === "MODEL",
   );
@@ -500,6 +581,11 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const models = columns.map(({ column, id }, index) =>
     model(input, table, column, id, names[index] ?? id, chatIds.has(id), responseIds.has(id)),
   );
+  if (
+    inventoryIds.size !== models.length ||
+    models.some(({ model_id }) => !inventoryIds.has(model_id))
+  )
+    throw new Error("DeepSeek model-inventory reference disagrees with the model table");
   for (const id of chatIds)
     if (!models.some(({ model_id }) => model_id === id))
       throw new Error(`DeepSeek Chat Completions reference named unknown catalog model ${id}`);
@@ -508,6 +594,7 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
 
 interface Dates {
   release?: string;
+  releaseStage?: "preview";
   update?: string;
 }
 
@@ -537,14 +624,15 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
       .each((_paragraphIndex, paragraph) => {
         const prose = htmlText($(paragraph).text());
         if (
-          !/(?:model parameter|API model names|model upgraded|new model|models? .* upgraded|corresponds? to)/i.test(
+          !/(?:model parameter|API model names?|model name|model upgraded|new model|models? .* upgraded|corresponds? to)/i.test(
             prose,
           )
         )
           return;
         const release =
           !/backward compatibility/i.test(prose) &&
-          /(?:\bAPI now supports\b|\bis our new model\b)/i.test(prose);
+          /(?:\bAPI now supports\b|\bis our new model\b|\bofficial release\b)/i.test(prose);
+        const releaseStage = /\bpublic beta\b/i.test(prose) ? "preview" : undefined;
         $(paragraph)
           .find("code")
           .each((_codeIndex, code) => {
@@ -552,7 +640,11 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
             if (id === undefined) return;
             const current = dates.get(id) ?? {};
             const released = release ? earliest(current.release, date) : current.release;
-            const updated = { update: latest(current.update, date) };
+            const observedReleaseStage = current.releaseStage ?? releaseStage;
+            const updated: Dates = {
+              update: latest(current.update, date),
+              ...(observedReleaseStage === undefined ? {} : { releaseStage: observedReleaseStage }),
+            };
             dates.set(id, released === undefined ? updated : { ...updated, release: released });
           });
       });
@@ -567,6 +659,7 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
         observedAt: input.observedAt,
       }),
       ...(observed.release === undefined ? {} : { release_date: observed.release }),
+      ...(observed.releaseStage === undefined ? {} : { release_stage: observed.releaseStage }),
       ...(observed.update === undefined || observed.update === observed.release
         ? {}
         : { updated_date: observed.update }),

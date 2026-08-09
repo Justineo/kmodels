@@ -2,6 +2,8 @@
 
 > A tool-using reasoning model.
 
+Model ID: `zai-glm-4.7`. Pricing: $2.25 per million input tokens, $2.75 per million output tokens.
+
 Use the `reasoning_effort` parameter to control reasoning.
 
 <Callout>

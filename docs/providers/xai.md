@@ -6,14 +6,18 @@ Status: current
 
 - Statically extract, but never execute, the reviewed public model payload. Parse only
   reviewed language, embedding, image, audio, and video categories with count bounds,
-  and fail closed when a new model category appears. The catalog is non-exhaustive.
+  and fail closed when a new category, model field, voice endpoint field, voice pricing
+  field, or rate-limit tier field appears. Known hidden operational fields such as
+  clusters, RPM/RPS/TPM, capacity tiers, and the payload's Batch-discount hint are
+  allowlisted but deliberately stripped. The catalog is non-exhaustive.
 - Preserve the structured model `version` as identity. The public cluster map is also
   first-party model-region availability evidence; every model-bound public rate keeps
   its exact cluster region even though the current amounts agree across regions.
 - The fixed `llms.txt` companion owns public pricing terms, releases, Speech to Speech
   models, lifecycle redirects, capability-wide statements, request examples, and the
-  accounting contracts described below. Structured fixed-point prices must agree with
-  the public tables, but hidden payload discount fields are not commercial evidence.
+  accounting contracts described below. Structured fixed-point prices must agree
+  independently with both the pricing page and the models-page tables, including voice;
+  hidden payload discount fields are not commercial evidence.
 - Dated alias transitions in the public voice table are evaluated against the observation time and
   must agree with the structured service alias at that same point in time. Redirected exact IDs remain separate `legacy` rows because their slugs continue to
   resolve. Their effective pricing is derived from the single documented redirect
@@ -23,7 +27,15 @@ Status: current
   non-creating observations. Their integer prices are validated at the boundary but do
   not replace the global public price book. Detailed inventories preserve their version,
   while the general inventory may enrich a uniquely matching public identity. Enable
-  them with `XAI_API_KEY`.
+  them with `XAI_API_KEY`. The extractor validates the complete documented field sets,
+  envelopes, and examples for all eight list/detail routes before accepting a public
+  refresh, and the runtime JSON parsers reject unreviewed fields instead of silently
+  stripping them.
+- The image-model API reference currently contradicts itself: its normative Response
+  Body lists `image_price` and modalities, while both examples omit those fields and show
+  three undocumented token-price fields. The field list remains the schema authority.
+  The extractor accepts only that exact bounded example discrepancy or a future example
+  that conforms to the listed fields; any different extra field fails closed.
 
 ## Mapping
 
@@ -81,6 +93,18 @@ Status: current
   down to one second, and a `limitReached` marker. xAI publishes no ingestion-lag or
   freshness SLA. Use it for reconciliation, budgets, and account-policy refresh, not
   as a synchronous hot-path load-balancing signal.
+- The Console billing contract distinguishes prepaid credits from disabled-by-default
+  monthly invoicing, uses prepaid balance first, and rejects requests after depletion
+  when the invoiced limit remains at its default zero. Auto-top-up constraints, payment
+  settlement, invoices, and tax details are account policy rather than model rates.
+  Usage Explorer defaults to USD cost and can switch to token or billing-item dimensions,
+  group by API key, and filter by API key, model, request IP, cluster, or token type.
+- The Management API also exposes a team-wide models inventory and possible endpoint
+  ACL inventory, separately from API-key-scoped inference inventories. It requires a
+  distinct management key and a team ID, and API-key changes can take time to propagate
+  across clusters. The current static source abstraction cannot safely parameterize that
+  team URL, so these surfaces are validated and reconciled as account-only evidence but
+  are not collected into global presence.
 - Credits, prepaid balance, postpaid spending limits, invoices, taxes, private discounts,
   and account or geographic availability cannot be reconstructed from the public book.
   Cumulative-spend tiers affect rate limits, not the published inference rate. Exact
@@ -112,40 +136,26 @@ Status: current
   fixed-point base prices, and region applicability. The public pricing section owns
   human-readable rates, Batch/Priority terms, tools, voice, storage, and the violation
   fee. Fixed official documentation sections own usage fields, exact response cost,
-  billing history, timing, and account-tier semantics.
+  billing history, Console balance/usage semantics, team inventory and ACL behavior,
+  timing, and account-tier semantics. The complete documented inference model API route
+  and field inventory is a drift contract even when no account key is configured.
 - The extractor cross-checks public text/token/image/video/voice amounts against the
   structured payload, binds price sets only to exact model identities, and emits an
   explicit disposition for model price sets and reviewed commercial terms. Storage and
   file-download prices are recognized provider-service charges but remain out of the
   model price book. Credits/limits and aggregate account cost are accounting evidence,
   not public rates.
-- The earlier flow missed first-party information because it treated the embedded
-  model payload and headline price tables as the complete commercial contract. It
-  discarded public cluster applicability, did not review Cost Tracking or Management
-  Billing, and silently left non-model voice/storage/violation terms outside coverage.
-  The revised flow separates catalog, price book, request/response accounting contract,
-  and account billing surfaces, then reconciles each class before output coverage is
-  accepted.
-- The live first-party bundle currently yields 20 identities, all with numeric public
-  offers, and 908 regional/direct-or-derived normalized rate facts. Reconciliation has
-  20 normalized model price sets, one raw operation price, two unbound non-model voice
-  prices, and six excluded accounting/out-of-scope observations, with no ambiguous,
-  unsupported, or unresolved item. The violation fee is attached to the two current
-  Responses-capable identities as a raw fact.
-- Third-party books remain audit-only. LiteLLM's xAI section includes older aliases and
-  at least one stale redirected model rate; models.dev covers only a smaller text-led
-  subset and omits current media costs and the wider service/account semantics. ccusage
-  has no independent xAI billing source and consumes LiteLLM pricing data. None of these
-  values is imported; a missing value is filled only by adding exact current xAI
-  evidence to this pipeline.
-
-## Kong AI Gateway
-
-- Candidates require active lifecycle, acceptable maturity, and exact non-streaming
-  Chat Completions, Responses, or Image Generations evidence.
-- Function Calling also requires positive tool-call capability. Gateway request logs
-  should retain resolved identity, region, requested and actual service tier, Batch
-  mode, response usage details, successful tools, and `cost_in_usd_ticks` when present.
-- Image Edits, Video Generations, and Realtime remain valid xAI facts outside Kong's
-  current matrix.
-- Absent or retired Kong examples never restore or alias provider IDs.
+- Catalog, price book, request/response accounting, and account billing remain separate evidence
+  classes and are reconciled before output coverage is accepted.
+- Third-party books remain audit-only. models.dev's direct sync is useful operational
+  precedent: it requires a key with
+  `api-key:model:*`, fetches the three typed inventories, expands aliases, updates only
+  pre-authored rows, and reports missing canonical IDs. It intentionally cannot create
+  rows because the APIs omit required metadata, but its passthrough schemas and omission
+  of public docs, media prices, lifecycle, regions, tiers, and account contracts leave
+  gaps this pipeline closes.
+- LiteLLM's weekly updater imports OpenRouter and Vercel catalogs rather than refreshing
+  native xAI rows from xAI. Portkey's PR/validation/S3 publication flow is also a
+  community-maintained book, while ccusage consumes LiteLLM data instead of an independent
+  xAI billing source. None of these values is imported; a missing value is filled only by
+  adding exact current xAI evidence to this pipeline.

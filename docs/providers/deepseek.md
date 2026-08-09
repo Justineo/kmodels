@@ -7,13 +7,21 @@ Status: current
 - The exhaustive global catalog is the official [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing) table. Callable IDs and facts come only from its model columns; compatibility names mentioned only in footnotes or history do not become current rows.
 - Parse and validate every table row. Base URLs, beta feature support, and positive concurrency values are source-shape contracts even when the public model schema cannot represent their base-path or account-quota semantics.
 - Lifecycle/replacements require an exact official footnote. Release/update dates require a valid dated log entry and exact callable ID. “Backward compatibility” establishes an update or alias observation, never a first release. A date-like model-version suffix such as `0731` is not sufficient release-date evidence by itself.
-- Optional authenticated `/models` is account-scoped exact-schema validation. It may add API provenance to exact public matches but cannot create/remove rows or retain raw data. Enable it with `DEEPSEEK_API_KEY`.
+- The public [Lists Models](https://api-docs.deepseek.com/api/list-models) contract is a second current-inventory witness. Require exactly one `GET /models` operation, the documented `object`/`data` and `id`/`object`/`owned_by` response topology, one non-placeholder strict JSON example, and exact ID-set equality with the price-table columns. This catches a stale price table, stale generated API reference, and DeepSeek's 200-status fallback page without treating an example owner as identity.
+- Optional authenticated `/models` is account-scoped strict-schema validation. Unknown root or item fields, duplicate IDs, and invalid discriminators fail closed. It may add API provenance to exact public matches but cannot create/remove rows or retain raw data. Enable it with `DEEPSEEK_API_KEY`.
 
 ## First-party commercial source graph
 
-The catalog collector treats the price book and its accounting references as one atomic first-party bundle. Reviewed companions cover [Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion), [Responses](https://api-docs.deepseek.com/api/create-response), [token usage](https://api-docs.deepseek.com/quick_start/token_usage/), [context caching](https://api-docs.deepseek.com/guides/kv_cache/), [current balance](https://api-docs.deepseek.com/api/get-user-balance), [rate limits and isolation](https://api-docs.deepseek.com/quick_start/rate_limit/), [insufficient-balance errors](https://api-docs.deepseek.com/quick_start/error_codes/), the [Responses compatibility guide](https://api-docs.deepseek.com/guides/responses_api/), and the [Anthropic compatibility guide](https://api-docs.deepseek.com/guides/anthropic_api/).
+The catalog collector treats the price book, public model-list reference, and accounting references as one atomic first-party bundle. Reviewed companions cover [Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion), [Responses](https://api-docs.deepseek.com/api/create-response), [Lists Models](https://api-docs.deepseek.com/api/list-models), [token usage](https://api-docs.deepseek.com/quick_start/token_usage/), [context caching](https://api-docs.deepseek.com/guides/kv_cache/), [current balance](https://api-docs.deepseek.com/api/get-user-balance), [rate limits and isolation](https://api-docs.deepseek.com/quick_start/rate_limit/), [insufficient-balance errors](https://api-docs.deepseek.com/quick_start/error_codes/), the [Responses compatibility guide](https://api-docs.deepseek.com/guides/responses_api/), and the [Anthropic compatibility guide](https://api-docs.deepseek.com/guides/anthropic_api/).
 
 All documents are public, exact URLs. Docusaurus companions under `/quick_start` and `/guides` keep their trailing slash because the slashless CDN objects serve the site root instead of the named documents. Deterministic HTML/schema extraction verifies the model enum, usage fields, cache semantics, account deductions, route mappings, and future-price notice. Missing documents, changed commercial claims, an unknown price row, a partially parsed model column, or an API-reference disagreement rejects the provider refresh. Third-party price books are never fallbacks.
+
+The documentation is server-rendered Docusaurus backed by a build-time OpenAPI file, but DeepSeek
+does not publish that file as a stable asset. Guessed machine-readable paths return the site root and
+the sitemap has no useful per-document freshness metadata. Production therefore reads canonical
+rendered pages, validates their semantics, and uses dependency hashes to detect changes.
+
+Other first-party surfaces are deliberately not merged. The [Transparency Center](https://www.deepseek.com/en/transparency/) publishes family-level `DeepSeek-V4` and `DeepSeek-V3.2` release dates, not callable API IDs. Its Next.js payload and the main-site translation payload also retain unrendered legacy marketing strings such as a 64K context claim, demonstrating that “official embedded data” is not automatically current product evidence. The [service status](https://status.deepseek.com/) tracks availability, not model identity or pricing. The dated change log remains the exact-ID lifecycle overlay.
 
 ## Public price normalization
 
@@ -23,12 +31,8 @@ All documents are public, exact URLs. Docusaurus companions under `/quick_start`
 - The Responses API executes server-side web search, but no separate web-search fee is published in the price book or Responses accounting documentation. Do not assume that absence means either free or token-only; retain an explicit unbound diagnostic.
 - The Anthropic-compatible route maps `claude-opus*` to `deepseek-v4-pro`, maps `claude-haiku*` and `claude-sonnet*` to `deepseek-v4-flash`, and maps other unsupported model names to Flash. These are wildcard request-route mappings, not additional price-book model IDs. The current schema cannot safely publish them as exact aliases, so the mapping remains a visible unbound gateway requirement.
 
-Live first-party validation on 2026-08-04 returns two callable models and six numeric price facts:
-
-- `deepseek-v4-flash`: USD 0.0028 cache-hit input, USD 0.14 cache-miss input, and USD 0.28 output per million tokens.
-- `deepseek-v4-pro`: USD 0.003625 cache-hit input, USD 0.435 cache-miss input, and USD 0.87 output per million tokens.
-
-Reconciliation partitions 13 reviewed commercial items into six normalized price facts, four account/non-model exclusions, and three deliberately unbound items. There are no raw, ambiguous, unsupported, or unresolved items.
+Change-log rows may enrich an exact current model with release, update, and maturity facts, but they
+cannot create a model absent from the current price-table inventory.
 
 ## Request usage and account cost
 
@@ -49,16 +53,10 @@ Pre-request estimation must resolve the actual routed model, including Anthropic
 
 The balance endpoint is not a cost API, and its freshness is unspecified. Usage/Billing exports are not documented as real-time. Neither is suitable for hot-path cost-based load balancing. A gateway can compare current public marginal prices before dispatch and reconcile afterward, but account grants, outstanding balance, and unsettled usage must remain separate state with explicit uncertainty.
 
-## Third-party audit only
+## Comparator audit only
 
-- The 2026-08-03 models.dev DeepSeek catalog had four entries. Its two current V4 models matched all three official price components exactly; `deepseek-chat` and `deepseek-reasoner` were retained as current models even though they are absent from the exhaustive current price-table columns and current API model enum. Its `deepseek-v4-flash` release date `2026-07-31` appears derived from the `0731` model-version suffix rather than an exact dated release-log statement, so it is not imported.
-- The same-day LiteLLM snapshot had 12 raw DeepSeek entries representing eight IDs. Four duplicate-prefixed entries for the two current V4 IDs matched current official prices, while six older IDs were absent from the current catalog. All four current entries still listed an 8,192-token maximum output rather than the official 384K maximum, demonstrating that price agreement does not establish full-record currentness.
-- ccusage obtains these prices through LiteLLM and therefore adds no independent DeepSeek billing authority. None of the three sources represents the announced but unspecified future increase, the Anthropic wildcard routing rule, account grants, or a request-level charged-cost API.
-
-## Kong AI Gateway
-
-- Chat Completions evidence requires exactly one POST `/chat/completions` operation plus the request-model enum, thinking controls, effort values, streaming field, JSON response format, function-tool schema, and usage breakdown. Responses evidence requires exactly one POST `/responses` operation and exact agreement between its request-model enum and the per-model support row.
-- The beta FIM and Anthropic-compatible interfaces require distinct base URLs. Validate their support rows but do not publish them as bare paths until the route schema can retain that requirement.
-- Concurrency limits are account-level defaults that can be expanded at no extra cost, not architectural model limits, so validate but do not publish them under `limits`.
-- Candidates require active lifecycle, exact Chat Completions evidence, positive streaming, and account availability. Kong's versioned OpenAI-compatible upstream may intersect DeepSeek's reviewed unversioned resource; broad text generation alone cannot.
-- Historical change-log mentions do not restore IDs absent from the exhaustive current catalog.
+- models.dev does not register DeepSeek in its provider sync, while LiteLLM's updater imports
+  OpenRouter and Vercel data rather than DeepSeek's direct catalog. Portkey and Helicone likewise
+  publish community-maintained rows. DeepSeek's own Awesome repository explicitly defers to API Docs.
+  These are comparison signals only and cannot override the canonical price book, lifecycle, route
+  mapping, or account-cost boundary.

@@ -98,6 +98,46 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 | `grok-voice-think-fast-1.0` | Previous-generation voice model |
 
 
+===/developers/models===
+# Models
+
+### Text API Pricing
+
+| Model | Context | Input / 1M tokens | Cached input / 1M tokens | Output / 1M tokens |
+|---|---|---|---|---|
+| grok-4.5 (< 200k prompt tokens) | 500k | $2.00 | $0.30 | $6.00 |
+| grok-4.5 (≥ 200k prompt tokens) | 500k | $4.00 | $0.60 | $12.00 |
+| grok-4.3 (< 200k prompt tokens) | 1M | $1.25 | $0.20 | $2.50 |
+| grok-4.3 (≥ 200k prompt tokens) | 1M | $2.50 | $0.40 | $5.00 |
+| grok-build-0.1 (< 200k prompt tokens) | 256k | $1.00 | $0.20 | $2.00 |
+| grok-build-0.1 (≥ 200k prompt tokens) | 256k | $2.00 | $0.40 | $4.00 |
+| grok-4.20-multi-agent-0309 (< 200k prompt tokens) | 1M | $1.25 | $0.20 | $2.50 |
+| grok-4.20-multi-agent-0309 (≥ 200k prompt tokens) | 1M | $2.50 | $0.40 | $5.00 |
+
+### Imagine Pricing
+
+| Model | Cost |
+|---|---|
+| grok-imagine-image-quality | $0.05 / image |
+| grok-imagine-video | $0.050 / sec |
+| grok-imagine-video-1.5 | $0.080 / sec |
+
+### Voice Pricing
+
+| Mode | Cost |
+|---|---|
+| Speech to Speech (grok-voice-think-fast-1.0) | $0.05 / min ($3.00 / hr) audio<br />$0.004 / text input |
+| Speech to Speech (grok-voice-think-fast-2.0) | $0.08 / min ($4.80 / hr) audio<br />$0.004 / text input |
+| Text to Speech | $15.00 / 1M chars |
+| Speech to Text | $0.10 / hr (REST), $0.20 / hr (Streaming) |
+
+## Model Aliases
+
+* `<modelname>` is aliased to the latest stable version.
+* `<modelname>-latest` is aliased to the latest version.
+* `<modelname>-<date>` refers directly to a specific model release.
+
+
 ===/developers/pricing===
 # Pricing
 
@@ -179,6 +219,25 @@ usage guideline violation fee per request.
 Your model access might vary depending on various factors such as geographical location, account limitations, etc.
 
 
+===/console/billing===
+# Manage Billing
+
+There are two billing options: **Prepaid credits** and **Monthly invoiced billing**.
+Monthly invoiced billing is disabled by default.
+Bank transfers take 2-3 business days. Auto top-up has a minimum $25 purchase, and warnings
+include when only 1 of the 5 top-ups per 24 hours remains.
+With the default $0 invoiced billing limit, API requests are automatically rejected once your prepaid credits are depleted.
+xAI will use your prepaid credits first before monthly invoicing.
+
+
+===/console/usage===
+# Usage Explorer
+
+By default, the usage is calculated by cost in USD. Select Dimension -> Tokens or
+Dimension -> Billing items. Comparisons can use Group by: API Key. Filters include a particular
+API key, a model, a request IP, a cluster, or the token type.
+
+
 ===/developers/cost-tracking===
 # Cost Tracking
 
@@ -230,6 +289,19 @@ Agent usage reports `completion_tokens`, cumulative `prompt_tokens`, `reasoning_
 You need a management key. The base URL is https://management-api.x.ai.
 
 
+===/developers/management-api-guide===
+# Using Management API
+
+You need a management key, which is separate from your API key. The base is
+https://management-api.x.ai. ACLs include `api-key:model:*` and `api-key:endpoint:*`.
+API keys support `"qps"`, `"qpm"`, and `"tpm"` limits.
+There can be a slight delay between creating an API key and propagation across clusters.
+
+GET https://management-api.x.ai/auth/teams/{teamId}/models
+
+GET https://management-api.x.ai/auth/teams/{teamId}/endpoints
+
+
 ===/developers/rest-api-reference/management/billing===
 # Billing Management
 
@@ -241,6 +313,214 @@ Get historical usage of the API over a time period, aggregated by fields.
 
 ```json
 {"analyticsRequest":{"values":[{"name": "usd","aggregation":"AGGREGATION_SUM"}]}}
+```
+
+
+===/developers/rest-api-reference/inference/models===
+# Models
+
+## GET /v1/models
+
+### Response Body
+
+* `data` (array<object>, required)
+
+  * `aliases` (array<string>, required)
+  * `cached_prompt_text_token_price` (integer | null)
+  * `cached_prompt_text_token_price_long_context` (integer | null)
+  * `completion_text_token_price` (integer | null)
+  * `completion_text_token_price_long_context` (integer | null)
+  * `context_length` (integer | null)
+  * `created` (integer, required)
+  * `id` (string, required)
+  * `image_price` (integer | null)
+  * `long_context_threshold` (integer | null)
+  * `object` (string, required)
+  * `owned_by` (string, required)
+  * `prompt_image_token_price` (integer | null)
+  * `prompt_text_token_price` (integer | null)
+  * `prompt_text_token_price_long_context` (integer | null)
+
+* `object` (string, required)
+
+**Response example:**
+
+```json
+{"data":[{"id":"grok-4.5","aliases":[],"context_length":500000,"created":1776556800,"object":"model","owned_by":"xai","prompt_text_token_price":20000}],"object":"list"}
+```
+
+## GET /v1/models/\{model\_id}
+
+### Response Body
+
+* `aliases` (array<string>, required)
+* `cached_prompt_text_token_price` (integer | null)
+* `cached_prompt_text_token_price_long_context` (integer | null)
+* `completion_text_token_price` (integer | null)
+* `completion_text_token_price_long_context` (integer | null)
+* `context_length` (integer | null)
+* `created` (integer, required)
+* `id` (string, required)
+* `image_price` (integer | null)
+* `long_context_threshold` (integer | null)
+* `object` (string, required)
+* `owned_by` (string, required)
+* `prompt_image_token_price` (integer | null)
+* `prompt_text_token_price` (integer | null)
+* `prompt_text_token_price_long_context` (integer | null)
+
+**Response example:**
+
+```json
+{"id":"grok-4.5","created":1776556800,"object":"model","owned_by":"xai","prompt_text_token_price":20000}
+```
+
+## GET /v1/language-models
+
+### Response Body
+
+* `models` (array<object>, required)
+
+  * `aliases` (array<string>, required)
+  * `cached_prompt_text_token_price` (integer, required)
+  * `cached_prompt_text_token_price_long_context` (integer, required)
+  * `completion_text_token_price` (integer, required)
+  * `completion_text_token_price_long_context` (integer, required)
+  * `created` (integer, required)
+  * `fingerprint` (string, required)
+  * `id` (string, required)
+  * `input_modalities` (array<string>, required)
+  * `long_context_threshold` (integer, required)
+  * `object` (string, required)
+  * `output_modalities` (array<string>, required)
+  * `owned_by` (string, required)
+  * `prompt_image_token_price` (integer, required)
+  * `prompt_text_token_price` (integer, required)
+  * `prompt_text_token_price_long_context` (integer, required)
+  * `search_price` (integer, required)
+  * `version` (string, required)
+
+**Response example:**
+
+```json
+{"models":[{"id":"grok-4.5","fingerprint":"fp","created":1776556800,"object":"model","owned_by":"xai","version":"1.0","input_modalities":["text"],"output_modalities":["text"],"aliases":[]}]}
+```
+
+## GET /v1/language-models/\{model\_id}
+
+### Response Body
+
+* `aliases` (array<string>, required)
+* `cached_prompt_text_token_price` (integer, required)
+* `cached_prompt_text_token_price_long_context` (integer, required)
+* `completion_text_token_price` (integer, required)
+* `completion_text_token_price_long_context` (integer, required)
+* `created` (integer, required)
+* `fingerprint` (string, required)
+* `id` (string, required)
+* `input_modalities` (array<string>, required)
+* `long_context_threshold` (integer, required)
+* `object` (string, required)
+* `output_modalities` (array<string>, required)
+* `owned_by` (string, required)
+* `prompt_image_token_price` (integer, required)
+* `prompt_text_token_price` (integer, required)
+* `prompt_text_token_price_long_context` (integer, required)
+* `search_price` (integer, required)
+* `version` (string, required)
+
+**Response example:**
+
+```json
+{"id":"grok-4.5","fingerprint":"fp","created":1776556800,"object":"model","owned_by":"xai","version":"1.0","input_modalities":["text"],"output_modalities":["text"],"aliases":[]}
+```
+
+## GET /v1/image-generation-models
+
+### Response Body
+
+* `models` (array<object>, required)
+
+  * `aliases` (array<string>, required)
+  * `created` (integer, required)
+  * `fingerprint` (string, required)
+  * `id` (string, required)
+  * `image_price` (integer, required)
+  * `input_modalities` (array<string>, required)
+  * `max_prompt_length` (integer, required)
+  * `object` (string, required)
+  * `output_modalities` (array<string>, required)
+  * `owned_by` (string, required)
+  * `version` (string, required)
+
+**Response example:**
+
+```json
+{"models":[{"id":"grok-imagine-image","fingerprint":"fp","max_prompt_length":1024,"created":1738961600,"object":"model","owned_by":"xai","version":"1.0","prompt_text_token_price":100000,"prompt_image_token_price":100000,"generated_image_token_price":100000,"aliases":[]}]}
+```
+
+## GET /v1/image-generation-models/\{model\_id}
+
+### Response Body
+
+* `aliases` (array<string>, required)
+* `created` (integer, required)
+* `fingerprint` (string, required)
+* `id` (string, required)
+* `image_price` (integer, required)
+* `input_modalities` (array<string>, required)
+* `max_prompt_length` (integer, required)
+* `object` (string, required)
+* `output_modalities` (array<string>, required)
+* `owned_by` (string, required)
+* `version` (string, required)
+
+**Response example:**
+
+```json
+{"id":"grok-imagine-image","fingerprint":"fp","max_prompt_length":1024,"created":1738961600,"object":"model","owned_by":"xai","version":"1.0","prompt_text_token_price":100000,"prompt_image_token_price":100000,"generated_image_token_price":100000,"aliases":[]}
+```
+
+## GET /v1/video-generation-models
+
+### Response Body
+
+* `models` (array<object>, required)
+
+  * `aliases` (array<string>, required)
+  * `created` (integer, required)
+  * `fingerprint` (string, required)
+  * `id` (string, required)
+  * `input_modalities` (array<string>, required)
+  * `object` (string, required)
+  * `output_modalities` (array<string>, required)
+  * `owned_by` (string, required)
+  * `version` (string, required)
+
+**Response example:**
+
+```json
+{"models":[{"id":"grok-imagine-video","fingerprint":"fp","created":1743724800,"object":"model","owned_by":"xai","version":"1.0","input_modalities":["text"],"output_modalities":["video"],"aliases":[]}]}
+```
+
+## GET /v1/video-generation-models/\{model\_id}
+
+### Response Body
+
+* `aliases` (array<string>, required)
+* `created` (integer, required)
+* `fingerprint` (string, required)
+* `id` (string, required)
+* `input_modalities` (array<string>, required)
+* `object` (string, required)
+* `output_modalities` (array<string>, required)
+* `owned_by` (string, required)
+* `version` (string, required)
+
+**Response example:**
+
+```json
+{"id":"grok-imagine-video","fingerprint":"fp","created":1743724800,"object":"model","owned_by":"xai","version":"1.0","input_modalities":["text"],"output_modalities":["video"],"aliases":[]}
 ```
 
 

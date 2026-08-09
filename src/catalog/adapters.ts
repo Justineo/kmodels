@@ -5,6 +5,7 @@ import {
   parseAzureApi,
   parseAzureCatalog,
   parseAzureClaudePricing,
+  parseAzurePortalCatalog,
   parseAzurePublicPricing,
   parseAzureRetailPrices,
 } from "./azure.ts";
@@ -29,6 +30,7 @@ import {
 } from "./dashscope.ts";
 import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
 import {
+  parseHuggingFaceFeatherless,
   parseHuggingFaceHub,
   parseHuggingFaceMapping,
   parseHuggingFaceRouter,
@@ -43,7 +45,7 @@ import {
 } from "./kimi.ts";
 import { parseMistralApi, parseMistralCatalog } from "./mistral.ts";
 import { parseOllamaCloud, parseOllamaLibrary } from "./ollama.ts";
-import { linkedBundleSchema } from "./bundle.ts";
+import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -102,6 +104,7 @@ interface ParseInput {
     | "name"
     | "price_facts"
     | "pricing_state"
+    | "routes"
     | "service_families"
     | "tasks"
     | "version"
@@ -135,70 +138,6 @@ function sectionContent($: LoadedDocument, label: string): Selection {
   return heading.parent().children().eq(1);
 }
 
-function openAiModalities($: LoadedDocument): ProviderModel["modalities"] {
-  const content = sectionContent($, "Modalities");
-  if (content.length === 0) throw new Error("OpenAI model page omitted Modalities");
-  const input: Modality[] = [];
-  const output: Modality[] = [];
-  content
-    .find("div")
-    .filter(
-      (_index, element) =>
-        $(element).children().length === 0 &&
-        ["Text", "Image", "Audio", "Video"].includes(normalizedText($(element).text())),
-    )
-    .each((_index, element) => {
-      const label = normalizedText($(element).text()).toLowerCase();
-      const support = normalizedText($(element).parent().children().eq(1).text());
-      const parsed = modalitySchema.safeParse(label);
-      if (!parsed.success) return;
-      if (support === "Input only" || support === "Input and output") input.push(parsed.data);
-      if (support === "Output only" || support === "Input and output") output.push(parsed.data);
-    });
-  if (input.length === 0 && output.length === 0)
-    throw new Error("OpenAI model page contained no supported modalities");
-  return { input: unique(input), output: unique(output) };
-}
-
-function openAiSupport($: LoadedDocument, section: string): Map<string, boolean> {
-  const values = new Map<string, boolean>();
-  const content = sectionContent($, section);
-  content
-    .find("div")
-    .filter((_index, element) => $(element).children().length === 0)
-    .each((_index, element) => {
-      const label = normalizedText($(element).text());
-      const support = normalizedText($(element).parent().children().eq(1).text());
-      if (support === "Supported") values.set(label, true);
-      if (support === "Not supported") values.set(label, false);
-    });
-  return values;
-}
-
-function openAiSupportValue(values: Map<string, boolean>, labels: string[]): boolean | "unknown" {
-  const observed = labels.flatMap((label) => {
-    const value = values.get(label);
-    return value === undefined ? [] : [value];
-  });
-  if (observed.includes(true)) return true;
-  return observed.length === labels.length ? false : "unknown";
-}
-
-function openAiFeatures($: LoadedDocument): ProviderModel["capabilities"] {
-  const values = openAiSupport($, "Features");
-  const value = (label: string): boolean | "unknown" => openAiSupportValue(values, [label]);
-  return {
-    ...unknownCapabilities(),
-    reasoning: "unknown",
-    tool_call: value("Function calling"),
-    structured_output: value("Structured outputs"),
-    streaming: value("Streaming"),
-    batch: "unknown",
-    prompt_cache: "unknown",
-    fine_tuning: value("Fine-tuning"),
-  };
-}
-
 const openAiEndpointDefinitions = new Map<string, { name: string; tasks: ModelTask[] }>([
   ["v1/chat/completions", { name: "Chat Completions", tasks: ["text_generation"] }],
   ["v1/responses", { name: "Responses", tasks: ["text_generation"] }],
@@ -227,71 +166,57 @@ interface OpenAiEndpointEvidence {
   tasks: ModelTask[];
 }
 
-function openAiEndpointEvidence($: LoadedDocument, fallback: ModelTask[]): OpenAiEndpointEvidence {
-  const content = sectionContent($, "Endpoints");
-  if (content.length === 0) throw new Error("OpenAI model page omitted Endpoints");
+function markdownSection(body: string, heading: string): string | undefined {
+  const lines = body.split(/\r?\n/);
+  const start = lines.findIndex((line) => line === `## ${heading}`);
+  if (start < 0) return undefined;
+  const end = lines.findIndex((line, index) => index > start && line.startsWith("## "));
+  return lines
+    .slice(start + 1, end < 0 ? undefined : end)
+    .join("\n")
+    .trim();
+}
+
+function openAiEndpointEvidence(body: string, fallback: ModelTask[]): OpenAiEndpointEvidence {
+  const content = markdownSection(body, "Endpoints");
+  if (content === undefined) throw new Error("OpenAI model page omitted Endpoints");
+  const lines = content.split(/\r?\n/);
+  const headerIndex = lines.findIndex(
+    (line) => markdownCells(line).join("\0") === ["Endpoint", "Route", "Support"].join("\0"),
+  );
+  if (headerIndex < 0 || lines[headerIndex + 1] === undefined)
+    throw new Error("OpenAI Endpoints section omitted its reviewed table");
+  const separators = markdownCells(lines[headerIndex + 1] ?? "");
+  if (separators.length !== 3 || !separators.every((cell) => /^:?-{3,}:?$/.test(cell)))
+    throw new Error("OpenAI Endpoints table has invalid separators");
   const endpoints: NonNullable<ProviderModel["api_endpoints"]> = [];
   const tasks: ModelTask[] = [];
   const observedPaths = new Set<string>();
-  content
-    .find("div")
-    .filter((_index, element) => {
-      const children = $(element).children("div");
-      return (
-        children.length === 2 && /^v\d+\/[a-z0-9_./-]+$/.test(normalizedText(children.eq(1).text()))
-      );
-    })
-    .each((_index, element) => {
-      const children = $(element).children("div");
-      const nameNode = children.eq(0);
-      const name = normalizedText(nameNode.text());
-      const path = normalizedText(children.eq(1).text());
-      const definition = openAiEndpointDefinitions.get(path);
-      if (definition === undefined || definition.name !== name)
-        throw new Error(`Unsupported OpenAI endpoint card: ${name}/${path}`);
-      if (observedPaths.has(path)) throw new Error(`Duplicate OpenAI endpoint card: ${path}`);
-      observedPaths.add(path);
-      if (nameNode.hasClass("text-gray-400")) return;
-      endpoints.push({ name, path });
-      tasks.push(...definition.tasks);
-    });
-  if (observedPaths.size === 0)
-    throw new Error("OpenAI Endpoints section contained no endpoint cards");
+  for (let index = headerIndex + 2; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (!line.trim().startsWith("|")) break;
+    const cells = markdownCells(line);
+    if (cells.length !== 3) throw new Error("OpenAI Endpoints table contained an irregular row");
+    const name = cells[0] ?? "";
+    const path = (cells[1] ?? "").replace(/^`|`$/g, "");
+    const support = cells[2];
+    const definition = openAiEndpointDefinitions.get(path);
+    if (definition === undefined || definition.name !== name)
+      throw new Error(`Unsupported OpenAI endpoint row: ${name}/${path}`);
+    if (observedPaths.has(path)) throw new Error(`Duplicate OpenAI endpoint row: ${path}`);
+    if (support !== "Supported" && support !== "Not supported")
+      throw new Error(`Unsupported OpenAI endpoint support: ${name}/${support ?? ""}`);
+    observedPaths.add(path);
+    if (support === "Not supported") continue;
+    endpoints.push({ name, path });
+    tasks.push(...definition.tasks);
+  }
+  if (observedPaths.size !== openAiEndpointDefinitions.size)
+    throw new Error("OpenAI Endpoints table omitted reviewed endpoint rows");
   return {
     endpoints,
     tasks: tasks.length > 0 ? unique(tasks) : fallback,
   };
-}
-
-function openAiAliases($: LoadedDocument, id: string): string[] {
-  const content = sectionContent($, "Snapshots");
-  const label = content
-    .find("div")
-    .filter(
-      (_index, element) =>
-        $(element).children().length === 0 && normalizedText($(element).text()) === id,
-    )
-    .first();
-  const card = label
-    .parents()
-    .filter((_index, element) => {
-      const parent = $(element).parent();
-      return parent.hasClass("font-mono") && parent.hasClass("gap-8");
-    })
-    .first();
-  const scope = card.length > 0 ? card : label.parent();
-  if (scope.length === 0) throw new Error(`OpenAI model page omitted snapshot card for ${id}`);
-  return unique(
-    scope
-      .find("*")
-      .filter((_index, element) => $(element).children().length === 0)
-      .map((_index, element) => normalizedText($(element).text()))
-      .get()
-      .filter(
-        (value) =>
-          value !== id && value === value.toLowerCase() && modelIdSchema.safeParse(value).success,
-      ),
-  ).sort();
 }
 
 function openAiMeter(
@@ -548,8 +473,9 @@ function markdownCells(line: string): string[] {
     .trim()
     .replace(/^\|/, "")
     .replace(/\|$/, "")
+    .replaceAll("\\|", "\u0000")
     .split("|")
-    .map((cell) => normalizedText(cell));
+    .map((cell) => normalizedText(cell.replaceAll("\u0000", "|")));
 }
 
 function markdownCodeValues(value: string): string[] {
@@ -1012,6 +938,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   const findTarget = (rawId: string): (typeof input.catalogModels)[number] | null | undefined => {
     const direct = exact.get(rawId);
     if (direct !== undefined) return direct;
+    if (rawId === rawId.toLowerCase() && modelIdSchema.safeParse(rawId).success) return undefined;
     const alias = aliases.get(rawId);
     return alias === undefined ? names.get(rawId.toLowerCase()) : alias;
   };
@@ -1111,7 +1038,9 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       const supplemental = candidates.filter((fact) => {
         const current = existing.get(sourcePriceFactKey(fact));
         if (current !== undefined && !decimalsEqual(current.price, fact.price))
-          throw new Error(`OpenAI pricing sources disagree for ${target.model_id}`);
+          throw new Error(
+            `OpenAI pricing sources disagree for ${target.model_id} at ${sourcePriceFactKey(fact)}: ${current.price} != ${fact.price}`,
+          );
         if (
           target.price_facts.length > 0 &&
           (table.tier === undefined || table.tier === "standard")
@@ -1169,168 +1098,346 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
     .sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function openAiTokenLimit(
-  $: LoadedDocument,
+function openAiBundleDocument(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  pathname: string,
+): string {
+  return linkedDocumentBody(
+    bundle,
+    pathname,
+    `OpenAI source bundle omitted or duplicated ${pathname}`,
+  );
+}
+
+const openAiCommercialPaths = new Set([
+  "/api/docs/guides/batch",
+  "/api/docs/guides/cost-optimization",
+  "/api/docs/guides/fast-mode",
+  "/api/docs/guides/flex-processing",
+  "/api/docs/guides/prompt-caching",
+  "/api/docs/guides/rate-limits",
+  "/api/docs/guides/realtime-costs",
+  "/api/docs/guides/spend-limits",
+  "/api/docs/guides/terraform/rate-limits-and-spend",
+  "/api/docs/models/compare",
+  "/api/docs/pricing",
+]);
+
+function openAiCommercialIndexEntry(pathname: string): boolean {
+  const path = pathname.replace(/\.md$/, "");
+  return (
+    openAiCommercialPaths.has(path) ||
+    /\/(?:billing|cost|pricing|service-tier|spend|usage)(?:[-_][^/]*)?$/i.test(path)
+  );
+}
+
+function validateOpenAiDocumentation(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const docsIndex = openAiBundleDocument(bundle, "/api/docs/llms.txt");
+  const indexed = new Set(
+    [...docsIndex.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\).*$/gm)].flatMap((match) => {
+      const href = match[1];
+      if (href === undefined) return [];
+      const url = new URL(href);
+      return url.origin === "https://developers.openai.com" &&
+        openAiCommercialIndexEntry(url.pathname)
+        ? [url.pathname.replace(/\.md$/, "")]
+        : [];
+    }),
+  );
+  if (indexed.size === 0) throw new Error("OpenAI documentation index omitted commercial pages");
+  const selected = new Set(
+    [bundle.index, ...bundle.documents].map(({ url }) =>
+      new URL(url).pathname.replace(/\.md$/, ""),
+    ),
+  );
+  const missing = [...indexed].filter((path) => !selected.has(path)).sort();
+  if (missing.length > 0)
+    throw new Error(
+      `OpenAI documentation index has unreviewed commercial pages: ${missing.join(", ")}`,
+    );
+
+  const referenceIndex = openAiBundleDocument(bundle, "/api/reference/llms.txt");
+  for (const path of [
+    "/api/reference/resources/models/methods/list.md",
+    "/api/reference/resources/responses/methods/create.md",
+  ])
+    if (!referenceIndex.includes(`https://developers.openai.com${path}`))
+      throw new Error(`OpenAI reference index omitted ${path}`);
+
+  const openapi = openAiBundleDocument(bundle, "/openai/openai-openapi/master/openapi.yaml");
+  const requiredOperations = new Map([
+    ["/models", "listModels"],
+    ["/chat/completions", "createChatCompletion"],
+    ["/responses", "createResponse"],
+    ["/organization/costs", "usage-costs"],
+    ["/organization/usage/completions", "usage-completions"],
+  ]);
+  for (const [path, operationId] of requiredOperations) {
+    const start = openapi.indexOf(`  ${path}:`);
+    const next = start < 0 ? -1 : openapi.indexOf("\n  /", start + path.length + 3);
+    const block = start < 0 ? "" : openapi.slice(start, next < 0 ? undefined : next);
+    if (!block.includes(`operationId: ${operationId}`))
+      throw new Error(`OpenAI OpenAPI contract drifted for ${path}`);
+  }
+  const reviewedUsagePaths = new Set([
+    "/organization/usage/audio_speeches",
+    "/organization/usage/audio_transcriptions",
+    "/organization/usage/code_interpreter_sessions",
+    "/organization/usage/completions",
+    "/organization/usage/embeddings",
+    "/organization/usage/file_search_calls",
+    "/organization/usage/images",
+    "/organization/usage/moderations",
+    "/organization/usage/vector_stores",
+    "/organization/usage/web_search_calls",
+  ]);
+  const observedUsagePaths = new Set(
+    [...openapi.matchAll(/^  (\/organization\/usage\/[a-z_]+):$/gm)].flatMap((match) =>
+      match[1] === undefined ? [] : [match[1]],
+    ),
+  );
+  const changedUsagePaths = [...new Set([...reviewedUsagePaths, ...observedUsagePaths])].filter(
+    (path) => reviewedUsagePaths.has(path) !== observedUsagePaths.has(path),
+  );
+  if (changedUsagePaths.length > 0)
+    throw new Error(`OpenAI organization usage surface drifted: ${changedUsagePaths.join(", ")}`);
+  for (const claim of [
+    "input_cache_write_tokens",
+    "input_uncached_tokens",
+    "input_cached_audio_tokens",
+    "service_tier",
+    "input_tokens_details",
+    "output_tokens_details",
+  ])
+    if (!openapi.includes(claim)) throw new Error(`OpenAI OpenAPI omitted ${claim}`);
+}
+
+function openAiModalitiesFromDetails(details: string, label: "Input" | "Output"): Modality[] {
+  const match = details.match(new RegExp(`^- ${label} modalities: (.+)$`, "m"));
+  if (match?.[1] === undefined) throw new Error(`OpenAI model page omitted ${label} modalities`);
+  const values = match[1].split(",").map((value) => value.trim());
+  const modalities = values.map((value) => modalitySchema.parse(value));
+  if (modalities.length === 0)
+    throw new Error(`OpenAI model page contained no ${label} modalities`);
+  return unique(modalities);
+}
+
+function openAiLimit(
+  details: string,
   label: "context window" | "max output tokens",
 ): number | undefined {
-  const match = $("main *")
-    .filter((_index, element) => $(element).children().length === 0)
-    .map((_index, element) => normalizedText($(element).text()).match(`^([\\d,]+) ${label}$`)?.[1])
-    .get()
-    .find((value) => value !== undefined);
-  return match === undefined ? undefined : Number(match.replaceAll(",", ""));
+  const match = details.match(new RegExp(`^- ([\\d,]+) ${label}$`, "m"));
+  return match?.[1] === undefined ? undefined : Number(match[1].replaceAll(",", ""));
+}
+
+function openAiListSection(body: string, heading: string): Set<string> | undefined {
+  const section = markdownSection(body, heading);
+  if (section === undefined) return undefined;
+  return new Set(
+    [...section.matchAll(/^- ([a-z][a-z0-9_]*)$/gm)].flatMap((match) =>
+      match[1] === undefined ? [] : [match[1]],
+    ),
+  );
+}
+
+function openAiAliasesFromMarkdown(body: string, id: string): string[] {
+  const snapshots = markdownSection(body, "Snapshots");
+  if (snapshots === undefined) throw new Error(`OpenAI model page omitted Snapshots for ${id}`);
+  const aliases = markdownCodeValues(snapshots).filter(
+    (value) => value !== id && modelIdSchema.safeParse(value).success,
+  );
+  for (const match of body.matchAll(/The `([^`]+)` alias routes requests to\b/g)) {
+    const alias = match[1];
+    if (alias !== undefined && alias !== id && modelIdSchema.safeParse(alias).success)
+      aliases.push(alias);
+  }
+  return unique(aliases).sort();
+}
+
+function openAiIndexStatuses(
+  body: string,
+): Map<string, Pick<ProviderModel, "status" | "release_stage">> {
+  const statuses = new Map<string, Pick<ProviderModel, "status" | "release_stage">>();
+  for (const match of body.matchAll(
+    /^- \[[^\]]+\]\(\/api\/docs\/models\/([a-z0-9._-]+)\.md\)(?::\s*(.*))?$/gm,
+  )) {
+    const id = match[1];
+    if (id === undefined) continue;
+    const deprecated = /\bDeprecated\b/i.test(match[2] ?? "");
+    const current = statuses.get(id);
+    statuses.set(id, {
+      status: deprecated || current?.status === "deprecated" ? "deprecated" : "active",
+      release_stage: id.includes("preview") ? "preview" : "unknown",
+    });
+  }
+  if (statuses.size === 0) throw new Error("OpenAI catalog index contained no model links");
+  return statuses;
+}
+
+function openAiMarkdownModel(
+  input: ParseInput,
+  body: string,
+  expectedId: string,
+  lifecycle: Pick<ProviderModel, "status" | "release_stage">,
+): ProviderModel {
+  const idMatches = [...body.matchAll(/^Model ID: `([^`]+)`$/gm)];
+  const id = idMatches.length === 1 ? idMatches[0]?.[1] : undefined;
+  if (id !== expectedId) throw new Error(`OpenAI model page identity disagreed for ${expectedId}`);
+  const name = body.match(/^# (.+)$/m)?.[1]?.trim();
+  if (name === undefined || name === "")
+    throw new Error(`OpenAI model page omitted display name for ${expectedId}`);
+  const details = markdownSection(body, "Model details");
+  if (details === undefined) throw new Error(`OpenAI model page omitted Model details for ${id}`);
+  const observedModalities = {
+    input: openAiModalitiesFromDetails(details, "Input"),
+    output: openAiModalitiesFromDetails(details, "Output"),
+  };
+  const classifiedOperations = classifyModelTasks({
+    modelId: id,
+    name,
+    rawType: undefined,
+    modalities: observedModalities,
+    fallback: "text_generation",
+  });
+  const endpointEvidence = openAiEndpointEvidence(body, classifiedOperations);
+  const tasks = endpointEvidence.tasks;
+  const modelModalities: ProviderModel["modalities"] = tasks.includes("embeddings")
+    ? { input: observedModalities.input, output: ["embedding"] }
+    : observedModalities;
+  const features = openAiListSection(body, "Supported features");
+  const tools = openAiListSection(body, "Supported tools");
+  const feature = (name: string): boolean | "unknown" =>
+    features === undefined ? "unknown" : features.has(name);
+  const tool = (names: string[]): boolean | "unknown" =>
+    tools === undefined ? "unknown" : names.some((value) => tools.has(value));
+  const description = [...body.slice(0, body.indexOf("Model ID:")).matchAll(/^> (.+)$/gm)]
+    .flatMap((match) =>
+      match[1] === undefined || match[1].startsWith("For the complete documentation index")
+        ? []
+        : [match[1]],
+    )
+    .at(-1);
+  return {
+    ...baseModel({
+      providerId: input.provider.id,
+      id,
+      name,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
+    ...(description === undefined ? {} : { description: normalizedText(description) }),
+    aliases: openAiAliasesFromMarkdown(body, id),
+    tasks,
+    api_endpoints: endpointEvidence.endpoints,
+    modalities: modelModalities,
+    capabilities: {
+      ...unknownCapabilities(),
+      reasoning: details.includes("- Reasoning token support"),
+      tool_call: feature("function_calling"),
+      structured_output: feature("structured_outputs"),
+      streaming: feature("streaming"),
+      batch: endpointEvidence.endpoints.some(({ path }) => path === "v1/batch"),
+      prompt_cache: feature("prompt_caching"),
+      fine_tuning: endpointEvidence.endpoints.some(({ path }) => path === "v1/fine-tuning"),
+      code_execution: tool(["code_interpreter", "hosted_shell"]),
+      effort_control:
+        /reasoning[._ ]effort supports:|configurable reasoning effort/i.test(body) || "unknown",
+      computer_use:
+        tool(["computer_use"]) === true ||
+        /specialized model for the computer use tool|trained to understand and execute computer tasks/i.test(
+          body,
+        ) ||
+        (tools === undefined ? "unknown" : false),
+    },
+    limits: {
+      context_tokens: openAiLimit(details, "context window"),
+      max_output_tokens: openAiLimit(details, "max output tokens"),
+    },
+    ...lifecycle,
+    pricing_state: body.includes("free models designed to detect harmful content")
+      ? "free"
+      : body.includes("open-weight model")
+        ? "not_applicable"
+        : "unknown",
+  };
 }
 
 function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(parseJson(input.body));
-  const index = load(bundle.index.body);
-  const statuses = new Map<string, Pick<ProviderModel, "status" | "release_stage">>();
-  index("a[href]").each((_index, element) => {
-    const target = index(element).attr("href");
-    const match = target?.match(/^\/api\/docs\/models\/([a-z0-9._-]+)$/);
-    if (match?.[1] === undefined) return;
-    const id = match[1];
-    const deprecated =
-      index(element)
-        .find("*")
-        .filter(
-          (_childIndex, child) =>
-            index(child).children().length === 0 &&
-            normalizedText(index(child).text()) === "Deprecated",
-        ).length > 0;
-    statuses.set(id, {
-      status: deprecated ? "deprecated" : "active",
-      release_stage: id.includes("preview") ? "preview" : "unknown",
-    });
+  validateOpenAiDocumentation(bundle);
+  const statuses = openAiIndexStatuses(bundle.index.body);
+  const modelDocuments = bundle.documents.flatMap((document) => {
+    const match = new URL(document.url).pathname.match(/^\/api\/docs\/models\/([a-z0-9._-]+)\.md$/);
+    return match?.[1] === undefined || match[1] === "compare"
+      ? []
+      : [{ ...document, id: match[1] }];
   });
-  if (statuses.size !== bundle.documents.length)
+  if (
+    modelDocuments.length !== statuses.size ||
+    new Set(modelDocuments.map(({ id }) => id)).size !== modelDocuments.length
+  )
     throw new Error("OpenAI catalog index and model pages disagree");
-
-  return bundle.documents
-    .map((document) => {
-      const id = modelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1));
+  return modelDocuments
+    .map(({ body, id }) => {
       const lifecycle = statuses.get(id);
       if (lifecycle === undefined) throw new Error(`OpenAI catalog omitted index entry for ${id}`);
-      const $ = load(document.body);
-      const name = normalizedText(
-        $("main .text-2xl.font-semibold.whitespace-nowrap").first().text(),
-      );
-      if (name === "") throw new Error(`OpenAI model page omitted display name for ${id}`);
-      const description = normalizedText($("main .hidden.text-secondary.sm\\:flex").first().text());
-      const observedModalities = openAiModalities($);
-      const classifiedOperations = classifyModelTasks({
-        modelId: id,
-        name,
-        rawType: undefined,
-        modalities: observedModalities,
-        fallback: "text_generation",
-      });
-      const endpointEvidence = openAiEndpointEvidence($, classifiedOperations);
-      const tasks = endpointEvidence.tasks;
-      const embeddingOutput: Modality[] = ["embedding"];
-      const modelModalities: ProviderModel["modalities"] = tasks.includes("embeddings")
-        ? { input: observedModalities.input, output: embeddingOutput }
-        : observedModalities;
-      const pricing = openAiPricing($, input.source.id, tasks);
-      const features = openAiFeatures($);
-      const tools = openAiSupport($, "Tools");
+      return openAiMarkdownModel(input, body, id, lifecycle);
+    })
+    .sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+function parseOpenAiModelPricing(input: ParseInput): ProviderModel[] {
+  if (input.catalogModels === undefined)
+    throw new Error("OpenAI model-card pricing requires the collected catalog");
+  const bundle = linkedBundleSchema.parse(parseJson(input.body));
+  const targets = new Map(input.catalogModels.map((model) => [model.model_id, model]));
+  const index = load(bundle.index.body);
+  const indexed = new Set<string>();
+  index("a[href]").each((_index, element) => {
+    const match = index(element)
+      .attr("href")
+      ?.match(/^\/api\/docs\/models\/([a-z0-9._-]+)$/);
+    if (match?.[1] !== undefined) indexed.add(match[1]);
+  });
+  const documents = bundle.documents.map((document) => ({
+    ...document,
+    id: modelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1)),
+  }));
+  if (
+    indexed.size !== documents.length ||
+    new Set(documents.map(({ id }) => id)).size !== documents.length
+  )
+    throw new Error("OpenAI pricing index and model pages disagree");
+  return documents
+    .map(({ body, id }): ProviderModel => {
+      if (!indexed.has(id)) throw new Error(`OpenAI pricing index omitted ${id}`);
+      const target = targets.get(id);
+      if (target === undefined) throw new Error(`OpenAI model-card pricing could not bind ${id}`);
+      const $ = load(body);
+      const rates = openAiPricing($, input.source.id, target.tasks);
       const pageText = normalizedText($("main").text());
-      const aliases = openAiAliases($, id);
-      const computerUse = openAiSupportValue(tools, ["Computer use"]);
       return {
         ...baseModel({
           providerId: input.provider.id,
           id,
-          name,
+          ...(target.version === undefined ? {} : { version: target.version }),
+          name: target.name,
           sourceId: input.source.id,
           observedAt: input.observedAt,
         }),
-        description: description || undefined,
-        aliases,
-        tasks,
-        api_endpoints: endpointEvidence.endpoints,
-        modalities: modelModalities,
-        capabilities: {
-          ...features,
-          reasoning: pageText.includes("Reasoning token support") ? true : features.reasoning,
-          prompt_cache: pricing.some((rate) => rate.meter.startsWith("cache_"))
-            ? true
-            : features.prompt_cache,
-          batch: endpointEvidence.endpoints.some(({ path }) => path === "v1/batch")
-            ? true
-            : features.batch,
-          fine_tuning: endpointEvidence.endpoints.some(({ path }) => path === "v1/fine-tuning")
-            ? true
-            : features.fine_tuning,
-          code_execution: openAiSupportValue(tools, ["Code interpreter", "Hosted shell"]),
-          effort_control: /reasoning[._]effort supports:/i.test(pageText)
-            ? true
-            : features.effort_control,
-          computer_use:
-            computerUse !== "unknown"
-              ? computerUse
-              : /specialized model for the computer use tool|trained to understand and execute computer tasks/i.test(
-                    pageText,
-                  )
-                ? true
-                : features.computer_use,
-        },
-        limits: {
-          context_tokens: openAiTokenLimit($, "context window"),
-          max_output_tokens: openAiTokenLimit($, "max output tokens"),
-        },
-        ...lifecycle,
+        tasks: target.tasks,
         pricing_state:
-          pricing.length > 0
+          rates.length > 0
             ? "numeric"
             : pageText.includes("free models designed to detect harmful content")
               ? "free"
               : pageText.includes("open-weight model")
                 ? "not_applicable"
                 : "unknown",
-        price_facts: pricing,
-      } satisfies ProviderModel;
+        price_facts: rates,
+      };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
-}
-
-function parseOpenAiOverview(input: ParseInput): ProviderModel[] {
-  const $ = load(input.body);
-  const models = new Map<string, ProviderModel>();
-  $("main div")
-    .filter(
-      (_index, element) =>
-        $(element).children().length === 0 && normalizedText($(element).text()) === "Model ID",
-    )
-    .each((_index, element) => {
-      const row = $(element).parent();
-      const id = normalizedText(row.children().last().text());
-      if (!modelIdSchema.safeParse(id).success) return;
-      const aliasLabel = row
-        .parent()
-        .children()
-        .find("div")
-        .filter(
-          (_aliasIndex, candidate) =>
-            $(candidate).children().length === 0 && normalizedText($(candidate).text()) === "Alias",
-        )
-        .first();
-      if (aliasLabel.length === 0) return;
-      const alias = normalizedText(aliasLabel.parent().children().last().text());
-      if (alias === id || !modelIdSchema.safeParse(alias).success) return;
-      models.set(id, {
-        ...baseModel({
-          providerId: input.provider.id,
-          id,
-          name: id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        aliases: [alias],
-      });
-    });
-  if (models.size === 0) throw new Error("OpenAI overview contained no model aliases");
-  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 function parseOpenAiApi(input: ParseInput): ProviderModel[] {
@@ -1382,14 +1489,18 @@ function openAiShutdownDate(value: string): string | undefined {
 }
 
 function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
-  const $ = load(input.body);
   const models = new Map<string, ProviderModel>();
   const knownModelIds = new Set(input.catalogModels?.map(({ model_id }) => model_id) ?? []);
-  $("table").each((_tableIndex, table) => {
-    const headers = $(table)
-      .find("thead th")
-      .map((_index, cell) => normalizedText($(cell).text()).toLowerCase())
-      .get();
+  const lines = input.body.split(/\r?\n/);
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (!normalizedText(lines[index] ?? "").startsWith("|")) continue;
+    const headers = markdownCells(lines[index] ?? "").map((header) => header.toLowerCase());
+    const separators = markdownCells(lines[index + 1] ?? "");
+    if (
+      separators.length !== headers.length ||
+      !separators.every((cell) => /^:?-{3,}:?$/.test(cell))
+    )
+      continue;
     const dateIndex = headers.findIndex((header) => header === "shutdown date");
     const modelIndex = headers.findIndex(
       (header) =>
@@ -1405,33 +1516,27 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
         header === "recommended replacement base model" ||
         header === "substitute model",
     );
-    if (dateIndex < 0 || modelIndex < 0) return;
-    $(table)
-      .find("tbody tr")
-      .each((_rowIndex, row) => {
-        const cells = $(row).children("td");
-        const retiredAt = openAiShutdownDate(cells.eq(dateIndex).text());
-        if (retiredAt === undefined) return;
+    if (dateIndex < 0 || modelIndex < 0) continue;
+    index += 2;
+    while (index < lines.length && normalizedText(lines[index] ?? "").startsWith("|")) {
+      const cells = markdownCells(lines[index] ?? "");
+      if (cells.length !== headers.length)
+        throw new Error("OpenAI deprecations table contained an irregular row");
+      const retiredAt = openAiShutdownDate(cells[dateIndex] ?? "");
+      if (retiredAt !== undefined) {
         const replacements =
           replacementIndex < 0
             ? []
             : unique(
-                cells
-                  .eq(replacementIndex)
-                  .find("code")
-                  .map((_index, code) => normalizedText($(code).text()))
-                  .get()
-                  .filter((id) => modelIdSchema.safeParse(id).success),
+                markdownCodeValues(cells[replacementIndex] ?? "").filter(
+                  (id) => modelIdSchema.safeParse(id).success,
+                ),
               );
-        const modelCell = cells.eq(modelIndex);
+        const modelCell = cells[modelIndex] ?? "";
         const ids = unique(
-          modelCell
-            .find("code")
-            .map((_index, code) => normalizedText($(code).text()))
-            .get()
-            .filter((id) => modelIdSchema.safeParse(id).success),
+          markdownCodeValues(modelCell).filter((id) => modelIdSchema.safeParse(id).success),
         );
-        const entries = normalizedText(modelCell.text()).includes("|")
+        const entries = normalizedText(modelCell).includes("|")
           ? ids[0] === undefined
             ? []
             : [{ id: ids[0], aliases: ids.slice(1) }]
@@ -1471,8 +1576,11 @@ function parseOpenAiDeprecations(input: ParseInput): ProviderModel[] {
               aliases: unique([...(previous?.aliases ?? []), ...model.aliases]),
             });
         }
-      });
-  });
+      }
+      index += 1;
+    }
+    index -= 1;
+  }
   if (models.size === 0) throw new Error("OpenAI deprecations page contained no model rows");
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
@@ -1481,8 +1589,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
   switch (input.source.extractor.kind) {
     case "openai-catalog":
       return parseOpenAiCatalog(input);
-    case "openai-overview":
-      return parseOpenAiOverview(input);
+    case "openai-model-pricing":
+      return parseOpenAiModelPricing(input);
     case "openai-api":
       return parseOpenAiApi(input);
     case "openai-deprecations":
@@ -1511,6 +1619,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseHuggingFaceMapping(input);
     case "huggingface-router":
       return parseHuggingFaceRouter(input);
+    case "huggingface-featherless":
+      return parseHuggingFaceFeatherless(input);
     case "huggingface-hub":
       return parseHuggingFaceHub(input);
     case "ollama-library":
@@ -1527,6 +1637,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseDatabricksApi(input);
     case "azure-catalog":
       return parseAzureCatalog(input);
+    case "azure-portal-catalog":
+      return parseAzurePortalCatalog(input);
     case "azure-retail-prices":
       return parseAzureRetailPrices(input);
     case "azure-public-pricing":

@@ -5,7 +5,7 @@ import {
   htmlColumn as column,
   type HtmlCell as Cell,
   type HtmlTable as Table,
-  htmlTables as tables,
+  htmlTables,
   htmlText as text,
   htmlValue as value,
 } from "./html.ts";
@@ -30,24 +30,204 @@ interface ParseInput {
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
-const deploymentPageSchema = z.object({
-  output: z.object({
-    page_no: z.literal(1),
-    page_size: z.number().int().min(1).max(100),
-    total: z.number().int().nonnegative(),
-    models: z.array(
-      z.object({
-        model_name: modelIdSchema,
-        plans: z.array(
-          z.object({
-            plan: z.enum(["mu", "cu", "ptu", "ptu_v2", "lora"]),
-            templates: z.array(z.unknown()).optional(),
-          }),
-        ),
-      }),
-    ),
-  }),
-});
+const deploymentPlanSchema = z
+  .object({
+    plan: z.enum(["mu", "cu", "ptu", "ptu_v2", "lora"]),
+    templates: z.array(z.unknown()).optional(),
+  })
+  .strict();
+
+const deploymentModelSchema = z
+  .object({
+    model_name: modelIdSchema,
+    plans: z.array(deploymentPlanSchema),
+  })
+  .strict();
+
+const deploymentPageSchema = z
+  .object({
+    request_id: z.string().min(1).optional(),
+    output: z
+      .object({
+        page_no: z.literal(1),
+        page_size: z.number().int().min(1),
+        total: z.number().int().nonnegative(),
+        models: z.array(deploymentModelSchema),
+      })
+      .strict(),
+  })
+  .strict();
+
+function markdownSections(body: string): string {
+  const open: number[] = [];
+  const result: string[] = [];
+  for (const line of body.split(/\r?\n/)) {
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (heading?.[1] === undefined || heading[2] === undefined) {
+      result.push(line);
+      continue;
+    }
+    const level = heading[1].length;
+    while ((open.at(-1) ?? 0) >= level) {
+      result.push("</section>");
+      open.pop();
+    }
+    result.push(`<section><h${level}>${heading[2]}</h${level}>`);
+    open.push(level);
+  }
+  while (open.length > 0) {
+    result.push("</section>");
+    open.pop();
+  }
+  return result.join("\n");
+}
+
+function tables(body: string): Table[] {
+  return htmlTables(/^#{1,6}\s+/m.test(body) ? markdownSections(body) : body);
+}
+
+function markdownCell(cell: Cell): Cell {
+  const clean = (value: string): string => value.replace(/\\([<>&])/g, "$1");
+  return {
+    text: clean(cell.text),
+    parts: cell.parts.map(clean),
+    quotes: cell.quotes.map(clean),
+  };
+}
+
+function pricingSubheaders(row: Cell[]): string[] | undefined {
+  const values = row.map(({ text: raw }) => text(raw));
+  return values.length >= 2 &&
+    values.every((item) =>
+      /^(?:(?:Input|Output):\s*)?(?:Text(?:\s+Text-only input|\s+Multimodal input|\s*\/\s*(?:image|Image\/video))?|Text \+ audio\s+Audio only billed|Audio|Image|Image\/video|Video|Non-Thinking mode|Thinking mode(?:\s*\([^)]*\))?)$/i.test(
+        item,
+      ),
+    )
+    ? values
+    : undefined;
+}
+
+function expandedPricingHeaders(headers: string[], subheaders: string[]): string[] {
+  const prices = headers.flatMap((header, index) => (/price/i.test(header) ? [index] : []));
+  if (prices.length !== 2)
+    throw new Error("DashScope pricing subheader changed its price-column shape");
+  let split: number;
+  const explicitOutput = subheaders.findIndex((header) => /^Output:/i.test(header));
+  if (explicitOutput >= 0) split = explicitOutput;
+  else if (subheaders.every((header) => /mode/i.test(header))) split = 0;
+  else {
+    if (subheaders.length % 2 !== 0)
+      throw new Error("DashScope pricing subheader changed its modality shape");
+    split = subheaders.length / 2;
+  }
+  const groups = [subheaders.slice(0, split), subheaders.slice(split)];
+  return headers.flatMap((header, index) => {
+    const priceIndex = prices.indexOf(index);
+    if (priceIndex < 0) return [header];
+    const labels = groups[priceIndex] ?? [];
+    return labels.length === 0 ? [header] : labels.map((label) => `${header} / ${label}`);
+  });
+}
+
+function pricingCellKind(
+  cell: Cell,
+): "model" | "mode" | "price" | "quota" | "resolution" | "scope" | "tokens" | "type" {
+  const raw = cell.text;
+  if (
+    /^(?:No free quota|\d[\d,.]*\s+(?:million tokens|tokens|characters|images|minutes|seconds))$/i.test(
+      raw,
+    )
+  )
+    return "quota";
+  if (/Token/i.test(raw)) return "tokens";
+  if (/^\d+(?:\.\d+)?[KkPp]$/.test(raw)) return "resolution";
+  if (/\$[\d,.]+|\bDiscontinued\b|^(?:Free|Free trial|Limited-time free|--|-)$/i.test(raw))
+    return "price";
+  if (/mode/i.test(raw)) return "mode";
+  if (
+    dashscopeRegion(raw) !== undefined ||
+    /^(?:International|Global|Chinese mainland|China \(mainland\)|EU|Japan)$/i.test(raw)
+  )
+    return "scope";
+  if (/audio=|video type|Audio video|Silent video/i.test(raw)) return "type";
+  return "model";
+}
+
+function pricingHeaderMatches(header: string, kind: ReturnType<typeof pricingCellKind>): boolean {
+  if (kind === "model") return /^(?:Model ID|Model name|Model)$/i.test(header);
+  if (kind === "tokens") return /Input token(?:s| range)/i.test(header);
+  if (kind === "resolution") return /resolution/i.test(header);
+  if (kind === "price") return /price/i.test(header);
+  if (kind === "quota") return /Free quota/i.test(header);
+  if (kind === "mode") return /mode/i.test(header);
+  if (kind === "scope") return /Deployment (?:scope|region)|Service deployment scope/i.test(header);
+  return /type/i.test(header);
+}
+
+function normalizePricingRows(headers: string[], rows: Cell[][]): Cell[][] {
+  const result: Cell[][] = [];
+  let previous: Cell[] | undefined;
+  for (const rawRow of rows) {
+    const row = rawRow.map(markdownCell);
+    if (row.length > headers.length)
+      throw new Error("DashScope pricing row exceeded its expanded header");
+    if (row.length === headers.length) {
+      const discontinued = row.find((cell) =>
+        /\bDiscontinued\b|^(?:Free|Free trial|Limited-time free)$/i.test(cell.text),
+      );
+      const normalized =
+        discontinued === undefined
+          ? row
+          : row.map((cell, index) => (/price/i.test(headers[index] ?? "") ? discontinued : cell));
+      result.push(normalized);
+      previous = normalized;
+      continue;
+    }
+    if (previous === undefined)
+      throw new Error("DashScope pricing sparse row omitted its base row");
+    const normalized = [...previous];
+    let after = -1;
+    for (const [cellIndex, cell] of row.entries()) {
+      const kind = pricingCellKind(cell);
+      const remainingPrices = row
+        .slice(cellIndex)
+        .filter((candidate) => pricingCellKind(candidate) === "price").length;
+      const candidates = headers.flatMap((header, index) =>
+        index > after && pricingHeaderMatches(header, kind) ? [index] : [],
+      );
+      const target =
+        kind === "price" && candidates.length >= remainingPrices
+          ? candidates.at(-remainingPrices)
+          : candidates[0];
+      if (target === undefined)
+        throw new Error(`DashScope pricing sparse ${kind} cell changed shape: ${cell.text}`);
+      normalized[target] = cell;
+      after = target;
+    }
+    const discontinued = row.find((cell) =>
+      /\bDiscontinued\b|^(?:Free|Free trial|Limited-time free)$/i.test(cell.text),
+    );
+    if (discontinued !== undefined)
+      for (const [index, header] of headers.entries())
+        if (/price/i.test(header)) normalized[index] = discontinued;
+    result.push(normalized);
+    previous = normalized;
+  }
+  return result;
+}
+
+function pricingTables(body: string): Table[] {
+  const parsed = tables(body);
+  if (!markdownDocument(body)) return parsed;
+  return parsed.map((table) => {
+    const first = table.rows[0];
+    const subheaders = first === undefined ? undefined : pricingSubheaders(first);
+    const headers =
+      subheaders === undefined ? table.headers : expandedPricingHeaders(table.headers, subheaders);
+    const rows = subheaders === undefined ? table.rows : table.rows.slice(1);
+    return { ...table, headers, rows: normalizePricingRows(headers, rows) };
+  });
+}
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
@@ -64,7 +244,9 @@ function cellIds(cell: Cell | undefined): string[] {
     [...cell.parts, cell.text].flatMap((part) =>
       part
         .split(",")
-        .map((candidate) => candidate.replace(/\s*\(Snapshot\)\s*$/i, ""))
+        .map((candidate) =>
+          candidate.replace(/\s*\(Snapshot\)\s*$/i, "").replace(/\s+Invitational Preview\s*$/i, ""),
+        )
         .flatMap((candidate) => exactId(candidate) ?? []),
     ),
   );
@@ -353,7 +535,9 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
             ...(embeddingTokens === undefined ? {} : { max_input_tokens: embeddingTokens }),
           },
           status: "active",
-          release_stage: /preview/i.test(id) ? "preview" : "unknown",
+          release_stage: /preview/i.test(`${id} ${row[idIndex]?.text ?? ""}`)
+            ? "preview"
+            : "unknown",
           pricing_state: "unknown",
           scope: "regional_catalog",
         });
@@ -402,6 +586,16 @@ const recommendedRegions = new Map([
   ["International", "International"],
 ]);
 
+const recommendedWorkspaceRegions = new Map([
+  ["cn-beijing", "China (Beijing)"],
+  ["cn-hongkong", "Hong Kong (China)"],
+  ["ap-southeast-1", "Singapore"],
+  ["ap-northeast-1", "Japan (Tokyo)"],
+  ["eu-central-1", "Germany (Frankfurt)"],
+]);
+
+const recommendedBasePaths = new Set(["/compatible-mode/v1", "/apps/anthropic", "/api/v1"]);
+
 function recommendedEndpoint(raw: string): ApiEndpoint {
   const url = new URL(raw);
   const fact = recommendedEndpoints.get(url.pathname);
@@ -419,12 +613,142 @@ function recommendedEndpoint(raw: string): ApiEndpoint {
   return { name: fact.name, path: url.pathname };
 }
 
+function recommendedMarkdownRegions(raw: string): string[] {
+  const labels = [...recommendedRegions.keys()].sort((left, right) => right.length - left.length);
+  const regions: string[] = [];
+  let offset = 0;
+  while (offset < raw.length) {
+    while (/\s/.test(raw[offset] ?? "")) offset += 1;
+    if (offset >= raw.length) break;
+    const label = labels.find((candidate) => raw.startsWith(candidate, offset));
+    if (label === undefined)
+      throw new Error(`Unsupported DashScope recommended-model region list: ${raw}`);
+    const region = recommendedRegions.get(label);
+    if (region === undefined)
+      throw new Error(`Unsupported DashScope recommended-model region: ${label}`);
+    regions.push(region);
+    offset += label.length;
+  }
+  if (regions.length === 0)
+    throw new Error("DashScope recommended-model Markdown card omitted regions");
+  return unique(regions);
+}
+
+function markdownInlineText(raw: string): string {
+  let result = raw;
+  for (;;) {
+    const next = result.replace(/\[([^\]]*)\]\([^)]+\)/g, "$1");
+    if (next === result) break;
+    result = next;
+  }
+  return text(result.replace(/`/g, ""));
+}
+
+function recommendedMarkdownRoute(raw: string): { endpoint?: ApiEndpoint; region: string } {
+  const normalized = raw.replace("{WorkspaceId}", "workspace-id");
+  const url = new URL(normalized);
+  if (
+    url.username !== "" ||
+    url.password !== "" ||
+    url.port !== "" ||
+    url.search !== "" ||
+    url.hash !== ""
+  )
+    throw new Error(`Unsupported DashScope recommended-model endpoint: ${raw}`);
+  let region: string | undefined;
+  if (url.hostname === "dashscope-intl.aliyuncs.com") region = "International";
+  else if (url.hostname === "dashscope-us.aliyuncs.com") region = "US (Virginia)";
+  else if (url.hostname === "dashscope.aliyuncs.com") region = "China (Beijing)";
+  else {
+    const match = url.hostname.match(/^workspace-id\.([a-z0-9-]+)\.maas\.aliyuncs\.com$/);
+    region = match?.[1] === undefined ? undefined : recommendedWorkspaceRegions.get(match[1]);
+  }
+  const endpoint = recommendedEndpoints.get(url.pathname);
+  const validBase = recommendedBasePaths.has(url.pathname) && url.protocol === "https:";
+  if (
+    region === undefined ||
+    (!validBase && endpoint === undefined) ||
+    (endpoint !== undefined && endpoint.protocol !== url.protocol)
+  )
+    throw new Error(`Unsupported DashScope recommended-model endpoint: ${raw}`);
+  return {
+    ...(endpoint === undefined ? {} : { endpoint: { name: endpoint.name, path: url.pathname } }),
+    region,
+  };
+}
+
+function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, ProviderModel> {
+  const lines = input.body.split(/\r?\n/);
+  const starts = lines.flatMap((line, index) =>
+    /^\[!\[\]\([^\n]+\) ([A-Za-z0-9][A-Za-z0-9._:/-]*)\]\([^\n]+\)\s*$/.test(line) ? [index] : [],
+  );
+  const models = new Map<string, ProviderModel>();
+  for (const [position, start] of starts.entries()) {
+    const firstLine = lines[start] ?? "";
+    const id = exactId(
+      firstLine.match(/^\[!\[\]\([^\n]+\) ([A-Za-z0-9][A-Za-z0-9._:/-]*)\]\(/)?.[1] ?? "",
+    );
+    const end = starts[position + 1] ?? lines.length;
+    const block = lines.slice(start, end).join("\n");
+    const publishedIds = unique(
+      [...block.matchAll(/Model ID\s*`([^`]+)`/g)].flatMap(
+        (match) => exactId(match[1] ?? "") ?? [],
+      ),
+    );
+    if (id === undefined || publishedIds.length !== 1 || publishedIds[0] !== id)
+      throw new Error("DashScope recommended-model card ID drifted");
+    const regionLine = text(lines[start + 1] ?? "");
+    const regions = recommendedMarkdownRegions(regionLine);
+    const routeValues = [
+      ...block.matchAll(/(?:Base|Request) URL\s+(.+?)(?=\s+(?:API Key|Model ID)|$)/g),
+    ]
+      .map((match) => markdownInlineText(match[1] ?? ""))
+      .map((line) => line.match(/(?:https|wss):\/\/\S+/)?.[0])
+      .flatMap((route) => (route === undefined ? [] : [recommendedMarkdownRoute(route)]));
+    if (routeValues.length === 0)
+      throw new Error(`DashScope recommended-model card omitted routes for ${id}`);
+    const routeRegions = unique(routeValues.map(({ region }) => region));
+    if (
+      routeRegions.length !== regions.length ||
+      routeRegions.some((region) => !regions.includes(region))
+    )
+      throw new Error(`DashScope recommended-model route regions contradicted ${id}`);
+    const endpoints = new Map(
+      routeValues.flatMap(({ endpoint }) =>
+        endpoint === undefined ? [] : [[apiEndpointKey(endpoint), endpoint] as const],
+      ),
+    );
+    const model = baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    });
+    add(models, {
+      ...model,
+      api_endpoints:
+        endpoints.size === 0
+          ? undefined
+          : [...endpoints.values()].sort((left, right) =>
+              apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+            ),
+      availability: regions.map((region) => ({ region, deployment_type: "model_api" })),
+      scope: "regional_catalog",
+    });
+  }
+  return models;
+}
+
 export function parseDashscopeRecommended(input: ParseInput): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-recommended")
     throw new Error("Wrong DashScope recommended-model extractor");
   const $ = load(input.body);
-  const models = new Map<string, ProviderModel>();
+  const models =
+    $(".bl-cardwrap").length === 0
+      ? parseDashscopeRecommendedMarkdown(input)
+      : new Map<string, ProviderModel>();
   $(".bl-cardwrap").each((_index, element) => {
     const card = $(element);
     const names = unique(
@@ -524,6 +848,8 @@ function meter(
     if (modality === "image") return direction === "output" ? "output_image" : "input_image";
     if (modality === "video") return direction === "output" ? "output_video" : "input_video";
   }
+  if (tasks.includes("image_generation") && direction === "input" && /input/i.test(header))
+    return "input_image";
   if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
   if (tasks.includes("video_generation")) return "video_generation";
   if (/voice clone/.test(evidence)) return "tool_call";
@@ -562,7 +888,7 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
   const mode = value(table, row, /^Mode(?:$| \/)/i);
   const subheading = header.split(" / ").at(-1);
   const operation = mode ?? (/thinking mode/i.test(subheading ?? "") ? subheading : undefined);
-  const resolution = value(table, row, /^(?:Output video )?resolution|^Max resolution/i);
+  const resolution = value(table, row, /^(?:Output (?:image|video) )?resolution|^Max resolution/i);
   return {
     ...(region === undefined ? {} : { region }),
     ...(deployment === undefined ? {} : { deployment_scope: deployment }),
@@ -831,18 +1157,28 @@ function priceModalities(
 }
 
 function companion(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
-  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === pathname);
+  const normalized = (value: string): string => value.replace(/\.md$/, "").replace(/\/$/, "");
+  const matches = bundle.documents.filter(
+    ({ url }) => normalized(new URL(url).pathname) === normalized(pathname),
+  );
   if (matches.length !== 1) throw new Error(`DashScope bundle requires exactly one ${pathname}`);
   return matches[0]?.body ?? "";
 }
 
 function documentText(body: string): string {
-  return text(load(body).root().text());
+  const markup = /^#{1,6}\s+/m.test(body)
+    ? body.replaceAll("**", "").replaceAll("\\<", "&lt;").replaceAll("\\>", "&gt;")
+    : body;
+  return text(load(markup).root().text());
 }
 
 function requireClaims(body: string, claims: readonly string[], message: string): void {
   const normalized = documentText(body).toLowerCase();
   if (claims.some((claim) => !normalized.includes(claim.toLowerCase()))) throw new Error(message);
+}
+
+function markdownDocument(body: string): boolean {
+  return /^#{1,6}\s+/m.test(body);
 }
 
 function commercialEvidence(input: ParseInput, bundle: z.infer<typeof linkedBundleSchema>): void {
@@ -856,14 +1192,16 @@ function commercialEvidence(input: ParseInput, bundle: z.infer<typeof linkedBund
     ],
     "DashScope public pricing contract drifted",
   );
+  const contextCache = companion(bundle, "/help/en/model-studio/context-cache");
   requireClaims(
-    companion(bundle, "/help/en/model-studio/context-cache"),
+    contextCache,
     [
       "125% of the standard input token price",
       "10% of the standard input token price",
       "20% of the standard input token price",
       "Explicit cache and implicit cache are mutually exclusive",
       "deepseek-v4-pro",
+      ...(markdownDocument(contextCache) ? ["qwen3.8-max"] : []),
       "not 20%",
       "cached_tokens",
       "cache_creation_input_tokens",
@@ -907,17 +1245,26 @@ function commercialEvidence(input: ParseInput, bundle: z.infer<typeof linkedBund
     ],
     "DashScope Responses usage contract drifted",
   );
+  const webSearch = companion(bundle, "/help/en/model-studio/web-search");
   requireClaims(
-    companion(bundle, "/help/en/model-studio/web-search"),
-    [
-      "plugins",
-      "x_tools",
-      "web_search",
-      "count",
-      "For the Chinese mainland and global deployment scopes: $0.573411",
-      "For the international deployment scope: $10.00",
-      "web extractor tool is free for a limited time",
-    ],
+    webSearch,
+    markdownDocument(webSearch)
+      ? [
+          "web_search",
+          "count",
+          "For the China (Beijing) region: $0.573411",
+          "For the Singapore region: $10.00",
+          "web extractor tool is free for a limited time",
+        ]
+      : [
+          "plugins",
+          "x_tools",
+          "web_search",
+          "count",
+          "For the Chinese mainland and global deployment scopes: $0.573411",
+          "For the international deployment scope: $10.00",
+          "web extractor tool is free for a limited time",
+        ],
     "DashScope web-search accounting contract drifted",
   );
   requireClaims(
@@ -953,25 +1300,42 @@ function commercialEvidence(input: ParseInput, bundle: z.infer<typeof linkedBund
     ],
     "DashScope savings-plan contract drifted",
   );
+  const billingPlans = companion(bundle, "/help/en/model-studio/more-tools");
   requireClaims(
-    companion(bundle, "/help/en/model-studio/more-tools"),
-    [
-      "Token Plan (Team Edition): Seat-based subscription",
-      "Coding Plan: Fixed monthly subscription billed by number of model calls",
-      "Pay-as-you-go: Post-paid based on actual usage",
-    ],
+    billingPlans,
+    markdownDocument(billingPlans)
+      ? [
+          "Token Plan (Team Edition): Per-seat subscription",
+          "Coding Plan: Fixed monthly subscription, billed by model invocations",
+          "Pay-as-you-go: Pay based on actual usage",
+        ]
+      : [
+          "Token Plan (Team Edition): Seat-based subscription",
+          "Coding Plan: Fixed monthly subscription billed by number of model calls",
+          "Pay-as-you-go: Post-paid based on actual usage",
+        ],
     "DashScope billing-plan contract drifted",
   );
+  const baseUrl = companion(bundle, "/help/en/model-studio/base-url");
   requireClaims(
-    companion(bundle, "/help/en/model-studio/base-url"),
-    [
-      "must be used together with an API Key from the same billing plan",
-      "API Keys are independent across regions",
-      "Token Plan",
-      "Coding Plan",
-      "not for backend services",
-      "dedicated API Key",
-    ],
+    baseUrl,
+    markdownDocument(baseUrl)
+      ? [
+          "Pair it with an API Key from the same billing plan",
+          "API Keys are region-specific",
+          "Token Plan",
+          "Coding Plan",
+          "not for backend services",
+          "dedicated API Key",
+        ]
+      : [
+          "must be used together with an API Key from the same billing plan",
+          "API Keys are independent across regions",
+          "Token Plan",
+          "Coding Plan",
+          "not for backend services",
+          "dedicated API Key",
+        ],
     "DashScope billing-route contract drifted",
   );
   requireClaims(
@@ -1013,6 +1377,11 @@ const webSearchScopes = new Map([
   ["Chinese mainland", "0.573411"],
 ]);
 
+const webSearchMarkdownScopes = new Map([
+  ["Singapore", "10"],
+  ["China (Beijing)", "0.573411"],
+]);
+
 function mentionedModelIds(body: string, knownIds: Set<string>): Set<string> {
   const normalized = documentText(body);
   const result = new Set(
@@ -1038,6 +1407,57 @@ function mentionedModelIds(body: string, knownIds: Set<string>): Set<string> {
 }
 
 function webSearchRates(input: ParseInput, body: string, models: Map<string, ProviderModel>): void {
+  if (markdownDocument(body)) {
+    const lines = body.split(/\r?\n/);
+    const supported = lines.findIndex(
+      (line) => text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === "Supported models",
+    );
+    const end = lines.findIndex(
+      (line, index) =>
+        index > supported &&
+        text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === "Quick start",
+    );
+    if (supported < 0 || end < 0) throw new Error("DashScope web-search model scopes drifted");
+    const sections = new Map<string, string[]>();
+    let scope: string | undefined;
+    for (const line of lines.slice(supported + 1, end)) {
+      const heading = line.match(/^##\s+(.+?)\s*$/)?.[1];
+      if (heading !== undefined) {
+        const candidate = text(heading.replaceAll("**", ""));
+        scope = webSearchMarkdownScopes.has(candidate) ? candidate : undefined;
+        if (scope !== undefined) sections.set(scope, []);
+      } else if (scope !== undefined) {
+        sections.get(scope)?.push(line);
+      }
+    }
+    if (sections.size !== webSearchMarkdownScopes.size)
+      throw new Error("DashScope web-search model scopes drifted");
+    const knownIds = new Set(models.keys());
+    for (const [deploymentScope, price] of webSearchMarkdownScopes) {
+      const ids = mentionedModelIds((sections.get(deploymentScope) ?? []).join("\n"), knownIds);
+      if (ids.size === 0)
+        throw new Error(`DashScope web-search scope ${deploymentScope} has no bound models`);
+      for (const id of ids) {
+        const model = models.get(id);
+        if (model === undefined) continue;
+        const rate = publishedRate(
+          "tool_call",
+          price,
+          "thousand_requests",
+          input.source.id,
+          "USD per 1,000 web-search calls",
+          { deployment_scope: deploymentScope, operation: "web_search" },
+        );
+        models.set(id, merge(model, { ...model, pricing_state: "numeric", price_facts: [rate] }));
+        input.onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: "web_search_rate_normalized",
+          sample: `${id}:${deploymentScope}`,
+        });
+      }
+    }
+    return;
+  }
   const $ = load(body);
   const supported = $("h2")
     .filter((_index, heading) => text($(heading).text()) === "Supported models")
@@ -1079,6 +1499,54 @@ function webSearchRates(input: ParseInput, body: string, models: Map<string, Pro
 }
 
 function cacheModels(body: string): Map<string, Set<string>> {
+  if (markdownDocument(body)) {
+    const lines = body.split(/\r?\n/);
+    const result = new Map<string, Set<string>>();
+    for (const mode of ["Explicit cache", "Implicit cache"] as const) {
+      const start = lines.findIndex(
+        (line) => text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === mode,
+      );
+      const supported = lines.findIndex(
+        (line, index) =>
+          index > start &&
+          text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === "Supported models",
+      );
+      if (start < 0 || supported < 0)
+        throw new Error(`DashScope ${mode} supported-model section drifted`);
+      let region: string | undefined;
+      let observedRegions = 0;
+      for (const line of lines.slice(supported + 1)) {
+        const heading = line.match(/^(#{2,3})\s+(.+?)\s*$/);
+        if (heading?.[2] !== undefined) {
+          const candidate = dashscopeRegion(text(heading[2].replaceAll("**", "")));
+          if (candidate !== undefined) {
+            region = candidate;
+            observedRegions += 1;
+            continue;
+          }
+          if (observedRegions > 0) break;
+          region = undefined;
+          continue;
+        }
+        if (region === undefined) continue;
+        const suffix = text(line.replace(/^\s*[-*]\s*/, ""))
+          .split(":")
+          .at(-1);
+        if (suffix === undefined) continue;
+        for (const candidate of suffix.split(",")) {
+          const id = exactId(candidate);
+          if (id === undefined) continue;
+          const key = `${mode}\0${region}`;
+          const values = result.get(key) ?? new Set<string>();
+          values.add(id);
+          result.set(key, values);
+        }
+      }
+      if (observedRegions === 0)
+        throw new Error(`DashScope ${mode} supported-model regions drifted`);
+    }
+    return result;
+  }
   const $ = load(body);
   const result = new Map<string, Set<string>>();
   for (const mode of ["Explicit cache", "Implicit cache"] as const) {
@@ -1141,13 +1609,16 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   const cacheBody = companion(bundle, "/help/en/model-studio/context-cache");
   const cache = cacheModels(cacheBody);
   const models = new Map<string, ProviderModel>();
-  for (const table of tables(bundle.index.body)) {
+  for (const table of pricingTables(bundle.index.body)) {
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
     if (idIndex === undefined) continue;
     for (const row of table.rows) {
       const idCell = row[idIndex];
       const rowIds = cellIds(idCell);
-      if (rowIds.length === 0) throw new Error("DashScope pricing model cell changed shape");
+      if (rowIds.length === 0)
+        throw new Error(
+          `DashScope pricing model cell changed shape: ${idCell?.text ?? "missing"} (${table.headings.join(" / ")})`,
+        );
       const discontinued = row.some((cell) => /\bDiscontinued\b/i.test(cell.text));
       for (const id of rowIds) {
         const tasks = priceOperations(id, table.headings);
@@ -1183,7 +1654,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
           tasks,
           modalities: priceModalities(tasks, modelRates, table.headings),
           status: discontinued ? "retired" : "active",
-          release_stage: /preview/i.test(id) ? "preview" : "unknown",
+          release_stage: /preview/i.test(`${id} ${idCell?.text ?? ""}`) ? "preview" : "unknown",
           pricing_state: discontinued ? "not_applicable" : "numeric",
           price_facts: modelRates,
           availability:
@@ -1255,7 +1726,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
           });
       }
       if (cache.get(`Implicit cache\0${region}`)?.has(id)) {
-        if (id === "deepseek-v4-pro") {
+        if (id === "deepseek-v4-pro" || id === "qwen3.8-max") {
           input.onPricingReconciliation?.({
             disposition: "unbound",
             reason_code: "implicit_cache_price_not_public",
@@ -1324,10 +1795,31 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
     const modelColumn = column(table.headers, /^Model name$/i);
     const replacementColumn = column(table.headers, /^Replacement model$/i);
     if (modelColumn === undefined) continue;
+    let category = "";
+    let retiredAt: string | undefined;
+    let replacements: string[] = [];
     for (const row of table.rows) {
-      const category = value(table, row, /^Category$/i) ?? "";
-      const retiredAt = modelDate(value(table, row, /^Deprecation time$/i));
-      const rowIds = cellIds(row[modelColumn]);
+      let modelCell: Cell | undefined;
+      if (row.length === table.headers.length) {
+        category = value(table, row, /^Category$/i) ?? "";
+        retiredAt = modelDate(value(table, row, /^Deprecation time$/i));
+        replacements = replacementColumn === undefined ? [] : cellIds(row[replacementColumn]);
+        modelCell = row[modelColumn];
+      } else if (table.headers.length === 4 && row.length === 3) {
+        category = row[0]?.text ?? "";
+        modelCell = row[1];
+        replacements = cellIds(row[2]);
+      } else if (table.headers.length === 4 && row.length === 2) {
+        modelCell = row[0];
+        replacements = cellIds(row[1]);
+      } else if (table.headers.length === 4 && row.length === 1) {
+        modelCell = row[0];
+      } else {
+        throw new Error("DashScope lifecycle row changed shape");
+      }
+      if (retiredAt === undefined)
+        throw new Error("DashScope lifecycle deprecation time changed shape");
+      const rowIds = cellIds(modelCell);
       if (rowIds.length === 0) throw new Error("DashScope lifecycle model cell changed shape");
       for (const id of rowIds) {
         const model = baseModel({
@@ -1345,8 +1837,7 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
               ? "retired"
               : "deprecated",
           retired_at: retiredAt,
-          replacement_model_ids:
-            replacementColumn === undefined ? [] : cellIds(row[replacementColumn]),
+          replacement_model_ids: replacements,
           pricing_state: "unknown",
           scope: "regional_catalog",
         });
@@ -1362,8 +1853,8 @@ export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
     throw new Error("Wrong DashScope releases extractor");
   const dates = new Map<string, string>();
   for (const table of tables(input.body)) {
-    const timeColumn = column(table.headers, /^Time$/i);
-    const modelColumn = column(table.headers, /^Model$/i);
+    const timeColumn = column(table.headers, /^(?:Time|Date)$/i);
+    const modelColumn = column(table.headers, /^(?:Model|Model ID)$/i);
     if (timeColumn === undefined || modelColumn === undefined) continue;
     for (const row of table.rows) {
       const parsedDate = z.iso.date().safeParse(row[timeColumn]?.text);

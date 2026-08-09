@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { linkedBundleSchema } from "./bundle.ts";
+import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
-import type { SourceManifest } from "./manifests.ts";
+import { huggingFacePartnerIds, type SourceManifest } from "./manifests.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import { orderedTasks } from "./task.ts";
-import { publishedRate } from "./pricing.ts";
+import { orderedTasks, providerTasks } from "./task.ts";
+import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import {
@@ -22,6 +22,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  catalogModels?: readonly Pick<ProviderModel, "model_id" | "routes">[];
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -33,7 +34,8 @@ interface TaskFacts {
 
 const decimal = z
   .union([z.string(), z.number().finite().nonnegative()])
-  .transform((value) => String(value));
+  .transform((value) => String(value))
+  .pipe(z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/));
 const hubIdSchema = modelIdSchema.refine((value) => {
   const parts = value.split("/");
   return parts.length === 2 && parts.every((part) => /^[a-z0-9][a-z0-9._-]*$/i.test(part));
@@ -42,173 +44,346 @@ const mappingEntrySchema = z.object({
   _id: z.string().min(1),
   providerId: z.string().min(1),
   status: z.literal("live"),
-  adapterType: z.literal("lora").optional(),
-  tags: z.array(z.string().min(1)).min(1).optional(),
+  adapterType: z.unknown().optional(),
+  tags: z.unknown().optional(),
 });
-const mappingSchema = z.record(z.string().min(1), z.record(z.string().min(1), mappingEntrySchema));
+const mappingSchema = z.record(z.string().min(1), z.record(z.string().min(1), z.unknown()));
+const mappingBundleSchema = z.object({
+  partners: z.array(
+    z.object({
+      provider: z.enum(huggingFacePartnerIds),
+      models: mappingSchema,
+    }),
+  ),
+  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })).min(1),
+});
 const routeSchema = z.object({
-  provider: z.string().min(1),
+  provider: z.enum(huggingFacePartnerIds),
   status: z.enum(["live", "error"]),
-  context_length: z.number().int().positive().optional(),
-  pricing: z.object({ input: decimal, output: decimal }).optional(),
-  is_free: z.boolean().optional(),
-  supports_tools: z.boolean().optional(),
-  supports_structured_output: z.boolean().optional(),
-  first_token_latency_ms: z.number().finite().nonnegative().optional(),
-  throughput: z.number().finite().nonnegative().optional(),
-  is_model_author: z.boolean().optional(),
+  context_length: z.unknown().optional(),
+  pricing: z.unknown().optional(),
+  is_free: z.unknown().optional(),
+  supports_tools: z.unknown().optional(),
+  supports_structured_output: z.unknown().optional(),
+  first_token_latency_ms: z.unknown().optional(),
+  throughput: z.unknown().optional(),
+  is_model_author: z.unknown().optional(),
+});
+const architectureSchema = z.object({
+  input_modalities: z.array(modalitySchema),
+  output_modalities: z.array(modalitySchema),
 });
 const routerItemSchema = z.object({
   id: hubIdSchema,
   object: z.literal("model"),
-  created: z.number().int().nonnegative(),
-  owned_by: z.string().min(1),
-  architecture: z.object({
-    input_modalities: z.array(modalitySchema),
-    output_modalities: z.array(modalitySchema),
-  }),
-  providers: z.array(routeSchema).min(1),
+  created: z.unknown().optional(),
+  owned_by: z.unknown().optional(),
+  architecture: z.unknown().optional(),
+  providers: z.array(z.unknown()).min(1),
 });
-const routerSchema = z.object({ object: z.literal("list"), data: z.array(routerItemSchema) });
+const routerSchema = z.object({ object: z.literal("list"), data: z.array(z.unknown()) });
+const hubItemSchema = z.object({
+  _id: z.unknown().optional(),
+  id: hubIdSchema,
+  lastModified: z.iso.datetime({ offset: true }),
+});
 const hubSchema = z.object({
-  models: z.array(
-    z.object({
-      id: hubIdSchema,
-      lastModified: z.iso.datetime({ offset: true }),
-    }),
-  ),
+  models: z.array(z.unknown()),
+});
+const featherlessIndexSchema = z.object({ data: z.array(z.unknown()) });
+const featherlessItemSchema = z.object({
+  id: z.unknown(),
+  context_length: z.unknown().optional(),
+  max_completion_tokens: z.unknown().optional(),
+  pricing: z.unknown().optional(),
+});
+const featherlessPricingSchema = z.object({
+  prompt: z.unknown().optional(),
+  completion: z.unknown().optional(),
+  input: z.unknown().optional(),
+  output: z.unknown().optional(),
 });
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
 }
 
-function facts(task: string): TaskFacts {
-  switch (task) {
-    case "conversational":
-    case "text-generation":
-    case "summarization":
-    case "question-answering":
-    case "table-question-answering":
-    case "fill-mask":
-      return { tasks: ["text_generation"], input: ["text"], output: ["text"] };
-    case "translation":
-      return { tasks: ["translation"], input: ["text"], output: ["text"] };
-    case "document-question-answering":
-      return { tasks: ["text_generation"], input: ["text", "image"], output: ["text"] };
-    case "image-to-text":
-    case "visual-question-answering":
-      return { tasks: ["text_generation"], input: ["image"], output: ["text"] };
-    case "feature-extraction":
-    case "sentence-similarity":
-      return { tasks: ["embeddings"], input: ["text"], output: ["embedding"] };
-    case "text-ranking":
-      return { tasks: ["reranking"], input: ["text"], output: [] };
-    case "automatic-speech-recognition":
-      return { tasks: ["transcription"], input: ["audio"], output: ["text"] };
-    case "text-to-speech":
-      return { tasks: ["speech_synthesis"], input: ["text"], output: ["audio"] };
-    case "text-to-audio":
-      return { tasks: ["audio_generation"], input: ["text"], output: ["audio"] };
-    case "audio-to-audio":
-      return { tasks: ["audio_generation"], input: ["audio"], output: ["audio"] };
-    case "text-to-image":
-      return { tasks: ["image_generation"], input: ["text"], output: ["image"] };
-    case "image-to-image":
-      return { tasks: ["image_generation"], input: ["image"], output: ["image"] };
-    case "text-to-video":
-      return { tasks: ["video_generation"], input: ["text"], output: ["video"] };
-    case "image-to-video":
-      return { tasks: ["video_generation"], input: ["image"], output: ["video"] };
-    case "audio-classification":
-      return { tasks: ["classification"], input: ["audio"], output: ["text"] };
-    case "image-classification":
-    case "zero-shot-image-classification":
-      return { tasks: ["classification"], input: ["image"], output: ["text"] };
-    case "image-segmentation":
-      return { tasks: ["segmentation"], input: ["image"], output: ["image"] };
-    case "object-detection":
-      return { tasks: ["object_detection"], input: ["image"], output: [] };
-    case "text-classification":
-    case "token-classification":
-    case "zero-shot-classification":
-    case "tabular-classification":
-      return { tasks: ["classification"], input: ["text"], output: ["text"] };
-    default:
-      return { tasks: [], input: [], output: [] };
-  }
+function diagnosticSample(...values: string[]): string {
+  return values.join(":").slice(0, 256);
 }
 
-function validateTagFilter(rawId: string, entry: z.infer<typeof mappingEntrySchema>): void {
+function modalityEntries(
+  tasks: readonly string[],
+  input: Modality[],
+  output: Modality[],
+): [string, Pick<TaskFacts, "input" | "output">][] {
+  return tasks.map((task) => [task, { input, output }]);
+}
+
+const taskModalities = new Map([
+  ...modalityEntries(
+    [
+      "conversational",
+      "fill-mask",
+      "question-answering",
+      "summarization",
+      "table-question-answering",
+      "text-classification",
+      "text-generation",
+      "text-to-text-generation",
+      "token-classification",
+      "translation",
+      "zero-shot-classification",
+    ],
+    ["text"],
+    ["text"],
+  ),
+  ...modalityEntries(
+    ["document-question-answering", "image-text-to-text"],
+    ["text", "image"],
+    ["text"],
+  ),
+  ...modalityEntries(
+    [
+      "image-classification",
+      "image-to-text",
+      "visual-question-answering",
+      "zero-shot-image-classification",
+    ],
+    ["image"],
+    ["text"],
+  ),
+  ...modalityEntries(["feature-extraction"], ["text"], ["embedding"]),
+  ...modalityEntries(["sentence-similarity", "text-ranking"], ["text"], []),
+  ...modalityEntries(["audio-classification", "automatic-speech-recognition"], ["audio"], ["text"]),
+  ...modalityEntries(["text-to-audio", "text-to-speech"], ["text"], ["audio"]),
+  ...modalityEntries(["audio-to-audio"], ["audio"], ["audio"]),
+  ...modalityEntries(["text-to-image"], ["text"], ["image"]),
+  ...modalityEntries(["image-segmentation", "image-to-image"], ["image"], ["image"]),
+  ...modalityEntries(["text-to-video"], ["text"], ["video"]),
+  ...modalityEntries(["image-text-to-video"], ["text", "image"], ["video"]),
+  ...modalityEntries(["image-to-video"], ["image"], ["video"]),
+  ...modalityEntries(["object-detection"], ["image"], []),
+  ...modalityEntries(["tabular-classification"], [], ["text"]),
+]);
+
+function facts(task: string): TaskFacts {
+  const modalities = taskModalities.get(task) ?? { input: [], output: [] };
+  return { tasks: providerTasks(task), ...modalities };
+}
+
+function validTagFilter(rawId: string, entry: z.infer<typeof mappingEntrySchema>): boolean {
   const filterTags = rawId.slice("tag-filter=".length).split(",");
-  const entryTags = entry.tags ?? [];
+  const parsedTags = z.array(z.string().min(1)).min(1).safeParse(entry.tags);
   if (
+    !parsedTags.success ||
     entry.adapterType !== "lora" ||
     filterTags.some((tag) => tag.length === 0) ||
     new Set(filterTags).size !== filterTags.length ||
-    new Set(entryTags).size !== entryTags.length ||
-    [...filterTags].sort().join("\0") !== [...entryTags].sort().join("\0")
+    new Set(parsedTags.data).size !== parsedTags.data.length
   )
-    throw new Error("Invalid Hugging Face tag filter contract");
+    return false;
+  const entryTags = parsedTags.data;
+  return [...filterTags].sort().join("\0") === [...entryTags].sort().join("\0");
+}
+
+function recommendedSection(body: string): string {
+  const heading = /^###\s+Recommended models\s*\r?$/im.exec(body);
+  if (heading === null) return "";
+  const tail = body.slice(heading.index + heading[0].length);
+  const next = /^###\s+/m.exec(tail);
+  return next === null ? tail : tail.slice(0, next.index);
+}
+
+function officialTaskDocumentCandidates(
+  documents: z.infer<typeof mappingBundleSchema>["documents"],
+): Set<string> {
+  const recommended = new Set<string>();
+  const featured = new Set<string>();
+  for (const { body } of documents) {
+    for (const match of recommendedSection(body).matchAll(
+      /^- \[([^\]\r\n]+)\]\((https:\/\/huggingface\.co\/[^\s)#?]+)\)(?::|\s|$)/gm,
+    )) {
+      const label = match[1];
+      const target = match[2];
+      if (label === undefined || target === undefined) continue;
+      const parsedId = hubIdSchema.safeParse(label);
+      if (!parsedId.success) continue;
+      const url = new URL(target);
+      if (url.pathname === `/${parsedId.data}`) recommended.add(parsedId.data);
+    }
+    for (const match of body.matchAll(/providersMapping=\{\s*(\{[^\r\n]+\})\s*\}/g)) {
+      const raw = match[1];
+      if (raw === undefined) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      const mapping = z.record(z.string(), z.unknown()).safeParse(parsed);
+      if (!mapping.success) continue;
+      for (const value of Object.values(mapping.data)) {
+        const entry = z.object({ modelId: z.unknown() }).safeParse(value);
+        if (!entry.success) continue;
+        const parsedId = hubIdSchema.safeParse(entry.data.modelId);
+        if (parsedId.success) featured.add(parsedId.data);
+      }
+    }
+  }
+  assertItemCount("Hugging Face recommended task models", recommended.size, 1, 10_000);
+  assertItemCount("Hugging Face featured task models", featured.size, 1, 10_000);
+  return new Set([...recommended, ...featured]);
 }
 
 export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
   const config = input.source.extractor;
   if (config.kind !== "huggingface-mapping")
     throw new Error("Invalid Hugging Face mapping extractor");
-  const groups = mappingSchema.parse(JSON.parse(input.body));
+  const bundle = mappingBundleSchema.parse(JSON.parse(input.body));
+  const observedProviders = bundle.partners.map(({ provider }) => provider);
+  if (
+    new Set(observedProviders).size !== observedProviders.length ||
+    observedProviders.join("\0") !== config.providers.join("\0")
+  )
+    throw new Error("Hugging Face partner mapping inventory changed");
+  const documentedCandidates = officialTaskDocumentCandidates(bundle.documents);
   const models = new Map<string, ProviderModel>();
-  for (const [task, entries] of Object.entries(groups)) {
-    const observed = facts(task);
-    for (const [rawId, entry] of Object.entries(entries)) {
-      if (rawId.startsWith("tag-filter=")) {
-        validateTagFilter(rawId, entry);
-        continue;
+  const mappingIds = new Set<string>();
+  let observedRouteCount = 0;
+  for (const { provider, models: groups } of bundle.partners)
+    for (const [task, entries] of Object.entries(groups)) {
+      const observed = facts(task);
+      for (const [rawId, rawEntry] of Object.entries(entries)) {
+        const parsedEntry = mappingEntrySchema.safeParse(rawEntry);
+        if (!parsedEntry.success) {
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "invalid_mapping_record",
+            sample: diagnosticSample(provider, task, rawId),
+          });
+          continue;
+        }
+        const entry = parsedEntry.data;
+        const mappingId = `${provider}\0${entry._id}`;
+        if (mappingIds.has(mappingId)) {
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "duplicate_mapping_record",
+            sample: diagnosticSample(provider, entry._id),
+          });
+          continue;
+        }
+        mappingIds.add(mappingId);
+        if (rawId.startsWith("tag-filter=")) {
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: validTagFilter(rawId, entry)
+              ? "dynamic_lora_tag_filter_not_model_identity"
+              : "invalid_dynamic_lora_filter",
+            sample: diagnosticSample(provider, task, rawId),
+          });
+          continue;
+        }
+        if (isCredentialLikeIdentifier(rawId) || isCredentialLikeIdentifier(entry.providerId)) {
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "credential_like_identifier",
+            sample: diagnosticSample(provider, task, rawId),
+          });
+          continue;
+        }
+        const parsedId = hubIdSchema.safeParse(rawId);
+        if (!parsedId.success) {
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "invalid_model_id",
+            sample: diagnosticSample(provider, task, rawId),
+          });
+          continue;
+        }
+        const id = parsedId.data;
+        const current = models.get(id) ?? {
+          ...baseModel({
+            providerId: input.provider.id,
+            id,
+            name: id,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          }),
+          status: "active",
+        };
+        const route: ModelRoute = {
+          source_ref: input.source.id,
+          provider,
+          provider_model_id: entry.providerId,
+          task,
+          status: "live",
+        };
+        if (
+          current.routes?.some((value) => modelRouteKey(value) === modelRouteKey(route)) === true
+        ) {
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "duplicate_mapping_route",
+            sample: diagnosticSample(id, provider, task),
+          });
+          continue;
+        }
+        observedRouteCount += 1;
+        const routes = [...(current.routes ?? []), route].sort((left, right) =>
+          modelRouteKey(left).localeCompare(modelRouteKey(right)),
+        );
+        const tasks = orderedTasks([...current.tasks, ...observed.tasks]);
+        models.set(id, {
+          ...current,
+          tasks,
+          routes,
+          modalities: {
+            input: unique([...current.modalities.input, ...observed.input]),
+            output: unique([...current.modalities.output, ...observed.output]),
+          },
+        });
       }
-      if (isCredentialLikeIdentifier(rawId) || isCredentialLikeIdentifier(entry.providerId))
-        continue;
-      const id = hubIdSchema.parse(rawId);
-      const current = models.get(id) ?? {
-        ...baseModel({
-          providerId: input.provider.id,
-          id,
-          name: id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        status: "active",
-      };
-      const route: ModelRoute = {
-        source_ref: input.source.id,
-        provider: config.provider,
-        provider_model_id: entry.providerId,
-        task,
-        status: "live",
-      };
-      const routes = [...(current.routes ?? []), route].sort((left, right) =>
-        modelRouteKey(left).localeCompare(modelRouteKey(right)),
-      );
-      const tasks = orderedTasks([...current.tasks, ...observed.tasks]);
-      models.set(id, {
-        ...current,
-        tasks,
-        routes,
-        modalities: {
-          input: unique([...current.modalities.input, ...observed.input]),
-          output: unique([...current.modalities.output, ...observed.output]),
-        },
-      });
     }
+  assertItemCount(
+    "Hugging Face concrete mapping routes",
+    observedRouteCount,
+    config.minRoutes,
+    config.maxRoutes,
+  );
+  const admitted = new Map<string, ProviderModel>();
+  let admittedRouteCount = 0;
+  for (const [id, model] of models) {
+    const routes = model.routes ?? [];
+    const providers = new Set(routes.map(({ provider }) => provider));
+    if (providers.size < 2 && !documentedCandidates.has(id)) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "single_provider_inventory_without_product_evidence",
+      });
+      continue;
+    }
+    admitted.set(id, model);
+    admittedRouteCount += routes.length;
+    for (const route of routes)
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code:
+          route.provider === "hf-inference"
+            ? "hf_inference_compute_price_unbound"
+            : "partner_route_price_not_published",
+        sample: diagnosticSample(id, route.provider, route.task),
+      });
   }
-  assertItemCount("Hugging Face mappings", models.size, config.minModels, config.maxModels);
-  const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
-  for (const value of values)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "hf_inference_compute_price_unbound",
-      sample: value.model_id,
-    });
-  return values;
+  assertItemCount("Hugging Face mappings", admitted.size, config.minModels, config.maxModels);
+  assertItemCount(
+    "Hugging Face catalog mapping routes",
+    admittedRouteCount,
+    config.minRoutes,
+    config.maxRoutes,
+  );
+  return [...admitted.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 function availability(values: (boolean | undefined)[]): boolean | "unknown" {
@@ -217,56 +392,115 @@ function availability(values: (boolean | undefined)[]): boolean | "unknown" {
   return "unknown";
 }
 
-function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): SourcePriceFact[] {
+interface RouteRateFacts {
+  rates: SourcePriceFact[];
+  priceConflict: boolean;
+  invalidPrice: boolean;
+}
+
+const routePricingSchema = z.object({
+  input: z.unknown().optional(),
+  output: z.unknown().optional(),
+});
+
+function routePrices(raw: unknown): {
+  input?: string;
+  output?: string;
+  invalid: boolean;
+} {
+  if (raw === undefined) return { invalid: false };
+  const object = routePricingSchema.safeParse(raw);
+  if (!object.success) return { invalid: true };
+  const input = decimal.safeParse(object.data.input);
+  const output = decimal.safeParse(object.data.output);
+  return {
+    ...(input.success ? { input: input.data } : {}),
+    ...(output.success ? { output: output.data } : {}),
+    invalid:
+      (object.data.input !== undefined && !input.success) ||
+      (object.data.output !== undefined && !output.success),
+  };
+}
+
+function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): RouteRateFacts {
   const conditions = { route_provider: route.provider };
-  if (route.is_free === true) {
-    if (
-      [route.pricing?.input, route.pricing?.output].some(
-        (price) => price !== undefined && !/^0(?:\.0+)?$/.test(price),
-      )
-    )
-      throw new Error(`Hugging Face route ${route.provider} is both free and priced`);
-    return (["input_text", "output_text"] as const).map((meter) =>
-      publishedRate(meter, "0", "million_tokens", sourceId, "currently free route", {
-        ...conditions,
-        promotion: true,
-      }),
-    );
+  const prices = routePrices(route.pricing);
+  const hasNonzeroPrice = [prices.input, prices.output].some(
+    (price) => price !== undefined && !/^0(?:\.0+)?$/.test(price),
+  );
+  if (route.is_free === true && !hasNonzeroPrice) {
+    return {
+      rates: (["input_text", "output_text"] as const).map((meter) =>
+        publishedRate(meter, "0", "million_tokens", sourceId, "currently free route", {
+          ...conditions,
+          promotion: true,
+        }),
+      ),
+      priceConflict: false,
+      invalidPrice: prices.invalid,
+    };
   }
   const rates: SourcePriceFact[] = [];
-  if (route.pricing?.input !== undefined)
+  if (prices.input !== undefined)
     rates.push(
       publishedRate(
         "input_text",
-        route.pricing.input,
+        prices.input,
         "million_tokens",
         sourceId,
         "USD / million tokens",
         conditions,
       ),
     );
-  if (route.pricing?.output !== undefined)
+  if (prices.output !== undefined)
     rates.push(
       publishedRate(
         "output_text",
-        route.pricing.output,
+        prices.output,
         "million_tokens",
         sourceId,
         "USD / million tokens",
         conditions,
       ),
     );
-  return rates;
+  return {
+    rates,
+    priceConflict: route.is_free === true && hasNonzeroPrice,
+    invalidPrice:
+      prices.invalid || (route.is_free !== undefined && typeof route.is_free !== "boolean"),
+  };
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  const parsed = z.number().int().positive().safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function optionalBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function companion(bundle: z.infer<typeof linkedBundleSchema>, pathname: string): string {
-  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === pathname);
-  if (matches.length !== 1) throw new Error(`Hugging Face bundle requires exactly one ${pathname}`);
-  return matches[0]?.body ?? "";
+  return linkedDocumentBody(
+    bundle,
+    pathname,
+    `Hugging Face bundle requires exactly one ${pathname}`,
+  );
 }
 
 function requireClaims(body: string, claims: readonly string[], message: string): void {
   if (claims.some((claim) => !body.includes(claim))) throw new Error(message);
+}
+
+function inventoryExtensions(
+  actual: string[],
+  required: readonly string[],
+  message: string,
+): string[] {
+  const values = new Set(actual);
+  if (required.some((value) => !values.has(value))) throw new Error(message);
+  const requiredValues = new Set(required);
+  return unique(actual.filter((value) => !requiredValues.has(value)));
 }
 
 function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSchema>): void {
@@ -278,6 +512,7 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
       "$0.10, subject to change",
       "$2.00 per seat",
       "same rates as the provider",
+      "No separate provider account is required",
       "broken down by model and provider",
       "Hugging Face won't charge you for the call",
       "compute time x price of the underlying hardware",
@@ -298,9 +533,48 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
       "Automatic Failover",
       "per-provider pricing",
       "throughput when available",
+      "serverless inference",
+      "single Hugging Face token",
     ],
     "Hugging Face provider-selection reference drifted",
   );
+  const documentedPartners = unique(
+    [...overview.matchAll(/\]\(\.\/providers\/([a-z0-9-]+)\)/g)].flatMap((match) =>
+      match[1] === undefined ? [] : [match[1]],
+    ),
+  );
+  const documentedExtensions = inventoryExtensions(
+    documentedPartners,
+    huggingFacePartnerIds,
+    "A configured Hugging Face partner disappeared from the official overview",
+  );
+  for (const provider of documentedExtensions)
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "documented_partner_not_collected",
+      sample: provider,
+    });
+  const providerRegistry = companion(
+    bundle,
+    "/huggingface/huggingface_hub/main/src/huggingface_hub/inference/_providers/__init__.py",
+  );
+  const providerLiteral = providerRegistry.match(/PROVIDER_T\s*=\s*Literal\[([\s\S]*?)\n\]/)?.[1];
+  if (providerLiteral === undefined)
+    throw new Error("Hugging Face SDK provider registry disappeared");
+  const sdkProviders = [...providerLiteral.matchAll(/^\s*"([a-z0-9-]+)",?\s*$/gm)].flatMap(
+    (match) => (match[1] === undefined ? [] : [match[1]]),
+  );
+  const sdkExtensions = inventoryExtensions(
+    sdkProviders,
+    [...huggingFacePartnerIds, "openai"],
+    "A configured Hugging Face partner disappeared from the SDK registry",
+  );
+  for (const provider of sdkExtensions)
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "sdk_provider_not_collected",
+      sample: provider,
+    });
   const sdk = companion(bundle, "/docs/huggingface_hub/en/guides/inference.md");
   const overviewUsesFastest = overview.includes(
     "automatically selects the fastest available provider for the specified model",
@@ -325,6 +599,11 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     [
       "inference_provider=all",
       "inferenceProviderMapping",
+      "List OpenAI-compatible models",
+      "https://router.huggingface.co/v1/models",
+      "To retrieve a single model",
+      "`live` or `error`",
+      "status (`staging` or `live`)",
       "`input` and `output` prices in USD per million tokens, when available",
       "temporary promo",
       "Output throughput in tokens per second",
@@ -345,6 +624,16 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
   requireClaims(
     companion(bundle, "/docs/inference-providers/en/register-as-a-provider.md"),
     [
+      "GET /api/partners/{provider}/models?status=staging|live",
+      "namespace/model-name",
+      "pipeline_tag == task",
+      '"staging" models are only available',
+      'switch them to "live" when they\'re ready to go live',
+      "huggingface.js/inference",
+      "publicly accessible",
+      "grouped by task",
+      "tested every 6 hours",
+      "retesting every hour",
       "placeholder",
       "background job runs every minute",
       "cost in nano-USD (10^-9 USD)",
@@ -368,7 +657,6 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "billing_dashboard_out_of_catalog",
     "organization_billing_controls_not_rates",
     "provider_cost_api_not_user_accessible",
-    "partner_mapping_catalog_out_of_scope",
   ])
     input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
   const responseReturnsCost = ["costNanoUsd", "cost_in_usd", "exact_cost"].some((field) =>
@@ -391,26 +679,89 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   const items = routerSchema.parse(JSON.parse(bundle.index.body)).data;
   const ids = new Set<string>();
   const models: ProviderModel[] = [];
-  for (const item of items) {
-    if (isCredentialLikeIdentifier(item.id)) continue;
-    if (ids.has(item.id)) throw new Error(`Duplicate Hugging Face router model ${item.id}`);
-    ids.add(item.id);
-    const providers = new Set<string>();
-    for (const route of item.providers) {
-      if (providers.has(route.provider))
-        throw new Error(`Duplicate Hugging Face route ${item.id}:${route.provider}`);
-      providers.add(route.provider);
+  for (const [itemIndex, rawItem] of items.entries()) {
+    const parsedItem = routerItemSchema.safeParse(rawItem);
+    if (!parsedItem.success) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "invalid_router_model_record",
+        sample: diagnosticSample("item", String(itemIndex)),
+      });
+      continue;
     }
-    const routeFacts = item.providers.map((route) => ({
+    const item = parsedItem.data;
+    if (isCredentialLikeIdentifier(item.id)) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "credential_like_identifier",
+        sample: item.id,
+      });
+      continue;
+    }
+    if (ids.has(item.id)) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "duplicate_router_model",
+        sample: item.id,
+      });
+      continue;
+    }
+    ids.add(item.id);
+    const parsedArchitecture = architectureSchema.safeParse(item.architecture);
+    if (!parsedArchitecture.success)
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "invalid_router_architecture",
+        sample: item.id,
+      });
+    const providers = new Set<string>();
+    const parsedRoutes: z.infer<typeof routeSchema>[] = [];
+    for (const [routeIndex, rawRoute] of item.providers.entries()) {
+      const parsedRoute = routeSchema.safeParse(rawRoute);
+      if (!parsedRoute.success) {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "invalid_router_route_record",
+          sample: diagnosticSample(item.id, String(routeIndex)),
+        });
+        continue;
+      }
+      const route = parsedRoute.data;
+      if (providers.has(route.provider)) {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "duplicate_router_route",
+          sample: diagnosticSample(item.id, route.provider),
+        });
+        continue;
+      }
+      providers.add(route.provider);
+      parsedRoutes.push(route);
+    }
+    const routeFacts = parsedRoutes.map((route) => ({
       route,
-      rates: route.status === "live" ? routeRates(route, input.source.id) : [],
+      ...(route.status === "live"
+        ? routeRates(route, input.source.id)
+        : { rates: [], priceConflict: false, invalidPrice: false }),
     }));
-    for (const { route, rates } of routeFacts) {
-      const sample = `${item.id}:${route.provider}`;
+    for (const { route, rates, priceConflict, invalidPrice } of routeFacts) {
+      const sample = diagnosticSample(item.id, route.provider);
       if (route.status === "error") {
         input.onPricingReconciliation?.({
           disposition: "excluded",
           reason_code: "route_not_live",
+          sample,
+        });
+      } else if (priceConflict) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "route_free_price_conflict",
+          sample,
+        });
+      } else if (invalidPrice) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "route_price_field_invalid",
           sample,
         });
       } else if (rates.length === 0) {
@@ -430,9 +781,13 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
     const routes = routeFacts.filter(({ route }) => route.status === "live");
     if (routes.length === 0) continue;
     const pricing = routes.flatMap(({ rates }) => rates);
-    const contexts = routes.flatMap((route) =>
-      route.route.context_length === undefined ? [] : [route.route.context_length],
-    );
+    const contexts = routes.flatMap((route) => {
+      const context = positiveInteger(route.route.context_length);
+      return context === undefined ? [] : [context];
+    });
+    const architecture = parsedArchitecture.success
+      ? parsedArchitecture.data
+      : { input_modalities: [], output_modalities: [] };
     models.push({
       ...baseModel({
         providerId: input.provider.id,
@@ -443,8 +798,8 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       }),
       tasks: ["text_generation"],
       modalities: {
-        input: unique(item.architecture.input_modalities),
-        output: unique(item.architecture.output_modalities),
+        input: unique(architecture.input_modalities),
+        output: unique(architecture.output_modalities),
       },
       api_endpoints: [
         { name: "Chat Completions", path: "/v1/chat/completions" },
@@ -453,9 +808,9 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       capabilities: {
         ...unknownCapabilities(),
         streaming: true,
-        tool_call: availability(routes.map(({ route }) => route.supports_tools)),
+        tool_call: availability(routes.map(({ route }) => optionalBoolean(route.supports_tools))),
         structured_output: availability(
-          routes.map(({ route }) => route.supports_structured_output),
+          routes.map(({ route }) => optionalBoolean(route.supports_structured_output)),
         ),
       },
       limits: {
@@ -470,28 +825,274 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   return models;
 }
 
+interface FeatherlessRate {
+  rate?: SourcePriceFact;
+  alternative?: SourcePriceFact;
+  conflict: boolean;
+  invalid: boolean;
+}
+
+function featherlessRate(
+  meter: "input_text" | "output_text",
+  perTokenRaw: unknown,
+  perMillionRaw: unknown,
+  sourceId: string,
+  modelId: string,
+): FeatherlessRate {
+  const perToken = decimal.safeParse(perTokenRaw);
+  const perMillion = decimal.safeParse(perMillionRaw);
+  const normalizedToken = perToken.success ? scaleDecimal(perToken.data, 6) : undefined;
+  const price = normalizedToken ?? (perMillion.success ? perMillion.data : undefined);
+  if (price === undefined)
+    return {
+      conflict: false,
+      invalid: perTokenRaw !== undefined || perMillionRaw !== undefined,
+    };
+  const rate: SourcePriceFact = {
+    ...publishedRate(
+      meter,
+      price,
+      "million_tokens",
+      sourceId,
+      normalizedToken === undefined
+        ? "USD per million tokens"
+        : "USD per token; normalized to USD per million tokens",
+      { route_provider: "featherless-ai" },
+    ),
+    source_locator: {
+      kind: "provider_key",
+      value: `${modelId}:pricing.${meter === "input_text" ? "prompt" : "completion"}`,
+    },
+    resolution_policy: "featherless_native_price_over_huggingface_route_snapshot",
+  };
+  const alternative: SourcePriceFact | undefined =
+    normalizedToken !== undefined &&
+    perMillion.success &&
+    !decimalsEqual(normalizedToken, perMillion.data)
+      ? {
+          ...publishedRate(
+            meter,
+            perMillion.data,
+            "million_tokens",
+            sourceId,
+            "USD per million tokens",
+            { route_provider: "featherless-ai" },
+          ),
+          source_locator: {
+            kind: "provider_key",
+            value: `${modelId}:pricing.${meter === "input_text" ? "input" : "output"}`,
+          },
+        }
+      : undefined;
+  return {
+    rate,
+    ...(alternative === undefined ? {} : { alternative }),
+    conflict: alternative !== undefined,
+    invalid:
+      (perTokenRaw !== undefined && !perToken.success) ||
+      (perMillionRaw !== undefined && !perMillion.success),
+  };
+}
+
+export function parseHuggingFaceFeatherless(input: Input): ProviderModel[] {
+  const config = input.source.extractor;
+  if (config.kind !== "huggingface-featherless")
+    throw new Error("Invalid Hugging Face Featherless extractor");
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  requireClaims(
+    companion(bundle, "/docs/api-reference-models"),
+    [
+      "This endpoint can be called from either an authenticated or unauthenticated context.",
+      "When omitted, only active models are returned.",
+      "per-token pricing (always included",
+      "per-token prices in USD as decimal strings",
+    ],
+    "Featherless models API reference drifted",
+  );
+  requireClaims(
+    companion(bundle, "/docs/request-pricing-and-credits"),
+    [
+      "Formula: input tokens x input price + output tokens x output price.",
+      "Prices are listed per 1M tokens.",
+      "exact price of a specific model",
+    ],
+    "Featherless request-pricing reference drifted",
+  );
+  const items = featherlessIndexSchema.parse(JSON.parse(bundle.index.body)).data;
+  const eligible =
+    input.catalogModels === undefined
+      ? undefined
+      : new Set(
+          input.catalogModels.flatMap((model) =>
+            model.routes?.some(({ provider }) => provider === "featherless-ai") === true
+              ? [model.model_id]
+              : [],
+          ),
+        );
+  const observedEligible = new Set<string>();
+  const models = new Map<string, ProviderModel>();
+  for (const [index, rawItem] of items.entries()) {
+    const parsedItem = featherlessItemSchema.safeParse(rawItem);
+    if (!parsedItem.success) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "invalid_featherless_model_record",
+        sample: `item:${index}`,
+      });
+      continue;
+    }
+    const parsedId = modelIdSchema.safeParse(parsedItem.data.id);
+    if (!parsedId.success || isCredentialLikeIdentifier(String(parsedItem.data.id))) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "invalid_featherless_model_id",
+        sample: `item:${index}`,
+      });
+      continue;
+    }
+    const id = parsedId.data;
+    if (eligible !== undefined && !eligible.has(id)) {
+      input.onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "featherless_model_not_hf_route",
+        sample: id,
+      });
+      continue;
+    }
+    observedEligible.add(id);
+    const parsedPricing = featherlessPricingSchema.safeParse(parsedItem.data.pricing);
+    const inputRate = featherlessRate(
+      "input_text",
+      parsedPricing.success ? parsedPricing.data.prompt : undefined,
+      parsedPricing.success ? parsedPricing.data.input : undefined,
+      input.source.id,
+      id,
+    );
+    const outputRate = featherlessRate(
+      "output_text",
+      parsedPricing.success ? parsedPricing.data.completion : undefined,
+      parsedPricing.success ? parsedPricing.data.output : undefined,
+      input.source.id,
+      id,
+    );
+    const rates = [
+      inputRate.rate,
+      inputRate.alternative,
+      outputRate.rate,
+      outputRate.alternative,
+    ].filter((rate): rate is SourcePriceFact => rate !== undefined);
+    const conflicted = inputRate.conflict || outputRate.conflict;
+    const invalid = !parsedPricing.success || inputRate.invalid || outputRate.invalid;
+    input.onPricingReconciliation?.({
+      disposition:
+        conflicted || invalid ? "ambiguous" : rates.length > 0 ? "normalized" : "unresolved",
+      reason_code: conflicted
+        ? "featherless_price_unit_conflict"
+        : invalid
+          ? "featherless_price_field_invalid"
+          : rates.length > 0
+            ? "featherless_price_normalized"
+            : "featherless_price_not_published",
+      sample: id,
+    });
+    const context = positiveInteger(parsedItem.data.context_length);
+    const maxOutput = positiveInteger(parsedItem.data.max_completion_tokens);
+    const incoming: ProviderModel = {
+      ...baseModel({
+        providerId: input.provider.id,
+        id,
+        name: id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      limits: {
+        ...(context === undefined ? {} : { context_tokens: context }),
+        ...(maxOutput === undefined ? {} : { max_output_tokens: maxOutput }),
+      },
+      pricing_state: rates.length === 0 ? "unknown" : "numeric",
+      price_facts: rates,
+    };
+    const current = models.get(id);
+    if (current === undefined) {
+      models.set(id, incoming);
+      continue;
+    }
+    input.onPricingReconciliation?.({
+      disposition: "ambiguous",
+      reason_code: "duplicate_featherless_model",
+      sample: id,
+    });
+    const factKey = (rate: SourcePriceFact): string =>
+      JSON.stringify([
+        rate.meter,
+        rate.price,
+        rate.currency,
+        rate.unit,
+        rate.conditions,
+        rate.resolution_policy,
+      ]);
+    const facts = new Map(current.price_facts.map((rate) => [factKey(rate), rate]));
+    for (const rate of incoming.price_facts) {
+      const conflicts = current.price_facts.some(
+        (previous) =>
+          previous.meter === rate.meter &&
+          JSON.stringify(previous.conditions) === JSON.stringify(rate.conditions) &&
+          !decimalsEqual(previous.price, rate.price),
+      );
+      if (conflicts)
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "duplicate_featherless_price_conflict",
+          sample: diagnosticSample(id, rate.meter),
+        });
+      facts.set(factKey(rate), rate);
+    }
+    models.set(id, {
+      ...current,
+      limits: { ...incoming.limits, ...current.limits },
+      pricing_state: facts.size === 0 ? "unknown" : "numeric",
+      price_facts: [...facts.values()],
+    });
+  }
+  if (eligible !== undefined)
+    for (const id of eligible)
+      if (!observedEligible.has(id))
+        input.onPricingReconciliation?.({
+          disposition: "unresolved",
+          reason_code: "hf_live_route_absent_from_featherless_active_catalog",
+          sample: id,
+        });
+  assertItemCount(
+    "Hugging Face Featherless models",
+    models.size,
+    config.minModels,
+    config.maxModels,
+  );
+  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
 export function parseHuggingFaceHub(input: Input): ProviderModel[] {
   const config = input.source.extractor;
   if (config.kind !== "huggingface-hub") throw new Error("Invalid Hugging Face Hub extractor");
   const items = hubSchema.parse(JSON.parse(input.body)).models;
-  const ids = new Set<string>();
-  const models = items.flatMap((item) => {
-    if (isCredentialLikeIdentifier(item.id)) return [];
-    if (ids.has(item.id)) throw new Error(`Duplicate Hugging Face Hub model ${item.id}`);
-    ids.add(item.id);
-    return [
-      {
-        ...baseModel({
-          providerId: input.provider.id,
-          id: item.id,
-          name: item.id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        updated_date: item.lastModified.slice(0, 10),
-      },
-    ];
-  });
+  const latestModification = new Map<string, string>();
+  for (const rawItem of items) {
+    const parsedItem = hubItemSchema.safeParse(rawItem);
+    if (!parsedItem.success || isCredentialLikeIdentifier(parsedItem.data.id)) continue;
+    const { id, lastModified } = parsedItem.data;
+    const current = latestModification.get(id);
+    if (current === undefined || lastModified > current) latestModification.set(id, lastModified);
+  }
+  const models = [...latestModification].map(([id, lastModified]) => ({
+    ...baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
+    updated_date: lastModified.slice(0, 10),
+  }));
   assertItemCount("Hugging Face Hub models", models.length, config.minModels, config.maxModels);
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }

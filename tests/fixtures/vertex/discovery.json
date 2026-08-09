@@ -1,0 +1,160 @@
+{
+  "rootUrl": "https://aiplatform.googleapis.com/",
+  "version": "v1beta1",
+  "revision": "20260801",
+  "resources": {
+    "publishers": {
+      "resources": {
+        "models": {
+          "methods": {
+            "list": {
+              "httpMethod": "GET",
+              "path": "v1beta1/{+parent}/models",
+              "parameters": {
+                "pageSize": {},
+                "pageToken": {},
+                "languageCode": {},
+                "listAllVersions": {},
+                "view": {
+                  "enum": [
+                    "PUBLISHER_MODEL_VIEW_UNSPECIFIED",
+                    "PUBLISHER_MODEL_VIEW_BASIC",
+                    "PUBLISHER_MODEL_VIEW_FULL",
+                    "PUBLISHER_MODEL_VERSION_VIEW_BASIC"
+                  ]
+                }
+              },
+              "response": {
+                "$ref": "GoogleCloudAiplatformV1beta1ListPublisherModelsResponse"
+              }
+            }
+          }
+        }
+      }
+    },
+    "projects": {
+      "resources": {
+        "locations": {
+          "resources": {
+            "publishers": {
+              "resources": {
+                "models": {
+                  "methods": {
+                    "generateContent": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+model}:generateContent",
+                      "response": {
+                        "$ref": "GoogleCloudAiplatformV1beta1GenerateContentResponse"
+                      }
+                    },
+                    "streamGenerateContent": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+model}:streamGenerateContent",
+                      "response": {
+                        "$ref": "GoogleCloudAiplatformV1beta1GenerateContentResponse"
+                      }
+                    },
+                    "embedContent": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+model}:embedContent",
+                      "response": {
+                        "$ref": "GoogleCloudAiplatformV1beta1EmbedContentResponse"
+                      }
+                    },
+                    "countTokens": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+endpoint}:countTokens",
+                      "response": {
+                        "$ref": "GoogleCloudAiplatformV1beta1CountTokensResponse"
+                      }
+                    },
+                    "predict": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+endpoint}:predict",
+                      "response": {
+                        "$ref": "GoogleCloudAiplatformV1beta1PredictResponse"
+                      }
+                    },
+                    "predictLongRunning": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+endpoint}:predictLongRunning",
+                      "response": { "$ref": "GoogleLongrunningOperation" }
+                    },
+                    "rawPredict": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+endpoint}:rawPredict",
+                      "response": { "$ref": "GoogleApiHttpBody" }
+                    },
+                    "streamRawPredict": {
+                      "httpMethod": "POST",
+                      "path": "v1beta1/{+endpoint}:streamRawPredict",
+                      "response": { "$ref": "GoogleApiHttpBody" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "schemas": {
+    "GoogleCloudAiplatformV1beta1PublisherModel": {
+      "properties": {
+        "name": {},
+        "launchStage": {},
+        "versionState": {},
+        "versionId": {},
+        "supportedActions": {},
+        "frameworks": {},
+        "openSourceCategory": {},
+        "predictSchemata": {}
+      }
+    },
+    "GoogleCloudAiplatformV1beta1ListPublisherModelsResponse": {
+      "properties": { "publisherModels": {}, "nextPageToken": {} }
+    },
+    "GoogleCloudAiplatformV1beta1GenerateContentResponseUsageMetadata": {
+      "properties": {
+        "promptTokenCount": {},
+        "cachedContentTokenCount": {},
+        "candidatesTokenCount": {},
+        "totalTokenCount": {},
+        "toolUsePromptTokenCount": {},
+        "thoughtsTokenCount": {},
+        "promptTokensDetails": {},
+        "cacheTokensDetails": {},
+        "candidatesTokensDetails": {},
+        "toolUsePromptTokensDetails": {},
+        "trafficType": {
+          "enum": [
+            "TRAFFIC_TYPE_UNSPECIFIED",
+            "ON_DEMAND",
+            "ON_DEMAND_PRIORITY",
+            "ON_DEMAND_FLEX",
+            "ON_DEMAND_OFFPEAK",
+            "PROVISIONED_THROUGHPUT"
+          ]
+        }
+      }
+    },
+    "GoogleCloudAiplatformV1beta1GroundingMetadata": {
+      "properties": {
+        "webSearchQueries": {},
+        "imageSearchQueries": {},
+        "groundingChunks": {},
+        "groundingSupports": {}
+      }
+    },
+    "GoogleCloudAiplatformV1beta1GenerateContentResponse": {
+      "properties": {
+        "usageMetadata": {},
+        "modelVersion": {},
+        "responseId": {},
+        "createTime": {},
+        "candidates": {}
+      }
+    }
+  }
+}

@@ -38,6 +38,7 @@ interface HostedEvidence {
 type HostedCapability = "streaming" | "structured_output" | "tool_call";
 
 interface HostedExamples {
+  asyncChat: string;
   chat: string;
   structured: string;
   tool: string;
@@ -48,6 +49,11 @@ const hostedSpecs: {
   valid: (body: string) => boolean;
   capabilities: HostedCapability[];
 }[] = [
+  {
+    key: "asyncChat",
+    valid: (body) => /\bstream\s*=\s*True\b/.test(body) && /\bAsyncLlamaAPIClient\b/.test(body),
+    capabilities: ["streaming"],
+  },
   {
     key: "chat",
     valid: (body) => /\bstream\s*=\s*True\b/.test(body),
@@ -112,13 +118,15 @@ const safetyReleaseSpecs: {
   },
 ];
 
-const llamaApiItemSchema = z.object({
-  id: modelIdSchema,
-  created: z.number().int().nonnegative(),
-  object: z.literal("model"),
-  owned_by: z.string().min(1),
-});
-const llamaApiListSchema = z.object({ data: z.array(llamaApiItemSchema) });
+const llamaApiItemSchema = z
+  .object({
+    id: modelIdSchema,
+    created: z.number().int().nonnegative(),
+    object: z.literal("model"),
+    owned_by: z.string().min(1),
+  })
+  .strict();
+const llamaApiListSchema = z.object({ data: z.array(llamaApiItemSchema) }).strict();
 const stringSchema = z.string();
 
 function unique<T>(values: T[]): T[] {
@@ -624,6 +632,8 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
   )
     throw new Error("Llama API moderation response drifted");
 
+  hostedModelInventory(bundle);
+
   const launch = document(bundle, "/blog/llamacon-llama-news/");
   if (
     announcementDate(launch, "Everything we announced at our first-ever LlamaCon", [
@@ -672,6 +682,59 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
     });
 }
 
+function hostedModelInventory(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const resource = document(bundle, "/src/llama_api_client/resources/models.py");
+  const model = document(bundle, "/src/llama_api_client/types/llama_model.py");
+  const list = document(bundle, "/src/llama_api_client/types/model_list_response.py");
+
+  const syncResource = resource.match(
+    /class ModelsResource\(SyncAPIResource\):([\s\S]*?)\nclass AsyncModelsResource\(/,
+  )?.[1];
+  const signature = syncResource?.match(
+    /\n {4}def list\(([\s\S]*?)\n {4}\) -> ModelListResponse:/,
+  )?.[1];
+  const method = syncResource?.match(
+    /\n {4}def list\([\s\S]*?\n {4}\) -> ModelListResponse:([\s\S]*)$/,
+  )?.[1];
+  if (signature === undefined || method === undefined)
+    throw new Error("Llama API model-list resource drifted");
+  const parameters = unique(
+    [...signature.matchAll(/^ {8}([a-z][a-z0-9_]*):/gm)].map((match) => match[1] ?? ""),
+  );
+  const expectedParameters = ["extra_body", "extra_headers", "extra_query", "timeout"];
+  if (
+    parameters.length !== expectedParameters.length ||
+    parameters.toSorted().join(",") !== expectedParameters.join(",") ||
+    [...method.matchAll(/self\._get\(\s*[f]?(["'])(.*?)\1/g)].map((match) => match[2]).join(",") !==
+      "/models" ||
+    !/post_parser\s*=\s*DataWrapper\[ModelListResponse\]\._unwrapper/.test(method) ||
+    !/cast_to\s*=\s*cast\(\s*Type\[ModelListResponse\]\s*,\s*DataWrapper\[ModelListResponse\]\s*\)/.test(
+      method,
+    )
+  )
+    throw new Error("Llama API model-list resource drifted");
+
+  const classBody = model.match(/class LlamaModel\(BaseModel\):([\s\S]*)$/)?.[1];
+  const fields =
+    classBody === undefined
+      ? []
+      : [...classBody.matchAll(/^ {4}([a-z][a-z0-9_]*): ([^\n]+)$/gm)].map((match) => ({
+          name: match[1] ?? "",
+          type: match[2] ?? "",
+        }));
+  const fieldTypes = new Map(fields.map(({ name, type }) => [name, type]));
+  if (
+    fields.length !== 4 ||
+    fieldTypes.get("id") !== "str" ||
+    fieldTypes.get("created") !== "int" ||
+    !/^Literal\[["']model["']\]$/.test(fieldTypes.get("object") ?? "") ||
+    fieldTypes.get("owned_by") !== "str"
+  )
+    throw new Error("Llama API model schema drifted");
+  if (!/^ModelListResponse\s*:\s*TypeAlias\s*=\s*(?:List|list)\[LlamaModel\]\s*$/m.test(list))
+    throw new Error("Llama API model-list response drifted");
+}
+
 export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const skuTypes = document(bundle, "/models/sku_types.py");
@@ -682,6 +745,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const llama33Card = document(bundle, "/models/llama3_3/MODEL_CARD.md");
   const llama4Card = document(bundle, "/models/llama4/MODEL_CARD.md");
   const chatExample = document(bundle, "/examples/chat.py");
+  const asyncChatExample = document(bundle, "/examples/async_chat.py");
   const toolExample = document(bundle, "/examples/tool_call.py");
   const structuredExample = document(bundle, "/examples/structured.py");
   const apiClient = document(bundle, "/src/llama_api_client/_client.py");
@@ -712,6 +776,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const moderationEndpoint = hostedEndpoint(apiBase, moderations, "Moderations");
   hostedAccounting(input, bundle);
   const hosted = hostedEvidence(models, {
+    asyncChat: asyncChatExample,
     chat: chatExample,
     structured: structuredExample,
     tool: toolExample,

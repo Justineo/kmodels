@@ -6,24 +6,36 @@ Status: current
 
 - The exhaustive English-pinned bundle starts at the official model index,
   follows every reviewed model-card target, and includes fixed pricing,
-  lifecycle, release, Gemma, Interactions, method, and Live references. Fixed
-  first-party companions also cover billing, implicit and explicit caching,
-  token usage, Flex and Priority inference, Search and Maps grounding, the
-  account-specific Google Cloud Pricing API, and Cloud Billing export latency.
-  These policy documents are drift guards and do not create model rates.
+  lifecycle, release, Gemma, Interactions, Live, and machine-readable v1beta
+  Discovery references. Fixed first-party companions also cover billing,
+  implicit and explicit caching, token usage, Flex and Priority inference,
+  Search and Maps grounding, the account-specific Google Cloud Pricing API,
+  Cloud Billing export latency, and Google's published Gemini API billing
+  service identity. These policy documents are drift guards and do not create
+  model rates.
 - A card target may describe one model or a family. Every property table with a
   labeled model or agent code is parsed independently, so shared overview pages
   do not silently collapse to their first model. Callable IDs still come only
   from those labeled cells; paths and headings never become IDs.
 - Keep current and historical IDs, explicit aliases, facts, and dates bound to their source rows.
-- Optional authenticated `/v1beta/models` is account-scoped. Exact `name` stays authoritative when `baseModelId` is absent. Pagination or malformed items reject the source; it cannot create rows or retain raw data.
+- Optional authenticated `/v1beta/models` is account-scoped. Exact `name` stays
+  authoritative when `baseModelId` is absent. Refresh follows the documented
+  `nextPageToken` chain with `pageSize=1000`, rejects repeated tokens or bounded
+  page/model overflow, then removes pagination metadata before parsing.
+  Malformed items reject the source; it cannot create rows or retain raw data.
 - Enable the optional inventory with `GEMINI_API_KEY`.
 
 ## Mapping
 
 - Tasks are non-exclusive. Agent and computer-use rows remain text generation with endpoint/capability evidence. Live audio is `speech_to_speech`.
-- Interactions and every supported method require exact listed IDs plus fixed method/route references. Names, modalities, spelling, and neighboring tasks never imply an endpoint.
-- Only reviewed `supportedGenerationMethods` with pinned REST/WebSocket routes add endpoint or delivery facts. Missing or unknown methods remain unknown.
+- Interactions and every supported method require exact listed IDs plus fixed
+  method/route references. The public Discovery JSON owns REST paths, inventory
+  pagination, the Model schema, GenerateContent response observability, and
+  usage/service-tier fields; the Live and Interactions pages own their distinct
+  WebSocket and REST routes. Names, modalities, spelling, and neighboring tasks
+  never imply an endpoint.
+- Only reviewed `supportedGenerationMethods` with pinned REST/WebSocket routes
+  add endpoint or delivery facts. Missing or unknown methods remain unknown.
 - Pricing sections bind through an exact model ID or one unique explicit alias.
   Unknown references, table headers, units, meters, or agent-pricing structure
   reject the source. At least 80% of non-retired models must retain numeric
@@ -67,9 +79,13 @@ Status: current
   discounts, and custom contracts are account-level adjustments.
 - The preview Google Cloud Pricing API and the account pricing export are the
   first-party sources for list and contract SKU prices when the Gemini charge has
-  an exact SKU binding. Detailed usage cost export supplies effective cost,
-  credits, currency, adjustments, and invoice attribution. Do not infer a
-  contract discount from the public Gemini model table.
+  an exact SKU binding. Google's SKU-group publication confirms that Gemini API
+  is billing service `AEFD-7695-64FA`; the group is a credit-eligibility list,
+  not an exhaustive model-price catalog. Query the account Pricing API under
+  that service and join exact SKU IDs from billing data instead of matching SKU
+  descriptions. Detailed usage cost export supplies effective cost, credits,
+  currency, adjustments, and invoice attribution. Do not infer a contract
+  discount from the public Gemini model table.
 - The official pages have a surface-sensitive conflict: the pricing page says
   Google AI Studio usage is free in available regions, while the billing FAQ
   says AI Studio usage linked to a paid API key is charged. Treat the project/key
@@ -82,7 +98,10 @@ Status: current
   with modality breakdowns, plus grounding tool counts for Search and Maps.
   GenerateContent usage metadata reports prompt, cached-content, candidate,
   thinking, and tool-use-prompt tokens with prompt/cache modality details and
-  the effective service tier. Thinking tokens are billed with output tokens.
+  the effective service tier. Its response schema also publishes `responseId`,
+  `modelVersion`, and `modelStatus`, which should be retained for request-level
+  reconciliation but do not replace the catalog lifecycle table. Thinking
+  tokens are billed with output tokens.
 - Document tokens appear under the `DOCUMENT` modality but are billed at the
   image-token rate. A generic total-token count is therefore insufficient;
   preserve response modality breakdowns. Explicit cache cost additionally needs
@@ -97,6 +116,12 @@ Status: current
   available within a day, can take more than 24 hours, and BigQuery export has no
   delivery guarantee. Account pricing export runs once daily. None of these is a
   hot-path cost oracle.
+- AI Studio `Dashboard > Usage` is the first-party interactive usage view. Cloud
+  Billing reports can be filtered to the Gemini API service and grouped by SKU;
+  API keys have no independent billing settings, so attribution is project and
+  billing-account based. A documented 400/500 request is not token-billed but
+  still consumes quota, and long-running batch or agent work can overrun a spend
+  cap before delayed accounting catches up.
 - Cost-based routing should use a locally cached public or account-contract price
   book plus request parameters before dispatch, then update estimates from the
   response usage and actual tier. Reconcile later with Cloud Billing export and
@@ -105,36 +130,24 @@ Status: current
 ## Extraction and reconciliation
 
 - Refresh is deterministic and non-LLM: bounded model-card/property tables own
-  identity; exact pricing table headers and cells own public rates; explicit
-  method/route tables own endpoints; fixed billing phrases fail closed when
-  accounting semantics drift. Public pricing never creates an unlisted model.
-- The current first-party audit returns 75 model identities: 32 active, 12
-  deprecated, and 31 retired. Of 44 non-retired identities, 38 have numeric
-  public pricing and six do not. Three managed agents retain their official
-  usage formula, two deprecated image preview IDs no longer have current price
-  rows, and Lyria realtime has no published numeric rate. The source produces
-  1,053 normalized facts and 36 raw facts.
-- The price audit partitions 950 claims: 558 normalized, 40 raw, 273 explicit
-  non-numeric, and 79 excluded, with no unbound, ambiguous, unsupported, or
-  unresolved claims. It preserves Standard, Batch, Flex, and Priority rates and
-  distinguishes 52 Gemini 3 search-query facts from 28 legacy grounded-request
-  facts.
+  identity; exact pricing table headers and cells own public rates; the public
+  Discovery schema plus explicit Live/Interactions references own endpoints;
+  fixed billing phrases fail closed when accounting semantics drift. Public
+  pricing never creates an unlisted model. The authenticated inventory follows
+  all documented pages and remains an overlay rather than an identity source.
 - ccusage remains comparison-only because it obtains prices through LiteLLM.
-  The inspected LiteLLM snapshot has 106 Gemini/Gemma-shaped keys but many are
-  provider-prefix or alias duplicates; it normalizes to 64 relevant IDs, overlaps
-  40 of this catalog's identities, and omits 14 current IDs. Its detailed tier
-  fields are useful leads, but several entries are labeled as Vertex AI and cite
-  Vertex pricing for Gemini Developer API IDs, so the surfaces cannot be merged.
-- models.dev has 41 Google entries, 36 with a flat cost object. It overlaps 38
-  identities and misses 11 current ones. Its three apparent extras are aliases
-  or a documented custom-tools variant rather than missing canonical rows. It
-  assigns a fixed Gemini base rate to Deep Research, while Google's first-party
-  page says total agent cost includes all underlying and intermediate inference
-  plus tools; the raw formula is therefore the safer representation. Neither
-  third-party book is accepted as pricing evidence.
-
-## Kong AI Gateway
-
-- Derive compatibility from exact methods such as `generateContent`, `embedContent`, `batchEmbedContents`, `BidiGenerateContent`, or `predictLongRunning`; they are not interchangeable.
-- Files and batches are service-level. Text agents, speech synthesis, translation, and audio generation are not automatically in Kong's Gemini matrix.
-- Do not normalize documentation spelling drift into route evidence or alias stale/missing Kong examples to newer IDs.
+  Its weekly auto-update workflow imports only OpenRouter and Vercel Gateway data;
+  direct Gemini rows remain manually maintained. Detailed tier fields are useful
+  leads, but Vertex-labeled entries and Vertex pricing cannot be merged into the
+  Gemini Developer API surface.
+- models.dev's hourly Google sync correctly follows the official Models API pagination, but sets
+  `skipCreates` and only updates API-authoritative fields on pre-existing manual
+  rows because that API omits pricing, modalities, lifecycle, release dates, and
+  several capabilities. This is a useful independent confirmation of the same
+  source boundary, not evidence for missing rows or rates.
+- Portkey's workflow validates and publishes JSON after a push but does not fetch Google's catalog,
+  so updates are manual and retain many historical IDs. It is useful as a drift
+  lead only. Portkey, LiteLLM, and models.dev are never accepted as model or
+  pricing evidence. A fixed Deep Research base rate from any comparator is less
+  faithful than Google's first-party formula covering all underlying and
+  intermediate inference plus tools.

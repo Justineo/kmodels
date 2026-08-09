@@ -6,7 +6,7 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -14,6 +14,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -26,8 +27,8 @@ const publicItemSchema = z.object({
   name: z.string().min(1),
   description: z.string().min(1),
   hugging_face_id: z.string().min(1),
-  pricing: z.object({ prompt: decimalSchema, completion: decimalSchema }),
-  capabilities: z.object({
+  pricing: z.strictObject({ prompt: decimalSchema, completion: decimalSchema }),
+  capabilities: z.strictObject({
     streaming: z.boolean(),
     function_calling: z.boolean(),
     structured_outputs: z.boolean(),
@@ -40,24 +41,73 @@ const publicItemSchema = z.object({
     reasoning: z.boolean(),
   }),
   supported_parameters: z.record(z.string(), z.boolean()),
-  architecture: z.object({
+  architecture: z.strictObject({
     modality: z.string().min(1),
     tokenizer: z.string().min(1),
     instruct_type: z.string().min(1),
   }),
-  limits: z.object({
+  limits: z.strictObject({
     max_context_length: z.number().int().positive(),
     max_completion_tokens: z.number().int().positive(),
     requests_per_minute: z.number().int().positive().nullable(),
     tokens_per_minute: z.number().int().positive().nullable(),
   }),
+  datacenter_locations: z.array(z.string().min(1)).optional(),
   deprecated: z.boolean(),
   preview: z.boolean(),
   quantization: z.string().nullable(),
 });
-const publicSchema = z.object({
+const publicSchema = z.strictObject({
   object: z.literal("list"),
   data: z.array(z.unknown()).min(1),
+});
+const openRouterFeatureSchema = z.enum(["tools", "json_mode", "structured_outputs", "reasoning"]);
+const openRouterItemSchema = z.strictObject({
+  id: modelIdSchema,
+  hugging_face_id: z.string().min(1),
+  name: z.string().min(1),
+  created: z.number().int().nonnegative(),
+  input_modalities: z.array(modalitySchema).min(1),
+  output_modalities: z.array(modalitySchema).min(1),
+  quantization: z.string().min(1).nullable(),
+  context_length: z.number().int().positive(),
+  max_output_length: z.number().int().positive(),
+  pricing: z.strictObject({
+    prompt: decimalSchema,
+    completion: decimalSchema,
+    request: z.literal("0"),
+    image: z.literal("0"),
+    input_cache_read: z.literal("0"),
+    input_cache_write: z.literal("0"),
+  }),
+  supported_sampling_parameters: z.array(z.string().min(1)),
+  supported_features: z.array(openRouterFeatureSchema),
+  description: z.string().min(1),
+  openrouter: z.strictObject({ slug: z.string().min(1) }),
+  datacenters: z.array(z.string().min(1)),
+});
+const openRouterSchema = z.strictObject({ data: z.array(openRouterItemSchema).min(1) });
+const huggingFaceItemSchema = z.strictObject({
+  id: modelIdSchema,
+  hugging_face_id: z.string().min(1),
+  object: z.literal("model"),
+  created: z.number().int().nonnegative(),
+  owned_by: z.string().min(1),
+  context_length: z.number().int().positive(),
+  pricing: z.strictObject({
+    input: z.number().nonnegative(),
+    output: z.number().nonnegative(),
+  }),
+  capabilities: z.strictObject({
+    streaming: z.boolean(),
+    function_calling: z.boolean(),
+    structured_outputs: z.boolean(),
+    vision: z.boolean(),
+  }),
+});
+const huggingFaceSchema = z.strictObject({
+  object: z.literal("list"),
+  data: z.array(huggingFaceItemSchema).min(1),
 });
 const inventoryItemSchema = z.object({
   id: modelIdSchema,
@@ -65,7 +115,7 @@ const inventoryItemSchema = z.object({
   created: z.number().int().nonnegative(),
   owned_by: z.string().min(1),
 });
-const inventorySchema = z.object({
+const inventorySchema = z.strictObject({
   object: z.literal("list"),
   data: z.array(z.unknown()).min(1),
 });
@@ -114,13 +164,57 @@ function architectureInputs(value: string): Modality[] {
   return parsed.flatMap((result) => (result.success ? [result.data] : []));
 }
 
+function bundleDocument(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  label: string,
+  predicate: (url: URL) => boolean,
+): string {
+  const matches = bundle.documents.filter(({ url }) => predicate(new URL(url)));
+  const [item] = matches;
+  if (matches.length !== 1 || item === undefined)
+    throw new Error(`Cerebras source bundle omitted or duplicated ${label}`);
+  return item.body;
+}
+
+function sameStrings(left: readonly string[], right: readonly string[]): boolean {
+  const sorted = (values: readonly string[]): string[] => [...values].sort();
+  return JSON.stringify(sorted(left)) === JSON.stringify(sorted(right));
+}
+
+function assertPublicFormatContract(body: string): void {
+  const normalized = body.replace(/\s+/g, " ");
+  const claims = [
+    /endpoint supports three response formats via the `format` query parameter/i,
+    /Default \(Cerebras\).*OpenRouter.*HuggingFace/i,
+    /Options: `openrouter`, `huggingface`/,
+    /Pricing per token in USD/,
+    /Cost per cached input token read \(typically `"0"`\)/,
+    /Pricing in USD per million tokens/,
+  ];
+  if (claims.some((claim) => !claim.test(normalized)))
+    throw new Error("Cerebras public-model format contract drift");
+}
+
+function formatEvidence(input: Input, models: readonly ProviderModel[], reasonCode: string): void {
+  for (const model of models)
+    for (const meter of ["input_text", "output_text"] as const)
+      input.onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code: reasonCode,
+        sample: `${model.model_id}:${meter}`,
+      });
+}
+
 export function parseCerebrasPublic(input: Input): ProviderModel[] {
-  const list = publicSchema.parse(JSON.parse(input.body));
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const list = publicSchema.parse(JSON.parse(bundle.index.body));
   const items = recognizeItems({
     label: "Cerebras public model",
     items: list.data,
     schema: publicItemSchema,
     modelId: "id",
+    rootKeys: Object.keys(publicItemSchema.shape),
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   const models = items.map((item): ProviderModel => {
     const modalities = architectureInputs(item.architecture.modality);
@@ -160,7 +254,84 @@ export function parseCerebrasPublic(input: Input): ProviderModel[] {
     };
   });
   const result = bounded(input, "cerebras-public", models);
+  const openRouter = openRouterSchema.parse(
+    JSON.parse(
+      bundleDocument(
+        bundle,
+        "OpenRouter compatibility response",
+        (url) => url.searchParams.get("format") === "openrouter",
+      ),
+    ),
+  ).data;
+  const huggingFace = huggingFaceSchema.parse(
+    JSON.parse(
+      bundleDocument(
+        bundle,
+        "HuggingFace compatibility response",
+        (url) => url.searchParams.get("format") === "huggingface",
+      ),
+    ),
+  ).data;
+  assertPublicFormatContract(
+    bundleDocument(bundle, "public-model format contract", (url) =>
+      url.pathname.endsWith("/api-reference/models/public-models.md"),
+    ),
+  );
+  const ids = result.map(({ model_id }) => model_id);
+  if (
+    !sameStrings(
+      ids,
+      openRouter.map(({ id }) => id),
+    ) ||
+    !sameStrings(
+      ids,
+      huggingFace.map(({ id }) => id),
+    )
+  )
+    throw new Error("Cerebras public-model formats disagree on exact model IDs");
+  const nativeById = new Map(items.map((item) => [item.id, item]));
+  const openRouterById = new Map(openRouter.map((item) => [item.id, item]));
+  const huggingFaceById = new Map(huggingFace.map((item) => [item.id, item]));
+  for (const id of ids) {
+    const native = nativeById.get(id);
+    const router = openRouterById.get(id);
+    const hub = huggingFaceById.get(id);
+    if (native === undefined || router === undefined || hub === undefined)
+      throw new Error(`Cerebras public-model format omitted ${id}`);
+    const nativeInputs = architectureInputs(native.architecture.modality);
+    const routerFeatures = new Set(router.supported_features);
+    if (
+      native.hugging_face_id !== router.hugging_face_id ||
+      native.hugging_face_id !== hub.hugging_face_id ||
+      native.name !== router.name ||
+      native.description !== router.description ||
+      native.created !== router.created ||
+      native.created !== hub.created ||
+      native.owned_by !== hub.owned_by ||
+      native.limits.max_context_length !== router.context_length ||
+      native.limits.max_context_length !== hub.context_length ||
+      native.limits.max_completion_tokens !== router.max_output_length ||
+      !sameStrings(nativeInputs, router.input_modalities) ||
+      !sameStrings(["text"], router.output_modalities) ||
+      !sameStrings(native.datacenter_locations ?? [], router.datacenters) ||
+      !decimalsEqual(native.pricing.prompt, router.pricing.prompt) ||
+      !decimalsEqual(native.pricing.completion, router.pricing.completion) ||
+      !decimalsEqual(scaleDecimal(native.pricing.prompt, 6), String(hub.pricing.input)) ||
+      !decimalsEqual(scaleDecimal(native.pricing.completion, 6), String(hub.pricing.output)) ||
+      native.capabilities.function_calling !== routerFeatures.has("tools") ||
+      native.capabilities.json_mode !== routerFeatures.has("json_mode") ||
+      native.capabilities.structured_outputs !== routerFeatures.has("structured_outputs") ||
+      native.capabilities.reasoning !== routerFeatures.has("reasoning") ||
+      native.capabilities.streaming !== hub.capabilities.streaming ||
+      native.capabilities.function_calling !== hub.capabilities.function_calling ||
+      native.capabilities.structured_outputs !== hub.capabilities.structured_outputs ||
+      native.capabilities.vision !== hub.capabilities.vision
+    )
+      throw new Error(`Cerebras public-model formats disagree for ${id}`);
+  }
   reconcileRates(input, result);
+  formatEvidence(input, result, "openrouter_format_rate_corroborated");
+  formatEvidence(input, result, "huggingface_format_rate_corroborated");
   return result;
 }
 
@@ -564,6 +735,40 @@ function identity(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+type TextMeter = "input_text" | "output_text";
+
+function observedRateEvidence(
+  model: ProviderModel,
+  meter: TextMeter,
+  observed: string,
+  source: "model_card_prose" | "pricing_page",
+): PricingReconciliationItem {
+  const normalized = model.price_facts.find((rate) => rate.meter === meter)?.price;
+  if (normalized === undefined)
+    throw new Error(`Cerebras ${source} model omitted ${meter}: ${model.model_id}`);
+  const corroborated = decimalsEqual(normalized, observed);
+  return {
+    disposition: corroborated ? "normalized" : "unbound",
+    reason_code: `${source}_rate_${corroborated ? "corroborated" : "conflict"}`,
+    sample: `${model.model_id}:${meter}`,
+  };
+}
+
+function cardProseEvidence(body: string, model: ProviderModel): PricingReconciliationItem[] {
+  const matches = [
+    ...body.matchAll(
+      /\bPricing:\s*\$((?:0|[1-9]\d*)(?:\.\d+)?) per million input tokens,\s*\$((?:0|[1-9]\d*)(?:\.\d+)?) per million output tokens\./g,
+    ),
+  ];
+  const [match] = matches;
+  if (matches.length !== 1 || match?.[1] === undefined || match[2] === undefined)
+    throw new Error(`Cerebras model card prose pricing drift for ${model.model_id}`);
+  return [
+    observedRateEvidence(model, "input_text", match[1], "model_card_prose"),
+    observedRateEvidence(model, "output_text", match[2], "model_card_prose"),
+  ];
+}
+
 function pricePageEvidence(body: string, models: ProviderModel[]): PricingReconciliationItem[] {
   if (
     !/Get started with \$5 in free credits after making an account/.test(body) ||
@@ -574,7 +779,7 @@ function pricePageEvidence(body: string, models: ProviderModel[]): PricingReconc
     throw new Error("Cerebras pricing-plan contract drift");
   const rows = pricePageRows(body);
   if (rows.length !== models.length) throw new Error("Cerebras pricing-page model count drift");
-  const conflicts: PricingReconciliationItem[] = [];
+  const evidence: PricingReconciliationItem[] = [];
   for (const row of rows) {
     const matches = models.filter(({ model_id }) =>
       identity(row.label).includes(identity(model_id)),
@@ -582,18 +787,12 @@ function pricePageEvidence(body: string, models: ProviderModel[]): PricingReconc
     const [model] = matches;
     if (matches.length !== 1 || model === undefined)
       throw new Error(`Cerebras pricing-page identity drift: ${row.label}`);
-    const input = model.price_facts.find(({ meter }) => meter === "input_text")?.price;
-    const output = model.price_facts.find(({ meter }) => meter === "output_text")?.price;
-    if (input === undefined || output === undefined)
-      throw new Error(`Cerebras pricing-page model omitted rates: ${model.model_id}`);
-    if (!decimalsEqual(input, row.input) || !decimalsEqual(output, row.output))
-      conflicts.push({
-        disposition: "unbound",
-        reason_code: "pricing_page_card_rate_conflict",
-        sample: model.model_id,
-      });
+    evidence.push(
+      observedRateEvidence(model, "input_text", row.input, "pricing_page"),
+      observedRateEvidence(model, "output_text", row.output, "pricing_page"),
+    );
   }
-  return conflicts;
+  return evidence;
 }
 
 function commercialEvidence(
@@ -835,10 +1034,62 @@ function validateServiceTierPricing(bundle: z.infer<typeof linkedBundleSchema>):
     throw new Error("Cerebras service-tier pricing policy drift");
 }
 
+function validateOpenApi(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const body = document(bundle, "/api-reference/openapi.yaml");
+  const paths = [...body.matchAll(/^  (\/[^:]+):\s*$/gm)].flatMap((match) =>
+    match[1] === undefined ? [] : [match[1]],
+  );
+  const operations = [...body.matchAll(/^    (get|post|put|patch|delete):\s*$/gm)].flatMap(
+    (match) => (match[1] === undefined ? [] : [match[1]]),
+  );
+  const claims = [
+    /^openapi: 3\.1\.0$/m,
+    /^  - url: https:\/\/api\.cerebras\.ai$/m,
+    /^  - BearerAuth: \[\]$/m,
+    /^      operationId: createChatCompletion$/m,
+    /application\/vnd\.msgpack/,
+    /name: Content-Encoding[\s\S]*?gzip/,
+    /name: queue_threshold[\s\S]*?Private Preview/,
+    /#\/components\/schemas\/ChatCompletionRequest/,
+    /#\/components\/schemas\/ChatCompletionResponse/,
+    /^        prompt_cache_key:$/m,
+    /^        reasoning_effort:$/m,
+    /^        service_tier:$/m,
+    /^        tool_choice:$/m,
+    /^        service_tier_used:$/m,
+    /^            image_tokens:$/m,
+    /^                cached_tokens:$/m,
+    /^                rejected_prediction_tokens:$/m,
+    /^                reasoning_tokens:$/m,
+    /^    BearerAuth:$/m,
+    /type: http[\s\S]*?scheme: bearer/,
+  ];
+  if (
+    !sameStrings(paths, ["/v1/chat/completions"]) ||
+    !sameStrings(operations, ["post"]) ||
+    claims.some((claim) => !claim.test(body))
+  )
+    throw new Error("Cerebras raw OpenAPI contract drift");
+}
+
+function validateApiVersioning(bundle: z.infer<typeof linkedBundleSchema>): void {
+  const body = document(bundle, "/api-reference/versions.md").replace(/\s+/g, " ");
+  if (
+    !/Version 2 is now the default for API requests\./.test(body) ||
+    !/New optional request parameters may be added/.test(body) ||
+    !/New fields may be added to responses/.test(body) ||
+    !/Breaking changes only happen in new API versions/.test(body) ||
+    !/X-Cerebras-Version-Patch/.test(body)
+  )
+    throw new Error("Cerebras API-version contract drift");
+}
+
 export function parseCerebrasCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   validateApiReferences(bundle);
   validateServiceTierPricing(bundle);
+  validateOpenApi(bundle);
+  validateApiVersioning(bundle);
   const rows = catalogRows(bundle.index.body);
   const cardPaths = new Set(rows.map(({ path }) => path));
   const nonCardModelPaths = new Set(["/models/choose-a-model"]);
@@ -865,7 +1116,13 @@ export function parseCerebrasCatalog(input: Input): ProviderModel[] {
     if (card === undefined) throw new Error(`Cerebras catalog omitted model page for ${row.id}`);
     return catalogCard(input, row, card, cachePolicy, scheduled);
   });
-  const evidence = commercialEvidence(bundle, models);
+  const modelsById = new Map(models.map((model) => [model.model_id, model]));
+  const cardEvidence = [...cards].flatMap(([id, body]) => {
+    const model = modelsById.get(id);
+    if (model === undefined) throw new Error(`Cerebras card pricing omitted catalog model ${id}`);
+    return cardProseEvidence(body, model);
+  });
+  const evidence = [...commercialEvidence(bundle, models), ...cardEvidence];
   const result = bounded(input, "cerebras-catalog", models);
   reconcileRates(input, result);
   for (const item of evidence) input.onPricingReconciliation?.(item);
@@ -1046,6 +1303,8 @@ export function parseCerebrasApi(input: Input): ProviderModel[] {
     items: list.data,
     schema: inventoryItemSchema,
     modelId: "id",
+    rootKeys: Object.keys(inventoryItemSchema.shape),
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   const models = items.map(
     (item): ProviderModel => ({

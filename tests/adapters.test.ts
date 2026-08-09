@@ -56,6 +56,101 @@ function linkedBundle(body: string): z.infer<typeof linkedBundleFixtureSchema> {
   return linkedBundleFixtureSchema.parse(JSON.parse(body));
 }
 
+function dispositionCounts(
+  items: readonly PricingReconciliationItem[],
+  dispositions: readonly PricingReconciliationItem["disposition"][],
+): Record<string, number> {
+  return Object.fromEntries(
+    dispositions.map((disposition) => [
+      disposition,
+      items.filter((item) => item.disposition === disposition).length,
+    ]),
+  );
+}
+
+const openAiReviewedDocuments = [
+  "/api/docs/models/compare.md",
+  "/api/docs/pricing.md",
+  "/api/docs/deprecations.md",
+  "/api/docs/guides/your-data.md",
+  "/api/docs/guides/batch.md",
+  "/api/docs/guides/cost-optimization.md",
+  "/api/docs/guides/fast-mode.md",
+  "/api/docs/guides/flex-processing.md",
+  "/api/docs/guides/prompt-caching.md",
+  "/api/docs/guides/rate-limits.md",
+  "/api/docs/guides/realtime-costs.md",
+  "/api/docs/guides/spend-limits.md",
+  "/api/docs/guides/terraform/rate-limits-and-spend.md",
+] as const;
+
+function openAiCatalogFixture(body: string): string {
+  const bundle = linkedBundle(body);
+  const documentationIndex = openAiReviewedDocuments
+    .filter(
+      (path) => path !== "/api/docs/deprecations.md" && path !== "/api/docs/guides/your-data.md",
+    )
+    .map((path) => `- [Reviewed](https://developers.openai.com${path})`)
+    .join("\n");
+  const usagePaths = [
+    "audio_speeches",
+    "audio_transcriptions",
+    "code_interpreter_sessions",
+    "completions",
+    "embeddings",
+    "file_search_calls",
+    "images",
+    "moderations",
+    "vector_stores",
+    "web_search_calls",
+  ];
+  const openapi = [
+    "  /models:",
+    "    operationId: listModels",
+    "  /chat/completions:",
+    "    operationId: createChatCompletion",
+    "  /responses:",
+    "    operationId: createResponse",
+    "  /organization/costs:",
+    "    operationId: usage-costs",
+    ...usagePaths.flatMap((path) => [
+      `  /organization/usage/${path}:`,
+      ...(path === "completions" ? ["    operationId: usage-completions"] : ["    get: {}"]),
+    ]),
+    "input_cache_write_tokens",
+    "input_uncached_tokens",
+    "input_cached_audio_tokens",
+    "service_tier",
+    "input_tokens_details",
+    "output_tokens_details",
+  ].join("\n");
+  return JSON.stringify({
+    ...bundle,
+    documents: [
+      ...bundle.documents,
+      {
+        url: "https://developers.openai.com/api/docs/llms.txt",
+        body: documentationIndex,
+      },
+      {
+        url: "https://developers.openai.com/api/reference/llms.txt",
+        body: [
+          "https://developers.openai.com/api/reference/resources/models/methods/list.md",
+          "https://developers.openai.com/api/reference/resources/responses/methods/create.md",
+        ].join("\n"),
+      },
+      ...openAiReviewedDocuments.map((path) => ({
+        url: `https://developers.openai.com${path}`,
+        body: "# Reviewed official page",
+      })),
+      {
+        url: "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
+        body: openapi,
+      },
+    ],
+  });
+}
+
 async function azureApiFixture(): Promise<z.infer<typeof azureApiFixtureSchema>> {
   return azureApiFixtureSchema.parse(JSON.parse(await fixture("azure/api.json")));
 }
@@ -112,6 +207,16 @@ function azurePublicPricingSource(minModels: number, maxModels: number): SourceM
   };
 }
 
+function azurePortalSource(minModels: number, maxModels: number): SourceManifest {
+  const configured = manifest("azure").sources.find(({ id }) => id === "azure-portal-models");
+  if (configured === undefined || configured.extractor.kind !== "azure-portal-catalog")
+    throw new Error("Missing Azure portal source");
+  return {
+    ...configured,
+    extractor: { kind: "azure-portal-catalog", minModels, maxModels },
+  };
+}
+
 function azureApiModels(
   body: string,
   reconciliation?: PricingReconciliationItem[],
@@ -134,6 +239,7 @@ async function parsed(
   providerId: string,
   path: string,
   sourceId?: string,
+  transform?: (body: string) => string,
 ): Promise<ProviderModel[]> {
   const value = manifest(providerId);
   const source =
@@ -141,7 +247,43 @@ async function parsed(
       ? value.sources[0]
       : value.sources.find((candidate) => candidate.id === sourceId);
   if (source === undefined) throw new Error(`Missing source for ${providerId}`);
-  return parseSource({ provider: provider(value), source, body: await fixture(path), observedAt });
+  const fixtureBody = await fixture(path);
+  const body = transform?.(fixtureBody) ?? fixtureBody;
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: source.id === "openai-models" ? openAiCatalogFixture(body) : body,
+    observedAt,
+  });
+}
+
+function openAiModel(id: string, tasks: ModelTask[], name = id): ProviderModel {
+  return {
+    ...baseModel({
+      providerId: "openai",
+      id,
+      name,
+      sourceId: "openai-models",
+      observedAt,
+    }),
+    tasks,
+  };
+}
+
+async function openAiModelPricing(
+  path: string,
+  catalogModels: ProviderModel[],
+): Promise<ProviderModel[]> {
+  const value = manifest("openai");
+  const source = value.sources.find(({ id }) => id === "openai-overview");
+  if (source === undefined) throw new Error("Missing OpenAI model-card pricing source");
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: await fixture(path),
+    observedAt,
+    catalogModels,
+  });
 }
 
 const deepseekCommercialDocuments = [
@@ -183,12 +325,13 @@ async function deepseekCatalog(
   options: {
     chat?: string;
     catalog?: string;
+    inventory?: string;
     responses?: string;
     onPricingReconciliation?: (item: PricingReconciliationItem) => void;
     overrides?: Readonly<Record<string, string>>;
   } = {},
 ): Promise<ProviderModel[]> {
-  const { chat, catalog, responses, onPricingReconciliation, overrides = {} } = options;
+  const { chat, catalog, inventory, responses, onPricingReconciliation, overrides = {} } = options;
   const value = manifest("deepseek");
   const source = value.sources.find(({ id }) => id === "deepseek-catalog");
   if (source === undefined) throw new Error("Missing DeepSeek catalog source");
@@ -202,6 +345,10 @@ async function deepseekCatalog(
       {
         url: "https://api-docs.deepseek.com/api/create-response",
         body: responses ?? (await fixture("deepseek/responses.html")),
+      },
+      {
+        url: "https://api-docs.deepseek.com/api/list-models",
+        body: inventory ?? (await fixture("deepseek/list-models.html")),
       },
       ...(await Promise.all(
         deepseekCommercialDocuments.map(async ([path, fixtureName]) => ({
@@ -220,98 +367,61 @@ async function deepseekCatalog(
   });
 }
 
+const anthropicDocuments = [
+  ["/llms.txt", "llms.txt"],
+  ["/docs/en/about-claude/pricing.md", "pricing.md"],
+  ["/docs/en/about-claude/model-deprecations.md", "lifecycle.md"],
+  ["/docs/en/about-claude/models/model-ids-and-versions.md", "model-ids.md"],
+  ["/docs/en/api/models/list.md", "models-list.md"],
+  ["/docs/en/api/messages/create.md", "messages.md"],
+  ["/docs/en/api/messages/batches/create.md", "batches.md"],
+  ["/docs/en/build-with-claude/batch-processing.md", "batch-processing.md"],
+  ["/docs/en/build-with-claude/citations.md", "citations.md"],
+  ["/docs/en/build-with-claude/pdf-support.md", "pdf-support.md"],
+  ["/docs/en/build-with-claude/context-editing.md", "context-editing.md"],
+  ["/docs/en/build-with-claude/structured-outputs.md", "structured-outputs.md"],
+  ["/docs/en/agents-and-tools/tool-use/code-execution-tool.md", "code-execution-tool.md"],
+  ["/docs/en/agents-and-tools/tool-use/computer-use-tool.md", "computer-use-tool.md"],
+  ["/docs/en/build-with-claude/effort.md", "effort.md"],
+  ["/docs/en/build-with-claude/prompt-caching.md", "prompt-caching.md"],
+  ["/docs/en/about-claude/glossary.md", "glossary.md"],
+  ["/docs/en/build-with-claude/thinking.md", "thinking.md"],
+  ["/docs/en/agents-and-tools/tool-use/define-tools.md", "define-tools.md"],
+  ["/docs/en/build-with-claude/fast-mode.md", "fast-mode.md"],
+  ["/docs/en/api/service-tiers.md", "service-tiers.md"],
+  ["/docs/en/manage-claude/data-residency.md", "data-residency.md"],
+  ["/docs/en/manage-claude/usage-cost-api.md", "usage-cost-api.md"],
+  ["/docs/en/api/admin/usage_report/retrieve_messages.md", "usage-report.md"],
+  ["/docs/en/api/admin/cost_report/retrieve.md", "cost-report.md"],
+  ["/docs/en/build-with-claude/fallback-credit.md", "fallback-credit.md"],
+  ["/docs/en/release-notes/overview.md", "release-notes.md"],
+] as const;
+
 async function anthropicCatalog(
-  messagesBody?: string,
-  batchGuideBody?: string,
-  lifecycleBody?: string,
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-  structuredOutputsBody?: string,
+  options: {
+    overview?: string;
+    overrides?: Readonly<Record<string, string>>;
+    extraDocuments?: readonly { url: string; body: string }[];
+    onPricingReconciliation?: (item: PricingReconciliationItem) => void;
+  } = {},
 ): Promise<ProviderModel[]> {
   const value = manifest("anthropic");
   const source = value.sources[0];
   if (source === undefined) throw new Error("Missing Anthropic source");
+  const { overview, overrides = {}, extraDocuments = [], onPricingReconciliation } = options;
   const body = JSON.stringify({
     index: {
       url: source.url,
-      body: await fixture("anthropic/overview.md"),
+      body: overview ?? (await fixture("anthropic/overview.md")),
     },
     documents: [
-      {
-        url: "https://platform.claude.com/docs/en/about-claude/pricing.md",
-        body: await fixture("anthropic/pricing.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/about-claude/model-deprecations.md",
-        body: lifecycleBody ?? (await fixture("anthropic/lifecycle.md")),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
-        body: await fixture("anthropic/launch.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/api/messages/create.md",
-        body: messagesBody ?? (await fixture("anthropic/messages.md")),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/api/messages/batches/create.md",
-        body: await fixture("anthropic/batches.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/batch-processing.md",
-        body: batchGuideBody ?? (await fixture("anthropic/batch-processing.md")),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/citations.md",
-        body: await fixture("anthropic/citations.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/pdf-support.md",
-        body: await fixture("anthropic/pdf-support.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/context-editing.md",
-        body: await fixture("anthropic/context-editing.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/structured-outputs.md",
-        body: structuredOutputsBody ?? (await fixture("anthropic/structured-outputs.md")),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
-        body: await fixture("anthropic/code-execution-tool.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool.md",
-        body: await fixture("anthropic/computer-use-tool.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/effort.md",
-        body: await fixture("anthropic/effort.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.md",
-        body: await fixture("anthropic/prompt-caching.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/about-claude/glossary.md",
-        body: await fixture("anthropic/glossary.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/thinking.md",
-        body: await fixture("anthropic/thinking.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use.md",
-        body: await fixture("anthropic/implement-tool-use.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/build-with-claude/fast-mode.md",
-        body: await fixture("anthropic/fast-mode.md"),
-      },
-      {
-        url: "https://platform.claude.com/docs/en/release-notes/overview.md",
-        body: await fixture("anthropic/release-notes.md"),
-      },
+      ...(await Promise.all(
+        anthropicDocuments.map(async ([path, fixtureName]) => ({
+          url: `https://platform.claude.com${path}`,
+          body: overrides[path] ?? (await fixture(`anthropic/${fixtureName}`)),
+        })),
+      )),
+      ...extraDocuments,
     ],
   });
   return parseSource({
@@ -326,6 +436,7 @@ async function anthropicCatalog(
 async function databricksCatalog(
   overrides: Readonly<Record<string, string>> = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  extraDocuments: readonly { url: string; body: string }[] = [],
 ): Promise<ProviderModel[]> {
   const value = manifest("databricks");
   const configured = value.sources[0];
@@ -363,16 +474,35 @@ async function databricksCatalog(
       "https://docs.databricks.com/aws/en/machine-learning/model-serving/score-foundation-models",
       "model-types.html",
     ],
+    ["https://docs.databricks.com/aws/en/admin/system-tables", "system-tables.html"],
+    ["https://docs.databricks.com/aws/en/admin/system-tables/billing", "billing-usage.html"],
+    ["https://docs.databricks.com/aws/en/admin/system-tables/pricing", "list-pricing.html"],
+    [
+      "https://docs.databricks.com/aws/en/admin/system-tables/model-serving-cost",
+      "model-serving-cost.html",
+    ],
+    [
+      "https://docs.databricks.com/aws/en/ai-gateway/configure-ai-gateway-endpoints",
+      "legacy-endpoint-usage.html",
+    ],
+    ["https://docs.databricks.com/aws/en/ai-gateway/usage-tracking", "ai-gateway-usage.html"],
+    ["https://docs.databricks.com/aws/en/ai-gateway/cost-observability", "ai-gateway-cost.html"],
     ["https://docs.databricks.com/aws/en/feed.xml", "release-feed.xml"],
   ] as const;
   const body = JSON.stringify({
-    index: { url: source.url, body: await fixture("databricks/models.html") },
-    documents: await Promise.all(
-      documents.map(async ([url, path]) => ({
-        url,
-        body: overrides[path] ?? (await fixture(`databricks/${path}`)),
-      })),
-    ),
+    index: {
+      url: source.url,
+      body: overrides["models.html"] ?? (await fixture("databricks/models.html")),
+    },
+    documents: [
+      ...(await Promise.all(
+        documents.map(async ([url, path]) => ({
+          url,
+          body: overrides[path] ?? (await fixture(`databricks/${path}`)),
+        })),
+      )),
+      ...extraDocuments,
+    ],
   });
   return parseSource({
     provider: provider(value),
@@ -411,6 +541,15 @@ async function vercelCatalog(
 function vercelDocumentation(): { url: string; body: string }[] {
   return [
     {
+      url: "https://vercel.com/docs/ai-gateway/models-and-providers.md",
+      body: [
+        "https://ai-gateway.vercel.sh/v1/models",
+        "This endpoint requires no authentication",
+        "GET /v1/models/{creator}/{model}/endpoints",
+        "returns per-provider pricing, supported parameters, uptime, throughput, and latency",
+      ].join("\n"),
+    },
+    {
       url: "https://vercel.com/docs/ai-gateway/pricing.md",
       body: [
         "AI Gateway charges no markup and no platform fee on tokens.",
@@ -424,6 +563,50 @@ function vercelDocumentation(): { url: string; body: string }[] {
     {
       url: "https://vercel.com/docs/ai-gateway/models-and-providers/provider-options.md",
       body: "`order`, `only`, and `sort`\nsort: 'cost'\ncaching: 'auto'",
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/models-and-providers/provider-filtering-and-ordering.md",
+      body: [
+        "The `gateway.cost` value is the inference cost for this request",
+        "does not include other charges that may apply",
+        "`'cost'`",
+        "`'ttft'`",
+        "`'tps'`",
+        "providers are always sorted last, regardless",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/models-and-providers/fast-mode.md",
+      body: [
+        "higher per-token cost",
+        "falls back to the base model",
+        "not merely routed to a fast variant slug",
+        "weren't billed at the fast rate",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/models-and-providers/service-tiers.md",
+      body: [
+        "best-effort routing hint, not a hard guarantee",
+        "billed at the default rate",
+        "bills the request at the tier the provider actually served",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/security-and-compliance/regional-inference.md",
+      body: [
+        "Pinning a region can raise what a request costs.",
+        "passes the provider's regional price straight through",
+        "adds no AI Gateway markup",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/authentication-and-byok/byok.md",
+      body: [
+        "fallback usage is billed against your credits balance",
+        "Spend through your own credentials isn't counted in",
+        "your actual costs may vary",
+      ].join("\n"),
     },
     {
       url: "https://vercel.com/docs/ai-gateway/sdks-and-apis/rest-api.md",
@@ -445,6 +628,15 @@ function vercelDocumentation(): { url: string; body: string }[] {
     {
       url: "https://vercel.com/docs/ai-gateway/observability-and-spend/logs.md",
       body: "refreshing every 5 seconds\nabout 90 seconds\nFallback Path\nCache Write",
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/observability-and-spend/usage.md",
+      body: [
+        "`GET /v1/credits`",
+        "remaining credit balance and lifetime spend",
+        "`GET /v1/generation`",
+        "cost, latency, finish reason, and token usage",
+      ].join("\n"),
     },
   ] as const;
 }
@@ -492,9 +684,18 @@ function huggingFaceMappingSource(value: ProviderManifest): SourceManifest {
   const configured = value.sources.find((source) => source.id === "huggingface-hf-inference");
   if (configured === undefined || configured.extractor.kind !== "huggingface-mapping")
     throw new Error("Missing Hugging Face mapping source");
+  const { transport: _transport, ...source } = configured;
+  void _transport;
   return {
-    ...configured,
-    extractor: { ...configured.extractor, minModels: 1, maxModels: 10 },
+    ...source,
+    extractor: {
+      kind: "huggingface-mapping",
+      providers: ["hf-inference"],
+      minModels: 1,
+      maxModels: 10,
+      minRoutes: 1,
+      maxRoutes: 20,
+    },
   };
 }
 
@@ -508,6 +709,18 @@ function huggingFaceHubSource(value: ProviderManifest): SourceManifest {
   };
 }
 
+function huggingFaceFeatherlessSource(value: ProviderManifest): SourceManifest {
+  const configured = value.sources.find((source) => source.id === "huggingface-featherless");
+  if (configured === undefined || configured.extractor.kind !== "huggingface-featherless")
+    throw new Error("Missing Hugging Face Featherless source");
+  const { transport: _transport, ...source } = configured;
+  void _transport;
+  return {
+    ...source,
+    extractor: { kind: "huggingface-featherless", minModels: 1, maxModels: 10 },
+  };
+}
+
 async function huggingFaceMapping(
   path: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
@@ -517,10 +730,59 @@ async function huggingFaceMapping(
   return parseSource({
     provider: provider(value),
     source,
-    body: await fixture(path),
+    body: huggingFaceMappingBody(await fixture(path)),
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
   });
+}
+
+function huggingFaceTaskDocuments(modelIds: readonly string[]): { url: string; body: string }[] {
+  const featured = modelIds[0];
+  return [
+    {
+      url: "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
+      body: [
+        "### Recommended models",
+        "",
+        ...modelIds.map((id) => `- [${id}](https://huggingface.co/${id}): Fixture model.`),
+        "",
+        "### Using the API",
+        "",
+        ...(featured === undefined
+          ? []
+          : [
+              `<InferenceSnippet providersMapping={ {"hf-inference":{"modelId":"${featured}","providerModelId":"${featured}"}} } />`,
+            ]),
+      ].join("\n"),
+    },
+  ];
+}
+
+function huggingFaceMappingBundle(
+  partners: readonly unknown[],
+  modelIds: readonly string[],
+): string {
+  return JSON.stringify({
+    partners,
+    documents: huggingFaceTaskDocuments(modelIds),
+  });
+}
+
+function huggingFaceMappingBody(body: string, providerId = "hf-inference"): string {
+  const models = z.record(z.string(), z.record(z.string(), z.unknown())).parse(JSON.parse(body));
+  const modelIds = [
+    ...new Set(
+      Object.values(models).flatMap((entries) =>
+        Object.keys(entries).filter(
+          (id) => !id.startsWith("tag-filter=") && id.split("/").length === 2,
+        ),
+      ),
+    ),
+  ];
+  return huggingFaceMappingBundle(
+    [{ provider: providerId, models }],
+    modelIds.length === 0 ? ["org/documented-sentinel"] : modelIds,
+  );
 }
 
 const huggingFaceRouterDocuments = [
@@ -540,6 +802,10 @@ const huggingFaceRouterDocuments = [
     "https://huggingface.co/docs/inference-providers/en/register-as-a-provider.md",
   ],
   ["sdk-inference.md", "https://huggingface.co/docs/huggingface_hub/en/guides/inference.md"],
+  [
+    "sdk-providers.py",
+    "https://raw.githubusercontent.com/huggingface/huggingface_hub/main/src/huggingface_hub/inference/_providers/__init__.py",
+  ],
   ["hub-billing.md", "https://huggingface.co/docs/hub/en/billing.md"],
 ] as const;
 
@@ -571,6 +837,38 @@ async function huggingFaceRouter(
     source,
     body: await huggingFaceRouterBody(edit(await fixture(path)), editDocument),
     observedAt,
+    ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+  });
+}
+
+async function huggingFaceFeatherless(
+  edit: (body: string) => string = (body) => body,
+  catalogModels?: ProviderModel[],
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): Promise<ProviderModel[]> {
+  const value = manifest("huggingface");
+  const source = huggingFaceFeatherlessSource(value);
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: JSON.stringify({
+      index: {
+        url: source.url,
+        body: edit(await fixture("huggingface/featherless.json")),
+      },
+      documents: [
+        {
+          url: "https://featherless.ai/docs/api-reference-models",
+          body: await fixture("huggingface/featherless-models.html"),
+        },
+        {
+          url: "https://featherless.ai/docs/request-pricing-and-credits",
+          body: await fixture("huggingface/featherless-pricing.html"),
+        },
+      ],
+    }),
+    observedAt,
+    ...(catalogModels === undefined ? {} : { catalogModels }),
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
   });
 }
@@ -663,13 +961,12 @@ async function geminiCatalog(
     ["https://ai.google.dev/gemma/docs/core/model_card_4", "gemma-card.html"],
     ["https://ai.google.dev/gemini-api/docs/interactions-overview", "interactions-overview.html"],
     ["https://ai.google.dev/api/interactions-api", "interactions-api.html"],
-    ["https://ai.google.dev/api/all-methods", "all-methods.html"],
+    ["https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta", "discovery.json"],
     ["https://ai.google.dev/api/live", "live-api.html"],
     ["https://ai.google.dev/gemini-api/docs/billing", "billing.html"],
     ["https://ai.google.dev/gemini-api/docs/caching", "caching.html"],
     ["https://ai.google.dev/gemini-api/docs/generate-content/caching", "explicit-caching.html"],
     ["https://ai.google.dev/gemini-api/docs/tokens", "tokens.html"],
-    ["https://ai.google.dev/api/generate-content", "generate-content-api.html"],
     ["https://ai.google.dev/gemini-api/docs/flex-inference", "flex-inference.html"],
     ["https://ai.google.dev/gemini-api/docs/priority-inference", "priority-inference.html"],
     ["https://ai.google.dev/gemini-api/docs/google-search", "google-search.html"],
@@ -681,6 +978,10 @@ async function geminiCatalog(
     [
       "https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables",
       "cloud-billing-export.html",
+    ],
+    [
+      "https://cloud.google.com/skus/sku-groups/google-developer-program-premium-genai-credit",
+      "cloud-sku-group.html",
     ],
   ] as const;
   const body = JSON.stringify({
@@ -728,14 +1029,7 @@ async function vertexModels(
   const policyDocuments = [
     ...(sourceIndex === 0
       ? ([
-          [
-            "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/GenerateContentResponse",
-            "usage-response.html",
-          ],
-          [
-            "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1/GroundingMetadata",
-            "grounding-response.html",
-          ],
+          ["https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1", "discovery.json"],
           [
             "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
             "grounding-search.html",
@@ -860,7 +1154,8 @@ async function vertexCatalog(
         "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/music/generate-music",
         "routes.html",
       ],
-      ["https://cloud.google.com/skus/sku-groups/select-google-cloud-offerings", "skus.html"],
+      ["https://cloud.google.com/skus/sku-groups/gen-ai", "skus.html"],
+      ["https://cloud.google.com/skus/sku-groups/gen-ai-v2", "skus.html"],
     ],
     overrides,
     minPricingCoverage,
@@ -873,10 +1168,12 @@ async function vertexCatalog(
 async function cohereCatalog(
   overrides: {
     chat?: string;
+    commandARelease?: string;
     commandAPlus?: string;
     index?: string;
     lifecycle?: string;
     modelIndex?: string;
+    openapi?: string;
     pricing?: string;
     pricingPolicy?: string;
     transcription?: string;
@@ -931,15 +1228,24 @@ async function cohereCatalog(
     ["https://docs.cohere.com/reference/create-audio-transcription.md", "transcription.md"],
     ["https://docs.cohere.com/docs/compatibility-api.md", "compatibility.md"],
     ["https://docs.cohere.com/v1/reference/generate.md", "generate.md"],
+    [
+      "https://raw.githubusercontent.com/cohere-ai/cohere-developer-experience/main/cohere-openapi.yaml",
+      "openapi.yaml",
+    ],
   ] as const;
   const documentOverrides = new Map<string, string | undefined>([
     ["https://docs.cohere.com/reference/chat.md", overrides.chat],
     ["https://docs.cohere.com/docs/models", overrides.index],
     ["https://docs.cohere.com/docs/command-a-plus", overrides.commandAPlus],
+    ["https://docs.cohere.com/changelog/command-a", overrides.commandARelease],
     ["https://docs.cohere.com/docs/deprecations", overrides.lifecycle],
     ["https://cohere.com/pricing", overrides.pricing],
     ["https://docs.cohere.com/docs/how-does-cohere-pricing-work.md", overrides.pricingPolicy],
     ["https://docs.cohere.com/reference/create-audio-transcription.md", overrides.transcription],
+    [
+      "https://raw.githubusercontent.com/cohere-ai/cohere-developer-experience/main/cohere-openapi.yaml",
+      overrides.openapi,
+    ],
   ]);
   const body = JSON.stringify({
     index: {
@@ -1107,9 +1413,16 @@ async function llamaCatalog(
     [raw("llama-models", "models/llama3_3/MODEL_CARD.md"), "llama3_3.md"],
     [raw("llama-models", "models/llama4/MODEL_CARD.md"), "llama4.md"],
     [raw("llama-api-python", "examples/chat.py"), "chat.py"],
+    [raw("llama-api-python", "examples/async_chat.py"), "async_chat.py"],
     [raw("llama-api-python", "examples/tool_call.py"), "tool_call.py"],
     [raw("llama-api-python", "examples/structured.py"), "structured.py"],
     [raw("llama-api-python", "src/llama_api_client/_client.py"), "client.py"],
+    [raw("llama-api-python", "src/llama_api_client/resources/models.py"), "models.py"],
+    [raw("llama-api-python", "src/llama_api_client/types/llama_model.py"), "llama_model.py"],
+    [
+      raw("llama-api-python", "src/llama_api_client/types/model_list_response.py"),
+      "model_list_response.py",
+    ],
     [
       raw("llama-api-python", "src/llama_api_client/types/chat/completion_create_params.py"),
       "completion_create_params.py",
@@ -1195,6 +1508,7 @@ async function ollamaLibrary(
 interface OllamaCloudOptions {
   documents?: Readonly<Record<string, string>>;
   pages?: Readonly<Record<string, string>>;
+  transform?: (body: string) => string;
 }
 
 async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string> {
@@ -1211,6 +1525,9 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
     ["https://docs.ollama.com/llms.txt", "docs-llms.txt"],
     ["https://ollama.com/pricing", "pricing.html"],
     ["https://ollama.com/terms", "terms.html"],
+    ["https://docs.ollama.com/api/introduction.md", "api-introduction.md"],
+    ["https://docs.ollama.com/api/tags.md", "api-tags.md"],
+    ["https://docs.ollama.com/api-reference/show-model-details.md", "show-model-details.md"],
     ["https://docs.ollama.com/openapi.yaml", "openapi.yaml"],
     ["https://docs.ollama.com/api/usage.md", "usage.md"],
     ["https://docs.ollama.com/api/openai-compatibility.md", "openai-compatibility.md"],
@@ -1222,7 +1539,7 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
     ["https://docs.ollama.com/capabilities/thinking.md", "thinking.md"],
     ["https://docs.ollama.com/capabilities/vision.md", "vision.md"],
   ] as const;
-  return JSON.stringify({
+  const body = JSON.stringify({
     ...bundle,
     catalog: {
       url: "https://ollama.com/search?c=cloud",
@@ -1247,11 +1564,13 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
       })),
     ),
   });
+  return options.transform?.(body) ?? body;
 }
 
 async function ollamaCloud(
   options: OllamaCloudOptions = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  onContractFinding?: (evidence: SourceContractEvidence) => void,
 ): Promise<ProviderModel[]> {
   const value = manifest("ollama");
   const source = ollamaSource("ollama-cloud");
@@ -1261,6 +1580,7 @@ async function ollamaCloud(
     body: await ollamaCloudBody(options),
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+    ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
 }
 
@@ -1434,7 +1754,7 @@ describe("Cohere adapters", () => {
       count: 43,
       command_a_name: "Command A",
       command_a_release: "2025-03-13",
-      command_a_price_count: 0,
+      command_a_price_count: 2,
       plus_name: "Command A+",
       plus_modalities: { input: ["text", "image"], output: ["text"] },
       plus_reasoning: true,
@@ -1539,6 +1859,12 @@ describe("Cohere adapters", () => {
         ],
       },
     });
+    expect(commandA?.price_facts.map(({ meter, price, unit }) => ({ meter, price, unit }))).toEqual(
+      [
+        { meter: "input_text", price: "2.5", unit: "million_tokens" },
+        { meter: "output_text", price: "10", unit: "million_tokens" },
+      ],
+    );
     expect(models.find(({ model_id }) => model_id === "embed-english-v3.0")?.api_endpoints).toEqual(
       [
         { name: "Embed Jobs", path: "v1/embed-jobs" },
@@ -1568,7 +1894,7 @@ describe("Cohere adapters", () => {
     });
   });
 
-  it("treats the authenticated API as a complete scoped page", async () => {
+  it("parses the authenticated API after its transport has combined all pages", async () => {
     const models = await parsed("cohere", "cohere/api.json", "cohere-api");
     expect(
       models.map(({ model_id, tasks, api_endpoints, limits }) => ({
@@ -1608,7 +1934,7 @@ describe("Cohere adapters", () => {
     );
   });
 
-  it("rejects model endpoint and API-reference drift", async () => {
+  it("rejects model endpoint, API-reference, and official OpenAPI drift", async () => {
     const chat = (await fixture("cohere/chat.md")).replace("/v2/chat", "/v2/renamed");
     await expect(cohereCatalog({ chat })).rejects.toThrow("Cohere API reference drifted: Chat V2");
     const commandAPlus = (await fixture("cohere/command-a-plus.html")).replace(
@@ -1623,6 +1949,13 @@ describe("Cohere adapters", () => {
         modelIndex: `${await fixture("cohere/model-index.md")}\n- [Missing](https://docs.cohere.com/docs/missing.md)`,
       }),
     ).rejects.toThrow("Cohere model index document is missing");
+    const openapi = (await fixture("cohere/openapi.yaml")).replace(
+      "        cached_tokens:\n",
+      "        cache_hits:\n",
+    );
+    await expect(cohereCatalog({ openapi })).rejects.toThrow(
+      "Cohere OpenAPI reference drifted: ApiMeta",
+    );
   });
 
   it("derives lifecycle dates and scheduled state from each reviewed section", async () => {
@@ -1672,40 +2005,54 @@ describe("Cohere adapters", () => {
     ).rejects.toThrow("Cohere pricing payloads disagree for Command R");
   });
 
-  it("accounts for every reviewed price and records the conflicting Command A card", async () => {
+  it("uses corroborated release evidence to bind the mislabeled Command A card", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     await cohereCatalog({}, (item) => reconciliation.push(item));
     expect(
-      Object.fromEntries(
-        [
-          "normalized",
-          "raw",
-          "explicit_non_numeric",
-          "excluded",
-          "unbound",
-          "ambiguous",
-          "unsupported",
-          "unresolved",
-        ].map((disposition) => [
-          disposition,
-          reconciliation.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
+      dispositionCounts(reconciliation, [
+        "normalized",
+        "raw",
+        "explicit_non_numeric",
+        "excluded",
+        "unbound",
+        "ambiguous",
+        "unsupported",
+        "unresolved",
+      ]),
     ).toEqual({
-      normalized: 25,
+      normalized: 27,
       raw: 0,
       explicit_non_numeric: 9,
-      excluded: 4,
+      excluded: 5,
       unbound: 0,
-      ambiguous: 2,
+      ambiguous: 0,
       unsupported: 0,
       unresolved: 0,
     });
-    expect(reconciliation.find(({ disposition }) => disposition === "ambiguous")).toEqual({
-      disposition: "ambiguous",
-      reason_code: "model_card_identity_conflict",
-      sample: "/docs/command-a -> command-a-plus-05-2026",
+    expect(
+      reconciliation.find(({ reason_code }) => reason_code === "model_card_documented_id_override"),
+    ).toEqual({
+      disposition: "excluded",
+      reason_code: "model_card_documented_id_override",
+      sample: "/docs/command-a: command-a-plus-05-2026 -> command-a-03-2025",
     });
+  });
+
+  it("does not guess across a model-card identity conflict without exact release corroboration", async () => {
+    const release = (await fixture("cohere/command-a-release.html")).replace(
+      "command-a-03-2025",
+      "command-a-research-preview",
+    );
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = await cohereCatalog({ commandARelease: release }, (item) =>
+      reconciliation.push(item),
+    );
+    expect(
+      models.find(({ model_id }) => model_id === "command-a-03-2025")?.price_facts,
+    ).toHaveLength(0);
+    expect(
+      reconciliation.filter(({ reason_code }) => reason_code === "model_card_identity_conflict"),
+    ).toHaveLength(2);
   });
 
   it("rejects drift in billed-unit, account-key, and response evidence", async () => {
@@ -1739,6 +2086,7 @@ describe("Cohere adapters", () => {
           minPricingCoverage: 0.6,
         },
         type: "website",
+        source: ["website", "repository"],
         fields: expect.arrayContaining(["api_endpoints"]),
         linkedDocuments: {
           indexFormat: "markdown",
@@ -1752,14 +2100,17 @@ describe("Cohere adapters", () => {
             expect.objectContaining({ id: "teams-and-roles" }),
             expect.objectContaining({ id: "api-chat-stream-v2" }),
             expect.objectContaining({ id: "api-embed-job-result" }),
+            expect.objectContaining({ id: "openapi" }),
           ]),
         },
       },
       {
+        url: "https://api.cohere.com/v1/models",
         extractor: { kind: "cohere-api" },
         type: "api",
         scope: "account",
         role: "inventory",
+        transport: { kind: "cohere-models", pageSize: 1000, maxPages: 10, maxModels: 5000 },
         fields: expect.arrayContaining(["api_endpoints"]),
       },
     ]);
@@ -2102,20 +2453,15 @@ describe("Mistral adapters", () => {
     const items: PricingReconciliationItem[] = [];
     await mistralCatalog({}, 0.9, (item) => items.push(item));
     expect(
-      Object.fromEntries(
-        [
-          "normalized",
-          "raw",
-          "explicit_non_numeric",
-          "excluded",
-          "ambiguous",
-          "unsupported",
-          "unbound",
-        ].map((disposition) => [
-          disposition,
-          items.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
+      dispositionCounts(items, [
+        "normalized",
+        "raw",
+        "explicit_non_numeric",
+        "excluded",
+        "ambiguous",
+        "unsupported",
+        "unbound",
+      ]),
     ).toEqual({
       normalized: 16,
       raw: 0,
@@ -2162,7 +2508,20 @@ describe("Mistral adapters", () => {
       "renamed_cached_tokens",
     );
     await expect(mistralCatalog({ openapi })).rejects.toThrow(
-      "Mistral endpoint usage schema drifted",
+      "Mistral OpenAPI reference drifted: PromptTokensDetails",
+    );
+
+    const modelList = (await fixture("mistral/openapi.yaml")).replace(
+      "list_models_v1_models_get",
+      "list_available_models",
+    );
+    await expect(mistralCatalog({ openapi: modelList })).rejects.toThrow(
+      "Mistral OpenAPI reference drifted: /v1/models",
+    );
+
+    const misleadingUsage = `${openapi}\n    UnrelatedCacheShape:\n      properties:\n        cached_tokens:\n          type: integer`;
+    await expect(mistralCatalog({ openapi: misleadingUsage })).rejects.toThrow(
+      "Mistral OpenAPI reference drifted: PromptTokensDetails",
     );
 
     const adminUsage = (await fixture("mistral/admin-usage.mdx")).replaceAll(
@@ -2260,6 +2619,31 @@ describe("Mistral adapters", () => {
         source_refs: ["mistral-api"],
       },
     ]);
+
+    const api = (await fixture("mistral/api.json")).replace('      "type": "base",\n', "");
+    const value = manifest("mistral");
+    const source = value.sources.find(({ id }) => id === "mistral-api");
+    if (source === undefined) throw new Error("Missing Mistral API source");
+    expect(
+      parseSource({
+        provider: provider(value),
+        source,
+        body: api,
+        observedAt,
+      }).map(({ model_id }) => model_id),
+    ).toEqual(["mistral-medium-3-5", "mistral-ocr-4-0"]);
+
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: api.replace(
+          '{\n  "object": "list",',
+          '{\n  "object": "list",\n  "next_page_token": "unreviewed",',
+        ),
+        observedAt,
+      }),
+    ).toThrow("unknown_field at /next_page_token");
   });
 
   it("declares a structured official catalog and non-persistent account inventory", () => {
@@ -2340,6 +2724,14 @@ describe("Meta Llama adapters", () => {
         api_endpoints: hosted?.api_endpoints,
         pricing_state: hosted?.pricing_state,
       },
+      hostedLlama33: models
+        .filter(({ model_id }) => model_id === "Llama3.3-70B-Instruct")
+        .map(({ aliases, api_endpoints, capabilities, pricing_state }) => ({
+          aliases,
+          api_endpoints,
+          streaming: capabilities.streaming,
+          pricing_state,
+        })),
       safety: models
         .filter(({ tasks }) => !tasks.includes("text_generation"))
         .map(
@@ -2386,6 +2778,14 @@ describe("Meta Llama adapters", () => {
         api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
         pricing_state: "not_published",
       },
+      hostedLlama33: [
+        {
+          aliases: ["meta-llama/Llama-3.3-70B-Instruct", "Llama-3.3-70B-Instruct"],
+          api_endpoints: [{ name: "Chat Completions", path: "/v1/chat/completions" }],
+          streaming: true,
+          pricing_state: "not_published",
+        },
+      ],
       safety: [
         {
           model_id: "Llama-Guard-2-8B",
@@ -2537,20 +2937,15 @@ describe("Meta Llama adapters", () => {
     const items: PricingReconciliationItem[] = [];
     const models = await llamaCatalog({}, (item) => items.push(item));
     expect(
-      Object.fromEntries(
-        [
-          "normalized",
-          "raw",
-          "explicit_non_numeric",
-          "excluded",
-          "ambiguous",
-          "unsupported",
-          "unbound",
-        ].map((disposition) => [
-          disposition,
-          items.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
+      dispositionCounts(items, [
+        "normalized",
+        "raw",
+        "explicit_non_numeric",
+        "excluded",
+        "ambiguous",
+        "unsupported",
+        "unbound",
+      ]),
     ).toEqual({
       normalized: 0,
       raw: 0,
@@ -2568,6 +2963,7 @@ describe("Meta Llama adapters", () => {
           pricing: model.pricing_state,
         })),
     ).toEqual([
+      { id: "Llama3.3-70B-Instruct", pricing: "not_published" },
       { id: "Llama-4-Maverick-17B-128E-Instruct:fp8", pricing: "not_published" },
       { id: "Llama-Guard-4-12B", pricing: "not_published" },
     ]);
@@ -2619,6 +3015,44 @@ describe("Meta Llama adapters", () => {
     });
   });
 
+  it("fails closed when the generated model-list contract gains pagination or schema fields", async () => {
+    const resource = await fixture("llama/models.py");
+    await expect(
+      llamaCatalog({
+        "models.py": resource.replace(
+          "extra_headers: Headers | None = None,\n        extra_query: Query | None = None,\n        extra_body: Body | None = None,",
+          "extra_body: Body | None = None,\n        extra_query: Query | None = None,\n        extra_headers: Headers | None = None,",
+        ),
+        "llama_model.py": (await fixture("llama/llama_model.py")).replace(
+          'Literal["model"]',
+          "Literal['model']",
+        ),
+      }),
+    ).resolves.toHaveLength(12);
+    await expect(
+      llamaCatalog({
+        "models.py": resource.replace(
+          "extra_headers: Headers | None = None,",
+          "after: str | None = None,\n        extra_headers: Headers | None = None,",
+        ),
+      }),
+    ).rejects.toThrow("Llama API model-list resource drifted");
+
+    const model = await fixture("llama/llama_model.py");
+    await expect(
+      llamaCatalog({
+        "llama_model.py": model.replace("owned_by: str", "updated: int\n\n    owned_by: str"),
+      }),
+    ).rejects.toThrow("Llama API model schema drifted");
+
+    const list = await fixture("llama/model_list_response.py");
+    await expect(
+      llamaCatalog({
+        "model_list_response.py": list.replace("List[LlamaModel]", "CursorPage[LlamaModel]"),
+      }),
+    ).rejects.toThrow("Llama API model-list response drifted");
+  });
+
   it("validates the authenticated model-list schema", async () => {
     const models = await parsed("llama", "llama/api.json", "llama-api");
     expect(
@@ -2630,6 +3064,17 @@ describe("Meta Llama adapters", () => {
         source_refs: ["llama-api"],
       },
     ]);
+
+    await expect(
+      parsed("llama", "llama/api.json", "llama-api", (body) =>
+        body.replace('"data":', '"next": "cursor", "data":'),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      parsed("llama", "llama/api.json", "llama-api", (body) =>
+        body.replace('"owned_by": "meta"', '"owned_by": "meta", "updated": 1'),
+      ),
+    ).rejects.toThrow();
   });
 
   it("declares an exhaustive registry catalog and non-persistent API inventory", () => {
@@ -2643,7 +3088,11 @@ describe("Meta Llama adapters", () => {
         linkedDocuments: {
           documents: expect.arrayContaining([
             expect.objectContaining({ id: "llama-api-structured-example" }),
+            expect.objectContaining({ id: "llama-api-async-chat-example" }),
             expect.objectContaining({ id: "llama-api-client" }),
+            expect.objectContaining({ id: "llama-api-models" }),
+            expect.objectContaining({ id: "llama-api-model" }),
+            expect.objectContaining({ id: "llama-api-model-list-response" }),
             expect.objectContaining({ id: "llama-api-chat-params" }),
             expect.objectContaining({ id: "llama-api-chat-response" }),
             expect.objectContaining({ id: "llama-api-chat-stream-response" }),
@@ -2724,24 +3173,56 @@ describe("HTTP transport boundary", () => {
     ]);
   });
 
-  it("discovers reviewed HTML catalog links", () => {
+  it("discovers reviewed Markdown catalog links", () => {
     const source = manifest("openai").sources[0];
     if (source?.linkedDocuments === undefined) throw new Error("Missing OpenAI crawl policy");
     const urls = linkedDocumentUrls(
-      "<a href='/api/docs/models/gpt-5.4'>GPT-5.4</a><a href='/api/docs/pricing'>Pricing</a>",
+      "[GPT-5.4](/api/docs/models/gpt-5.4.md) [Pricing](/api/docs/pricing.md)",
       { ...source, linkedDocuments: { ...source.linkedDocuments, minDocuments: 1 } },
     );
-    expect(urls.map((url) => url.pathname)).toEqual(["/api/docs/models/gpt-5.4"]);
+    expect(urls.map((url) => url.pathname)).toEqual(["/api/docs/models/gpt-5.4.md"]);
   });
 
-  it("upgrades reviewed Anthropic companion links to Markdown", async () => {
+  it("keeps the Anthropic catalog on a fixed reviewed documentation bundle", async () => {
     const source = manifest("anthropic").sources[0];
     if (source?.linkedDocuments === undefined) throw new Error("Missing Anthropic link policy");
     const urls = linkedDocumentUrls(await fixture("anthropic/overview.md"), source);
-    expect(urls.map((url) => url.pathname)).toEqual([
-      "/docs/en/about-claude/model-deprecations.md",
-      "/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md",
-      "/docs/en/about-claude/pricing.md",
+    expect(urls).toEqual([]);
+    expect({
+      min: source.linkedDocuments.minDocuments,
+      max: source.linkedDocuments.maxDocuments,
+      reviewed: source.linkedDocuments.documents?.map(({ url }) => new URL(url).pathname),
+    }).toMatchObject({
+      min: 0,
+      max: 0,
+      reviewed: expect.arrayContaining([
+        "/llms.txt",
+        "/docs/en/about-claude/pricing.md",
+        "/docs/en/about-claude/models/model-ids-and-versions.md",
+        "/docs/en/manage-claude/usage-cost-api.md",
+      ]),
+    });
+  });
+
+  it("discovers bounded Foundry pricing families from Microsoft's pricing index", () => {
+    const source = manifest("azure").sources.find(({ id }) => id === "azure-public-pricing");
+    if (source?.linkedDocuments === undefined)
+      throw new Error("Missing Azure pricing discovery policy");
+    const families = linkedDocumentUrls(
+      [
+        '<a href="/en-us/pricing/details/ai-foundry-models/deepseek/">DeepSeek</a>',
+        '<a href="/en-us/pricing/details/ai-foundry-models/new-publisher/">New publisher</a>',
+        '<a href="/en-us/pricing/details/ai-foundry-models/aoai/">AOAI</a>',
+        '<a href="/en-us/pricing/details/ai-foundry-models/fine-tuning-models/">Fine tuning</a>',
+      ].join(""),
+      {
+        ...source,
+        linkedDocuments: { ...source.linkedDocuments, minDocuments: 2, maxDocuments: 2 },
+      },
+    );
+    expect(families.map((url) => url.pathname)).toEqual([
+      "/en-us/pricing/details/ai-foundry-models/deepseek/",
+      "/en-us/pricing/details/ai-foundry-models/new-publisher/",
     ]);
   });
 
@@ -2811,6 +3292,7 @@ describe("OpenAI adapters", () => {
         { name: "Chat Completions", path: "v1/chat/completions" },
         { name: "Responses", path: "v1/responses" },
         { name: "Assistants", path: "v1/assistants" },
+        { name: "Batch", path: "v1/batch" },
       ],
       aliases: ["gpt-5.4-2026-03-05"],
       context: 1_050_000,
@@ -2821,7 +3303,7 @@ describe("OpenAI adapters", () => {
         tool_call: true,
         structured_output: true,
         streaming: true,
-        batch: "unknown",
+        batch: true,
         prompt_cache: true,
         fine_tuning: false,
         citations: "unknown",
@@ -2834,6 +3316,13 @@ describe("OpenAI adapters", () => {
       embedding_type: ["embeddings"],
       embedding_output: ["embedding"],
     });
+    expect(model?.pricing_state).toBe("unknown");
+  });
+
+  it("keeps card-local pricing in a separately replaceable HTML overlay", async () => {
+    const catalog = await parsed("openai", "openai/catalog.json");
+    const models = await openAiModelPricing("openai/pricing-catalog.json", catalog);
+    const model = models.find((candidate) => candidate.model_id === "gpt-5.4");
     expect(
       model?.price_facts.find(
         (rate) =>
@@ -2854,7 +3343,11 @@ describe("OpenAI adapters", () => {
   });
 
   it("distinguishes the standard and batch views behind a price-tier selector", async () => {
-    const model = (await parsed("openai", "openai/batch-catalog.json"))[0];
+    const model = (
+      await openAiModelPricing("openai/batch-catalog.json", [
+        openAiModel("o3", ["text_generation"]),
+      ])
+    )[0];
     expect(
       model?.price_facts.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
     ).toEqual([
@@ -2879,22 +3372,17 @@ describe("OpenAI adapters", () => {
         conditions: { service_tier: "batch" },
       },
     ]);
-    expect(model?.capabilities.batch).toBe(true);
-    expect(model?.api_endpoints).toEqual([
-      { name: "Responses", path: "v1/responses" },
-      { name: "Batch", path: "v1/batch" },
-    ]);
   });
 
   it("publishes an explicitly free hosted moderation offer as free", async () => {
     const value = manifest("openai");
-    const catalogSource = value.sources.find(({ id }) => id === "openai-models");
-    if (catalogSource === undefined) throw new Error("Missing OpenAI catalog source");
+    const pricingSource = value.sources.find(({ id }) => id === "openai-overview");
+    if (pricingSource === undefined) throw new Error("Missing OpenAI model-card pricing source");
     const fixtureBundle = z
       .object({
         documents: z.array(z.object({ url: z.string(), body: z.string() })),
       })
-      .parse(JSON.parse(await fixture("openai/catalog.json")));
+      .parse(JSON.parse(await fixture("openai/pricing-catalog.json")));
     const template = fixtureBundle.documents.find(({ url }) =>
       url.endsWith("/text-embedding-3-large"),
     );
@@ -2920,9 +3408,10 @@ describe("OpenAI adapters", () => {
     });
     const [model] = parseSource({
       provider: provider(value),
-      source: catalogSource,
+      source: pricingSource,
       body,
       observedAt,
+      catalogModels: [openAiModel("omni-moderation-latest", ["moderation"], "Moderation")],
     });
     expect(model).toMatchObject({
       model_id: "omni-moderation-latest",
@@ -2983,12 +3472,17 @@ describe("OpenAI adapters", () => {
     const catalog = parseSource({
       provider: provider(value),
       source: catalogSource,
-      body: (await fixture("openai/catalog.json")).replace(
-        "Prompts with",
-        "For GPT-5.4, prompts with",
-      ),
+      body: openAiCatalogFixture(await fixture("openai/catalog.json")),
       observedAt,
     });
+    const pricingSource = value.sources.find(({ id }) => id === "openai-overview");
+    if (pricingSource === undefined) throw new Error("Missing OpenAI model-card pricing source");
+    const cardPricing = await openAiModelPricing("openai/pricing-catalog.json", catalog);
+    const pricedCatalog = applyGroups(
+      catalog,
+      [{ source: pricingSource, models: cardPricing }],
+      false,
+    );
     const image = {
       ...baseModel({
         providerId: "openai",
@@ -3047,7 +3541,7 @@ describe("OpenAI adapters", () => {
         source,
         body,
         observedAt,
-        catalogModels: [...catalog, image, transcribe, tokenTranscribe, whisper],
+        catalogModels: [...pricedCatalog, image, transcribe, tokenTranscribe, whisper],
         ...(reconcile ? { onPricingReconciliation: (item) => reconciliation.push(item) } : {}),
       });
     const models = parsePricing(pricingBody, true);
@@ -3173,8 +3667,54 @@ describe("OpenAI adapters", () => {
     );
   });
 
+  it("keeps an explicitly priced snapshot separate from a card alias", () => {
+    const value = manifest("openai");
+    const configured = value.sources.find(({ id }) => id === "openai-pricing");
+    if (configured === undefined || configured.extractor.kind !== "openai-pricing")
+      throw new Error("Missing OpenAI pricing source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "openai-pricing", minModels: 1, maxModels: 1 },
+    };
+    const card = {
+      ...openAiModel("gpt-4o", ["text_generation"], "GPT-4o"),
+      aliases: ["gpt-4o-2024-05-13"],
+      pricing_state: "numeric",
+      price_facts: [
+        publishedRate("input_text", "2.50", "million_tokens", "openai-overview", "per 1M tokens", {
+          service_tier: "standard",
+        }),
+      ],
+    } satisfies ProviderModel;
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: [
+        "Flagship models",
+        "Standard",
+        "| Model | Short context input | Short context output |",
+        "| --- | --- | --- |",
+        "| gpt-4o-2024-05-13 | $5.00 | $15.00 |",
+      ].join("\n"),
+      observedAt,
+      catalogModels: [card],
+    });
+    expect(models).toEqual([
+      expect.objectContaining({
+        model_id: "gpt-4o-2024-05-13",
+        pricing_state: "numeric",
+        price_facts: expect.arrayContaining([
+          expect.objectContaining({ meter: "input_text", price: "5.00" }),
+        ]),
+      }),
+    ]);
+  });
+
   it("binds Realtime translation duration to audio input", async () => {
-    const models = await parsed("openai", "openai/realtime-translation-catalog.json");
+    const models = await openAiModelPricing("openai/realtime-translation-catalog.json", [
+      openAiModel("gpt-realtime-translate", ["translation"]),
+      openAiModel("gpt-transcribe", ["transcription"]),
+    ]);
     expect(models.find(({ model_id }) => model_id === "gpt-realtime-translate")).toMatchObject({
       model_id: "gpt-realtime-translate",
       tasks: ["translation"],
@@ -3194,13 +3734,50 @@ describe("OpenAI adapters", () => {
     const value = manifest("openai");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing OpenAI catalog source");
-    const body = (await fixture("openai/catalog.json")).replace(
+    const body = openAiCatalogFixture(await fixture("openai/catalog.json")).replace(
       "v1/chat/completions",
       "v1/conversations",
     );
     expect(() => parseSource({ provider: provider(value), source, body, observedAt })).toThrow(
-      "Unsupported OpenAI endpoint card",
+      "Unsupported OpenAI endpoint row",
     );
+  });
+
+  it("turns a newly indexed commercial page into a review signal", async () => {
+    const value = manifest("openai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing OpenAI catalog source");
+    const bundle = linkedBundle(openAiCatalogFixture(await fixture("openai/catalog.json")));
+    const index = bundle.documents.find(({ url }) => url.endsWith("/api/docs/llms.txt"));
+    if (index === undefined) throw new Error("Missing OpenAI documentation index fixture");
+    index.body +=
+      "\n- [New usage surface](https://developers.openai.com/api/docs/guides/usage-ledger.md)";
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(bundle),
+        observedAt,
+      }),
+    ).toThrow("unreviewed commercial pages: /api/docs/guides/usage-ledger");
+  });
+
+  it("fails closed when the official organization usage surface changes", async () => {
+    const value = manifest("openai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing OpenAI catalog source");
+    const bundle = linkedBundle(openAiCatalogFixture(await fixture("openai/catalog.json")));
+    const openapi = bundle.documents.find(({ url }) => url.endsWith("/openapi.yaml"));
+    if (openapi === undefined) throw new Error("Missing OpenAI OpenAPI fixture");
+    openapi.body += "\n  /organization/usage/new_meter:\n    get: {}";
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(bundle),
+        observedAt,
+      }),
+    ).toThrow("organization usage surface drifted: /organization/usage/new_meter");
   });
 
   it("parses scoped API inventory without treating it as the global catalog", async () => {
@@ -3208,15 +3785,23 @@ describe("OpenAI adapters", () => {
     expect(models.map((model) => model.model_id)).toEqual(["gpt-5.4", "ft:gpt-5.4:example"]);
   });
 
-  it("keeps an overview alias inside its own model card", async () => {
-    const models = await parsed("openai", "openai/overview.html", "openai-overview");
-    expect(models.map(({ model_id, aliases }) => ({ model_id, aliases }))).toEqual([
-      { model_id: "gpt-5.6-sol", aliases: ["gpt-5.6"] },
+  it("keeps an explicit routed alias inside its matching Markdown card", async () => {
+    const body = openAiCatalogFixture(await fixture("openai/catalog.json")).replace(
+      "GPT-5.4 is a professional reasoning model.",
+      "GPT-5.4 is a professional reasoning model. The `gpt-5.4-latest` alias routes requests to GPT-5.4.",
+    );
+    const value = manifest("openai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing OpenAI catalog source");
+    const models = parseSource({ provider: provider(value), source, body, observedAt });
+    expect(models.find(({ model_id }) => model_id === "gpt-5.4")?.aliases).toEqual([
+      "gpt-5.4-2026-03-05",
+      "gpt-5.4-latest",
     ]);
   });
 
   it("parses lifecycle dates and replacements from deprecation tables", async () => {
-    const models = await parsed("openai", "openai/deprecations.html", "openai-deprecations");
+    const models = await parsed("openai", "openai/deprecations.md", "openai-deprecations");
     expect(
       models.map(({ model_id, status, retired_at, replacement_model_ids }) => ({
         model_id,
@@ -3258,7 +3843,7 @@ describe("OpenAI adapters", () => {
     const bounded = parseSource({
       provider: provider(value),
       source: lifecycleSource,
-      body: await fixture("openai/deprecations.html"),
+      body: await fixture("openai/deprecations.md"),
       observedAt,
       catalogModels: [current],
     });
@@ -3390,6 +3975,117 @@ describe("Azure adapters", () => {
     await expect(
       azureCatalog(undefined, undefined, { "prompt-caching.md": caching }),
     ).rejects.toThrow("Azure OpenAI cache accounting contract drifted");
+  });
+
+  it("supplements documented identities from the public Foundry portal without widening scope", async () => {
+    const value = manifest("azure");
+    const source = azurePortalSource(2, 2);
+    const documented = {
+      ...azurePricingModel("gpt-multi", "2026-01-01"),
+      status: "deprecated",
+      release_stage: "stable",
+      deprecated_at: "2026-06-01",
+    } satisfies ProviderModel;
+    const catalogModels = [documented, azurePricingModel("gpt-multi", "2026-02-01")];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("azure/portal-models.json"),
+      observedAt,
+      catalogModels,
+    });
+    const exact = models.find(({ version }) => version === "2026-01-01");
+    const newVersion = models.find(({ version }) => version === "2026-03-01");
+    expect(models.map(({ uid }) => uid)).toEqual([
+      "azure/gpt-multi@2026-01-01",
+      "azure/gpt-multi@2026-03-01",
+    ]);
+    expect(exact).toMatchObject({
+      name: "GPT Multi",
+      description: "A portal-enriched multimodal model.",
+      service_families: ["Azure OpenAI"],
+      tasks: ["text_generation"],
+      modalities: { input: ["text", "image"], output: ["text"] },
+      capabilities: {
+        reasoning: true,
+        tool_call: true,
+        streaming: true,
+        batch: true,
+      },
+      limits: {
+        context_tokens: 256_000,
+        max_input_tokens: 240_000,
+        max_output_tokens: 16_000,
+      },
+      status: "unknown",
+      release_stage: "unknown",
+      availability: [
+        { region: "eastus", deployment_type: "DataZoneStandard" },
+        { region: "eastus", deployment_type: "GlobalStandard" },
+        { region: "westus3", deployment_type: "GlobalStandard" },
+      ],
+    });
+    expect(newVersion).toMatchObject({
+      name: "GPT Multi Preview",
+      service_families: ["Azure OpenAI"],
+      status: "active",
+      release_stage: "preview",
+      capabilities: { tool_call: false, batch: false },
+    });
+    expect(models.some(({ model_id }) => model_id === "portal-only")).toBe(false);
+    const merged = applySupplementGroups(catalogModels, [{ source, models }]);
+    expect(merged.map(({ uid }) => uid)).toEqual([
+      "azure/gpt-multi@2026-01-01",
+      "azure/gpt-multi@2026-02-01",
+      "azure/gpt-multi@2026-03-01",
+    ]);
+    expect(merged.find(({ version }) => version === "2026-01-01")).toMatchObject({
+      status: "deprecated",
+      release_stage: "stable",
+      deprecated_at: "2026-06-01",
+    });
+  });
+
+  it("fails closed when the portal publishes an unreviewed inference task", async () => {
+    const value = manifest("azure");
+    const body = (await fixture("azure/portal-models.json")).replace(
+      '"chat-completion", "responses"',
+      '"future-inference-task", "responses"',
+    );
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source: azurePortalSource(2, 2),
+        body,
+        observedAt,
+        catalogModels: [azurePricingModel("gpt-multi", "2026-01-01")],
+      }),
+    ).toThrow("contract mismatch");
+  });
+
+  it("bounds the anonymous portal request as a non-exhaustive supplement", () => {
+    const source = azurePortalSource(50, 150);
+    expect(source).toMatchObject({
+      type: "api",
+      source: ["api", "website"],
+      access: "public",
+      stability: "undocumented",
+      scope: "global",
+      exhaustive: false,
+      role: "supplement",
+      headers: [
+        { name: "X-Ms-User-Agent", value: "AzureMachineLearningWorkspacePortal/3.0" },
+        { name: "x-ms-useragent", value: "AzureMachineLearningWorkspacePortal/3.0" },
+      ],
+      transport: {
+        kind: "azure-portal-models",
+        pageSize: 50,
+        maxPages: 5,
+        maxModels: 250,
+        registries: expect.arrayContaining(["azure-openai", "azureml", "azureml-cohere"]),
+      },
+    });
+    expect(source.optional).toBeUndefined();
   });
 
   it("parses the scoped ARM inventory and exact billing-meter price join", async () => {
@@ -3644,7 +4340,7 @@ describe("Azure adapters", () => {
       source,
       body: JSON.stringify({
         index: {
-          url: source.url,
+          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
           body: await fixture("azure/public-openai-pricing.html"),
         },
         documents: [
@@ -3687,6 +4383,42 @@ describe("Azure adapters", () => {
         reason_code: "public_price_bound",
       })),
     );
+  });
+
+  it("accepts a newly linked Foundry pricing family without widening identity matching", async () => {
+    const value = manifest("azure");
+    const source = azurePublicPricingSource(1, 1);
+    const llama: ProviderModel = {
+      ...azurePricingModel("Llama-3.3-70B-Instruct"),
+      service_families: ["Foundry Models sold by Azure"],
+    };
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify({
+        index: {
+          url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
+          body: await fixture("azure/public-openai-pricing.html"),
+        },
+        documents: [
+          {
+            url: "https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/new-publisher/",
+            body: await fixture("azure/public-llama-pricing.html"),
+          },
+        ],
+      }),
+      observedAt,
+      catalogModels: [llama, azurePricingModel("Llama-3.3-70B-Instruct")],
+    });
+    expect(models).toEqual([
+      expect.objectContaining({
+        uid: "azure/Llama-3.3-70B-Instruct",
+        price_facts: expect.arrayContaining([
+          expect.objectContaining({ meter: "input_text", unit: "million_tokens" }),
+          expect.objectContaining({ meter: "output_text", unit: "million_tokens" }),
+        ]),
+      }),
+    ]);
   });
 
   it("normalizes official partner meters with provider-native billing units", () => {
@@ -3972,6 +4704,29 @@ describe("Azure adapters", () => {
 });
 
 describe("Gemini adapters", () => {
+  it("pins the machine-readable API contract and paginates authenticated inventory", () => {
+    const value = manifest("gemini");
+    const catalog = value.sources.find(({ id }) => id === "gemini-models");
+    const inventory = value.sources.find(({ id }) => id === "gemini-api");
+    expect(catalog?.linkedDocuments?.documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "discovery",
+          url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
+          format: "json",
+        }),
+        expect.objectContaining({
+          id: "cloud-sku-group",
+          url: "https://cloud.google.com/skus/sku-groups/google-developer-program-premium-genai-credit",
+        }),
+      ]),
+    );
+    expect(inventory).toMatchObject({
+      url: "https://generativelanguage.googleapis.com/v1beta/models",
+      transport: { kind: "gemini-models", pageSize: 1000, maxPages: 5, maxModels: 5_000 },
+    });
+  });
+
   it("joins labeled model pages, lifecycle, changelog, and pricing", async () => {
     const models = await geminiCatalog();
     const model = models.find((item) => item.model_id === "gemini-test-preview");
@@ -4053,12 +4808,12 @@ describe("Gemini adapters", () => {
     expect({
       legacy: legacy?.price_facts.find((fact) => fact.meter === "tool_call")?.unit,
       current: current?.price_facts.find((fact) => fact.meter === "tool_call")?.unit,
-      reconciliation: Object.fromEntries(
-        ["normalized", "raw", "explicit_non_numeric", "excluded"].map((disposition) => [
-          disposition,
-          reconciliation.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
+      reconciliation: dispositionCounts(reconciliation, [
+        "normalized",
+        "raw",
+        "explicit_non_numeric",
+        "excluded",
+      ]),
     }).toEqual({
       legacy: "thousand_requests",
       current: "thousand_search_units",
@@ -4279,7 +5034,7 @@ describe("Gemini adapters", () => {
   it("rejects drift in fixed route evidence", async () => {
     const overview = await fixture("gemini/interactions-overview.html");
     const interactionsApi = await fixture("gemini/interactions-api.html");
-    const methods = await fixture("gemini/all-methods.html");
+    const discovery = await fixture("gemini/discovery.json");
     await expect(
       geminiCatalog({
         "interactions-overview.html": overview.replace("gemini-test-preview", "gemini-unpublished"),
@@ -4303,9 +5058,12 @@ describe("Gemini adapters", () => {
     ).rejects.toThrow("create endpoint changed");
     await expect(
       geminiCatalog({
-        "all-methods.html": methods.replace(":generateContent", ":generateContentV2"),
+        "discovery.json": discovery.replace(
+          "v1beta/{+model}:generateContent",
+          "v1beta/{+model}:generateContentV2",
+        ),
       }),
-    ).rejects.toThrow("model method changed");
+    ).rejects.toThrow("Discovery model method changed");
   });
 
   it("rejects drift in fixed billing and usage-accounting evidence", async () => {
@@ -4731,8 +5489,8 @@ describe("Vertex AI adapters", () => {
     const conflictingSkus = `
       <main><table>
         <tr><th>Service Name</th><th>SKU Name</th><th>SKU ID</th><th>Date Added</th></tr>
-        <tr><td>Gemini API</td><td>Video output token count for Gemini Test</td><td>ABCD-1234-EF56</td><td>August 3, 2026</td></tr>
-        <tr><td>Gemini API</td><td>Video output second count for Gemini Test</td><td>BCDE-2345-FA67</td><td>August 3, 2026</td></tr>
+        <tr><td>Vertex AI (C7E2-9256-1C43)</td><td>Video output token count for Gemini Test</td><td>ABCD-1234-EF56</td><td>August 3, 2026</td></tr>
+        <tr><td>Vertex AI (C7E2-9256-1C43)</td><td>Video output second count for Gemini Test</td><td>BCDE-2345-FA67</td><td>August 3, 2026</td></tr>
       </table></main>`;
     const unresolved = (
       await vertexCatalog({ "pricing.html": pricing, "skus.html": conflictingSkus })
@@ -5266,12 +6024,16 @@ describe("Vertex AI adapters", () => {
     await expect(vertexCatalog({ "routes.html": routes })).rejects.toThrow(
       "Vertex generateContent reference drifted",
     );
-    const usage = (await fixture("vertex/usage-response.html")).replace(
+    const discovery = (await fixture("vertex/discovery.json")).replace(
       "cachedContentTokenCount",
       "cacheHitTokens",
     );
-    await expect(vertexCatalog({ "usage-response.html": usage })).rejects.toThrow(
-      "Vertex Gemini usage response reference drifted",
+    await expect(vertexCatalog({ "discovery.json": discovery })).rejects.toThrow(
+      "Vertex usage schema changed",
+    );
+    const skus = (await fixture("vertex/skus.html")).replace("Vertex AI", "Unrelated Service");
+    await expect(vertexCatalog({ "skus.html": skus })).rejects.toThrow(
+      "Vertex billing SKU group contract changed",
     );
   });
 
@@ -5360,7 +6122,7 @@ describe("Anthropic adapters", () => {
 
   it("accounts for every reviewed Anthropic pricing row or explicit boundary", async () => {
     const items: PricingReconciliationItem[] = [];
-    await anthropicCatalog(undefined, undefined, undefined, (item) => items.push(item));
+    await anthropicCatalog({ onPricingReconciliation: (item) => items.push(item) });
     expect({
       observed: items.length,
       normalized: items.filter(({ disposition }) => disposition === "normalized").length,
@@ -5370,18 +6132,20 @@ describe("Anthropic adapters", () => {
       ),
       reasons: [...new Set(items.map(({ reason_code }) => reason_code))].sort(),
     }).toEqual({
-      observed: 27,
+      observed: 29,
       normalized: 17,
-      excluded: 10,
+      excluded: 12,
       problems: [],
       reasons: [
         "account_specific_discount",
+        "account_specific_service_tier",
         "base_model_price_row",
         "batch_model_price_row",
         "cache_multiplier_applied",
         "fast_model_price_row",
         "inference_geo_multiplier_applied",
         "provider_service_pricing_unmodeled",
+        "request_credit_reconciliation",
         "separate_distribution_pricing",
         "separate_product_pricing",
         "token_overhead_included_in_usage",
@@ -5520,9 +6284,11 @@ describe("Anthropic adapters", () => {
       /\n\[Claude Mythos Preview].*\n/,
       "\n",
     );
-    const preview = (await anthropicCatalog(undefined, undefined, lifecycle)).find(
-      ({ model_id }) => model_id === "claude-mythos-preview",
-    );
+    const preview = (
+      await anthropicCatalog({
+        overrides: { "/docs/en/about-claude/model-deprecations.md": lifecycle },
+      })
+    ).find(({ model_id }) => model_id === "claude-mythos-preview");
     expect(preview).toMatchObject({
       status: "deprecated",
       replacement_model_ids: ["claude-mythos-5"],
@@ -5535,22 +6301,26 @@ describe("Anthropic adapters", () => {
       "August 5, 2026",
       "February 30, 2026",
     );
-    await expect(anthropicCatalog(undefined, undefined, lifecycle)).rejects.toThrow(
-      "Anthropic retirement date was not a valid date: February 30, 2026",
-    );
+    await expect(
+      anthropicCatalog({
+        overrides: { "/docs/en/about-claude/model-deprecations.md": lifecycle },
+      }),
+    ).rejects.toThrow("Anthropic retirement date was not a valid date: February 30, 2026");
   });
 
   it("rejects a changed Messages operation contract", async () => {
     const body = (await fixture("anthropic/messages.md")).replace("/v1/messages", "/v2/messages");
-    await expect(anthropicCatalog(body)).rejects.toThrow(
-      "Anthropic endpoint document drifted for v1/messages",
-    );
+    await expect(
+      anthropicCatalog({ overrides: { "/docs/en/api/messages/create.md": body } }),
+    ).rejects.toThrow("Anthropic endpoint document drifted for v1/messages");
   });
 
   it("rejects loss of universal active-model batch coverage", async () => {
-    await expect(anthropicCatalog(undefined, "# Message Batches API")).rejects.toThrow(
-      "Anthropic batch model coverage drifted",
-    );
+    await expect(
+      anthropicCatalog({
+        overrides: { "/docs/en/build-with-claude/batch-processing.md": "# Message Batches API" },
+      }),
+    ).rejects.toThrow("Anthropic batch model coverage drifted");
   });
 
   it("requires every structured-output ID to bind to the catalog", async () => {
@@ -5559,8 +6329,112 @@ describe("Anthropic adapters", () => {
       "`claude-unknown-5`",
     );
     await expect(
-      anthropicCatalog(undefined, undefined, undefined, undefined, structured),
+      anthropicCatalog({
+        overrides: { "/docs/en/build-with-claude/structured-outputs.md": structured },
+      }),
     ).rejects.toThrow("Anthropic structured-output model did not bind: claude-unknown-5");
+  });
+
+  it("derives geography eligibility from the documented generation for new model families", async () => {
+    const overview = `${await fixture("anthropic/overview.md")}\n
+| Feature                                        | Claude Haiku 4.6        |
+| ---------------------------------------------- | ----------------------- |
+| **Description**                                | Fast future model       |
+| **Claude API ID**                              | claude-haiku-4-6        |
+| **Claude API alias**                           | claude-haiku-4-6        |
+| **Extended thinking (thinking.type enabled)**  | No                      |
+| **Adaptive thinking (thinking.type adaptive)** | Yes                     |
+| **Context window**                             | 200k tokens             |
+| **Max output**                                 | 64k tokens              |
+`;
+    const lifecycle = (await fixture("anthropic/lifecycle.md")).replace(
+      "| claude-fable-5           | Active",
+      "| claude-haiku-4-6         | Active        | N/A          | Not sooner than July 1, 2027   |\n| claude-fable-5           | Active",
+    );
+    const releases = (await fixture("anthropic/release-notes.md")).replace(
+      "### June 30, 2026",
+      "### July 1, 2026\n\n- We've launched **Claude Haiku 4.6** (`claude-haiku-4-6`), a faster model.\n\n### June 30, 2026",
+    );
+    const structured = (await fixture("anthropic/structured-outputs.md")).replace(
+      "`claude-fable-5`,",
+      "`claude-haiku-4-6`, `claude-fable-5`,",
+    );
+    const pricing = (await fixture("anthropic/pricing.md"))
+      .replace(
+        "| Claude Fable 5                             | $10 / MTok",
+        "| Claude Haiku 4.6                          | $1 / MTok         | $1.25 / MTok    | $2 / MTok       | $0.10 / MTok           | $5 / MTok     |\n| Claude Fable 5                             | $10 / MTok",
+      )
+      .replace(
+        "| Claude Fable 5                             | $5 / MTok",
+        "| Claude Haiku 4.6                          | $0.50 / MTok | $2.50 / MTok  |\n| Claude Fable 5                             | $5 / MTok",
+      );
+    const haiku = (
+      await anthropicCatalog({
+        overview,
+        overrides: {
+          "/docs/en/about-claude/model-deprecations.md": lifecycle,
+          "/docs/en/about-claude/pricing.md": pricing,
+          "/docs/en/build-with-claude/structured-outputs.md": structured,
+          "/docs/en/release-notes/overview.md": releases,
+        },
+      })
+    ).find(({ model_id }) => model_id === "claude-haiku-4-6");
+    expect(haiku).toMatchObject({
+      status: "active",
+      release_date: "2026-07-01",
+      limits: { context_tokens: 200_000, max_output_tokens: 64_000 },
+      capabilities: { reasoning: true, tool_call: true, structured_output: true },
+    });
+    expect(
+      haiku?.price_facts.find(
+        ({ meter, conditions }) => meter === "input_text" && conditions.inference_geo === "us",
+      )?.price,
+    ).toBe("1.1");
+  });
+
+  it("requires every fixed Anthropic source to remain discoverable in the official index", async () => {
+    const index = (await fixture("anthropic/llms.txt")).replace(
+      /^.*\/api\/models\/list\.md.*\n/m,
+      "",
+    );
+    await expect(anthropicCatalog({ overrides: { "/llms.txt": index } })).rejects.toThrow(
+      "Anthropic documentation index omitted reviewed source",
+    );
+  });
+
+  it("rejects disagreement between pricing and data-residency generation thresholds", async () => {
+    const residency = (await fixture("anthropic/data-residency.md")).replace("4.6", "4.7");
+    await expect(
+      anthropicCatalog({
+        overrides: { "/docs/en/manage-claude/data-residency.md": residency },
+      }),
+    ).rejects.toThrow("Anthropic pricing and data-residency generation thresholds disagreed");
+  });
+
+  it("rejects duplicate fixed documents instead of silently taking the first", async () => {
+    await expect(
+      anthropicCatalog({
+        extraDocuments: [
+          {
+            url: "https://platform.claude.com/docs/en/api/messages/create.md",
+            body: await fixture("anthropic/messages.md"),
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Anthropic catalog expected exactly one document: /docs/en/api/messages/create.md",
+    );
+  });
+
+  it("parses escaped Markdown pipes without shifting model columns", async () => {
+    const overview = (await fixture("anthropic/overview.md")).replace(
+      "Speed and intelligence",
+      "Speed \\| intelligence",
+    );
+    expect(
+      (await anthropicCatalog({ overview })).find(({ model_id }) => model_id === "claude-sonnet-5")
+        ?.description,
+    ).toBe("Speed | intelligence");
   });
 });
 
@@ -5773,6 +6647,84 @@ describe("Databricks adapters", () => {
     ).toBe("2027-03-01");
   });
 
+  it("validates additive operational schemas and rejects loss of billing semantics", async () => {
+    const billing = (await fixture("databricks/billing-usage.html")).replace(
+      "</tbody>",
+      "<tr><td>future_field</td><td>string</td><td>Additive field.</td><td>value</td></tr></tbody>",
+    );
+    await expect(databricksCatalog({ "billing-usage.html": billing })).resolves.toHaveLength(11);
+
+    const systemTables = await fixture("databricks/system-tables.html");
+    await expect(
+      databricksCatalog({
+        "system-tables.html": systemTables.replace(
+          "Data is updated throughout the day",
+          "Data arrives immediately",
+        ),
+      }),
+    ).rejects.toThrow("system-table freshness contract changed");
+
+    const gatewayUsage = await fixture("databricks/ai-gateway-usage.html");
+    await expect(
+      databricksCatalog({
+        "ai-gateway-usage.html": gatewayUsage.replaceAll("token_details", "token_breakdown"),
+      }),
+    ).rejects.toThrow("AI Gateway usage contract omitted fields: token_details");
+
+    const pricing = await fixture("databricks/list-pricing.html");
+    await expect(
+      databricksCatalog({
+        "list-pricing.html": pricing.replace("effective_list", "effective_price"),
+      }),
+    ).rejects.toThrow("list pricing contract changed");
+
+    const models = await fixture("databricks/models.html");
+    await expect(
+      databricksCatalog({
+        "models.html": models.replace("maximum output tokens", "different limit values"),
+      }),
+    ).rejects.toThrow("partner-model limit boundary changed");
+
+    await expect(
+      databricksCatalog({}, undefined, [
+        {
+          url: "https://docs.databricks.com/aws/en/admin/system-tables?duplicate=1",
+          body: systemTables,
+        },
+      ]),
+    ).rejects.toThrow("expected one /aws/en/admin/system-tables document");
+  });
+
+  it("rejects identity, regional, date, and table-span corruption", async () => {
+    const models = await fixture("databricks/models.html");
+    await expect(
+      databricksCatalog({
+        "models.html": models.replace("databricks-claude-sonnet-4-6", "databricks-claude-sonnet-4"),
+      }),
+    ).rejects.toThrow("repeated an endpoint ID");
+
+    const overview = await fixture("databricks/overview.html");
+    await expect(
+      databricksCatalog({
+        "overview.html": overview.replace("databricks-gpt-5-6-sol", "databricks-unknown-model"),
+      }),
+    ).rejects.toThrow("regional matrix named unknown catalog model");
+
+    const lifecycle = await fixture("databricks/lifecycle.html");
+    await expect(
+      databricksCatalog({
+        "lifecycle.html": lifecycle.replace("October 9, 2026", "February 30, 2026"),
+      }),
+    ).rejects.toThrow("invalid retirement date");
+
+    const partner = await fixture("databricks/pricing-partner.html");
+    await expect(
+      databricksCatalog({
+        "pricing-partner.html": partner.replace('rowspan="4"', 'rowspan="0"'),
+      }),
+    ).rejects.toThrow("invalid cell span");
+  });
+
   it("rejects task and API-reference drift instead of inferring routes", async () => {
     const tasks = await fixture("databricks/model-types.html");
     await expect(
@@ -5882,6 +6834,11 @@ describe("xAI adapter", () => {
         ),
       ),
     ).rejects.toThrow("structured and published voice pricing differ");
+    await expect(
+      xaiCatalog("xai/models-voice-services.txt", (body) =>
+        body.replace('"basis":"CONCURRENCY"', '"basis":"CONCURRENCY","futureVoiceRate":1'),
+      ),
+    ).rejects.toThrow("public voice endpoint added fields: futureVoiceRate");
   });
 
   it("joins the structured public catalog to lifecycle, voice, pricing, and release facts", async () => {
@@ -6110,26 +7067,21 @@ describe("xAI adapter", () => {
       (item) => items.push(item),
     );
     expect(
-      Object.fromEntries(
-        [
-          "normalized",
-          "raw",
-          "explicit_non_numeric",
-          "excluded",
-          "unbound",
-          "ambiguous",
-          "unsupported",
-          "unresolved",
-        ].map((disposition) => [
-          disposition,
-          items.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
+      dispositionCounts(items, [
+        "normalized",
+        "raw",
+        "explicit_non_numeric",
+        "excluded",
+        "unbound",
+        "ambiguous",
+        "unsupported",
+        "unresolved",
+      ]),
     ).toEqual({
       normalized: 11,
       raw: 1,
       explicit_non_numeric: 0,
-      excluded: 6,
+      excluded: 9,
       unbound: 2,
       ambiguous: 0,
       unsupported: 0,
@@ -6226,6 +7178,14 @@ describe("xAI adapter", () => {
       ),
     ).rejects.toThrow("added categories: futureModels");
     await expect(
+      xaiCatalog("xai/models.txt", (body) =>
+        body.replace(
+          '"batchDiscountPercent":0',
+          '"futureCommercialFlag":true,"batchDiscountPercent":0',
+        ),
+      ),
+    ).rejects.toThrow("public languageModels payload added fields: futureCommercialFlag");
+    await expect(
       xaiCatalog(
         "xai/models.txt",
         (body) => body,
@@ -6237,6 +7197,37 @@ describe("xAI adapter", () => {
         body.replace('"aliases":["grok-voice-latest"]', '"aliases":[]'),
       ),
     ).rejects.toThrow("structured and documented voice aliases differ");
+  });
+
+  it("cross-checks independent official prices, model API schemas, and account surfaces", async () => {
+    const value = manifest("xai");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v8");
+    expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v2");
+    await expect(
+      xaiCatalog(
+        "xai/models.txt",
+        (body) => body,
+        (body) =>
+          body.replace(
+            "| grok-4.5 (< 200k prompt tokens) | 500k | $2.00",
+            "| grok-4.5 (< 200k prompt tokens) | 500k | $2.10",
+          ),
+      ),
+    ).rejects.toThrow("structured and published pricing differ for grok-4.5");
+    await expect(
+      xaiCatalog(
+        "xai/models.txt",
+        (body) => body,
+        (body) => body.replace("## GET /v1/video-generation-models", "## GET /v1/future-models"),
+      ),
+    ).rejects.toThrow("documented model API routes fields changed");
+    await expect(
+      xaiCatalog(
+        "xai/models.txt",
+        (body) => body,
+        (body) => body.replace("usage is calculated by cost in USD", "usage defaults to credits"),
+      ),
+    ).rejects.toThrow("xAI Console usage contract drifted");
   });
 
   it("parses every authenticated inventory without treating it as global presence", async () => {
@@ -6262,6 +7253,24 @@ describe("xAI adapter", () => {
       tasks: ["video_generation"],
       scope: "runtime_observation",
     });
+    await expect(
+      parsed("xai", "xai/language-api.json", "xai-language-api", (body) => {
+        const value = z
+          .object({ models: z.array(z.record(z.string(), z.unknown())).min(1) })
+          .parse(JSON.parse(body));
+        return JSON.stringify({ ...value, future_page: null });
+      }),
+    ).rejects.toThrow();
+    await expect(
+      parsed("xai", "xai/api.json", "xai-api", (body) => {
+        const value = z
+          .object({ data: z.array(z.record(z.string(), z.unknown())).min(1), object: z.string() })
+          .parse(JSON.parse(body));
+        const first = value.data[0];
+        if (first === undefined) throw new Error("Missing xAI API fixture model");
+        return JSON.stringify({ ...value, data: [{ ...first, future_price: 1 }] });
+      }),
+    ).rejects.toThrow();
   });
 
   it("retains a source when its canonical API ID matches a public alias", async () => {
@@ -6285,6 +7294,122 @@ describe("xAI adapter", () => {
 });
 
 describe("document adapter", () => {
+  it("validates the complete first-party Bedrock model, accounting, and billing contract set", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v13");
+    expect(source.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([
+        "bedrock-model-catalog-contract",
+        "bedrock-list-foundation-models-contract",
+        "bedrock-foundation-model-summary-contract",
+        "bedrock-foundation-model-lifecycle-contract",
+        "bedrock-converse-contract",
+        "bedrock-count-tokens-contract",
+        "bedrock-service-tiers-contract",
+        "bedrock-conversation-usage-contract",
+        "bedrock-prompt-caching-contract",
+        "bedrock-token-counting-guide-contract",
+        "bedrock-invocation-logging-contract",
+        "bedrock-cost-management-contract",
+        "bedrock-cur-contract",
+        "aws-price-list-precedence-contract",
+        "aws-price-list-bulk-contract",
+        "aws-billing-latency-contract",
+      ]),
+    );
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    const contracts = linkedBundle(await fixture("document/bedrock-contracts.json"));
+    bundle.documents.push(...contracts.documents);
+    expect(
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(bundle),
+        observedAt,
+      }),
+    ).toHaveLength(4);
+
+    const canonical = bundle.documents.find(({ url }) => url.endsWith("models-supported.md"));
+    if (canonical === undefined) throw new Error("Missing Bedrock contract fixture");
+    canonical.body = canonical.body.replace("has moved", "might move");
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(bundle),
+        observedAt,
+      }),
+    ).toThrow("canonical model catalog contract drifted");
+  });
+
+  it("requires all Bedrock contracts together and rejects duplicate official companions", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const base = linkedBundle(await fixture("document/bedrock.json"));
+    const contracts = linkedBundle(await fixture("document/bedrock-contracts.json"));
+    base.documents.push(...contracts.documents.slice(1));
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(base),
+        observedAt,
+      }),
+    ).toThrow("omitted official contract documents");
+
+    const complete = linkedBundle(await fixture("document/bedrock.json"));
+    const duplicate = contracts.documents[0];
+    if (duplicate === undefined) throw new Error("Missing Bedrock contract fixture");
+    complete.documents.push(...contracts.documents, duplicate);
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(complete),
+        observedAt,
+      }),
+    ).toThrow("duplicated official document");
+  });
+
+  it("parses escaped Bedrock Markdown pipes and rejects irregular table rows", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const escaped = linkedBundle(await fixture("document/bedrock.json"));
+    const escapedCard = escaped.documents.find(({ url }) => url.includes("model-card-"));
+    if (escapedCard === undefined) throw new Error("Missing Bedrock card fixture");
+    escapedCard.body = escapedCard.body.replace(
+      "us-east-1 (N. Virginia) | ![Yes]",
+      "us-east-1 (N. Virginia \\| primary) | ![Yes]",
+    );
+    expect(
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(escaped),
+        observedAt,
+      }),
+    ).toHaveLength(4);
+    const irregular = linkedBundle(await fixture("document/bedrock.json"));
+    const irregularCard = irregular.documents.find(({ url }) => url.includes("model-card-"));
+    if (irregularCard === undefined) throw new Error("Missing Bedrock card fixture");
+    irregularCard.body = irregularCard.body.replace(
+      "us-east-1 (N. Virginia) | ![Yes](icon-yes.png) |",
+      "us-east-1 (N. Virginia) | unexpected | ![Yes](icon-yes.png) |",
+    );
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify(irregular),
+        observedAt,
+      }),
+    ).toThrow("Markdown table contained an irregular row");
+  });
+
   it("uses the current public Bedrock page when the structured price lists lag", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -6333,8 +7458,9 @@ describe("document adapter", () => {
             <h2 id="OpenAI">OpenAI</h2>
             <div class="lb-rtxt"><p>Regions: US East (N. Virginia) &amp; US East (Ohio)</p></div>
             <div><table><tbody>
-              <tr><td>OpenAI models</td><td>Price per 1M input tokens</td><td>Price per 1M input tokens (30m cache write)</td><td>Price per 1M input tokens (cache read)</td><td>Price per 1M output tokens</td></tr>
-              <tr><td>GPT-5.5</td><td>$ 5.50</td><td>-</td><td>$ 0.55</td><td>$ 33.00</td></tr>
+              <tr><td></td><td colspan="4">Short Context Window (272K)</td><td colspan="4">Long Context Window (1M)</td></tr>
+              <tr><td>OpenAI models</td><td>Price per 1M input tokens</td><td>Price per 1M input tokens (30m cache write)</td><td>Price per 1M input tokens (cache read)</td><td>Price per 1M output tokens</td><td>Price per 1M input tokens</td><td>Price per 1M input tokens (30m cache write)</td><td>Price per 1M input tokens (cache read)</td><td>Price per 1M output tokens</td></tr>
+              <tr><td>GPT-5.5</td><td>$ 5.50</td><td>-</td><td>$ 0.55</td><td>$ 33.00</td><td>-</td><td>-</td><td>-</td><td>-</td></tr>
             </tbody></table></div>
           </li>
           <li role="tabpanel">
@@ -6364,7 +7490,11 @@ describe("document adapter", () => {
     ).toMatchObject({
       price: "5.50",
       unit: "million_tokens",
-      conditions: { deployment_scope: "in_region", service_tier: "standard" },
+      conditions: {
+        deployment_scope: "in_region",
+        service_tier: "standard",
+        context_max_tokens: 272_000,
+      },
     });
     const stability = models.find(
       ({ model_id }) => model_id === "stability.stable-image-remove-background-v1:0",
@@ -6385,8 +7515,75 @@ describe("document adapter", () => {
       },
       { disposition: "normalized", reason_code: "pricing_page_cell_bound" },
       { disposition: "normalized", reason_code: "pricing_page_cell_bound" },
+      ...Array.from({ length: 4 }, () => ({
+        disposition: "excluded",
+        reason_code: "price_cell_not_available",
+        sample: expect.stringContaining("GPT-5.5"),
+      })),
       { disposition: "normalized", reason_code: "pricing_page_cell_bound" },
     ]);
+  });
+
+  it("preserves Bedrock OpenAI short- and long-context price ranges", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const fixtureBundle = linkedBundle(await fixture("document/bedrock.json"));
+    const haiku = fixtureBundle.documents.find((document) =>
+      document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
+    );
+    const mantle = fixtureBundle.documents.find((document) =>
+      document.url.endsWith("bedrock-mantle.md"),
+    );
+    if (haiku === undefined || mantle === undefined)
+      throw new Error("Missing Bedrock model card fixture");
+    const body = JSON.stringify({
+      index: fixtureBundle.index,
+      documents: [
+        mantle,
+        {
+          url: "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-56-sol.md",
+          body: haiku.body
+            .replaceAll("Anthropic — Claude Haiku 4.5", "OpenAI — GPT-5.6 Sol")
+            .replaceAll("Claude Haiku 4.5", "GPT-5.6 Sol")
+            .replaceAll("anthropic.claude-haiku-4-5-20251001-v1:0", "openai.gpt-5.6-sol-runtime")
+            .replaceAll("anthropic.claude-haiku-4-5", "openai.gpt-5.6-sol"),
+        },
+        {
+          url: "https://aws.amazon.com/bedrock/pricing/",
+          body: `<li role="tabpanel">
+            <h2 id="OpenAI">OpenAI</h2>
+            <div class="lb-rtxt"><p>Region: US East (N. Virginia)</p></div>
+            <div><table><tbody>
+              <tr><td></td><td colspan="4">Short Context Window (272K)</td><td colspan="4">Long Context Window (1M)</td></tr>
+              <tr><td>OpenAI models</td><td>Price per 1M input tokens</td><td>Price per 1M input tokens (30m cache write)</td><td>Price per 1M input tokens (cache read)</td><td>Price per 1M output tokens</td><td>Price per 1M input tokens</td><td>Price per 1M input tokens (30m cache write)</td><td>Price per 1M input tokens (cache read)</td><td>Price per 1M output tokens</td></tr>
+              <tr><td>GPT-5.6 Sol</td><td>$5.50</td><td>$6.875</td><td>$0.55</td><td>$33.00</td><td>$11.00</td><td>$13.75</td><td>$1.10</td><td>$49.50</td></tr>
+            </tbody></table></div>
+          </li>
+          <li role="tabpanel">
+            <h2 id="Stability_AI">Stability AI</h2>
+            <table><tbody><tr><td>Stability AI Image Services</td><td>Price per generation for each model</td></tr></tbody></table>
+          </li>`,
+        },
+      ],
+    });
+    const model = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+    }).find(({ model_id }) => model_id === "openai.gpt-5.6-sol");
+    expect(model?.price_facts).toHaveLength(8);
+    expect(
+      model?.price_facts.find(
+        ({ meter, conditions }) =>
+          meter === "input_text" && conditions.context_min_tokens === 272_001,
+      ),
+    ).toMatchObject({
+      price: "11.00",
+      raw_unit: "Long Context Window (1M): Price per 1M input tokens",
+      conditions: { context_min_tokens: 272_001, context_max_tokens: 1_000_000 },
+    });
   });
 
   it("uses reviewed Bedrock pricing-page values when AWS price-list values disagree", async () => {
@@ -7212,16 +8409,20 @@ describe("document adapter", () => {
     const expanded = body
       .replace(
         '"inputModalities": ["TEXT", "IMAGE"]',
-        '"inputModalities": ["TEXT", "IMAGE", "AUDIO", "SPEECH", "VIDEO"]',
+        '"inputModalities": ["TEXT", "IMAGE", "EMBEDDING"]',
       )
-      .replace('"outputModalities": ["TEXT"]', '"outputModalities": ["TEXT", "SPEECH", "VIDEO"]')
+      .replace('"outputModalities": ["TEXT"]', '"outputModalities": ["TEXT", "EMBEDDING"]')
       .replace(
         '"customizationsSupported": ["FINE_TUNING"]',
-        '"customizationsSupported": ["PREFERENCE_FINE_TUNING"]',
+        '"customizationsSupported": ["FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]',
       )
       .replace(
         '"inferenceTypesSupported": ["ON_DEMAND"]',
-        '"inferenceTypesSupported": ["INFERENCE_PROFILE"]',
+        '"inferenceTypesSupported": ["ON_DEMAND", "PROVISIONED"]',
+      )
+      .replace(
+        '"status": "ACTIVE",',
+        '"status": "ACTIVE",\n        "publicExtendedAccessTime": "2027-01-01T00:00:00.000Z",',
       );
     const expandedModel = parseSource({
       provider: provider(value),
@@ -7234,22 +8435,44 @@ describe("document adapter", () => {
       fineTuning: expandedModel?.capabilities.fine_tuning,
     }).toEqual({
       modalities: {
-        input: ["text", "image", "audio", "video"],
-        output: ["text", "audio", "video"],
+        input: ["text", "image", "embedding"],
+        output: ["text", "embedding"],
       },
       fineTuning: true,
     });
+    expect(
+      parseSource({
+        provider: provider(value),
+        source,
+        body: body.replace(
+          '"customizationsSupported": ["FINE_TUNING"]',
+          '"customizationsSupported": ["CONTINUED_PRE_TRAINING", "DISTILLATION"]',
+        ),
+        observedAt,
+      })[0]?.capabilities.fine_tuning,
+    ).toBe(false);
     for (const changed of [
+      body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "AUDIO"]'),
       body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "MUSIC"]'),
+      body.replace(
+        '"customizationsSupported": ["FINE_TUNING"]',
+        '"customizationsSupported": ["PREFERENCE_FINE_TUNING"]',
+      ),
       body.replace(
         '"customizationsSupported": ["FINE_TUNING"]',
         '"customizationsSupported": ["ADAPTER_TUNING"]',
       ),
       body.replace(
         '"inferenceTypesSupported": ["ON_DEMAND"]',
+        '"inferenceTypesSupported": ["INFERENCE_PROFILE"]',
+      ),
+      body.replace(
+        '"inferenceTypesSupported": ["ON_DEMAND"]',
         '"inferenceTypesSupported": ["SERVERLESS"]',
       ),
       body.replace('"status": "ACTIVE"', '"status": "AVAILABLE"'),
+      body.replace("foundation-model/anthropic", "foundation-model/cohere"),
+      body.replace(/^\s*"modelArn":.*\n/m, ""),
     ])
       expect(() =>
         parseSource({ provider: provider(value), source, body: changed, observedAt }),
@@ -7447,13 +8670,8 @@ describe("Vercel adapter", () => {
       pricingState: "numeric",
     });
     expect(
-      Object.fromEntries(
-        ["normalized", "raw", "explicit_non_numeric", "excluded"].map((disposition) => [
-          disposition,
-          reconciliations.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
-    ).toEqual({ normalized: 2, raw: 1, explicit_non_numeric: 1, excluded: 6 });
+      dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "excluded"]),
+    ).toEqual({ normalized: 2, raw: 1, explicit_non_numeric: 1, excluded: 13 });
   });
 
   it("declares endpoint, missing-price page, and commercial-policy collection", () => {
@@ -7470,11 +8688,18 @@ describe("Vercel adapter", () => {
         minDocuments: 0,
         maxDocuments: 0,
         documents: expect.arrayContaining([
+          expect.objectContaining({ id: "models-and-providers" }),
           expect.objectContaining({ id: "pricing-policy" }),
           expect.objectContaining({ id: "provider-options" }),
+          expect.objectContaining({ id: "provider-filtering-and-ordering" }),
+          expect.objectContaining({ id: "fast-mode" }),
+          expect.objectContaining({ id: "service-tiers" }),
+          expect.objectContaining({ id: "regional-inference" }),
+          expect.objectContaining({ id: "byok" }),
           expect.objectContaining({ id: "rest-api" }),
           expect.objectContaining({ id: "custom-reporting" }),
           expect.objectContaining({ id: "logs" }),
+          expect.objectContaining({ id: "usage" }),
         ]),
       },
     });
@@ -7855,18 +9080,45 @@ describe("Cerebras adapter", () => {
     }
   }
 
+  async function publicBody(
+    index: string,
+    overrides: Readonly<Partial<Record<"openrouter" | "huggingface" | "contract", string>>> = {},
+  ): Promise<string> {
+    return JSON.stringify({
+      index: { url: source("cerebras-models").url, body: index },
+      documents: [
+        {
+          url: "https://api.cerebras.ai/public/v1/models?format=openrouter",
+          body: overrides.openrouter ?? (await fixture("cerebras/public-openrouter.json")),
+        },
+        {
+          url: "https://api.cerebras.ai/public/v1/models?format=huggingface",
+          body: overrides.huggingface ?? (await fixture("cerebras/public-huggingface.json")),
+        },
+        {
+          url: "https://inference-docs.cerebras.ai/api-reference/models/public-models.md",
+          body: overrides.contract ?? (await fixture("cerebras/public-models.md")),
+        },
+      ],
+    });
+  }
+
   async function parse(
     id: string,
     path: string,
     onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+    onContractFinding?: (finding: SourceContractEvidence) => void,
   ): Promise<ProviderModel[]> {
     const value = manifest("cerebras");
+    const fixtureBody = await fixture(path);
+    const body = id === "cerebras-models" ? await publicBody(fixtureBody) : fixtureBody;
     return parseSource({
       provider: provider(value),
       source: source(id),
-      body: await fixture(path),
+      body,
       observedAt,
       ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+      ...(onContractFinding === undefined ? {} : { onContractFinding }),
     });
   }
 
@@ -7903,6 +9155,8 @@ describe("Cerebras adapter", () => {
       ["/api-reference/metrics/retrieve-metrics.md", "metrics-api", "md"],
       ["/dedicated/overview.md", "dedicated", "md"],
       ["/integrations/aws-marketplace.md", "aws-marketplace", "md"],
+      ["/api-reference/versions.md", "api-versions", "md"],
+      ["/api-reference/openapi.yaml", "openapi", "yaml"],
       ["/support/pricing.md", "pricing", "html"],
     ] as const;
     const body = JSON.stringify({
@@ -7949,39 +9203,98 @@ describe("Cerebras adapter", () => {
   }
 
   it("retains structured capabilities without treating created=0 as a release", async () => {
-    const model = (await parse("cerebras-models", "cerebras/normal.json"))[0];
+    const model = (await parse("cerebras-models", "cerebras/public.json")).find(
+      ({ model_id }) => model_id === "gemma-4-31b",
+    );
     expect(model?.capabilities.reasoning).toBe(true);
     expect(model?.tasks).toEqual(["text_generation"]);
-    expect(model?.capabilities.structured_output).toBe(false);
+    expect(model?.capabilities.structured_output).toBe(true);
     expect(model?.status).toBe("active");
-    expect(model?.release_stage).toBe("preview");
+    expect(model?.release_stage).toBe("stable");
     expect(model?.release_date).toBeUndefined();
   });
 
-  it("normalizes published per-token rates", async () => {
+  it("normalizes native rates and reconciles both official compatibility formats", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
-    const model = (
-      await parse("cerebras-models", "cerebras/pricing.json", (item) => reconciliation.push(item))
-    )[0];
+    const models = await parse("cerebras-models", "cerebras/public.json", (item) =>
+      reconciliation.push(item),
+    );
+    const model = models.find(({ model_id }) => model_id === "gemma-4-31b");
     expect(model?.release_date).toBeUndefined();
     expect({
       id: model?.model_id,
       input: model?.price_facts.find((rate) => rate.meter === "input_text")?.price,
       output: model?.price_facts.find((rate) => rate.meter === "output_text")?.price,
       pricing_state: model?.pricing_state,
-    }).toEqual(await expected("cerebras/expected.json"));
-    expect(reconciliation).toEqual([
-      {
-        disposition: "normalized",
-        reason_code: "price_normalized",
-        sample: "fixture-8b:input_text",
+    }).toEqual({
+      id: "gemma-4-31b",
+      input: "0.99",
+      output: "1.49",
+      pricing_state: "numeric",
+    });
+    expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
+      observed_items: 12,
+      disposition_counts: { normalized: 12 },
+    });
+    expect(reconciliation).toEqual(
+      expect.arrayContaining([
+        {
+          disposition: "normalized",
+          reason_code: "openrouter_format_rate_corroborated",
+          sample: "gemma-4-31b:input_text",
+        },
+        {
+          disposition: "normalized",
+          reason_code: "huggingface_format_rate_corroborated",
+          sample: "gemma-4-31b:output_text",
+        },
+      ]),
+    );
+  });
+
+  it("signals additive native fields and rejects compatibility-format disagreement", async () => {
+    const native = (await fixture("cerebras/public.json")).replace(
+      '"deprecated": false,',
+      '"future_optional": true, "deprecated": false,',
+    );
+    let finding: SourceContractEvidence | undefined;
+    const value = manifest("cerebras");
+    const models = parseSource({
+      provider: provider(value),
+      source: source("cerebras-models"),
+      body: await publicBody(native),
+      observedAt,
+      onContractFinding: (item) => {
+        finding = item;
       },
-      {
-        disposition: "normalized",
-        reason_code: "price_normalized",
-        sample: "fixture-8b:output_text",
-      },
-    ]);
+    });
+    expect(models).toHaveLength(2);
+    expect(finding).toMatchObject({
+      disposition: "accept_with_signal",
+      observed_items: 2,
+      diagnostics: [
+        {
+          kind: "unknown_field",
+          path: "/future_optional",
+          observed_value: "true",
+          affected_items: 1,
+          sample_model_ids: ["gpt-oss-120b"],
+        },
+      ],
+    });
+    const openrouter = (await fixture("cerebras/public-openrouter.json")).replace(
+      '"prompt": "0.00000035"',
+      '"prompt": "0.00000036"',
+    );
+    const divergentBody = await publicBody(await fixture("cerebras/public.json"), { openrouter });
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source: source("cerebras-models"),
+        body: divergentBody,
+        observedAt,
+      }),
+    ).toThrow("Cerebras public-model formats disagree for gpt-oss-120b");
   });
 
   it("parses model cards, scheduled lifecycle, and cached-input pricing", async () => {
@@ -8013,11 +9326,11 @@ describe("Cerebras adapter", () => {
     expect(models.every(({ capabilities }) => capabilities.effort_control === true)).toBe(true);
     expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
       basis: "source_item",
-      observed_items: 26,
+      observed_items: 38,
       disposition_counts: {
-        normalized: 9,
+        normalized: 19,
         excluded: 13,
-        unbound: 4,
+        unbound: 6,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
@@ -8045,6 +9358,16 @@ describe("Cerebras adapter", () => {
         {
           disposition: "unbound",
           reason_code: "batch_rate_not_published",
+        },
+        {
+          disposition: "unbound",
+          reason_code: "model_card_prose_rate_conflict",
+          sample: "gemma-4-31b:input_text",
+        },
+        {
+          disposition: "normalized",
+          reason_code: "pricing_page_rate_corroborated",
+          sample: "gemma-4-31b:output_text",
         },
       ]),
     );
@@ -8091,6 +9414,20 @@ describe("Cerebras adapter", () => {
     await expect(catalog({ overrides: { "service-tiers": serviceTiers } })).rejects.toThrow(
       "Cerebras service-tier pricing policy drift",
     );
+    const openapi = (await fixture("cerebras/openapi.yaml")).replace(
+      "/v1/chat/completions",
+      "/v2/chat/completions",
+    );
+    await expect(catalog({ overrides: { openapi } })).rejects.toThrow(
+      "Cerebras raw OpenAPI contract drift",
+    );
+    const apiVersions = (await fixture("cerebras/api-versions.md")).replace(
+      "Version 2 is now the default",
+      "Version 3 is now the default",
+    );
+    await expect(catalog({ overrides: { "api-versions": apiVersions } })).rejects.toThrow(
+      "Cerebras API-version contract drift",
+    );
     const usage = (await fixture("cerebras/usage-monitoring.md")).replace(
       "delayed by up to 10 minutes",
       "updated later",
@@ -8109,8 +9446,8 @@ describe("Cerebras adapter", () => {
     });
     expect(reconciliation).toContainEqual({
       disposition: "unbound",
-      reason_code: "pricing_page_card_rate_conflict",
-      sample: "gpt-oss-120b",
+      reason_code: "pricing_page_rate_conflict",
+      sample: "gpt-oss-120b:input_text",
     });
     const llms = await fixture("cerebras/llms.txt");
     await expect(
@@ -8207,6 +9544,36 @@ describe("Cerebras adapter", () => {
     ).toMatchObject({ price: "0.99", source_ref: "cerebras-models" });
   });
 
+  it("signals additive authenticated inventory fields", async () => {
+    const value = manifest("cerebras");
+    const body = (await fixture("cerebras/api.json")).replace(
+      '"owned_by": "Cerebras"',
+      '"owned_by": "Cerebras", "account_hint": true',
+    );
+    let finding: SourceContractEvidence | undefined;
+    const models = parseSource({
+      provider: provider(value),
+      source: source("cerebras-api"),
+      body,
+      observedAt,
+      onContractFinding: (item) => {
+        finding = item;
+      },
+    });
+    expect(models).toHaveLength(1);
+    expect(finding).toMatchObject({
+      disposition: "accept_with_signal",
+      diagnostics: [
+        {
+          kind: "unknown_field",
+          path: "/account_hint",
+          affected_items: 1,
+          sample_model_ids: ["gpt-oss-120b"],
+        },
+      ],
+    });
+  });
+
   it("rejects an empty catalog", async () => {
     await expect(parse("cerebras-models", "cerebras/broken.json")).rejects.toThrow(
       "contract mismatch",
@@ -8215,16 +9582,243 @@ describe("Cerebras adapter", () => {
 });
 
 describe("Hugging Face adapter", () => {
-  it("uses only Hugging Face-operated listings as catalog sources", () => {
+  it("uses HF-operated presence sources and exact provider-native overlays", () => {
     const sources = manifest("huggingface").sources;
+    const expectedPartners = [
+      "baseten",
+      "cerebras",
+      "cohere",
+      "deepinfra",
+      "fal-ai",
+      "featherless-ai",
+      "fireworks-ai",
+      "groq",
+      "hf-inference",
+      "novita",
+      "nscale",
+      "ovhcloud",
+      "publicai",
+      "replicate",
+      "scaleway",
+      "together",
+      "wavespeed",
+      "zai-org",
+    ];
     expect(sources.map(({ id, role }) => ({ id, role }))).toEqual([
       { id: "huggingface-hf-inference", role: "catalog" },
       { id: "huggingface-router", role: "catalog" },
+      { id: "huggingface-featherless", role: "overlay" },
       { id: "huggingface-hub", role: "overlay" },
+    ]);
+    const mappings = sources[0];
+    expect(mappings?.extractorVersion).toBe("huggingface-mapping-v8");
+    expect(mappings?.extractor).toEqual({
+      kind: "huggingface-mapping",
+      providers: expectedPartners,
+      minModels: 1,
+      maxModels: 100_000,
+      minRoutes: 1,
+      maxRoutes: 200_000,
+    });
+    expect(mappings?.transport).toMatchObject({
+      kind: "huggingface-partner-models",
+      providers: expectedPartners,
+    });
+    expect(mappings?.linkedDocuments).toMatchObject({
+      indexFormat: "mixed",
+      minDocuments: 10,
+      maxDocuments: 128,
+      requestSuffix: ".md",
+      documents: [
+        {
+          id: "task-index",
+          url: "https://huggingface.co/docs/inference-providers/en/tasks/index.md",
+        },
+      ],
+    });
+    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v7");
+    expect(sources[2]).toMatchObject({
+      extractorVersion: "huggingface-featherless-v1",
+      optional: true,
+      pricingRequired: true,
+      transport: { kind: "featherless-models", pageSize: 1000 },
+    });
+    expect(sources[3]?.extractorVersion).toBe("huggingface-hub-v2");
+  });
+
+  it("discovers current task documents without a task URL allowlist", () => {
+    const source = manifest("huggingface").sources[0];
+    if (source?.linkedDocuments === undefined)
+      throw new Error("Missing Hugging Face task discovery policy");
+    const urls = linkedDocumentUrls(
+      [
+        '<a href="./chat-completion">Chat Completion</a>',
+        "[Feature Extraction](./feature-extraction)",
+      ].join("\n"),
+      {
+        ...source,
+        url: "https://huggingface.co/docs/inference-providers/en/tasks/index.md",
+        linkedDocuments: {
+          ...source.linkedDocuments,
+          minDocuments: 2,
+          maxDocuments: 2,
+        },
+      },
+    );
+    expect(urls.map(({ href }) => href)).toEqual([
+      "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
+      "https://huggingface.co/docs/inference-providers/en/tasks/feature-extraction.md",
     ]);
   });
 
-  it("parses every concrete mapping and unions non-exclusive tasks", async () => {
+  it("overlays only exact Featherless HF routes with native first-party prices", async () => {
+    const value = manifest("huggingface");
+    const baseSource = huggingFaceMappingSource(value);
+    if (baseSource.extractor.kind !== "huggingface-mapping")
+      throw new Error("Missing Hugging Face mapping source");
+    const mappingSource: SourceManifest = {
+      ...baseSource,
+      extractor: { ...baseSource.extractor, providers: ["featherless-ai"] },
+    };
+    const mappings = parseSource({
+      provider: provider(value),
+      source: mappingSource,
+      body: huggingFaceMappingBody(await fixture("huggingface/normal.json"), "featherless-ai"),
+      observedAt,
+    });
+    const reconciliation: PricingReconciliationItem[] = [];
+    const native = await huggingFaceFeatherless(
+      (body) => body,
+      mappings,
+      (item) => reconciliation.push(item),
+    );
+    expect(native.map(({ model_id }) => model_id)).toEqual(["org/model-1"]);
+    expect(native[0]).toMatchObject({
+      limits: { context_tokens: 65536, max_output_tokens: 8192 },
+      pricing_state: "numeric",
+      price_facts: [
+        {
+          meter: "input_text",
+          price: "0.25",
+          unit: "million_tokens",
+          conditions: { route_provider: "featherless-ai" },
+          resolution_policy: "featherless_native_price_over_huggingface_route_snapshot",
+        },
+        {
+          meter: "output_text",
+          price: "1.5",
+          unit: "million_tokens",
+          conditions: { route_provider: "featherless-ai" },
+          resolution_policy: "featherless_native_price_over_huggingface_route_snapshot",
+        },
+      ],
+    });
+    expect(reconciliation).toEqual(
+      expect.arrayContaining([
+        {
+          disposition: "excluded",
+          reason_code: "featherless_model_not_hf_route",
+          sample: "outside/native-only",
+        },
+        {
+          disposition: "unresolved",
+          reason_code: "hf_live_route_absent_from_featherless_active_catalog",
+          sample: "org/embed-model",
+        },
+      ]),
+    );
+
+    const combined = applyGroups(
+      mappings,
+      [{ source: huggingFaceFeatherlessSource(value), models: native }],
+      false,
+    );
+    expect(combined.map(({ model_id }) => model_id)).toEqual(
+      mappings.map(({ model_id }) => model_id),
+    );
+    expect(combined.find(({ model_id }) => model_id === "org/model-1")?.price_facts).toHaveLength(
+      2,
+    );
+    expect(combined.find(({ model_id }) => model_id === "org/embed-model")?.pricing_state).toBe(
+      "unknown",
+    );
+  });
+
+  it("keeps usable Featherless meters and resolves native/listing price conflicts", async () => {
+    const reconciliations: PricingReconciliationItem[] = [];
+    const models = await huggingFaceFeatherless(
+      (body) =>
+        body
+          .replace('"completion": "0.0000015"', '"completion": "invalid"')
+          .replace('"input": 0.25', '"input": 0.75'),
+      undefined,
+      (item) => reconciliations.push(item),
+    );
+    const model = models.find(({ model_id }) => model_id === "org/model-1");
+    if (model === undefined) throw new Error("Missing Featherless fixture model");
+    expect(
+      model.price_facts.map(({ meter, price, resolution_policy }) => [
+        meter,
+        price,
+        resolution_policy,
+      ]),
+    ).toEqual([
+      ["input_text", "0.25", "featherless_native_price_over_huggingface_route_snapshot"],
+      ["input_text", "0.75", undefined],
+      ["output_text", "1.5", "featherless_native_price_over_huggingface_route_snapshot"],
+    ]);
+    expect(reconciliations).toContainEqual({
+      disposition: "ambiguous",
+      reason_code: "featherless_price_unit_conflict",
+      sample: "org/model-1",
+    });
+
+    const source = huggingFaceFeatherlessSource(manifest("huggingface"));
+    const routerSource = huggingFaceRouterSource(manifest("huggingface"));
+    const router = await huggingFaceRouter("huggingface/pricing.json", (body) =>
+      body.replace(
+        '"context_length": 32768',
+        '"context_length": 32768, "pricing": { "input": 9, "output": 9 }',
+      ),
+    );
+    const published = applyGroups(router, [{ source, models: [model] }], false);
+    const partition = assembleParsedProviderPricing(
+      "huggingface",
+      observedAt,
+      [
+        { source: routerSource, models: router },
+        { source, models: [model] },
+      ],
+      published,
+      manifest("huggingface").pricingCategoricalLabels,
+    );
+    const term = partition?.books
+      .find(({ book_key }) => book_key === "model:huggingface/org/model-1")
+      ?.offers[0]?.terms.find(
+        (candidate) => candidate.kind === "rate" && candidate.meter.value === "input_text",
+      );
+    if (term?.kind !== "rate") throw new Error("Missing Featherless input rate");
+    const nativeVariant = term.variants.find(({ observations }) =>
+      observations.some(({ source_ref }) => source_ref === "huggingface-featherless"),
+    );
+    expect(nativeVariant?.price.value).toEqual({ numerator: "1", denominator: "4000000" });
+    expect(term.raw_variants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          impact: "informational",
+          reason: "superseded_value",
+          resolution_policy: "featherless_native_price_over_huggingface_route_snapshot",
+        }),
+      ]),
+    );
+    expect(
+      term.raw_variants.flatMap(({ observations }) =>
+        observations.map(({ source_ref }) => source_ref),
+      ),
+    ).toEqual(expect.arrayContaining(["huggingface-router", "huggingface-featherless"]));
+  });
+
+  it("publishes documented concrete mappings and preserves unknown task routes", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await huggingFaceMapping("huggingface/normal.json", (item) =>
       reconciliation.push(item),
@@ -8243,13 +9837,20 @@ describe("Hugging Face adapter", () => {
     });
     expect(embedding?.tasks).toEqual(["embeddings"]);
     expect(embedding?.modalities.output).toEqual(["embedding"]);
-    expect(reconciliation).toEqual(
-      models.map(({ model_id }) => ({
-        disposition: "unbound",
-        reason_code: "hf_inference_compute_price_unbound",
-        sample: model_id,
-      })),
-    );
+    expect(dispositionCounts(reconciliation, ["excluded", "unbound"])).toEqual({
+      excluded: 1,
+      unbound: 5,
+    });
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "hf_inference_compute_price_unbound",
+      sample: "org/model-1:hf-inference:conversational",
+    });
+    expect(reconciliation).toContainEqual({
+      disposition: "excluded",
+      reason_code: "dynamic_lora_tag_filter_not_model_identity",
+      sample: "hf-inference:text-to-image:tag-filter=base_model:adapter:org/base,lora",
+    });
     expect(multi?.routes).toEqual([
       {
         source_ref: "huggingface-hf-inference",
@@ -8275,7 +9876,262 @@ describe("Hugging Face adapter", () => {
     ]);
   });
 
-  it("validates dynamic LoRA filters without publishing them", async () => {
+  it("preserves partner-specific routes and newly observed official tasks", async () => {
+    const value = manifest("huggingface");
+    const base = huggingFaceMappingSource(value);
+    const source: SourceManifest = {
+      ...base,
+      extractor: {
+        kind: "huggingface-mapping",
+        providers: ["hf-inference", "deepinfra"],
+        minModels: 1,
+        maxModels: 10,
+        minRoutes: 2,
+        maxRoutes: 10,
+      },
+    };
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: huggingFaceMappingBundle(
+        [
+          {
+            provider: "hf-inference",
+            models: {
+              conversational: {
+                "org/model-1": {
+                  _id: "hf-route",
+                  providerId: "upstream/chat",
+                  status: "live",
+                },
+              },
+            },
+          },
+          {
+            provider: "deepinfra",
+            models: {
+              "image-text-to-video": {
+                "org/model-1": {
+                  _id: "deepinfra-route",
+                  providerId: "upstream/video",
+                  status: "live",
+                },
+              },
+            },
+          },
+        ],
+        ["org/documented-sentinel"],
+      ),
+      observedAt,
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(models[0]).toMatchObject({
+      model_id: "org/model-1",
+      tasks: ["text_generation", "video_generation"],
+      modalities: { input: ["text", "image"], output: ["text", "video"] },
+      routes: [
+        {
+          provider: "deepinfra",
+          provider_model_id: "upstream/video",
+          task: "image-text-to-video",
+        },
+        {
+          provider: "hf-inference",
+          provider_model_id: "upstream/chat",
+          task: "conversational",
+        },
+      ],
+    });
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "partner_route_price_not_published",
+      sample: "org/model-1:deepinfra:image-text-to-video",
+    });
+  });
+
+  it("admits bounded product evidence and discards a single-provider inventory row", () => {
+    const value = manifest("huggingface");
+    const base = huggingFaceMappingSource(value);
+    const source: SourceManifest = {
+      ...base,
+      extractor: {
+        kind: "huggingface-mapping",
+        providers: ["hf-inference", "deepinfra"],
+        minModels: 1,
+        maxModels: 10,
+        minRoutes: 1,
+        maxRoutes: 20,
+      },
+    };
+    const reconciliation: PricingReconciliationItem[] = [];
+    const route = (id: string) => ({ _id: id, providerId: id, status: "live" });
+    const body = JSON.stringify({
+      partners: [
+        {
+          provider: "hf-inference",
+          models: {
+            conversational: {
+              "org/multi-provider": route("hf-multi"),
+              "org/recommended": route("hf-recommended"),
+              "org/featured": route("hf-featured"),
+              "org/inventory-only": route("hf-inventory"),
+            },
+          },
+        },
+        {
+          provider: "deepinfra",
+          models: {
+            conversational: { "org/multi-provider": route("deepinfra-multi") },
+          },
+        },
+      ],
+      documents: [
+        {
+          url: "https://huggingface.co/docs/inference-providers/en/tasks/chat-completion.md",
+          body: [
+            "### Recommended models",
+            "",
+            "- [org/recommended](https://huggingface.co/org/recommended): Recommended.",
+            "",
+            "### Using the API",
+            "",
+            '<InferenceSnippet providersMapping={ {"hf-inference":{"modelId":"org/featured","providerModelId":"featured"}} } />',
+          ].join("\n"),
+        },
+      ],
+    });
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "org/featured",
+      "org/multi-provider",
+      "org/recommended",
+    ]);
+    expect(reconciliation).toContainEqual({
+      disposition: "excluded",
+      reason_code: "single_provider_inventory_without_product_evidence",
+    });
+    expect(JSON.stringify(reconciliation)).not.toContain("org/inventory-only");
+  });
+
+  it("keeps concrete traditional, extractive, mixed, and unknown task mappings", () => {
+    const value = manifest("huggingface");
+    const base = huggingFaceMappingSource(value);
+    const source: SourceManifest = {
+      ...base,
+      extractor: {
+        kind: "huggingface-mapping",
+        providers: ["hf-inference"],
+        minModels: 1,
+        maxModels: 10,
+        minRoutes: 2,
+        maxRoutes: 10,
+      },
+    };
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: huggingFaceMappingBundle(
+        [
+          {
+            provider: "hf-inference",
+            models: {
+              conversational: {
+                "org/mixed-model": {
+                  _id: "chat-route",
+                  providerId: "upstream/chat",
+                  status: "live",
+                },
+              },
+              "sentence-similarity": {
+                "org/similarity-model": {
+                  _id: "similarity-route",
+                  providerId: "upstream/similarity",
+                  status: "live",
+                },
+              },
+              "text-classification": {
+                "org/mixed-model": {
+                  _id: "mixed-classifier-route",
+                  providerId: "upstream/mixed-classifier",
+                  status: "live",
+                },
+                "org/classifier-only": {
+                  _id: "classifier-route",
+                  providerId: "upstream/classifier",
+                  status: "live",
+                },
+              },
+              "question-answering": {
+                "org/extractive-qa": {
+                  _id: "qa-route",
+                  providerId: "upstream/qa",
+                  status: "live",
+                },
+              },
+              "future-task": {
+                "org/unknown-only": {
+                  _id: "unknown-route",
+                  providerId: "upstream/unknown",
+                  status: "live",
+                },
+              },
+            },
+          },
+        ],
+        [
+          "org/classifier-only",
+          "org/extractive-qa",
+          "org/mixed-model",
+          "org/similarity-model",
+          "org/unknown-only",
+        ],
+      ),
+      observedAt,
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "org/classifier-only",
+      "org/extractive-qa",
+      "org/mixed-model",
+      "org/similarity-model",
+      "org/unknown-only",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "org/mixed-model")).toMatchObject({
+      tasks: ["text_generation", "classification"],
+      routes: [{ task: "conversational" }, { task: "text-classification" }],
+    });
+    expect(models.find(({ model_id }) => model_id === "org/similarity-model")).toMatchObject({
+      tasks: ["reranking"],
+      modalities: { input: ["text"], output: [] },
+    });
+    expect(models.find(({ model_id }) => model_id === "org/classifier-only")).toMatchObject({
+      tasks: ["classification"],
+      modalities: { input: ["text"], output: ["text"] },
+      routes: [{ task: "text-classification" }],
+    });
+    expect(models.find(({ model_id }) => model_id === "org/extractive-qa")).toMatchObject({
+      tasks: [],
+      modalities: { input: ["text"], output: ["text"] },
+      routes: [{ task: "question-answering" }],
+    });
+    expect(models.find(({ model_id }) => model_id === "org/unknown-only")).toMatchObject({
+      tasks: [],
+      modalities: { input: [], output: [] },
+      routes: [{ task: "future-task" }],
+    });
+    expect(reconciliation).toHaveLength(6);
+    expect(reconciliation.every(({ disposition }) => disposition === "unbound")).toBe(true);
+  });
+
+  it("skips invalid dynamic LoRA filters without rejecting the source", async () => {
     const value = manifest("huggingface");
     const source = huggingFaceMappingSource(value);
     const body = await fixture("huggingface/normal.json");
@@ -8285,10 +10141,23 @@ describe("Hugging Face adapter", () => {
         '"tags": ["base_model:adapter:org/base", "lora"]',
         '"tags": ["base_model:adapter:org/other", "lora"]',
       ),
-    ])
-      expect(() =>
-        parseSource({ provider: provider(value), source, body: invalid, observedAt }),
-      ).toThrow();
+    ]) {
+      const reconciliation: PricingReconciliationItem[] = [];
+      expect(
+        parseSource({
+          provider: provider(value),
+          source,
+          body: huggingFaceMappingBody(invalid),
+          observedAt,
+          onPricingReconciliation: (item) => reconciliation.push(item),
+        }),
+      ).toHaveLength(3);
+      expect(reconciliation).toContainEqual({
+        disposition: "excluded",
+        reason_code: "invalid_dynamic_lora_filter",
+        sample: "hf-inference:text-to-image:tag-filter=base_model:adapter:org/base,lora",
+      });
+    }
   });
 
   it("does not publish credential-like identifiers from either listing", async () => {
@@ -8300,11 +10169,22 @@ describe("Hugging Face adapter", () => {
       { from: '"upstream/model-1"', hidden: credentialLikeId },
     ]) {
       const body = (await fixture("huggingface/normal.json")).replace(from, JSON.stringify(hidden));
+      const reconciliation: PricingReconciliationItem[] = [];
+      const models = parseSource({
+        provider: provider(value),
+        source,
+        body: huggingFaceMappingBody(body),
+        observedAt,
+        onPricingReconciliation: (item) => reconciliation.push(item),
+      });
       expect(
-        parseSource({ provider: provider(value), source, body, observedAt }).some(
+        models.some(
           (model) => model.model_id === "org/model-1" || model.model_id === credentialLikeId,
         ),
       ).toBe(false);
+      const audit = sourcePricingReconciliation(models, reconciliation, true);
+      expect(audit.reason_counts?.credential_like_identifier).toBe(1);
+      expect(JSON.stringify(audit)).not.toContain(credentialLikeId);
     }
     expect(
       (
@@ -8352,9 +10232,9 @@ describe("Hugging Face adapter", () => {
       { name: "Responses", path: "/v1/responses" },
     ]);
     expect(model?.release_date).toBeUndefined();
-    expect(
-      model?.price_facts.some((rate) => rate.conditions.route_provider === "unavailable-route"),
-    ).toBe(false);
+    expect(model?.price_facts.some((rate) => rate.conditions.route_provider === "groq")).toBe(
+      false,
+    );
     expect(models.some((item) => item.model_id === "org/unavailable-model")).toBe(false);
     expect(
       free?.price_facts.map((rate) => [rate.meter, rate.price, rate.conditions.promotion]),
@@ -8373,26 +10253,21 @@ describe("Hugging Face adapter", () => {
       (item) => items.push(item),
     );
     expect(
-      Object.fromEntries(
-        [
-          "normalized",
-          "raw",
-          "explicit_non_numeric",
-          "excluded",
-          "unbound",
-          "ambiguous",
-          "unsupported",
-          "unresolved",
-        ].map((disposition) => [
-          disposition,
-          items.filter((item) => item.disposition === disposition).length,
-        ]),
-      ),
+      dispositionCounts(items, [
+        "normalized",
+        "raw",
+        "explicit_non_numeric",
+        "excluded",
+        "unbound",
+        "ambiguous",
+        "unsupported",
+        "unresolved",
+      ]),
     ).toEqual({
       normalized: 3,
       raw: 0,
       explicit_non_numeric: 0,
-      excluded: 9,
+      excluded: 8,
       unbound: 1,
       ambiguous: 1,
       unsupported: 0,
@@ -8401,7 +10276,7 @@ describe("Hugging Face adapter", () => {
     expect(items).toContainEqual({
       disposition: "unbound",
       reason_code: "route_price_not_published",
-      sample: "org/model-1:unpriced-route",
+      sample: "org/model-1:featherless-ai",
     });
     expect(items).toContainEqual({
       disposition: "ambiguous",
@@ -8455,6 +10330,141 @@ describe("Hugging Face adapter", () => {
     });
   });
 
+  it("requires configured partners but tolerates and signals additive inventories", async () => {
+    await expect(
+      huggingFaceRouter(
+        "huggingface/pricing.json",
+        (body) => body,
+        (path, body) =>
+          path === "overview.md"
+            ? body.replace("./providers/baseten", "./providers/future-provider")
+            : body,
+      ),
+    ).rejects.toThrow("configured Hugging Face partner disappeared");
+    await expect(
+      huggingFaceRouter(
+        "huggingface/pricing.json",
+        (body) => body,
+        (path, body) =>
+          path === "sdk-providers.py" ? body.replace('"baseten"', '"future-provider"') : body,
+      ),
+    ).rejects.toThrow("configured Hugging Face partner disappeared");
+
+    const additions: PricingReconciliationItem[] = [];
+    await expect(
+      huggingFaceRouter(
+        "huggingface/pricing.json",
+        (body) => body,
+        (path, body) => {
+          if (path === "overview.md")
+            return body.replace(
+              "[Baseten](./providers/baseten)",
+              "[Baseten](./providers/baseten) [Future](./providers/future-provider)",
+            );
+          if (path === "sdk-providers.py")
+            return body.replace('    "baseten",', '    "baseten",\n    "future-provider",');
+          return body;
+        },
+        (item) => additions.push(item),
+      ),
+    ).resolves.toHaveLength(2);
+    expect(additions).toEqual(
+      expect.arrayContaining([
+        {
+          disposition: "unsupported",
+          reason_code: "documented_partner_not_collected",
+          sample: "future-provider",
+        },
+        {
+          disposition: "unsupported",
+          reason_code: "sdk_provider_not_collected",
+          sample: "future-provider",
+        },
+      ]),
+    );
+  });
+
+  it("keeps valid records when official response rows gain fields or duplicate", async () => {
+    const value = manifest("huggingface");
+    const mappingSource = huggingFaceMappingSource(value);
+    const mapping = (await fixture("huggingface/normal.json")).replace(
+      '"status": "live"',
+      '"status": "live", "futureField": true',
+    );
+    expect(
+      parseSource({
+        provider: provider(value),
+        source: mappingSource,
+        body: huggingFaceMappingBody(mapping),
+        observedAt,
+      }),
+    ).toHaveLength(3);
+    const duplicateMappingId = (await fixture("huggingface/normal.json")).replace(
+      '"_id": "mapping-2"',
+      '"_id": "mapping-1"',
+    );
+    const duplicateReconciliation: PricingReconciliationItem[] = [];
+    expect(
+      parseSource({
+        provider: provider(value),
+        source: mappingSource,
+        body: huggingFaceMappingBody(duplicateMappingId),
+        observedAt,
+        onPricingReconciliation: (item) => duplicateReconciliation.push(item),
+      }),
+    ).toHaveLength(3);
+    expect(duplicateReconciliation).toContainEqual({
+      disposition: "excluded",
+      reason_code: "duplicate_mapping_record",
+      sample: "hf-inference:mapping-1",
+    });
+    await expect(
+      huggingFaceRouter("huggingface/pricing.json", (body) =>
+        body.replace('"provider": "deepinfra"', '"provider": "deepinfra", "futureField": true'),
+      ),
+    ).resolves.toHaveLength(2);
+    await expect(
+      huggingFaceHub((body) => body.replace('"_id":', '"futureField": true, "_id":')),
+    ).resolves.toHaveLength(2);
+  });
+
+  it("keeps usable route metadata and prices when optional fields are malformed", async () => {
+    const priceReconciliation: PricingReconciliationItem[] = [];
+    const models = await huggingFaceRouter(
+      "huggingface/pricing.json",
+      (body) => body.replace('"input": 0.25', '"input": "not-a-price"'),
+      (_path, body) => body,
+      (item) => priceReconciliation.push(item),
+    );
+    expect(
+      models
+        .find(({ model_id }) => model_id === "org/model-1")
+        ?.price_facts.filter(({ conditions }) => conditions.route_provider === "deepinfra")
+        .map(({ meter, price }) => [meter, price]),
+    ).toEqual([["output_text", "1.5"]]);
+    expect(priceReconciliation).toContainEqual({
+      disposition: "ambiguous",
+      reason_code: "route_price_field_invalid",
+      sample: "org/model-1:deepinfra",
+    });
+
+    await expect(
+      huggingFaceRouter("huggingface/pricing.json", (body) =>
+        body.replace(
+          '"architecture": { "input_modalities": ["text", "image"], "output_modalities": ["text"] }',
+          '"architecture": "temporarily-unavailable"',
+        ),
+      ),
+    ).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          model_id: "org/model-1",
+          modalities: { input: [], output: [] },
+        }),
+      ]),
+    );
+  });
+
   it("combines the HF Inference and router catalogs", async () => {
     const value = manifest("huggingface");
     const inference = huggingFaceMappingSource(value);
@@ -8465,7 +10475,7 @@ describe("Hugging Face adapter", () => {
     const mappings = parseSource({
       provider: provider(value),
       source: inference,
-      body,
+      body: huggingFaceMappingBody(body),
       observedAt,
     });
     const routed = parseSource({
@@ -8536,15 +10546,15 @@ describe("Hugging Face adapter", () => {
     ]);
     await expect(
       huggingFaceHub((body) => body.replace('"org/model-1"', '"org/embed-model"')),
-    ).rejects.toThrow("Duplicate Hugging Face Hub model");
+    ).resolves.toMatchObject([{ model_id: "org/embed-model", updated_date: "2026-07-20" }]);
     await expect(
       huggingFaceHub((body) => body.replace("2026-07-20T12:34:56.000Z", "not-a-date")),
-    ).rejects.toThrow();
+    ).resolves.toMatchObject([{ model_id: "org/embed-model", updated_date: "2026-06-03" }]);
   });
 
-  it("rejects malformed mappings, undocumented route states, and contradictory free prices", async () => {
+  it("uses volume guards for malformed rows and preserves explicit prices on free conflicts", async () => {
     await expect(huggingFaceMapping("huggingface/broken.json")).rejects.toThrow(
-      "Expected a Hugging Face repository ID",
+      "Hugging Face concrete mapping routes contract mismatch",
     );
     await expect(huggingFaceRouter("huggingface/broken-router.json")).rejects.toThrow();
     const value = manifest("huggingface");
@@ -8554,14 +10564,27 @@ describe("Hugging Face adapter", () => {
       '"pricing": { "input": 1, "output": "0.0" }',
     );
     const bundled = await huggingFaceRouterBody(body);
-    expect(() =>
-      parseSource({
-        provider: provider(value),
-        source,
-        body: bundled,
-        observedAt,
-      }),
-    ).toThrow("both free and priced");
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: bundled,
+      observedAt,
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(
+      models
+        .find(({ model_id }) => model_id === "org/free-model")
+        ?.price_facts.map(({ meter, price }) => [meter, price]),
+    ).toEqual([
+      ["input_text", "1"],
+      ["output_text", "0.0"],
+    ]);
+    expect(reconciliation).toContainEqual({
+      disposition: "ambiguous",
+      reason_code: "route_free_price_conflict",
+      sample: "org/free-model:publicai",
+    });
   });
 });
 
@@ -8588,6 +10611,10 @@ describe("DeepSeek adapters", () => {
         url: "https://api-docs.deepseek.com/api/create-chat-completion",
       },
       { id: "responses", url: "https://api-docs.deepseek.com/api/create-response" },
+      {
+        id: "model-inventory",
+        url: "https://api-docs.deepseek.com/api/list-models",
+      },
       {
         id: "token-usage",
         url: "https://api-docs.deepseek.com/quick_start/token_usage/",
@@ -8705,6 +10732,24 @@ describe("DeepSeek adapters", () => {
     ).rejects.toThrow("unhandled rows");
   });
 
+  it("cross-checks the public model-inventory contract and concrete example", async () => {
+    const inventory = await fixture("deepseek/list-models.html");
+    await expect(deepseekCatalog({ inventory: inventory.replace("GET", "POST") })).rejects.toThrow(
+      "model-inventory reference changed operation",
+    );
+    await expect(
+      deepseekCatalog({ inventory: inventory.replace("/models", "/v2/models") }),
+    ).rejects.toThrow("model-inventory reference changed operation");
+    await expect(
+      deepseekCatalog({ inventory: inventory.replace("owned_by", "organization") }),
+    ).rejects.toThrow("model-inventory reference changed response schema");
+    await expect(
+      deepseekCatalog({
+        inventory: inventory.replaceAll("deepseek-v4-pro", "deepseek-v4-unknown"),
+      }),
+    ).rejects.toThrow("model-inventory reference disagrees with the model table");
+  });
+
   it("partitions public prices from account and not-yet-effective billing rules", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await deepseekCatalog({
@@ -8765,10 +10810,8 @@ describe("DeepSeek adapters", () => {
   it("treats the documented inventory owner as opaque metadata", async () => {
     const value = manifest("deepseek");
     const configured = source("deepseek-api");
-    const body = (await fixture("deepseek/api.json")).replace(
-      '"owned_by": "deepseek"',
-      '"owned_by": "deepseek-platform"',
-    );
+    const fixtureBody = await fixture("deepseek/api.json");
+    const body = fixtureBody.replace('"owned_by": "deepseek"', '"owned_by": "deepseek-platform"');
     expect(
       parseSource({
         provider: provider(value),
@@ -8777,13 +10820,35 @@ describe("DeepSeek adapters", () => {
         observedAt,
       }),
     ).toHaveLength(2);
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source: configured,
+        body: fixtureBody.replace('"object": "list",', '"object": "list", "extra": true,'),
+        observedAt,
+      }),
+    ).toThrow();
+    expect(() =>
+      parseSource({
+        provider: provider(value),
+        source: configured,
+        body: fixtureBody.replace(
+          '"owned_by": "deepseek"',
+          '"owned_by": "deepseek", "extra": true',
+        ),
+        observedAt,
+      }),
+    ).toThrow();
   });
 
   it("uses exact change-log evidence for release and update dates", async () => {
     const models = await parsed("deepseek", "deepseek/updates.html", "deepseek-updates");
     const flash = models.find(({ model_id }) => model_id === "deepseek-v4-flash");
-    expect(flash).toMatchObject({ release_date: "2026-04-24" });
-    expect(flash).not.toHaveProperty("updated_date");
+    expect(flash).toMatchObject({
+      release_date: "2026-04-24",
+      updated_date: "2026-07-31",
+      release_stage: "preview",
+    });
     expect(models.find(({ model_id }) => model_id === "deepseek-reasoner")).toMatchObject({
       release_date: "2025-01-20",
       updated_date: "2026-04-24",
@@ -8832,6 +10897,11 @@ describe("DeepSeek adapters", () => {
       "deepseek-updates",
       "deepseek-api",
     ]);
+    expect(models.find(({ model_id }) => model_id === "deepseek-v4-flash")).toMatchObject({
+      release_date: "2026-04-24",
+      updated_date: "2026-07-31",
+      release_stage: "preview",
+    });
     expect(models.some(({ model_id }) => model_id === "deepseek-chat")).toBe(false);
   });
 });
@@ -8946,6 +11016,22 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("preserves Markdown heading context around raw official tables", async () => {
+    const models = parse(source("dashscope-text"), await fixture("dashscope/catalog.md"));
+    expect(models).toMatchObject([
+      {
+        model_id: "qwen3.8-max",
+        tasks: ["text_generation"],
+        limits: { context_tokens: 1_000_000 },
+        capabilities: {
+          reasoning: true,
+          tool_call: true,
+          structured_output: true,
+        },
+      },
+    ]);
+  });
+
   it("overlays only exact recommended-model regions and request URLs", async () => {
     const models = parse(
       source("dashscope-recommended"),
@@ -8992,6 +11078,46 @@ describe("DashScope adapters", () => {
     expect(() => parse(source("dashscope-recommended"), body)).toThrow(
       "Unsupported DashScope recommended-model endpoint",
     );
+  });
+
+  it("validates Markdown recommended-model cards against their published routes", async () => {
+    const body = await fixture("dashscope/recommended.md");
+    const models = parse(source("dashscope-recommended"), body);
+    expect(models.find(({ model_id }) => model_id === "qwen3.8-max")).toMatchObject({
+      api_endpoints: undefined,
+      availability: [
+        { region: "China (Beijing)", deployment_type: "model_api" },
+        { region: "Singapore", deployment_type: "model_api" },
+        { region: "US (Virginia)", deployment_type: "model_api" },
+      ],
+    });
+    expect(models.find(({ model_id }) => model_id === "qwen-image-3.0-pro")).toMatchObject({
+      api_endpoints: [
+        {
+          name: "Multimodal Generation",
+          path: "/api/v1/services/aigc/multimodal-generation/generation",
+        },
+      ],
+      availability: [{ region: "International", deployment_type: "model_api" }],
+    });
+    expect(
+      models.find(({ model_id }) => model_id === "qwen-audio-3.0-asr-flash-streaming"),
+    ).toMatchObject({
+      api_endpoints: [{ name: "Realtime", path: "/api-ws/v1/realtime" }],
+      availability: [{ region: "Singapore", deployment_type: "model_api" }],
+    });
+    expect(() =>
+      parse(
+        source("dashscope-recommended"),
+        body.replace("Beijing Singapore US (Virginia)", "Beijing Singapore"),
+      ),
+    ).toThrow("route regions contradicted");
+    expect(() =>
+      parse(
+        source("dashscope-recommended"),
+        body.replace("dashscope-us.aliyuncs.com", "example.com"),
+      ),
+    ).toThrow("Unsupported DashScope recommended-model endpoint");
   });
 
   it("retains tier, promotion, batch, and explicit and implicit cache prices", async () => {
@@ -9179,6 +11305,63 @@ describe("DashScope adapters", () => {
     );
   });
 
+  it("reconstructs reviewed sparse and multi-row Markdown pricing tables", async () => {
+    const models = parse(
+      source("dashscope-pricing"),
+      await pricingBundle(fixture("dashscope/pricing.md")),
+    );
+    const plus = models.find(({ model_id }) => model_id === "qwen3.7-plus");
+    expect(
+      plus?.price_facts
+        .filter(({ conditions }) => conditions.context_min_tokens === 256_000)
+        .map(({ meter, price, conditions }) => ({
+          meter,
+          price,
+          operation: conditions.operation,
+        })),
+    ).toEqual(
+      expect.arrayContaining([
+        { meter: "input_text", price: "1.2", operation: undefined },
+        { meter: "output_text", price: "4.8", operation: "non_thinking_mode" },
+        {
+          meter: "output_text",
+          price: "4.8",
+          operation: "thinking_mode_chain_of_thought_answer_",
+        },
+      ]),
+    );
+    const image = models.find(({ model_id }) => model_id === "qwen-image-3.0-pro");
+    expect(image).toMatchObject({ release_stage: "preview" });
+    expect(
+      image?.price_facts
+        .filter(({ conditions }) => conditions.resolution === "2k")
+        .map(({ price }) => price),
+    ).toEqual(["0.003", "0.075"]);
+  });
+
+  it("does not synthesize published implicit-cache exceptions", async () => {
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parse(
+      source("dashscope-pricing"),
+      await pricingBundle(fixture("dashscope/pricing.md"), {
+        "context-cache": await fixture("dashscope/cache-current.md"),
+      }),
+      (item) => reconciliation.push(item),
+    );
+    const model = models.find(({ model_id }) => model_id === "qwen3.8-max");
+    expect(
+      model?.price_facts.some(
+        ({ meter, conditions }) =>
+          meter === "cache_read_text" && conditions.operation === "implicit_cache",
+      ),
+    ).toBe(false);
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "implicit_cache_price_not_public",
+      sample: "qwen3.8-max:Singapore",
+    });
+  });
+
   it("partitions first-party pricing and fails closed when accounting references drift", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const pricingSource = source("dashscope-pricing");
@@ -9304,6 +11487,71 @@ describe("DashScope adapters", () => {
       "pagination is incomplete",
     );
   });
+
+  it("accepts only a strict normalized deployment inventory", async () => {
+    const body: unknown = JSON.parse(await fixture("dashscope/api.json"));
+    const parsed = z
+      .object({ output: z.object({ models: z.array(z.unknown()) }).passthrough() })
+      .passthrough()
+      .parse(body);
+    expect(() =>
+      parse(source("dashscope-deployable-api"), JSON.stringify({ ...parsed, unexpected: true })),
+    ).toThrow();
+    const model = z
+      .object({ model_name: z.string(), plans: z.array(z.unknown()) })
+      .parse(parsed.output.models[0]);
+    expect(() =>
+      parse(
+        source("dashscope-deployable-api"),
+        JSON.stringify({
+          output: {
+            page_no: 1,
+            page_size: 1,
+            total: 1,
+            models: [{ ...model, unexpected: true }],
+          },
+        }),
+      ),
+    ).toThrow();
+    const models = Array.from({ length: 101 }, (_value, index) => ({
+      model_name: `model-${index}`,
+      plans: [{ plan: "mu" }],
+    }));
+    expect(
+      parse(
+        source("dashscope-deployable-api", 1, 200),
+        JSON.stringify({
+          request_id: "request-1",
+          output: { page_no: 1, page_size: 101, total: 101, models },
+        }),
+      ),
+    ).toHaveLength(101);
+  });
+
+  it("uses current Markdown documents and bounded API pagination", () => {
+    const value = manifest("dashscope");
+    const publicSources = value.sources.filter(({ id }) => id !== "dashscope-deployable-api");
+    expect(
+      publicSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
+    ).toBe(true);
+    expect(source("dashscope-pricing")).toMatchObject({
+      extractorVersion: "dashscope-pricing-v5",
+      linkedDocuments: {
+        documents: expect.arrayContaining([
+          expect.objectContaining({ url: expect.stringMatching(/\.md$/) }),
+        ]),
+      },
+    });
+    expect(source("dashscope-deployable-api")).toMatchObject({
+      extractorVersion: "dashscope-api-v2",
+      transport: {
+        kind: "dashscope-deployable-models",
+        pageSize: 100,
+        maxPages: 5,
+        maxModels: 500,
+      },
+    });
+  });
 });
 
 describe("Kimi adapters", () => {
@@ -9317,6 +11565,7 @@ describe("Kimi adapters", () => {
     configured: SourceManifest,
     body: string,
     onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+    onContractFinding?: (evidence: SourceContractEvidence) => void,
   ): ProviderModel[] =>
     parseSource({
       provider: provider(value),
@@ -9324,6 +11573,7 @@ describe("Kimi adapters", () => {
       body,
       observedAt,
       ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+      ...(onContractFinding === undefined ? {} : { onContractFinding }),
     });
 
   it("uses the documented international API origin", () => {
@@ -9334,10 +11584,26 @@ describe("Kimi adapters", () => {
     expect(source("kimi-api")).toMatchObject({
       url: "https://api.moonshot.ai/v1/models",
       allowedHosts: ["api.moonshot.ai"],
+      extractorVersion: "kimi-api-v2",
+    });
+    expect(source("kimi-china-api")).toMatchObject({
+      url: "https://api.moonshot.cn/v1/models",
+      allowedHosts: ["api.moonshot.cn"],
+      auth: { env: "MOONSHOT_CN_API_KEY" },
     });
     expect(source("kimi-openapi")).toMatchObject({
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
+      extractorVersion: "kimi-openapi-v4",
+    });
+    expect(source("kimi-china-openapi")).toMatchObject({
+      url: "https://platform.kimi.com/docs/openapi.json",
+      allowedHosts: ["platform.kimi.com"],
+      extractor: { baseUrl: "https://api.moonshot.cn" },
+    });
+    expect(source("kimi-international-catalog")).toMatchObject({
+      url: "https://platform.kimi.ai/docs/models",
+      extractorVersion: "kimi-catalog-v3",
     });
     expect(source("kimi-international-pricing")).toMatchObject({
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
@@ -9360,6 +11626,35 @@ describe("Kimi adapters", () => {
       modalities: { input: ["text"], output: ["text"] },
       capabilities: { reasoning: "unknown" },
     });
+  });
+
+  it("signals undocumented inventory extensions while rejecting root drift", async () => {
+    const body = await fixture("kimi/api.json");
+    const findings: SourceContractEvidence[] = [];
+    const models = parse(
+      source("kimi-api"),
+      body.replace(
+        '"supports_reasoning": true',
+        '"supports_reasoning": true, "supports_dynamic_tools": true',
+      ),
+      undefined,
+      (finding) => findings.push(finding),
+    );
+    expect(models).toHaveLength(2);
+    expect(findings).toEqual([
+      expect.objectContaining({
+        disposition: "accept_with_signal",
+        diagnostics: [
+          expect.objectContaining({
+            kind: "unknown_field",
+            path: "/supports_dynamic_tools",
+            affected_items: 1,
+            sample_model_ids: ["kimi-k3"],
+          }),
+        ],
+      }),
+    ]);
+    expect(() => parse(source("kimi-api"), body.replace("{", '{"unexpected":true,'))).toThrow();
   });
 
   interface KimiPricingOptions {
@@ -9409,6 +11704,7 @@ describe("Kimi adapters", () => {
       ["/docs/guide/org-best-practice", "organization"],
       ["/docs/guide/product-plans", "product-plans"],
       ["/docs/introduction", "introduction"],
+      ["/docs/agreement/modeluse", "terms"],
       ["/docs/llms.txt", "llms", "txt"],
     ] as const;
     return parse(
@@ -9506,6 +11802,23 @@ describe("Kimi adapters", () => {
         body.replace("for Kimi K3 it defaults", "for Kimi K4 it defaults"),
       ),
     ).toThrow("output limit identity");
+    expect(() =>
+      parse(
+        source("kimi-openapi"),
+        body.replace('"supports_video_in": { "type": "boolean" },', ""),
+      ),
+    ).toThrow("List Models item fields");
+    const china = body
+      .replace("https://api.moonshot.ai", "https://api.moonshot.cn")
+      .replace(
+        "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive.",
+        "显示整个请求的 Token 使用统计；如果流中断，可能无法收到最终用量。",
+      )
+      .replace(
+        "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576.",
+        "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
+      );
+    expect(parse(source("kimi-china-openapi"), china)).toHaveLength(12);
   });
 
   it("retains callable and retired IDs only from labeled catalog fields", async () => {
@@ -9519,6 +11832,9 @@ describe("Kimi adapters", () => {
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
       status: "legacy",
     });
+    expect(
+      models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits.context_tokens,
+    ).toBeUndefined();
     expect(models.find(({ model_id }) => model_id === "kimi-thinking-preview")).toMatchObject({
       status: "retired",
       retired_at: "2025-11-11",
@@ -9555,6 +11871,18 @@ describe("Kimi adapters", () => {
     expect(() =>
       parse(source("kimi-catalog"), body.replace("2026 年 5 月 25 日", "2026 年 2 月 30 日")),
     ).toThrow("date");
+    const international = parse(
+      source("kimi-international-catalog"),
+      await fixture("kimi/models-global.md"),
+    );
+    expect(international.map(({ model_id }) => model_id)).toEqual(
+      models.map(({ model_id }) => model_id),
+    );
+    expect(international.find(({ model_id }) => model_id === "kimi-k2.5")?.status).toBe("legacy");
+    expect(
+      international.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits
+        .context_tokens,
+    ).toBeUndefined();
   });
 
   it("keeps regional standard, cached-input, and Batch rates", async () => {
@@ -9664,11 +11992,11 @@ describe("Kimi adapters", () => {
     });
     expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
       basis: "source_item",
-      observed_items: 86,
+      observed_items: 88,
       disposition_counts: {
         normalized: 72,
         excluded: 8,
-        unbound: 6,
+        unbound: 8,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
@@ -9707,6 +12035,14 @@ describe("Kimi adapters", () => {
           reason_code: "batch_guide_scope_conflict",
           sample: "kimi-k2.7-code",
         }),
+        expect.objectContaining({
+          disposition: "unbound",
+          reason_code: "formula_tool_promotion_end_not_published",
+        }),
+        expect.objectContaining({
+          disposition: "unbound",
+          reason_code: "web_search_documentation_outdated",
+        }),
       ]),
     );
     const internationalReconciliation: PricingReconciliationItem[] = [];
@@ -9718,11 +12054,11 @@ describe("Kimi adapters", () => {
       sourcePricingReconciliation(international, internationalReconciliation, true),
     ).toMatchObject({
       basis: "source_item",
-      observed_items: 87,
+      observed_items: 89,
       disposition_counts: {
         normalized: 72,
         excluded: 9,
-        unbound: 6,
+        unbound: 8,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
@@ -9753,6 +12089,16 @@ describe("Kimi adapters", () => {
         },
       }),
     ).rejects.toThrow("Formula-tools commercial contract drifted");
+    const terms = await fixture("kimi/terms.md");
+    await expect(
+      pricing({
+        overrides: { terms: terms.replace("网站价格页面公示", "稍后另行说明") },
+      }),
+    ).rejects.toThrow("commercial terms drifted");
+    const k3 = await fixture("kimi/pricing-k3.md");
+    await expect(
+      pricing({ indexBody: k3.replace("文档已经过时", "文档仍然有效") }),
+    ).rejects.toThrow("web-search warning drifted");
     const llms = await fixture("kimi/llms.txt");
     await expect(
       pricing({
@@ -9781,13 +12127,28 @@ describe("Kimi adapters", () => {
   it("retains every successful source that finds the same model", async () => {
     const catalogSources = [
       source("kimi-openapi"),
+      source("kimi-china-openapi"),
       source("kimi-catalog"),
+      source("kimi-international-catalog"),
       source("kimi-pricing"),
       source("kimi-international-pricing"),
     ];
+    const openapi = await fixture("kimi/openapi.json");
+    const chinaOpenapi = openapi
+      .replace("https://api.moonshot.ai", "https://api.moonshot.cn")
+      .replace(
+        "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive.",
+        "显示整个请求的 Token 使用统计；如果流中断，可能无法收到最终用量。",
+      )
+      .replace(
+        "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576.",
+        "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
+      );
     const catalogs = [
-      parse(catalogSources[0] ?? source("kimi-openapi"), await fixture("kimi/openapi.json")),
+      parse(catalogSources[0] ?? source("kimi-openapi"), openapi),
+      parse(catalogSources[1] ?? source("kimi-china-openapi"), chinaOpenapi),
       await parsed("kimi", "kimi/models.md", "kimi-catalog"),
+      await parsed("kimi", "kimi/models-global.md", "kimi-international-catalog"),
       await pricing(),
       await pricing({ sourceId: "kimi-international-pricing" }),
     ];
@@ -9810,16 +12171,23 @@ describe("Kimi adapters", () => {
           source: source("kimi-api"),
           models: await parsed("kimi", "kimi/api.json", "kimi-api"),
         },
+        {
+          source: source("kimi-china-api"),
+          models: await parsed("kimi", "kimi/api.json", "kimi-china-api"),
+        },
       ],
       false,
     );
     expect(models.find(({ model_id }) => model_id === "kimi-k3")?.source_refs).toEqual([
       "kimi-openapi",
+      "kimi-china-openapi",
       "kimi-catalog",
+      "kimi-international-catalog",
       "kimi-pricing",
       "kimi-international-pricing",
       "kimi-releases",
       "kimi-api",
+      "kimi-china-api",
     ]);
   });
 
@@ -10065,6 +12433,31 @@ describe("Ollama adapters", () => {
     await expect(ollamaCloud({ documents: { "openapi.yaml": openapi } })).rejects.toThrow(
       "cached-token accounting changed",
     );
+    const introduction = (await fixture("ollama/api-introduction.md")).replace(
+      "backwards\ncompatible",
+      "frequently incompatible",
+    );
+    await expect(
+      ollamaCloud({ documents: { "api-introduction.md": introduction } }),
+    ).rejects.toThrow("API introduction contract drift");
+    const tags = (await fixture("ollama/api-tags.md")).replace("remote_host", "upstream_host");
+    await expect(ollamaCloud({ documents: { "api-tags.md": tags } })).rejects.toThrow(
+      "list-model API contract drift",
+    );
+    const show = (await fixture("ollama/show-model-details.md")).replace(
+      "operationId: show",
+      "operationId: inspect",
+    );
+    await expect(ollamaCloud({ documents: { "show-model-details.md": show } })).rejects.toThrow(
+      "show-model API contract drift",
+    );
+    const openapiList = (await fixture("ollama/openapi.yaml")).replace(
+      "operationId: list",
+      "operationId: enumerate",
+    );
+    await expect(ollamaCloud({ documents: { "openapi.yaml": openapiList } })).rejects.toThrow(
+      "OpenAPI usage contract drift",
+    );
     const index = `${await fixture("ollama/docs-llms.txt")}\n- [Costs](https://docs.ollama.com/api/costs.md)`;
     await expect(ollamaCloud({ documents: { "docs-llms.txt": index } })).rejects.toThrow(
       "unreviewed commercial pages",
@@ -10093,6 +12486,83 @@ describe("Ollama adapters", () => {
     expect(() => parse(body.replace('"status":200', '"status":404'))).toThrow(
       "listed model was unavailable",
     );
+  });
+
+  it("signals additive list/show fields and rejects nested semantic drift", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const models = await ollamaCloud(
+      {
+        transform: (body) =>
+          body
+            .replace('"name":"gpt-oss:120b"', '"name":"gpt-oss:120b","future_list_field":true')
+            .replace(
+              '"capabilities":["completion","tools","thinking"]',
+              '"future_show_field":"signal","capabilities":["completion","tools","thinking"]',
+            ),
+      },
+      undefined,
+      (finding) => findings.push(finding),
+    );
+    expect(models).toHaveLength(4);
+    expect(findings).toHaveLength(2);
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          disposition: "accept_with_signal",
+          observed_items: 3,
+          diagnostics: [
+            expect.objectContaining({
+              kind: "unknown_field",
+              path: "/future_list_field",
+              observed_value: "true",
+              affected_items: 1,
+              sample_model_ids: ["gpt-oss:120b"],
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          disposition: "accept_with_signal",
+          observed_items: 3,
+          diagnostics: [
+            expect.objectContaining({
+              kind: "unknown_field",
+              path: "/future_show_field",
+              affected_items: 1,
+              sample_model_ids: ["gpt-oss:120b"],
+            }),
+          ],
+        }),
+      ]),
+    );
+    await expect(
+      ollamaCloud({
+        transform: (body) =>
+          body.replace(
+            '"parent_model":"","format":""',
+            '"parent_model":"","future_detail_field":true,"format":""',
+          ),
+      }),
+    ).rejects.toThrow("Ollama cloud list items contract mismatch");
+    await expect(
+      ollamaCloud({
+        transform: (body) =>
+          body.replace(
+            '"parent_model":"gpt-oss:120b","format":""',
+            '"parent_model":"gpt-oss:120b","future_detail_field":true,"format":""',
+          ),
+      }),
+    ).rejects.toThrow("Ollama cloud show responses contract mismatch");
+  });
+
+  it("accepts the documented remote-model list fields", async () => {
+    const models = await ollamaCloud({
+      transform: (body) =>
+        body.replace(
+          '"model":"gpt-oss:120b","modified_at"',
+          '"model":"gpt-oss:120b","remote_model":"gpt-oss:120b","remote_host":"https://ollama.com","modified_at"',
+        ),
+    });
+    expect(models.find(({ model_id }) => model_id === "gpt-oss:120b")).toBeDefined();
   });
 });
 

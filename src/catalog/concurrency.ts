@@ -7,7 +7,7 @@ export async function mapConcurrent<T, R>(
     throw new Error("Concurrency must be a positive safe integer");
 
   const entries = values.map((value, index) => ({ index, value }));
-  const results = new Map<number, R>();
+  const results: ({ value: R } | undefined)[] = Array.from({ length: entries.length });
   let cursor = 0;
   let stopped = false;
   await Promise.all(
@@ -17,7 +17,7 @@ export async function mapConcurrent<T, R>(
         cursor += 1;
         if (entry === undefined) return;
         try {
-          results.set(entry.index, await task(entry.value));
+          results[entry.index] = { value: await task(entry.value) };
         } catch (error) {
           stopped = true;
           throw error;
@@ -25,5 +25,8 @@ export async function mapConcurrent<T, R>(
       }
     }),
   );
-  return [...results.entries()].sort(([left], [right]) => left - right).map(([, value]) => value);
+  return results.map((result) => {
+    if (result === undefined) throw new Error("Concurrent task did not produce a result");
+    return result.value;
+  });
 }

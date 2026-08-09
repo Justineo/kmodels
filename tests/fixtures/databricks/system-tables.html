@@ -1,0 +1,63 @@
+<main>
+  <h1>System tables reference</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Table</th>
+        <th>Description</th>
+        <th>Supports streaming</th>
+        <th>Free retention period</th>
+        <th>Includes global or regional data</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Billable usage<br />Table path: <code>system.billing.usage</code></td>
+        <td>Includes records for all billable usage across your account.</td>
+        <td>Yes</td>
+        <td>365 days</td>
+        <td>Global</td>
+      </tr>
+      <tr>
+        <td>AI Gateway usage (Beta)<br />Table path: <code>system.ai_gateway.usage</code></td>
+        <td>Captures request and response details.</td>
+        <td>Yes</td>
+        <td>365 days</td>
+        <td>Regional</td>
+      </tr>
+      <tr>
+        <td>
+          AI Gateway external model spend (Beta)<br />Table path:
+          <code>system.ai_gateway.external_model_spend</code>
+        </td>
+        <td>Records estimated USD spend.</td>
+        <td>No</td>
+        <td>365 days</td>
+        <td>Regional</td>
+      </tr>
+      <tr>
+        <td>
+          Model serving endpoint usage (Public Preview)<br />Table path:
+          <code>system.serving.endpoint_usage</code>
+        </td>
+        <td>Captures token counts.</td>
+        <td>Yes</td>
+        <td>90 days</td>
+        <td>Regional</td>
+      </tr>
+      <tr>
+        <td>Pricing<br />Table path: <code>system.billing.list_prices</code></td>
+        <td>A historical log of SKU pricing.</td>
+        <td>No</td>
+        <td>Indefinite</td>
+        <td>Global</td>
+      </tr>
+    </tbody>
+  </table>
+  <h2>Known issues</h2>
+  <p>
+    New columns may be added to existing system tables at any time. Existing columns will not change
+    or be removed.
+  </p>
+  <p>No support for real-time monitoring. Data is updated throughout the day.</p>
+</main>

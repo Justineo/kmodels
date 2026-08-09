@@ -12,14 +12,23 @@ Status: current
   but only documents containing labeled model cards satisfy card-coverage bounds. Card IDs come
   from labeled `Model ID` cells; paths, headings, display labels, and approximate dates do not
   create identity.
-- Fixed first-party companions cover the shared pricing page, Cloud SKU table, Gemini response and
-  grounding metadata, exact Search/Maps/customer-data supported-model lists,
-  Standard/Flex/Priority PayGo, Provisioned Throughput routing and accounting, Claude web search,
-  partner/open response usage, the Google Cloud Pricing API, and Cloud Billing export latency.
-  These documents are accounting drift guards; they do not create model identity.
-- The optional paginated Model Garden inventory is account-scoped. Use the fixed publisher set and
-  300-item page maximum; an omitted repeated field is an empty page. It can validate known rows but
-  cannot create public catalog rows or retain raw account data. Enable it with
+- Fixed first-party companions cover the shared pricing page, the `Gen AI` and `Gen AI v2` Cloud
+  SKU groups, the machine-readable Vertex v1beta1 Discovery document, exact
+  Search/Maps/customer-data supported-model lists, Standard/Flex/Priority PayGo, Provisioned
+  Throughput routing and accounting, Claude web search, partner/open response usage, the Google
+  Cloud Pricing API, and Cloud Billing export latency. These documents are accounting and API
+  drift guards; they do not create model identity.
+- The Discovery document is the canonical machine-readable contract for the Model Garden list
+  route, pagination, view enums, `PublisherModel` fields, publisher-model inference methods,
+  response usage, traffic type, and grounding metadata. Pin `version=v1beta1`, but accept a moving
+  eight-digit revision. Keep the exact human route guides where their v1 production path or
+  provider-specific behavior is more specific than the v1beta1 Discovery surface.
+- The optional paginated Model Garden inventory is account-scoped. Query the fixed publisher set
+  with an explicit 300-item requested page size, Basic view, English language, and
+  `listAllVersions=false`. Bound it to 20 pages and 5,000 items per publisher with four concurrent
+  publishers, and reject repeated page tokens. The API documentation does not call 300 a server
+  maximum. An omitted repeated field is an empty page. The inventory can validate known public
+  rows but cannot create catalog rows or retain raw account data. Enable it with
   `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
 ## Mapping
@@ -61,6 +70,11 @@ Status: current
   evidence, and collapse Claude's unqualified cache-write label only when it exactly duplicates the
   explicit five-minute amount. Verify page/token alternatives and alternate SKU units with exact
   decimal or structured-SKU evidence; otherwise retain ambiguity as raw.
+- The two public SKU-group pages are meter-identity evidence, not price books. Require every parsed
+  row to belong to the exact Vertex AI service `C7E2-9256-1C43` and carry a structured SKU ID. The
+  groups overlap and can change with contracts, so they neither establish exhaustiveness nor
+  numeric price. The previously considered `Select Google Cloud Offerings` group currently has no
+  Vertex rows and is not a valid Vertex evidence source.
 - Every reviewed pricing item receives a reconciliation disposition. Numeric rates are normalized,
   duplicate bindings are excluded, published `N/A` cells are explicit non-numeric, unsupported
   commercial structures are raw, and out-of-scope retired generations are excluded. Unbound,
@@ -97,11 +111,12 @@ Status: current
 
 ## Request, response, and freshness
 
-- Gemini `GenerateContentResponse.usageMetadata` reports prompt, candidate, tool-result prompt,
-  thinking, cached-content, and total token counts. It also reports prompt/cache/candidate/tool
-  modality breakdowns and `trafficType`, distinguishing Standard, Priority, Flex, Off-Peak, and
-  Provisioned Throughput processing. Preserve modality breakdowns because one total-token number is
-  not enough to select every public meter.
+- The v1beta1 Discovery schema confirms that Gemini
+  `GenerateContentResponse.usageMetadata` reports prompt, candidate, tool-result prompt, thinking,
+  cached-content, and total token counts. It also reports prompt/cache/candidate/tool modality
+  breakdowns and `trafficType`, distinguishing Standard, Priority, Flex, Off-Peak, and Provisioned
+  Throughput processing. Preserve modality breakdowns because one total-token number is not enough
+  to select every public meter.
 - `GroundingMetadata` reports `webSearchQueries`, `imageSearchQueries`, chunks, and supports. For
   Gemini 3, executed query arrays support query-based pricing; for older Search/Web grounding, a
   successful response with grounding support determines whether the grounded prompt is billable.
@@ -123,45 +138,32 @@ Status: current
 ## Extraction and reconciliation
 
 - Refresh is deterministic and non-LLM. Bounded model-card tables own identity; exact pricing table
-  headers/cells own public rates; fixed response and commercial-policy phrases fail closed when
-  accounting semantics drift. Pricing evidence never creates a catalog identity.
-- The previous extractor focused on model base-rate tables. It deliberately skipped provider tools,
-  did not fetch billing/accounting companions, did not join the Claude tool price to the dedicated
-  supported-model guide, and had no source-item reconciliation callback. Consequently, official
-  `Feature | Pricing` and `Tool | Price` rows could disappear without affecting model numeric
-  coverage. The corrected pipeline crawls those first-party documents, validates their accounting
-  fields, normalizes the two tool table grammars, preserves allowances/rules as raw facts, and
-  partitions every reviewed source item.
-- The current live Google bundle has 49 identities, including 26 non-retired models; all 26 have
-  numeric public pricing. It produces 1,045 normalized facts and 69 raw facts. The new grounding
-  extraction adds 51 tool rates across 11 explicitly supported current Gemini models. Its
-  reconciliation partitions 1,395 reviewed items into 1,045 normalized, 69 raw, 277 explicit
-  non-numeric, and four excluded,
-  with no current unbound, ambiguous, unsupported, or unresolved item.
-- The partner bundle has 33 identities and 26 non-retired models, all numeric. It produces 545
-  normalized facts and one raw fact, including Claude web-search rates on all 13 models in the
-  dedicated supported list. Reconciliation has 545 normalized, one raw, five explicit non-numeric,
-  and 88 excluded items with no problem disposition. The managed-open bundle has 18 non-retired
-  identities, all numeric, with 60 normalized and one raw fact. Across overlapping sources there
-  are 69 unique non-retired Vertex IDs and no unknown base-pricing model.
+  headers/cells own public rates; the machine-readable Discovery contract and fixed commercial
+  policy phrases fail closed when accounting semantics drift. Pricing and SKU evidence never
+  creates a catalog identity.
+- Scoped SKU groups may resolve an otherwise ambiguous unit from their descriptive names; all other
+  rates remain bound from the public pricing page.
 - The live main pricing page and the dedicated Claude feature guide conflict on the embedded
   supported-model list: the feature guide is newer and lists current Claude 5 and newer Claude 4.x
   models omitted from the pricing table note. Keep the numeric price from the pricing row and bind
   it only through the dedicated first-party feature list; fail closed if either structure drifts.
 - ccusage remains comparison-only because it obtains pricing through LiteLLM. The inspected
-  LiteLLM snapshot has 172 raw Vertex-labeled entries and overlaps 59 of 69 current exact IDs after
-  prefix normalization; its extras are largely aliases, retired IDs, or mixed Gemini Developer API
-  surfaces. models.dev has 41 Vertex entries and only 13 exact current overlaps before alias/version
-  normalization, with flattened standard costs and broad media/partner omissions. These books were
-  useful for locating possible gaps, but none of their values enters collection or canonical
+  LiteLLM snapshot has 172 Vertex-labeled entries and overlaps 18 of 69 current IDs literally or 59
+  after reviewed provider-prefix normalization. Its ten normalized misses are
+  `gemini-3.1-flash-lite-image`, `gemini-live-2.5-flash-native-audio`, `grok-4.3`,
+  `llama-3.3-70b-instruct-maas`, all three current Lyria IDs, both managed E5 IDs, and
+  `veo-3.1-lite-generate-001`. LiteLLM's single community-maintained price map represents aliases,
+  retired IDs, and Gemini Developer API variants as additional entries; its richer tier keys are a
+  useful completeness probe, not first-party evidence.
+- models.dev has 41 `google-vertex` entries and overlaps 13 current IDs literally or 35 after
+  removing reviewed publisher/version syntax. Its manually reviewed TOML files can extend a base
+  family but still carry Vertex-specific cost overrides. Current gaps concentrate in legacy/new
+  Claude, Grok, media/live/embedding models, and most managed-open partners. Its generated output
+  flattens important conditions and is not an official-live sync.
+- Portkey's published Vertex price file has 170 named entries excluding its default row, 133 with
+  at least one positive numeric price, and 54 normalized current overlaps. Its community workflow
+  asks contributors to edit provider JSON and cite a source. It covers more current exact IDs than
+  models.dev but still misses 15 current IDs, including every current Lyria model, four Grok 4.1/4.20
+  variants, both E5 models, and the newest managed-open/media outliers. These comparator books are
+  useful for locating gaps, but none of their identities or values enters collection or canonical
   pricing.
-
-## Kong AI Gateway
-
-- Kong's provider is Gemini Vertex, not a generic adapter for every Vertex model.
-- Compatibility requires the Gemini-compatible publisher/API family, exact method, active
-  lifecycle, acceptable maturity, and region. Partner/open-model text generation alone is
-  insufficient.
-- Files, batches, ranking, tools, and grounding may be service-level/native operations. Missing
-  route or response evidence remains unknown; never infer an alias or billing counter from a nearby
-  model.

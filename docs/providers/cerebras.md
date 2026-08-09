@@ -1,55 +1,85 @@
 # Cerebras
 
-Status: current
+## Source topology and refresh
 
-## Sources and identity
+- Production refresh uses only first-party Cerebras surfaces. The required current inventory is
+  `GET https://api.cerebras.ai/public/v1/models`; it is unauthenticated, documented, exhaustive,
+  and collected atomically with its official `format=openrouter` and `format=huggingface`
+  serializers plus the public-model contract. All three serializers must expose the same exact ID
+  set and agree on identity, prices, limits, modalities, and overlapping capabilities. Compatibility
+  cache/image/request zeroes are documented placeholders and never become native price facts.
+- The official Model Catalog is an independent exhaustive source for current model cards, exact
+  callable IDs, Production/Preview maturity, endpoint labels, features, limits, and structured
+  `ModelInfo` rates. Dynamic cards and a fixed set of commercial/API companions are fetched in one
+  linked bundle. `llms.txt` is the discovery sentinel: a new commercial-looking documentation page
+  rejects the source until it is classified.
+- The bundle includes Cerebras's raw OpenAPI 3.1 document, API-version policy,
+  public pricing page, usage schemas, prompt caching, image inputs, reasoning, predicted outputs,
+  service tiers, tools, Batch, console billing/cost reporting, projects, rate limits, metrics,
+  dedicated inference, and AWS Marketplace billing. The raw OpenAPI is route/capability/usage
+  evidence only; example model names cannot create inventory rows.
+- Cerebras docs are Mintlify-style stable Markdown surfaces (`llms.txt`, canonical `.md` pages and
+  raw `openapi.yaml`) with ordinary HTTP validators. The website price table is a Next.js page backed
+  by embedded Sanity data. The public endpoint's three official serializers provide a first-party
+  self-consistency check that does not depend on page layout or a community catalog.
+- Deprecations and the change log add lifecycle and exact earliest-release evidence. Parameter
+  deprecations do not create model rows. Replacement links resolve through exact catalog path/ID or
+  change-log name/ID bindings; unresolved, conflicting, or dangling references reject the source.
+- Optional authenticated `/v1/models` is account-scoped inventory validation enabled by
+  `CEREBRAS_API_KEY`. It cannot create or remove global rows and raw responses are not retained.
+  Reviewed additive item fields are accepted with a bounded contract signal; unknown nested fields,
+  changed types, unknown values, ID-set divergence, and root-envelope drift fail closed.
+- Refresh is fully deterministic and requires no LLM. Do not replace any of these sources with
+  models.dev, LiteLLM, Portkey, Helicone, OpenRouter, Hugging Face, or another downstream catalog.
 
-- The unauthenticated public API and official Model Catalog are independent exhaustive sources for shared endpoints. The structured public API is the primary exact-ID price source; the public pricing page is an independently maintained corroborating source.
-- Callable IDs must be exact structured IDs or labeled model-card IDs. Dedicated endpoint weights and account-defined deployments do not create global rows.
-- Model Catalog Production/Preview sections own maturity when public API lifecycle flags disagree.
-- `/models/choose-a-model` is a reviewed selection guide, not a model card: it intentionally has no
-  `modelId`. Only exact model links from the Production/Preview catalog tables enter the card set;
-  any other newly discovered `/models/*` page still fails closed until classified.
-- Deprecations add only model lifecycle rows; parameter deprecations do not. Replacement links resolve through exact path/ID bindings in the current catalog or exact name/ID bindings in the change log. Unresolved, conflicting, or dangling replacements reject the source; there is no model allowlist.
-- Release dates require exact structural label/ID bindings. Historical models keep limits, prices, and dates unknown when current official sources no longer publish them.
-- Optional authenticated `/v1/models` is account-scoped validation. It cannot create/remove rows or retain raw data.
-- Enable the optional inventory with `CEREBRAS_API_KEY`.
+## Identity, mapping, and source conflicts
 
-## First-party commercial discovery
-
-- The official `llms.txt` index is collected atomically with the model catalog. Commercial-looking links are partitioned against the reviewed companion allowlist; a new pricing, billing, credit, subscription, usage, cost, or metering page rejects the source until reviewed.
-- Reviewed companions cover public model pricing, the website price card, Chat/Completions usage, prompt caching, image inputs, reasoning, predicted outputs, service tiers, tools, Batch, account billing, console usage/cost reporting, projects, rate limits, dedicated endpoints, metrics, and AWS Marketplace billing.
-- Every reviewed commercial input is reconciled as normalized, deliberately outside the public model price book, or unresolved. Tests assert the denominator and each unresolved reason, so a newly fetched page cannot merely disappear from extraction.
-- Only first-party Cerebras sources are admissible. This provider does not use `ccusage`, LiteLLM, models.dev, or another community price book.
-
-## Mapping
-
-- Current endpoint cards accept only reviewed Chat Completions and Completions labels bound to fixed POST method/path references. Unknown labels or changed references reject the provider; historical rows get no inferred endpoint.
-- Structured API limits and prices have priority over model-card fallbacks. This keeps the machine-readable billing values when an independently maintained card lags; both observations retain provenance.
-- The public pricing page must bind one row to every current exact model ID. Equal rates corroborate the structured source; a difference is retained as a bounded source-conflict diagnostic rather than overriding the structured value or rejecting otherwise valid model data.
-- Card prices require an exact `/ M tokens` suffix or the same component's exact `per million tokens` label. Conflicting prose is ignored.
-- Cache-read prices derive only from the official standard-input rule. Placeholder cache fields are not free pricing.
-- A single unconditional rate is valid only while the official service-tier guide says all tiers are billed equally. A change to that policy rejects the source instead of silently flattening tiered billing.
-- `reasoning_effort` is positive effort-control evidence only when the exact parameter appears on the model card. Absence remains unknown.
-- Credits are allowances. Dedicated capacity without stable shared IDs stays outside model pricing. The Batch API remains private preview and its current guide publishes no current rate, so a historical launch discount does not become current pricing or model capability evidence.
-- All 12 unknown-priced rows in the current refresh are deprecated identities retained only by
-  lifecycle or release history. None appears in the current structured price source or current
-  public pricing table. Copying a successor's rate or preserving an old launch price would turn
-  historical evidence into a false current offer, so no parser change can resolve them safely.
-- Account-tier rate limits and per-request image limits do not fit the provider-neutral scalar model limits and are not flattened into them. API creation values are not model dates.
+- Callable IDs must be exact structured API IDs or exact `modelId` values bound to a model link in
+  the Production/Preview catalog tables. `/models/choose-a-model` is a reviewed selection guide, not
+  a model card. Any other newly discovered `/models/*` page fails closed until classified.
+- The catalog owns maturity when official surfaces disagree. In the current snapshot Gemma 4 31B is
+  in the Preview table while the public native serializer says `preview: false`; the merged row stays
+  Preview. API `created` values are not release dates.
+- Current model-card prices come from structured `ModelInfo`. Every card's natural-language pricing
+  sentence and every website price-table component is independently reconciled. The current Gemma
+  prose says $2.15/$2.70 per million input/output tokens, while structured `ModelInfo`, all three
+  public serializers, and the website table say $0.99/$1.49. The structured consensus wins and both
+  prose components remain explicit unbound source-conflict evidence. Equal prose/page components are
+  recorded as corroboration rather than disappearing from the reconciliation denominator.
+- Current endpoint cards accept only reviewed Chat Completions and Completions labels bound to exact
+  POST paths. The raw OpenAPI currently contains only `POST /v1/chat/completions` and validates bearer
+  authentication, request/response schemas, structured output, tools, reasoning effort, service
+  tiers, prompt-cache routing and usage detail. The separately documented legacy Completions route
+  remains card evidence; it is not invented from the raw OpenAPI.
+- Cache-read rates derive only from the official rule that cached input is billed at the standard
+  input rate. There is no separate public cache-write meter. A single unconditional rate remains
+  valid only while the service-tier guide says all preview tiers are billed equally.
+- `reasoning_effort` is positive effort-control evidence only when the exact parameter appears on a
+  model card. Account-tier rate limits and per-request image limits do not fit provider-neutral scalar
+  limits and are not flattened into them.
 
 ## Cost boundary
 
-- For current usage-based shared inference, a completed response is publicly calculable from the exact model ID plus `usage.prompt_tokens` and `usage.completion_tokens`. `prompt_tokens_details.cached_tokens` is observable, but cached input has the normal input rate and therefore does not change the formula.
-- Image tokens are included in prompt tokens. Hidden reasoning tokens and rejected predicted-output tokens are included in completion accounting; they must not be added again. All service tiers currently share one rate during preview. The client executes tool calls, so there is no documented Cerebras tool-execution meter to add.
-- Streaming Chat responses and Batch results publish usage fields. Batch charges only completed requests, but its current public rate is not published, so the shared synchronous rate must not be inferred for Batch.
-- The result is a public list-cost estimate, not the account's effective invoice cost. Trial credits, credit expiry and recharge, per-model monthly subscriptions, enterprise/dedicated contracts, and AWS Marketplace billing are account or channel adjustments outside the public price book. Monthly subscription tiers are visible only in the console; enterprise terms are private.
-- Cerebras documents console Usage, Cached-Usage, and Cost reports with CSV export, but no public Usage/Costs ledger API. Console cost may lag by up to 10 minutes, active monthly-subscription requests are excluded from usage-based billing, and AWS Marketplace charges may take 24–48 hours to appear.
-- The opt-in dedicated-endpoint Metrics API reports aggregate input, output, and cache token counters for the last complete minute, not request cost. It can support operational reconciliation, but neither it nor delayed console cost is suitable for request-time cost-based load balancing. A gateway should route on the public marginal-rate estimate and response usage, while reconciling account-effective cost asynchronously.
+- A completed shared-inference response is publicly calculable from exact model ID plus
+  `usage.prompt_tokens` and `usage.completion_tokens`. Image tokens are included in prompt tokens.
+  Cached input has the standard input rate. Hidden reasoning and rejected predicted-output tokens are
+  included in completion accounting and must not be added again. The client executes tool calls, so
+  no Cerebras tool-execution meter is added.
+- Batch is Private Preview and currently documents only `/v1/chat/completions`. Only completed batch
+  requests are charged, but no current public Batch rate is published; synchronous shared rates and
+  example model names are not promoted to Batch pricing or support facts.
+- The result is public list-cost, not account-effective invoice cost. Trial credits, credit expiry and
+  recharge, per-model monthly subscriptions, enterprise/dedicated contracts, and AWS Marketplace
+  billing are account or channel adjustments. Console Cost can lag by 10 minutes, active monthly-plan
+  requests are excluded from usage billing, and Marketplace charges may lag 24–48 hours.
+- Cerebras documents console Usage, Cached-Usage and Cost reports with CSV export, but no public
+  Usage/Costs ledger API. The opt-in dedicated Metrics API reports aggregate counters for the last
+  complete minute, not request cost. Gateways should route on public marginal-rate estimates and
+  returned usage, then reconcile account-effective cost asynchronously.
 
-## Kong AI Gateway
+## Comparator audit
 
-- Candidates require active lifecycle, acceptable maturity, exact Chat Completions evidence, positive streaming, and visibility in the user's account.
-- Keep global `account_availability` unknown; account confirmation remains scoped provenance.
-- Do not create a dedicated-model allowlist or flatten credits/capacity into the current rate list.
-- Record the request's exact model and service-tier selector, then use returned usage as the authoritative completed-token count. Treat the estimate as provisional whenever the account may have an active monthly plan, custom dedicated terms, Marketplace billing, or Batch execution.
+- models.dev and LiteLLM keep direct Cerebras entries manually rather than synchronizing the official
+  public endpoint. Portkey and Helicone likewise publish community-maintained subsets; routed catalogs
+  such as OpenRouter and Hugging Face describe their own downstream offers. These sources are useful
+  drift alarms, but they neither establish Cerebras inventory nor override first-party facts.

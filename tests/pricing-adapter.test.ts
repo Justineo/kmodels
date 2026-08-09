@@ -287,6 +287,13 @@ describe("parsed-source canonical pricing adapter", () => {
     ]);
   });
 
+  it("can require an optional public overlay only for a fresh pricing partition", () => {
+    const huggingFace = manifests.find(({ provider }) => provider.id === "huggingface");
+    const featherless = huggingFace?.sources.find(({ id }) => id === "huggingface-featherless");
+    expect(featherless).toMatchObject({ optional: true, pricingRequired: true });
+    expect(featherless === undefined ? false : isRequiredPricingSource(featherless)).toBe(true);
+  });
+
   it("requires explicit provenance for calculated source facts", () => {
     const calculated = model().price_facts[2]!;
     expect(sourcePriceFactSchema.safeParse(calculated).success).toBe(true);

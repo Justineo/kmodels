@@ -2,7 +2,7 @@
 
 All current Claude models support text and image input and text output.
 
-Claude Fable 5 (`claude-fable-5`) is generally available. Claude Mythos 5 (`claude-mythos-5`) joins the invitation-only Claude Mythos Preview (`claude-mythos-preview`).
+Claude Fable 5 (`claude-fable-5`) is generally available. Claude Mythos 5 (`claude-mythos-5`) shares Claude Fable 5's specs and pricing and joins the invitation-only Claude Mythos Preview (`claude-mythos-preview`).
 
 Claude Mythos 5 is not generally available: it is offered in limited availability.
 
