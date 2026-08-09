@@ -1,8 +1,8 @@
 {
-  "catalog_version": "26a6ce1439c69f528907fcaf9e2c2f2c9fb6559269c67200b2f42ea9e485620c",
-  "generated_at": "2026-08-09T08:12:29.987Z",
+  "catalog_version": "9ded3c7b05b1eda4e6d7574c23623ce069c55e9e6624fc0693f9137743205701",
+  "generated_at": "2026-08-09T09:14:00.198Z",
   "outcome": "changed",
-  "previous_catalog_version": "d8c8cd2a80a4c2c2aba75f4f9837a6fdacc6609de93cbc1cd683ed9626d08164",
+  "previous_catalog_version": "26a6ce1439c69f528907fcaf9e2c2f2c9fb6559269c67200b2f42ea9e485620c",
   "providers": [
     {
       "attempt": {
@@ -1819,22 +1819,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 131,
+            "parsed_models": 129,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 131,
-              "normalized_facts": 410,
+              "model_records": 129,
+              "normalized_facts": 408,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 21
+              "unknown_models": 19
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 100,
+              "diagnostic_count": 97,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -1880,13 +1880,13 @@
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 205,
+                "normalized": 204,
                 "raw": 0,
-                "unbound": 99,
+                "unbound": 96,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 312,
+              "observed_items": 308,
               "reason_counts": {
                 "account_credits_not_public_rates": 1,
                 "auto_routing_policy_conflict": 1,
@@ -1896,17 +1896,17 @@
                 "partner_mapping_catalog_out_of_scope": 1,
                 "provider_cost_api_not_user_accessible": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 205,
-                "route_price_not_published": 99
+                "route_price_normalized": 204,
+                "route_price_not_published": 96
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "huggingface-router"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1396,
             "source_id": "huggingface-hub"
           }
@@ -1915,37 +1915,11 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 3,
+        "changed": 2,
         "changed_fields": {
-          "capabilities": 3
+          "capabilities": 2
         },
         "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": "unknown"
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/Qwen/Qwen2.5-72B-Instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
-          },
           {
             "field_changes": [
               {
@@ -1957,25 +1931,41 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.6V"
+            "model_ref": "huggingface/moonshotai/Kimi-K2-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/swiss-ai/Apertus-8B-Instruct-2509"
           }
         ],
-        "current": 1527,
+        "current": 1525,
         "previous": 1527,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 1524
+        "removed": 2,
+        "removed_model_refs": [
+          "huggingface/CohereLabs/command-a-translate-08-2025",
+          "huggingface/zai-org/GLM-4.7-FP8"
+        ],
+        "unchanged": 1523
       },
       "pricing": {
-        "commercial_hash": "8ced445dcacd2087a6805120b889ee766ca9498cf8e30bd1001b151ade8e3592",
+        "commercial_hash": "45e6f1bb510b5a3ad33703e334bec4761841ae160148a10ab267a16265f2b664",
         "outcome": "commercial",
-        "previous_commercial_hash": "0c7cc4baf328297ba565626c702b4dede8d607f0c76192424e98c0fb3fbbebc5"
+        "previous_commercial_hash": "8ced445dcacd2087a6805120b889ee766ca9498cf8e30bd1001b151ade8e3592"
       },
       "pricing_coverage": {
-        "current_models": 1527,
+        "current_models": 1525,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 0
+          "unknown_models": -2
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -2003,8 +1993,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1397,
-        "unknown_models": 1417
+        "unknown_model_refs_omitted": 1395,
+        "unknown_models": 1415
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -2013,8 +2003,14 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2026,7 +2022,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -2977,15 +2973,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 322,
+            "parsed_models": 323,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 1,
-              "model_records": 322,
-              "normalized_facts": 2596,
+              "model_records": 323,
+              "normalized_facts": 2603,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 319,
+              "numeric_models": 320,
               "raw_facts": 5,
               "raw_models": 5,
               "unknown_models": 2
@@ -2998,18 +2994,18 @@
                 "ambiguous": 0,
                 "excluded": 42,
                 "explicit_non_numeric": 15,
-                "normalized": 841,
+                "normalized": 842,
                 "raw": 5,
                 "unbound": 0,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 903,
+              "observed_items": 904,
               "reason_counts": {
                 "account_or_service_policy": 5,
                 "catalog_price_empty": 13,
                 "catalog_price_free": 1,
-                "catalog_price_object": 308,
+                "catalog_price_object": 309,
                 "model_page_ambiguous_variants": 5,
                 "model_page_free": 1,
                 "model_page_price": 14,
@@ -3023,31 +3019,86 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 322,
+        "added": 1,
+        "added_model_refs": [
+          "vercel/anthropic/claude-opus-5-fast"
+        ],
+        "changed": 1,
+        "changed_fields": {
+          "routes": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "alibaba",
+                    "provider_model_id": "alibaba/qwen3.7-plus",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "fireworks",
+                    "provider_model_id": "alibaba/qwen3.7-plus",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "alibaba",
+                    "provider_model_id": "alibaba/qwen3.7-plus",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "fireworks",
+                    "provider_model_id": "alibaba/qwen3.7-plus",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  },
+                  {
+                    "provider": "togetherai",
+                    "provider_model_id": "alibaba/qwen3.7-plus",
+                    "source_ref": "vercel-models",
+                    "status": "live",
+                    "task": "language"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "vercel/alibaba/qwen3.7-plus"
+          }
+        ],
+        "current": 323,
         "previous": 322,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 322
+        "unchanged": 321
       },
       "pricing": {
-        "commercial_hash": "5972412fc06654febb78da8c495af29caa768026debbddc02f8229aaedda22cb",
-        "outcome": "provenance_only",
+        "commercial_hash": "54cba5aa717ba157930144342bffbfc4197e4060597935ff31c66fca64c2e37e",
+        "outcome": "commercial",
         "previous_commercial_hash": "5972412fc06654febb78da8c495af29caa768026debbddc02f8229aaedda22cb"
       },
       "pricing_coverage": {
-        "current_models": 322,
+        "current_models": 323,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": 1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 318,
+        "normalized_rate_models": 319,
         "not_applicable_models": 0,
-        "offer_models": 322,
+        "offer_models": 323,
         "raw_fact_models": 6,
         "unknown_model_refs": [],
         "unknown_model_refs_omitted": 0,
@@ -3458,18 +3509,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 0,
+    "added_models": 1,
     "added_sources": 0,
     "changed_models": 3,
-    "changed_sources": 31,
-    "models": 3381,
+    "changed_sources": 32,
+    "models": 3380,
     "pricing_accepted": 18,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 0,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 2,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
