@@ -32,6 +32,7 @@ export function normalizeDeliveryModes<T extends ProviderModel>(model: T): T & P
   const evidence = new Map(
     (model.delivery_mode_evidence ?? []).map((item) => [deliveryModeEvidenceKey(item), item]),
   );
+  for (const { mode } of evidence.values()) modes.add(mode);
   if (model.capabilities.streaming === true) modes.add("streaming");
   if (model.capabilities.batch === true) modes.add("batch");
 

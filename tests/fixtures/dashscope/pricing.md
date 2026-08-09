@@ -53,6 +53,60 @@ Batch and context-cache discounts are separate. These two discounts cannot apply
   </tbody>
 </table>
 
+## Speech synthesis
+
+#### Singapore
+
+#### Qwen TTS
+
+<table>
+  <thead>
+    <tr>
+      <td>Model ID</td>
+      <td>Deployment scope</td>
+      <td>Input price (per 10,000 characters)</td>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>qwen-tts-nested</td>
+      <td>International</td>
+      <td>$0.10</td>
+    </tr>
+  </tbody>
+</table>
+
+## Multimodal input
+
+#### Singapore
+
+<table>
+  <thead>
+    <tr>
+      <td>Model ID</td>
+      <td>Deployment scope</td>
+      <td>Input price (per 1 million tokens)</td>
+      <td>Output price (per 1 million tokens)</td>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Text Text-only input</td>
+      <td>Text Multimodal input</td>
+      <td>Text + audio Audio only billed</td>
+      <td>Audio</td>
+    </tr>
+    <tr>
+      <td>qwen-omni-labels</td>
+      <td>International</td>
+      <td>$0.10</td>
+      <td>$0.20</td>
+      <td>$0.30</td>
+      <td>$0.40</td>
+    </tr>
+  </tbody>
+</table>
+
 ## Image generation
 
 ### Qwen Image Generation and Editing

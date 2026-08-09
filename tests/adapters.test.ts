@@ -20,9 +20,14 @@ import {
   normalizeVercelEndpointResponse,
   normalizeVercelModelPage,
 } from "../src/catalog/fetch.ts";
-import { applyGroups, applySupplementGroups } from "../src/catalog/collector.ts";
+import {
+  applyGroups,
+  applySupplementGroups,
+  retainInventoryFacts,
+} from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
+import { normalizeDeliveryModes } from "../src/catalog/delivery.ts";
 import {
   sourcePricingReconciliation,
   type PricingReconciliationItem,
@@ -30,6 +35,7 @@ import {
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
 import { sourceKindSchema, type ModelTask, type Provider } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
+import { normalizeModelTasks } from "../src/catalog/task.ts";
 import { reconcileCatalog, validateProvider } from "../src/catalog/validation.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
@@ -372,6 +378,7 @@ const anthropicDocuments = [
   ["/docs/en/about-claude/pricing.md", "pricing.md"],
   ["/docs/en/about-claude/model-deprecations.md", "lifecycle.md"],
   ["/docs/en/about-claude/models/model-ids-and-versions.md", "model-ids.md"],
+  ["/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md", "launch.md"],
   ["/docs/en/api/models/list.md", "models-list.md"],
   ["/docs/en/api/messages/create.md", "messages.md"],
   ["/docs/en/api/messages/batches/create.md", "batches.md"],
@@ -3319,6 +3326,20 @@ describe("OpenAI adapters", () => {
     expect(model?.pricing_state).toBe("unknown");
   });
 
+  it("uses a numeric cached-input rate as positive prompt-cache evidence", async () => {
+    const models = await parsed("openai", "openai/catalog.json", undefined, (body) => {
+      const bundle = linkedBundle(body);
+      const embedding = bundle.documents.find(({ url }) => url.includes("text-embedding-3-large"));
+      if (embedding === undefined) throw new Error("Missing OpenAI model fixture");
+      embedding.body += "\n\n| Cached input | $0.02 | 1M tokens |";
+      return JSON.stringify(bundle);
+    });
+    expect(
+      models.find(({ model_id }) => model_id === "text-embedding-3-large")?.capabilities
+        .prompt_cache,
+    ).toBe(true);
+  });
+
   it("keeps card-local pricing in a separately replaceable HTML overlay", async () => {
     const catalog = await parsed("openai", "openai/catalog.json");
     const models = await openAiModelPricing("openai/pricing-catalog.json", catalog);
@@ -3982,6 +4003,7 @@ describe("Azure adapters", () => {
     const source = azurePortalSource(2, 2);
     const documented = {
       ...azurePricingModel("gpt-multi", "2026-01-01"),
+      limits: { max_output_tokens: 128_000 },
       status: "deprecated",
       release_stage: "stable",
       deprecated_at: "2026-06-01",
@@ -4040,6 +4062,11 @@ describe("Azure adapters", () => {
       "azure/gpt-multi@2026-03-01",
     ]);
     expect(merged.find(({ version }) => version === "2026-01-01")).toMatchObject({
+      limits: {
+        context_tokens: 256_000,
+        max_input_tokens: 240_000,
+        max_output_tokens: 128_000,
+      },
       status: "deprecated",
       release_stage: "stable",
       deprecated_at: "2026-06-01",
@@ -4073,6 +4100,7 @@ describe("Azure adapters", () => {
       scope: "global",
       exhaustive: false,
       role: "supplement",
+      fillOnly: true,
       headers: [
         { name: "X-Ms-User-Agent", value: "AzureMachineLearningWorkspacePortal/3.0" },
         { name: "x-ms-useragent", value: "AzureMachineLearningWorkspacePortal/3.0" },
@@ -6057,6 +6085,7 @@ describe("Anthropic adapters", () => {
   it("joins official model, lifecycle, and pricing tables by observed identity", async () => {
     const models = await anthropicCatalog();
     const fable = models.find((model) => model.model_id === "claude-fable-5");
+    const mythos = models.find((model) => model.model_id === "claude-mythos-5");
     const opus = models.find((model) => model.model_id === "claude-opus-4-8");
     const sonnet = models.find((model) => model.model_id === "claude-sonnet-5");
     const preview = models.find((model) => model.model_id === "claude-mythos-preview");
@@ -6064,6 +6093,9 @@ describe("Anthropic adapters", () => {
       count: models.length,
       name: fable?.name,
       release: fable?.release_date,
+      description: fable?.description,
+      mythosRelease: mythos?.release_date,
+      mythosDescription: mythos?.description,
       stage: fable?.release_stage,
       limits: fable?.limits,
       input: fable?.price_facts.find(
@@ -6100,6 +6132,9 @@ describe("Anthropic adapters", () => {
       count: 7,
       name: "Claude Fable 5",
       release: "2026-06-09",
+      description: "Widely released model",
+      mythosRelease: "2026-06-09",
+      mythosDescription: "Limited release model",
       stage: "stable",
       limits: { context_tokens: 1_000_000, max_output_tokens: 128_000 },
       input: "10",
@@ -8392,7 +8427,7 @@ describe("document adapter", () => {
     });
   });
 
-  it("normalizes observed inventory enums and rejects unknown values", async () => {
+  it("normalizes live inventory enums and signals unknown additions without dropping rows", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources.find(({ id }) => id === "bedrock-api-us-east-1");
     if (source === undefined) throw new Error("Missing Bedrock API source");
@@ -8409,16 +8444,19 @@ describe("document adapter", () => {
     const expanded = body
       .replace(
         '"inputModalities": ["TEXT", "IMAGE"]',
-        '"inputModalities": ["TEXT", "IMAGE", "EMBEDDING"]',
+        '"inputModalities": ["TEXT", "IMAGE", "EMBEDDING", "AUDIO", "VIDEO"]',
       )
-      .replace('"outputModalities": ["TEXT"]', '"outputModalities": ["TEXT", "EMBEDDING"]')
+      .replace(
+        '"outputModalities": ["TEXT"]',
+        '"outputModalities": ["TEXT", "EMBEDDING", "SPEECH"]',
+      )
       .replace(
         '"customizationsSupported": ["FINE_TUNING"]',
-        '"customizationsSupported": ["FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]',
+        '"customizationsSupported": ["PREFERENCE_FINE_TUNING", "CONTINUED_PRE_TRAINING", "DISTILLATION"]',
       )
       .replace(
         '"inferenceTypesSupported": ["ON_DEMAND"]',
-        '"inferenceTypesSupported": ["ON_DEMAND", "PROVISIONED"]',
+        '"inferenceTypesSupported": ["ON_DEMAND", "PROVISIONED", "INFERENCE_PROFILE"]',
       )
       .replace(
         '"status": "ACTIVE",',
@@ -8435,8 +8473,8 @@ describe("document adapter", () => {
       fineTuning: expandedModel?.capabilities.fine_tuning,
     }).toEqual({
       modalities: {
-        input: ["text", "image", "embedding"],
-        output: ["text", "embedding"],
+        input: ["text", "image", "embedding", "audio", "video"],
+        output: ["text", "embedding", "audio"],
       },
       fineTuning: true,
     });
@@ -8451,26 +8489,45 @@ describe("document adapter", () => {
         observedAt,
       })[0]?.capabilities.fine_tuning,
     ).toBe(false);
+    const findings: SourceContractEvidence[] = [];
+    const unknown = parseSource({
+      provider: provider(value),
+      source,
+      body: body
+        .replace(
+          '"inputModalities": ["TEXT", "IMAGE"]',
+          '"inputModalities": ["TEXT", "IMAGE", "MUSIC"]',
+        )
+        .replace(
+          '"customizationsSupported": ["FINE_TUNING"]',
+          '"customizationsSupported": ["ADAPTER_TUNING"]',
+        )
+        .replace(
+          '"inferenceTypesSupported": ["ON_DEMAND"]',
+          '"inferenceTypesSupported": ["SERVERLESS"]',
+        )
+        .replace('"status": "ACTIVE"', '"status": "AVAILABLE"'),
+      observedAt,
+      onContractFinding: (finding) => findings.push(finding),
+    })[0];
+    expect(unknown).toMatchObject({
+      modalities: { input: ["text", "image"], output: ["text"] },
+      capabilities: { streaming: true, fine_tuning: "unknown" },
+      release_date: "2025-10-15",
+      status: "unknown",
+    });
+    expect(findings).toMatchObject([
+      {
+        disposition: "accept_with_signal",
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({ kind: "unknown_value", observed_value: "MUSIC" }),
+          expect.objectContaining({ kind: "unknown_value", observed_value: "ADAPTER_TUNING" }),
+          expect.objectContaining({ kind: "unknown_value", observed_value: "SERVERLESS" }),
+          expect.objectContaining({ kind: "unknown_value", observed_value: "AVAILABLE" }),
+        ]),
+      },
+    ]);
     for (const changed of [
-      body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "AUDIO"]'),
-      body.replace('"inputModalities": ["TEXT", "IMAGE"]', '"inputModalities": ["TEXT", "MUSIC"]'),
-      body.replace(
-        '"customizationsSupported": ["FINE_TUNING"]',
-        '"customizationsSupported": ["PREFERENCE_FINE_TUNING"]',
-      ),
-      body.replace(
-        '"customizationsSupported": ["FINE_TUNING"]',
-        '"customizationsSupported": ["ADAPTER_TUNING"]',
-      ),
-      body.replace(
-        '"inferenceTypesSupported": ["ON_DEMAND"]',
-        '"inferenceTypesSupported": ["INFERENCE_PROFILE"]',
-      ),
-      body.replace(
-        '"inferenceTypesSupported": ["ON_DEMAND"]',
-        '"inferenceTypesSupported": ["SERVERLESS"]',
-      ),
-      body.replace('"status": "ACTIVE"', '"status": "AVAILABLE"'),
       body.replace("foundation-model/anthropic", "foundation-model/cohere"),
       body.replace(/^\s*"modelArn":.*\n/m, ""),
     ])
@@ -9950,7 +10007,7 @@ describe("Hugging Face adapter", () => {
     });
   });
 
-  it("admits bounded product evidence and discards a single-provider inventory row", () => {
+  it("admits HF-operated routes and bounded partner evidence", () => {
     const value = manifest("huggingface");
     const base = huggingFaceMappingSource(value);
     const source: SourceManifest = {
@@ -9973,16 +10030,19 @@ describe("Hugging Face adapter", () => {
           models: {
             conversational: {
               "org/multi-provider": route("hf-multi"),
-              "org/recommended": route("hf-recommended"),
-              "org/featured": route("hf-featured"),
-              "org/inventory-only": route("hf-inventory"),
+              "org/hf-inference": route("hf-owned"),
             },
           },
         },
         {
           provider: "deepinfra",
           models: {
-            conversational: { "org/multi-provider": route("deepinfra-multi") },
+            conversational: {
+              "org/featured": route("deepinfra-featured"),
+              "org/inventory-only": route("deepinfra-inventory"),
+              "org/multi-provider": route("deepinfra-multi"),
+              "org/recommended": route("deepinfra-recommended"),
+            },
           },
         },
       ],
@@ -9996,7 +10056,7 @@ describe("Hugging Face adapter", () => {
             "",
             "### Using the API",
             "",
-            '<InferenceSnippet providersMapping={ {"hf-inference":{"modelId":"org/featured","providerModelId":"featured"}} } />',
+            '<InferenceSnippet providersMapping={ {"deepinfra":{"modelId":"org/featured","providerModelId":"featured"}} } />',
           ].join("\n"),
         },
       ],
@@ -10010,12 +10070,13 @@ describe("Hugging Face adapter", () => {
     });
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "org/featured",
+      "org/hf-inference",
       "org/multi-provider",
       "org/recommended",
     ]);
     expect(reconciliation).toContainEqual({
       disposition: "excluded",
-      reason_code: "single_provider_inventory_without_product_evidence",
+      reason_code: "single_partner_inventory_without_product_evidence",
     });
     expect(JSON.stringify(reconciliation)).not.toContain("org/inventory-only");
   });
@@ -11032,6 +11093,33 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("derives Omni transcription and raw provider type from its official task page", () => {
+    const body = `<main><section><h2>All models</h2><table>
+      <tr><td>Model ID</td><td>API</td></tr>
+      <tr><td><code>qwen3.5-omni-flash</code></td><td>HTTP</td></tr>
+      <tr><td><code>qwen3-omni-flash-realtime</code></td><td>WebSocket</td></tr>
+    </table></section></main>`;
+    const models = parse(source("dashscope-omni"), body);
+    expect(models.find(({ model_id }) => model_id.endsWith("-realtime"))).toMatchObject({
+      tasks: ["text_generation", "transcription", "speech_to_speech"],
+      raw_type: "WebSocket",
+      delivery_modes: ["realtime"],
+      delivery_mode_evidence: [
+        {
+          mode: "realtime",
+          source_ref: "dashscope-omni",
+          namespace: "dashscope.api",
+          raw_value: "WebSocket",
+          kind: "provider_type",
+        },
+      ],
+    });
+    expect(models.find(({ model_id }) => model_id === "qwen3.5-omni-flash")).toMatchObject({
+      tasks: ["text_generation", "transcription"],
+      raw_type: "HTTP",
+    });
+  });
+
   it("overlays only exact recommended-model regions and request URLs", async () => {
     const models = parse(
       source("dashscope-recommended"),
@@ -11337,6 +11425,19 @@ describe("DashScope adapters", () => {
         .filter(({ conditions }) => conditions.resolution === "2k")
         .map(({ price }) => price),
     ).toEqual(["0.003", "0.075"]);
+    expect(models.find(({ model_id }) => model_id === "qwen-tts-nested")?.availability).toEqual([
+      { region: "Singapore", deployment_type: "model_api" },
+    ]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "qwen-omni-labels")
+        ?.price_facts.map(({ conditions }) => conditions.modality),
+    ).toEqual([
+      "text text-only input",
+      "text multimodal input",
+      "text + audio audio only billed",
+      "audio",
+    ]);
   });
 
   it("does not synthesize published implicit-cache exceptions", async () => {
@@ -11535,7 +11636,7 @@ describe("DashScope adapters", () => {
       publicSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-pricing")).toMatchObject({
-      extractorVersion: "dashscope-pricing-v5",
+      extractorVersion: "dashscope-pricing-v6",
       linkedDocuments: {
         documents: expect.arrayContaining([
           expect.objectContaining({ url: expect.stringMatching(/\.md$/) }),
@@ -12697,6 +12798,106 @@ describe("provider drift validation", () => {
     });
   });
 
+  it("keeps evidence derived before sources are merged", () => {
+    const configured = manifest("vercel").sources[0];
+    if (configured === undefined) throw new Error("Missing Vercel source");
+    const source: SourceManifest = { ...configured, fields: ["tasks", "api_endpoints"] };
+    const current = baseModel({
+      providerId: "vercel",
+      id: "acme/model",
+      name: "Model",
+      sourceId: "catalog",
+      observedAt,
+    });
+    const incoming = normalizeDeliveryModes(
+      normalizeModelTasks({
+        ...baseModel({
+          providerId: "vercel",
+          id: "acme/model",
+          name: "Model",
+          sourceId: source.id,
+          observedAt,
+        }),
+        tasks: ["speech_to_speech"],
+        raw_type: "realtime",
+        api_endpoints: [{ name: "StartAsyncInvoke", path: "v1/start-async-invoke" }],
+      }),
+    );
+    const merged = normalizeDeliveryModes(
+      applyGroups([current], [{ source, models: [incoming] }], false)[0] ?? current,
+    );
+    expect(merged.task_evidence).toEqual([
+      expect.objectContaining({
+        task: "speech_to_speech",
+        source_ref: source.id,
+        kind: "provider_type",
+      }),
+    ]);
+    expect(merged.delivery_mode_evidence).toEqual([
+      expect.objectContaining({ mode: "realtime", source_ref: source.id, kind: "provider_type" }),
+      expect.objectContaining({ mode: "async", source_ref: source.id, kind: "endpoint" }),
+    ]);
+    expect(merged.delivery_modes).toEqual(["realtime", "async"]);
+  });
+
+  it("retains known enrichment when an optional inventory cannot refresh", () => {
+    const source = manifest("amazon-bedrock").sources.find(
+      ({ id }) => id === "bedrock-api-us-east-1",
+    );
+    if (source === undefined) throw new Error("Missing Bedrock inventory source");
+    const currentBase = baseModel({
+      providerId: "amazon-bedrock",
+      id: "example.model-v1:0",
+      name: "example.model-v1:0",
+      sourceId: "bedrock-models",
+      observedAt,
+    });
+    const previousObservedAt = "2026-07-20T00:00:00.000Z";
+    const previous = {
+      ...currentBase,
+      name: "Inventory name",
+      source_refs: ["bedrock-models", source.id],
+      observed_at: previousObservedAt,
+      first_seen_at: previousObservedAt,
+      last_seen_at: previousObservedAt,
+      modalities: { input: ["text" as const], output: ["text" as const] },
+      capabilities: {
+        ...currentBase.capabilities,
+        streaming: true,
+        fine_tuning: false,
+      },
+      release_date: "2026-01-10",
+      deprecated_at: "2026-05-26",
+      retired_at: "2026-11-26",
+    } satisfies ProviderModel;
+    const current = {
+      ...currentBase,
+      capabilities: {
+        ...currentBase.capabilities,
+        batch: true,
+      },
+    } satisfies ProviderModel;
+
+    expect(retainInventoryFacts([current], [previous], source)).toEqual({
+      count: 1,
+      models: [
+        expect.objectContaining({
+          name: "Inventory name",
+          release_date: "2026-01-10",
+          deprecated_at: "2026-05-26",
+          retired_at: "2026-11-26",
+          capabilities: expect.objectContaining({
+            streaming: true,
+            batch: true,
+            fine_tuning: false,
+          }),
+          observed_at: observedAt,
+          source_refs: ["bedrock-models", source.id],
+        }),
+      ],
+    });
+  });
+
   it("retains partial observations but replaces reinterpreted source output", () => {
     const previous = baseModel({
       providerId: "example",
@@ -12733,6 +12934,27 @@ describe("provider drift validation", () => {
         recomputed: new Set(["official-api"]),
       })[0]?.source_refs,
     ).toEqual(["official-website"]);
+
+    const dated = { ...previous, release_date: "2026-01-10" };
+    expect(
+      reconcileCatalog([current], [dated], {
+        catalog: new Set(["official-api", "official-website"]),
+        exhaustive: new Set(),
+        recomputed: new Set(["official-api"]),
+        releaseDate: new Set(["official-api"]),
+      })[0],
+    ).toMatchObject({
+      release_date: "2026-01-10",
+      source_refs: ["official-api", "official-website"],
+    });
+    expect(
+      reconcileCatalog([{ ...current, release_date: "2026-01-11" }], [dated], {
+        catalog: new Set(["official-api", "official-website"]),
+        exhaustive: new Set(),
+        recomputed: new Set(["official-api"]),
+        releaseDate: new Set(["official-api"]),
+      })[0]?.release_date,
+    ).toBe("2026-01-11");
   });
 
   it("reconciles omissions from exhaustive catalogs without treating overlays as presence", () => {

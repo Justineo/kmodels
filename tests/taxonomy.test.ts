@@ -45,27 +45,27 @@ describe("task taxonomy", () => {
     ]);
   });
 
-  it("retains a recognized raw provider task from route evidence", () => {
+  it("derives a canonical task and evidence from a recognized route", () => {
     const normalized = normalizeModelTasks({
       ...model(),
-      tasks: ["transcription"],
       routes: [
         {
           source_ref: "test-source",
           provider: "hf-inference",
           provider_model_id: "model",
-          task: "automatic-speech-recognition",
+          task: "translation",
           status: "live",
         },
       ],
     });
 
+    expect(normalized.tasks).toEqual(["translation"]);
     expect(normalized.task_evidence).toEqual([
       {
-        task: "transcription",
+        task: "translation",
         source_ref: "test-source",
         namespace: "test.task",
-        raw_value: "automatic-speech-recognition",
+        raw_value: "translation",
         kind: "provider_task",
       },
     ]);

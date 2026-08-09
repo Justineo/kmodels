@@ -23,6 +23,7 @@ const providerTaskMappings = new Map<string, readonly ModelTask[]>([
   ["text-to-video", ["video_generation"]],
   ["image-text-to-video", ["video_generation"]],
   ["image-to-video", ["video_generation"]],
+  ["translation", ["translation"]],
   ["audio-classification", ["classification"]],
   ["image-classification", ["classification"]],
   ["zero-shot-image-classification", ["classification"]],
@@ -173,15 +174,18 @@ export function classifyModelTasks(input: {
 }
 
 export function normalizeModelTasks<T extends ProviderModel>(model: T): T & ProviderModel {
-  const tasks =
-    model.tasks.length > 0
-      ? orderedTasks(model.tasks)
+  const routeTasks = model.routes?.flatMap(({ task }) => providerTasks(task)) ?? [];
+  const tasks = orderedTasks([
+    ...(model.tasks.length > 0
+      ? model.tasks
       : classifyModelTasks({
           modelId: model.model_id,
           name: model.name,
           rawType: model.raw_type,
           modalities: model.modalities,
-        });
+        })),
+    ...routeTasks,
+  ]);
   const evidence = taskEvidence(model, tasks);
   return {
     ...model,

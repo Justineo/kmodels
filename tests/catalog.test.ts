@@ -267,6 +267,7 @@ describe("generated static catalog", () => {
       generatedCatalogCalibrations.huggingFace.maximumModelsExclusive,
     );
     expect([...sources].sort()).toEqual([
+      "huggingface-featherless",
       "huggingface-hf-inference",
       "huggingface-hub",
       "huggingface-router",

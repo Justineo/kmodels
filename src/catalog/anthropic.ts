@@ -250,16 +250,38 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
   }
 }
 
+function launchDetails(body: string, input: Input, models: Map<string, ProviderModel>): void {
+  const table = tables(body).find(
+    (candidate) => candidate.headers.join("|") === "Model|API model ID|Description",
+  );
+  if (table === undefined || table.rows.length === 0)
+    throw new Error("Anthropic launch page omitted its model table");
+  const releaseDate = date(
+    body.match(/become available on ([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1] ?? "",
+  );
+  if (releaseDate === undefined) throw new Error("Anthropic launch page omitted its release date");
+  for (const values of table.rows) {
+    const id = values[1];
+    if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
+    const item = model(models, input, id);
+    item.name = values[0] || item.name;
+    item.description = values[2] || item.description;
+    if (item.release_date !== undefined && item.release_date !== releaseDate)
+      throw new Error(`Anthropic release sources disagree for ${item.model_id}`);
+    item.release_date = releaseDate;
+  }
+}
+
 function releaseNotes(body: string, input: Input, models: Map<string, ProviderModel>): void {
   let currentDate: string | undefined;
   let launches = 0;
   for (const line of body.split(/\r?\n/)) {
     const heading = line.match(/^### (.+)$/)?.[1];
     if (heading !== undefined) currentDate = date(heading);
-    const subject = line.match(/^[*-] We've launched (.+?), /)?.[1];
+    const subject = line.match(/^[*-] We've launched (.+)$/)?.[1];
     if (subject === undefined) continue;
-    const launchSubject = text(subject);
-    if (!/^Claude (?:Fable|Mythos|Opus|Sonnet|Haiku|\d)\b/.test(launchSubject)) continue;
+    const opening = text(subject.split(",", 1)[0] ?? "");
+    if (!/^Claude (?:Fable|Mythos|Opus|Sonnet|Haiku|\d)\b/.test(opening)) continue;
     if (currentDate === undefined)
       throw new Error("Anthropic release notes omitted a valid launch date");
     const targets = new Map<string, ProviderModel>();
@@ -272,7 +294,7 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
         targets.set(item.model_id, item);
       }
     }
-    for (const item of mentioned(launchSubject, models)) targets.set(item.model_id, item);
+    for (const item of mentioned(opening, models)) targets.set(item.model_id, item);
     for (const item of targets.values()) {
       if (item.release_date !== undefined && item.release_date !== currentDate)
         throw new Error(`Anthropic release sources disagree for ${item.model_id}`);
@@ -1140,6 +1162,11 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   );
   const models = new Map<string, ProviderModel>();
   overview(bundle.index.body, input, models);
+  launchDetails(
+    document("/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md"),
+    input,
+    models,
+  );
   lifecycle(document("/docs/en/about-claude/model-deprecations.md"), input, models);
   releaseNotes(document("/docs/en/release-notes/overview.md"), input, models);
   pricing(

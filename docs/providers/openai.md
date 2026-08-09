@@ -72,13 +72,18 @@ Status: current
 - Derive long-context and cache-write prices only from published multipliers with decimal-string arithmetic.
 - Explicit open-weight models use `not_applicable`. An explicitly free hosted moderation model uses
   a free offer. Absent or unparseable hosted prices remain `unknown`.
-- The current refresh has five unknown-priced rows, each explained by exact source boundaries:
-  deprecated `gpt-4-1106-preview` and `sora-2-2025-10-06` survive only through lifecycle evidence;
+- The current refresh has four unknown-priced rows, each explained by exact source boundaries:
+  deprecated `gpt-4-1106-preview` survives only through lifecycle evidence;
   `gpt-4o-2024-11-20` and `gpt-4o-tts` are present on support/API surfaces but have no exact current
   price row; and `gpt-5.4-cyber` is an exact current pricing-table identity whose input, cached-input,
   and output cells are all `-`. Family and successor prices are not inherited.
+- Keep `sora-2-2025-10-06` as an alias of the current exact `sora-2` row: the official model card
+  publishes that routing relationship, while the lifecycle table independently confirms the alias.
+  Do not publish a duplicate lifecycle-only row for the same callable identity.
 - Map exact Tools support to `computer_use` and code-execution capabilities, and explicit
-  `reasoning.effort` value lists to effort control. Account-tier rate-limit tables do not fit
+  `reasoning.effort` value lists to effort control. A supported-feature entry establishes prompt
+  caching directly; a numeric `Cached input` row on the same official model card is also positive
+  prompt-cache evidence when that card omits the feature list. Account-tier rate-limit tables do not fit
   model-global scalar limits. Tool/service rows and fine-tuning rows are reconciled but excluded
   from model base offers: tool storage/session charges require provider-service books and usage
   aggregation, while fine-tuned inference belongs to private derived IDs. The public 10% data-

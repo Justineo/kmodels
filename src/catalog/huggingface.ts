@@ -357,10 +357,10 @@ export function parseHuggingFaceMapping(input: Input): ProviderModel[] {
   for (const [id, model] of models) {
     const routes = model.routes ?? [];
     const providers = new Set(routes.map(({ provider }) => provider));
-    if (providers.size < 2 && !documentedCandidates.has(id)) {
+    if (!providers.has("hf-inference") && providers.size < 2 && !documentedCandidates.has(id)) {
       input.onPricingReconciliation?.({
         disposition: "excluded",
-        reason_code: "single_provider_inventory_without_product_evidence",
+        reason_code: "single_partner_inventory_without_product_evidence",
       });
       continue;
     }

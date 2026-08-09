@@ -21,9 +21,11 @@ Status: current
   collapsed into the otherwise common Mantle `v1/responses` route.
 - Optional `ListFoundationModels` in `us-east-1` is regional authenticated validation. It may enrich
   exact public IDs but cannot create rows, define global availability, or retain raw data. Require
-  the documented foundation-model ARN and its exact `modelId` suffix; accept only the current
-  first-party enum sets (`TEXT|IMAGE|EMBEDDING`, `FINE_TUNING|CONTINUED_PRE_TRAINING|DISTILLATION`,
-  and `ON_DEMAND|PROVISIONED`).
+  the documented foundation-model ARN and its exact `modelId` suffix. The live first-party API can
+  lead the reference page's enum list: reviewed live values such as `AUDIO`, `SPEECH`, `VIDEO`,
+  `PREFERENCE_FINE_TUNING`, and `INFERENCE_PROFILE` are normalized alongside the documented base
+  values. A new string enum is accepted with a contract signal and leaves only the affected fact
+  unknown; it does not discard the model or the other recognized fields.
 - Enable it with `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_SESSION_TOKEN` for temporary credentials. The identity needs `bedrock:ListFoundationModels` on `Resource: "*"`.
 
 ## Mapping
@@ -89,7 +91,9 @@ Status: current
   The official Bedrock pricing page now resolves `openai.gpt-5.5` and `openai.gpt-5.6-sol`, including
   the latter's short/long-context split. OpenAI's direct-platform rates remain a different commercial
   surface and cannot fill Bedrock gaps.
-- Map inventory enums only through reviewed semantics. New enum values fail closed. Regional streaming evidence remains scoped.
+- Map inventory enums only through reviewed semantics. Unknown additions are review signals rather
+  than row-level failures; recognized siblings remain usable, and regional streaming evidence
+  remains scoped.
 - Model-card dates are calendar-validated. A present but malformed launch, legacy, or exact EOL date
   rejects the provider candidate instead of disappearing as an unknown date.
 
