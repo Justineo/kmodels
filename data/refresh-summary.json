@@ -1,8 +1,8 @@
 {
-  "catalog_version": "f73187202f8fd52473ccf7cfc5c7f3a82afa176aaa45980ec8d3cf2820771d81",
-  "generated_at": "2026-08-09T02:41:03.388Z",
+  "catalog_version": "1fc33ab0c70052afcf0ff67ac78eec1ea3130907bab37de1c33cd482cfc1c4ac",
+  "generated_at": "2026-08-09T03:31:25.045Z",
   "outcome": "changed",
-  "previous_catalog_version": "9f04302586c60a0dacf75776782c71008fcb6fdd4863715b65125cdb68e2586c",
+  "previous_catalog_version": "f73187202f8fd52473ccf7cfc5c7f3a82afa176aaa45980ec8d3cf2820771d81",
   "providers": [
     {
       "attempt": {
@@ -1736,9 +1736,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 1396,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1819,18 +1819,18 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 131,
+            "parsed_models": 130,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 131,
-              "normalized_facts": 406,
+              "model_records": 130,
+              "normalized_facts": 410,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 110,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 21
+              "unknown_models": 20
             },
             "pricing_reconciliation": {
               "basis": "source_item",
@@ -1880,13 +1880,13 @@
                 "ambiguous": 1,
                 "excluded": 7,
                 "explicit_non_numeric": 0,
-                "normalized": 203,
+                "normalized": 205,
                 "raw": 0,
                 "unbound": 98,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 309,
+              "observed_items": 311,
               "reason_counts": {
                 "account_credits_not_public_rates": 1,
                 "auto_routing_policy_conflict": 1,
@@ -1896,7 +1896,7 @@
                 "partner_mapping_catalog_out_of_scope": 1,
                 "provider_cost_api_not_user_accessible": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 203,
+                "route_price_normalized": 205,
                 "route_price_not_published": 98
               },
               "unit": "reviewed source pricing item"
@@ -1913,29 +1913,14 @@
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "huggingface/gayane/BARTSmiles"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 4,
         "changed_fields": {
-          "capabilities": 3,
-          "updated_date": 1
+          "capabilities": 2,
+          "updated_date": 2
         },
         "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "2026-08-09",
-                "path": "updated_date",
-                "previous": "2026-08-08"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/Sachin21112004/distilbart-news-summarizer"
-          },
           {
             "field_changes": [
               {
@@ -1947,20 +1932,33 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/moonshotai/Kimi-K2-Instruct-0905"
+            "model_ref": "huggingface/Qwen/Qwen3.5-122B-A10B"
           },
           {
             "field_changes": [
               {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
+                "current": "2026-08-09",
+                "path": "updated_date",
+                "previous": "2021-07-23"
               }
             ],
             "fields": [
-              "capabilities"
+              "updated_date"
             ],
-            "model_ref": "huggingface/swiss-ai/Apertus-v1.5-70B"
+            "model_ref": "huggingface/flax-sentence-embeddings/all_datasets_v4_MiniLM-L6"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "2026-08-09",
+                "path": "updated_date",
+                "previous": "2021-07-05"
+              }
+            ],
+            "fields": [
+              "updated_date"
+            ],
+            "model_ref": "huggingface/flax-sentence-embeddings/st-codesearch-distilroberta-base"
           },
           {
             "field_changes": [
@@ -1973,25 +1971,27 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
+            "model_ref": "huggingface/zai-org/GLM-5.2-FP8"
           }
         ],
-        "current": 1527,
-        "previous": 1526,
-        "removed": 0,
-        "removed_model_refs": [],
+        "current": 1526,
+        "previous": 1527,
+        "removed": 1,
+        "removed_model_refs": [
+          "huggingface/zai-org/GLM-4.5"
+        ],
         "unchanged": 1522
       },
       "pricing": {
-        "commercial_hash": "4333310d1d68573b29004b5c7699cc12373f77575b2c01a797be3475d4841cae",
+        "commercial_hash": "1078f14372373af1bf37b42edbdb78409d88e210230a3fdd7c647eb66fd08930",
         "outcome": "commercial",
-        "previous_commercial_hash": "0e3092f3ac03a4c40b05068d2fd71d149239fe9377b72eebfda3d7d6f72c7d2f"
+        "previous_commercial_hash": "4333310d1d68573b29004b5c7699cc12373f77575b2c01a797be3475d4841cae"
       },
       "pricing_coverage": {
-        "current_models": 1527,
+        "current_models": 1526,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": 1
+          "unknown_models": -1
         },
         "normalized_rate_models": 110,
         "not_applicable_models": 0,
@@ -2019,8 +2019,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1397,
-        "unknown_models": 1417
+        "unknown_model_refs_omitted": 1396,
+        "unknown_models": 1416
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -2029,14 +2029,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "huggingface-hf-inference"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -2054,7 +2048,7 @@
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -3486,18 +3480,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 1,
+    "added_models": 0,
     "added_sources": 0,
     "changed_models": 4,
-    "changed_sources": 33,
-    "models": 3381,
+    "changed_sources": 32,
+    "models": 3380,
     "pricing_accepted": 18,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 0,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 0,
+    "removed_models": 1,
     "removed_sources": 0,
     "retained": 0,
     "withheld": 0
