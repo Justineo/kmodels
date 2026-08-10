@@ -5,7 +5,11 @@ import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourceCommercialPricingFact,
+  SourcePriceFact,
+} from "./pricing-source.ts";
 import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -142,10 +146,17 @@ function date(value: string): string | undefined {
   return z.iso.date().safeParse(result).success ? result : undefined;
 }
 
-function tableDate(value: string, field: string): string | undefined {
+function tableDate(value: string, field: string, input: Input): string | undefined {
   if (value === "N/A" || value.startsWith("Not sooner than ")) return undefined;
   const parsed = date(value);
-  if (parsed === undefined) throw new Error(`Anthropic ${field} was not a valid date: ${value}`);
+  if (parsed === undefined) {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "lifecycle_date_invalid",
+      sample: `${field}: ${value}`,
+    });
+    return;
+  }
   return parsed;
 }
 
@@ -266,15 +277,21 @@ function launchDetails(body: string, input: Input, models: Map<string, ProviderM
     const item = model(models, input, id);
     item.name = values[0] || item.name;
     item.description = values[2] || item.description;
-    if (item.release_date !== undefined && item.release_date !== releaseDate)
-      throw new Error(`Anthropic release sources disagree for ${item.model_id}`);
-    item.release_date = releaseDate;
+    if (item.release_date !== undefined && item.release_date !== releaseDate) {
+      delete item.release_date;
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "release_date_conflict",
+        sample: item.model_id,
+      });
+    } else item.release_date = releaseDate;
   }
 }
 
 function releaseNotes(body: string, input: Input, models: Map<string, ProviderModel>): void {
   let currentDate: string | undefined;
   let launches = 0;
+  const conflicts = new Set<string>();
   for (const line of body.split(/\r?\n/)) {
     const heading = line.match(/^### (.+)$/)?.[1];
     if (heading !== undefined) currentDate = date(heading);
@@ -296,9 +313,16 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
     }
     for (const item of mentioned(opening, models)) targets.set(item.model_id, item);
     for (const item of targets.values()) {
-      if (item.release_date !== undefined && item.release_date !== currentDate)
-        throw new Error(`Anthropic release sources disagree for ${item.model_id}`);
-      item.release_date = currentDate;
+      if (conflicts.has(item.model_id)) continue;
+      if (item.release_date !== undefined && item.release_date !== currentDate) {
+        delete item.release_date;
+        conflicts.add(item.model_id);
+        input.onPricingReconciliation?.({
+          disposition: "unresolved",
+          reason_code: "release_date_conflict",
+          sample: item.model_id,
+        });
+      } else item.release_date = currentDate;
       launches += 1;
     }
   }
@@ -324,9 +348,9 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
     if (id === undefined || state === undefined || !modelIdSchema.safeParse(id).success) continue;
     const item = model(models, input, id);
     item.status = state;
-    const deprecatedAt = tableDate(values[2] ?? "", "deprecation date");
+    const deprecatedAt = tableDate(values[2] ?? "", "deprecation date", input);
     if (deprecatedAt !== undefined) item.deprecated_at = deprecatedAt;
-    const retiredAt = tableDate(values[3] ?? "", "retirement date");
+    const retiredAt = tableDate(values[3] ?? "", "retirement date", input);
     if (retiredAt !== undefined && state !== "active") item.retired_at = retiredAt;
   }
 
@@ -345,9 +369,8 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
       const id = values[1];
       const replacement = values[2];
       if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
-      const retiredAt = tableDate(values[0] ?? "", "historical retirement date");
-      if (retiredAt === undefined)
-        throw new Error("Anthropic lifecycle history omitted its retirement date");
+      const retiredAt = tableDate(values[0] ?? "", "historical retirement date", input);
+      if (retiredAt === undefined) continue;
       const item = model(models, input, id);
       item.deprecated_at = deprecatedAt;
       item.retired_at = retiredAt;
@@ -378,8 +401,14 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
   )) {
     if (match[1] === undefined || match[2] === undefined || match[3] === undefined) continue;
     const retiredAt = date(match[2]);
-    if (retiredAt === undefined)
-      throw new Error(`Anthropic inline retirement date was not valid: ${match[2]}`);
+    if (retiredAt === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "lifecycle_date_invalid",
+        sample: `inline retirement date: ${match[2]}`,
+      });
+      continue;
+    }
     const item = model(models, input, match[1]);
     item.retired_at = retiredAt;
     item.status = retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated";
@@ -402,35 +431,63 @@ function applyEndpoints(
   batchesBody: string,
   batchGuide: string,
   models: Map<string, ProviderModel>,
+  input: Input,
 ): void {
-  validateEndpoint(messagesBody, messagesEndpoint);
-  validateEndpoint(batchesBody, batchEndpoint);
-  if (
-    !/- `stream: optional boolean`\r?\n\r?\n\s+Whether to incrementally stream the response using server-sent events\./.test(
+  const endpoint = (body: string, expected: { name: string; path: string }): boolean => {
+    try {
+      validateEndpoint(body, expected);
+      return true;
+    } catch {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "operation_contract_drift",
+        sample: expected.path,
+      });
+      return false;
+    }
+  };
+  const messages = endpoint(messagesBody, messagesEndpoint);
+  const batches = endpoint(batchesBody, batchEndpoint);
+  const streaming =
+    messages &&
+    /- `stream: optional boolean`\r?\n\r?\n\s+Whether to incrementally stream the response using server-sent events\./.test(
       messagesBody,
-    )
-  )
-    throw new Error("Anthropic Messages streaming contract drifted");
-  if (
-    !/- `tools: optional array of ToolUnion`[\s\S]*?Definitions of tools that the model may use\.[\s\S]*?may return `tool_use` content blocks/.test(
+    );
+  const toolUse =
+    messages &&
+    /- `tools: optional array of ToolUnion`[\s\S]*?Definitions of tools that the model may use\.[\s\S]*?may return `tool_use` content blocks/.test(
       messagesBody,
-    )
-  )
-    throw new Error("Anthropic Messages tool-use contract drifted");
-  if (!/^All \[active models]\([^)]*\) support the Message Batches API\.$/m.test(batchGuide))
-    throw new Error("Anthropic batch model coverage drifted");
+    );
+  const batchCoverage =
+    batches &&
+    /^All \[active models]\([^)]*\) support the Message Batches API\.$/m.test(batchGuide);
+  for (const [claim, valid] of [
+    ["Messages streaming", streaming],
+    ["Messages tool use", toolUse],
+    ["Message Batches coverage", batchCoverage],
+  ] as const)
+    if (!valid)
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "operation_claim_drift",
+        sample: claim,
+      });
   for (const item of models.values()) {
     if (item.status === "active") {
-      item.api_endpoints = [messagesEndpoint, batchEndpoint];
-      item.capabilities.batch = true;
-      item.capabilities.streaming = true;
-      item.capabilities.tool_call = true;
+      item.api_endpoints = [
+        ...(messages ? [messagesEndpoint] : []),
+        ...(batchCoverage ? [batchEndpoint] : []),
+      ];
+      item.capabilities.batch = batchCoverage ? true : "unknown";
+      item.capabilities.streaming = streaming ? true : "unknown";
+      item.capabilities.tool_call = toolUse ? true : "unknown";
     } else if (item.status === "legacy" || item.status === "deprecated") {
-      item.api_endpoints = [messagesEndpoint];
+      item.api_endpoints = messages ? [messagesEndpoint] : [];
       item.capabilities.batch = false;
-      item.capabilities.streaming = true;
-      item.capabilities.tool_call = true;
+      item.capabilities.streaming = streaming ? true : "unknown";
+      item.capabilities.tool_call = toolUse ? true : "unknown";
     }
+    if (item.api_endpoints?.length === 0) delete item.api_endpoints;
   }
 }
 
@@ -485,33 +542,42 @@ function callable(item: ProviderModel): boolean {
   return item.api_endpoints?.some(({ path }) => path === messagesEndpoint.path) === true;
 }
 
-function requireMentions(
-  value: string | undefined,
-  models: Map<string, ProviderModel>,
-  message: string,
-): ProviderModel[] {
-  const matches = value === undefined ? [] : mentioned(value, models);
-  if (matches.length === 0) throw new Error(message);
-  return matches;
-}
-
 function listedModels(
   body: string,
   models: Map<string, ProviderModel>,
   capability: string,
-): ProviderModel[] {
+  input: Input,
+): ProviderModel[] | undefined {
   const list = body
     .split(/\r?\n/)
     .find((line) => line.startsWith("- Supported models:"))
     ?.match(/^- Supported models: (`[^`]+`(?:, `[^`]+`)*)$/)?.[1];
-  if (list === undefined) throw new Error(`Anthropic ${capability} coverage drifted`);
+  if (list === undefined) {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "capability_contract_drift",
+      sample: capability,
+    });
+    return;
+  }
   const ids = [...list.matchAll(/`([^`]+)`/g)].map((match) => modelIdSchema.parse(match[1]));
-  if (ids.length === 0 || new Set(ids).size !== ids.length)
-    throw new Error(`Anthropic ${capability} coverage drifted`);
-  return ids.map((id) => {
-    const model = models.get(id);
-    if (model === undefined) throw new Error(`Anthropic ${capability} model did not bind: ${id}`);
-    return model;
+  if (ids.length === 0 || new Set(ids).size !== ids.length) {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "capability_contract_drift",
+      sample: capability,
+    });
+    return;
+  }
+  return ids.flatMap((id) => {
+    const item = commercialModel(models, id);
+    if (item !== undefined) return [item];
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "capability_model_unbound",
+      sample: `${capability}: ${id}`,
+    });
+    return [];
   });
 }
 
@@ -530,88 +596,119 @@ function capabilities(
     toolUse: string;
   },
   models: Map<string, ProviderModel>,
+  input: Input,
 ): void {
   const current = [...models.values()].filter(({ status }) => status === "active");
   const supported = [...models.values()].filter(callable);
+  const drift = (claim: string): void =>
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "capability_contract_drift",
+      sample: claim,
+    });
 
-  if (!/^All \[active models]\([^)]*\) support citations\.$/m.test(bodies.citations))
-    throw new Error("Anthropic citation coverage drifted");
-  for (const item of current) item.capabilities.citations = true;
+  if (/^All \[active models]\([^)]*\) support citations\.$/m.test(bodies.citations))
+    for (const item of current) item.capabilities.citations = true;
+  else drift("citations");
 
-  if (!/All \[active models]\([^)]*\) support PDF processing\./.test(bodies.pdf))
-    throw new Error("Anthropic PDF coverage drifted");
-  for (const item of current)
-    item.modalities.input = [...new Set<Modality>([...item.modalities.input, "pdf"])];
+  if (/All \[active models]\([^)]*\) support PDF processing\./.test(bodies.pdf))
+    for (const item of current)
+      item.modalities.input = [...new Set<Modality>([...item.modalities.input, "pdf"])];
+  else drift("PDF input");
 
   if (
-    !/^Context editing is available on all supported Claude models\.$/m.test(bodies.contextEditing)
+    /^Context editing is available on all supported Claude models\.$/m.test(bodies.contextEditing)
   )
-    throw new Error("Anthropic context-editing coverage drifted");
-  for (const item of supported) item.capabilities.context_management = true;
+    for (const item of supported) item.capabilities.context_management = true;
+  else drift("context editing");
 
-  const structured = new Set(listedModels(bodies.structuredOutputs, models, "structured-output"));
-  for (const item of supported) item.capabilities.structured_output = structured.has(item);
+  const structured = listedModels(bodies.structuredOutputs, models, "structured-output", input);
+  if (structured !== undefined) {
+    const structuredSet = new Set(structured);
+    for (const item of supported) item.capabilities.structured_output = structuredSet.has(item);
+  }
 
   const codeTable = tables(bodies.codeExecution).find(
     (table) => table.headers.join("|") === "Model|Tool versions",
   );
-  if (codeTable === undefined || codeTable.rows.length === 0)
-    throw new Error("Anthropic code-execution coverage drifted");
-  for (const item of supported) item.capabilities.code_execution = false;
-  const resolve = resolver(models);
-  for (const values of codeTable.rows) {
-    const item = resolve(values[0] ?? "");
-    if (callable(item)) item.capabilities.code_execution = true;
+  if (codeTable === undefined || codeTable.rows.length === 0) drift("code execution");
+  else {
+    for (const item of supported) item.capabilities.code_execution = false;
+    const resolve = resolver(models);
+    for (const values of codeTable.rows) {
+      try {
+        const item = resolve(values[0] ?? "");
+        if (callable(item)) item.capabilities.code_execution = true;
+      } catch {
+        input.onPricingReconciliation?.({
+          disposition: "unbound",
+          reason_code: "capability_model_unbound",
+          sample: `code execution: ${values[0] ?? "unknown"}`,
+        });
+      }
+    }
   }
   const previewCode = bodies.codeExecution
     .split(/\r?\n/)
     .find((line) => line.includes("code execution is supported on the Claude API"));
-  for (const item of requireMentions(
-    previewCode,
-    models,
-    "Anthropic code-execution exception drifted",
-  ))
-    if (callable(item)) item.capabilities.code_execution = true;
+  const previewCodeModels = previewCode === undefined ? [] : mentioned(previewCode, models);
+  if (previewCodeModels.length === 0) drift("code execution exception");
+  else
+    for (const item of previewCodeModels)
+      if (callable(item)) item.capabilities.code_execution = true;
 
-  const computerModels = new Set([
-    ...listedModels(bodies.computerUse, models, "computer-use"),
-    ...mentioned(bodies.computerUse.match(/<Note>([\s\S]*?)<\/Note>/)?.[1] ?? "", models),
-  ]);
-  for (const item of supported) item.capabilities.computer_use = false;
-  for (const item of computerModels) if (callable(item)) item.capabilities.computer_use = true;
+  const listedComputer = listedModels(bodies.computerUse, models, "computer-use", input);
+  if (listedComputer !== undefined) {
+    const computerModels = new Set([
+      ...listedComputer,
+      ...mentioned(bodies.computerUse.match(/<Note>([\s\S]*?)<\/Note>/)?.[1] ?? "", models),
+    ]);
+    for (const item of supported) item.capabilities.computer_use = false;
+    for (const item of computerModels) if (callable(item)) item.capabilities.computer_use = true;
+  }
 
-  const effortModels = listedModels(bodies.effort, models, "effort");
-  for (const item of supported) item.capabilities.effort_control = false;
-  for (const item of effortModels) if (callable(item)) item.capabilities.effort_control = true;
+  const effortModels = listedModels(bodies.effort, models, "effort", input);
+  if (effortModels !== undefined) {
+    for (const item of supported) item.capabilities.effort_control = false;
+    for (const item of effortModels) if (callable(item)) item.capabilities.effort_control = true;
+  }
 
   if (
-    !/^Prompt caching \(both automatic and explicit\) is supported on all \[active Claude models]\([^)]*\)\.$/m.test(
+    /^Prompt caching \(both automatic and explicit\) is supported on all \[active Claude models]\([^)]*\)\.$/m.test(
       bodies.promptCaching,
     )
   )
-    throw new Error("Anthropic prompt-cache coverage drifted");
-  for (const item of current) item.capabilities.prompt_cache = true;
+    for (const item of current) item.capabilities.prompt_cache = true;
+  else drift("prompt caching");
 
-  if (!/The Claude API does not currently offer fine-tuning/.test(bodies.glossary))
-    throw new Error("Anthropic fine-tuning coverage drifted");
-  for (const item of supported) item.capabilities.fine_tuning = false;
+  if (/The Claude API does not currently offer fine-tuning/.test(bodies.glossary))
+    for (const item of supported) item.capabilities.fine_tuning = false;
+  else drift("fine tuning");
 
   const thinkingLine = bodies.thinking
     .split(/\r?\n/)
     .find((line) => line.includes("thinking cannot be turned off on these models"));
-  for (const item of requireMentions(thinkingLine, models, "Anthropic thinking coverage drifted"))
-    if (callable(item)) item.capabilities.reasoning = true;
+  const thinkingModels = thinkingLine === undefined ? [] : mentioned(thinkingLine, models);
+  if (thinkingModels.length === 0) drift("thinking");
+  else for (const item of thinkingModels) if (callable(item)) item.capabilities.reasoning = true;
 
   const toolLine = bodies.toolUse
     .split(/\r?\n/)
     .find((line) => line.includes("does not support forced tool use"));
-  for (const item of requireMentions(toolLine, models, "Anthropic tool-use coverage drifted"))
-    if (callable(item)) item.capabilities.tool_call = true;
+  const toolModels = toolLine === undefined ? [] : mentioned(toolLine, models);
+  if (toolModels.length === 0) drift("tool use");
+  else for (const item of toolModels) if (callable(item)) item.capabilities.tool_call = true;
 }
 
 function validateDocumentationIndex(body: string, input: Input): void {
-  if (!body.startsWith("# Anthropic Developer Documentation"))
-    throw new Error("Anthropic documentation index drifted");
+  if (!body.startsWith("# Anthropic Developer Documentation")) {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "documentation_index_drift",
+      sample: "llms.txt heading",
+    });
+    return;
+  }
   const indexedPaths = new Set(
     [...body.matchAll(/https:\/\/platform\.claude\.com(\/docs\/en\/[^)\s]+\.md)/g)].flatMap(
       (match) => (match[1] === undefined ? [] : [match[1]]),
@@ -619,12 +716,30 @@ function validateDocumentationIndex(body: string, input: Input): void {
   );
   const configured = input.source.linkedDocuments?.documents;
   if (configured === undefined) throw new Error("Anthropic documentation bundle is not fixed");
+  const configuredPaths = new Set<string>();
   for (const { url } of configured) {
-    const path = new URL(url).pathname;
+    const parsed = new URL(url);
+    if (parsed.hostname !== "platform.claude.com") continue;
+    const path = parsed.pathname;
     if (path === "/llms.txt") continue;
+    configuredPaths.add(path);
     if (!indexedPaths.has(path))
-      throw new Error(`Anthropic documentation index omitted reviewed source: ${path}`);
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "documentation_index_omission",
+        sample: path,
+      });
   }
+  for (const path of indexedPaths)
+    if (
+      !configuredPaths.has(path) &&
+      /(?:pricing|billing|cost|usage|service-tier|managed-agents|fallback)/.test(path)
+    )
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "unreviewed_commercial_source",
+        sample: path,
+      });
 }
 
 function validateModelIdentityContract(body: string, modelsListBody: string): void {
@@ -677,6 +792,23 @@ function geographyGeneration(body: string, label: string): ModelGeneration {
   return generations[0];
 }
 
+function reviewedGeographyGeneration(
+  body: string,
+  label: string,
+  input: Input,
+): ModelGeneration | undefined {
+  try {
+    return geographyGeneration(body, label);
+  } catch {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "inference_geo_contract_drift",
+      sample: label,
+    });
+    return;
+  }
+}
+
 function modelGeneration(id: string): ModelGeneration | undefined {
   const match = id.match(/^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/);
   if (match?.[1] === undefined) return undefined;
@@ -703,7 +835,16 @@ function validateAccountingContracts(
     fallbackCredit: string;
   },
   input: Input,
-): ModelGeneration {
+): ModelGeneration | undefined {
+  const contract = (valid: boolean, sample: string): boolean => {
+    if (!valid)
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "accounting_contract_drift",
+        sample,
+      });
+    return valid;
+  };
   for (const field of [
     "cache_creation_input_tokens",
     "cache_read_input_tokens",
@@ -713,40 +854,48 @@ function validateAccountingContracts(
     "server_tool_use",
     "service_tier",
   ])
-    if (!bodies.messages.includes(`- \`${field}:`))
-      throw new Error(`Anthropic Messages usage contract drifted for ${field}`);
+    contract(bodies.messages.includes(`- \`${field}:`), `Messages usage.${field}`);
 
-  if (
-    !bodies.serviceTiers.includes('`"auto"` (default)') ||
-    !bodies.serviceTiers.includes('`"standard_only"`') ||
-    !bodies.serviceTiers.includes('"service_tier": "priority"') ||
-    !bodies.serviceTiers.includes(
-      "Requests beyond your committed capacity automatically fall back to standard tier",
-    )
-  )
-    throw new Error("Anthropic service-tier accounting contract drifted");
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "account_specific_service_tier",
-    sample: "Priority Tier contract pricing",
-  });
-
-  const dataResidencyGeneration = geographyGeneration(bodies.dataResidency, "data-residency");
-  if (
-    !bodies.dataResidency.includes(
-      "The response `usage` object includes an `inference_geo` field",
-    ) ||
-    !bodies.dataResidency.includes("`allowed_inference_geos`") ||
-    !bodies.dataResidency.includes("`default_inference_geo`") ||
-    !bodies.dataResidency.includes("return a 400 error")
-  )
-    throw new Error("Anthropic inference-geography contract drifted");
-
-  validateEndpoint(
-    bodies.usageReport,
-    { name: "Get Messages Usage Report", path: "v1/organizations/usage_report/messages" },
-    "get",
+  const serviceTierContract = contract(
+    bodies.serviceTiers.includes('`"auto"` (default)') &&
+      bodies.serviceTiers.includes('`"standard_only"`') &&
+      bodies.serviceTiers.includes('"service_tier": "priority"') &&
+      bodies.serviceTiers.includes(
+        "Requests beyond your committed capacity automatically fall back to standard tier",
+      ),
+    "service-tier outcomes",
   );
+  if (serviceTierContract)
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "account_specific_service_tier",
+      sample: "Priority Tier contract pricing",
+    });
+
+  const dataResidencyGeneration = reviewedGeographyGeneration(
+    bodies.dataResidency,
+    "data-residency",
+    input,
+  );
+  contract(
+    bodies.dataResidency.includes(
+      "The response `usage` object includes an `inference_geo` field",
+    ) &&
+      bodies.dataResidency.includes("`allowed_inference_geos`") &&
+      bodies.dataResidency.includes("`default_inference_geo`") &&
+      bodies.dataResidency.includes("return a 400 error"),
+    "inference-geography outcomes",
+  );
+
+  try {
+    validateEndpoint(
+      bodies.usageReport,
+      { name: "Get Messages Usage Report", path: "v1/organizations/usage_report/messages" },
+      "get",
+    );
+  } catch {
+    contract(false, "Usage API endpoint");
+  }
   for (const field of [
     'bucket_width: optional "1d" or "1h" or "1m"',
     '"api_key_id"',
@@ -760,14 +909,17 @@ function validateAccountingContracts(
     "output_tokens",
     "uncached_input_tokens",
   ])
-    if (!bodies.usageReport.includes(field))
-      throw new Error(`Anthropic Usage API contract drifted for ${field}`);
+    contract(bodies.usageReport.includes(field), `Usage API ${field}`);
 
-  validateEndpoint(
-    bodies.costReport,
-    { name: "Get Cost Report", path: "v1/organizations/cost_report" },
-    "get",
-  );
+  try {
+    validateEndpoint(
+      bodies.costReport,
+      { name: "Get Cost Report", path: "v1/organizations/cost_report" },
+      "get",
+    );
+  } catch {
+    contract(false, "Cost API endpoint");
+  }
   for (const field of [
     'bucket_width: optional "1d"',
     "amount",
@@ -779,28 +931,22 @@ function validateAccountingContracts(
     "token_type",
     "workspace_id",
   ])
-    if (!bodies.costReport.includes(field))
-      throw new Error(`Anthropic Cost API contract drifted for ${field}`);
+    contract(bodies.costReport.includes(field), `Cost API ${field}`);
 
-  if (
-    !bodies.usageCost.includes("Usage and cost data typically appears within 5 minutes") ||
-    !bodies.usageCost.includes("Priority Tier costs are not available in the cost endpoint") ||
-    !bodies.usageCost.includes("Admin API key required")
-  )
-    throw new Error("Anthropic Usage and Cost API boundary drifted");
+  contract(
+    bodies.usageCost.includes("Usage and cost data typically appears within 5 minutes") &&
+      bodies.usageCost.includes("Priority Tier costs are not available in the cost endpoint") &&
+      bodies.usageCost.includes("Admin API key required"),
+    "Usage and Cost API boundary",
+  );
 
-  if (
-    !bodies.fallbackCredit.includes("fallback_credit_token") ||
-    !bodies.fallbackCredit.includes("Refusals in [Message Batches]") ||
-    !bodies.fallbackCredit.includes("`cache_creation_input_tokens` is lower") ||
-    !bodies.fallbackCredit.includes("organization and workspace that received the refusal")
-  )
-    throw new Error("Anthropic fallback-credit accounting contract drifted");
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "request_credit_reconciliation",
-    sample: "Fallback prompt-cache credit",
-  });
+  contract(
+    bodies.fallbackCredit.includes("fallback_credit_token") &&
+      bodies.fallbackCredit.includes("Refusals in [Message Batches]") &&
+      bodies.fallbackCredit.includes("`cache_creation_input_tokens` is lower") &&
+      bodies.fallbackCredit.includes("organization and workspace that received the refusal"),
+    "fallback credit",
+  );
   return dataResidencyGeneration;
 }
 
@@ -888,90 +1034,105 @@ function validateFastMode(body: string, expectedIds: Set<string>): void {
     throw new Error("Anthropic fast-mode model coverage disagreed with pricing");
 }
 
-function reconcileExcludedPricing(body: string, input: Input): void {
-  const statements = [
-    {
-      pattern:
-        /\*\*1,550 free hours\*\* of usage per month[\s\S]*?\*\*\$0\.05 USD per hour, per container\*\*/,
-      reason_code: "provider_service_pricing_unmodeled",
-      sample: "Code execution container time",
-    },
-    {
-      pattern: /\*\*\$10 per 1,000 searches\*\*/,
-      reason_code: "provider_service_pricing_unmodeled",
-      sample: "Web search",
-    },
-    {
-      pattern: /Web fetch usage has \*\*no additional charges\*\*/,
-      reason_code: "provider_service_pricing_unmodeled",
-      sample: "Web fetch",
-    },
-    {
-      pattern: /\| Session runtime \| \$0\.08 per session-hour \|/,
-      reason_code: "separate_product_pricing",
-      sample: "Claude Managed Agents runtime",
-    },
-  ] as const;
-  for (const statement of statements) {
-    if (!statement.pattern.test(body))
-      throw new Error(`Anthropic pricing page omitted ${statement.sample}`);
+function reconcileCommercialBoundaries(body: string, input: Input): void {
+  const ccuRates = body.match(/\$0\.01 per CCU \(fixed;/g)?.length ?? 0;
+  if (ccuRates !== 2)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "marketplace_settlement_drift",
+      sample: "Claude Consumption Units",
+    });
+  else {
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "marketplace_settlement_bound",
+      sample: "Claude Platform on AWS CCU",
+    });
     input.onPricingReconciliation?.({
       disposition: "excluded",
-      reason_code: statement.reason_code,
-      sample: statement.sample,
+      reason_code: "external_provider_partition",
+      sample: "Claude in Microsoft Foundry CCU",
     });
   }
-  const ccuRates = body.match(/\$0\.01 per CCU \(fixed;/g)?.length ?? 0;
-  if (ccuRates !== 2) throw new Error("Anthropic marketplace CCU pricing drifted");
-  for (const sample of ["Claude Platform on AWS CCU", "Claude in Microsoft Foundry CCU"])
+  if (!/Volume discounts may be available[\s\S]*?negotiated on a case-by-case basis/.test(body))
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "account_discount_boundary_drift",
+      sample: "Negotiated volume discount",
+    });
+  else
     input.onPricingReconciliation?.({
       disposition: "excluded",
-      reason_code: "separate_distribution_pricing",
-      sample,
+      reason_code: "account_specific_discount",
+      sample: "Negotiated volume discount",
     });
-  if (!/Volume discounts may be available[\s\S]*?negotiated on a case-by-case basis/.test(body))
-    throw new Error("Anthropic account-specific pricing boundary drifted");
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "account_specific_discount",
-    sample: "Negotiated volume discount",
-  });
 }
 
 function pricing(
   body: string,
   fastModeBody: string,
-  dataResidencyGeneration: ModelGeneration,
+  dataResidencyGeneration: ModelGeneration | undefined,
   input: Input,
   models: Map<string, ProviderModel>,
 ): void {
   const resolve = resolver(models);
+  const resolveRow = (value: string, claim: string): ProviderModel | undefined => {
+    try {
+      return resolve(value);
+    } catch {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "pricing_model_unbound",
+        sample: `${claim}: ${label(value)}`,
+      });
+      return;
+    }
+  };
   const add = (item: ProviderModel, rates: SourcePriceFact[]): void => {
     item.price_facts.push(...rates);
     item.pricing_state = "numeric";
   };
   const parsedTables = tables(body);
-  const multipliers = cacheMultipliers(parsedTables, input);
+  let multipliers: CacheMultipliers | undefined;
+  try {
+    multipliers = cacheMultipliers(parsedTables, input);
+  } catch {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "cache_multiplier_drift",
+      sample: "Prompt caching multipliers",
+    });
+  }
   const base = parsedTables.find((table) => table.headers[1] === "Base Input Tokens");
   const batch = parsedTables.find((table) => table.headers[1] === "Batch input");
   const fastTables = parsedTables.filter(
     (table) => table.headers.join("|") === "Model|Input|Output",
   );
   const fast = fastTables[0];
-  if (
-    base === undefined ||
-    batch === undefined ||
-    fastTables.length !== 1 ||
-    fast === undefined ||
-    fast.rows.length === 0
-  )
-    throw new Error("Anthropic pricing page omitted a reviewed price table");
+  for (const [claim, valid] of [
+    ["base model prices", base !== undefined],
+    ["Batch prices", batch !== undefined],
+    ["Fast prices", fastTables.length === 1 && fast !== undefined && fast.rows.length > 0],
+  ] as const)
+    if (!valid)
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "pricing_table_drift",
+        sample: claim,
+      });
 
-  for (const values of base.rows) {
-    const item = resolve(values[0] ?? "");
+  for (const values of base?.rows ?? []) {
+    const item = resolveRow(values[0] ?? "", "base pricing");
+    if (item === undefined) continue;
     const parsed = fivePricesSchema.safeParse(values.slice(1).map(amount));
-    if (!parsed.success)
-      throw new Error(`Anthropic base pricing was not machine-readable for ${item.model_id}`);
+    if (!parsed.success) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "pricing_row_unreadable",
+        sample: item.model_id,
+      });
+      continue;
+    }
     const [inputPrice, fiveMinuteWrite, oneHourWrite, cacheRead, outputPrice] = parsed.data;
     const conditions = effective(values[0] ?? "");
     const rate = (
@@ -990,17 +1151,21 @@ function pricing(
       rate("cache_read_text", cacheRead),
       rate("output_text", outputPrice),
     ]);
-    const expectedFiveMinuteWrite = multiplyDecimal(inputPrice, multipliers.fiveMinuteWrite);
-    const expectedOneHourWrite = multiplyDecimal(inputPrice, multipliers.oneHourWrite);
-    const expectedCacheRead = multiplyDecimal(inputPrice, multipliers.read);
-    if (
-      !decimalsEqual(fiveMinuteWrite, expectedFiveMinuteWrite) ||
-      !decimalsEqual(oneHourWrite, expectedOneHourWrite) ||
-      !decimalsEqual(cacheRead, expectedCacheRead)
-    )
-      throw new Error(
-        `Anthropic cache prices disagreed with published multipliers for ${item.model_id}`,
-      );
+    if (multipliers !== undefined) {
+      const expectedFiveMinuteWrite = multiplyDecimal(inputPrice, multipliers.fiveMinuteWrite);
+      const expectedOneHourWrite = multiplyDecimal(inputPrice, multipliers.oneHourWrite);
+      const expectedCacheRead = multiplyDecimal(inputPrice, multipliers.read);
+      if (
+        !decimalsEqual(fiveMinuteWrite, expectedFiveMinuteWrite) ||
+        !decimalsEqual(oneHourWrite, expectedOneHourWrite) ||
+        !decimalsEqual(cacheRead, expectedCacheRead)
+      )
+        input.onPricingReconciliation?.({
+          disposition: "unresolved",
+          reason_code: "cache_price_conflict",
+          sample: item.model_id,
+        });
+    }
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "base_model_price_row",
@@ -1008,12 +1173,19 @@ function pricing(
     item.capabilities.prompt_cache = true;
   }
 
-  for (const values of batch.rows) {
-    const item = resolve(values[0] ?? "");
+  for (const values of batch?.rows ?? []) {
+    const item = resolveRow(values[0] ?? "", "Batch pricing");
+    if (item === undefined) continue;
     const inputPrice = amount(values[1]);
     const outputPrice = amount(values[2]);
-    if (inputPrice === undefined || outputPrice === undefined)
-      throw new Error(`Anthropic batch pricing was not machine-readable for ${item.model_id}`);
+    if (inputPrice === undefined || outputPrice === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "pricing_row_unreadable",
+        sample: `Batch: ${item.model_id}`,
+      });
+      continue;
+    }
     const conditions = { ...effective(values[0] ?? ""), service_tier: "batch" };
     const inputRate = publishedRate(
       "input_text",
@@ -1025,7 +1197,7 @@ function pricing(
     );
     add(item, [
       inputRate,
-      ...cached(inputRate, multipliers),
+      ...(multipliers === undefined ? [] : cached(inputRate, multipliers)),
       publishedRate(
         "output_text",
         outputPrice,
@@ -1042,16 +1214,30 @@ function pricing(
     item.capabilities.batch = true;
   }
 
-  for (const values of fast.rows) {
+  for (const values of fast?.rows ?? []) {
     const inputPrice = amount(values[1]);
     const outputPrice = amount(values[2]);
-    if (inputPrice === undefined || outputPrice === undefined)
-      throw new Error(`Anthropic fast pricing was not machine-readable for ${values[0] ?? ""}`);
+    if (inputPrice === undefined || outputPrice === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "pricing_row_unreadable",
+        sample: `Fast: ${values[0] ?? "unknown"}`,
+      });
+      continue;
+    }
     const names = (values[0] ?? "").split(/\s+\/\s+/).filter(Boolean);
-    if (names.length === 0) throw new Error("Anthropic fast pricing omitted its model");
+    if (names.length === 0) {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "pricing_model_unbound",
+        sample: "Fast pricing",
+      });
+      continue;
+    }
     const fastIds = new Set<string>();
     for (const name of names) {
-      const item = resolve(name);
+      const item = resolveRow(name, "Fast pricing");
+      if (item === undefined) continue;
       fastIds.add(item.model_id);
       const conditions = { speed: "fast" };
       const inputRate = publishedRate(
@@ -1064,7 +1250,7 @@ function pricing(
       );
       add(item, [
         inputRate,
-        ...cached(inputRate, multipliers),
+        ...(multipliers === undefined ? [] : cached(inputRate, multipliers)),
         publishedRate(
           "output_text",
           outputPrice,
@@ -1075,7 +1261,15 @@ function pricing(
         ),
       ]);
     }
-    validateFastMode(fastModeBody, fastIds);
+    try {
+      validateFastMode(fastModeBody, fastIds);
+    } catch {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "fast_compatibility_conflict",
+        sample: [...fastIds].join(", "),
+      });
+    }
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "fast_model_price_row",
@@ -1083,9 +1277,16 @@ function pricing(
   }
 
   const tools = parsedTables.find((table) => table.headers.includes("Tool choice"));
-  if (tools === undefined) throw new Error("Anthropic pricing page omitted tool support");
-  for (const values of tools.rows) {
-    resolve(values[0] ?? "").capabilities.tool_call = true;
+  if (tools === undefined)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "tool_overhead_table_drift",
+      sample: "Tool use system prompt token count",
+    });
+  for (const values of tools?.rows ?? []) {
+    const item = resolveRow(values[0] ?? "", "tool overhead");
+    if (item === undefined) continue;
+    item.capabilities.tool_call = true;
     input.onPricingReconciliation?.({
       disposition: "excluded",
       reason_code: "token_overhead_included_in_usage",
@@ -1095,47 +1296,786 @@ function pricing(
 
   const longContext = body.match(/^(.+?) include the full \[1M token context window]/m)?.[1];
   if (longContext === undefined)
-    throw new Error("Anthropic pricing page omitted long-context coverage");
-  const longContextModels = text(longContext);
-  for (const item of models.values())
-    if (
-      longContextModels.includes(item.name) ||
-      longContextModels.includes(item.name.replace(/^Claude /, ""))
-    )
-      item.limits.context_tokens = 1_000_000;
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "long_context_contract_drift",
+      sample: "1M context pricing",
+    });
+  else {
+    const longContextModels = text(longContext);
+    for (const item of models.values())
+      if (
+        longContextModels.includes(item.name) ||
+        longContextModels.includes(item.name.replace(/^Claude /, ""))
+      )
+        item.limits.context_tokens = 1_000_000;
+  }
 
   const inferenceGeoMultiplier = body.match(
     /incurs a ((?:0|[1-9]\d*)(?:\.\d+)?)x multiplier on all token pricing categories/,
   )?.[1];
-  if (inferenceGeoMultiplier === undefined)
-    throw new Error("Anthropic pricing page omitted the inference geography multiplier");
-  const pricingGeneration = geographyGeneration(body, "pricing");
-  if (
-    pricingGeneration.major !== dataResidencyGeneration.major ||
-    pricingGeneration.minor !== dataResidencyGeneration.minor
-  )
-    throw new Error("Anthropic pricing and data-residency generation thresholds disagreed");
-  for (const item of models.values()) {
-    if (!atLeastGeneration(item.model_id, pricingGeneration)) continue;
-    item.price_facts.push(
-      ...item.price_facts.map(
-        (rate): SourcePriceFact => ({
-          ...rate,
-          price: multiplyDecimal(rate.price, inferenceGeoMultiplier),
-          conditions: { ...rate.conditions, inference_geo: "us" },
-          derived: true,
-          derivation: `${inferenceGeoMultiplier} × ${rate.derivation ?? "published rate"} for US-only inference`,
-          raw_price: undefined,
-          raw_unit: "published inference geography multiplier",
-        }),
+  if (inferenceGeoMultiplier === undefined) {
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "inference_geo_multiplier_drift",
+      sample: "US inference multiplier",
+    });
+    reconcileCommercialBoundaries(body, input);
+    return;
+  }
+  const pricingGeneration = reviewedGeographyGeneration(body, "pricing", input);
+  const matchingGeneration =
+    pricingGeneration !== undefined &&
+    dataResidencyGeneration !== undefined &&
+    pricingGeneration.major === dataResidencyGeneration.major &&
+    pricingGeneration.minor === dataResidencyGeneration.minor;
+  if (!matchingGeneration)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "inference_geo_eligibility_conflict",
+      sample: "pricing and data-residency generation thresholds",
+    });
+  else {
+    for (const item of models.values()) {
+      if (!atLeastGeneration(item.model_id, pricingGeneration)) continue;
+      item.price_facts.push(
+        ...item.price_facts.map(
+          (rate): SourcePriceFact => ({
+            ...rate,
+            price: multiplyDecimal(rate.price, inferenceGeoMultiplier),
+            conditions: { ...rate.conditions, inference_geo: "us" },
+            derived: true,
+            derivation: `${inferenceGeoMultiplier} × ${rate.derivation ?? "published rate"} for US-only inference`,
+            raw_price: undefined,
+            raw_unit: "published inference geography multiplier",
+          }),
+        ),
+      );
+    }
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "inference_geo_multiplier_applied",
+    });
+  }
+  reconcileCommercialBoundaries(body, input);
+}
+
+function commercialRaw(
+  termKey: string,
+  impact: SourceCommercialPricingFact["raw_price_facts"][number]["impact"],
+  reason: SourceCommercialPricingFact["raw_price_facts"][number]["reason"],
+  fragment: string,
+  sourceId: string,
+): SourceCommercialPricingFact["raw_price_facts"][number] {
+  return {
+    term_key: termKey,
+    impact,
+    reason,
+    conditions: {},
+    source_ref: sourceId,
+    raw: { fragment },
+  };
+}
+
+interface CommercialFactInput {
+  bookKey: string;
+  bookName: string;
+  resourceKind?: SourceCommercialPricingFact["resource_kind"];
+  resourceKey: string;
+  modelRefs?: string[];
+  offerKey: string;
+  offerName: string;
+  billingMode?: SourceCommercialPricingFact["billing_mode"];
+  state: SourceCommercialPricingFact["pricing_state"];
+  rates?: SourcePriceFact[];
+  raw?: SourceCommercialPricingFact["raw_price_facts"];
+}
+
+function commercialFact(sourceId: string, value: CommercialFactInput): SourceCommercialPricingFact {
+  return {
+    source_ref: sourceId,
+    book_key: value.bookKey,
+    book_name: value.bookName,
+    resource_kind: value.resourceKind ?? "service",
+    resource_key: value.resourceKey,
+    model_refs: value.modelRefs ?? [],
+    offer_key: value.offerKey,
+    offer_name: value.offerName,
+    billing_mode: value.billingMode ?? "usage",
+    pricing_state: value.state,
+    price_facts: value.rates ?? [],
+    raw_price_facts: value.raw ?? [],
+  };
+}
+
+function commercialModel(
+  models: Map<string, ProviderModel>,
+  value: string,
+): ProviderModel | undefined {
+  const direct = models.get(value);
+  if (direct !== undefined) return direct;
+  const matches = [...models.values()].filter(
+    ({ aliases, model_id }) => model_id === value || aliases.includes(value),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function ids(value: string): string[] {
+  return [...value.matchAll(/claude-[a-z0-9._:/-]+/g)].flatMap((match) =>
+    match[0] === undefined ? [] : [match[0]],
+  );
+}
+
+function commercialPricing(
+  bodies: {
+    pricing: string;
+    currentPricing: string;
+    webSearch: string;
+    webFetch: string;
+    codeExecution: string;
+    advisor: string;
+    compaction: string;
+    tokenCounting: string;
+    files: string;
+    managedAgents: string;
+    managedAgentCreate: string;
+    managedAgentEvents: string;
+    serviceTiers: string;
+    fallbackCredit: string;
+  },
+  input: Input,
+  models: Map<string, ProviderModel>,
+): void {
+  const facts: SourceCommercialPricingFact[] = [];
+  const callableModels = [...models.values()].filter(callable);
+  const activeModels = callableModels.filter(({ status }) => status === "active");
+  const callableRefs = callableModels.map(({ uid }) => uid);
+  const batchRefs = activeModels
+    .filter(({ capabilities }) => capabilities.batch === true)
+    .map(({ uid }) => uid);
+  const endpointFacts = (
+    value: Omit<CommercialFactInput, "modelRefs" | "offerKey" | "offerName">,
+    names: { sync: string; batch: string },
+  ): SourceCommercialPricingFact[] => [
+    commercialFact(input.source.id, {
+      ...value,
+      modelRefs: callableRefs,
+      offerKey: "sync",
+      offerName: names.sync,
+    }),
+    ...(batchRefs.length === 0
+      ? []
+      : [
+          commercialFact(input.source.id, {
+            ...value,
+            modelRefs: batchRefs,
+            offerKey: "batch",
+            offerName: names.batch,
+          }),
+        ]),
+  ];
+  const report = (normalized: boolean, reasonCode: string, sample: string): void =>
+    input.onPricingReconciliation?.({
+      disposition: normalized ? "normalized" : "unresolved",
+      reason_code: reasonCode,
+      sample,
+    });
+
+  const compaction = bodies.compaction.replace(/\s+/g, " ");
+  const compactionBilling =
+    compaction.includes("Compaction requires an additional sampling step") &&
+    compaction.includes("sum across all entries in the `usage.iterations` array") &&
+    compaction.includes(
+      "top-level `input_tokens` and `output_tokens` do not include compaction iteration usage",
+    ) &&
+    compaction.includes(
+      "Re-applying a previous `compaction` block incurs no additional compaction cost",
+    );
+  report(compactionBilling, "compaction_usage_bound", "Compaction iterations");
+
+  const searchAmount = bodies.webSearch.match(
+    /\$((?:0|[1-9]\d*)(?:\.\d+)?) per 1,000 searches/,
+  )?.[1];
+  const searchSignal = bodies.webSearch.includes('"web_search_requests"');
+  if (searchAmount !== undefined) {
+    const rate = publishedRate(
+      "web_search",
+      searchAmount,
+      "thousand_events",
+      input.source.id,
+      "per 1,000 successful searches",
+    );
+    rate.source_locator = {
+      kind: "fragment",
+      value: "/docs/en/agents-and-tools/tool-use/web-search-tool.md#usage-and-pricing",
+    };
+    facts.push(
+      ...endpointFacts(
+        {
+          bookKey: "service:web-search",
+          bookName: "Web Search",
+          resourceKey: "web-search",
+          state: "numeric",
+          rates: [rate],
+          raw: searchSignal
+            ? [
+                commercialRaw(
+                  "usage-signal",
+                  "informational",
+                  "unsupported_structure",
+                  "usage.server_tool_use.web_search_requests",
+                  input.source.id,
+                ),
+              ]
+            : [],
+        },
+        { sync: "Web Search", batch: "Batch Web Search" },
       ),
     );
   }
-  input.onPricingReconciliation?.({
-    disposition: "normalized",
-    reason_code: "inference_geo_multiplier_applied",
+  report(searchAmount !== undefined, "web_search_service_bound", "Web Search rate");
+  report(searchSignal, "web_search_usage_bound", "Web Search usage signal");
+
+  const fetchIncluded = /no additional charges beyond standard token costs/i.test(bodies.webFetch);
+  const fetchSignal = bodies.webFetch.includes('"web_fetch_requests"');
+  if (fetchIncluded)
+    facts.push(
+      ...endpointFacts(
+        {
+          bookKey: "service:web-fetch",
+          bookName: "Web Fetch",
+          resourceKey: "web-fetch",
+          state: "included",
+        },
+        { sync: "Web Fetch", batch: "Batch Web Fetch" },
+      ),
+    );
+  report(fetchIncluded, "web_fetch_service_bound", "Web Fetch service");
+  report(fetchSignal, "web_fetch_usage_bound", "Web Fetch usage signal");
+
+  const codeTable = tables(bodies.codeExecution).find(
+    (table) => table.headers.join("|") === "Model|Tool versions",
+  );
+  const codeIds = new Set<string>();
+  const codeRefs = new Set<string>();
+  for (const values of codeTable?.rows ?? []) {
+    const rawId = ids(values[0] ?? "")[0];
+    if (rawId !== undefined) codeIds.add(rawId);
+    const item = rawId === undefined ? undefined : commercialModel(models, rawId);
+    if (item !== undefined && callable(item)) codeRefs.add(item.uid);
+  }
+  const codeAmount = bodies.codeExecution.match(
+    /\$((?:0|[1-9]\d*)(?:\.\d+)?) USD per hour, per container/,
+  )?.[1];
+  const minimum = bodies.codeExecution.match(/minimum of (\d+) minutes/)?.[1];
+  const monthlyAllowance = bodies.codeExecution.match(
+    /([\d,]+) free hours of usage per month/,
+  )?.[1];
+  const dailyAllowance = bodies.currentPricing.match(
+    /((?:0|[1-9]\d*)(?:\.\d+)?) free hours of usage daily per organization/,
+  )?.[1];
+  const webAssisted =
+    bodies.codeExecution.includes(
+      "Code execution is free when used with web search or web fetch",
+    ) &&
+    bodies.codeExecution.includes("web_search_20260209") &&
+    bodies.codeExecution.includes("web_fetch_20260209");
+  const scope = [...codeRefs];
+  const batchScope = scope.filter((ref) => batchRefs.includes(ref));
+  if (codeAmount !== undefined && scope.length > 0) {
+    const rate = publishedRate(
+      "container_runtime",
+      codeAmount,
+      "hour",
+      input.source.id,
+      "per container-hour",
+    );
+    rate.source_locator = {
+      kind: "fragment",
+      value: "/docs/en/agents-and-tools/tool-use/code-execution-tool.md#usage-and-pricing",
+    };
+    const raw =
+      minimum === undefined
+        ? []
+        : [
+            commercialRaw(
+              "minimum-runtime",
+              "informational",
+              "unsupported_structure",
+              `${minimum}-minute minimum execution time`,
+              input.source.id,
+            ),
+          ];
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "service:code-execution",
+        bookName: "Code Execution",
+        resourceKey: "code-execution",
+        modelRefs: scope,
+        offerKey: "sync",
+        offerName: "Standalone Code Execution",
+        state: "numeric",
+        rates: [rate],
+        raw,
+      }),
+      ...(batchScope.length === 0
+        ? []
+        : [
+            commercialFact(input.source.id, {
+              bookKey: "service:code-execution",
+              bookName: "Code Execution",
+              resourceKey: "code-execution",
+              modelRefs: batchScope,
+              offerKey: "batch",
+              offerName: "Batch Code Execution",
+              state: "numeric",
+              rates: [rate],
+              raw,
+            }),
+          ]),
+    );
+  }
+  if (webAssisted && scope.length > 0)
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "service:code-execution",
+        bookName: "Code Execution",
+        resourceKey: "code-execution",
+        modelRefs: scope,
+        offerKey: "web-assisted-sync",
+        offerName: "Web-assisted Code Execution",
+        state: "included",
+      }),
+      ...(batchScope.length === 0
+        ? []
+        : [
+            commercialFact(input.source.id, {
+              bookKey: "service:code-execution",
+              bookName: "Code Execution",
+              resourceKey: "code-execution",
+              modelRefs: batchScope,
+              offerKey: "web-assisted-batch",
+              offerName: "Web-assisted Batch Code Execution",
+              state: "included",
+            }),
+          ]),
+    );
+  if ((dailyAllowance !== undefined || monthlyAllowance !== undefined) && scope.length > 0) {
+    const allowanceRaw = [
+      ...(dailyAllowance === undefined
+        ? []
+        : [
+            commercialRaw(
+              "daily-container-allowance",
+              "allowance",
+              "unsupported_structure",
+              `${dailyAllowance} free container-hours per organization per day`,
+              input.source.id,
+            ),
+          ]),
+      ...(monthlyAllowance === undefined
+        ? []
+        : [
+            commercialRaw(
+              "monthly-container-allowance",
+              "allowance",
+              dailyAllowance === undefined ? "unsupported_structure" : "superseded_value",
+              `${monthlyAllowance.replaceAll(",", "")} free container-hours per organization per month`,
+              input.source.id,
+            ),
+          ]),
+    ];
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "service:code-execution",
+        bookName: "Code Execution",
+        resourceKey: "code-execution",
+        modelRefs: scope,
+        offerKey: "organization-allowance",
+        offerName: "Organization free-hours allowance",
+        state: "included",
+        raw: allowanceRaw,
+      }),
+    );
+  }
+  report(
+    codeIds.size > 0 && codeRefs.size === codeIds.size,
+    "code_execution_scope_bound",
+    "Code Execution model scope",
+  );
+  report(codeAmount !== undefined, "code_execution_rate_bound", "Code Execution rate");
+  report(minimum !== undefined, "code_execution_minimum_bound", "Code Execution minimum");
+  report(
+    dailyAllowance !== undefined || monthlyAllowance !== undefined,
+    "code_execution_allowance_bound",
+    "Code Execution allowance",
+  );
+  report(webAssisted, "code_execution_web_assisted_bound", "Web-assisted Code Execution");
+
+  const advisorTable = tables(bodies.advisor).find(
+    (table) => table.headers.join("|") === "Executor models|Advisor models",
+  );
+  let advisorScopeBound = advisorTable !== undefined;
+  const advisorExecutors = new Map<string, Set<string>>();
+  for (const values of advisorTable?.rows ?? []) {
+    const executorIds = ids(values[0] ?? "");
+    const executors = executorIds.flatMap((id) => {
+      const item = commercialModel(models, id);
+      return item === undefined ? [] : [item.uid];
+    });
+    if (executors.length !== executorIds.length) advisorScopeBound = false;
+    for (const advisorId of ids(values[1] ?? "")) {
+      const advisor = commercialModel(models, advisorId);
+      if (advisor === undefined) {
+        advisorScopeBound = false;
+        continue;
+      }
+      const refs = advisorExecutors.get(advisor.uid) ?? new Set<string>();
+      for (const executor of executors) refs.add(executor);
+      advisorExecutors.set(advisor.uid, refs);
+    }
+  }
+  const advisorBilling =
+    bodies.advisor.includes("separate sub-inference billed at the advisor model's rates") &&
+    bodies.advisor.includes("usage.iterations");
+  if (advisorBilling)
+    for (const [advisorRef, executorRefs] of advisorExecutors) {
+      const advisor = models.get(advisorRef.replace(/^anthropic\//, ""));
+      const name = advisor?.name ?? advisorRef;
+      const raw = [
+        commercialRaw(
+          "advisor-model-usage",
+          "base_price",
+          "target_rate_not_normalized",
+          `Advisor sub-inference uses ${advisorRef} list rates and usage.iterations`,
+          input.source.id,
+        ),
+      ];
+      facts.push(
+        commercialFact(input.source.id, {
+          bookKey: `service:advisor:${advisorRef}`,
+          bookName: `${name} Advisor`,
+          resourceKey: `advisor:${advisorRef}`,
+          modelRefs: [...executorRefs],
+          offerKey: "sync",
+          offerName: `${name} advisor sub-inference`,
+          state: "included",
+          raw,
+        }),
+        commercialFact(input.source.id, {
+          bookKey: `service:advisor:${advisorRef}`,
+          bookName: `${name} Advisor`,
+          resourceKey: `advisor:${advisorRef}`,
+          modelRefs: [...executorRefs].filter((ref) => batchRefs.includes(ref)),
+          offerKey: "batch",
+          offerName: `${name} Batch advisor sub-inference`,
+          state: "included",
+          raw,
+        }),
+      );
+    }
+  report(
+    advisorBilling && advisorScopeBound && advisorExecutors.size > 0,
+    "advisor_service_bound",
+    "Advisor sub-inference",
+  );
+
+  const fallbackTargetIds = ids(
+    bodies.fallbackCredit.split(/\r?\n/).find((line) => line.includes("permitted targets are")) ??
+      "",
+  );
+  const fallbackTargets = fallbackTargetIds.flatMap((id) => {
+    const item = commercialModel(models, id);
+    return item === undefined ? [] : [item.uid];
   });
-  reconcileExcludedPricing(body, input);
+  const fallbackContract =
+    bodies.fallbackCredit.includes("fallback_credit_token") &&
+    bodies.fallbackCredit.includes("five-minute window") &&
+    bodies.fallbackCredit.includes("cache_creation_input_tokens") &&
+    bodies.fallbackCredit.includes("cache_read_input_tokens");
+  if (fallbackContract && fallbackTargets.length > 0)
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "account-resource:fallback-credit-token",
+        bookName: "Fallback Credit Token",
+        resourceKind: "account_resource_template",
+        resourceKey: "fallback-credit-token",
+        modelRefs: fallbackTargets,
+        offerKey: "redemption",
+        offerName: "Fallback cache repricing",
+        state: "included",
+        raw: [
+          commercialRaw(
+            "fallback-rate-substitution",
+            "allowance",
+            "unsupported_structure",
+            "Eligible cache writes are repriced as cache reads",
+            input.source.id,
+          ),
+          commercialRaw(
+            "fallback-credit-lifetime",
+            "informational",
+            "unsupported_structure",
+            "Opaque token is redeemable within five minutes by its originating organization and workspace",
+            input.source.id,
+          ),
+        ],
+      }),
+    );
+  report(
+    fallbackContract &&
+      fallbackTargetIds.length > 0 &&
+      fallbackTargets.length === fallbackTargetIds.length,
+    "fallback_credit_bound",
+    "Fallback prompt-cache credit",
+  );
+
+  const newUserCredits = bodies.pricing.includes(
+    "New users receive a small amount of free credits to test the API",
+  );
+  if (newUserCredits)
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "account-resource:new-user-credit",
+        bookName: "New-user API credit",
+        resourceKind: "account_resource_template",
+        resourceKey: "new-user-credit",
+        offerKey: "grant",
+        offerName: "New-user credit grant",
+        state: "included",
+        raw: [
+          commercialRaw(
+            "credit-amount",
+            "allowance",
+            "unknown_amount",
+            "New users receive an unspecified small amount of free API credits",
+            input.source.id,
+          ),
+        ],
+      }),
+    );
+  report(newUserCredits, "new_user_credit_bound", "New-user API credit");
+
+  const tokenCountingFree = /Token counting is free to use/i.test(bodies.tokenCounting);
+  if (tokenCountingFree)
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "service:token-counting",
+        bookName: "Token Counting",
+        resourceKey: "token-counting",
+        modelRefs: activeModels.map(({ uid }) => uid),
+        offerKey: "preflight",
+        offerName: "Token count estimate",
+        state: "free",
+      }),
+    );
+  report(tokenCountingFree, "token_counting_service_bound", "Token Counting");
+
+  const filesFree =
+    /Files API operations are free/i.test(bodies.files) &&
+    ["Uploading files", "Downloading files", "Listing files", "Deleting files"].every((value) =>
+      bodies.files.includes(value),
+    );
+  if (filesFree)
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "service:files",
+        bookName: "Files API",
+        resourceKey: "files",
+        offerKey: "management",
+        offerName: "File management",
+        state: "free",
+      }),
+    );
+  report(filesFree, "files_service_bound", "Files API");
+
+  const managedAmount = bodies.pricing.match(
+    /\| Session runtime \| \$((?:0|[1-9]\d*)(?:\.\d+)?) per session-hour \|/,
+  )?.[1];
+  const managedIds = [
+    ...new Set(
+      [...bodies.managedAgentCreate.matchAll(/^\s*-\s+`"(claude-[a-z0-9._:/-]+)"`\s*$/gm)]
+        .map((match) => match[1])
+        .filter((id): id is string => id !== undefined),
+    ),
+  ];
+  const managedRefs = managedIds.flatMap((id) => {
+    const item = commercialModel(models, id);
+    return item === undefined || !callable(item) ? [] : [item.uid];
+  });
+  const managedService = bodies.managedAgents.includes("Claude Managed Agents");
+  const managedActiveSignal = bodies.managedAgentEvents.includes('"active_seconds"');
+  const managedListCost = bodies.managedAgentEvents.includes('"list_cost"');
+  const managedModelUsage = bodies.pricing.includes(
+    "All tokens consumed by a Claude Managed Agents session are billed at the rates shown in",
+  );
+  const managedCodeIncluded = bodies.pricing.includes(
+    "Session runtime replaces the [code execution](#code-execution-tool) container-hour billing model",
+  );
+  if (managedAmount !== undefined && managedService && managedRefs.length > 0) {
+    const rate = publishedRate(
+      "session_runtime",
+      managedAmount,
+      "hour",
+      input.source.id,
+      "per running session-hour",
+    );
+    rate.source_locator = {
+      kind: "fragment",
+      value: "/docs/en/about-claude/pricing.md#managed-agents-pricing",
+    };
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "service:managed-agents-runtime",
+        bookName: "Managed Agents Runtime",
+        resourceKey: "managed-agents-runtime",
+        modelRefs: managedRefs,
+        offerKey: "runtime",
+        offerName: "Running session",
+        state: "numeric",
+        rates: [rate],
+        raw: [
+          ...(managedActiveSignal
+            ? [
+                commercialRaw(
+                  "runtime-signal",
+                  "informational",
+                  "unsupported_structure",
+                  "usage.active_seconds is cumulative deduplicated session runtime",
+                  input.source.id,
+                ),
+              ]
+            : []),
+          ...(managedModelUsage
+            ? [
+                commercialRaw(
+                  "model-usage",
+                  "informational",
+                  "unsupported_structure",
+                  "Session tokens use exact model rates and prompt-cache multipliers",
+                  input.source.id,
+                ),
+              ]
+            : []),
+          ...(managedListCost
+            ? [
+                commercialRaw(
+                  "session-list-cost",
+                  "informational",
+                  "requires_usage_aggregation",
+                  "Session list_cost is the authoritative rounded public-list subtotal",
+                  input.source.id,
+                ),
+              ]
+            : []),
+        ],
+      }),
+    );
+    const managedCodeRefs = managedRefs.filter((ref) => codeRefs.has(ref));
+    if (managedCodeIncluded && managedCodeRefs.length > 0)
+      facts.push(
+        commercialFact(input.source.id, {
+          bookKey: "service:code-execution",
+          bookName: "Code Execution",
+          resourceKey: "code-execution",
+          modelRefs: managedCodeRefs,
+          offerKey: "managed-agents",
+          offerName: "Managed Agents code execution",
+          state: "included",
+        }),
+      );
+  }
+  report(
+    managedService && managedIds.length > 0 && managedRefs.length === managedIds.length,
+    "managed_agents_scope_bound",
+    "Managed Agents model scope",
+  );
+  report(
+    managedAmount !== undefined && managedActiveSignal,
+    "managed_agents_runtime_bound",
+    "Managed Agents runtime",
+  );
+  report(managedModelUsage, "managed_agents_model_usage_bound", "Managed Agents model usage");
+  report(managedListCost, "managed_agents_list_cost_bound", "Managed Agents list cost");
+  report(
+    managedCodeIncluded,
+    "managed_agents_code_execution_bound",
+    "Managed Agents code execution coverage",
+  );
+
+  const priorityClosed = bodies.serviceTiers.includes(
+    "Priority Tier capacity commitments are no longer available for purchase",
+  );
+  const prioritySupport = bodies.serviceTiers
+    .split(/\r?\n/)
+    .find((line) =>
+      line.includes("Priority Tier is supported on all available Claude models except"),
+    );
+  if (prioritySupport !== undefined) {
+    const excluded = new Set(mentioned(prioritySupport, models).map(({ uid }) => uid));
+    for (const { name, uid } of activeModels.filter(({ uid }) => !excluded.has(uid)))
+      facts.push(
+        commercialFact(input.source.id, {
+          bookKey: `capacity:priority-tier:${uid}`,
+          bookName: `${name} Priority Tier Capacity`,
+          resourceKind: "capacity",
+          resourceKey: `priority-tier:${uid}`,
+          modelRefs: [uid],
+          offerKey: "commitment",
+          offerName: "Existing capacity commitment",
+          billingMode: "capacity",
+          state: "not_published",
+          raw: [
+            commercialRaw(
+              "commitment-terms",
+              "base_price",
+              "unknown_amount",
+              "Input/output TPM, model version, and 1/3/6/12-month commitment; payment unpublished",
+              input.source.id,
+            ),
+            ...(priorityClosed
+              ? [
+                  commercialRaw(
+                    "closed-enrollment",
+                    "informational",
+                    "unsupported_structure",
+                    "Priority Tier capacity commitments are closed to new purchases",
+                    input.source.id,
+                  ),
+                ]
+              : []),
+          ],
+        }),
+      );
+  }
+  report(prioritySupport !== undefined, "priority_capacity_bound", "Priority Tier capacity");
+  report(priorityClosed, "priority_enrollment_bound", "Priority Tier enrollment");
+
+  if (bodies.pricing.includes("Claude Platform on AWS") && bodies.pricing.includes("$0.01 per CCU"))
+    facts.push(
+      commercialFact(input.source.id, {
+        bookKey: "distribution:claude-platform-aws",
+        bookName: "Claude Platform on AWS",
+        resourceKind: "distribution",
+        resourceKey: "claude-platform-aws",
+        modelRefs: activeModels.map(({ uid }) => uid),
+        offerKey: "marketplace",
+        offerName: "AWS Marketplace settlement",
+        state: "externally_billed",
+        raw: [
+          commercialRaw(
+            "ccu-conversion",
+            "informational",
+            "unsupported_structure",
+            "100 Claude Consumption Units represent USD 1 after applicable discounts",
+            input.source.id,
+          ),
+        ],
+      }),
+    );
+
+  const carrier = [...models.values()].find(({ price_facts }) => price_facts.length > 0);
+  if (carrier !== undefined && facts.length > 0) carrier.commercial_facts = facts;
 }
 
 export function parseAnthropicCatalog(input: Input): ProviderModel[] {
@@ -1181,6 +2121,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     document("/docs/en/api/messages/batches/create.md"),
     document("/docs/en/build-with-claude/batch-processing.md"),
     models,
+    input,
   );
   capabilities(
     {
@@ -1196,6 +2137,27 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
       thinking: document("/docs/en/build-with-claude/thinking.md"),
       toolUse: document("/docs/en/agents-and-tools/tool-use/define-tools.md"),
     },
+    models,
+    input,
+  );
+  commercialPricing(
+    {
+      pricing: document("/docs/en/about-claude/pricing.md"),
+      currentPricing: document("/pricing"),
+      webSearch: document("/docs/en/agents-and-tools/tool-use/web-search-tool.md"),
+      webFetch: document("/docs/en/agents-and-tools/tool-use/web-fetch-tool.md"),
+      codeExecution: document("/docs/en/agents-and-tools/tool-use/code-execution-tool.md"),
+      advisor: document("/docs/en/agents-and-tools/tool-use/advisor-tool.md"),
+      compaction: document("/docs/en/build-with-claude/compaction.md"),
+      tokenCounting: document("/docs/en/build-with-claude/token-counting.md"),
+      files: document("/docs/en/build-with-claude/files.md"),
+      managedAgents: document("/docs/en/managed-agents/overview.md"),
+      managedAgentCreate: document("/docs/en/api/beta/agents/create.md"),
+      managedAgentEvents: document("/docs/en/managed-agents/events-and-streaming.md"),
+      serviceTiers: document("/docs/en/api/service-tiers.md"),
+      fallbackCredit: document("/docs/en/build-with-claude/fallback-credit.md"),
+    },
+    input,
     models,
   );
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));

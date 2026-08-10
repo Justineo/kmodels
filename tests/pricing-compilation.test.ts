@@ -218,7 +218,7 @@ describe("local canonical pricing compilation", () => {
     expect(compiled.candidate.pricing).toEqual(current.pricing);
   });
 
-  it("rejects replay inputs produced by an obsolete extractor", () => {
+  it("preserves accepted pricing when replay input uses an obsolete extractor", () => {
     const current = candidate("1");
     const snapshot = createPricingCompilationSnapshot(current, [
       {
@@ -227,9 +227,10 @@ describe("local canonical pricing compilation", () => {
       },
     ]);
 
-    expect(() => compilePricingSnapshot(current, snapshot, [providerManifest])).toThrow(
-      "uses a stale extractor",
-    );
+    const compiled = compilePricingSnapshot(current, snapshot, [providerManifest]);
+    expect(compiled.replayedProviders).toEqual([]);
+    expect(compiled.preservedProviders).toEqual([providerId]);
+    expect(compiled.candidate.pricing).toEqual(current.pricing);
   });
 
   it("rejects replay input bound to another catalog core", () => {

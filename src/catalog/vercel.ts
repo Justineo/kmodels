@@ -19,6 +19,7 @@ import {
   unknownCapabilities,
 } from "./schema.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
+import { vercelCommercialFacts } from "./vercel-commercial-source.ts";
 
 interface Input {
   provider: Provider;
@@ -857,7 +858,7 @@ function modelPageRates(
     }
     if (header === "Web Search" && unit === "K") {
       rates.push(
-        publishedRate("tool_call", amount, "thousand_requests", sourceId, "1K requests", {
+        publishedRate("web_search", amount, "thousand_requests", sourceId, "1K requests", {
           ...conditions,
           operation: "web_search",
         }),
@@ -1022,15 +1023,22 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
     );
   if (value.web_search !== undefined)
     rates.push(
-      publishedRate("tool_call", value.web_search, "thousand_requests", sourceId, "1K requests", {
+      publishedRate("web_search", value.web_search, "thousand_requests", sourceId, "1K requests", {
         operation: "web_search",
       }),
     );
   if (value.maps_search !== undefined)
     rates.push(
-      publishedRate("tool_call", value.maps_search, "thousand_requests", sourceId, "1K requests", {
-        operation: "maps_search",
-      }),
+      publishedRate(
+        "maps_search",
+        value.maps_search,
+        "thousand_requests",
+        sourceId,
+        "1K requests",
+        {
+          operation: "maps_search",
+        },
+      ),
     );
   return rates;
 }
@@ -1044,17 +1052,6 @@ function validateDocumentation(documents: ReadonlyMap<string, string>): void {
         "This endpoint requires no authentication",
         "GET /v1/models/{creator}/{model}/endpoints",
         "returns per-provider pricing, supported parameters, uptime, throughput, and latency",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/pricing.md",
-      [
-        "AI Gateway charges no markup and no platform fee on tokens.",
-        "AI Gateway bases its rates on the provider's list price.",
-        "fallback usage is charged against your credits balance",
-        "$0.075 / 1,000 tag/user ID/quota entity ID writes",
-        "$0.10 per 1,000 successful requests",
-        "$0.10 per 1,000 requests",
       ],
     ],
     [
@@ -1117,10 +1114,6 @@ function validateDocumentation(documents: ReadonlyMap<string, string>): void {
         "`native_tokens_cached`",
         "`native_tokens_cache_creation`",
       ],
-    ],
-    [
-      "/docs/ai-gateway/observability-and-spend/custom-reporting.md",
-      ["It can take a few minutes", "`market_cost`", "`surcharge_cost`"],
     ],
     [
       "/docs/ai-gateway/observability-and-spend/logs.md",
@@ -1372,7 +1365,12 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       pages.set(slug, modelPageDocumentSchema.parse(JSON.parse(document.body)));
       continue;
     }
-    if (url.hostname === "vercel.com" && url.pathname.endsWith(".md")) {
+    if (
+      url.hostname === "vercel.com" &&
+      (url.pathname.endsWith(".md") ||
+        url.pathname === "/ai-gateway/models" ||
+        url.pathname === "/crawled-sitemap.xml")
+    ) {
       if (documentation.has(url.pathname))
         throw new Error(`Vercel documentation was duplicated at ${url.pathname}`);
       documentation.set(url.pathname, document.body);
@@ -1397,7 +1395,7 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       reason_code: "account_or_service_policy",
       sample: path,
     });
-  return parsed.map((item) => {
+  const result = parsed.map((item) => {
     const slug = item.id.split("/")[1];
     return model(
       item,
@@ -1406,4 +1404,17 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       slug === undefined ? undefined : pages.get(slug),
     );
   });
+  const commercialFacts = vercelCommercialFacts({
+    documents: documentation,
+    sourceId: input.source.id,
+    modelRefs: result.map(({ uid }) => uid),
+    modelRefById: new Map(result.map(({ model_id: id, uid }) => [id, uid])),
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { onPricingReconciliation: input.onPricingReconciliation }),
+  });
+  const carrier = result.find(({ price_facts: rates }) => rates.length > 0) ?? result[0];
+  if (carrier !== undefined && commercialFacts.length > 0)
+    carrier.commercial_facts = commercialFacts;
+  return result;
 }

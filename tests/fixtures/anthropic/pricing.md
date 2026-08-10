@@ -50,12 +50,20 @@ Web fetch usage has **no additional charges** beyond standard token costs.
 | --------------- | ---------------------- | ------------------------- |
 | Session runtime | $0.08 per session-hour | `running` status duration |
 
+All tokens consumed by a Claude Managed Agents session are billed at the rates shown in model pricing. Prompt caching multipliers apply identically.
+
+Session runtime replaces the [code execution](#code-execution-tool) container-hour billing model when using Claude Managed Agents. You are not separately billed for container hours on top of session runtime.
+
 | Concept       | Details                                                  |
 | ------------- | -------------------------------------------------------- |
 | **CCU price** | $0.01 per CCU (fixed; discounts apply during conversion) |
+
+Claude Platform on AWS bills through AWS Marketplace using Claude Consumption Units (CCUs).
 
 | Concept       | Details                                                  |
 | ------------- | -------------------------------------------------------- |
 | **CCU price** | $0.01 per CCU (fixed; discounts apply during conversion) |
 
 Volume discounts may be available for high-volume users. These are negotiated on a case-by-case basis.
+
+New users receive a small amount of free credits to test the API.

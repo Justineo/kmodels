@@ -47,10 +47,10 @@ describe("canonical pricing canonical primitives", () => {
   it("derives stable domain-separated resource IDs", () => {
     const book = pricingBookId("test", "public");
     const offer = pricingOfferId(book, "usage");
-    const term = pricingTermId(offer, "input-text");
+    const term = pricingTermId(offer, "rate", "input-text");
     expect([book, offer, term].every((id) => /^[0-9a-f]{64}$/.test(id))).toBe(true);
     expect(new Set([book, offer, term])).toHaveLength(3);
-    expect(pricingTermId(offer, "input-text")).toBe(term);
+    expect(pricingTermId(offer, "rate", "input-text")).toBe(term);
   });
 
   it("normalizes and bounds exact rational arithmetic", () => {

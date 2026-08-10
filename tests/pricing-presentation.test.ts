@@ -82,7 +82,7 @@ function term(
   applicability = unconditionalApplicability,
 ): PriceRateTerm {
   return {
-    id: pricingTermId(offerId, key),
+    id: pricingTermId(offerId, "rate", key),
     term_key: key,
     kind: "rate",
     meter: { namespace: "kmodels", value: meter },
@@ -119,11 +119,11 @@ function catalog(terms: PriceRateTerm[]): PricingCatalog {
             raw: { label: "Pricing" },
           },
         ],
+        resource_edges: [],
         offers: [
           {
             id: offerId,
             offer_key: "usage",
-            role: "base",
             billing_mode: { namespace: "kmodels", value: "usage" },
             states: [
               {
@@ -132,7 +132,10 @@ function catalog(terms: PriceRateTerm[]): PricingCatalog {
                 observations: [source],
               },
             ],
+            enrollment: [],
             terms,
+            relations: [],
+            settlement: [],
             source_refs: [sourceRef],
           },
         ],
@@ -617,7 +620,78 @@ describe("canonical pricing presentation", () => {
     expect(modelPricingView(data, model())).toMatchObject({
       outcome: "not_applicable",
       books: [],
-      baseOffers: [],
+      modelMechanisms: [],
+    });
+  });
+
+  it("classifies a provider service that requires the model as an optional add-on", () => {
+    const data = catalog([term("input", "input_text", tokenPrice)]);
+    const resourceBookId = pricingBookId(providerId, "service:search");
+    const resourceOfferId = pricingOfferId(resourceBookId, "built-in");
+    data.books.push({
+      id: resourceBookId,
+      provider_id: providerId,
+      book_key: "service:search",
+      scope: {
+        kind: "provider_resource",
+        resource_kind: { namespace: "kmodels", value: "service" },
+        resource_key: "search",
+        model_refs: [modelRef],
+      },
+      scope_observations: [
+        {
+          source_ref: sourceRef,
+          locator: { kind: "table", value: "service" },
+          establishes: {
+            kind: "provider_resource",
+            resource_kind: { namespace: "kmodels", value: "service" },
+            resource_key: "search",
+            model_refs: [modelRef],
+          },
+          raw: { label: "Search" },
+        },
+      ],
+      resource_edges: [],
+      offers: [
+        {
+          id: resourceOfferId,
+          offer_key: "built-in",
+          billing_mode: { namespace: "kmodels", value: "usage" },
+          states: [
+            {
+              state: "free",
+              applicability: unconditionalApplicability,
+              observations: [source],
+            },
+          ],
+          enrollment: [],
+          terms: [],
+          relations: [
+            {
+              kind: "requires",
+              target: { kind: "offers", offer_refs: [offerId] },
+              applicability: unconditionalApplicability,
+              observations: [
+                {
+                  source_ref: sourceRef,
+                  locator: { kind: "table", value: "service" },
+                  establishes_offer_refs: [offerId],
+                  establishes_book_refs: [],
+                  raw: { label: "Search requires model inference" },
+                },
+              ],
+            },
+          ],
+          settlement: [],
+          source_refs: [sourceRef],
+        },
+      ],
+      source_refs: [sourceRef],
+    });
+
+    expect(modelPricingView(data, model())).toMatchObject({
+      optionalServices: [expect.objectContaining({ id: resourceOfferId })],
+      standaloneOffers: [],
     });
   });
 });

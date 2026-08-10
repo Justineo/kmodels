@@ -53,7 +53,6 @@ export type Extractor =
       maxModels: number;
       minModelDocuments: number;
       maxModelDocuments: number;
-      minPricingCoverage: number;
     }
   | { kind: "vertex-api" }
   | {
@@ -129,6 +128,7 @@ export interface LinkedDocuments {
     url: string;
     format?: SourceFormat;
     maxResponseBytes: number;
+    optional?: boolean;
   }[];
 }
 
@@ -294,18 +294,20 @@ const mebibytes = (value: number): number => value * 1024 * 1024;
 type FixedDocument = readonly [
   id: string,
   url: string,
-  maxResponseMebibytes?: number,
-  format?: SourceFormat,
+  maxResponseMebibytes?: number | undefined,
+  format?: SourceFormat | undefined,
+  optional?: boolean | undefined,
 ];
 
 function fixedDocuments(
   entries: readonly FixedDocument[],
 ): NonNullable<LinkedDocuments["documents"]> {
-  return entries.map(([id, url, maxResponseMebibytes = 1, format]) => ({
+  return entries.map(([id, url, maxResponseMebibytes = 1, format, optional]) => ({
     id,
     url,
     maxResponseBytes: mebibytes(maxResponseMebibytes),
     ...(format === undefined ? {} : { format }),
+    ...(optional === undefined ? {} : { optional }),
   }));
 }
 
@@ -462,7 +464,7 @@ const kimiPricingSource = (
   format: "markdown",
   stability: "semi_structured",
   extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 8, maxModels: 20 },
-  extractorVersion: "kimi-pricing-v5",
+  extractorVersion: "kimi-pricing-v6",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
     "model_id",
@@ -500,6 +502,12 @@ const kimiPricingSource = (
         ["chat-api", "/docs/api/chat"],
         ["estimate-api", "/docs/api/estimate"],
         ["balance-api", "/docs/api/balance"],
+        ["files", "/docs/api/files"],
+        ["files-upload", "/docs/api/files-upload"],
+        ["files-list", "/docs/api/files-list"],
+        ["files-retrieve", "/docs/api/files-retrieve"],
+        ["files-delete", "/docs/api/files-delete"],
+        ["files-content", "/docs/api/files-content"],
         ["cache", "/docs/guide/use-context-caching-feature-of-kimi-api"],
         ["web-search", "/docs/guide/use-web-search"],
         ["official-tools", "/docs/guide/use-official-tools"],
@@ -540,7 +548,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-catalog" },
-        extractorVersion: "openai-catalog-v7",
+        extractorVersion: "openai-catalog-v8",
         fields: [
           "model_id",
           "name",
@@ -732,7 +740,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing", minModels: 30, maxModels: 100 },
-        extractorVersion: "openai-pricing-v2",
+        extractorVersion: "openai-pricing-v3",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -784,7 +792,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v10",
+        extractorVersion: "anthropic-catalog-v12",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -804,7 +812,7 @@ export const manifests = [
           "retired_at",
           "replacement_model_ids",
         ],
-        allowedHosts: ["platform.claude.com"],
+        allowedHosts: ["platform.claude.com", "claude.com"],
         maxResponseBytes: mebibytes(8),
         scope: "global",
         exhaustive: true,
@@ -817,6 +825,7 @@ export const manifests = [
           maxDocumentBytes: mebibytes(2),
           documents: fixedDocuments([
             ["documentation-index", "https://platform.claude.com/llms.txt"],
+            ["current-pricing", "https://claude.com/pricing", 2],
             ["pricing", "https://platform.claude.com/docs/en/about-claude/pricing.md", 2],
             [
               "model-deprecations",
@@ -857,6 +866,18 @@ export const manifests = [
               "https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md",
             ],
             [
+              "web-search",
+              "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md",
+            ],
+            [
+              "web-fetch",
+              "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool.md",
+            ],
+            [
+              "advisor",
+              "https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool.md",
+            ],
+            [
               "computer-use",
               "https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool.md",
             ],
@@ -868,6 +889,12 @@ export const manifests = [
             ],
             ["glossary", "https://platform.claude.com/docs/en/about-claude/glossary.md"],
             ["thinking", "https://platform.claude.com/docs/en/build-with-claude/thinking.md"],
+            ["compaction", "https://platform.claude.com/docs/en/build-with-claude/compaction.md"],
+            [
+              "token-counting",
+              "https://platform.claude.com/docs/en/build-with-claude/token-counting.md",
+            ],
+            ["files", "https://platform.claude.com/docs/en/build-with-claude/files.md"],
             [
               "tool-use",
               "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools.md",
@@ -894,6 +921,20 @@ export const manifests = [
             [
               "fallback-credit",
               "https://platform.claude.com/docs/en/build-with-claude/fallback-credit.md",
+            ],
+            [
+              "managed-agents-overview",
+              "https://platform.claude.com/docs/en/managed-agents/overview.md",
+            ],
+            [
+              "managed-agents-create",
+              "https://platform.claude.com/docs/en/api/beta/agents/create.md",
+              2,
+            ],
+            [
+              "managed-agents-events",
+              "https://platform.claude.com/docs/en/managed-agents/events-and-streaming.md",
+              2,
             ],
             ["release-notes", "https://platform.claude.com/docs/en/release-notes/overview.md", 4],
           ]),
@@ -968,7 +1009,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v13",
+        extractorVersion: "bedrock-catalog-v15",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1080,6 +1121,12 @@ export const manifests = [
             ],
             ["bedrock-public-pricing", "https://aws.amazon.com/bedrock/pricing/", 8, "html"],
             [
+              "bedrock-agentcore-pricing",
+              "https://aws.amazon.com/bedrock/agentcore/pricing/",
+              2,
+              "html",
+            ],
+            [
               "bedrock-cohere-embed-v4-marketplace",
               "https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs",
               1,
@@ -1099,6 +1146,11 @@ export const manifests = [
               "pricing-service",
               "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockService/current/index.json",
               2,
+            ],
+            [
+              "pricing-agentcore",
+              "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockAgentCore/current/index.json",
+              12,
             ],
           ]),
         },
@@ -1170,7 +1222,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v7",
+        extractorVersion: "databricks-catalog-v8",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1251,6 +1303,27 @@ export const manifests = [
             ],
             ["ai-gateway-usage", "https://docs.databricks.com/aws/en/ai-gateway/usage-tracking"],
             ["ai-gateway-cost", "https://docs.databricks.com/aws/en/ai-gateway/cost-observability"],
+            [
+              "pricing-cards",
+              "https://www.databricks.com/en-pricing-assets/data/pricing/cards.json",
+            ],
+            ...[
+              "ai-gateway",
+              "agent-bricks",
+              "ai-functions",
+              "model-serving",
+              "ai-search",
+              "agent-evaluation",
+              "foundation-model-training",
+              "ai-runtime",
+              "genie",
+            ].map(
+              (page) =>
+                [
+                  `pricing-${page}`,
+                  `https://www.databricks.com/en-pricing-assets/page-data/product/pricing/${page}/page-data.json`,
+                ] as const,
+            ),
             ["release-feed", "https://docs.databricks.com/aws/en/feed.xml", 2],
           ]),
         },
@@ -1306,7 +1379,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v11",
+        extractorVersion: "vercel-catalog-v12",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1352,6 +1425,14 @@ export const manifests = [
               "markdown",
             ],
             ["pricing-policy", "https://vercel.com/docs/ai-gateway/pricing.md", 1, "markdown"],
+            ["model-directory", "https://vercel.com/ai-gateway/models", 4, "html"],
+            ["sitemap", "https://vercel.com/crawled-sitemap.xml", 2, "mixed"],
+            [
+              "free-credit-policy",
+              "https://vercel.com/kb/guide/how-i-use-opencode-with-vercel-ai-gateway-to-build-features-fast.md",
+              1,
+              "markdown",
+            ],
             [
               "provider-options",
               "https://vercel.com/docs/ai-gateway/models-and-providers/provider-options.md",
@@ -1377,6 +1458,18 @@ export const manifests = [
               "markdown",
             ],
             [
+              "web-search",
+              "https://vercel.com/docs/ai-gateway/models-and-providers/web-search.md",
+              1,
+              "markdown",
+            ],
+            [
+              "routing-rules",
+              "https://vercel.com/docs/ai-gateway/models-and-providers/routing-rules.md",
+              1,
+              "markdown",
+            ],
+            [
               "regional-inference",
               "https://vercel.com/docs/ai-gateway/security-and-compliance/regional-inference.md",
               1,
@@ -1397,6 +1490,43 @@ export const manifests = [
             [
               "custom-reporting",
               "https://vercel.com/docs/ai-gateway/observability-and-spend/custom-reporting.md",
+              1,
+              "markdown",
+            ],
+            [
+              "budgets",
+              "https://vercel.com/docs/ai-gateway/observability-and-spend/budgets.md",
+              1,
+              "markdown",
+            ],
+            [
+              "trace-drains",
+              "https://vercel.com/docs/ai-gateway/observability-and-spend/trace-drains.md",
+              1,
+              "markdown",
+            ],
+            ["drains", "https://vercel.com/docs/drains.md", 1, "markdown"],
+            [
+              "model-allowlist",
+              "https://vercel.com/docs/ai-gateway/security-and-compliance/model-allowlist.md",
+              1,
+              "markdown",
+            ],
+            [
+              "provider-allowlist",
+              "https://vercel.com/docs/ai-gateway/security-and-compliance/provider-allowlist.md",
+              1,
+              "markdown",
+            ],
+            [
+              "zdr",
+              "https://vercel.com/docs/ai-gateway/security-and-compliance/zdr.md",
+              1,
+              "markdown",
+            ],
+            [
+              "disallow-prompt-training",
+              "https://vercel.com/docs/ai-gateway/security-and-compliance/disallow-prompt-training.md",
               1,
               "markdown",
             ],
@@ -1690,6 +1820,31 @@ export const manifests = [
               url: "https://azure.microsoft.com/en-us/pricing/details/azure-openai/",
               maxResponseBytes: mebibytes(8),
             },
+            {
+              id: "fine-tuning-models",
+              url: "https://azure.microsoft.com/en-us/pricing/details/ai-foundry-models/fine-tuning-models/",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "foundry-agent-service",
+              url: "https://azure.microsoft.com/en-us/pricing/details/foundry-agent-service/",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "content-safety",
+              url: "https://azure.microsoft.com/en-us/pricing/details/content-safety/",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "foundry-observability",
+              url: "https://azure.microsoft.com/en-us/pricing/details/foundryobservability/",
+              maxResponseBytes: mebibytes(2),
+            },
+            {
+              id: "microsoft-foundry",
+              url: "https://azure.microsoft.com/en-us/pricing/details/microsoft-foundry/",
+              maxResponseBytes: mebibytes(2),
+            },
           ],
         },
       },
@@ -1854,6 +2009,15 @@ export const manifests = [
             ["priority-inference", "https://ai.google.dev/gemini-api/docs/priority-inference"],
             ["google-search", "https://ai.google.dev/gemini-api/docs/google-search"],
             ["google-maps", "https://ai.google.dev/gemini-api/docs/maps-grounding"],
+            ["batch-api", "https://ai.google.dev/gemini-api/docs/batch-api", 2],
+            ["file-search", "https://ai.google.dev/gemini-api/docs/file-search", 2],
+            ["url-context", "https://ai.google.dev/gemini-api/docs/url-context"],
+            ["code-execution", "https://ai.google.dev/gemini-api/docs/code-execution"],
+            ["computer-use", "https://ai.google.dev/gemini-api/docs/computer-use", 2],
+            ["model-tuning", "https://ai.google.dev/gemini-api/docs/model-tuning"],
+            ["deep-research", "https://ai.google.dev/gemini-api/docs/deep-research", 2],
+            ["agents", "https://ai.google.dev/gemini-api/docs/agents"],
+            ["agent-environment", "https://ai.google.dev/gemini-api/docs/agent-environment", 2],
             [
               "cloud-pricing-api",
               "https://docs.cloud.google.com/billing/docs/how-to/get-pricing-information-api",
@@ -1934,9 +2098,8 @@ export const manifests = [
           maxModels: 90,
           minModelDocuments: 20,
           maxModelDocuments: 40,
-          minPricingCoverage: 0.8,
         },
-        extractorVersion: "vertex-catalog-v6",
+        extractorVersion: "vertex-catalog-v7",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -2049,6 +2212,21 @@ export const manifests = [
               2,
             ],
             [
+              "batch-inference",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/batch-inference",
+              2,
+            ],
+            [
+              "context-cache",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/context-cache/context-cache-overview",
+              2,
+            ],
+            [
+              "provisioned-throughput-purchase",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/provisioned-throughput/purchase-provisioned-throughput",
+              2,
+            ],
+            [
               "provisioned-throughput-routing",
               "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/provisioned-throughput/use-provisioned-throughput",
               2,
@@ -2068,6 +2246,11 @@ export const manifests = [
               "https://docs.cloud.google.com/billing/docs/how-to/export-data-bigquery-tables/standard-usage",
               2,
             ],
+            [
+              "agent-search-pricing",
+              "https://cloud.google.com/generative-ai-app-builder/pricing",
+              2,
+            ],
           ]),
         },
       },
@@ -2084,9 +2267,8 @@ export const manifests = [
           maxModels: 80,
           minModelDocuments: 20,
           maxModelDocuments: 45,
-          minPricingCoverage: 0.9,
         },
-        extractorVersion: "vertex-catalog-v5",
+        extractorVersion: "vertex-catalog-v6",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -2167,9 +2349,8 @@ export const manifests = [
           maxModels: 60,
           minModelDocuments: 15,
           maxModelDocuments: 40,
-          minPricingCoverage: 0.9,
         },
-        extractorVersion: "vertex-catalog-v5",
+        extractorVersion: "vertex-catalog-v6",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -2299,7 +2480,7 @@ export const manifests = [
           maxModels: 70,
           minPricingCoverage: 0.6,
         },
-        extractorVersion: "cohere-catalog-v8",
+        extractorVersion: "cohere-catalog-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2336,6 +2517,76 @@ export const manifests = [
             ["pricing", "https://cohere.com/pricing", 2],
             ["pricing-policy", "https://docs.cohere.com/docs/how-does-cohere-pricing-work.md"],
             ["rate-limits", "https://docs.cohere.com/docs/rate-limits.md"],
+            [
+              "commercial-batch",
+              "https://docs.cohere.com/reference/create-batch.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "commercial-tool-use",
+              "https://docs.cohere.com/v2/docs/tool-use-overview.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "commercial-v1-v2-migration",
+              "https://docs.cohere.com/v2/docs/migrating-v1-to-v2.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "model-vault-overview",
+              "https://docs.cohere.com/docs/model-vault.md",
+              2,
+              undefined,
+              true,
+            ],
+            [
+              "standard-vault-models",
+              "https://docs.cohere.com/docs/model-vault/standard/supported-models.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "standard-vault-pricing",
+              "https://docs.cohere.com/docs/model-vault/standard/pricing.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "encrypted-vault-models",
+              "https://docs.cohere.com/docs/model-vault/encrypted/supported-models.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "encrypted-vault-pricing",
+              "https://docs.cohere.com/docs/model-vault/encrypted/pricing.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "model-vault-north",
+              "https://docs.cohere.com/docs/model-vault/model-vault-with-north.md",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "private-deployment",
+              "https://docs.cohere.com/docs/private-deployment-overview.md",
+              1,
+              undefined,
+              true,
+            ],
             ["billing-errors", "https://docs.cohere.com/reference/errors.md"],
             ["teams-and-roles", "https://docs.cohere.com/reference/teams-and-roles.md"],
             ["changelog", "https://docs.cohere.com/v2/changelog", 3],
@@ -2419,7 +2670,7 @@ export const manifests = [
           maxModels: 90,
           minPricingCoverage: 0.9,
         },
-        extractorVersion: "mistral-catalog-v9",
+        extractorVersion: "mistral-catalog-v10",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2465,34 +2716,99 @@ export const manifests = [
             [
               "prompt-caching",
               "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching.md",
+              1,
+              undefined,
+              true,
             ],
-            ["batch-processing", "https://docs.mistral.ai/studio-api/batch-processing.md"],
-            ["public-pricing", "https://mistral.ai/pricing/api/", 2],
+            [
+              "batch-processing",
+              "https://docs.mistral.ai/studio-api/batch-processing.md",
+              1,
+              undefined,
+              true,
+            ],
+            ["public-pricing", "https://mistral.ai/pricing/api/", 2, undefined, true],
             [
               "api-schema",
               "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml",
               2,
+              undefined,
+              true,
             ],
             [
               "admin-usage",
               "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/admin-api/usage-metrics/page.mdx",
+              1,
+              undefined,
+              true,
             ],
             [
               "admin-billing-api",
               "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/api/endpoint/beta/admin/billing/page.mdx",
+              1,
+              undefined,
+              true,
             ],
             [
               "account-billing",
               "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/billing/page.mdx",
+              1,
+              undefined,
+              true,
             ],
             [
               "account-plans",
               "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/subscriptions/page.mdx",
+              1,
+              undefined,
+              true,
             ],
             [
               "regional-inference",
               "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/regional-inference/page.mdx",
+              1,
+              undefined,
+              true,
             ],
+            [
+              "agent-tools",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/page.mdx",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "code-interpreter",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/code_interpreter/page.mdx",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "web-search",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/websearch/page.mdx",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "image-generation",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/image_generation/page.mdx",
+              1,
+              undefined,
+              true,
+            ],
+            [
+              "libraries",
+              "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/libraries/page.mdx",
+              2,
+              undefined,
+              true,
+            ],
+            ["vibe-pricing", "https://mistral.ai/pricing/", 4, undefined, true],
+            ["forge", "https://mistral.ai/products/forge/", 4, undefined, true],
+            ["compute", "https://mistral.ai/products/compute/", 4, undefined, true],
+            ["services", "https://mistral.ai/services/", 4, undefined, true],
           ]),
         },
       },

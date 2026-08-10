@@ -8,6 +8,10 @@ export function pricingOfferId(bookId: string, offerKey: string): string {
   return canonicalJsonHash(["kmodels.pricing.offer.v1", bookId, offerKey]);
 }
 
-export function pricingTermId(offerId: string, termKey: string): string {
-  return canonicalJsonHash(["kmodels.pricing.term.v1", offerId, termKey]);
+export function pricingTermId(
+  offerId: string,
+  termKind: "rate" | "allowance" | "contribution" | "raw",
+  termKey: string,
+): string {
+  return canonicalJsonHash(["kmodels.pricing.term.v2", offerId, termKind, termKey]);
 }

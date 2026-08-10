@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { extractVertexCommercialFacts } from "./vertex-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -14,7 +15,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -219,6 +220,33 @@ const endpointReferences: Readonly<
         /may be downgraded to Standard PayGo and is charged at Standard PayGo rates/,
       ],
       "Vertex Priority PayGo reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/capabilities/batch-inference",
+      [
+        /50% discounted rate compared to real-time inference/,
+        /only be charged for completed requests/,
+        /doesn't support.*Provisioned Throughput.*explicit caching.*RAG/,
+      ],
+      "Vertex Batch accounting reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/context-cache/context-cache-overview",
+      [
+        /cachedContentTokenCount.*number of tokens in the cached part of your input/,
+        /billed for the input tokens used to create the cache at the standard input token price/,
+        /explicit caching.*storage costs based on how long caches are stored/,
+      ],
+      "Vertex context-cache accounting reference drifted",
+    ],
+    [
+      "/gemini-enterprise-agent-platform/models/provisioned-throughput/purchase-provisioned-throughput",
+      [
+        /purchase is a commitment.*can't cancel the order in the middle of your term/,
+        /overages are processed and billed as standard pay-as-you-go/,
+        /1 week.*1 month.*3 months.*1 year/,
+      ],
+      "Vertex Provisioned Throughput purchase reference drifted",
     ],
     [
       "/gemini-enterprise-agent-platform/models/provisioned-throughput/use-provisioned-throughput",
@@ -1522,7 +1550,14 @@ function tokenTables(
       .each((_rowIndex, row) => {
         const cells = $(row).find("th,td");
         if (cells.length === 1) {
-          current = priceTargets(models, text(cells.eq(0).text()));
+          const label = text(cells.eq(0).text());
+          current = priceTargets(models, label);
+          if (label !== "" && current.length === 0)
+            reconcile?.({
+              disposition: "unbound",
+              reason_code: "pricing_model_unbound",
+              sample: label.slice(0, 256),
+            });
           return;
         }
         const direct = priceTargets(models, text(cells.eq(0).text()));
@@ -2135,15 +2170,28 @@ function groundingReferenceTargets(
   const heading = $("h2").filter(
     (_index, element) => text($(element).text()) === "Supported models",
   );
-  if (heading.length !== 1)
-    throw new Error(`Vertex ${reference} supported-model reference changed`);
+  if (heading.length !== 1) {
+    reconcile?.({
+      disposition: "unsupported",
+      reason_code: "grounding_supported_model_reference_changed",
+      sample: reference,
+    });
+    return [];
+  }
   const labels = heading
     .first()
     .nextUntil("h2")
     .find("li")
     .map((_index, item) => text($(item).text()).replace(/\s+preview$/i, " Preview"))
     .get();
-  if (labels.length === 0) throw new Error(`Vertex ${reference} supported-model list is empty`);
+  if (labels.length === 0) {
+    reconcile?.({
+      disposition: "unsupported",
+      reason_code: "grounding_supported_model_list_empty",
+      sample: reference,
+    });
+    return [];
+  }
   const targets = new Map<string, ProviderModel>();
   for (const label of labels) {
     const matches = priceTargets(models, label).filter(
@@ -2295,25 +2343,51 @@ function claudeWebSearchPricing(
     .find("tr")
     .slice(1)
     .filter((_index, row) => /^Web Search Request$/i.test(text($(row).find("th,td").eq(0).text())));
-  if (rows.length !== 1) throw new Error("Vertex Claude web-search pricing table changed");
+  if (rows.length !== 1) {
+    reconcile?.({
+      disposition: "unsupported",
+      reason_code: "claude_web_search_pricing_table_changed",
+      sample: "Web Search Request",
+    });
+    return;
+  }
   const raw = cellText(rows.first().find("th,td").last());
   const price = raw.match(/\$(\d+(?:\.\d+)?)\s+per\s+1,?000\s+searches/i)?.[1];
-  if (price === undefined) throw new Error("Vertex Claude web-search price changed");
+  if (price === undefined) {
+    reconcile?.({
+      disposition: "unsupported",
+      reason_code: "claude_web_search_price_changed",
+      sample: raw.slice(0, 256),
+    });
+    return;
+  }
 
   const reference = load(referenceBody);
   const supportedHeading = reference("h2").filter(
     (_index, heading) => text(reference(heading).text()) === "Supported models",
   );
-  if (supportedHeading.length !== 1)
-    throw new Error("Vertex Claude web-search supported-model reference changed");
+  if (supportedHeading.length !== 1) {
+    reconcile?.({
+      disposition: "unsupported",
+      reason_code: "claude_web_search_supported_model_reference_changed",
+      sample: "Supported models",
+    });
+    return;
+  }
   const labels = supportedHeading
     .first()
     .nextUntil("h2")
     .find("li")
     .map((_index, item) => text(reference(item).text()))
     .get();
-  if (labels.length === 0)
-    throw new Error("Vertex Claude web-search supported-model list is empty");
+  if (labels.length === 0) {
+    reconcile?.({
+      disposition: "unsupported",
+      reason_code: "claude_web_search_supported_model_list_empty",
+      sample: "Supported models",
+    });
+    return;
+  }
   const targets = new Map<string, ProviderModel>();
   for (const label of labels) {
     const matches = priceTargets(models, label).filter(
@@ -2355,13 +2429,22 @@ function applyPricing(
   mediaTables(models, sourceId, $, reconcile);
   inlineUnitTables(models, sourceId, $, evidence, reconcile);
   if (sourceId === "vertex-google-models") {
-    if (groundingReferences === undefined) throw new Error("Missing Vertex grounding references");
-    googleGroundingTables(models, sourceId, $, groundingReferences, reconcile);
+    if (groundingReferences === undefined)
+      reconcile?.({
+        disposition: "unsupported",
+        reason_code: "grounding_references_missing",
+        sample: sourceId,
+      });
+    else googleGroundingTables(models, sourceId, $, groundingReferences, reconcile);
   }
   if (sourceId === "vertex-partner-models") {
     if (claudeWebSearchBody === undefined)
-      throw new Error("Missing Vertex Claude web-search reference");
-    claudeWebSearchPricing(models, sourceId, $, claudeWebSearchBody, reconcile);
+      reconcile?.({
+        disposition: "unsupported",
+        reason_code: "claude_web_search_reference_missing",
+        sample: sourceId,
+      });
+    else claudeWebSearchPricing(models, sourceId, $, claudeWebSearchBody, reconcile);
   }
   for (const { model } of models.values()) {
     model.price_facts.sort((left, right) =>
@@ -2462,6 +2545,13 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
       "/gemini-enterprise-agent-platform/models/embeddings/get-text-embeddings",
   );
   if (embedding !== undefined) applyEmbeddingReference(models, embedding.body);
+  extractVertexCommercialFacts(
+    [...models.values()].map(({ model }) => model),
+    input.source.id,
+    pricing?.body,
+    (label) => priceTargets(models, label).map(({ uid }) => uid),
+    bundle.documents,
+  );
   const values = [...models.values()]
     .map((item) => item.model)
     .sort((left, right) => left.model_id.localeCompare(right.model_id));
@@ -2471,15 +2561,6 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
     modelDocuments,
     extractor.minModelDocuments,
     extractor.maxModelDocuments,
-  );
-  const current = values.filter((model) => model.status !== "retired");
-  const priced = current.filter((model) => model.price_facts.length > 0);
-  assertCoverage(
-    "Vertex pricing coverage",
-    priced.length,
-    current.length,
-    extractor.minPricingCoverage,
-    ["pricing"],
   );
   return values;
 }

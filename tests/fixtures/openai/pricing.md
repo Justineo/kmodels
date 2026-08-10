@@ -68,9 +68,16 @@ Tools
 
 ### Grouped Pricing Table data
 
-| Tool        | Details   | Pricing          |
-| ----------- | --------- | ---------------- |
-| File search | Tool call | $2.50 / 1k calls |
+| Tool        | Details                                                  | Pricing                                                                               |
+| ----------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Web search  | Web search (all models)                                  | $10.00 / 1k calls + Search content tokens billed at model rates.                      |
+| Web search  | Image Web search (all models)                            | $10.00 / 1k calls + Search content tokens billed at model rates.                      |
+| Web search  | Web search preview (reasoning models, including `gpt-5`) | $10.00 / 1k calls + Search content tokens billed at model rates.                      |
+| Web search  | Web search preview (non-reasoning models)                | $25.00 / 1k calls + Search content tokens are free.                                   |
+| Containers  | Hosted Shell and Code Interpreter                        | 1 GB $0.03, 4 GB $0.12, 16 GB $0.48, 64 GB $1.92 per 20-minute session per container. |
+| File search | Storage                                                  | $0.10 / GB per day (1 GB free)                                                        |
+| File search | Tool call                                                | $2.50 / 1k calls                                                                      |
+| Agent Kit   | ChatKit file and image upload storage                    | $0.10 / GB-day after 1 GB free per account per month                                  |
 
 Specialized models
 
@@ -89,6 +96,8 @@ Standard
 
 ### Pricing Table data
 
-| Model              | Training | Input | Cached input | Output |
-| ------------------ | -------- | ----- | ------------ | ------ |
-| gpt-4.1-2025-04-14 | $25.00   | $3.00 | $0.75        | $12.00 |
+| Model                             | Training       | Input | Cached input | Output |
+| --------------------------------- | -------------- | ----- | ------------ | ------ |
+| gpt-4.1-2025-04-14                | $25.00         | $3.00 | $0.75        | $12.00 |
+| o4-mini-2025-04-16                | $100.00 / hour | $4.00 | $1.00        | $16.00 |
+| o4-mini-2025-04-16 (data sharing) | $100.00 / hour | $2.00 | $0.50        | $8.00  |

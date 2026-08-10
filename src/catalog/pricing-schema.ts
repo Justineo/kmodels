@@ -2,6 +2,8 @@ import { z } from "zod";
 import { pricingDecimalPattern, pricingLimits } from "./pricing-constants.ts";
 import { isCanonicalInstant, isPublishedTime } from "./pricing-time.ts";
 import {
+  applicabilityResolutionPhases,
+  enrollmentStates,
   priceStates,
   pricingRefreshFailureCodes,
   publishedTimePrecisions,
@@ -9,6 +11,8 @@ import {
   standardBillingUnits,
   standardPriceDimensions,
   standardPriceMeters,
+  standardResourceKinds,
+  standardUsageSignals,
 } from "./pricing-vocabulary.ts";
 
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
@@ -29,6 +33,9 @@ export const standardPriceDimensionSchema = z.enum(standardPriceDimensions);
 export const standardBillingUnitSchema = z.enum(standardBillingUnits);
 
 export const standardPriceMeterSchema = z.enum(standardPriceMeters);
+
+export const standardUsageSignalSchema = z.enum(standardUsageSignals);
+export const applicabilityResolutionPhaseSchema = z.enum(applicabilityResolutionPhases);
 
 function providerOwned<T extends z.ZodType>(value: T) {
   return z.strictObject({
@@ -70,6 +77,14 @@ export const priceMeterSchema = z.discriminatedUnion("namespace", [
   providerOwned(nonEmptyString),
 ]);
 
+export const usageSignalSchema = z.discriminatedUnion("namespace", [
+  z.strictObject({
+    namespace: z.literal("kmodels"),
+    value: standardUsageSignalSchema,
+  }),
+  providerOwned(nonEmptyString),
+]);
+
 export const billingModeSchema = z.discriminatedUnion("namespace", [
   z.strictObject({
     namespace: z.literal("kmodels"),
@@ -81,7 +96,7 @@ export const billingModeSchema = z.discriminatedUnion("namespace", [
 export const allowanceResetSchema = z.discriminatedUnion("namespace", [
   z.strictObject({
     namespace: z.literal("kmodels"),
-    value: z.enum(["none", "daily", "monthly", "annual"]),
+    value: z.enum(["none", "session", "daily", "weekly", "monthly", "annual", "billing_period"]),
   }),
   providerOwned(nonEmptyString),
 ]);
@@ -249,8 +264,12 @@ export const pricingScopeSchema = z.discriminatedUnion("kind", [
     model_refs: z.array(nonEmptyString).min(1),
   }),
   z.strictObject({
-    kind: z.literal("provider_service"),
-    service_key: nonEmptyString,
+    kind: z.literal("provider_resource"),
+    resource_kind: z.union([
+      z.strictObject({ namespace: z.literal("kmodels"), value: z.enum(standardResourceKinds) }),
+      providerOwned(nonEmptyString),
+    ]),
+    resource_key: nonEmptyString,
     model_refs: z.array(nonEmptyString),
   }),
 ]);
@@ -264,7 +283,7 @@ export const priceScopeObservationSchema = z.strictObject({
 
 export const priceAllowanceBenefitSchema = z.discriminatedUnion("kind", [
   z.strictObject({
-    kind: z.literal("usage"),
+    kind: z.literal("quantity"),
     quantity: priceQuantitySchema,
   }),
   z.strictObject({
@@ -272,15 +291,22 @@ export const priceAllowanceBenefitSchema = z.discriminatedUnion("kind", [
     amount: rationalSchema,
     denomination: priceDenominationSchema,
   }),
+  z.strictObject({ kind: z.literal("coverage") }),
+  z.strictObject({
+    kind: z.literal("rate_substitution"),
+    replaced_term_refs: z.array(hash).min(1),
+    replacement_term_refs: z.array(hash).min(1),
+  }),
 ]);
 
 export const priceAllowanceTargetSchema = z.discriminatedUnion("kind", [
   z.strictObject({
-    kind: z.literal("usage_rate_terms"),
-    term_refs: z.array(nonEmptyString).min(1),
+    kind: z.literal("rate_terms"),
+    term_refs: z.array(hash).min(1),
   }),
   z.strictObject({
-    kind: z.literal("offer_credit"),
+    kind: z.literal("offers"),
+    offer_refs: z.array(hash).min(1),
   }),
 ]);
 
@@ -307,10 +333,21 @@ export const rawPricingVariantSchema = z.strictObject({
   observations: z.array(rawPriceObservationSchema).min(1),
 });
 
+export const chargeBindingSchema = z.strictObject({
+  signal: usageSignalSchema,
+  aggregation: z.union([
+    z.enum(["request", "attempt", "result_item", "job", "session", "resource", "billing_period"]),
+    providerOwned(nonEmptyString),
+  ]),
+  scale: rationalSchema.optional(),
+  observations: z.array(rawPriceObservationSchema).min(1),
+});
+
 export const priceRateVariantSchema = z.strictObject({
   price: unitPriceSchema,
   applicability: priceApplicabilitySchema,
   validity: publishedValiditySchema.optional(),
+  charge_binding: chargeBindingSchema.optional(),
   observations: z.array(normalizedPriceObservationSchema).min(1),
 });
 
@@ -320,6 +357,14 @@ export const priceAllowanceVariantSchema = z.strictObject({
   reset: allowanceResetSchema,
   applicability: priceApplicabilitySchema,
   validity: publishedValiditySchema.optional(),
+  observations: z.array(normalizedPriceObservationSchema).min(1),
+});
+
+export const priceContributionVariantSchema = z.strictObject({
+  target_rate_refs: z.array(hash).min(1),
+  applicability: priceApplicabilitySchema,
+  validity: publishedValiditySchema.optional(),
+  charge_bindings: z.array(chargeBindingSchema),
   observations: z.array(normalizedPriceObservationSchema).min(1),
 });
 
@@ -352,6 +397,17 @@ export const priceAllowanceTermSchema = z
     message: "Allowance term has no variants",
   });
 
+export const priceContributionTermSchema = z
+  .strictObject({
+    ...pricingTermBaseShape,
+    kind: z.literal("contribution"),
+    variants: z.array(priceContributionVariantSchema),
+    raw_variants: z.array(rawPricingVariantSchema),
+  })
+  .refine(({ variants, raw_variants }) => variants.length + raw_variants.length > 0, {
+    message: "Contribution term has no variants",
+  });
+
 export const rawPricingTermSchema = z.strictObject({
   ...pricingTermBaseShape,
   kind: z.literal("raw"),
@@ -361,6 +417,7 @@ export const rawPricingTermSchema = z.strictObject({
 export const pricingTermSchema = z.union([
   priceRateTermSchema,
   priceAllowanceTermSchema,
+  priceContributionTermSchema,
   rawPricingTermSchema,
 ]);
 
@@ -371,24 +428,52 @@ export const priceStateVariantSchema = z.strictObject({
   observations: z.array(normalizedPriceObservationSchema).min(1),
 });
 
-export const addOnCompatibilitySchema = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("all_base_offers_in_book"),
-  }),
-  z.strictObject({
-    kind: z.literal("base_offers"),
-    offer_refs: z.array(hash).min(1),
-  }),
-  z.strictObject({
-    kind: z.literal("not_normalized"),
-  }),
-]);
+export const offerRelationTargetSchema = z.strictObject({
+  kind: z.literal("offers"),
+  offer_refs: z.array(hash).min(1),
+});
 
-export const priceCompatibilityObservationSchema = z.strictObject({
+export const priceRelationObservationSchema = z.strictObject({
   source_ref: nonEmptyString,
   locator: priceSourceLocatorSchema,
   establishes_offer_refs: z.array(hash),
+  establishes_book_refs: z.array(hash),
   raw: rawPriceFactSchema,
+});
+
+export const offerRelationSchema = z.strictObject({
+  kind: z.enum(["requires", "incurs", "compatible_with", "exclusive_with"]),
+  target: offerRelationTargetSchema,
+  applicability: priceApplicabilitySchema,
+  validity: publishedValiditySchema.optional(),
+  observations: z.array(priceRelationObservationSchema).min(1),
+});
+
+export const priceEnrollmentVariantSchema = z.strictObject({
+  state: z.enum(enrollmentStates),
+  applicability: priceApplicabilitySchema,
+  validity: publishedValiditySchema.optional(),
+  observations: z.array(normalizedPriceObservationSchema).min(1),
+});
+
+export const settlementVariantSchema = z.strictObject({
+  channel: z.enum(["direct", "marketplace", "reseller", "byok", "operator"]),
+  biller: nonEmptyString,
+  payment_sources: z
+    .array(
+      z.enum([
+        "allowance",
+        "prepaid_balance",
+        "provider_credit",
+        "postpaid_invoice",
+        "marketplace_commitment",
+        "external_bill",
+      ]),
+    )
+    .min(1),
+  applicability: priceApplicabilitySchema,
+  validity: publishedValiditySchema.optional(),
+  observations: z.array(normalizedPriceObservationSchema).min(1),
 });
 
 const pricingOfferBaseShape = {
@@ -397,26 +482,14 @@ const pricingOfferBaseShape = {
   name: nonEmptyString.optional(),
   billing_mode: billingModeSchema,
   states: z.array(priceStateVariantSchema),
+  enrollment: z.array(priceEnrollmentVariantSchema),
   terms: z.array(pricingTermSchema),
+  relations: z.array(offerRelationSchema),
+  settlement: z.array(settlementVariantSchema),
   source_refs: z.array(nonEmptyString).min(1),
 };
 
-export const basePricingOfferSchema = z.strictObject({
-  ...pricingOfferBaseShape,
-  role: z.literal("base"),
-});
-
-export const addOnPricingOfferSchema = z.strictObject({
-  ...pricingOfferBaseShape,
-  role: z.literal("add_on"),
-  compatibility: addOnCompatibilitySchema,
-  compatibility_observations: z.array(priceCompatibilityObservationSchema).min(1),
-});
-
-export const pricingOfferSchema = z.discriminatedUnion("role", [
-  basePricingOfferSchema,
-  addOnPricingOfferSchema,
-]);
+export const pricingOfferSchema = z.strictObject(pricingOfferBaseShape);
 
 export const pricingBookSchema = z.strictObject({
   id: hash,
@@ -425,6 +498,18 @@ export const pricingBookSchema = z.strictObject({
   name: nonEmptyString.optional(),
   scope: pricingScopeSchema,
   scope_observations: z.array(priceScopeObservationSchema).min(1),
+  resource_edges: z.array(
+    z.strictObject({
+      kind: z.enum(["requires_resource", "produces_resource", "derived_from"]),
+      target: z.discriminatedUnion("kind", [
+        z.strictObject({ kind: z.literal("books"), book_refs: z.array(hash).min(1) }),
+        z.strictObject({ kind: z.literal("models"), model_refs: z.array(nonEmptyString).min(1) }),
+      ]),
+      applicability: priceApplicabilitySchema,
+      validity: publishedValiditySchema.optional(),
+      observations: z.array(rawPriceObservationSchema).min(1),
+    }),
+  ),
   offers: z.array(pricingOfferSchema).min(1),
   source_refs: z.array(nonEmptyString).min(1),
 });
@@ -436,11 +521,25 @@ export const providerAtomRegistryEntrySchema = z.union([
       "credit_denomination",
       "unit",
       "meter",
-      "dimension",
       "allowance_reset",
+      "aggregation",
+      "resource_kind",
     ]),
     key: nonEmptyString,
     definition: nonEmptyString,
+  }),
+  z.strictObject({
+    kind: z.literal("dimension"),
+    key: nonEmptyString,
+    definition: nonEmptyString,
+    resolution_phase: applicabilityResolutionPhaseSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("usage_signal"),
+    key: nonEmptyString,
+    definition: nonEmptyString,
+    unit: unitExpressionSchema,
+    resolution_phase: applicabilityResolutionPhaseSchema,
   }),
   z.strictObject({
     kind: z.literal("categorical_value"),
@@ -505,7 +604,6 @@ export const pricingCatalogEnvelopeSchema = z.strictObject({
   data: pricingCatalogSchema,
 });
 
-export type AddOnCompatibility = z.infer<typeof addOnCompatibilitySchema>;
 export type AllowanceReset = z.infer<typeof allowanceResetSchema>;
 export type BillingMode = z.infer<typeof billingModeSchema>;
 export type BillingUnit = z.infer<typeof billingUnitSchema>;
@@ -515,9 +613,14 @@ export type PriceAllowanceBenefit = z.infer<typeof priceAllowanceBenefitSchema>;
 export type PriceAllowanceTarget = z.infer<typeof priceAllowanceTargetSchema>;
 export type PriceAllowanceTerm = z.infer<typeof priceAllowanceTermSchema>;
 export type PriceAllowanceVariant = z.infer<typeof priceAllowanceVariantSchema>;
+export type PriceContributionTerm = z.infer<typeof priceContributionTermSchema>;
+export type PriceContributionVariant = z.infer<typeof priceContributionVariantSchema>;
 export type PriceApplicability = z.infer<typeof priceApplicabilitySchema>;
 export type PriceCategoricalValue = z.infer<typeof priceCategoricalValueSchema>;
-export type PriceCompatibilityObservation = z.infer<typeof priceCompatibilityObservationSchema>;
+export type ChargeBinding = z.infer<typeof chargeBindingSchema>;
+export type OfferRelation = z.infer<typeof offerRelationSchema>;
+export type OfferRelationTarget = z.infer<typeof offerRelationTargetSchema>;
+export type PriceRelationObservation = z.infer<typeof priceRelationObservationSchema>;
 export type PriceCondition = z.infer<typeof priceConditionSchema>;
 export type PriceDenomination = z.infer<typeof priceDenominationSchema>;
 export type PriceDimension = z.infer<typeof priceDimensionSchema>;
@@ -546,6 +649,7 @@ export type RawPriceFact = z.infer<typeof rawPriceFactSchema>;
 export type RawPriceObservation = z.infer<typeof rawPriceObservationSchema>;
 export type RawPricingVariant = z.infer<typeof rawPricingVariantSchema>;
 export type StandardPriceMeter = z.infer<typeof standardPriceMeterSchema>;
+export type UsageSignal = z.infer<typeof usageSignalSchema>;
 export type UnitExpression = z.infer<typeof unitExpressionSchema>;
 export type UnitPrice = z.infer<typeof unitPriceSchema>;
 

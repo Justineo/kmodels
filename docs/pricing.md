@@ -2,6 +2,13 @@
 
 Status: implemented
 
+This document is the current wire and presentation contract. The
+[commercial topology](commercial-topology.md) supplies its provider-wide
+semantics. The shared cutover and the OpenAI, Anthropic, Amazon Bedrock,
+Databricks, Vercel AI Gateway, Microsoft Foundry, Gemini API, Vertex AI, and
+Kimi migrations are implemented; other providers remain mechanically
+projected into this wire until their individual migration turns.
+
 ## Decision
 
 Kmodels publishes one canonical pricing resource. The model catalog does not
@@ -19,8 +26,9 @@ provider snapshot
                  └─ applicability-qualified variant
 ```
 
-This hierarchy is the minimum needed to preserve distinct offers, billing
-modes, meters, units, conditions, allowances, and unsupported public facts
+This hierarchy is the minimum needed to preserve distinct offers, their exact
+relationships, billing modes, meters, billed usage signals, units, conditions,
+allowances, and unsupported public facts
 without expanding every observed combination into a model-local rate list.
 
 The authoritative durable assets are:
@@ -190,11 +198,18 @@ The current contract normalizes:
 - normalized rate terms with exact denomination and compound unit;
 - applicability over reviewed categorical, boolean, and bounded decimal
   dimensions;
-- numeric, free, custom-quote, and not-published offer states;
+- numeric, free, included, externally billed, custom-quote, and not-published
+  offer states, independently qualified from enrollment;
 - simple usage allowances and denomination credits with explicit targets and
   reset semantics;
-- model-scoped and provider-service price books;
-- base offers, add-ons, and exact or explicitly unnormalized compatibility;
+- model-scoped books and provider-owned service, plan, capacity, distribution,
+  and public account-resource-template books;
+- evidence-backed `requires`, `incurs`, `compatible_with`, and
+  `exclusive_with` relationships between exact offers;
+- resource edges for exact prerequisites, products, and derivation;
+- rate, allowance, contribution, and raw terms;
+- optional dimensionally checked charge and contribution bindings;
+- applicability-qualified enrollment and settlement facts;
 - reviewed provider-owned commercial atoms;
 - exact adapter calculations whose result and provenance are bounded.
 
@@ -261,9 +276,9 @@ data never means free, and a numeric zero remains a numeric rate.
 A book has:
 
 - a provider-owned stable key and derived ID;
-- either a model scope or a provider-service scope;
+- either a model scope or a provider-resource scope;
 - one or more offers;
-- claim-local scope evidence and resource provenance.
+- claim-local scope evidence, plus exact resource edges where applicable.
 
 `scope.model_refs` is the current exact model projection used by the website.
 Scope observations collectively cover that projection and cannot widen beyond
@@ -284,15 +299,19 @@ sibling versions.
 An offer represents one selectable billing mechanism. It has:
 
 - a stable key and derived ID within its book;
-- `base` or `add_on` role;
 - one exact billing mode;
 - applicability-qualified states;
-- logical pricing terms.
+- logical pricing terms;
+- zero or more evidence-backed relations to exact offers owned by the same
+  provider.
 
-Add-on compatibility is either an exact set of base offers, every base offer
-in the same book, or explicitly not normalized. Unsupported compatibility
-retains a commercial raw fact so a wording change cannot disappear as
-provenance-only.
+Offer identity does not encode a permanent base/add-on role. `requires`,
+`incurs`, `compatible_with`, and `exclusive_with` describe acquisition,
+automatic billed composition, explicit compatibility, and alternative
+mechanisms respectively. Targets are exact offer sets; unsupported broad
+wording is not normalized. Relations are applicability-qualified, and their
+observations must exactly establish their targets. Provider-resource offers
+therefore appear in their own UI groups without becoming pseudo-models.
 
 The standard billing modes mean:
 
@@ -311,6 +330,8 @@ States are applicability-qualified and may retain source-published validity:
 
 - `numeric`: normalized rate terms define the charge;
 - `free`: the applicable offer is explicitly zero-cost;
+- `included`: another exact public entitlement covers the marginal charge;
+- `externally_billed`: the provider does not own the economic charge;
 - `custom_quote`: a public offer exists but requires a quote;
 - `not_published`: a public offer exists but no public price is published.
 
@@ -325,6 +346,8 @@ validity, region, or array position.
 
 - A `rate` term owns one meter and contains normalized and raw variants.
 - An `allowance` term contains normalized benefits and raw variants.
+- A `contribution` term points to exact rate terms used to price usage generated
+  by this offer, without copying their amounts.
 - A `raw` term is used when the term's meter or structure itself is not
   normalized.
 
@@ -350,6 +373,16 @@ positive-power unit factors.
 Adapters keep source prices as decimal strings. Scaling, multiplication,
 comparison, and canonical rational conversion use digit operations or `BigInt`,
 never binary floating-point arithmetic.
+
+A rate variant may additionally bind its commercial meter to one reviewed
+usage signal. The binding records only the signal, aggregation boundary,
+optional exact rational scale, and evidence. Its scaled signal unit must equal
+the rate denominator. Absence of a binding preserves the normalized list price
+while leaving request-cost reconstruction incomplete. API field paths and
+unsupported arithmetic remain evidence or bounded raw facts rather than
+becoming canonical signal identity. Contribution variants use the same binding
+shape and may remain unbound when topology is exact but quantity semantics are
+not.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
@@ -427,9 +460,10 @@ pretending that collection time selects either one.
 
 ### Provider-owned atoms
 
-Provider units, meters, dimensions, categorical values, billing modes, credit
-codes, and allowance resets are keyed by provider and kind. Each published key
-has a non-empty reviewed definition in that provider's vocabulary.
+Provider units, meters, usage signals, dimensions, categorical values, billing
+modes, credit codes, and allowance resets are keyed by provider and kind. Each
+published key has a non-empty reviewed definition in that provider's
+vocabulary.
 
 Provider atoms are not equal to Kmodels atoms or another provider's atom merely
 because their source spelling matches. The registry is finite, checked in, and
@@ -502,7 +536,7 @@ Stable resource IDs are SHA-256 hashes of domain-separated canonical identity:
 
 - book: provider ID and reviewed `book_key`;
 - offer: book ID and reviewed `offer_key`;
-- term: offer ID and reviewed `term_key`.
+- term: offer ID, term kind, and reviewed `term_key`.
 
 Amounts, validity, applicability, observations, display names, and array
 positions are excluded. Keys are unique within their owner and may not be
@@ -560,7 +594,8 @@ rejects changed source shapes, tied winners, or newly incomparable facts.
 
 The commercial projection removes observations, names, source refs, snapshot
 freshness, and informational raw facts. It retains every field that can change
-selection, amount, units, allowances, compatibility, or model disposition.
+selection, amount, units, allowances, offer relationships, charge bindings, or
+model disposition.
 Unsupported commercial raw values contribute their bounded raw facts, so an
 unsupported price change is still a commercial diff.
 
@@ -569,12 +604,13 @@ unsupported price change is still a commercial diff.
 ### Representative table cells
 
 The table derives input, cache, and output cells only from canonical price
-books. It binds the model UID, gathers matching books, and considers base
-offers that can still apply.
+books. It binds the model UID, gathers matching model-scoped books, and
+considers model offers that can still apply. Provider-service offers never
+compete for the representative model-token cells.
 
 A numeric cell requires:
 
-- exactly one applicable base offer;
+- exactly one applicable model offer;
 - exactly one possibly applicable, validity-free `numeric` state after binding
   the model and any categorical value required by every offer-state clause;
 - no possibly applicable raw `base_price` fact;
@@ -610,11 +646,11 @@ point. USD uses `$` in visible copy and retains `USD` in accessible copy.
 When no representative number exists, one dotted-underlined text status spans
 all three price columns and exposes its explanation through the shared tooltip:
 
-- an offer count when several base offers exist;
-- `Varies` for one context-dependent base offer;
+- an offer count when several model offers exist;
+- `Varies` for one context-dependent model offer;
 - `Free`, `Quote`, `Unpublished`, `Incomplete`, or `Details` for one
-  non-representative base offer;
-- `No base offer` when pricing detail exists but no base offer applies;
+  non-representative model offer;
+- `No model offer` when pricing detail exists but no model offer applies;
 - `No offer`: an exact `not_applicable` disposition establishes that no public
   hosted pricing offer applies;
 - `Unknown`: no reliable public book or disposition exists.
@@ -628,15 +664,19 @@ representative number exists, unavailable sibling cells use an em dash.
 
 The order is:
 
-1. base offers and add-ons;
-2. the selected offer's context controls;
-3. states, rates, allowances, and unnormalized warnings.
+1. alternative model mechanisms;
+2. independently selectable optional services;
+3. automatic components, plans/capacity, and related standalone offers;
+4. the focused offer's context controls;
+5. states, rates, allowances, additional contributed usage, and unnormalized
+   warnings.
 
-Offer selection is above its child controls. Multiple choices use compact
-wrapping radio groups, so native radio-key behavior owns arrow keys instead of
-navigating the model list. Changing an offer resets its context. A unique base
-offer is fixed and summarized instead of rendered as a one-item selector; this
-is not inference of a provider default.
+Offer selection is above its child controls. Alternative model mechanisms use
+radio controls; optional services use independent checkboxes and never replace
+the model mechanism. Informational groups focus their details without implying
+selection. Changing the focused offer resets its context. A unique model
+mechanism is fixed and summarized instead of rendered as a one-item selector;
+this is not inference of a provider default.
 
 The calculator filters applicability from explicit user selections. A
 categorical selector with one possible value is fixed automatically and shown
@@ -649,8 +689,9 @@ summary, while offers with several possible states show the resolved state
 after context selection. The calculator does not multiply usage, apply
 allowances, estimate a request, or calculate an invoice. Possibly applicable
 raw base pricing marks the offer incomplete while normalized rows remain
-available after resolution. Raw allowance facts similarly make only the
-allowance summary incomplete.
+available after resolution. Exact offer relations are shown as composition
+context, and do not alter list-price selection. Raw allowance facts similarly
+make only the allowance summary incomplete.
 
 Numeric selectors preserve their canonical domain. Dimensions containing only
 inclusive singleton ranges become discrete choices. When the distinct range

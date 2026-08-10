@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { extractGeminiCommercialFacts } from "./gemini-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -13,7 +14,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import {
   modalitySchema,
   type Modality,
@@ -58,6 +59,11 @@ interface PriceCandidate {
   descriptor: string;
   segment: string;
   unit: SourcePriceFact["unit"];
+}
+
+interface PriceCandidates {
+  values: PriceCandidate[];
+  unknownUnits: string[];
 }
 
 const months = new Map([
@@ -645,8 +651,13 @@ function applyGemmaFreePricing(
       (label) =>
         rows.get(label)?.[1] !== "Free of charge" || rows.get(label)?.[2] !== "Not available",
     )
-  )
-    throw new Error("Gemma 4 free-tier pricing structure changed");
+  ) {
+    onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "gemma_pricing_structure_drift",
+    });
+    return;
+  }
 
   for (const label of required) {
     onPricingReconciliation?.({
@@ -862,19 +873,22 @@ function targets(codes: string[], row: string): string[] {
   return codes;
 }
 
-function candidates(header: string, row: string, cell: Selection): PriceCandidate[] {
-  return segments(cell).flatMap((segment) => {
+function candidates(header: string, row: string, cell: Selection): PriceCandidates {
+  const values: PriceCandidate[] = [];
+  const unknownUnits: string[] = [];
+  for (const segment of segments(cell)) {
     const matches = [...segment.matchAll(/\$(\d+(?:\.\d+)?)/g)];
-    return matches.map((match, index) => {
+    for (const [index, match] of matches.entries()) {
       const price = match[1];
       if (price === undefined) throw new Error("Gemini pricing amount changed");
       const start = (match.index ?? 0) + match[0].length;
       const descriptor = text(segment.slice(start, matches[index + 1]?.index ?? segment.length));
       const unit = priceUnit(header, descriptor, row);
-      if (unit === undefined) throw new Error(`Gemini pricing unit changed: ${row}`);
-      return { price, descriptor, segment, unit };
-    });
-  });
+      if (unit === undefined) unknownUnits.push(segment);
+      else values.push({ price, descriptor, segment, unit });
+    }
+  }
+  return { values, unknownUnits };
 }
 
 function selectedCandidates(header: string, values: PriceCandidate[]): PriceCandidate[] {
@@ -886,14 +900,42 @@ function selectedCandidates(header: string, values: PriceCandidate[]): PriceCand
     : values;
 }
 
-function pricingModel(models: Map<string, ProviderModel>, id: string): ProviderModel {
+function pricingModel(models: Map<string, ProviderModel>, id: string): ProviderModel | undefined {
   const exact = models.get(id);
   if (exact !== undefined) return exact;
   const aliases = [...models.values()].filter((model) => model.aliases.includes(id));
-  const match = aliases[0];
-  if (aliases.length !== 1 || match === undefined)
-    throw new Error(`Gemini pricing references unknown model: ${id}`);
-  return match;
+  return aliases.length === 1 ? aliases[0] : undefined;
+}
+
+function preserveRawPricing(
+  model: ProviderModel,
+  sourceId: string,
+  tier: string,
+  row: string,
+  accountEligibility: "free_tier" | "paid_tier",
+  fragment: string,
+  reason: "unknown_unit" | "unknown_meter" | "unsupported_structure",
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): void {
+  const key = row
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 80);
+  model.raw_price_facts.push({
+    term_key: `unparsed_${accountEligibility}:${key || "pricing_row"}`,
+    impact: "base_price",
+    reason,
+    conditions: conditions(tier, accountEligibility, "", row),
+    source_ref: sourceId,
+    raw: { label: row, fragment },
+  });
+  onPricingReconciliation?.({
+    disposition: "raw",
+    reason_code: `pricing_${reason}`,
+    sample: `${model.model_id}: ${row}`.slice(0, 256),
+  });
 }
 
 function addRates(
@@ -915,7 +957,19 @@ function addRates(
       unit,
       conditions(tier, accountEligibility, descriptor, row),
     );
-    if (rates.length === 0) throw new Error(`Gemini pricing row changed: ${row}`);
+    if (rates.length === 0) {
+      preserveRawPricing(
+        model,
+        sourceId,
+        tier,
+        row,
+        accountEligibility,
+        segment,
+        "unknown_meter",
+        onPricingReconciliation,
+      );
+      continue;
+    }
     for (const rate of rates) {
       const billedUnit =
         rate.meter === "tool_call" &&
@@ -953,20 +1007,15 @@ function addSearchAllowance(
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): void {
   if (
-    !/grounding with google .*search/i.test(row) ||
-    !/free search requests per month/i.test(value)
+    !/grounding with google (?:search|maps)/i.test(row) ||
+    !/\b(?:free|rpd|per month)\b/i.test(value)
   )
     return;
-  if (
-    !/shared across all .*models.*then \$\d+(?:\.\d+)? per 1,000 (?:requests|search queries)/i.test(
-      value,
-    )
-  )
-    throw new Error("Gemini search allowance changed");
+  const operation = /maps/i.test(row) ? "google_maps" : "google_search";
   model.raw_price_facts.push({
-    term_key: "google_search_allowance",
+    term_key: `${operation}_allowance`,
     impact: "allowance",
-    reason: "unsupported_structure",
+    reason: "unknown_applicability",
     conditions: conditions(tier, "paid_tier", "", row),
     source_ref: sourceId,
     raw: {
@@ -976,7 +1025,7 @@ function addSearchAllowance(
   });
   onPricingReconciliation?.({
     disposition: "raw",
-    reason_code: "shared_grounding_allowance",
+    reason_code: "grounding_allowance",
     sample: model.model_id,
   });
 }
@@ -996,7 +1045,13 @@ function applyAgentPricing(
       .get();
     return headers.join("|") === "|Model|Tools";
   });
-  if (tables.length !== 1) throw new Error("Gemini agent pricing table changed");
+  if (tables.length !== 1) {
+    onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "agent_pricing_structure_drift",
+    });
+    return;
+  }
   const rows = tables
     .first()
     .find("tbody tr")
@@ -1005,12 +1060,16 @@ function applyAgentPricing(
         .find("td")
         .map((_cellIndex, cell) => text($(cell).text()))
         .get();
-      if (cells.length !== 3 || cells.some((cell) => cell === ""))
-        throw new Error("Gemini agent pricing row changed");
-      return cells.join(" | ");
+      return cells.filter(Boolean).join(" | ") || undefined;
     })
     .get();
-  if (rows.length === 0) throw new Error("Gemini agent pricing table is empty");
+  if (rows.length === 0) {
+    onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: "agent_pricing_formula_unbound",
+    });
+    return;
+  }
   for (const row of rows)
     onPricingReconciliation?.({
       disposition: "raw",
@@ -1019,7 +1078,14 @@ function applyAgentPricing(
     });
   for (const id of agentIds) {
     const model = models.get(id);
-    if (model === undefined) throw new Error(`Gemini pricing references unknown agent: ${id}`);
+    if (model === undefined) {
+      onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "agent_pricing_model_unbound",
+        sample: id,
+      });
+      continue;
+    }
     model.raw_price_facts.push({
       term_key: "agent_usage_formula",
       impact: "base_price",
@@ -1051,7 +1117,6 @@ function applyPricing(
         .filter((id) => modelIdSchema.safeParse(id).success),
     );
     if (codes.length === 0) return;
-    for (const code of codes) pricingModel(models, code);
     const siblings = $(section).nextUntil(".models-section");
     const tables = siblings.filter("table.pricing-table").add(siblings.find("table.pricing-table"));
     tables.each((_tableIndex, table) => {
@@ -1063,9 +1128,38 @@ function applyPricing(
         .get();
       if (headers.join("|") === "|Model|Tools") return;
       const header = headers[2];
-      if (headers[1] !== "Free Tier" || header === undefined || !header.startsWith("Paid Tier"))
-        throw new Error("Gemini pricing table headers changed");
       const tier = text($(table).closest("section").children("h3").first().text()) || "standard";
+      if (headers[1] !== "Free Tier" || header === undefined || !header.startsWith("Paid Tier")) {
+        $(table)
+          .find("tbody tr")
+          .each((_rowIndex, rowElement) => {
+            const cells = $(rowElement).find("td");
+            const row = text(cells.eq(0).text());
+            if (row === "" || cells.length < 2) return;
+            for (const id of targets(codes, row)) {
+              const model = pricingModel(models, id);
+              if (model === undefined) {
+                onPricingReconciliation?.({
+                  disposition: "unbound",
+                  reason_code: "pricing_model_unbound",
+                  sample: id,
+                });
+                continue;
+              }
+              preserveRawPricing(
+                model,
+                sourceId,
+                tier,
+                row,
+                "paid_tier",
+                text($(rowElement).text()),
+                "unsupported_structure",
+                onPricingReconciliation,
+              );
+            }
+          });
+        return;
+      }
       $(table)
         .find("tbody tr")
         .each((_rowIndex, rowElement) => {
@@ -1080,11 +1174,32 @@ function applyPricing(
             });
             return;
           }
-          const paid = selectedCandidates(header, candidates(header, row, cells.eq(2)));
+          const parsed = candidates(header, row, cells.eq(2));
+          const paid = selectedCandidates(header, parsed.values);
           const paidText = text(cells.eq(2).text());
-          const selectedModels = targets(codes, row).map((id) => pricingModel(models, id));
+          const selectedModels = targets(codes, row).flatMap((id) => {
+            const model = pricingModel(models, id);
+            if (model !== undefined) return [model];
+            onPricingReconciliation?.({
+              disposition: "unbound",
+              reason_code: "pricing_model_unbound",
+              sample: id,
+            });
+            return [];
+          });
           for (const model of selectedModels) {
-            if (paid.length === 0)
+            for (const fragment of parsed.unknownUnits)
+              preserveRawPricing(
+                model,
+                sourceId,
+                tier,
+                row,
+                "paid_tier",
+                fragment,
+                "unknown_unit",
+                onPricingReconciliation,
+              );
+            if (paid.length === 0 && parsed.unknownUnits.length === 0)
               onPricingReconciliation?.({
                 disposition: "explicit_non_numeric",
                 reason_code: "paid_tier_not_numeric",
@@ -1112,8 +1227,19 @@ function applyPricing(
             const free = paid.map((candidate) => ({ ...candidate, price: "0" }));
             if (free.length === 0) {
               const unit = priceUnit(header, "", row);
-              if (unit === undefined)
-                throw new Error(`Gemini free-tier pricing unit changed: ${row}`);
+              if (unit === undefined) {
+                preserveRawPricing(
+                  model,
+                  sourceId,
+                  tier,
+                  row,
+                  "free_tier",
+                  text(cells.eq(1).text()),
+                  "unknown_unit",
+                  onPricingReconciliation,
+                );
+                continue;
+              }
               free.push({ price: "0", descriptor: "", segment: row, unit });
             }
             addRates(
@@ -1154,9 +1280,12 @@ function applyPricing(
     );
     if (item.price_facts.length > 0) item.pricing_state = "numeric";
   }
-  const current = [...models.values()].filter((model) => model.status !== "retired");
-  const priced = current.filter((model) => model.price_facts.length > 0);
-  assertCoverage("Gemini pricing coverage", priced.length, current.length, 0.8, ["pricing"]);
+  if (
+    ![...models.values()].some(
+      (model) => model.price_facts.length > 0 || model.raw_price_facts.length > 0,
+    )
+  )
+    throw new Error("Gemini pricing produced no usable or raw facts");
 }
 
 function applyChangelog(models: Map<string, ProviderModel>, body: string): void {
@@ -1287,6 +1416,37 @@ function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSche
     )
       throw new Error(`Gemini grounding accounting contract drifted for ${pathname}`);
   }
+
+  const batch = documentText(bundle, "/gemini-api/docs/batch-api");
+  const fileSearch = documentText(bundle, "/gemini-api/docs/file-search");
+  const urlContext = documentText(bundle, "/gemini-api/docs/url-context");
+  const codeExecution = documentText(bundle, "/gemini-api/docs/code-execution");
+  const deepResearch = documentText(bundle, "/gemini-api/docs/deep-research");
+  const computerUse = documentText(bundle, "/gemini-api/docs/computer-use");
+  const modelTuning = documentText(bundle, "/gemini-api/docs/model-tuning");
+  const agents = documentText(bundle, "/gemini-api/docs/agents");
+  const agentEnvironment = documentText(bundle, "/gemini-api/docs/agent-environment");
+  if (
+    !batch.includes(
+      "process large volumes of requests asynchronously at 50% of the standard cost",
+    ) ||
+    !batch.includes("list of inlineResponse objects") ||
+    !fileSearch.includes("charged for embeddings at indexing time") ||
+    !fileSearch.includes("Storage is free of charge") ||
+    !fileSearch.includes("Query time embeddings are free of charge") ||
+    !fileSearch.includes("Retrieved document tokens are charged as regular context tokens") ||
+    !urlContext.includes("content retrieved from the URLs") ||
+    !urlContext.includes("tool_use_input_tokens") ||
+    !codeExecution.includes("charged for input tokens and output tokens") ||
+    !deepResearch.includes("based on the underlying Gemini models and the specific tools") ||
+    !computerUse.includes("client-controlled browser environment") ||
+    !modelTuning.includes("no models available for tuning in the Gemini API") ||
+    !agents.includes("orchestrate models and tools through the Interactions API") ||
+    !agentEnvironment.includes(
+      "Environment compute (CPU, memory, sandbox execution) is not billed during the preview period",
+    )
+  )
+    throw new Error("Gemini commercial composition contract drifted");
 
   const accountPricing = documentText(bundle, "/billing/docs/how-to/get-pricing-information-api");
   const billingExport = documentText(bundle, "/billing/docs/how-to/export-data-bigquery-tables");
@@ -1511,6 +1671,9 @@ export function parseGeminiCatalog(input: Input): ProviderModel[] {
     agents,
     input.onPricingReconciliation,
   );
+  extractGeminiCommercialFacts(models, input.source.id, {
+    agentIds: agents,
+  });
   const values = [...models.values()].sort((left, right) =>
     left.model_id.localeCompare(right.model_id),
   );

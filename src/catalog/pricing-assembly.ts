@@ -9,15 +9,16 @@ import {
 import { pricingLimits } from "./pricing-constants.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
-  type AddOnCompatibility,
   type BillingMode,
+  type ChargeBinding,
   type ModelPricingDisposition,
   type NormalizedPriceObservation,
   type PriceAllowanceBenefit,
   type PriceAllowanceTarget,
   type PriceAllowanceVariant,
+  type PriceContributionVariant,
   type PriceApplicability,
-  type PriceCompatibilityObservation,
+  type OfferRelation,
   type PriceMeter,
   type PriceRateVariant,
   type PriceScopeObservation,
@@ -55,32 +56,30 @@ export interface AtomicPricingBook {
   name?: string;
   scope: PricingScope;
   scope_observations: PriceScopeObservation[];
+  resource_edges?: PricingBook["resource_edges"];
   offers: AtomicPricingOffer[];
   source_refs: string[];
 }
 
-export type AtomicPricingOffer = AtomicBasePricingOffer | AtomicAddOnPricingOffer;
-
-interface AtomicPricingOfferBase {
+export interface AtomicPricingOffer {
   offer_key: string;
   name?: string;
   billing_mode: BillingMode;
   states: AtomicPriceState[];
+  enrollment?: PricingOffer["enrollment"];
   terms: AtomicPricingTerm[];
+  relations: AtomicOfferRelation[];
+  settlement?: PricingOffer["settlement"];
   source_refs: string[];
 }
 
-export interface AtomicBasePricingOffer extends AtomicPricingOfferBase {
-  role: "base";
-}
+export type AtomicOfferRelation = OfferRelation;
 
-export interface AtomicAddOnPricingOffer extends AtomicPricingOfferBase {
-  role: "add_on";
-  compatibility: AddOnCompatibility;
-  compatibility_observations: PriceCompatibilityObservation[];
-}
-
-export type AtomicPricingTerm = AtomicRateTerm | AtomicAllowanceTerm | AtomicRawTerm;
+export type AtomicPricingTerm =
+  | AtomicRateTerm
+  | AtomicAllowanceTerm
+  | AtomicContributionTerm
+  | AtomicRawTerm;
 
 interface AtomicTermBase {
   term_key: string;
@@ -97,6 +96,12 @@ export interface AtomicRateTerm extends AtomicTermBase {
 export interface AtomicAllowanceTerm extends AtomicTermBase {
   kind: "allowance";
   variants: AtomicAllowanceVariant[];
+  raw_variants: AtomicRawVariant[];
+}
+
+export interface AtomicContributionTerm extends AtomicTermBase {
+  kind: "contribution";
+  variants: AtomicContributionVariant[];
   raw_variants: AtomicRawVariant[];
 }
 
@@ -117,6 +122,7 @@ export interface AtomicRateVariant {
   applicability: PriceApplicability;
   resolution_policy?: string;
   validity?: PublishedValidity;
+  charge_binding?: ChargeBinding;
   observation: NormalizedPriceObservation;
 }
 
@@ -126,6 +132,14 @@ export interface AtomicAllowanceVariant {
   reset: AllowanceReset;
   applicability: PriceApplicability;
   validity?: PublishedValidity;
+  observation: NormalizedPriceObservation;
+}
+
+export interface AtomicContributionVariant {
+  target_rate_refs: string[];
+  applicability: PriceApplicability;
+  validity?: PublishedValidity;
+  charge_bindings: ChargeBinding[];
   observation: NormalizedPriceObservation;
 }
 
@@ -151,6 +165,7 @@ export function assembleProviderPricing(input: AtomicProviderPricing): ProviderP
   rejectReservedAdapterOutput(input);
   const prepared = prepareProvider(input);
   assertPrecompactionLimit(prepared);
+  const books = finalizeProviderTerms(prepared.books.map(assembleBook));
   return {
     vocabulary: sortVocabulary(input.vocabulary),
     snapshot: {
@@ -159,7 +174,7 @@ export function assembleProviderPricing(input: AtomicProviderPricing): ProviderP
       publication: "fresh",
     },
     model_dispositions: assembleDispositions(input.dispositions),
-    books: prepared.books.map(assembleBook).sort((left, right) => compareUtf8(left.id, right.id)),
+    books: books.sort((left, right) => compareUtf8(left.id, right.id)),
   };
 }
 
@@ -205,7 +220,7 @@ function prepareProvider(input: AtomicProviderPricing): PreparedProvider {
             bookId: id,
             terms: offer.terms.map((term) => ({
               input: term,
-              id: pricingTermId(offerId, term.term_key),
+              id: pricingTermId(offerId, term.kind, term.term_key),
               offerId,
             })),
           };
@@ -230,6 +245,7 @@ function assembleBook(prepared: PreparedBook): PricingBook {
       })),
       scopeObservationKey,
     ),
+    resource_edges: sortByCanonicalKey(input.resource_edges ?? [], (edge) => edge),
     offers: prepared.offers
       .map(assembleOffer)
       .sort((left, right) => compareUtf8(left.id, right.id)),
@@ -260,9 +276,7 @@ function assembleOffer(prepared: PreparedOffer): PricingOffer {
     ));
   } else {
     terms = applyRateContainment(states, terms);
-    terms = applyAllowanceFallback(terms);
   }
-  terms = terms.map(finalizeTerm).sort((left, right) => compareUtf8(left.id, right.id));
 
   const base = {
     id: prepared.id,
@@ -270,23 +284,13 @@ function assembleOffer(prepared: PreparedOffer): PricingOffer {
     ...optional("name", input.name),
     billing_mode: input.billing_mode,
     states: sortStates(states),
+    enrollment: sortByCanonicalKey(input.enrollment ?? [], (variant) => variant),
     terms,
+    relations: sortByCanonicalKey(input.relations.map(canonicalRelation), (relation) => relation),
+    settlement: sortByCanonicalKey(input.settlement ?? [], (variant) => variant),
     source_refs: sortUniqueStrings(input.source_refs),
   };
-  return input.role === "base"
-    ? { ...base, role: "base" }
-    : {
-        ...base,
-        role: "add_on",
-        compatibility: canonicalCompatibility(input.compatibility),
-        compatibility_observations: sortUnique(
-          input.compatibility_observations.map((observation) => ({
-            ...observation,
-            establishes_offer_refs: sortUniqueStrings(observation.establishes_offer_refs),
-          })),
-          compatibilityObservationKey,
-        ),
-      };
+  return base;
 }
 
 function assembleStates(states: AtomicPriceState[]): {
@@ -345,11 +349,71 @@ function assembleTerm(prepared: PreparedTerm): PricingTerm {
       raw_variants: groupRaw([...input.raw_variants, ...raw]),
     };
   }
+  if (input.kind === "contribution") {
+    const { variants, raw } = assembleContributionVariants(input.variants);
+    return {
+      ...base,
+      kind: "contribution",
+      variants,
+      raw_variants: groupRaw([...input.raw_variants, ...raw]),
+    };
+  }
   return {
     ...base,
     kind: "raw",
     variants: groupRaw(input.variants),
   };
+}
+
+function assembleContributionVariants(variants: AtomicContributionVariant[]): {
+  variants: PriceContributionVariant[];
+  raw: AtomicRawVariant[];
+} {
+  const grouped = new Map<string, AtomicContributionVariant[]>();
+  const raw: AtomicRawVariant[] = [];
+  for (const variant of variants) {
+    const normalized = normalizeAtomicApplicability(variant);
+    if (normalized === undefined) {
+      raw.push(toRawAtomic(variant, "base_price", "selector_limit"));
+      continue;
+    }
+    const item = {
+      ...variant,
+      target_rate_refs: sortUniqueStrings(variant.target_rate_refs),
+      charge_bindings: sortByCanonicalKey(variant.charge_bindings, (binding) => binding),
+      ...normalized,
+    };
+    append(
+      grouped,
+      canonicalJson([item.target_rate_refs, item.charge_bindings, ...optionalValue(item.validity)]),
+      item,
+    );
+  }
+  const result: PriceContributionVariant[] = [];
+  for (const group of grouped.values()) {
+    const first = group[0]!;
+    const observations = sortUnique(
+      group.map(({ observation }) => observation),
+      normalizedObservationKey,
+    );
+    const applicability = groupedApplicability(observations);
+    if (applicability === undefined) {
+      raw.push(
+        ...group.map((variant) =>
+          toRawAtomic(variant, "base_price", "selector_limit", variant.applicability),
+        ),
+      );
+      continue;
+    }
+    result.push({
+      target_rate_refs: first.target_rate_refs,
+      applicability,
+      ...optional("validity", first.validity),
+      charge_bindings: first.charge_bindings,
+      observations,
+    });
+  }
+  return { variants: result, raw };
 }
 
 function assembleRateVariants(variants: AtomicRateVariant[]): {
@@ -399,10 +463,29 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
       price: first.price,
       applicability,
       ...optional("validity", first.validity),
+      ...optional("charge_binding", mergedChargeBinding(group)),
       observations,
     });
   }
   return { variants: result, raw };
+}
+
+function mergedChargeBinding(variants: AtomicRateVariant[]): ChargeBinding | undefined {
+  const bindings = variants.flatMap(({ charge_binding }) =>
+    charge_binding === undefined ? [] : [charge_binding],
+  );
+  const first = bindings[0];
+  if (first === undefined) return;
+  const identity = ({ observations: _observations, ...binding }: ChargeBinding) =>
+    canonicalJson(binding);
+  if (bindings.some((binding) => identity(binding) !== identity(first))) return;
+  return {
+    ...first,
+    observations: sortUnique(
+      bindings.flatMap(({ observations }) => observations),
+      rawObservationKey,
+    ),
+  };
 }
 
 function resolveRatePrecedence(variants: AtomicRateVariant[]): {
@@ -466,12 +549,23 @@ function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
     normalizedVariants.push({
       ...variant,
       target:
-        variant.target.kind === "usage_rate_terms"
+        variant.target.kind === "rate_terms"
           ? {
               ...variant.target,
               term_refs: sortUniqueStrings(variant.target.term_refs),
             }
-          : variant.target,
+          : {
+              ...variant.target,
+              offer_refs: sortUniqueStrings(variant.target.offer_refs),
+            },
+      benefit:
+        variant.benefit.kind === "rate_substitution"
+          ? {
+              ...variant.benefit,
+              replaced_term_refs: sortUniqueStrings(variant.benefit.replaced_term_refs),
+              replacement_term_refs: sortUniqueStrings(variant.benefit.replacement_term_refs),
+            }
+          : variant.benefit,
       ...normalized,
     });
   }
@@ -548,7 +642,7 @@ function applyBaseFallback(
   );
   if (observations.length > 0) {
     converted.push({
-      id: pricingTermId(offerId, "kmodels.offer-state"),
+      id: pricingTermId(offerId, "raw", "kmodels.offer-state"),
       term_key: "kmodels.offer-state",
       kind: "raw",
       source_refs: sortUniqueStrings(observations.map(({ source_ref }) => source_ref)),
@@ -604,13 +698,32 @@ function unequalOverlapIndexes<
   return conflicts;
 }
 
-function applyAllowanceFallback(terms: PricingTerm[]): PricingTerm[] {
-  const byId = new Map(terms.map((term) => [term.id, term]));
+function finalizeProviderTerms(books: PricingBook[]): PricingBook[] {
+  const byId = new Map(
+    books.flatMap(({ offers }) =>
+      offers.flatMap(({ terms }) => terms.map((term) => [term.id, term])),
+    ),
+  );
+  return books.map((book) => ({
+    ...book,
+    offers: book.offers.map((offer) => ({
+      ...offer,
+      terms: applyAllowanceFallback(offer.terms, byId)
+        .map(finalizeTerm)
+        .sort((left, right) => compareUtf8(left.id, right.id)),
+    })),
+  }));
+}
+
+function applyAllowanceFallback(
+  terms: PricingTerm[],
+  byId: ReadonlyMap<string, PricingTerm>,
+): PricingTerm[] {
   return terms.map((term) => {
     if (term.kind !== "allowance") return term;
     const invalid = term.variants.some((variant) => {
-      if (variant.target.kind !== "usage_rate_terms") return false;
-      if (variant.benefit.kind !== "usage") return true;
+      if (variant.target.kind !== "rate_terms") return false;
+      if (variant.benefit.kind !== "quantity") return false;
       const unit = canonicalJson(variant.benefit.quantity.unit);
       return variant.target.term_refs.some((ref) => {
         const rate = byId.get(ref);
@@ -647,6 +760,17 @@ function finalizeTerm(term: PricingTerm): PricingTerm {
     return {
       ...term,
       variants: sortAllowanceVariants(term.variants),
+      raw_variants: sortRawVariants(groupRaw(term.raw_variants.flatMap(expandRaw))),
+    };
+  if (term.kind === "contribution")
+    return {
+      ...term,
+      variants: sortByCanonicalKey(term.variants, (variant) => [
+        variant.target_rate_refs,
+        variant.charge_bindings,
+        ...optionalValue(variant.validity),
+        variant.applicability,
+      ]),
       raw_variants: sortRawVariants(groupRaw(term.raw_variants.flatMap(expandRaw))),
     };
   return {
@@ -842,9 +966,10 @@ function sortStates(states: PriceStateVariant[]): PriceStateVariant[] {
 }
 
 function sortRateVariants(variants: PriceRateVariant[]): PriceRateVariant[] {
-  return sortByCanonicalKey(variants, ({ price, validity, applicability }) => [
+  return sortByCanonicalKey(variants, ({ price, validity, charge_binding, applicability }) => [
     price,
     ...optionalValue(validity),
+    ...optionalValue(charge_binding),
     applicability,
   ]);
 }
@@ -880,10 +1005,20 @@ function canonicalScope(scope: PricingScope): PricingScope {
   };
 }
 
-function canonicalCompatibility(compatibility: AddOnCompatibility): AddOnCompatibility {
-  return compatibility.kind === "base_offers"
-    ? { ...compatibility, offer_refs: sortUniqueStrings(compatibility.offer_refs) }
-    : compatibility;
+function canonicalRelation(relation: AtomicOfferRelation): OfferRelation {
+  return {
+    ...relation,
+    target: { ...relation.target, offer_refs: sortUniqueStrings(relation.target.offer_refs) },
+    applicability: canonicalizeApplicability(relation.applicability),
+    observations: sortUnique(
+      relation.observations.map((observation) => ({
+        ...observation,
+        establishes_offer_refs: sortUniqueStrings(observation.establishes_offer_refs),
+        establishes_book_refs: [],
+      })),
+      relationObservationKey,
+    ),
+  };
 }
 
 function sortVocabulary(vocabulary: ProviderPricingVocabulary): ProviderPricingVocabulary {
@@ -928,10 +1063,7 @@ function precompactionProjection(prepared: PreparedProvider) {
           ...optional("name", offer.input.name),
           billing_mode: offer.input.billing_mode,
           source_refs: sortUniqueStrings(offer.input.source_refs),
-          role: offer.input.role,
-          ...(offer.input.role === "add_on"
-            ? { compatibility: canonicalCompatibility(offer.input.compatibility) }
-            : {}),
+          relations: offer.input.relations.map(canonicalRelation),
         })),
       )
       .sort(byId),
@@ -957,15 +1089,12 @@ function precompactionProjection(prepared: PreparedProvider) {
         })),
       ),
     ),
-    compatibility_observations: sortAtomic(
+    relation_observations: sortAtomic(
       prepared.books.flatMap(({ offers }) =>
         offers.flatMap((offer) =>
-          offer.input.role === "add_on"
-            ? offer.input.compatibility_observations.map((observation) => ({
-                offer_id: offer.id,
-                observation,
-              }))
-            : [],
+          offer.input.relations.flatMap((relation) =>
+            relation.observations.map((observation) => ({ offer_id: offer.id, observation })),
+          ),
         ),
       ),
     ),
@@ -992,9 +1121,32 @@ function precompactionProjection(prepared: PreparedProvider) {
                   term_id: term.id,
                   price: variant.price,
                   applicability: variant.applicability,
+                  ...optional(
+                    "charge_binding",
+                    variant.charge_binding === undefined
+                      ? undefined
+                      : chargeBindingIdentity(variant.charge_binding),
+                  ),
                   ...optional("validity", variant.validity),
                   observation: variant.observation,
                 }))
+              : [],
+          ),
+        ),
+      ),
+    ),
+    charge_observations: sortAtomic(
+      prepared.books.flatMap(({ offers }) =>
+        offers.flatMap(({ terms }) =>
+          terms.flatMap((term) =>
+            term.input.kind === "rate"
+              ? term.input.variants.flatMap(
+                  (variant) =>
+                    variant.charge_binding?.observations.map((observation) => ({
+                      term_id: term.id,
+                      observation,
+                    })) ?? [],
+                )
               : [],
           ),
         ),
@@ -1010,6 +1162,24 @@ function precompactionProjection(prepared: PreparedProvider) {
                   benefit: variant.benefit,
                   target: variant.target,
                   reset: variant.reset,
+                  applicability: variant.applicability,
+                  ...optional("validity", variant.validity),
+                  observation: variant.observation,
+                }))
+              : [],
+          ),
+        ),
+      ),
+    ),
+    contributions: sortAtomic(
+      prepared.books.flatMap(({ offers }) =>
+        offers.flatMap(({ terms }) =>
+          terms.flatMap((term) =>
+            term.input.kind === "contribution"
+              ? term.input.variants.map((variant) => ({
+                  term_id: term.id,
+                  target_rate_refs: variant.target_rate_refs,
+                  charge_bindings: variant.charge_bindings.map(chargeBindingIdentity),
                   applicability: variant.applicability,
                   ...optional("validity", variant.validity),
                   observation: variant.observation,
@@ -1053,7 +1223,8 @@ function assertPrecompactionLimit(prepared: PreparedProvider): void {
       projection.raw_variants.length,
     observations:
       projection.scope_observations.length +
-      projection.compatibility_observations.length +
+      projection.relation_observations.length +
+      projection.charge_observations.length +
       projection.disposition_observations.length +
       projection.states.length +
       projection.rates.length +
@@ -1157,13 +1328,19 @@ function scopeObservationKey(observation: PriceScopeObservation): string {
   ]);
 }
 
-function compatibilityObservationKey(observation: PriceCompatibilityObservation): string {
+function relationObservationKey(observation: AtomicOfferRelation["observations"][number]): string {
   return canonicalJson([
     observation.source_ref,
     observation.locator,
     observation.establishes_offer_refs,
+    observation.establishes_book_refs,
     observation.raw,
   ]);
+}
+
+function chargeBindingIdentity(binding: ChargeBinding): Omit<ChargeBinding, "observations"> {
+  const { observations: _observations, ...identity } = binding;
+  return identity;
 }
 
 function dispositionObservationKey(observation: PriceDispositionObservation): string {

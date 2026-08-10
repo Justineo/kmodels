@@ -1,12 +1,20 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import {
+  extractCohereCommercialFacts,
+  type CohereCommercialProduct,
+} from "./cohere-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
-import { assertCoverage, assertItemCount, recognizeItems } from "./source-contract.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
+import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import { yamlBlock } from "./yaml.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -394,7 +402,11 @@ function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
   return { byHref, byLabel };
 }
 
-function validateAccountingReferences(documents: LinkedDocument[]): void {
+function validateAccountingReferences(
+  documents: LinkedDocument[],
+  reconcile?: Reconcile,
+): Set<string> {
+  const valid = new Set<string>();
   for (const reference of accountingReferences) {
     const matches = documents.filter(
       (document) => new URL(document.url).pathname === reference.documentPath,
@@ -405,9 +417,17 @@ function validateAccountingReferences(documents: LinkedDocument[]): void {
       document === undefined ||
       reference.markers.some((marker) => !marker.test(document.body)) ||
       reference.forbiddenMarkers?.some((marker) => marker.test(document.body)) === true
-    )
-      throw new Error(reference.message);
+    ) {
+      reconcile?.({
+        disposition: "unbound",
+        reason_code: "accounting_reference_drift",
+        sample: reference.documentPath,
+      });
+      continue;
+    }
+    valid.add(reference.documentPath);
   }
+  return valid;
 }
 
 function requireYamlBlock(
@@ -799,6 +819,26 @@ function addRate(
 ): ProviderModel {
   const key = (item: SourcePriceFact): string =>
     JSON.stringify([item.meter, item.unit, item.conditions, item.source_ref]);
+  const conflict = conflictingPrice(rate);
+  const hasConflict = current.raw_price_facts.some(
+    (item) =>
+      item.term_key === conflict.term_key &&
+      item.source_ref === conflict.source_ref &&
+      JSON.stringify(item.conditions) === JSON.stringify(conflict.conditions),
+  );
+  if (hasConflict) {
+    const duplicate = current.raw_price_facts.some(
+      (item) => JSON.stringify(item) === JSON.stringify(conflict),
+    );
+    reconcile?.({
+      disposition: duplicate ? "excluded" : "unresolved",
+      reason_code: duplicate ? "duplicate_price_fact" : "price_fact_conflict",
+      sample: current.model_id,
+    });
+    return duplicate
+      ? current
+      : { ...current, raw_price_facts: [...current.raw_price_facts, conflict] };
+  }
   const existing = current.price_facts.find((item) => key(item) === key(rate));
   if (existing !== undefined) {
     const decimal = (value: string): string => {
@@ -807,8 +847,20 @@ function addRate(
       const normalizedFraction = fraction.replace(/0+$/, "");
       return normalizedFraction ? `${normalizedWhole}.${normalizedFraction}` : normalizedWhole;
     };
-    if (decimal(existing.price) !== decimal(rate.price))
-      throw new Error(`Cohere pricing sources disagree for ${current.model_id}`);
+    if (decimal(existing.price) !== decimal(rate.price)) {
+      reconcile?.({
+        disposition: "unresolved",
+        reason_code: "price_fact_conflict",
+        sample: current.model_id,
+      });
+      const remaining = current.price_facts.filter((item) => item !== existing);
+      return {
+        ...current,
+        price_facts: remaining,
+        raw_price_facts: [...current.raw_price_facts, conflictingPrice(existing), conflict],
+        pricing_state: remaining.length === 0 ? "unknown" : "numeric",
+      };
+    }
     reconcile?.({ disposition: "excluded", reason_code: "duplicate_price_fact" });
     return current;
   }
@@ -820,6 +872,22 @@ function addRate(
       current.pricing_state === "free" && rate.meter === "provisioned_throughput"
         ? "free"
         : "numeric",
+  };
+}
+
+function conflictingPrice(rate: SourcePriceFact): SourceRawPricingFact {
+  return {
+    term_key: `conflicting_${rate.meter}`,
+    impact: "base_price",
+    reason: "conflicting_values",
+    conditions: rate.conditions,
+    source_ref: rate.source_ref,
+    raw: {
+      amount: rate.raw_price ?? rate.price,
+      denomination: rate.currency,
+      unit: rate.raw_unit ?? rate.unit,
+      meter: rate.meter,
+    },
   };
 }
 
@@ -1263,7 +1331,7 @@ function collectPricing(value: unknown, result: z.infer<typeof pricingModelSchem
   if (record.success) for (const item of Object.values(record.data)) collectPricing(item, result);
 }
 
-function pricingModels($: Document): z.infer<typeof pricingModelSchema>[] {
+function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof pricingModelSchema>[] {
   const result: z.infer<typeof pricingModelSchema>[] = [];
   $("script").each((_index, element) => {
     const script = ($(element).html() ?? "").trim();
@@ -1281,11 +1349,21 @@ function pricingModels($: Document): z.infer<typeof pricingModelSchema>[] {
     }
   });
   const products = new Map<string, z.infer<typeof pricingModelSchema>>();
+  const conflicts = new Set<string>();
   for (const item of result) {
+    if (conflicts.has(item.modelName)) continue;
     const existing = products.get(item.modelName);
-    if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(item))
-      throw new Error(`Cohere pricing payloads disagree for ${item.modelName}`);
-    products.set(item.modelName, item);
+    if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(item)) {
+      products.delete(item.modelName);
+      conflicts.add(item.modelName);
+      reconcile?.({
+        disposition: "unresolved",
+        reason_code: "responsive_pricing_conflict",
+        sample: item.modelName,
+      });
+      continue;
+    }
+    if (!products.has(item.modelName)) products.set(item.modelName, item);
   }
   return [...products.values()];
 }
@@ -1297,9 +1375,13 @@ function nestedText(value: unknown): string {
   return record.success ? Object.values(record.data).map(nestedText).join(" ") : "";
 }
 
-function applyPricing(input: Input, models: Map<string, ProviderModel>, body: string): void {
+function applyPricing(
+  input: Input,
+  models: Map<string, ProviderModel>,
+  body: string,
+): CohereCommercialProduct[] {
   const $ = load(body);
-  const products = pricingModels($);
+  const products = pricingModels($, input.onPricingReconciliation);
   if (products.length < 5 || products.length > 20)
     throw new Error("Cohere pricing model structure drifted");
   for (const product of products) {
@@ -1307,23 +1389,21 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
     const matches = productMatches(models, product.modelName);
     const current = matches.length === 1 ? matches[0] : undefined;
     if (current === undefined) {
-      if (/custom enterprise pricing|contact (?:our )?(?:team|sales)/i.test(description))
-        input.onPricingReconciliation?.({
-          disposition: "explicit_non_numeric",
-          reason_code: "provider_service_custom_quote",
-        });
-      else reconcileUnmatched(product.modelName, matches, input.onPricingReconciliation);
+      if (!/custom enterprise pricing|contact (?:our )?(?:team|sales)/i.test(description))
+        reconcileUnmatched(product.modelName, matches, input.onPricingReconciliation);
       continue;
     }
     if (product.per === "Free") {
-      update(models, current.model_id, (item) => ({
-        ...item,
-        pricing_state: "free",
-      }));
-      input.onPricingReconciliation?.({
-        disposition: "explicit_non_numeric",
-        reason_code: "free",
-      });
+      if (product.pricings?.some(({ inputLabel }) => /API key/i.test(inputLabel)) === true) {
+        update(models, current.model_id, (item) => ({
+          ...item,
+          pricing_state: "free",
+        }));
+        input.onPricingReconciliation?.({
+          disposition: "explicit_non_numeric",
+          reason_code: "free",
+        });
+      }
       continue;
     }
     if (product.per !== "1M tokens")
@@ -1369,24 +1449,6 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
         });
       else if (item.outputLabel !== undefined && item.outputPrice !== undefined)
         add(item.outputLabel, item.outputPrice);
-    }
-    if (product.modelName === "Transcribe") {
-      const value = description.match(/\$+([\d.]+)\s*\/\s*hour\s*\/\s*instance/i)?.[1];
-      if (value === undefined) throw new Error("Cohere Transcribe pricing structure drifted");
-      update(models, current.model_id, (item) =>
-        addRate(
-          item,
-          publishedRate(
-            "provisioned_throughput",
-            value,
-            "unit_hour",
-            input.source.id,
-            "hour / instance",
-            { endpoint: "Model Vault", capacity: "starting rate" },
-          ),
-          input.onPricingReconciliation,
-        ),
-      );
     }
   }
   const legacy =
@@ -1455,56 +1517,15 @@ function applyPricing(input: Input, models: Map<string, ProviderModel>, body: st
           ),
         );
     }
-  $("div.grid")
-    .filter((_index, row) => $(row).children().length === 4)
-    .each((_index, row) => {
-      const cells = $(row)
-        .children()
-        .map((_cellIndex, cell) => text($(cell).text()))
-        .get();
-      const hourly = cells[2]?.match(/\$([\d,.]+)/)?.[1]?.replace(/,/g, "");
-      const monthly = cells[3]?.match(/\$([\d,.]+)/)?.[1]?.replace(/,/g, "");
-      if (hourly === undefined && monthly === undefined) return;
-      if (
-        cells[0] === undefined ||
-        cells[1] === undefined ||
-        hourly === undefined ||
-        monthly === undefined
-      )
-        throw new Error("Cohere Model Vault pricing structure drifted");
-      const matches = productMatches(models, cells[0]);
-      const current = matches.length === 1 ? matches[0] : undefined;
-      if (current === undefined) {
-        reconcileUnmatched(cells[0], matches, input.onPricingReconciliation, 2);
-        return;
-      }
-      const conditions = { endpoint: "Model Vault", capacity: cells[1] };
-      update(models, current.model_id, (item) =>
-        addRate(
-          addRate(
-            item,
-            publishedRate(
-              "provisioned_throughput",
-              hourly,
-              "unit_hour",
-              input.source.id,
-              "hour / instance",
-              { ...conditions, billing_period: "hourly" },
-            ),
-            input.onPricingReconciliation,
-          ),
-          publishedRate(
-            "provisioned_throughput",
-            monthly,
-            "unit_month",
-            input.source.id,
-            "month / instance",
-            { ...conditions, billing_period: "monthly" },
-          ),
-          input.onPricingReconciliation,
-        ),
-      );
-    });
+  return products.map((product) => ({
+    modelName: product.modelName,
+    per: product.per,
+    labels: (product.pricings ?? []).flatMap(({ inputLabel, outputLabel }) => [
+      inputLabel,
+      ...(outputLabel === undefined ? [] : [outputLabel]),
+    ]),
+    description: nestedText(product.portableDescription),
+  }));
 }
 
 function applyAliasPricing(models: Map<string, ProviderModel>): void {
@@ -1540,7 +1561,11 @@ function finalizeRetiredPricing(models: Map<string, ProviderModel>): void {
       });
 }
 
-function validatePricingCoverage(models: Map<string, ProviderModel>, minimum: number): void {
+function validatePricingCoverage(
+  models: Map<string, ProviderModel>,
+  minimum: number,
+  reconcile?: Reconcile,
+): void {
   if (minimum < 0 || minimum > 1) throw new Error("Invalid Cohere pricing coverage threshold");
   const current = [...models.values()].filter(({ status }) =>
     ["active", "deprecated"].includes(status),
@@ -1549,7 +1574,48 @@ function validatePricingCoverage(models: Map<string, ProviderModel>, minimum: nu
     ({ pricing_state, price_facts, raw_price_facts }) =>
       pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
   ).length;
-  assertCoverage("Cohere pricing coverage", covered, current.length, minimum, ["pricing"]);
+  if (current.length > 0 && covered / current.length < minimum)
+    reconcile?.({
+      disposition: "unbound",
+      reason_code: "pricing_coverage_below_reviewed_threshold",
+      sample: `${covered}/${current.length}`,
+    });
+}
+
+function addAccountingGaps(
+  models: Map<string, ProviderModel>,
+  valid: ReadonlySet<string>,
+  sourceRef: string,
+): void {
+  const policy = valid.has("/docs/how-does-cohere-pricing-work.md");
+  for (const current of models.values()) {
+    const reference = current.tasks.includes("embeddings")
+      ? "/reference/embed.md"
+      : current.tasks.includes("reranking")
+        ? "/reference/rerank.md"
+        : current.tasks.includes("text_generation")
+          ? "/reference/chat.md"
+          : undefined;
+    if (reference === undefined || (policy && valid.has(reference))) continue;
+    models.set(current.model_id, {
+      ...current,
+      raw_price_facts: [
+        ...current.raw_price_facts,
+        {
+          term_key: "accounting_binding_unavailable",
+          impact: "informational",
+          reason: "unknown_meter",
+          conditions: {},
+          source_ref: sourceRef,
+          raw: {
+            fragment: `The exact Cohere billed-unit binding is unavailable because ${
+              policy ? reference : "/docs/how-does-cohere-pricing-work.md"
+            } drifted`,
+          },
+        },
+      ],
+    });
+  }
 }
 
 function includesId(value: string, id: string): boolean {
@@ -1682,7 +1748,7 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   const models = new Map<string, ProviderModel>();
   validateOpenApi(bundle.documents);
   const references = endpointReferences(bundle.documents);
-  validateAccountingReferences(bundle.documents);
+  const accounting = validateAccountingReferences(bundle.documents, input.onPricingReconciliation);
   const modelDocuments = indexedModelDocuments(
     bundle.index,
     bundle.documents,
@@ -1696,11 +1762,12 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
     if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
       transcribePage(input, models, url, document.body, references);
   }
+  let commercialProducts: CohereCommercialProduct[] = [];
   for (const document of bundle.documents) {
     const url = new URL(document.url);
     if (url.pathname === "/docs/deprecations") lifecycle(input, models, document.body);
     if (url.hostname === "cohere.com" && url.pathname === "/pricing")
-      applyPricing(input, models, document.body);
+      commercialProducts = applyPricing(input, models, document.body);
   }
   applyGenerateEndpoint(models, references);
   for (const document of bundle.documents) {
@@ -1710,7 +1777,19 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   }
   applyAliasPricing(models);
   finalizeRetiredPricing(models);
-  validatePricingCoverage(models, configuration.minPricingCoverage);
+  addAccountingGaps(models, accounting, input.source.id);
+  extractCohereCommercialFacts({
+    documents: bundle.documents,
+    embedJobModelIds: references.byLabel.get("Embed Jobs")?.modelIds ?? new Set(),
+    models,
+    products: commercialProducts,
+    resolve: (label, keepDate = false) => productMatches(models, label, keepDate),
+    sourceId: input.source.id,
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { reconcile: input.onPricingReconciliation }),
+  });
+  validatePricingCoverage(models, configuration.minPricingCoverage, input.onPricingReconciliation);
   assertItemCount(
     "Cohere model catalog",
     models.size,

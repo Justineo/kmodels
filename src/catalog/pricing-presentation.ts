@@ -66,8 +66,11 @@ export type PricingSelection =
 export interface ModelPricingView {
   outcome: "not_applicable" | "unknown" | "offers";
   books: PricingBook[];
-  baseOffers: PricingOffer[];
-  addOns: PricingOffer[];
+  modelMechanisms: PricingOffer[];
+  optionalServices: PricingOffer[];
+  automaticComponents: PricingOffer[];
+  plansAndCapacity: PricingOffer[];
+  standaloneOffers: PricingOffer[];
   snapshot?: ProviderPricingSnapshot;
 }
 
@@ -75,6 +78,7 @@ interface PricingViewIndex {
   snapshots: ReadonlyMap<string, ProviderPricingSnapshot>;
   dispositions: ReadonlySet<string>;
   books: ReadonlyMap<string, PricingBook[]>;
+  offers: ReadonlyMap<string, { book: PricingBook; offer: PricingOffer }>;
 }
 
 interface PricingTableCell {
@@ -86,17 +90,7 @@ interface PricingTableCell {
 }
 
 const inputMeters = ["input_text", "input_image", "input_audio", "input_video"] as const;
-const cacheMeters = [
-  "cache_read_text",
-  "cache_read_image",
-  "cache_read_audio",
-  "cache_read_video",
-  "cache_write_text",
-  "cache_write_image",
-  "cache_write_audio",
-  "cache_write_video",
-  "cache_storage",
-] as const;
+const cacheMeters = ["cache_read_text", "cache_write_text"] as const;
 const outputMeters = [
   "output_text",
   "output_image",
@@ -105,13 +99,7 @@ const outputMeters = [
   "image_generation",
   "video_generation",
   "embedding",
-  "rerank_request",
-  "tool_call",
-  "realtime_client_message",
-  "realtime_session_duration",
-  "batch_inference",
-  "gpu_hour",
-  "provisioned_throughput",
+  "rerank",
 ] as const;
 const modelDimension: PriceDimension = { namespace: "kmodels", value: "model" };
 const wholeNumberDimensions = new Set([
@@ -185,6 +173,9 @@ export function pricingViewIndex(data: PricingCatalog): PricingViewIndex {
     snapshots: new Map(data.provider_snapshots.map((snapshot) => [snapshot.provider_id, snapshot])),
     dispositions: new Set(data.model_dispositions.map(({ model_ref }) => model_ref)),
     books,
+    offers: new Map(
+      data.books.flatMap((book) => book.offers.map((offer) => [offer.id, { book, offer }])),
+    ),
   };
 }
 
@@ -195,22 +186,83 @@ export function modelPricingViewFromIndex(
 ): ModelPricingView {
   const snapshot = index.snapshots.get(model.provider_id);
   const metadata = snapshot === undefined ? {} : { snapshot };
+  const empty = {
+    books: [],
+    modelMechanisms: [],
+    optionalServices: [],
+    automaticComponents: [],
+    plansAndCapacity: [],
+    standaloneOffers: [],
+  };
   if (index.dispositions.has(model.uid))
-    return { outcome: "not_applicable", books: [], baseOffers: [], addOns: [], ...metadata };
+    return { outcome: "not_applicable", ...empty, ...metadata };
 
-  const books = (index.books.get(model.uid) ?? []).filter(
+  const projectedBooks = (index.books.get(model.uid) ?? []).filter(
     ({ provider_id }) => provider_id === model.provider_id,
   );
-  if (books.length === 0)
-    return { outcome: "unknown", books: [], baseOffers: [], addOns: [], ...metadata };
+  if (projectedBooks.length === 0) return { outcome: "unknown", ...empty, ...metadata };
 
   const context = withModelSelection(selections, model.uid);
-  const offers = books.flatMap(({ offers }) => offers);
-  const baseOffers = uniqueOffers(
-    offers.filter((offer) => offer.role === "base" && offerCanApplyToModel(offer, context)),
+  const modelMechanisms = uniqueOffers(
+    projectedBooks
+      .filter(({ scope }) => scope.kind === "models")
+      .flatMap(({ offers }) => offers)
+      .filter((offer) => offerCanApplyToModel(offer, context)),
   );
-  const addOns = uniqueOffers(offers.filter(({ role }) => role === "add_on"));
-  return { outcome: "offers", books, baseOffers, addOns, ...metadata };
+  const mechanismIds = new Set(modelMechanisms.map(({ id }) => id));
+  const automaticIds = new Set(
+    modelMechanisms.flatMap(({ relations }) =>
+      relations.flatMap(({ kind, target }) => (kind === "incurs" ? target.offer_refs : [])),
+    ),
+  );
+  const related = modelMechanisms.flatMap(({ relations }) =>
+    relations.flatMap(({ target }) => target.offer_refs),
+  );
+  const books = uniqueBooks([
+    ...projectedBooks,
+    ...related.flatMap((offerRef) => {
+      const candidate = index.offers.get(offerRef);
+      return candidate?.book.provider_id === model.provider_id ? [candidate.book] : [];
+    }),
+  ]);
+  const resources = books.flatMap((book) =>
+    book.scope.kind === "provider_resource" ? book.offers.map((offer) => ({ book, offer })) : [],
+  );
+  const automaticComponents = uniqueOffers(
+    resources.flatMap(({ offer }) => (automaticIds.has(offer.id) ? [offer] : [])),
+  );
+  const optionalServices = uniqueOffers(
+    resources.flatMap(({ book, offer }) =>
+      isStandardResourceKind(book, "service") &&
+      !automaticIds.has(offer.id) &&
+      isCompatibleWithMechanism(offer, mechanismIds, modelMechanisms)
+        ? [offer]
+        : [],
+    ),
+  );
+  const classified = new Set([...automaticComponents, ...optionalServices].map(({ id }) => id));
+  const plansAndCapacity = uniqueOffers(
+    resources.flatMap(({ book, offer }) =>
+      !classified.has(offer.id) &&
+      (isStandardResourceKind(book, "plan") || isStandardResourceKind(book, "capacity"))
+        ? [offer]
+        : [],
+    ),
+  );
+  for (const offer of plansAndCapacity) classified.add(offer.id);
+  const standaloneOffers = uniqueOffers(
+    resources.flatMap(({ offer }) => (classified.has(offer.id) ? [] : [offer])),
+  );
+  return {
+    outcome: "offers",
+    books,
+    modelMechanisms,
+    optionalServices,
+    automaticComponents,
+    plansAndCapacity,
+    standaloneOffers,
+    ...metadata,
+  };
 }
 
 export function projectPricingTableCell(
@@ -226,8 +278,8 @@ export function projectPricingTableCellFromView(
   model: PricingModel,
   slot: "input" | "cache" | "output",
 ): PricingTableCell | undefined {
-  if (view.outcome !== "offers" || view.baseOffers.length !== 1) return undefined;
-  const offer = view.baseOffers[0]!;
+  if (view.outcome !== "offers" || view.modelMechanisms.length !== 1) return undefined;
+  const offer = view.modelMechanisms[0]!;
   const context = withModelSelection(fixedOfferStateSelections(offer, model.uid), model.uid);
   const states = offer.states.filter(
     ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
@@ -432,6 +484,8 @@ function displayProviderUnit(value: string): string {
       return "unit·hr";
     case "unit_month":
       return "unit·mo";
+    case "unit_year":
+      return "unit·yr";
     default:
       return value.replaceAll("_", " ");
   }
@@ -481,7 +535,8 @@ function displayUnits(value: UnitExpression): DisplayUnit[] {
   }
   if (standardUnitProduct(value, "second", "token"))
     return [base, scaled("3600000000", "1M tokens·hour")];
-  if (standardUnitProduct(value, "gpu", "second")) return [base, scaled("3600", "GPU·hour")];
+  if (standardUnitProduct(value, "accelerator", "second"))
+    return [base, scaled("3600", "accelerator·hour")];
   if (
     single?.power === 1 &&
     single.unit.namespace === "provider" &&
@@ -583,6 +638,8 @@ export function displayUnitPrice(
 
 export function formatAllowanceBenefit(value: PriceAllowanceBenefit): string {
   if (value.kind === "credit") return formatDisplayAmount(value.denomination, value.amount);
+  if (value.kind === "coverage") return "Covered usage";
+  if (value.kind === "rate_substitution") return "Replacement rate";
   const quantity = formatRational(value.quantity.value);
   return `${quantity.text}${quantity.approximate ? "…" : ""} ${formatUnitExpression(value.quantity.unit)}`;
 }
@@ -649,6 +706,43 @@ function uniqueOffers(offers: PricingOffer[]): PricingOffer[] {
         .map((offer) => [offer.id, offer]),
     ).values(),
   ];
+}
+
+function uniqueBooks(books: PricingBook[]): PricingBook[] {
+  return [
+    ...new Map(
+      [...books]
+        .sort((left, right) => compareUtf8(left.id, right.id))
+        .map((book) => [book.id, book]),
+    ).values(),
+  ];
+}
+
+function isStandardResourceKind(book: PricingBook, kind: "service" | "plan" | "capacity"): boolean {
+  return (
+    book.scope.kind === "provider_resource" &&
+    book.scope.resource_kind.namespace === "kmodels" &&
+    book.scope.resource_kind.value === kind
+  );
+}
+
+function isCompatibleWithMechanism(
+  offer: PricingOffer,
+  mechanismIds: ReadonlySet<string>,
+  mechanisms: readonly PricingOffer[],
+): boolean {
+  return (
+    offer.relations.some(
+      ({ kind, target }) =>
+        (kind === "compatible_with" || kind === "requires") &&
+        target.offer_refs.some((ref) => mechanismIds.has(ref)),
+    ) ||
+    mechanisms.some(({ relations }) =>
+      relations.some(
+        ({ kind, target }) => kind === "compatible_with" && target.offer_refs.includes(offer.id),
+      ),
+    )
+  );
 }
 
 function withModelSelection(
@@ -772,7 +866,7 @@ function slotMeters(
       : model.tasks.includes("embeddings")
         ? ["embedding"]
         : model.tasks.includes("reranking")
-          ? ["rerank_request"]
+          ? ["rerank"]
           : model.tasks.some((task) =>
                 ["audio_generation", "speech_synthesis", "speech_to_speech"].includes(task),
               )

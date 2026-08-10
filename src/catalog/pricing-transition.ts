@@ -102,15 +102,26 @@ export function providerPartitionSourceRefs(partition: ProviderPricingPartition)
   for (const book of partition.books) {
     book.source_refs.forEach((sourceRef) => refs.add(sourceRef));
     book.scope_observations.forEach(addObservation);
+    book.resource_edges.forEach(({ observations }) => observations.forEach(addObservation));
     for (const offer of book.offers) {
       offer.source_refs.forEach((sourceRef) => refs.add(sourceRef));
       offer.states.forEach(({ observations }) => observations.forEach(addObservation));
-      if (offer.role === "add_on") offer.compatibility_observations.forEach(addObservation);
+      offer.enrollment.forEach(({ observations }) => observations.forEach(addObservation));
+      offer.relations.forEach(({ observations }) => observations.forEach(addObservation));
+      offer.settlement.forEach(({ observations }) => observations.forEach(addObservation));
       for (const term of offer.terms) {
         term.source_refs.forEach((sourceRef) => refs.add(sourceRef));
         const variants =
           term.kind === "raw" ? term.variants : [...term.variants, ...term.raw_variants];
-        variants.forEach(({ observations }) => observations.forEach(addObservation));
+        variants.forEach((variant) => {
+          variant.observations.forEach(addObservation);
+          if ("charge_binding" in variant)
+            variant.charge_binding?.observations.forEach(addObservation);
+          if ("charge_bindings" in variant)
+            variant.charge_bindings.forEach(({ observations }) =>
+              observations.forEach(addObservation),
+            );
+        });
       }
     }
   }
