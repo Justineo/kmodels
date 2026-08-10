@@ -15,7 +15,14 @@ import {
   type UnitPrice,
 } from "./pricing-schema.ts";
 
-export type FixedUnitScale = "thousand" | "million" | "millisecond" | "minute" | "hour";
+export type FixedUnitScale =
+  | "thousand"
+  | "million"
+  | "gigabyte"
+  | "millisecond"
+  | "minute"
+  | "hour"
+  | "day";
 
 export interface SourceUnitFactor {
   unit: BillingUnit;
@@ -31,9 +38,11 @@ export interface CanonicalSourceUnit {
 const scales: Record<FixedUnitScale, Rational> = {
   thousand: { numerator: "1000", denominator: "1" },
   million: { numerator: "1000000", denominator: "1" },
+  gigabyte: { numerator: "1000000000", denominator: "1" },
   millisecond: { numerator: "1", denominator: "1000" },
   minute: { numerator: "60", denominator: "1" },
   hour: { numerator: "3600", denominator: "1" },
+  day: { numerator: "86400", denominator: "1" },
 };
 
 export function canonicalizeSourceUnit(factors: SourceUnitFactor[]): CanonicalSourceUnit {
@@ -50,7 +59,7 @@ export function canonicalizeSourceUnit(factors: SourceUnitFactor[]): CanonicalSo
       throw new Error("Source unit factor power limit exceeded");
     if (
       factor.scale !== undefined &&
-      ["millisecond", "minute", "hour"].includes(factor.scale) &&
+      ["millisecond", "minute", "hour", "day"].includes(factor.scale) &&
       !(factor.unit.namespace === "kmodels" && factor.unit.value === "second")
     )
       throw new Error("Time scale requires the canonical second unit");

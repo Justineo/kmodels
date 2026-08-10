@@ -1,7 +1,7 @@
 import {
   assembleProviderPricing,
-  type AtomicBasePricingOffer,
   type AtomicModelDisposition,
+  type AtomicPricingOffer,
   type AtomicPriceState,
   type AtomicProviderPricing,
   type AtomicRateTerm,
@@ -24,6 +24,7 @@ import type {
   PriceCondition,
   PriceDenomination,
   PriceDimension,
+  PriceMeter,
   PriceSourceLocator,
   ProviderAtomRegistryEntry,
   PublishedValidity,
@@ -32,12 +33,24 @@ import type {
   UnitPrice,
 } from "./pricing-schema.ts";
 import type { PricingCategoricalLabel, SourceManifest } from "./manifests.ts";
+import { applyAnthropicCommercialTopology } from "./anthropic-commercial.ts";
+import { applyAzureCommercialTopology } from "./azure-pricing-commercial.ts";
+import { applyBedrockCommercialTopology } from "./bedrock-commercial.ts";
+import { applyCohereCommercialTopology } from "./cohere-commercial.ts";
+import { applyDatabricksCommercialTopology } from "./databricks-commercial.ts";
+import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
+import { applyKimiCommercialTopology } from "./kimi-commercial.ts";
+import { applyMistralCommercialTopology } from "./mistral-commercial.ts";
+import { applyOpenAiCommercialTopology } from "./openai-commercial.ts";
+import { applyVercelCommercialTopology } from "./vercel-commercial.ts";
+import { applyVertexCommercialTopology } from "./vertex-commercial.ts";
 import {
   sourcePriceFactSchema,
   type ParsedPricingModel,
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
+  type SourceCommercialPricingFact,
 } from "./pricing-source.ts";
 
 export interface ParsedPricingSource {
@@ -45,7 +58,10 @@ export interface ParsedPricingSource {
   models: ParsedPricingModel[];
 }
 
-type PublishedPricingModel = Pick<ParsedProviderModel, "model_id" | "status" | "uid" | "version">;
+type PublishedPricingModel = Pick<
+  ParsedProviderModel,
+  "capabilities" | "model_id" | "name" | "service_families" | "status" | "tasks" | "uid" | "version"
+>;
 
 export function isPricingSource(source: SourceManifest): boolean {
   const declaresPricing = source.fields.includes("pricing");
@@ -59,6 +75,9 @@ export function isRequiredPricingSource(source: SourceManifest): boolean {
 }
 
 interface OfferBuilder {
+  offerKey: string;
+  name: string;
+  billingMode: "usage" | "capacity" | "subscription" | "one_time" | "hybrid";
   states: AtomicPriceState[];
   terms: Map<string, AtomicRateTerm | AtomicRawTerm>;
   sourceRefs: Set<string>;
@@ -71,7 +90,7 @@ interface AdapterContext {
   atoms: Map<string, ProviderAtomRegistryEntry>;
   categoricalLabels: ReadonlyMap<string, string>;
   scopeBySource: Map<string, Set<string>>;
-  offers: Map<"usage" | "capacity", OfferBuilder>;
+  offers: Map<string, OfferBuilder>;
 }
 
 interface PricingBinding {
@@ -151,21 +170,41 @@ export function assembleParsedProviderPricing(
         continue;
       }
       const context = adapterContext(contexts, providerId, bookKey, bookName, atoms, labelIndex);
-      addModelPricing(context, source, bound, modelRefs);
+      addModelPricing(context, source.id, bound, modelRefs);
     }
   }
-  const books = [...contexts.values()].flatMap(pricingBooks);
+  const commercialFacts = pricingSources.flatMap(({ models }) =>
+    models.flatMap(({ commercial_facts }) => commercial_facts ?? []),
+  );
+  const books = [
+    ...[...contexts.values()].flatMap(pricingBooks),
+    ...commercialPricingBooks(
+      providerId,
+      commercialFacts,
+      new Set(publishedModels.map(({ uid }) => uid)),
+      atoms,
+      labelIndex,
+    ),
+  ];
   if (books.length === 0 && dispositions.length === 0) return undefined;
-  return assembleProviderPricing({
+  const input = {
     provider_id: providerId,
     observed_at: observedAt,
-    vocabulary: {
-      provider_id: providerId,
-      atoms: [...atoms.values()],
-    },
+    vocabulary: { provider_id: providerId, atoms: [...atoms.values()] },
     dispositions,
     books,
-  });
+  } satisfies AtomicProviderPricing;
+  const openai = applyOpenAiCommercialTopology(input, publishedModels);
+  const anthropic = applyAnthropicCommercialTopology(openai);
+  const bedrock = applyBedrockCommercialTopology(anthropic);
+  const azure = applyAzureCommercialTopology(bedrock, publishedModels);
+  const vercel = applyVercelCommercialTopology(azure);
+  const databricks = applyDatabricksCommercialTopology(vercel);
+  const gemini = applyGeminiCommercialTopology(databricks);
+  const vertex = applyVertexCommercialTopology(gemini, publishedModels);
+  const kimi = applyKimiCommercialTopology(vertex);
+  const cohere = applyCohereCommercialTopology(kimi, publishedModels);
+  return assembleProviderPricing(applyMistralCommercialTopology(cohere));
 }
 
 function pricingEvidencePriority(source: SourceManifest): number {
@@ -274,9 +313,14 @@ function adapterContext(
 
 function addModelPricing(
   context: AdapterContext,
-  source: SourceManifest,
+  sourceRef: string,
   model: ParsedPricingModel,
   modelRefs: readonly string[],
+  forcedOffer?: {
+    key: string;
+    name: string;
+    billingMode: OfferBuilder["billingMode"];
+  },
 ): void {
   const rates = normalizedSourceFacts(context.providerId, model.price_facts);
   const hasUsageRate = model.price_facts.some((rate) => rateMode(rate) === "usage");
@@ -285,11 +329,116 @@ function addModelPricing(
     !hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published");
   if (rates.length === 0 && model.raw_price_facts.length === 0 && !publishesState) return;
 
-  addScope(context, source.id, modelRefs);
+  addScope(context, sourceRef, modelRefs);
   for (const { sourceRate, normalizedRate } of rates)
-    addRate(context, source.id, model, sourceRate, normalizedRate);
-  for (const fact of model.raw_price_facts) addRaw(context, source.id, model, fact);
-  if (publishesState) addState(context, source.id, state);
+    addRate(context, sourceRef, model, sourceRate, normalizedRate, forcedOffer);
+  for (const fact of model.raw_price_facts) addRaw(context, sourceRef, model, fact, forcedOffer);
+  if (publishesState) addState(context, sourceRef, state, forcedOffer);
+}
+
+function commercialPricingBooks(
+  providerId: string,
+  facts: readonly SourceCommercialPricingFact[],
+  publishedModelRefs: ReadonlySet<string>,
+  atoms: Map<string, ProviderAtomRegistryEntry>,
+  categoricalLabels: ReadonlyMap<string, string>,
+): AtomicProviderPricing["books"] {
+  const groups = new Map<
+    string,
+    {
+      context: AdapterContext;
+      resourceKind: SourceCommercialPricingFact["resource_kind"];
+      resourceKey: string;
+    }
+  >();
+  for (const fact of facts) {
+    if (
+      [...fact.price_facts, ...fact.raw_price_facts].some(
+        ({ source_ref }) => source_ref !== fact.source_ref,
+      )
+    )
+      throw new Error(`Commercial fact ${fact.book_key} has mixed sources`);
+    const sourceRef = fact.source_ref;
+    const current = groups.get(fact.book_key);
+    if (
+      current !== undefined &&
+      (current.resourceKind !== fact.resource_kind || current.resourceKey !== fact.resource_key)
+    )
+      throw new Error(`Commercial book ${fact.book_key} changes resource identity`);
+    const context =
+      current?.context ??
+      adapterContext(
+        new Map(),
+        providerId,
+        fact.book_key,
+        fact.book_name,
+        atoms,
+        categoricalLabels,
+      );
+    if (current === undefined)
+      groups.set(fact.book_key, {
+        context,
+        resourceKind: fact.resource_kind,
+        resourceKey: fact.resource_key,
+      });
+    const modelRefs = fact.model_refs.filter((modelRef) => publishedModelRefs.has(modelRef));
+    const model = {
+      provider_id: providerId,
+      model_id: `resource:${fact.resource_key}`,
+      uid: `${providerId}/resource:${fact.resource_key}`,
+      pricing_state:
+        fact.pricing_state === "included" || fact.pricing_state === "externally_billed"
+          ? ("unknown" as const)
+          : fact.pricing_state,
+      price_facts: fact.price_facts,
+      raw_price_facts: fact.raw_price_facts,
+    };
+    addModelPricing(context, sourceRef, model, modelRefs, {
+      key: fact.offer_key,
+      name: fact.offer_name,
+      billingMode: fact.billing_mode,
+    });
+    if (fact.pricing_state === "included" || fact.pricing_state === "externally_billed") {
+      addScope(context, sourceRef, modelRefs);
+      addState(context, sourceRef, fact.pricing_state, {
+        key: fact.offer_key,
+        name: fact.offer_name,
+        billingMode: fact.billing_mode,
+      });
+    }
+  }
+  return [...groups.values()].flatMap(({ context, resourceKind, resourceKey }) => {
+    const sourceRefs = [...context.scopeBySource.keys()];
+    if (sourceRefs.length === 0) return [];
+    const modelRefs = [
+      ...new Set([...context.scopeBySource.values()].flatMap((refs) => [...refs])),
+    ];
+    return [
+      {
+        book_key: context.bookKey,
+        name: context.bookName,
+        scope: {
+          kind: "provider_resource" as const,
+          resource_kind: { namespace: "kmodels" as const, value: resourceKind },
+          resource_key: resourceKey,
+          model_refs: modelRefs,
+        },
+        scope_observations: [...context.scopeBySource].map(([sourceRef, refs]) => ({
+          source_ref: sourceRef,
+          locator: { kind: "provider_key" as const, value: `resource:${resourceKey}` },
+          establishes: {
+            kind: "provider_resource" as const,
+            resource_kind: { namespace: "kmodels" as const, value: resourceKind },
+            resource_key: resourceKey,
+            model_refs: [...refs],
+          },
+          raw: { label: context.bookName },
+        })),
+        offers: [...context.offers.values()].map(pricingOffer),
+        source_refs: sourceRefs,
+      },
+    ];
+  });
 }
 
 function addRaw(
@@ -297,8 +446,9 @@ function addRaw(
   sourceRef: string,
   model: ParsedPricingModel,
   fact: SourceRawPricingFact,
+  forcedOffer?: Parameters<typeof addModelPricing>[4],
 ): void {
-  const offer = offerBuilder(context, "usage");
+  const offer = forcedOfferBuilder(context, forcedOffer, "usage");
   const term = rawTerm(offer, fact.term_key);
   const validity = publishedValidity(fact.conditions);
   offer.sourceRefs.add(sourceRef);
@@ -322,9 +472,10 @@ function addRaw(
 function addState(
   context: AdapterContext,
   sourceRef: string,
-  state: "free" | "custom_quote" | "not_published",
+  state: "free" | "included" | "externally_billed" | "custom_quote" | "not_published",
+  forcedOffer?: Parameters<typeof addModelPricing>[4],
 ): void {
-  const offer = offerBuilder(context, "usage");
+  const offer = forcedOfferBuilder(context, forcedOffer, "usage");
   const applicability = unconditionalApplicability;
   offer.sourceRefs.add(sourceRef);
   offer.states.push({
@@ -337,9 +488,13 @@ function addState(
         label:
           state === "free"
             ? "Free"
-            : state === "custom_quote"
-              ? "Custom quote"
-              : "Price not published",
+            : state === "included"
+              ? "Included"
+              : state === "externally_billed"
+                ? "Externally billed"
+                : state === "custom_quote"
+                  ? "Custom quote"
+                  : "Price not published",
       },
       applicability,
     ),
@@ -352,12 +507,31 @@ function addRate(
   model: ParsedPricingModel,
   sourceRate: SourcePriceFact,
   normalizedRate: SourcePriceFact,
+  forcedOffer?: Parameters<typeof addModelPricing>[4],
 ): void {
   const mode = rateMode(sourceRate);
-  const offer = offerBuilder(context, mode);
-  const term = rateTerm(offer, sourceRate.meter);
+  const offer = forcedOfferBuilder(context, forcedOffer, mode);
   const fact = rawFact(sourceRate);
   const locator = rateLocator(model, sourceRate);
+  const meter = canonicalMeter(context, sourceRate);
+  if (meter === undefined) {
+    const term = rawTerm(
+      offer,
+      `${sourceRate.meter}${
+        sourceRate.conditions.operation === undefined ? "" : `:${sourceRate.conditions.operation}`
+      }`,
+    );
+    offer.sourceRefs.add(sourceRef);
+    term.source_refs.push(sourceRef);
+    term.variants.push({
+      impact: "base_price",
+      reason: "unknown_meter",
+      possible_scope: rateApplicability(context, sourceRate.conditions),
+      observation: { source_ref: sourceRef, locator, raw: fact },
+    });
+    return;
+  }
+  const term = rateTerm(offer, meterKey(meter), meter);
   const normalized = normalizeRate(context, normalizedRate);
   offer.sourceRefs.add(sourceRef);
   term.source_refs.push(sourceRef);
@@ -499,51 +673,74 @@ function pricingBooks(context: AdapterContext): AtomicProviderPricing["books"] {
         establishes: { kind: "models", model_refs: [...refs] },
         raw: { label: "Models with public pricing facts" },
       })),
-      offers: [...context.offers].map(([mode, value]) => pricingOffer(mode, value)),
+      offers: [...context.offers.values()].map(pricingOffer),
       source_refs: sourceRefs,
     },
   ];
 }
 
-function pricingOffer(mode: "usage" | "capacity", value: OfferBuilder): AtomicBasePricingOffer {
+function pricingOffer(value: OfferBuilder): AtomicPricingOffer {
   return {
-    offer_key: mode,
-    name: mode === "usage" ? "Usage pricing" : "Capacity pricing",
-    billing_mode: { namespace: "kmodels", value: mode },
-    role: "base",
+    offer_key: value.offerKey,
+    name: value.name,
+    billing_mode: { namespace: "kmodels", value: value.billingMode },
     states: value.states,
     terms: [...value.terms.values()],
+    relations: [],
     source_refs: [...value.sourceRefs],
   };
 }
 
-function offerBuilder(context: AdapterContext, mode: "usage" | "capacity"): OfferBuilder {
-  const current = context.offers.get(mode);
+function offerBuilder(
+  context: AdapterContext,
+  key: string,
+  billingMode: OfferBuilder["billingMode"],
+  name: string,
+): OfferBuilder {
+  const current = context.offers.get(key);
   if (current !== undefined) return current;
   const created: OfferBuilder = {
+    offerKey: key,
+    name,
+    billingMode,
     states: [],
     terms: new Map(),
     sourceRefs: new Set(),
   };
-  context.offers.set(mode, created);
+  context.offers.set(key, created);
   return created;
 }
 
-function rateTerm(offer: OfferBuilder, meter: SourcePriceFact["meter"]): AtomicRateTerm {
-  const current = offer.terms.get(meter);
+function forcedOfferBuilder(
+  context: AdapterContext,
+  forced: Parameters<typeof addModelPricing>[4],
+  fallback: "usage" | "capacity",
+): OfferBuilder {
+  return forced === undefined
+    ? offerBuilder(
+        context,
+        fallback,
+        fallback,
+        fallback === "usage" ? "Usage pricing" : "Capacity pricing",
+      )
+    : offerBuilder(context, forced.key, forced.billingMode, forced.name);
+}
+
+function rateTerm(offer: OfferBuilder, key: string, meter: PriceMeter): AtomicRateTerm {
+  const current = offer.terms.get(key);
   if (current !== undefined) {
-    if (current.kind !== "rate") throw new Error(`Pricing term ${meter} changed kind`);
+    if (current.kind !== "rate") throw new Error(`Pricing term ${key} changed kind`);
     return current;
   }
   const created: AtomicRateTerm = {
-    term_key: meter,
+    term_key: key,
     kind: "rate",
-    meter: { namespace: "kmodels", value: meter },
+    meter,
     variants: [],
     raw_variants: [],
     source_refs: [],
   };
-  offer.terms.set(meter, created);
+  offer.terms.set(key, created);
   return created;
 }
 
@@ -626,14 +823,16 @@ function normalizedUnit(
   const standard = (
     value:
       | "character"
+      | "byte"
+      | "event"
       | "frame"
       | "image"
+      | "item"
       | "page"
       | "pixel"
       | "request"
       | "second"
-      | "token"
-      | "video",
+      | "token",
   ) => ({
     namespace: "kmodels" as const,
     value,
@@ -665,6 +864,49 @@ function normalizedUnit(
       return one("request");
     case "thousand_requests":
       return one("request", "thousand");
+    case "thousand_items":
+      return one("item", "thousand");
+    case "event":
+      return one("event");
+    case "thousand_events":
+      return one("event", "thousand");
+    case "byte_day":
+      return canonicalizeSourceUnit([
+        { unit: standard("byte"), power: 1 },
+        { unit: standard("second"), power: 1, scale: "day" },
+      ]);
+    case "gigabyte_day":
+      return canonicalizeSourceUnit([
+        { unit: standard("byte"), power: 1, scale: "gigabyte" },
+        { unit: standard("second"), power: 1, scale: "day" },
+      ]);
+    case "gigabyte":
+      return one("byte", "gigabyte");
+    case "container_session":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "container_session",
+            "One provider-published 20-minute container session block",
+          ),
+          power: 1,
+        },
+      ]);
+    case "session":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(context, "session", "One provider-defined service session"),
+          power: 1,
+        },
+      ]);
+    case "unit":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(context, "unit", "One provider-defined commercial unit"),
+          power: 1,
+        },
+      ]);
     case "image":
       return one("image");
     case "page":
@@ -673,12 +915,19 @@ function normalizedUnit(
       return one("page", "thousand");
     case "second":
       return one("second");
+    case "hour":
+      return one("second", "hour");
     case "minute":
       return one("second", "minute");
     case "frame":
       return one("frame");
     case "video":
-      return one("video");
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(context, "video", "One provider-published video item"),
+          power: 1,
+        },
+      ]);
     case "thousand_search_units": {
       const providerUnit = searchUnit(context);
       return canonicalizeSourceUnit([{ unit: providerUnit, power: 1, scale: "thousand" }]);
@@ -692,7 +941,7 @@ function normalizedUnit(
       ]);
     case "gpu_hour":
       return canonicalizeSourceUnit([
-        { unit: { namespace: "kmodels", value: "gpu" }, power: 1 },
+        { unit: { namespace: "kmodels", value: "accelerator" }, power: 1 },
         { unit: standard("second"), power: 1, scale: "hour" },
       ]);
     case "unit_hour":
@@ -706,6 +955,17 @@ function normalizedUnit(
           power: 1,
         },
       ]);
+    case "unit_week":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "unit_week",
+            "One provider-published capacity or service unit sustained for one week",
+          ),
+          power: 1,
+        },
+      ]);
     case "unit_month":
       return canonicalizeSourceUnit([
         {
@@ -713,6 +973,17 @@ function normalizedUnit(
             context,
             "unit_month",
             "One provider-published capacity or service unit sustained for one month",
+          ),
+          power: 1,
+        },
+      ]);
+    case "unit_year":
+      return canonicalizeSourceUnit([
+        {
+          unit: providerUnit(
+            context,
+            "unit_year",
+            "One provider-published capacity or service unit sustained for one year",
           ),
           power: 1,
         },
@@ -777,7 +1048,6 @@ function rateApplicability(
     "region",
     "endpoint",
     "deployment_scope",
-    "service_tier",
     "speed",
     "inference_geo",
     "route_provider",
@@ -798,6 +1068,17 @@ function rateApplicability(
     const dimension: PriceDimension = { namespace: "kmodels", value: key };
     const atom = providerCategorical(context, dimension, value);
     predicates.push({ kind: "categorical", dimension, values: [atom] });
+  }
+  if (conditions.service_tier !== undefined) {
+    const dimension: PriceDimension =
+      context.providerId === "openai"
+        ? { namespace: "kmodels", value: "served_service_tier" }
+        : { namespace: "kmodels", value: "service_tier" };
+    predicates.push({
+      kind: "categorical",
+      dimension,
+      values: [providerCategorical(context, dimension, conditions.service_tier)],
+    });
   }
   for (const key of ["audio", "voice_control", "video_input", "promotion"] as const) {
     const value = conditions[key];
@@ -886,6 +1167,77 @@ function providerCategorical(context: AdapterContext, dimension: PriceDimension,
     provider_id: context.providerId,
     value: key,
   };
+}
+
+function providerMeter(context: AdapterContext, key: string, definition: string): PriceMeter {
+  addAtom(context, { kind: "meter", key, definition });
+  return { namespace: "provider", provider_id: context.providerId, value: key };
+}
+
+function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMeter | undefined {
+  const standard = (value: Extract<PriceMeter, { namespace: "kmodels" }>["value"]): PriceMeter => ({
+    namespace: "kmodels",
+    value,
+  });
+  switch (rate.meter) {
+    case "cache_storage":
+      return standard("storage");
+    case "rerank_request":
+      return standard("rerank");
+    case "realtime_session_duration":
+      return standard("session_runtime");
+    case "gpu_hour":
+      return standard("compute");
+    case "provisioned_throughput":
+      return standard("provisioned_capacity");
+    case "policy_enforcement":
+      return providerMeter(
+        context,
+        "restriction_surcharge",
+        "One Vercel team-wide model/provider restriction surcharge",
+      );
+    case "zero_data_retention":
+      return providerMeter(
+        context,
+        "team_wide_zdr",
+        "One Vercel team-wide zero-data-retention surcharge",
+      );
+    case "trace_delivery":
+      return providerMeter(
+        context,
+        "trace_delivery",
+        "One Vercel AI Gateway trace delivered to one configured drain",
+      );
+    case "tool_call":
+      // A source operation name does not establish service ownership or a shared meter.
+      // Provider migrations move exact operations into provider-resource books.
+      return;
+    case "batch_inference":
+      return;
+    case "realtime_client_message":
+      return providerMeter(
+        context,
+        "realtime_client_message",
+        "One provider-published realtime client message",
+      );
+    case "cache_read_audio":
+    case "cache_write_audio":
+    case "cache_read_image":
+    case "cache_write_image":
+    case "cache_read_video":
+    case "cache_write_video":
+      return providerMeter(
+        context,
+        rate.meter,
+        `Provider-published ${rate.meter.replaceAll("_", " ")} usage`,
+      );
+    default:
+      return standard(rate.meter);
+  }
+}
+
+function meterKey(meter: PriceMeter): string {
+  return meter.namespace === "kmodels" ? meter.value : `provider:${meter.value}`;
 }
 
 function categoricalLabelIndex(
@@ -986,8 +1338,15 @@ function addScope(context: AdapterContext, sourceRef: string, modelRefs: readonl
 }
 
 function rateMode(rate: SourcePriceFact): "usage" | "capacity" {
+  if (rate.meter === "batch_inference") return "usage";
   return ["gpu_hour", "provisioned_throughput"].includes(rate.meter) ||
-    ["unit_hour", "unit_month", "thousand_tokens_per_minute_hour"].includes(rate.unit)
+    [
+      "unit_hour",
+      "unit_week",
+      "unit_month",
+      "unit_year",
+      "thousand_tokens_per_minute_hour",
+    ].includes(rate.unit)
     ? "capacity"
     : "usage";
 }

@@ -204,24 +204,24 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
       label: "Unknown",
       description: "Available sources do not establish whether pricing applies.",
     };
-  if (view.baseOffers.length === 0)
+  if (view.modelMechanisms.length === 0)
     return {
-      label: "No base offer",
+      label: "No model offer",
       description:
-        "Pricing details exist, but no base offer applies to this model. This is not a service-availability claim.",
+        "Pricing details exist, but no model offer applies to this model. This is not a service-availability claim.",
     };
-  if (view.baseOffers.length > 1)
+  if (view.modelMechanisms.length > 1)
     return {
-      label: `${view.baseOffers.length} offers`,
-      description: "Open model details to compare the available base offers.",
+      label: `${view.modelMechanisms.length} offers`,
+      description: "Open model details to compare the available model offers.",
     };
 
-  const offer = view.baseOffers[0]!;
+  const offer = view.modelMechanisms[0]!;
   const summary = offerStateSummary(offer, modelRef);
   if (summary === "Free")
     return {
       label: "Free",
-      description: "The provider publishes this base offer as free.",
+      description: "The provider publishes this model offer as free.",
     };
   if (summary === "Custom quote")
     return {
@@ -308,9 +308,16 @@ function websitePricingDetail(
     return snapshot === undefined
       ? undefined
       : websitePricingDetailSchema.parse({ snapshot, offers: [] });
-  const offers = [...view.baseOffers, ...view.addOns].map((offer) =>
-    websiteOffer(view.books, offer, modelRef, labels),
-  );
+  const offers = [
+    ...view.modelMechanisms.map((offer) => ({ offer, group: "model_mechanism" as const })),
+    ...view.optionalServices.map((offer) => ({ offer, group: "optional_service" as const })),
+    ...view.automaticComponents.map((offer) => ({
+      offer,
+      group: "automatic_component" as const,
+    })),
+    ...view.plansAndCapacity.map((offer) => ({ offer, group: "plan_capacity" as const })),
+    ...view.standaloneOffers.map((offer) => ({ offer, group: "standalone" as const })),
+  ].map(({ offer, group }) => websiteOffer(view.books, offer, group, modelRef, labels));
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
@@ -335,6 +342,7 @@ function refreshFailureMessage(code: PricingRefreshFailureCode): string {
 function websiteOffer(
   books: PricingBook[],
   offer: PricingOffer,
+  group: WebsitePricingOffer["group"],
   modelRef: string,
   labels: CategoricalLabelIndex,
 ): WebsitePricingOffer {
@@ -347,6 +355,7 @@ function websiteOffer(
   }));
   const rates: WebsitePricingOffer["rates"] = [];
   const allowances: WebsitePricingOffer["allowances"] = [];
+  const contributions: WebsitePricingOffer["contributions"] = [];
   const unnormalized: WebsitePricingOffer["unnormalized"] = [];
 
   for (const term of offer.terms) {
@@ -376,6 +385,16 @@ function websiteOffer(
           ...(variant.validity === undefined ? {} : { validity: variant.validity }),
         });
       });
+    } else if (term.kind === "contribution") {
+      term.variants.forEach((variant, index) => {
+        contributions.push({
+          key: `${term.id}:contribution:${index}`,
+          label: formatSentenceCase(term.term_key.replaceAll("-", "_")),
+          target: contributionTarget(books, variant.target_rate_refs),
+          applicability: variant.applicability,
+          ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+        });
+      });
     }
 
     const variants = term.kind === "raw" ? term.variants : term.raw_variants;
@@ -400,13 +419,14 @@ function websiteOffer(
   return {
     id: offer.id,
     title: offer.name ?? formatSentenceCase(offer.offer_key),
-    role: offer.role,
-    ...(offer.role === "add_on" ? { compatibility: compatibilityLabel(books, offer) } : {}),
+    group,
+    ...(offer.relations.length === 0 ? {} : { composition: relationLabel(books, offer) }),
     state_summary: offerStateSummary(offer, modelRef),
     selectors: pricingSelectors(offer, labels),
     states,
     rates,
     allowances,
+    contributions,
     unnormalized,
   };
 }
@@ -715,7 +735,7 @@ function offerStateSummary(offer: PricingOffer, modelRef: string): string {
 }
 
 function allowanceTarget(target: PriceAllowanceTarget, offer: PricingOffer): string {
-  if (target.kind === "offer_credit") return "Offer credit";
+  if (target.kind === "offers") return `${target.offer_refs.length} offer target`;
   const labels = target.term_refs.map((ref) => {
     const term = offer.terms.find(({ id }) => id === ref);
     return term?.kind === "rate" ? meterLabel(term.meter) : "Rate term";
@@ -723,26 +743,44 @@ function allowanceTarget(target: PriceAllowanceTarget, offer: PricingOffer): str
   return `Offsets ${[...new Set(labels)].join(", ")}`;
 }
 
-function compatibilityLabel(
-  books: PricingBook[],
-  offer: Extract<PricingOffer, { role: "add_on" }>,
-): string {
-  if (offer.compatibility.kind === "all_base_offers_in_book")
-    return "Compatible with every base offer in this price book";
-  if (offer.compatibility.kind === "not_normalized") return "Compatibility is not normalized";
-  const names = new Map(
-    books.flatMap(({ offers }) =>
-      offers
-        .filter(({ role }) => role === "base")
-        .map((candidate) => [
-          candidate.id,
-          candidate.name ?? formatSentenceCase(candidate.offer_key),
-        ]),
+function contributionTarget(books: PricingBook[], termRefs: string[]): string {
+  const labels = books.flatMap(({ offers }) =>
+    offers.flatMap((offer) =>
+      offer.terms.flatMap((term) =>
+        term.kind === "rate" && termRefs.includes(term.id)
+          ? [`${offer.name ?? formatSentenceCase(offer.offer_key)} · ${meterLabel(term.meter)}`]
+          : [],
+      ),
     ),
   );
-  return `Compatible with ${offer.compatibility.offer_refs
-    .map((ref) => names.get(ref) ?? "Referenced base offer")
-    .join(", ")}`;
+  return `Priced by ${[...new Set(labels)].join(", ") || "referenced rate"}`;
+}
+
+function relationLabel(books: PricingBook[], offer: PricingOffer): string {
+  const offerNames = new Map(
+    books.flatMap(({ offers }) =>
+      offers.map((candidate) => [
+        candidate.id,
+        candidate.name ?? formatSentenceCase(candidate.offer_key),
+      ]),
+    ),
+  );
+  return offer.relations
+    .map((relation) => {
+      const target = relation.target.offer_refs.map(
+        (ref) => offerNames.get(ref) ?? "Referenced offer",
+      );
+      const prefix =
+        relation.kind === "requires"
+          ? "Requires one of"
+          : relation.kind === "incurs"
+            ? "Automatically incurs"
+            : relation.kind === "compatible_with"
+              ? "Compatible with"
+              : "Mutually exclusive with";
+      return `${prefix} ${target.join(", ")}`;
+    })
+    .join("; ");
 }
 
 function stateLabel(state: PricingOffer["states"][number]["state"]): string {
@@ -751,6 +789,10 @@ function stateLabel(state: PricingOffer["states"][number]["state"]): string {
       return "Metered pricing";
     case "free":
       return "Free";
+    case "included":
+      return "Included";
+    case "externally_billed":
+      return "Externally billed";
     case "custom_quote":
       return "Custom quote";
     case "not_published":

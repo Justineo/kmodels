@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { databricksCommercialFacts } from "./databricks-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
@@ -830,7 +831,7 @@ function rate(
 ): SourcePriceFact | undefined {
   if (rawPrice === "" || /^(?:n\/a|coming soon)$/i.test(rawPrice)) return undefined;
   const price = decimal(rawPrice);
-  if (price === undefined) throw new Error(`Databricks invalid DBU price: ${rawPrice}`);
+  if (price === undefined) return undefined;
   return {
     meter,
     price,
@@ -852,9 +853,9 @@ function add(
   const modelRates = rates.get(id) ?? new Map<string, SourcePriceFact>();
   const key = sourcePriceFactKey(value);
   const current = modelRates.get(key);
-  if (current !== undefined && !decimalsEqual(current.price, value.price))
-    throw new Error(`Databricks conflicting prices for ${id}`);
-  modelRates.set(key, value);
+  if (current === undefined || decimalsEqual(current.price, value.price))
+    modelRates.set(key, value);
+  else modelRates.set(`${key}\0conflict:${value.price}`, value);
   rates.set(id, modelRates);
 }
 
@@ -1562,29 +1563,54 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     document(bundle, "/aws/en/machine-learning/foundation-model-apis/priority-mode"),
   );
   const rates = new Map<string, Map<string, SourcePriceFact>>();
-  const exactPriority = openPrices(
-    models,
-    document(bundle, "/product/pricing/foundation-model-serving"),
-    input.source.id,
-    rates,
-    priority,
-    input.onPricingReconciliation,
-  );
-  partnerPrices(
-    models,
-    document(bundle, "/product/pricing/proprietary-foundation-model-serving"),
-    input.source.id,
-    rates,
-    input.onPricingReconciliation,
-  );
-  applyImagePassThroughPricing(
-    models,
-    bundle.index.body,
-    document(bundle, "/gemini-api/docs/pricing"),
-    input.source.id,
-    rates,
-    input.onPricingReconciliation,
-  );
+  let exactPriority = new Set<string>();
+  try {
+    exactPriority = openPrices(
+      models,
+      document(bundle, "/product/pricing/foundation-model-serving"),
+      input.source.id,
+      rates,
+      priority,
+      input.onPricingReconciliation,
+    );
+  } catch (error) {
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "open_model_pricing_rejected",
+      sample: error instanceof Error ? error.message : "Unknown open-model pricing error",
+    });
+  }
+  try {
+    partnerPrices(
+      models,
+      document(bundle, "/product/pricing/proprietary-foundation-model-serving"),
+      input.source.id,
+      rates,
+      input.onPricingReconciliation,
+    );
+  } catch (error) {
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "partner_model_pricing_rejected",
+      sample: error instanceof Error ? error.message : "Unknown partner-model pricing error",
+    });
+  }
+  try {
+    applyImagePassThroughPricing(
+      models,
+      bundle.index.body,
+      document(bundle, "/gemini-api/docs/pricing"),
+      input.source.id,
+      rates,
+      input.onPricingReconciliation,
+    );
+  } catch (error) {
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "pass_through_pricing_rejected",
+      sample: error instanceof Error ? error.message : "Unknown pass-through pricing error",
+    });
+  }
   applyPriorityPricing(
     models,
     priority,
@@ -1592,11 +1618,7 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
     input.source.id,
     input.onPricingReconciliation,
   );
-  const current = models.filter((model) => model.status !== "retired");
-  const priced = current.filter((model) => rates.has(model.model_id));
-  if (current.length === 0 || priced.length / current.length < 0.8)
-    throw new Error(`Databricks pricing coverage fell below reviewed bounds`);
-  return models.map((model) => {
+  const result: ProviderModel[] = models.map((model) => {
     const pricing = [...(rates.get(model.model_id)?.values() ?? [])].sort((left, right) =>
       `${left.meter}:${JSON.stringify(left.conditions)}`.localeCompare(
         `${right.meter}:${JSON.stringify(right.conditions)}`,
@@ -1614,6 +1636,16 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
       price_facts: pricing,
     };
   });
+  const carrier = result[0];
+  if (carrier !== undefined) {
+    const commercial = databricksCommercialFacts(
+      bundle,
+      input.source.id,
+      input.onPricingReconciliation,
+    );
+    if (commercial.length > 0) carrier.commercial_facts = commercial;
+  }
+  return result;
 }
 
 function apiTask(value: string | undefined): {

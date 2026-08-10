@@ -314,6 +314,24 @@ export function zodContractEvidence(
   );
 }
 
+export function contractExtensionEvidence(paths: readonly string[]): SourceContractEvidence {
+  const unique = [...new Set(paths)].sort(compareUtf8);
+  if (unique.length === 0) throw new Error("Contract extension evidence requires a path");
+  return aggregateEvidence(
+    unique.map((path, itemIndex) => ({
+      diagnostic: {
+        kind: "unknown_value",
+        path: path.startsWith("/") ? path.slice(0, 512) : `/${path.slice(0, 511)}`,
+        expected: "reviewed source contract",
+        observed: "string",
+      },
+      itemIndex,
+    })),
+    unique.length,
+    "accept_with_signal",
+  );
+}
+
 function modelId(
   item: unknown,
   selector: ItemRecognitionOptions<unknown>["modelId"],

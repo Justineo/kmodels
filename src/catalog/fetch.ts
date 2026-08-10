@@ -1604,18 +1604,20 @@ interface DocumentEntry {
   url: URL;
   format: SourceManifest["format"];
   maxResponseBytes: number;
+  optional?: boolean;
 }
 
 async function fetchDocumentEntry(
   source: SourceManifest,
   entry: DocumentEntry,
-): Promise<FetchedDocument> {
+): Promise<FetchedDocument | undefined> {
   try {
     const payload = await fetchPayload(
       linkedSource(source, entry.key, entry.url, entry.maxResponseBytes, entry.format),
     );
     return { key: entry.key, url: entry.url.href, payload };
   } catch (error) {
+    if (entry.optional === true) return;
     throw new Error(
       `Linked document ${entry.key} failed: ${
         error instanceof Error ? error.message : "unknown fetch failure"
@@ -1636,14 +1638,16 @@ async function fetchConfiguredDocuments(
     crawl.maxDocuments !== 0
   )
     throw new Error(`${label} documentation bundle is not reviewed`);
-  return mapConcurrent(crawl.documents ?? [], crawl.concurrency, async (document) => {
-    const key = `${source.id}/${document.id}`;
-    const url = checkedUrl(document.url, source);
-    const payload = await fetchPayload(
-      requestSource(source, key, url, document.format ?? source.format, document.maxResponseBytes),
-    );
-    return { key, url: url.href, payload };
-  });
+  const documents = await mapConcurrent(crawl.documents ?? [], crawl.concurrency, (document) =>
+    fetchDocumentEntry(source, {
+      key: `${source.id}/${document.id}`,
+      url: checkedUrl(document.url, source),
+      format: document.format ?? source.format,
+      maxResponseBytes: document.maxResponseBytes,
+      ...(document.optional === undefined ? {} : { optional: document.optional }),
+    }),
+  );
+  return documents.filter((document): document is FetchedDocument => document !== undefined);
 }
 
 async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
@@ -2084,6 +2088,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       url,
       format: document.format ?? source.format,
       maxResponseBytes: document.maxResponseBytes,
+      ...(document.optional === undefined ? {} : { optional: document.optional }),
     };
   });
   if (new Set(configured.map(({ key }) => key)).size !== configured.length)
@@ -2159,7 +2164,9 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   const discoveredDocuments = await mapConcurrent(discovered, crawl.concurrency, (entry) =>
     fetchDocumentEntry(source, entry),
   );
-  const documents = [...discoveredDocuments, ...configuredDocuments];
+  const documents = [...discoveredDocuments, ...configuredDocuments].filter(
+    (document): document is FetchedDocument => document !== undefined,
+  );
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
     documents: [...nestedIndexes, ...documents].map((document) => ({

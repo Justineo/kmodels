@@ -28,25 +28,21 @@ export interface CommercialPricingBook {
   provider_id: string;
   book_key: string;
   scope: PricingCatalog["books"][number]["scope"];
+  resource_edges: Array<
+    Omit<PricingCatalog["books"][number]["resource_edges"][number], "observations">
+  >;
   offers: CommercialPricingOffer[];
 }
 
-export type CommercialPricingOffer =
-  | (CommercialPricingOfferBase & { role: "base" })
-  | (CommercialPricingOfferBase & {
-      role: "add_on";
-      compatibility:
-        | { kind: "all_base_offers_in_book" }
-        | { kind: "base_offers"; offer_refs: string[] }
-        | { kind: "not_normalized"; raw_facts: RawPriceFact[] };
-    });
-
-interface CommercialPricingOfferBase {
+export interface CommercialPricingOffer {
   id: string;
   offer_key: string;
   billing_mode: PricingOffer["billing_mode"];
   states: Array<Omit<PricingOffer["states"][number], "observations">>;
+  enrollment: Array<Omit<PricingOffer["enrollment"][number], "observations">>;
   terms: CommercialPricingTerm[];
+  relations: Array<Omit<PricingOffer["relations"][number], "observations">>;
+  settlement: Array<Omit<PricingOffer["settlement"][number], "observations">>;
 }
 
 export type CommercialPricingTerm =
@@ -56,7 +52,39 @@ export type CommercialPricingTerm =
       kind: "rate";
       meter: Extract<PricingTerm, { kind: "rate" }>["meter"];
       variants: Array<
-        Omit<Extract<PricingTerm, { kind: "rate" }>["variants"][number], "observations">
+        Omit<
+          Extract<PricingTerm, { kind: "rate" }>["variants"][number],
+          "observations" | "charge_binding"
+        > & {
+          charge_binding?: Omit<
+            NonNullable<
+              Extract<PricingTerm, { kind: "rate" }>["variants"][number]["charge_binding"]
+            >,
+            "observations"
+          >;
+        }
+      >;
+      raw_variants: CommercialRawPricingVariant[];
+    }
+  | {
+      id: string;
+      term_key: string;
+      kind: "contribution";
+      variants: Array<
+        Omit<
+          Extract<PricingTerm, { kind: "contribution" }>["variants"][number],
+          "observations" | "charge_bindings"
+        > & {
+          charge_bindings: Array<
+            Omit<
+              Extract<
+                PricingTerm,
+                { kind: "contribution" }
+              >["variants"][number]["charge_bindings"][number],
+              "observations"
+            >
+          >;
+        }
       >;
       raw_variants: CommercialRawPricingVariant[];
     }
@@ -89,11 +117,15 @@ export function commercialPricingProjection(data: PricingCatalog): CommercialPri
   const usedByProvider = new Map<string, UsedAtoms>();
   const books = data.books.map((book) => {
     const used = usedAtoms(usedByProvider, book.provider_id);
+    if (book.scope.kind === "provider_resource")
+      collectAtom(used, "resource_kind", book.scope.resource_kind);
+    book.resource_edges.forEach(({ applicability }) => collectApplicability(used, applicability));
     return {
       id: book.id,
       provider_id: book.provider_id,
       book_key: book.book_key,
       scope: book.scope,
+      resource_edges: book.resource_edges.map(({ observations: _, ...edge }) => edge),
       offers: book.offers.map((offer) => commercialOffer(offer, used)),
     };
   });
@@ -127,28 +159,23 @@ export function commercialPricingProjection(data: PricingCatalog): CommercialPri
 function commercialOffer(offer: PricingOffer, used: UsedAtoms): CommercialPricingOffer {
   collectAtom(used, "billing_mode", offer.billing_mode);
   offer.states.forEach(({ applicability }) => collectApplicability(used, applicability));
+  offer.enrollment.forEach(({ applicability }) => collectApplicability(used, applicability));
+  offer.relations.forEach(({ applicability }) => collectApplicability(used, applicability));
+  offer.settlement.forEach(({ applicability }) => collectApplicability(used, applicability));
   const base = {
     id: offer.id,
     offer_key: offer.offer_key,
     billing_mode: offer.billing_mode,
     states: offer.states.map(({ observations: _, ...state }) => state),
+    enrollment: offer.enrollment.map(({ observations: _, ...variant }) => variant),
     terms: offer.terms.flatMap((term) => {
       const projected = commercialTerm(term, used);
       return projected === undefined ? [] : [projected];
     }),
+    relations: offer.relations.map(({ observations: _, ...relation }) => relation),
+    settlement: offer.settlement.map(({ observations: _, ...variant }) => variant),
   };
-  if (offer.role === "base") return { ...base, role: "base" };
-  return {
-    ...base,
-    role: "add_on",
-    compatibility:
-      offer.compatibility.kind === "not_normalized"
-        ? {
-            kind: "not_normalized",
-            raw_facts: rawFacts(offer.compatibility_observations.map(({ raw }) => raw)),
-          }
-        : offer.compatibility,
-  };
+  return base;
 }
 
 function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTerm | undefined {
@@ -156,6 +183,13 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
     collectAtom(used, "meter", term.meter);
     term.variants.forEach((variant) => {
       collectApplicability(used, variant.applicability);
+      if (variant.charge_binding !== undefined)
+        collectAtom(used, "usage_signal", variant.charge_binding.signal);
+      if (
+        variant.charge_binding !== undefined &&
+        typeof variant.charge_binding.aggregation !== "string"
+      )
+        collectAtom(used, "aggregation", variant.charge_binding.aggregation);
       variant.price.per.factors.forEach(({ unit }) => collectAtom(used, "unit", unit));
       if (variant.price.denomination.kind === "provider_credit")
         collectProviderKey(
@@ -171,7 +205,16 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
       term_key: term.term_key,
       kind: "rate",
       meter: term.meter,
-      variants: term.variants.map(({ observations: _, ...variant }) => variant),
+      variants: term.variants.map(({ observations: _, charge_binding, ...variant }) => ({
+        ...variant,
+        ...(charge_binding === undefined
+          ? {}
+          : {
+              charge_binding: (({ observations: _bindingObservations, ...binding }) => binding)(
+                charge_binding,
+              ),
+            }),
+      })),
       raw_variants: term.raw_variants.map(commercialRaw),
     };
   }
@@ -179,11 +222,14 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
     term.variants.forEach((variant) => {
       collectApplicability(used, variant.applicability);
       collectAtom(used, "allowance_reset", variant.reset);
-      if (variant.benefit.kind === "usage")
+      if (variant.benefit.kind === "quantity")
         variant.benefit.quantity.unit.factors.forEach(({ unit }) =>
           collectAtom(used, "unit", unit),
         );
-      else if (variant.benefit.denomination.kind === "provider_credit")
+      else if (
+        variant.benefit.kind === "credit" &&
+        variant.benefit.denomination.kind === "provider_credit"
+      )
         collectProviderKey(
           used,
           "credit_denomination",
@@ -197,6 +243,29 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
       term_key: term.term_key,
       kind: "allowance",
       variants: term.variants.map(({ observations: _, ...variant }) => variant),
+      raw_variants: term.raw_variants.map(commercialRaw),
+    };
+  }
+  if (term.kind === "contribution") {
+    term.variants.forEach((variant) => {
+      collectApplicability(used, variant.applicability);
+      variant.charge_bindings.forEach((binding) => {
+        collectAtom(used, "usage_signal", binding.signal);
+        if (typeof binding.aggregation !== "string")
+          collectAtom(used, "aggregation", binding.aggregation);
+      });
+    });
+    term.raw_variants.forEach((variant) => collectRawScope(used, variant));
+    return {
+      id: term.id,
+      term_key: term.term_key,
+      kind: "contribution",
+      variants: term.variants.map(({ observations: _, charge_bindings, ...variant }) => ({
+        ...variant,
+        charge_bindings: charge_bindings.map(
+          ({ observations: _observations, ...binding }) => binding,
+        ),
+      })),
       raw_variants: term.raw_variants.map(commercialRaw),
     };
   }

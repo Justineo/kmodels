@@ -264,6 +264,13 @@ const websiteAllowanceRowSchema = z.strictObject({
   ...scopeFields,
 });
 
+const websiteContributionRowSchema = z.strictObject({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  target: z.string().min(1),
+  ...scopeFields,
+});
+
 const websiteUnnormalizedRowSchema = z.strictObject({
   key: z.string().min(1),
   label: z.string().min(1),
@@ -276,13 +283,20 @@ const websiteUnnormalizedRowSchema = z.strictObject({
 const websitePricingOfferSchema = z.strictObject({
   id: hash,
   title: z.string().min(1),
-  role: z.enum(["base", "add_on"]),
-  compatibility: z.string().min(1).optional(),
+  group: z.enum([
+    "model_mechanism",
+    "optional_service",
+    "automatic_component",
+    "plan_capacity",
+    "standalone",
+  ]),
+  composition: z.string().min(1).optional(),
   state_summary: z.string().min(1),
   selectors: z.array(websitePricingSelectorSchema),
   states: z.array(websiteStateRowSchema),
   rates: z.array(websiteRateRowSchema),
   allowances: z.array(websiteAllowanceRowSchema),
+  contributions: z.array(websiteContributionRowSchema),
   unnormalized: z.array(websiteUnnormalizedRowSchema),
 });
 

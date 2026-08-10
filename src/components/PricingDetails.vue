@@ -32,8 +32,9 @@ const props = defineProps<{
 }>();
 
 interface OfferGroup {
-  key: "base" | "add_on";
+  key: Exclude<WebsitePricingOffer["group"], "model_mechanism">;
   title: string;
+  selection: "multiple" | "informational";
   offers: WebsitePricingOffer[];
 }
 
@@ -44,22 +45,29 @@ interface ScopeCopy {
 
 const inputs = ref<Record<string, string>>({});
 const selectedOfferId = ref("");
+const selectedMechanismId = ref("");
+const selectedOptionalIds = ref<string[]>([]);
 const offers = computed(() => props.detail?.offers ?? []);
-const baseOffers = computed(() => offers.value.filter(({ role }) => role === "base"));
-const addOns = computed(() => offers.value.filter(({ role }) => role === "add_on"));
-const soleBaseOffer = computed(() =>
-  baseOffers.value.length === 1 ? baseOffers.value[0] : undefined,
+const modelMechanisms = computed(() =>
+  offers.value.filter(({ group }) => group === "model_mechanism"),
+);
+const soleModelMechanism = computed(() =>
+  modelMechanisms.value.length === 1 ? modelMechanisms.value[0] : undefined,
 );
 const offerGroups = computed<OfferGroup[]>(() => {
   const groups: OfferGroup[] = [];
-  if (baseOffers.value.length > 1)
-    groups.push({ key: "base", title: "Base offers", offers: baseOffers.value });
-  if (addOns.value.length > 0)
-    groups.push({ key: "add_on", title: "Add-ons", offers: addOns.value });
+  const add = (key: OfferGroup["key"], title: string, selection: OfferGroup["selection"]) => {
+    const matches = offers.value.filter(({ group }) => group === key);
+    if (matches.length > 0) groups.push({ key, title, selection, offers: matches });
+  };
+  add("optional_service", "Optional services", "multiple");
+  add("automatic_component", "Automatic components", "informational");
+  add("plan_capacity", "Plans and capacity", "informational");
+  add("standalone", "Related standalone offers", "informational");
   return groups;
 });
 const activeOffer = computed(
-  () => offers.value.find(({ id }) => id === selectedOfferId.value) ?? soleBaseOffer.value,
+  () => offers.value.find(({ id }) => id === selectedOfferId.value) ?? soleModelMechanism.value,
 );
 const selectors = computed(() => activeOffer.value?.selectors ?? []);
 type CategoricalSelector = Extract<WebsitePricingSelector, { kind: "categorical" }>;
@@ -78,6 +86,7 @@ const hasSelections = computed(() => Object.keys(inputs.value).length > 0);
 const visibleStates = computed(() => matchingRows(activeOffer.value?.states ?? []));
 const visibleRates = computed(() => matchingRows(activeOffer.value?.rates ?? []));
 const visibleAllowances = computed(() => matchingRows(activeOffer.value?.allowances ?? []));
+const visibleContributions = computed(() => matchingRows(activeOffer.value?.contributions ?? []));
 const unresolvedRateDimensions = computed(() => {
   const keys = new Set(
     (activeOffer.value?.rates ?? []).flatMap(({ applicability }) => {
@@ -120,12 +129,17 @@ watch(
   () => {
     inputs.value = {};
     selectedOfferId.value = "";
+    selectedMechanismId.value = "";
+    selectedOptionalIds.value = [];
   },
 );
 
 watch(offers, (current) => {
-  if (selectedOfferId.value !== "" && !current.some(({ id }) => id === selectedOfferId.value))
-    selectedOfferId.value = "";
+  const ids = new Set(current.map(({ id }) => id));
+  if (selectedOfferId.value !== "" && !ids.has(selectedOfferId.value)) selectedOfferId.value = "";
+  if (selectedMechanismId.value !== "" && !ids.has(selectedMechanismId.value))
+    selectedMechanismId.value = "";
+  selectedOptionalIds.value = selectedOptionalIds.value.filter((id) => ids.has(id));
 });
 
 function applies(applicability: WebsitePriceApplicability): boolean {
@@ -208,10 +222,25 @@ function validityNote(validity: WebsitePublishedValidity): string {
   return `Validity-qualified; currentness not asserted (${[from, until].filter(Boolean).join(" ")})`;
 }
 
-function selectOffer(offerId: string): void {
+function focusOffer(offerId: string): void {
   if (selectedOfferId.value === offerId) return;
   selectedOfferId.value = offerId;
   inputs.value = {};
+}
+
+function selectMechanism(offerId: string): void {
+  selectedMechanismId.value = offerId;
+  focusOffer(offerId);
+}
+
+function toggleOptional(offerId: string, event: Event): void {
+  const selected = event.target instanceof HTMLInputElement && event.target.checked;
+  selectedOptionalIds.value = selected
+    ? [...new Set([...selectedOptionalIds.value, offerId])]
+    : selectedOptionalIds.value.filter((id) => id !== offerId);
+  if (selected) focusOffer(offerId);
+  else if (selectedOfferId.value === offerId)
+    selectedOfferId.value = selectedMechanismId.value || soleModelMechanism.value?.id || "";
 }
 
 function clearSelections(): void {
@@ -401,38 +430,38 @@ function formatSnapshotAt(value: string): string {
 
     <template v-else-if="detail">
       <section
-        v-if="soleBaseOffer"
+        v-if="soleModelMechanism"
         class="pricing-offer-group"
-        aria-labelledby="base-offer-heading"
+        aria-labelledby="model-mechanism-heading"
       >
         <header class="pricing-subheading">
-          <h4 id="base-offer-heading">Base offer</h4>
+          <h4 id="model-mechanism-heading">Model mechanism</h4>
           <button
-            v-if="activeOffer?.id !== soleBaseOffer.id"
+            v-if="activeOffer?.id !== soleModelMechanism.id"
             type="button"
-            @click="selectOffer(soleBaseOffer.id)"
+            @click="focusOffer(soleModelMechanism.id)"
           >
-            View base offer
+            View mechanism
           </button>
         </header>
         <div class="offer-summary">
-          <span class="offer-title">{{ soleBaseOffer.title }}</span>
-          <span v-if="offerState(soleBaseOffer)" class="offer-state">
-            {{ offerState(soleBaseOffer) }}
+          <span class="offer-title">{{ soleModelMechanism.title }}</span>
+          <span v-if="offerState(soleModelMechanism)" class="offer-state">
+            {{ offerState(soleModelMechanism) }}
           </span>
         </div>
       </section>
 
-      <fieldset v-for="group in offerGroups" :key="group.key" class="pricing-offer-group">
-        <legend>{{ group.title }}</legend>
+      <fieldset v-if="modelMechanisms.length > 1" class="pricing-offer-group">
+        <legend>Model mechanisms</legend>
         <div class="offer-list">
-          <label v-for="offer in group.offers" :key="offer.id" class="offer-choice">
+          <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
             <input
               type="radio"
-              :name="`pricing-offer-${model.uid}-${group.key}`"
+              :name="`pricing-mechanism-${model.uid}`"
               :value="offer.id"
-              :checked="activeOffer?.id === offer.id"
-              @change="selectOffer(offer.id)"
+              :checked="selectedMechanismId === offer.id"
+              @change="selectMechanism(offer.id)"
             />
             <span>
               <span class="offer-title">{{ offer.title }}</span>
@@ -441,6 +470,43 @@ function formatSnapshotAt(value: string): string {
               </small>
             </span>
           </label>
+        </div>
+      </fieldset>
+
+      <fieldset v-for="group in offerGroups" :key="group.key" class="pricing-offer-group">
+        <legend>{{ group.title }}</legend>
+        <div v-if="group.selection === 'multiple'" class="offer-list">
+          <label v-for="offer in group.offers" :key="offer.id" class="offer-choice">
+            <input
+              type="checkbox"
+              :value="offer.id"
+              :checked="selectedOptionalIds.includes(offer.id)"
+              @change="toggleOptional(offer.id, $event)"
+            />
+            <span>
+              <span class="offer-title">{{ offer.title }}</span>
+              <small v-if="offerState(offer)" class="offer-state">
+                {{ offerState(offer) }}
+              </small>
+            </span>
+          </label>
+        </div>
+        <div v-else class="offer-list">
+          <button
+            v-for="offer in group.offers"
+            :key="offer.id"
+            type="button"
+            class="offer-choice offer-button"
+            :aria-pressed="activeOffer?.id === offer.id"
+            @click="focusOffer(offer.id)"
+          >
+            <span>
+              <span class="offer-title">{{ offer.title }}</span>
+              <small v-if="offerState(offer)" class="offer-state">
+                {{ offerState(offer) }}
+              </small>
+            </span>
+          </button>
         </div>
       </fieldset>
 
@@ -527,8 +593,8 @@ function formatSnapshotAt(value: string): string {
       </section>
 
       <article v-if="activeOffer" :key="activeOffer.id" class="pricing-offer-view">
-        <p v-if="activeOffer.compatibility" class="offer-compatibility">
-          {{ activeOffer.compatibility }}
+        <p v-if="activeOffer.composition" class="offer-composition">
+          {{ activeOffer.composition }}
         </p>
 
         <div v-if="incomplete" class="pricing-warning" role="status">
@@ -603,6 +669,21 @@ function formatSnapshotAt(value: string): string {
                 <span class="allowance-value">{{ allowance.value }}</span>
                 <small>{{ allowance.target }} · {{ allowance.reset }}</small>
                 <small v-if="allowance.qualifier">{{ allowance.qualifier }}</small>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="visibleContributions.length > 0" class="offer-section">
+          <header class="pricing-subheading">
+            <h5>Additional usage</h5>
+          </header>
+          <div class="allowance-list">
+            <div v-for="contribution in visibleContributions" :key="contribution.key">
+              <div>
+                <span class="allowance-value">{{ contribution.label }}</span>
+                <small>{{ contribution.target }}</small>
+                <small v-if="contribution.qualifier">{{ contribution.qualifier }}</small>
               </div>
             </div>
           </div>
@@ -765,6 +846,17 @@ function formatSnapshotAt(value: string): string {
   background: var(--color-accent-soft);
 }
 
+.offer-button {
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.offer-button[aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
 .offer-choice:has(input:focus-visible) {
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: var(--stroke-focus);
@@ -885,7 +977,7 @@ function formatSnapshotAt(value: string): string {
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.offer-compatibility,
+.offer-composition,
 .context-prompt {
   margin: 0;
   color: var(--color-text-muted);
@@ -893,12 +985,12 @@ function formatSnapshotAt(value: string): string {
   line-height: var(--line-height-body);
 }
 
-.offer-compatibility {
+.offer-composition {
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
-.offer-compatibility + .pricing-warning {
+.offer-composition + .pricing-warning {
   margin-top: var(--space-3);
 }
 

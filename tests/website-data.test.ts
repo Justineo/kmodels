@@ -20,7 +20,7 @@ const websiteDataBudgets = {
 
 const auditFields = new Set([
   "atom_contract_hash",
-  "compatibility_observations",
+  "relation_observations",
   "core_catalog_version",
   "core_data_sha256",
   "core_generated_at",

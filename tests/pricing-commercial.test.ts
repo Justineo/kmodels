@@ -11,7 +11,7 @@ import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 const providerId = "test";
 const bookId = pricingBookId(providerId, "public");
 const offerId = pricingOfferId(bookId, "usage");
-const termId = pricingTermId(offerId, "input");
+const termId = pricingTermId(offerId, "rate", "input");
 
 function catalog(raw = false): PricingCatalog {
   return {
@@ -54,12 +54,12 @@ function catalog(raw = false): PricingCatalog {
             raw: { label: "Pricing" },
           },
         ],
+        resource_edges: [],
         source_refs: ["pricing"],
         offers: [
           {
             id: offerId,
             offer_key: "usage",
-            role: "base",
             billing_mode: { namespace: "kmodels", value: "usage" },
             states: [
               {
@@ -75,6 +75,7 @@ function catalog(raw = false): PricingCatalog {
                 ],
               },
             ],
+            enrollment: [],
             terms: [
               {
                 id: termId,
@@ -123,6 +124,8 @@ function catalog(raw = false): PricingCatalog {
                 source_refs: ["pricing"],
               },
             ],
+            relations: [],
+            settlement: [],
             source_refs: ["pricing"],
           },
         ],
@@ -168,7 +171,7 @@ describe("pricing commercial projection", () => {
   it("omits informational-only raw terms", () => {
     const value = catalog();
     value.books[0]!.offers[0]!.terms.push({
-      id: pricingTermId(offerId, "note"),
+      id: pricingTermId(offerId, "raw", "note"),
       term_key: "note",
       kind: "raw",
       variants: [

@@ -23,6 +23,7 @@ import {
   type PriceAllowanceTerm,
   type PriceApplicability,
   type PriceCondition,
+  type PriceContributionTerm,
   type PriceDimension,
   type PriceRateTerm,
   type PricingBook,
@@ -35,6 +36,7 @@ import {
   type RawPriceFact,
   type RawPricingVariant,
   type UnitExpression,
+  type UsageSignal,
 } from "./pricing-schema.ts";
 import { publishedValiditiesOverlap, publishedValidityIsCoherent } from "./pricing-time.ts";
 import type { Catalog } from "./schema.ts";
@@ -60,6 +62,7 @@ interface ProviderValidation {
   relationPairs: Array<readonly [PriceApplicability, PriceApplicability]>;
   dimensions: Map<string, { kind: PriceCondition["kind"]; unit?: string }>;
   offers: Map<string, PricingOffer>;
+  books: Map<string, PricingBook>;
   terms: Map<string, { term: PricingTerm; offer: PricingOffer }>;
   counts: { offers: number; terms: number; variants: number; observations: number };
 }
@@ -205,6 +208,7 @@ function createProviderValidation(
     relationPairs: [],
     dimensions: new Map(),
     offers: new Map(),
+    books: new Map(),
     terms: new Map(),
     counts: { offers: 0, terms: 0, variants: 0, observations: 0 },
   };
@@ -254,6 +258,8 @@ function validateBook(book: PricingBook, context: ProviderValidation, ids: Set<s
   if (book.name !== undefined) assertReviewedText(book.name, `${path} name`);
   if (book.id !== pricingBookId(book.provider_id, book.book_key)) fail(path, "ID recipe mismatch");
   addUniqueId(ids, book.id, path);
+  if (context.books.has(book.id)) fail(path, "duplicate book ID");
+  context.books.set(book.id, book);
   assertSourceRefs(book.source_refs, context, path);
   assertSortedUnique(book.offers, ({ id }) => [id], `${path} offers`);
   assertSortedUnique(book.scope.model_refs, (modelRef) => [modelRef], `${path} model refs`);
@@ -264,8 +270,10 @@ function validateBook(book: PricingBook, context: ProviderValidation, ids: Set<s
       fail(path, "book references a model owned by another provider");
     context.modelRefs.add(modelRef);
   }
-  if (book.scope.kind === "provider_service")
-    assertNormalizedSemantic(book.scope.service_key, `${path} service key`);
+  if (book.scope.kind === "provider_resource") {
+    assertNormalizedSemantic(book.scope.resource_key, `${path} resource key`);
+    validateOwnedAtom("resource_kind", book.scope.resource_kind, undefined, context, path);
+  }
 
   assertSortedUniqueBy(
     book.scope_observations,
@@ -286,9 +294,11 @@ function validateBook(book: PricingBook, context: ProviderValidation, ids: Set<s
     );
     if (
       observation.establishes.kind !== book.scope.kind ||
-      (book.scope.kind === "provider_service" &&
-        (observation.establishes.kind !== "provider_service" ||
-          observation.establishes.service_key !== book.scope.service_key))
+      (book.scope.kind === "provider_resource" &&
+        (observation.establishes.kind !== "provider_resource" ||
+          canonicalJson(observation.establishes.resource_kind) !==
+            canonicalJson(book.scope.resource_kind) ||
+          observation.establishes.resource_key !== book.scope.resource_key))
     )
       fail(path, "scope observation changes the book scope identity");
     for (const modelRef of observation.establishes.model_refs) {
@@ -308,6 +318,20 @@ function validateBook(book: PricingBook, context: ProviderValidation, ids: Set<s
     if (offerKeys.has(offer.offer_key)) fail(path, "duplicate offer key");
     offerKeys.add(offer.offer_key);
     validateOffer(offer, book, context, ids);
+  }
+  assertSortedUniqueBy(
+    book.resource_edges,
+    (left, right) => compareCanonicalValues(left, right),
+    `${path} resource edges`,
+  );
+  for (const edge of book.resource_edges) {
+    validateApplicability(edge.applicability, book, context, `${path} resource edge`);
+    validateValidity(edge.validity, `${path} resource edge`);
+    assertSortedUniqueBy(edge.observations, compareRawObservations, `${path} edge observations`);
+    context.counts.observations += edge.observations.length;
+    edge.observations.forEach((observation) =>
+      validateObservationBase(observation, context, `${path} resource edge`),
+    );
   }
 }
 
@@ -342,6 +366,42 @@ function validateOffer(
   );
   assertSortedUnique(offer.terms, ({ id }) => [id], `${path} terms`);
 
+  assertSortedUnique(
+    offer.enrollment,
+    (variant) => [
+      variant.state,
+      ...optionalComponent(variant.validity),
+      canonicalJson(variant.applicability),
+    ],
+    `${path} enrollment`,
+  );
+  offer.enrollment.forEach((variant) =>
+    validateNormalizedVariant(
+      variant,
+      variant.observations,
+      book,
+      context,
+      `${path} enrollment`,
+      false,
+    ),
+  );
+  assertSortedUniqueBy(
+    offer.settlement,
+    (left, right) => compareCanonicalValues(left, right),
+    `${path} settlement`,
+  );
+  for (const variant of offer.settlement) {
+    assertReviewedText(variant.biller, `${path} settlement biller`);
+    validateNormalizedVariant(
+      variant,
+      variant.observations,
+      book,
+      context,
+      `${path} settlement`,
+      false,
+    );
+  }
+
   const termKeys = new Set<string>();
   context.counts.terms += offer.terms.length;
   for (const term of offer.terms) {
@@ -368,7 +428,7 @@ function validateOffer(
       ]);
 
   validateOfferSemantics(offer, context, path);
-  if (offer.role === "add_on") validateCompatibility(offer, book, context, path);
+  validateOfferRelations(offer, book, context, path);
 }
 
 function validateTerm(
@@ -380,7 +440,8 @@ function validateTerm(
 ): void {
   const path = `term ${term.term_key}`;
   assertNormalizedSemantic(term.term_key, `${path} key`);
-  if (term.id !== pricingTermId(offer.id, term.term_key)) fail(path, "ID recipe mismatch");
+  if (term.id !== pricingTermId(offer.id, term.kind, term.term_key))
+    fail(path, "ID recipe mismatch");
   addUniqueId(ids, term.id, path);
   if (context.terms.has(term.id)) fail(path, "duplicate term ID");
   context.terms.set(term.id, { term, offer });
@@ -429,6 +490,10 @@ function validateTerm(
     assertSortedUniqueBy(term.raw_variants, compareRawVariants, `${path} raw variants`);
     assertUniqueBy(term.raw_variants, rawVariantGroupKey, `${path} raw variant grouping key`);
     validateAllowanceTerm(term, book, context, path);
+  } else if (term.kind === "contribution") {
+    assertSortedUniqueBy(term.variants, compareContributionVariants, `${path} variants`);
+    assertSortedUniqueBy(term.raw_variants, compareRawVariants, `${path} raw variants`);
+    validateContributionTerm(term, book, context, path);
   } else {
     assertSortedUniqueBy(term.variants, compareRawVariants, `${path} variants`);
     assertUniqueBy(term.variants, rawVariantGroupKey, `${path} raw variant grouping key`);
@@ -463,6 +528,8 @@ function validateRateTerm(
         path,
       );
     validateNormalizedVariant(variant, variant.observations, book, context, path, true);
+    if (variant.charge_binding !== undefined)
+      validateChargeBinding(variant.charge_binding, context, path, variant.price.per);
   }
   term.raw_variants.forEach((variant) => {
     if (
@@ -487,11 +554,12 @@ function validateAllowanceTerm(
 ): void {
   context.counts.variants += term.variants.length + term.raw_variants.length;
   for (const variant of term.variants) {
-    if ((variant.benefit.kind === "usage") !== (variant.target.kind === "usage_rate_terms"))
-      fail(path, "allowance benefit and target kinds do not match");
-    if (variant.benefit.kind === "usage")
+    if (variant.benefit.kind === "quantity")
       validateUnitExpression(variant.benefit.quantity.unit, context, path);
-    else if (variant.benefit.denomination.kind === "provider_credit")
+    else if (
+      variant.benefit.kind === "credit" &&
+      variant.benefit.denomination.kind === "provider_credit"
+    )
       validateOwnedAtom(
         "credit_denomination",
         {
@@ -522,6 +590,31 @@ function validateAllowanceTerm(
     term.variants.length > 0
   )
     fail(path, "target-rate fallback must cover the whole allowance term");
+}
+
+function validateContributionTerm(
+  term: PriceContributionTerm,
+  book: PricingBook,
+  context: ProviderValidation,
+  path: string,
+): void {
+  context.counts.variants += term.variants.length + term.raw_variants.length;
+  for (const variant of term.variants) {
+    assertSortedUnique(variant.target_rate_refs, (ref) => [ref], `${path} target rate refs`);
+    assertSortedUniqueBy(
+      variant.charge_bindings,
+      (left, right) => compareCanonicalValues(left, right),
+      `${path} contribution bindings`,
+    );
+    validateNormalizedVariant(variant, variant.observations, book, context, path, false);
+    variant.charge_bindings.forEach((binding) => validateChargeBinding(binding, context, path));
+  }
+  term.raw_variants.forEach((variant) => validateRawVariant(variant, book, context, path));
+  validateVariantConflicts(
+    term.variants,
+    (variant) => canonicalJson([variant.target_rate_refs, variant.charge_bindings]),
+    path,
+  );
 }
 
 function validateConflictFallback(
@@ -667,89 +760,173 @@ function validateOfferSemantics(
   }
 }
 
-function validateCompatibility(
-  offer: Extract<PricingOffer, { role: "add_on" }>,
+function validateOfferRelations(
+  offer: PricingOffer,
   book: PricingBook,
   context: ProviderValidation,
   path: string,
 ): void {
-  assertSortedUniqueBy(
-    offer.compatibility_observations,
-    (left, right) =>
-      compareObservationBase(left, right) ||
-      compareCanonicalValues(left.establishes_offer_refs, right.establishes_offer_refs) ||
-      compareCanonicalValues(left.raw, right.raw),
-    `${path} compatibility observations`,
+  assertSortedUnique(
+    offer.relations,
+    (relation) => [
+      relation.kind,
+      canonicalJson(relation.target),
+      ...optionalComponent(relation.validity),
+      canonicalJson(relation.applicability),
+    ],
+    `${path} relations`,
   );
-  context.counts.observations += offer.compatibility_observations.length;
-  const target =
-    offer.compatibility.kind === "base_offers"
-      ? offer.compatibility.offer_refs
-      : offer.compatibility.kind === "all_base_offers_in_book"
-        ? book.offers.filter(({ role }) => role === "base").map(({ id }) => id)
-        : [];
-  if (offer.compatibility.kind !== "not_normalized" && target.length === 0)
-    fail(path, "normalized add-on compatibility has an empty target");
-  const established = new Set<string>();
-  for (const observation of offer.compatibility_observations) {
-    validateObservationBase(observation, context, path);
-    assertSortedUnique(
-      observation.establishes_offer_refs,
-      (offerRef) => [offerRef],
-      `${path} established offer refs`,
+  for (const relation of offer.relations) {
+    validateApplicability(relation.applicability, book, context, path);
+    validateValidity(relation.validity, path);
+    assertSortedUniqueBy(
+      relation.observations,
+      (left, right) =>
+        compareObservationBase(left, right) ||
+        compareCanonicalValues(left.establishes_offer_refs, right.establishes_offer_refs) ||
+        compareCanonicalValues(left.establishes_book_refs, right.establishes_book_refs) ||
+        compareCanonicalValues(left.raw, right.raw),
+      `${path} relation observations`,
     );
-    if (
-      offer.compatibility.kind === "not_normalized" &&
-      observation.establishes_offer_refs.length > 0
-    )
-      fail(path, "not-normalized compatibility establishes an offer ref");
-    if (
-      offer.compatibility.kind !== "not_normalized" &&
-      observation.establishes_offer_refs.length === 0
-    )
-      fail(path, "normalized compatibility observation has an empty target");
-    for (const offerRef of observation.establishes_offer_refs) {
-      if (!target.includes(offerRef)) fail(path, "compatibility evidence exceeds its target");
-      established.add(offerRef);
+    context.counts.observations += relation.observations.length;
+    const targetOffers = relation.target.offer_refs;
+    const establishedOffers = new Set<string>();
+    const establishedBooks = new Set<string>();
+    for (const observation of relation.observations) {
+      validateObservationBase(observation, context, path);
+      assertSortedUnique(
+        observation.establishes_offer_refs,
+        (offerRef) => [offerRef],
+        `${path} established offer refs`,
+      );
+      assertSortedUnique(
+        observation.establishes_book_refs,
+        (bookRef) => [bookRef],
+        `${path} established book refs`,
+      );
+      for (const offerRef of observation.establishes_offer_refs) {
+        if (!targetOffers.includes(offerRef))
+          fail(path, "relation evidence exceeds its offer target");
+        establishedOffers.add(offerRef);
+      }
+      if (observation.establishes_book_refs.length > 0)
+        fail(path, "offer relation evidence cannot establish book targets");
     }
+    if (!setEquals(establishedOffers, new Set(targetOffers)) || establishedBooks.size > 0)
+      fail(path, "relation evidence does not exactly cover its target");
   }
-  if (!setEquals(established, new Set(target)))
-    fail(path, "compatibility evidence does not exactly cover its target");
+}
+
+function validateChargeBinding(
+  binding: NonNullable<PriceRateTerm["variants"][number]["charge_binding"]>,
+  context: ProviderValidation,
+  path: string,
+  expectedUnit?: UnitExpression,
+): void {
+  validateOwnedAtom("usage_signal", binding.signal, undefined, context, path);
+  const signalUnit = usageSignalUnit(binding.signal, context, path);
+  validateUnitExpression(signalUnit, context, path);
+  if (expectedUnit !== undefined && canonicalJson(signalUnit) !== canonicalJson(expectedUnit))
+    fail(path, "charge signal unit differs from the rate denominator");
+  if (typeof binding.aggregation !== "string")
+    validateOwnedAtom("aggregation", binding.aggregation, undefined, context, path);
+  assertSortedUniqueBy(binding.observations, compareRawObservations, `${path} charge observations`);
+  context.counts.observations += binding.observations.length;
+  for (const observation of binding.observations)
+    validateObservationBase(observation, context, path);
+}
+
+function usageSignalUnit(
+  signal: UsageSignal,
+  context: ProviderValidation,
+  path: string,
+): UnitExpression {
+  if (signal.namespace === "provider") {
+    const atom = context.atoms.get(
+      atomIdentity(context.providerId, "usage_signal", undefined, signal.value),
+    );
+    if (atom?.kind !== "usage_signal") fail(path, "charge signal has no unit definition");
+    return atom.unit;
+  }
+  const one = (
+    value: Extract<UnitExpression["factors"][number]["unit"], { namespace: "kmodels" }>["value"],
+  ): UnitExpression => ({
+    factors: [{ unit: { namespace: "kmodels", value }, power: 1 }],
+  });
+  switch (signal.value) {
+    case "input_tokens":
+    case "uncached_input_tokens":
+    case "cached_input_tokens":
+    case "cache_write_tokens":
+    case "output_tokens":
+      return one("token");
+    case "accepted_requests":
+      return one("request");
+    case "completed_result_items":
+    case "generated_items":
+      return one("item");
+    case "successful_web_searches":
+      return one("event");
+    case "generated_images":
+      return one("image");
+    case "generated_seconds":
+    case "active_seconds":
+      return one("second");
+    case "stored_byte_seconds":
+      return {
+        factors: [
+          { unit: { namespace: "kmodels", value: "byte" }, power: 1 },
+          { unit: { namespace: "kmodels", value: "second" }, power: 1 },
+        ],
+      };
+    case "transferred_bytes":
+      return one("byte");
+  }
 }
 
 function validateProviderLinks(context: ProviderValidation): void {
   for (const offer of context.offers.values()) {
-    if (offer.role === "add_on" && offer.compatibility.kind === "base_offers") {
-      assertSortedUnique(
-        offer.compatibility.offer_refs,
-        (offerRef) => [offerRef],
-        `offer ${offer.offer_key} compatibility refs`,
-      );
-      for (const offerRef of offer.compatibility.offer_refs) {
-        const target = context.offers.get(offerRef);
-        if (target === undefined || target.role !== "base" || target.id === offer.id)
-          fail(`offer ${offer.offer_key}`, "compatibility target is not a provider base offer");
+    for (const relation of offer.relations) {
+      for (const offerRef of relation.target.offer_refs) {
+        if (offerRef === offer.id || !context.offers.has(offerRef))
+          fail(`offer ${offer.offer_key}`, "relation target is not another provider offer");
       }
     }
 
     for (const term of offer.terms) {
       if (term.kind === "allowance")
         term.variants.forEach((variant) =>
-          validateAllowanceTarget(variant, offer, context, `term ${term.term_key}`),
+          validateAllowanceTarget(variant, context, `term ${term.term_key}`),
         );
+      if (term.kind === "contribution")
+        for (const variant of term.variants)
+          for (const termRef of variant.target_rate_refs)
+            if (context.terms.get(termRef)?.term.kind !== "rate")
+              fail(`term ${term.term_key}`, "contribution target is not a provider rate term");
       if (term.term_key === "kmodels.offer-state")
         validateReservedStateTerm(term, offer, `term ${term.term_key}`);
     }
   }
+  for (const book of context.books.values())
+    for (const edge of book.resource_edges)
+      if (edge.target.kind === "books") {
+        for (const bookRef of edge.target.book_refs)
+          if (bookRef === book.id || !context.books.has(bookRef))
+            fail(`book ${book.book_key}`, "resource edge target is not another provider book");
+      } else {
+        for (const modelRef of edge.target.model_refs)
+          if (ownedModel(context.core, modelRef).provider_id !== context.providerId)
+            fail(`book ${book.book_key}`, "resource edge model belongs to another provider");
+      }
+  validateOfferClosureAcyclic(context);
 }
 
 function validateAllowanceTarget(
   variant: PriceAllowanceTerm["variants"][number],
-  offer: PricingOffer,
   context: ProviderValidation,
   path: string,
 ): void {
-  if (variant.target.kind !== "usage_rate_terms" || variant.benefit.kind !== "usage") return;
+  if (variant.target.kind !== "rate_terms" || variant.benefit.kind !== "quantity") return;
   const allowanceUnit = canonicalJson(variant.benefit.quantity.unit);
   assertSortedUnique(
     variant.target.term_refs,
@@ -760,7 +937,6 @@ function validateAllowanceTarget(
     const target = context.terms.get(termRef);
     if (
       target === undefined ||
-      target.offer.id !== offer.id ||
       target.term.kind !== "rate" ||
       target.term.variants.length === 0 ||
       target.term.raw_variants.length > 0
@@ -769,6 +945,30 @@ function validateAllowanceTarget(
     if (target.term.variants.some(({ price }) => canonicalJson(price.per) !== allowanceUnit))
       fail(path, "usage allowance unit differs from its target rate");
   }
+}
+
+function validateOfferClosureAcyclic(context: ProviderValidation): void {
+  const edges = new Map<string, string[]>();
+  for (const offer of context.offers.values())
+    edges.set(
+      offer.id,
+      offer.relations.flatMap((relation) =>
+        relation.kind === "requires" || relation.kind === "incurs"
+          ? relation.target.offer_refs
+          : [],
+      ),
+    );
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (offerRef: string): void => {
+    if (visiting.has(offerRef)) fail(context.providerId, "offer closure contains a cycle");
+    if (visited.has(offerRef)) return;
+    visiting.add(offerRef);
+    for (const target of edges.get(offerRef) ?? []) visit(target);
+    visiting.delete(offerRef);
+    visited.add(offerRef);
+  };
+  for (const offerRef of edges.keys()) visit(offerRef);
 }
 
 function validateReservedStateTerm(term: PricingTerm, offer: PricingOffer, path: string): void {
@@ -1038,6 +1238,19 @@ function compareRawVariants(left: RawPricingVariant, right: RawPricingVariant): 
     compareOptionalCanonical(left.resolution_policy, right.resolution_policy) ||
     compareOptionalCanonical(left.possible_scope, right.possible_scope) ||
     compareOptionalCanonical(left.validity, right.validity) ||
+    compareCanonicalValues(left.observations, right.observations)
+  );
+}
+
+function compareContributionVariants(
+  left: PriceContributionTerm["variants"][number],
+  right: PriceContributionTerm["variants"][number],
+): number {
+  return (
+    compareCanonicalValues(left.target_rate_refs, right.target_rate_refs) ||
+    compareCanonicalValues(left.charge_bindings, right.charge_bindings) ||
+    compareOptionalCanonical(left.validity, right.validity) ||
+    compareCanonicalValues(left.applicability, right.applicability) ||
     compareCanonicalValues(left.observations, right.observations)
   );
 }

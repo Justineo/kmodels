@@ -110,7 +110,6 @@ function input(rates: AtomicRateVariant[]): AtomicProviderPricing {
         source_refs: [sourceRef],
         offers: [
           {
-            role: "base",
             offer_key: "usage",
             billing_mode: { namespace: "kmodels", value: "usage" },
             states: [
@@ -125,6 +124,7 @@ function input(rates: AtomicRateVariant[]): AtomicProviderPricing {
                 },
               },
             ],
+            relations: [],
             terms: [
               {
                 kind: "rate",
@@ -277,7 +277,7 @@ describe("canonical pricing canonical assembly", () => {
       variants: [
         {
           benefit: {
-            kind: "usage",
+            kind: "quantity",
             quantity: {
               value: { numerator: "1000", denominator: "1" },
               unit: {
@@ -286,8 +286,8 @@ describe("canonical pricing canonical assembly", () => {
             },
           },
           target: {
-            kind: "usage_rate_terms",
-            term_refs: [pricingTermId(offerId, "input-text")],
+            kind: "rate_terms",
+            term_refs: [pricingTermId(offerId, "rate", "input-text")],
           },
           reset: { namespace: "kmodels", value: "monthly" },
           applicability: unconditionalApplicability,
@@ -302,6 +302,61 @@ describe("canonical pricing canonical assembly", () => {
     if (allowance?.kind !== "allowance") return;
     expect(allowance.variants).toEqual([]);
     expect(allowance.raw_variants[0]!.reason).toBe("target_rate_not_normalized");
+  });
+
+  it("retains an allowance that targets a normalized rate in another offer", () => {
+    const source = input([rate(unconditionalApplicability, "rate")]);
+    const book = source.books[0]!;
+    const target = pricingTermId(
+      pricingOfferId(pricingBookId(providerId, book.book_key), "usage"),
+      "rate",
+      "input-text",
+    );
+    book.offers.push({
+      offer_key: "organization-allowance",
+      billing_mode: { namespace: "kmodels", value: "usage" },
+      states: [
+        {
+          state: "included",
+          applicability: unconditionalApplicability,
+          observation: observation(unconditionalApplicability, "allowance-state"),
+        },
+      ],
+      relations: [],
+      terms: [
+        {
+          kind: "allowance",
+          term_key: "daily-input",
+          variants: [
+            {
+              benefit: {
+                kind: "quantity",
+                quantity: {
+                  value: { numerator: "1000", denominator: "1" },
+                  unit: {
+                    factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+                  },
+                },
+              },
+              target: { kind: "rate_terms", term_refs: [target] },
+              reset: { namespace: "kmodels", value: "daily" },
+              applicability: unconditionalApplicability,
+              observation: observation(unconditionalApplicability, "allowance", "1000"),
+            },
+          ],
+          raw_variants: [],
+          source_refs: [sourceRef],
+        },
+      ],
+      source_refs: [sourceRef],
+    });
+    const allowance = assemble(source)
+      .books[0]!.offers.find(({ offer_key }) => offer_key === "organization-allowance")
+      ?.terms.find(({ kind }) => kind === "allowance");
+    expect(allowance?.kind).toBe("allowance");
+    if (allowance?.kind !== "allowance") return;
+    expect(allowance.variants).toHaveLength(1);
+    expect(allowance.raw_variants).toEqual([]);
   });
 
   it("uses the conservative single-parent numeric-state containment rule", () => {

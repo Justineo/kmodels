@@ -2,10 +2,18 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody, type LinkedBundle } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
+import {
+  extractKimiCommercialFacts,
+  type KimiCommercialEvidence,
+} from "./kimi-commercial-source.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -98,7 +106,7 @@ const typedArraySchema = z.object({ type: z.literal("array"), items: z.unknown()
 const typedStringSchema = z.object({ type: z.literal("string") });
 const typedIntegerSchema = z.object({ type: z.literal("integer") });
 const typedBooleanSchema = z.object({ type: z.literal("boolean") });
-const priceRowsSchema = z.array(z.array(z.string()).min(5).max(6)).min(1);
+const priceRowSchema = z.array(z.string()).min(5).max(6);
 type PriceColumn = "model" | "unit" | "cache" | "input" | "output" | "context";
 const priceColumns = new Map<string, PriceColumn>([
   ["模型", "model"],
@@ -896,6 +904,7 @@ function requireClaims(body: string, claims: readonly RegExp[], message: string)
 function commercialIndexPath(path: string): boolean {
   const normalized = path.replace(/\.md$/, "");
   if (normalized.startsWith("/docs/pricing/")) return true;
+  if (normalized.startsWith("/docs/api/files")) return true;
   if (
     /^\/docs\/api\/[^/]*(?:balance|billing|cost|usage|spend|expense|consumption)[^/]*$/.test(
       normalized,
@@ -992,10 +1001,10 @@ function webSearchRate(input: Input, extractor: PricingExtractor, body: string):
   )
     throw new Error("Kimi web-search pricing row changed");
   return {
-    meter: "tool_call",
+    meter: "web_search",
     price: decimalPrice(rawPrice.replace("￥", "¥"), extractor.symbol),
     currency: extractor.currency,
-    unit: "request",
+    unit: "event",
     conditions: { region: extractor.region, operation: "web_search" },
     source_ref: input.source.id,
     derived: false,
@@ -1026,36 +1035,38 @@ function formulaTools(body: string): string[] {
   return names;
 }
 
-function freeFormulaRates(
-  input: Input,
-  extractor: PricingExtractor,
-  names: string[],
-): SourcePriceFact[] {
-  return names
-    .filter((name) => name !== "web-search")
-    .map((name) => ({
-      meter: "tool_call",
-      price: "0",
-      currency: extractor.currency,
-      unit: "request",
-      conditions: {
-        region: extractor.region,
-        operation: `formula_${name.replaceAll("-", "_")}`,
-        promotion: true,
-      },
-      source_ref: input.source.id,
-      derived: false,
-      raw_price: extractor.region === "China" ? "限时免费" : "free for a limited time",
-      raw_unit: "tool call",
-    }));
+interface CommercialEvidence extends KimiCommercialEvidence {
+  bindingGaps: Array<"chat" | "cache" | "batch">;
+  reconciliation: PricingReconciliationItem[];
 }
 
-interface CommercialEvidence {
-  formulaModels: string[];
-  formulaRates: SourcePriceFact[];
-  searchModels: string[];
-  searchRate: SourcePriceFact;
-  reconciliation: PricingReconciliationItem[];
+function reviewClaim<Value>(
+  reconciliation: PricingReconciliationItem[],
+  reasonCode: string,
+  claim: () => Value,
+): Value | undefined {
+  try {
+    return claim();
+  } catch (error) {
+    reconciliation.push({
+      disposition: "unbound",
+      reason_code: reasonCode,
+      sample: (error instanceof Error ? error.message : String(error)).slice(0, 256),
+    });
+    return;
+  }
+}
+
+function reviewedDocument(
+  bundle: LinkedBundle,
+  path: string,
+  label: string,
+  claims: readonly RegExp[],
+  message: string,
+): string {
+  const body = companion(bundle, path, label);
+  requireClaims(body, claims, message);
+  return body;
 }
 
 function commercialEvidence(
@@ -1064,17 +1075,51 @@ function commercialEvidence(
   bundle: LinkedBundle,
   models: Map<string, ProviderModel>,
 ): CommercialEvidence {
-  validateCommercialIndex(bundle, new URL(input.source.url).origin);
   const china = extractor.region === "China";
-  requireClaims(
-    bundle.index.body,
-    china
-      ? [/联网搜索/, /更新升级中/, /文档已经过时/]
-      : [/web search/i, /currently being updated/i, /documentation is outdated/i],
-    "Kimi K3 web-search warning drifted",
+  const reconciliation: PricingReconciliationItem[] = [
+    { disposition: "excluded", reason_code: "balance_api_out_of_catalog" },
+    { disposition: "excluded", reason_code: "account_tier_capacity_out_of_catalog" },
+    { disposition: "excluded", reason_code: "project_budget_control_out_of_catalog" },
+    { disposition: "excluded", reason_code: "console_consumption_analysis_out_of_catalog" },
+    { disposition: "excluded", reason_code: "voucher_account_entitlement_out_of_catalog" },
+    { disposition: "excluded", reason_code: "batch_console_tier_out_of_catalog" },
+    { disposition: "excluded", reason_code: "response_exact_cost_not_returned" },
+    { disposition: "unbound", reason_code: "usage_cost_api_not_documented" },
+    { disposition: "unbound", reason_code: "stream_interruption_usage_unavailable" },
+    { disposition: "unbound", reason_code: "enterprise_terms_not_published" },
+    { disposition: "unbound", reason_code: "formula_web_search_billing_trigger_ambiguous" },
+    { disposition: "unbound", reason_code: "formula_tool_promotion_end_not_published" },
+    { disposition: "unbound", reason_code: "web_search_documentation_outdated" },
+  ];
+  reviewClaim(reconciliation, "commercial_index_drift", () =>
+    validateCommercialIndex(bundle, new URL(input.source.url).origin),
   );
-  requireClaims(
-    companion(bundle, "/docs/pricing/chat", "billing"),
+  const webSearchWarning =
+    reviewClaim(reconciliation, "web_search_warning_drift", () => {
+      requireClaims(
+        bundle.index.body,
+        china
+          ? [/联网搜索/, /更新升级中/, /文档已经过时/]
+          : [/web search/i, /currently being updated/i, /documentation is outdated/i],
+        "Kimi K3 web-search warning drifted",
+      );
+      return true;
+    }) ?? false;
+
+  const review = (
+    reasonCode: string,
+    path: string,
+    label: string,
+    claims: readonly RegExp[],
+    message: string,
+  ) =>
+    reviewClaim(reconciliation, reasonCode, () =>
+      reviewedDocument(bundle, path, label, claims, message),
+    );
+  const billing = review(
+    "billing_contract_drift",
+    "/docs/pricing/chat",
+    "billing",
     china
       ? [/对 Input 和 Output 均实行按量计费/, /计算 Token API/, /限时免费/]
       : [
@@ -1084,44 +1129,56 @@ function commercialEvidence(
         ],
     "Kimi billing contract drifted",
   );
-  requireClaims(
-    companion(bundle, "/docs/api/chat", "Chat Completions"),
+  const chatUsage = review(
+    "chat_usage_contract_drift",
+    "/docs/api/chat",
+    "Chat Completions",
     [/prompt_tokens/, /completion_tokens/, /total_tokens/, /cached_tokens/, /include_usage/],
     "Kimi response-usage contract drifted",
   );
-  requireClaims(
-    companion(bundle, "/docs/api/estimate", "token estimate"),
+  review(
+    "token_estimate_contract_drift",
+    "/docs/api/estimate",
+    "token estimate",
     [/\/v1\/tokenizers\/estimate-token-count/, /data\.total_tokens/],
     "Kimi token-estimate contract drifted",
   );
-  requireClaims(
-    companion(bundle, cacheDocument, "context cache"),
+  const cacheUsage = review(
+    "cache_accounting_contract_drift",
+    cacheDocument,
+    "context cache",
     china
       ? [/对所有模型请求自动启用/, /(?:超过|大于) 256/, /无需手动/]
       : [/automatically enabled for all model requests/i, /exceed 256/i, /no manual/i],
     "Kimi context-cache accounting contract drifted",
   );
-  const tools = companion(bundle, "/docs/pricing/tools", "web-search pricing");
-  requireClaims(
-    tools,
-    [/finish_reason = tool_calls/, /finish_reason = stop/, /search_tokens/],
+
+  const tools = review(
+    "web_search_billing_contract_drift",
+    "/docs/pricing/tools",
+    "web-search pricing",
+    china
+      ? [/finish_reason = tool_calls/, /finish_reason = stop/, /search_tokens/]
+      : [
+          /finish_reason = tool_calls/,
+          /finish_reason = stop/,
+          /search_tokens/,
+          /Prices exclude applicable taxes/i,
+          /calculated at checkout/i,
+        ],
     "Kimi web-search billing contract drifted",
   );
-  if (!china)
-    requireClaims(
-      tools,
-      [/Prices exclude applicable taxes/i, /calculated at checkout/i],
-      "Kimi tax contract drifted",
-    );
-  const webGuide = companion(bundle, "/docs/guide/use-web-search", "web-search usage");
-  requireClaims(
-    webGuide,
+  const webGuide = review(
+    "web_search_usage_contract_drift",
+    "/docs/guide/use-web-search",
+    "web-search usage",
     [/arguments\.usage\.total_tokens/, /prompt_tokens/, /completion_tokens/, /total_tokens/],
     "Kimi web-search usage contract drifted",
   );
-  const officialTools = companion(bundle, "/docs/guide/use-official-tools", "official tools");
-  requireClaims(
-    officialTools,
+  const officialTools = review(
+    "formula_tools_contract_drift",
+    "/docs/guide/use-official-tools",
+    "official tools",
     china
       ? [/官方工具(?:执行)?限时免费/, /moonshot\/web-search:latest/, /资源用量/, /计费/]
       : [
@@ -1132,106 +1189,207 @@ function commercialEvidence(
         ],
     "Kimi Formula-tools commercial contract drifted",
   );
-  requireClaims(
-    companion(bundle, "/docs/api/balance", "balance API"),
-    [/\/v1\/users\/me\/balance/, /available_balance/, /voucher_balance/, /cash_balance/],
-    "Kimi balance API contract drifted",
-  );
-  requireClaims(
-    companion(bundle, "/docs/pricing/limits", "account limits"),
-    china
-      ? [/累计充值金额/, /Tier5/, /代金券不计入累计充值总额/]
-      : [/cumulative recharge amount/i, /Tier5/, /Vouchers do not count/i],
-    "Kimi account-tier contract drifted",
-  );
-  const account = companion(bundle, "/docs/guide/account-and-payments", "account billing");
-  requireClaims(
-    account,
-    china
-      ? [/项目日消费预算/, /10 分钟/, /15 元代金券/, /Kimi K3 不支持/]
-      : [/daily spending budget/i, /10 minutes/i, /invoice/i, /account tier/i],
-    "Kimi account-billing contract drifted",
-  );
-  requireClaims(
-    companion(bundle, "/docs/guide/org-best-practice", "project consumption"),
-    china
-      ? [/月消费预算和日消费预算/, /10 分钟/, /消费分析/]
-      : [/monthly and daily consumption budgets/i, /10 minutes/i, /consumption analysis/i],
-    "Kimi project-consumption contract drifted",
-  );
-  requireClaims(
-    companion(bundle, "/docs/guide/product-plans", "product plans"),
-    china ? [/按量计费模式/, /企业方案/] : [/pay-as-you-go billing/i, /enterprise plans/i],
-    "Kimi product-plan contract drifted",
-  );
-  requireClaims(
-    companion(bundle, "/docs/introduction", "billing and rate limits"),
-    china
-      ? [/max_completion_tokens/, /实际生成的 (?:Tokens|token)/i, /用户(?:层面|级别)/]
-      : [/max_completion_tokens/, /actual number of Tokens generated/i, /user level/i],
-    "Kimi request-accounting contract drifted",
-  );
-  requireClaims(
-    companion(bundle, "/docs/agreement/modeluse", "commercial terms"),
-    china
-      ? [/产品定价、类型/, /官网网页\/订购页面公示为准/, /价格调整说明/, /网站价格页面公示/]
-      : [
-          /pricing set forth on the pricing page or in an applicable Order Form/i,
-          /Pricing Changes/,
-          /after the effective date/i,
-          /Promotions/,
-        ],
-    "Kimi commercial terms drifted",
-  );
-  requireClaims(
-    companion(bundle, "/docs/guide/use-batch-inference", "Batch console"),
-    [/Tier1/, china ? /以上/ : /or above/i],
-    "Kimi Batch account-eligibility contract drifted",
-  );
-  const batchGuide = companion(bundle, "/docs/guide/use-batch-api", "Batch guide");
-  requireClaims(
-    batchGuide,
+  const fileDocuments = [
+    review(
+      "files_index_contract_drift",
+      "/docs/api/files",
+      "Files index",
+      china
+        ? [/上传文件/, /列出文件/, /获取文件信息/, /删除文件/, /获取文件内容/]
+        : [/Upload File/, /List Files/, /Get File Information/, /Delete File/, /Get File Content/],
+      "Kimi Files index drifted",
+    ),
+    review(
+      "files_upload_contract_drift",
+      "/docs/api/files-upload",
+      "file upload",
+      china
+        ? [/POST \/v1\/files/, /file-extract/, /image/, /video/, /batch/, /文件解析服务限时免费/]
+        : [
+            /POST \/v1\/files/,
+            /file-extract/,
+            /image/,
+            /video/,
+            /batch/,
+            /file parsing service is currently free/i,
+          ],
+      "Kimi file-upload contract drifted",
+    ),
+    review(
+      "files_list_contract_drift",
+      "/docs/api/files-list",
+      "file list",
+      [/GET \/v1\/files/, /purpose/, /status/],
+      "Kimi file-list contract drifted",
+    ),
+    review(
+      "files_retrieve_contract_drift",
+      "/docs/api/files-retrieve",
+      "file retrieval",
+      [/GET \/v1\/files\/\{file_id\}/, /purpose/, /status/],
+      "Kimi file-retrieval contract drifted",
+    ),
+    review(
+      "files_delete_contract_drift",
+      "/docs/api/files-delete",
+      "file deletion",
+      [/DELETE \/v1\/files\/\{file_id\}/, /deleted/],
+      "Kimi file-deletion contract drifted",
+    ),
+    review(
+      "files_content_contract_drift",
+      "/docs/api/files-content",
+      "file content",
+      [/GET \/v1\/files\/\{file_id\}\/content/, /file-extract/],
+      "Kimi file-content contract drifted",
+    ),
+  ];
+
+  const ancillary = [
+    [
+      "balance_contract_drift",
+      "/docs/api/balance",
+      "balance API",
+      [/\/v1\/users\/me\/balance/, /available_balance/, /voucher_balance/, /cash_balance/],
+      "Kimi balance API contract drifted",
+    ],
+    [
+      "account_tier_contract_drift",
+      "/docs/pricing/limits",
+      "account limits",
+      china
+        ? [/累计充值金额/, /Tier5/, /代金券不计入累计充值总额/]
+        : [/cumulative recharge amount/i, /Tier5/, /Vouchers do not count/i],
+      "Kimi account-tier contract drifted",
+    ],
+    [
+      "account_billing_contract_drift",
+      "/docs/guide/account-and-payments",
+      "account billing",
+      china
+        ? [/项目日消费预算/, /10 分钟/, /15 元代金券/, /Kimi K3 不支持/]
+        : [/daily spending budget/i, /10 minutes/i, /invoice/i, /account tier/i],
+      "Kimi account-billing contract drifted",
+    ],
+    [
+      "project_consumption_contract_drift",
+      "/docs/guide/org-best-practice",
+      "project consumption",
+      china
+        ? [/月消费预算和日消费预算/, /10 分钟/, /消费分析/]
+        : [/monthly and daily consumption budgets/i, /10 minutes/i, /consumption analysis/i],
+      "Kimi project-consumption contract drifted",
+    ],
+    [
+      "product_plan_contract_drift",
+      "/docs/guide/product-plans",
+      "product plans",
+      china ? [/按量计费模式/, /企业方案/] : [/pay-as-you-go billing/i, /enterprise plans/i],
+      "Kimi product-plan contract drifted",
+    ],
+    [
+      "request_accounting_contract_drift",
+      "/docs/introduction",
+      "billing and rate limits",
+      china
+        ? [/max_completion_tokens/, /实际生成的 (?:Tokens|token)/i, /用户(?:层面|级别)/]
+        : [/max_completion_tokens/, /actual number of Tokens generated/i, /user level/i],
+      "Kimi request-accounting contract drifted",
+    ],
+    [
+      "commercial_terms_drift",
+      "/docs/agreement/modeluse",
+      "commercial terms",
+      china
+        ? [/产品定价、类型/, /官网网页\/订购页面公示为准/, /价格调整说明/, /网站价格页面公示/]
+        : [
+            /pricing set forth on the pricing page or in an applicable Order Form/i,
+            /Pricing Changes/,
+            /after the effective date/i,
+            /Promotions/,
+          ],
+      "Kimi commercial terms drifted",
+    ],
+    [
+      "batch_eligibility_contract_drift",
+      "/docs/guide/use-batch-inference",
+      "Batch console",
+      [/Tier1/, china ? /以上/ : /or above/i],
+      "Kimi Batch account-eligibility contract drifted",
+    ],
+  ] as const;
+  for (const [reasonCode, path, label, claims, message] of ancillary)
+    review(reasonCode, path, label, claims, message);
+
+  const batchGuide = review(
+    "batch_accounting_contract_drift",
+    "/docs/guide/use-batch-api",
+    "Batch guide",
     china
       ? [/节省 40%/, /prompt_tokens/, /completion_tokens/, /total_tokens/]
       : [/saving 40%/i, /prompt_tokens/, /completion_tokens/, /total_tokens/],
     "Kimi Batch accounting contract drifted",
   );
+  const batchApi = reviewClaim(reconciliation, "batch_api_contract_drift", () => {
+    const body = companion(bundle, batchApiDocument, "Batch API reference");
+    if (
+      !/^`{3,4}yaml POST \/v1\/batches$/m.test(body) ||
+      !/目前仅支持 \/v1\/chat\/completions|currently only \/v1\/chat\/completions is supported/i.test(
+        body,
+      )
+    )
+      throw new Error("Kimi Batch API reference changed");
+    return body;
+  });
 
-  const reconciliation: PricingReconciliationItem[] = [
-    { disposition: "excluded", reason_code: "balance_api_out_of_catalog" },
-    { disposition: "excluded", reason_code: "account_tier_capacity_out_of_catalog" },
-    { disposition: "excluded", reason_code: "project_budget_control_out_of_catalog" },
-    { disposition: "excluded", reason_code: "console_consumption_analysis_out_of_catalog" },
-    { disposition: "excluded", reason_code: "voucher_account_entitlement_out_of_catalog" },
-    { disposition: "excluded", reason_code: "file_api_temporary_free_out_of_catalog" },
-    { disposition: "excluded", reason_code: "batch_console_tier_out_of_catalog" },
-    { disposition: "excluded", reason_code: "response_exact_cost_not_returned" },
-    { disposition: "unbound", reason_code: "usage_cost_api_not_documented" },
-    { disposition: "unbound", reason_code: "stream_interruption_usage_unavailable" },
-    { disposition: "unbound", reason_code: "enterprise_terms_not_published" },
-    { disposition: "unbound", reason_code: "formula_web_search_billing_trigger_ambiguous" },
-    { disposition: "unbound", reason_code: "formula_tool_promotion_end_not_published" },
-    { disposition: "unbound", reason_code: "web_search_documentation_outdated" },
-  ];
-  if (!batchGuide.includes("cached_tokens"))
+  if (batchGuide !== undefined && !batchGuide.includes("cached_tokens"))
     reconciliation.push({
       disposition: "unbound",
       reason_code: "batch_cached_tokens_not_documented",
     });
   if (!china)
     reconciliation.push({ disposition: "excluded", reason_code: "tax_at_checkout_out_of_catalog" });
-  const batchGuideModelIds = new Set(batchGuideModels(batchGuide));
-  for (const id of batchModelIds(models).filter((modelId) => !batchGuideModelIds.has(modelId)))
-    reconciliation.push({
-      disposition: "unbound",
-      reason_code: "batch_guide_scope_conflict",
-      sample: id,
-    });
+  const batchScopeConflicts: string[] = [];
+  if (batchGuide !== undefined) {
+    const batchGuideModelIds = new Set(batchGuideModels(batchGuide));
+    for (const id of batchModelIds(models).filter((modelId) => !batchGuideModelIds.has(modelId))) {
+      batchScopeConflicts.push(id);
+      reconciliation.push({
+        disposition: "unbound",
+        reason_code: "batch_guide_scope_conflict",
+        sample: id,
+      });
+    }
+  }
+  const formula =
+    officialTools === undefined
+      ? undefined
+      : reviewClaim(reconciliation, "formula_tools_structure_drift", () => ({
+          models: guideModels(officialTools, models, "official-tools"),
+          tools: formulaTools(officialTools),
+        }));
+  const search =
+    tools === undefined || webGuide === undefined
+      ? undefined
+      : reviewClaim(reconciliation, "web_search_structure_drift", () => ({
+          models: guideModels(webGuide, models, "web-search"),
+          rate: webSearchRate(input, extractor, tools),
+        }));
   return {
-    formulaModels: guideModels(officialTools, models, "official-tools"),
-    formulaRates: freeFormulaRates(input, extractor, formulaTools(officialTools)),
-    searchModels: guideModels(webGuide, models, "web-search"),
-    searchRate: webSearchRate(input, extractor, tools),
+    region: extractor.region,
+    batchCachePartitionUnbound: batchGuide !== undefined && !batchGuide.includes("cached_tokens"),
+    batchScopeConflicts,
+    fileService: billing !== undefined && fileDocuments.every((document) => document !== undefined),
+    formulaModels: formula?.models ?? [],
+    formulaTools: formula?.tools ?? [],
+    searchModels: search?.models ?? [],
+    ...(search?.rate === undefined ? {} : { searchRate: search.rate }),
+    webSearchWarning,
+    bindingGaps: [
+      ...(chatUsage === undefined ? (["chat"] as const) : []),
+      ...(cacheUsage === undefined ? (["cache"] as const) : []),
+      ...(batchGuide === undefined || batchApi === undefined ? (["batch"] as const) : []),
+    ],
     reconciliation,
   };
 }
@@ -1241,16 +1399,8 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   if (extractor.kind !== "kimi-pricing") throw new Error("Wrong kimi-pricing extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const documents = [bundle.index, ...bundle.documents];
-  const batchApi = documents.find(({ url }) => new URL(url).pathname === batchApiDocument);
-  if (
-    batchApi === undefined ||
-    !/^`{3,4}yaml POST \/v1\/batches$/m.test(batchApi.body) ||
-    !/目前仅支持 \/v1\/chat\/completions|currently only \/v1\/chat\/completions is supported/i.test(
-      batchApi.body,
-    )
-  )
-    throw new Error("Kimi Batch API reference changed");
   const models = new Map<string, ProviderModel>();
+  const rowReconciliation: PricingReconciliationItem[] = [];
   const modelPricingPaths = new Set([
     "/docs/pricing/chat-k3",
     "/docs/pricing/chat-k27-code",
@@ -1262,37 +1412,60 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   for (const document of documents) {
     const path = new URL(document.url).pathname;
     if (!modelPricingPaths.has(path)) continue;
-    const rows = priceRowsSchema.parse(jsonArrayAfter(document.body, "rows={"));
-    const batch = path === "/docs/pricing/batch";
-    const cached = hasCachePrices(document.body);
-    for (const row of rows) {
-      const incoming = pricingModel(input, extractor, document.body, row, batch, cached);
-      const current = models.get(incoming.model_id);
-      models.set(
-        incoming.model_id,
-        current === undefined ? incoming : mergePricing(current, incoming),
-      );
+    try {
+      const rows = z.array(z.unknown()).min(1).parse(jsonArrayAfter(document.body, "rows={"));
+      const batch = path === "/docs/pricing/batch";
+      const cached = hasCachePrices(document.body);
+      for (const [index, value] of rows.entries()) {
+        const parsed = priceRowSchema.safeParse(value);
+        if (!parsed.success) {
+          rowReconciliation.push({
+            disposition: "unsupported",
+            reason_code: "pricing_row_rejected",
+            sample: `${path} row ${index + 1}`,
+          });
+          continue;
+        }
+        try {
+          const incoming = pricingModel(
+            input,
+            extractor,
+            document.body,
+            parsed.data,
+            batch,
+            cached,
+          );
+          const current = models.get(incoming.model_id);
+          models.set(
+            incoming.model_id,
+            current === undefined ? incoming : mergePricing(current, incoming),
+          );
+        } catch (error) {
+          rowReconciliation.push({
+            disposition: "unsupported",
+            reason_code: "pricing_row_rejected",
+            sample: `${path} row ${index + 1}: ${(error instanceof Error ? error.message : String(error)).slice(0, 180)}`,
+          });
+        }
+      }
+    } catch (error) {
+      rowReconciliation.push({
+        disposition: "unbound",
+        reason_code: "pricing_document_rejected",
+        sample: `${path}: ${(error instanceof Error ? error.message : String(error)).slice(0, 200)}`,
+      });
     }
   }
   const evidence = commercialEvidence(input, extractor, bundle, models);
-  for (const id of evidence.formulaModels) {
+  for (const id of new Set([...evidence.formulaModels, ...evidence.searchModels])) {
     const model = models.get(id);
-    if (model === undefined) throw new Error(`Kimi official-tools guide named unknown model ${id}`);
+    if (model === undefined) throw new Error(`Kimi tool guide named unknown model ${id}`);
     models.set(id, {
       ...model,
       capabilities: { ...model.capabilities, tool_call: true },
-      price_facts: [...model.price_facts, ...evidence.formulaRates],
     });
   }
-  for (const id of evidence.searchModels) {
-    const model = models.get(id);
-    if (model === undefined) throw new Error(`Kimi web-search guide named unknown model ${id}`);
-    models.set(id, {
-      ...model,
-      capabilities: { ...model.capabilities, tool_call: true },
-      price_facts: [...model.price_facts, evidence.searchRate],
-    });
-  }
+  extractKimiCommercialFacts(models, input.source.id, evidence);
   const result = [...models.values()].map(
     (model): ProviderModel => ({
       ...model,
@@ -1302,29 +1475,68 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
           `${right.meter}\0${JSON.stringify(right.conditions)}`,
         ),
       ),
+      raw_price_facts: [
+        ...model.raw_price_facts,
+        ...evidence.bindingGaps.flatMap((gap) => bindingGap(input, extractor, model, gap)),
+      ],
     }),
   );
   for (const model of result) {
-    for (const rate of model.price_facts) {
-      const formula =
-        rate.meter === "tool_call" &&
-        rate.conditions.promotion === true &&
-        rate.conditions.operation?.startsWith("formula_") === true;
+    for (const rate of model.price_facts)
       input.onPricingReconciliation?.({
         disposition: "normalized",
-        reason_code: formula
-          ? "formula_tool_free_rate_normalized"
-          : rate.meter === "tool_call" && rate.conditions.operation === "web_search"
-            ? "web_search_rate_normalized"
-            : "price_fact_normalized",
-        sample: formula
-          ? `${model.model_id}:${extractor.region}:${rate.conditions.operation}:${rate.meter}`
-          : `${model.model_id}:${extractor.region}:${rate.conditions.service_tier ?? "standard"}:${rate.meter}`,
+        reason_code: "price_fact_normalized",
+        sample: `${model.model_id}:${extractor.region}:${rate.conditions.service_tier ?? "standard"}:${rate.meter}`,
       });
-    }
   }
-  for (const item of evidence.reconciliation) input.onPricingReconciliation?.(item);
+  if (evidence.searchRate !== undefined)
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "web_search_service_normalized",
+      sample: `${extractor.region}:web_search:event`,
+    });
+  for (const tool of evidence.formulaTools.filter((name) => name !== "web-search"))
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "formula_tool_promotional_free",
+      sample: tool,
+    });
+  if (evidence.fileService)
+    input.onPricingReconciliation?.({
+      disposition: "explicit_non_numeric",
+      reason_code: "file_service_promotional_free",
+    });
+  for (const item of [...rowReconciliation, ...evidence.reconciliation])
+    input.onPricingReconciliation?.(item);
   return bounded(input, "kimi-pricing", result);
+}
+
+function bindingGap(
+  input: Input,
+  extractor: PricingExtractor,
+  model: ProviderModel,
+  gap: CommercialEvidence["bindingGaps"][number],
+): SourceRawPricingFact[] {
+  const applies =
+    gap === "batch"
+      ? model.price_facts.some(({ conditions }) => conditions.service_tier === "batch")
+      : gap === "cache"
+        ? model.price_facts.some(({ meter }) => meter === "cache_read_text")
+        : true;
+  if (!applies) return [];
+  return [
+    {
+      term_key: `kimi_${gap}_charge_binding`,
+      impact: "informational",
+      reason: "unsupported_structure",
+      conditions: {
+        region: extractor.region,
+        ...(gap === "batch" ? { service_tier: "batch" } : {}),
+      },
+      source_ref: input.source.id,
+      raw: { label: `Kimi ${gap} usage evidence could not be refreshed` },
+    },
+  ];
 }
 
 function htmlText(value: string): string {

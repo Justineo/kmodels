@@ -6,6 +6,7 @@ import {
   type AzureArmCost,
   type AzureArmSku,
 } from "./azure-commercial.ts";
+import { azureCommercialFacts } from "./azure-commercial-source.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
@@ -2159,48 +2160,75 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
 }
 
 interface AzurePublicPricingPage {
+  kind: "model" | "commercial";
   name: string;
   productName: string;
 }
 
 const azurePublicPricingPages = new Map<string, AzurePublicPricingPage>([
-  ["/en-us/pricing/details/azure-openai/", { name: "Azure OpenAI", productName: "Azure OpenAI" }],
+  [
+    "/en-us/pricing/details/azure-openai/",
+    { kind: "model", name: "Azure OpenAI", productName: "Azure OpenAI" },
+  ],
   [
     "/en-us/pricing/details/ai-foundry-models/model-router/",
-    { name: "Model Router", productName: "Azure OpenAI" },
+    { kind: "model", name: "Model Router", productName: "Azure OpenAI" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/deepseek/",
-    { name: "DeepSeek", productName: "Azure Deepseek Models" },
+    { kind: "model", name: "DeepSeek", productName: "Azure Deepseek Models" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/microsoft/",
-    { name: "Microsoft", productName: "Azure Phi Models" },
+    { kind: "model", name: "Microsoft", productName: "Azure Phi Models" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/grok/",
-    { name: "Grok", productName: "Azure Grok Models" },
+    { kind: "model", name: "Grok", productName: "Azure Grok Models" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/llama/",
-    { name: "Llama", productName: "Azure Llama Models" },
+    { kind: "model", name: "Llama", productName: "Azure Llama Models" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/black-forest-labs/",
-    { name: "Black Forest Labs", productName: "Azure BFL Flux Models" },
+    { kind: "model", name: "Black Forest Labs", productName: "Azure BFL Flux Models" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/mistral-ai/",
-    { name: "Mistral AI", productName: "Azure Mistral Models" },
+    { kind: "model", name: "Mistral AI", productName: "Azure Mistral Models" },
   ],
   [
     "/en-us/pricing/details/ai-foundry-models/cohere/",
-    { name: "Cohere", productName: "Cohere Models" },
+    { kind: "model", name: "Cohere", productName: "Cohere Models" },
   ],
-  ["/en-us/pricing/details/ai-foundry-models/kimi/", { name: "Kimi", productName: "Azure Kimi" }],
+  [
+    "/en-us/pricing/details/ai-foundry-models/kimi/",
+    { kind: "model", name: "Kimi", productName: "Azure Kimi" },
+  ],
   [
     "/en-us/pricing/details/ai-foundry-models/fireworks/",
-    { name: "Fireworks", productName: "Azure Fireworks Models" },
+    { kind: "model", name: "Fireworks", productName: "Azure Fireworks Models" },
+  ],
+  [
+    "/en-us/pricing/details/ai-foundry-models/fine-tuning-models/",
+    { kind: "commercial", name: "Fine-tuning models", productName: "" },
+  ],
+  [
+    "/en-us/pricing/details/foundry-agent-service/",
+    { kind: "commercial", name: "Foundry Agent Service", productName: "" },
+  ],
+  [
+    "/en-us/pricing/details/content-safety/",
+    { kind: "commercial", name: "Content Safety", productName: "" },
+  ],
+  [
+    "/en-us/pricing/details/foundryobservability/",
+    { kind: "commercial", name: "Foundry Observability", productName: "" },
+  ],
+  [
+    "/en-us/pricing/details/microsoft-foundry/",
+    { kind: "commercial", name: "Microsoft Foundry", productName: "" },
   ],
 ]);
 
@@ -2235,7 +2263,37 @@ function azurePublicPage(rawUrl: string): AzurePublicPricingPage {
   )?.[1];
   if (family === undefined || ["aoai", "fine-tuning-models"].includes(family))
     throw new Error("Azure public pricing bundle contained an unknown page");
-  return { name: family, productName: "" };
+  return { kind: "model", name: family, productName: "" };
+}
+
+function azureCommercialModelRefs(
+  label: string,
+  catalogModels: readonly RetailCatalogModel[],
+  providerId: string,
+): string[] {
+  const identities = new Set<string>();
+  for (const page of azurePublicPricingPages.values()) {
+    if (page.kind !== "model") continue;
+    const identity = azurePublicIdentity(page, label, label, catalogModels);
+    if (identity !== undefined)
+      for (const model of catalogModels)
+        if (
+          model.model_id === identity.id &&
+          (identity.version === undefined || model.version === identity.version)
+        )
+          identities.add(modelUid(providerId, model.model_id, model.version));
+  }
+  const key = retailWords(label)
+    .replace(/\b(?:global|regional|data zones?|short context|long context)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  for (const model of catalogModels) {
+    const labels = [model.model_id, model.name, ...(model.aliases ?? [])].map((value) =>
+      retailWords(value).replace(/\s+/g, " ").trim(),
+    );
+    if (labels.includes(key)) identities.add(modelUid(providerId, model.model_id, model.version));
+  }
+  return [...identities].sort();
 }
 
 function azurePublicAlias(label: string): string | undefined {
@@ -2387,11 +2445,12 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
           const header = headers[cellIndex] ?? "";
           for (const priceElement of $(cell).find("[data-amount]").toArray()) {
             if (!baseRow) {
-              input.onPricingReconciliation?.({
-                disposition: "excluded",
-                reason_code: "non_base_public_price",
-                sample: azurePublicSample(page.name, tableLabel, rowLabel, header),
-              });
+              if (page.kind === "model" && url.pathname !== "/en-us/pricing/details/azure-openai/")
+                input.onPricingReconciliation?.({
+                  disposition: "excluded",
+                  reason_code: "non_base_public_price",
+                  sample: azurePublicSample(page.name, tableLabel, rowLabel, header),
+                });
               continue;
             }
             baseItems += 1;
@@ -2510,11 +2569,25 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
         }
       }
     }
-    if (baseItems === 0)
+    if (page.kind === "model" && baseItems === 0)
       throw new Error(`Azure public pricing page ${page.name} has no base prices`);
   }
 
   const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+  const commercial = azureCommercialFacts({
+    documents: [bundle.index, ...bundle.documents],
+    sourceId: input.source.id,
+    modelRefs: catalogModels.map((model) =>
+      modelUid(input.provider.id, model.model_id, model.version),
+    ),
+    modelRefsForLabel: (label) => azureCommercialModelRefs(label, catalogModels, input.provider.id),
+    region: azurePublicRegion,
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { onPricingReconciliation: input.onPricingReconciliation }),
+  });
+  const carrier = values[0];
+  if (carrier !== undefined && commercial.length > 0) carrier.commercial_facts = commercial;
   assertItemCount(
     "Azure public-priced models",
     values.length,

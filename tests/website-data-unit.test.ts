@@ -41,7 +41,11 @@ function numericDetail(ranges: Array<Omit<DecimalCondition, "dimension" | "kind"
   return detail(conditions);
 }
 
-function detail(conditions: PriceCondition[], atoms: ProviderAtomRegistryEntry[] = []) {
+function detail(
+  conditions: PriceCondition[],
+  atoms: ProviderAtomRegistryEntry[] = [],
+  includeContribution = false,
+) {
   const applicability = conditions.map((condition) => ({ any_of: [{ all_of: [condition] }] }));
   const observation = (establishes: PriceApplicability) => ({
     source_ref: sourceId,
@@ -69,11 +73,11 @@ function detail(conditions: PriceCondition[], atoms: ProviderAtomRegistryEntry[]
             raw: { label: "Pricing" },
           },
         ],
+        resource_edges: [],
         offers: [
           {
             id: offerId,
             offer_key: "usage",
-            role: "base",
             billing_mode: { namespace: "kmodels", value: "usage" },
             states: [
               {
@@ -82,9 +86,10 @@ function detail(conditions: PriceCondition[], atoms: ProviderAtomRegistryEntry[]
                 observations: [observation(unconditionalApplicability)],
               },
             ],
+            enrollment: [],
             terms: [
               {
-                id: pricingTermId(offerId, "input"),
+                id: pricingTermId(offerId, "rate", "input"),
                 term_key: "input",
                 kind: "rate",
                 meter: { namespace: "kmodels", value: "input_text" },
@@ -100,7 +105,28 @@ function detail(conditions: PriceCondition[], atoms: ProviderAtomRegistryEntry[]
                 })),
                 raw_variants: [],
               },
+              ...(includeContribution
+                ? [
+                    {
+                      id: pricingTermId(offerId, "contribution", "additional-input"),
+                      term_key: "additional-input",
+                      kind: "contribution" as const,
+                      source_refs: [sourceId],
+                      variants: [
+                        {
+                          target_rate_refs: [pricingTermId(offerId, "rate", "input")],
+                          applicability: unconditionalApplicability,
+                          charge_bindings: [],
+                          observations: [observation(unconditionalApplicability)],
+                        },
+                      ],
+                      raw_variants: [],
+                    },
+                  ]
+                : []),
             ],
+            relations: [],
+            settlement: [],
             source_refs: [sourceId],
           },
         ],
@@ -121,6 +147,15 @@ function detail(conditions: PriceCondition[], atoms: ProviderAtomRegistryEntry[]
 }
 
 describe("website data projection", () => {
+  it("projects additional usage without copying its target rate", () => {
+    expect(detail([], [], true).pricing?.offers[0]?.contributions).toEqual([
+      expect.objectContaining({
+        label: "Additional input",
+        target: "Priced by Usage · Input text",
+      }),
+    ]);
+  });
+
   it("uses reviewed provider vocabulary labels and keeps a generic fallback", () => {
     const dimension = { namespace: "kmodels" as const, value: "operation" as const };
     const value = {

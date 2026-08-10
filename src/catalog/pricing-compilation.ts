@@ -115,6 +115,46 @@ export const pricingCompilationSnapshotSchema = z
                 ],
                 message: "Pricing compilation raw fact provenance mismatch",
               });
+          for (const [commercialIndex, commercial] of (model.commercial_facts ?? []).entries())
+            if (commercial.source_ref !== source.source_id)
+              context.addIssue({
+                code: "custom",
+                path: [
+                  "providers",
+                  providerIndex,
+                  "sources",
+                  sourceIndex,
+                  "models",
+                  modelIndex,
+                  "commercial_facts",
+                  commercialIndex,
+                  "source_ref",
+                ],
+                message: "Pricing compilation commercial fact provenance mismatch",
+              });
+            else
+              for (const [factIndex, fact] of [
+                ...commercial.price_facts,
+                ...commercial.raw_price_facts,
+              ].entries())
+                if (fact.source_ref !== source.source_id)
+                  context.addIssue({
+                    code: "custom",
+                    path: [
+                      "providers",
+                      providerIndex,
+                      "sources",
+                      sourceIndex,
+                      "models",
+                      modelIndex,
+                      "commercial_facts",
+                      commercialIndex,
+                      "facts",
+                      factIndex,
+                      "source_ref",
+                    ],
+                    message: "Pricing compilation commercial fact provenance mismatch",
+                  });
         }
       }
     }
@@ -154,6 +194,12 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
         fact,
       ]),
     );
+    const commercialFacts = new Map(
+      [...(current.commercial_facts ?? []), ...(model.commercial_facts ?? [])].map((fact) => [
+        JSON.stringify(fact),
+        fact,
+      ]),
+    );
     byUid.set(model.uid, {
       ...current,
       pricing_state: pricingState,
@@ -163,6 +209,13 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
       raw_price_facts: [...rawFacts]
         .sort(([left], [right]) => compareUtf8(left, right))
         .map(([, fact]) => fact),
+      ...(commercialFacts.size === 0
+        ? {}
+        : {
+            commercial_facts: [...commercialFacts]
+              .sort(([left], [right]) => compareUtf8(left, right))
+              .map(([, fact]) => fact),
+          }),
     });
   }
   return [...byUid.values()].sort((left, right) => compareUtf8(left.uid, right.uid));
@@ -189,9 +242,12 @@ export function capturePricingReplaySources(
         throw new Error(`Pricing compilation source ${source.id} has mixed provider ownership`);
       if (
         models.some(
-          ({ price_facts, raw_price_facts }) =>
+          ({ price_facts, raw_price_facts, commercial_facts }) =>
             price_facts.some(({ source_ref }) => source_ref !== source.id) ||
-            raw_price_facts.some(({ source_ref }) => source_ref !== source.id),
+            raw_price_facts.some(({ source_ref }) => source_ref !== source.id) ||
+            (commercial_facts ?? []).some(({ price_facts: rates, raw_price_facts: raw }) =>
+              [...rates, ...raw].some(({ source_ref }) => source_ref !== source.id),
+            ),
         )
       )
         throw new Error(`Pricing compilation source ${source.id} has mismatched provenance`);
@@ -286,7 +342,9 @@ export function compilePricingSnapshot(
   for (const providerSnapshot of current.pricing.data.provider_snapshots) {
     const providerId = providerSnapshot.provider_id;
     const replay = replayByProvider.get(providerId);
-    if (replay === undefined) {
+    const manifest = manifestByProvider.get(providerId);
+    if (manifest === undefined) throw new Error(`Pricing provider ${providerId} is not configured`);
+    if (replay === undefined || !replayUsesCurrentExtractors(replay, manifest)) {
       const partition = providerPartition(current.pricing.data, providerId, modelProvider);
       if (partition === undefined)
         throw new Error(`Pricing provider ${providerId} has no accepted partition`);
@@ -295,8 +353,6 @@ export function compilePricingSnapshot(
       continue;
     }
 
-    const manifest = manifestByProvider.get(providerId);
-    if (manifest === undefined) throw new Error(`Pricing provider ${providerId} is not configured`);
     const partition = assembleParsedProviderPricing(
       providerId,
       providerSnapshot.observed_at,
@@ -317,6 +373,17 @@ export function compilePricingSnapshot(
     replayedProviders,
     preservedProviders,
   };
+}
+
+function replayUsesCurrentExtractors(
+  replay: PricingReplayProvider,
+  manifest: ProviderManifest,
+): boolean {
+  const configured = new Map(manifest.sources.map((source) => [source.id, source]));
+  return replay.sources.every((source) => {
+    const current = configured.get(source.source_id);
+    return current === undefined || current.extractorVersion === source.extractor_version;
+  });
 }
 
 function replaySources(
@@ -344,8 +411,11 @@ function replaySources(
       throw new Error(`Pricing replay source ${source.source_id} uses a stale extractor`);
     const catalogSource = catalogSources.get(source.source_id);
     const hasClaims = source.models.some(
-      ({ pricing_state, price_facts, raw_price_facts }) =>
-        pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
+      ({ pricing_state, price_facts, raw_price_facts, commercial_facts }) =>
+        pricing_state !== "unknown" ||
+        price_facts.length > 0 ||
+        raw_price_facts.length > 0 ||
+        (commercial_facts?.length ?? 0) > 0,
     );
     if (catalogSource === undefined) {
       if (hasClaims)

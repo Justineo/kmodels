@@ -9,11 +9,13 @@ import {
   pricingOfferId,
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
+import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import { sourcePricingReconciliation } from "../src/catalog/pricing-reconciliation.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
 import {
   sourcePriceFactSchema,
   type ParsedProviderModel,
+  type SourceCommercialPricingFact,
   type SourcePriceFact,
 } from "../src/catalog/pricing-source.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
@@ -405,21 +407,18 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(() => validatePricingCatalog(data, core)).not.toThrow();
 
     const bookId = pricingBookId(providerId, `model:${modelRef}`);
-    const usageId = pricingOfferId(bookId, "usage");
-    const input = partition.books[0]?.offers[0]?.terms.find(
-      ({ id }) => id === pricingTermId(usageId, "input_text"),
+    const syncId = pricingOfferId(bookId, "sync");
+    const sync = partition.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+    const input = sync?.terms.find(({ id }) => id === pricingTermId(syncId, "rate", "input_text"));
+    const storage = sync?.terms.find(({ id }) => id === pricingTermId(syncId, "rate", "storage"));
+    const output = sync?.terms.find(
+      ({ id }) => id === pricingTermId(syncId, "rate", "output_text"),
     );
-    const storage = partition.books[0]?.offers[0]?.terms.find(
-      ({ id }) => id === pricingTermId(usageId, "cache_storage"),
+    const oversized = sync?.terms.find(
+      ({ id }) => id === pricingTermId(syncId, "rate", "input_audio"),
     );
-    const output = partition.books[0]?.offers[0]?.terms.find(
-      ({ id }) => id === pricingTermId(usageId, "output_text"),
-    );
-    const oversized = partition.books[0]?.offers[0]?.terms.find(
-      ({ id }) => id === pricingTermId(usageId, "input_audio"),
-    );
-    const invalidValidity = partition.books[0]?.offers[0]?.terms.find(
-      ({ id }) => id === pricingTermId(usageId, "output_audio"),
+    const invalidValidity = sync?.terms.find(
+      ({ id }) => id === pricingTermId(syncId, "rate", "output_audio"),
     );
     expect(input?.kind === "rate" ? input.variants[0]?.price.value : undefined).toEqual({
       numerator: "1",
@@ -516,9 +515,14 @@ describe("parsed-source canonical pricing adapter", () => {
       [{ source: pricingSource, models: [parsedModel] }],
       [parsedModel],
     );
-    const term = partition?.books[0]?.offers[0]?.terms[0];
-    if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
-    const dimensions = (amount: string) =>
+    const book = partition?.books[0];
+    const sync = book?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = book?.offers.find(({ offer_key }) => offer_key === "batch");
+    const syncTerm = sync?.terms[0];
+    const batchTerm = batch?.terms[0];
+    if (syncTerm?.kind !== "rate" || batchTerm?.kind !== "rate")
+      throw new Error("Input rate terms were not assembled");
+    const dimensions = (term: typeof syncTerm, amount: string) =>
       term.variants
         .find(({ observations }) => observations[0]?.raw.amount === amount)
         ?.applicability.any_of[0]?.all_of.flatMap((condition) =>
@@ -526,13 +530,13 @@ describe("parsed-source canonical pricing adapter", () => {
             ? [[condition.dimension.value, condition.values[0]?.value]]
             : [],
         );
-    expect(dimensions("0")).toContainEqual(["account_eligibility", "free_tier"]);
-    expect(dimensions("0.5")).toEqual(
+    expect(dimensions(syncTerm, "0")).toEqual(
       expect.arrayContaining([
-        ["account_eligibility", "paid_tier"],
-        ["service_tier", "batch"],
+        ["account_eligibility", "free_tier"],
+        ["served_service_tier", "standard"],
       ]),
     );
+    expect(dimensions(batchTerm, "0.5")).toEqual([["account_eligibility", "paid_tier"]]);
   });
 
   it("keeps exact provider capacity units normalized", () => {
@@ -592,10 +596,17 @@ describe("parsed-source canonical pricing adapter", () => {
       [{ source: pricingSource, models: [parsedModel] }],
       [parsedModel],
     );
-    const term = partition?.books[0]?.offers[0]?.terms[0];
+    const book = partition?.books[0];
+    const sync = book?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = book?.offers.find(({ offer_key }) => offer_key === "batch");
+    const term = sync?.terms[0];
     if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
     expect(term.raw_variants).toEqual([]);
-    expect(term.variants).toHaveLength(3);
+    expect(term.variants).toHaveLength(2);
+    const batchTerm = batch?.terms[0];
+    expect(
+      batchTerm?.kind === "rate" ? batchTerm.variants[0]?.observations[0]?.raw.amount : undefined,
+    ).toBe("0.5");
 
     const base = term.variants.find(({ observations }) =>
       observations.some(({ raw }) => raw.amount === "1"),
@@ -608,7 +619,7 @@ describe("parsed-source canonical pricing adapter", () => {
         }),
         expect.objectContaining({
           kind: "categorical",
-          dimension: { namespace: "kmodels", value: "service_tier" },
+          dimension: { namespace: "kmodels", value: "served_service_tier" },
           values: [{ namespace: "provider", provider_id: providerId, value: "standard" }],
         }),
       ]),
@@ -680,6 +691,1189 @@ describe("parsed-source canonical pricing adapter", () => {
     }
   });
 
+  it("separates Foundry execution, Batch, provisioned capacity, and router markup", () => {
+    const { source: pricingSource } = pricingManifest();
+    const azure = (id: string, rates: SourcePriceFact[]): ParsedProviderModel => ({
+      ...model(),
+      provider_id: "azure",
+      model_id: id,
+      uid: `azure/${id}`,
+      service_families: ["Azure OpenAI"],
+      price_facts: rates,
+    });
+    const baseRates: SourcePriceFact[] = [
+      tokenRate("2", { service_tier: "standard" }),
+      tokenRate("4", { service_tier: "priority" }),
+      tokenRate("1", { service_tier: "batch" }),
+      {
+        meter: "provisioned_throughput",
+        price: "10",
+        currency: "USD",
+        unit: "unit_hour",
+        conditions: { deployment_scope: "GlobalProvisioned" },
+        source_ref: sourceRef,
+        derived: false,
+        raw_price: "10",
+        raw_unit: "PTU hour",
+      },
+    ];
+    const direct = azure("gpt-test", baseRates);
+    const router = azure("model-router", [tokenRate("0.1", {})]);
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source: pricingSource, models: [direct, router] }],
+      [direct, router],
+    );
+    const books = partition?.books ?? [];
+    const directBook = books.find(({ book_key }) => book_key === "model:azure/gpt-test");
+    expect(directBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    const sync = directBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = directBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    const syncInput = sync?.terms.find(({ term_key }) => term_key === "input_text");
+    const batchInput = batch?.terms.find(({ term_key }) => term_key === "input_text");
+    expect(
+      syncInput?.kind === "rate"
+        ? syncInput.variants.map(({ charge_binding, applicability }) => ({
+            aggregation: charge_binding?.aggregation,
+            tier: applicability.any_of[0]?.all_of.find(
+              ({ dimension }) => dimension.value === "served_service_tier",
+            ),
+          }))
+        : [],
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          aggregation: "attempt",
+          tier: expect.objectContaining({
+            kind: "categorical",
+            values: [expect.objectContaining({ value: "standard" })],
+          }),
+        },
+        {
+          aggregation: "attempt",
+          tier: expect.objectContaining({
+            kind: "categorical",
+            values: [expect.objectContaining({ value: "priority" })],
+          }),
+        },
+      ]),
+    );
+    expect(batchInput?.kind === "rate" ? batchInput.variants[0] : undefined).toMatchObject({
+      charge_binding: {
+        aggregation: "result_item",
+        signal: { namespace: "provider", provider_id: "azure", value: "batch_result_input_text" },
+      },
+    });
+    expect(
+      batchInput?.kind === "rate"
+        ? batchInput.variants[0]?.applicability.any_of[0]?.all_of.some(
+            ({ dimension }) => dimension.value === "service_tier",
+          )
+        : true,
+    ).toBe(false);
+    expect(sync?.settlement[0]).toMatchObject({ channel: "direct", biller: "Microsoft" });
+
+    const capacity = books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "provisioned:azure/gpt-test",
+    );
+    expect(capacity?.scope).toMatchObject({ resource_kind: { value: "capacity" } });
+    expect(capacity?.offers[0]).toMatchObject({
+      offer_key: "provisioned",
+      billing_mode: { namespace: "kmodels", value: "capacity" },
+    });
+    expect(capacity?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "resource",
+            signal: {
+              namespace: "provider",
+              provider_id: "azure",
+              value: "deployed_ptu_hours",
+            },
+          }),
+        }),
+      ],
+    });
+
+    const routerBook = books.find(({ book_key }) => book_key === "model:azure/model-router");
+    expect(routerBook?.offers[0]).toMatchObject({ offer_key: "router", name: "Model Router" });
+    expect(routerBook?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      term_key: "model_router_input",
+      meter: { namespace: "provider", provider_id: "azure", value: "model_router_input" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "azure",
+              value: "router_input_tokens",
+            },
+          }),
+        }),
+      ],
+    });
+  });
+
+  it("separates Gemini execution from provider-native grounding and cache storage", () => {
+    const { source: pricingSource } = pricingManifest();
+    const gemini: ParsedProviderModel = {
+      ...model(),
+      price_facts: [
+        tokenRate("2", { service_tier: "standard" }),
+        tokenRate("4", { service_tier: "priority" }),
+        tokenRate("1", { service_tier: "batch" }),
+      ],
+      commercial_facts: [
+        {
+          book_key: "service:google-search",
+          book_name: "Grounding with Google Search",
+          resource_kind: "service",
+          resource_key: "google-search",
+          model_refs: [modelRef],
+          offer_key: `grounding:${modelRef}`,
+          offer_name: "Search grounding for Test model",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "web_search",
+              price: "14",
+              currency: "USD",
+              unit: "thousand_search_units",
+              conditions: { operation: "google_search" },
+              source_ref: sourceRef,
+              derived: false,
+              raw_price: "$14",
+              raw_unit: "1,000 search queries",
+            },
+          ],
+          raw_price_facts: [],
+          source_ref: sourceRef,
+        },
+        {
+          book_key: "service:explicit-cache-storage",
+          book_name: "Explicit context cache storage",
+          resource_kind: "service",
+          resource_key: "explicit-cache-storage",
+          model_refs: [modelRef],
+          offer_key: `storage:${modelRef}`,
+          offer_name: "Explicit cache storage for Test model",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "cache_storage",
+              price: "1",
+              currency: "USD",
+              unit: "million_tokens_per_hour",
+              conditions: {},
+              source_ref: sourceRef,
+              derived: false,
+              raw_price: "$1",
+              raw_unit: "1M tokens per hour",
+            },
+          ],
+          raw_price_facts: [],
+          source_ref: sourceRef,
+        },
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "gemini",
+      observedAt,
+      [{ source: pricingSource, models: [gemini] }],
+      [gemini],
+    );
+    const books = partition?.books ?? [];
+    const modelBook = books.find(({ book_key }) => book_key === `model:${modelRef}`);
+    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    const syncInput = sync?.terms.find(({ term_key }) => term_key === "input_text");
+    const batchInput = batch?.terms.find(({ term_key }) => term_key === "input_text");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    expect(
+      syncInput?.kind === "rate"
+        ? syncInput.variants.map(({ applicability, charge_binding }) => ({
+            aggregation: charge_binding?.aggregation,
+            tier: applicability.any_of[0]?.all_of.find(
+              ({ dimension }) => dimension.value === "served_service_tier",
+            ),
+          }))
+        : [],
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          aggregation: "attempt",
+          tier: expect.objectContaining({
+            kind: "categorical",
+            values: [expect.objectContaining({ value: "standard" })],
+          }),
+        },
+        {
+          aggregation: "attempt",
+          tier: expect.objectContaining({
+            kind: "categorical",
+            values: [expect.objectContaining({ value: "priority" })],
+          }),
+        },
+      ]),
+    );
+    expect(batchInput?.kind === "rate" ? batchInput.variants[0] : undefined).toMatchObject({
+      applicability: { any_of: [{ all_of: [] }] },
+      charge_binding: {
+        aggregation: "result_item",
+        signal: {
+          namespace: "provider",
+          provider_id: "gemini",
+          value: "batch_result_uncached_input_tokens",
+        },
+      },
+    });
+    expect(sync?.settlement).toEqual([
+      expect.objectContaining({
+        channel: "direct",
+        biller: "Google",
+        payment_sources: ["allowance", "prepaid_balance", "provider_credit", "postpaid_invoice"],
+      }),
+    ]);
+
+    const syncRef = pricingOfferId(pricingBookId("gemini", `model:${modelRef}`), "sync");
+    const search = books.find(({ book_key }) => book_key === "service:google-search");
+    const searchOffer = search?.offers[0];
+    const searchRate = searchOffer?.terms.find(({ term_key }) => term_key === "web_search");
+    expect(
+      searchRate?.kind === "rate" ? searchRate.variants[0]?.charge_binding : undefined,
+    ).toMatchObject({
+      aggregation: "result_item",
+      signal: {
+        namespace: "provider",
+        provider_id: "gemini",
+        value: "search_executed_queries",
+      },
+    });
+    expect(searchOffer?.relations).toEqual([
+      expect.objectContaining({
+        kind: "requires",
+        target: { kind: "offers", offer_refs: [syncRef] },
+      }),
+    ]);
+
+    const storage = books.find(({ book_key }) => book_key === "service:explicit-cache-storage");
+    const storageOffer = storage?.offers[0];
+    const storageRate = storageOffer?.terms.find(({ term_key }) => term_key === "storage");
+    expect(
+      storageRate?.kind === "rate" ? storageRate.variants[0]?.charge_binding : undefined,
+    ).toMatchObject({
+      aggregation: "resource",
+      signal: {
+        namespace: "provider",
+        provider_id: "gemini",
+        value: "explicit_cache_stored_token_time",
+      },
+    });
+    expect(storageOffer?.relations).toEqual([
+      expect.objectContaining({
+        kind: "compatible_with",
+        target: { kind: "offers", offer_refs: [syncRef] },
+      }),
+    ]);
+  });
+
+  it("separates Vertex execution mechanisms, reseller settlement, grounding, and cache storage", () => {
+    const { source } = pricingManifest();
+    const googleSource = { ...source, id: "vertex-google-models" };
+    const partnerSource = { ...source, id: "vertex-partner-models" };
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      price: string,
+      conditions: SourcePriceFact["conditions"],
+      source_ref: string,
+      unit: SourcePriceFact["unit"] = "million_tokens",
+    ): SourcePriceFact => ({
+      meter,
+      price,
+      currency: "USD",
+      unit,
+      conditions,
+      source_ref,
+      derived: false,
+    });
+    const google: ParsedProviderModel = {
+      ...model(),
+      provider_id: "vertex",
+      uid: "vertex/gemini-test",
+      model_id: "gemini-test",
+      source_refs: [googleSource.id],
+      service_families: ["publishers/google"],
+      price_facts: [
+        rate("input_text", "2", { service_tier: "standard" }, googleSource.id),
+        rate("input_text", "4", { service_tier: "priority" }, googleSource.id),
+        rate("input_text", "1", { service_tier: "batch" }, googleSource.id),
+      ],
+      commercial_facts: [
+        {
+          source_ref: googleSource.id,
+          book_key: "service:google-image-search",
+          book_name: "Grounding with Google Image Search",
+          resource_kind: "service",
+          resource_key: "google-image-search",
+          model_refs: ["vertex/gemini-test"],
+          offer_key: "usage:vertex/gemini-test",
+          offer_name: "Image Search for gemini-test",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            rate(
+              "image_search",
+              "14",
+              { operation: "google_image_search" },
+              googleSource.id,
+              "thousand_search_units",
+            ),
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "service:explicit-cache-storage",
+          book_name: "Explicit context cache storage",
+          resource_kind: "service",
+          resource_key: "explicit-cache-storage",
+          model_refs: ["vertex/gemini-test"],
+          offer_key: "storage:vertex/gemini-test",
+          offer_name: "Explicit cache storage for gemini-test",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [rate("cache_storage", "1", {}, googleSource.id, "million_tokens_per_hour")],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "capacity:provisioned-throughput",
+          book_name: "Provisioned Throughput",
+          resource_kind: "capacity",
+          resource_key: "provisioned-throughput",
+          model_refs: [],
+          offer_key: "commitment",
+          offer_name: "Provisioned Throughput commitment",
+          billing_mode: "capacity",
+          pricing_state: "numeric",
+          price_facts: [
+            rate(
+              "provisioned_throughput",
+              "1200",
+              { deployment_scope: "global", billing_period: "1_week_commit" },
+              googleSource.id,
+              "unit_week",
+            ),
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "service:model-tuning",
+          book_name: "Model Tuning",
+          resource_kind: "service",
+          resource_key: "model-tuning",
+          model_refs: ["vertex/gemini-test"],
+          offer_key: "training:vertex/gemini-test:supervised_fine_tuning",
+          offer_name: "Supervised fine-tuning for gemini-test",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            rate("training_input", "10", { operation: "supervised_fine_tuning" }, googleSource.id),
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "service:agent:gemini-deep-research-agent",
+          book_name: "Gemini Deep Research Agent",
+          resource_kind: "service",
+          resource_key: "agent:gemini-deep-research-agent",
+          model_refs: [],
+          offer_key: "execution",
+          offer_name: "Gemini Deep Research Agent execution",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            rate("input_text", "2", { operation: "gemini-deep-research-agent" }, googleSource.id),
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "service:google-search",
+          book_name: "Grounding with Google Search",
+          resource_kind: "service",
+          resource_key: "google-search",
+          model_refs: [],
+          offer_key: "agent:gemini-deep-research-agent",
+          offer_name: "Google Search for Gemini Deep Research Agent",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            rate(
+              "web_search",
+              "14",
+              { operation: "google_search" },
+              googleSource.id,
+              "thousand_search_units",
+            ),
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "service:codemender",
+          book_name: "CodeMender",
+          resource_kind: "service",
+          resource_key: "codemender",
+          model_refs: ["vertex/gemini-test"],
+          offer_key: "codemender:vertex/gemini-test",
+          offer_name: "CodeMender with gemini-test",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [rate("input_text", "1", { operation: "codemender" }, googleSource.id)],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: googleSource.id,
+          book_key: "service:agent-search",
+          book_name: "Agent Search",
+          resource_kind: "service",
+          resource_key: "agent-search",
+          model_refs: [],
+          offer_key: "general-standard",
+          offer_name: "General Standard Edition",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            rate(
+              "retrieval",
+              "1.5",
+              { operation: "general_standard" },
+              googleSource.id,
+              "thousand_requests",
+            ),
+          ],
+          raw_price_facts: [],
+        },
+      ],
+    };
+    const partner: ParsedProviderModel = {
+      ...model(),
+      provider_id: "vertex",
+      uid: "vertex/claude-test",
+      model_id: "claude-test",
+      source_refs: [partnerSource.id],
+      service_families: ["publishers/anthropic"],
+      price_facts: [rate("input_text", "3", {}, partnerSource.id)],
+      commercial_facts: [
+        {
+          source_ref: partnerSource.id,
+          book_key: "service:claude-web-search",
+          book_name: "Claude Web Search",
+          resource_kind: "service",
+          resource_key: "claude-web-search",
+          model_refs: ["vertex/claude-test"],
+          offer_key: "usage:vertex/claude-test",
+          offer_name: "Claude Web Search for claude-test",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            rate(
+              "web_search",
+              "10",
+              { operation: "web_search" },
+              partnerSource.id,
+              "thousand_search_units",
+            ),
+          ],
+          raw_price_facts: [],
+        },
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [
+        { source: googleSource, models: [google] },
+        { source: partnerSource, models: [partner] },
+      ],
+      [google, partner],
+    );
+    const books = partition?.books ?? [];
+    const googleBook = books.find(({ book_key }) => book_key === "model:vertex/gemini-test");
+    const sync = googleBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = googleBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect(googleBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    expect(
+      sync?.terms[0]?.kind === "rate"
+        ? sync.terms[0].variants.map(({ applicability, charge_binding }) => ({
+            aggregation: charge_binding?.aggregation,
+            signal: charge_binding?.signal.value,
+            tier: applicability.any_of[0]?.all_of.find(
+              ({ dimension }) => dimension.value === "served_service_tier",
+            ),
+          }))
+        : [],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          aggregation: "attempt",
+          signal: "response_usage_metadata_uncached_prompt_tokens",
+          tier: expect.objectContaining({
+            values: [expect.objectContaining({ value: "priority" })],
+          }),
+        }),
+      ]),
+    );
+    expect(batch?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          applicability: { any_of: [{ all_of: [] }] },
+          charge_binding: expect.objectContaining({ aggregation: "result_item" }),
+        }),
+      ],
+    });
+    expect(sync?.settlement[0]).toMatchObject({ channel: "direct", biller: "Google Cloud" });
+
+    const partnerOffer = books
+      .find(({ book_key }) => book_key === "model:vertex/claude-test")
+      ?.offers.find(({ offer_key }) => offer_key === "sync");
+    expect(partnerOffer?.settlement[0]).toMatchObject({
+      channel: "reseller",
+      biller: "Google Cloud",
+    });
+    expect(partnerOffer?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: expect.objectContaining({ value: "response_claude_usage_input_tokens" }),
+          }),
+        }),
+      ],
+    });
+
+    const imageSearch = books.find(({ book_key }) => book_key === "service:google-image-search");
+    expect(imageSearch?.offers[0]).toMatchObject({
+      relations: [
+        expect.objectContaining({
+          kind: "requires",
+          target: { kind: "offers", offer_refs: [sync?.id] },
+        }),
+      ],
+      terms: [
+        expect.objectContaining({
+          kind: "rate",
+          meter: { namespace: "kmodels", value: "image_search" },
+          variants: [
+            expect.objectContaining({
+              charge_binding: expect.objectContaining({
+                signal: expect.objectContaining({
+                  value: "grounding_metadata_image_search_queries",
+                }),
+              }),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(
+      books.find(({ book_key }) => book_key === "service:explicit-cache-storage")?.offers[0],
+    ).toMatchObject({
+      relations: [expect.objectContaining({ kind: "compatible_with" })],
+      terms: [
+        expect.objectContaining({
+          meter: { namespace: "kmodels", value: "storage" },
+          variants: [
+            expect.objectContaining({
+              charge_binding: expect.objectContaining({ aggregation: "resource" }),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(
+      books.find(({ book_key }) => book_key === "service:claude-web-search")?.offers[0]?.terms[0],
+    ).toMatchObject({
+      kind: "rate",
+      meter: { namespace: "kmodels", value: "web_search" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: expect.objectContaining({
+              value: "claude_server_tool_use_web_search_requests",
+            }),
+          }),
+        }),
+      ],
+    });
+    expect(
+      books.find(({ book_key }) => book_key === "capacity:provisioned-throughput")?.offers[0],
+    ).toMatchObject({
+      billing_mode: { namespace: "kmodels", value: "capacity" },
+      settlement: [expect.objectContaining({ channel: "direct", biller: "Google Cloud" })],
+      terms: [
+        expect.objectContaining({
+          meter: { namespace: "kmodels", value: "provisioned_capacity" },
+          variants: [
+            expect.objectContaining({
+              charge_binding: expect.objectContaining({
+                aggregation: "resource",
+                signal: expect.objectContaining({ value: "provisioned_gsu_commitment" }),
+              }),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(
+      books.find(({ book_key }) => book_key === "service:model-tuning")?.offers[0]?.terms[0],
+    ).toMatchObject({
+      meter: { namespace: "kmodels", value: "training_input" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "job",
+            signal: expect.objectContaining({ value: "training_dataset_tokens_times_epochs" }),
+          }),
+        }),
+      ],
+    });
+    const agent = books.find(
+      ({ book_key }) => book_key === "service:agent:gemini-deep-research-agent",
+    );
+    expect(agent?.offers[0]?.terms[0]).toMatchObject({
+      meter: { namespace: "kmodels", value: "input_text" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "job",
+            signal: expect.objectContaining({ value: "gemini_deep_research_agent_input_text" }),
+          }),
+        }),
+      ],
+    });
+    expect(
+      books
+        .find(({ book_key }) => book_key === "service:google-search")
+        ?.offers.find(({ offer_key }) => offer_key === "agent:gemini-deep-research-agent")
+        ?.relations,
+    ).toEqual([
+      expect.objectContaining({
+        kind: "requires",
+        target: {
+          kind: "offers",
+          offer_refs: [
+            pricingOfferId(
+              pricingBookId("vertex", "service:agent:gemini-deep-research-agent"),
+              "execution",
+            ),
+          ],
+        },
+      }),
+    ]);
+    expect(
+      books.find(({ book_key }) => book_key === "service:codemender")?.offers[0],
+    ).toMatchObject({
+      relations: [
+        expect.objectContaining({
+          kind: "requires",
+          target: { kind: "offers", offer_refs: [sync?.id] },
+        }),
+      ],
+      terms: [
+        expect.objectContaining({
+          variants: [
+            expect.objectContaining({
+              charge_binding: expect.objectContaining({
+                aggregation: "job",
+                signal: expect.objectContaining({ value: "codemender_input_text" }),
+              }),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(
+      books.find(({ book_key }) => book_key === "service:agent-search")?.offers[0]?.terms[0],
+    ).toMatchObject({
+      meter: { namespace: "kmodels", value: "retrieval" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "request",
+            signal: expect.objectContaining({ value: "agent_search_queries" }),
+          }),
+        }),
+      ],
+    });
+  });
+
+  it("separates Bedrock execution, capacity, and Nova grounding into native offers", () => {
+    const { source: pricingSource } = pricingManifest();
+    const bedrock: ParsedProviderModel = {
+      ...model(),
+      provider_id: "amazon-bedrock",
+      uid: "amazon-bedrock/test-model",
+      price_facts: [
+        tokenRate("1", { region: "us-east-1", service_tier: "standard" }),
+        tokenRate("0.5", { region: "us-east-1", service_tier: "batch" }),
+        {
+          meter: "provisioned_throughput",
+          price: "3",
+          currency: "USD",
+          unit: "thousand_tokens_per_minute_hour",
+          conditions: {
+            region: "us-east-1",
+            service_tier: "reserved_1_month",
+            capacity: "input_tokens_per_minute",
+          },
+          source_ref: sourceRef,
+          derived: false,
+          raw_price: "3",
+          raw_unit: "1K TPM Hour",
+        },
+        {
+          meter: "tool_call",
+          price: "0.03",
+          currency: "USD",
+          unit: "request",
+          conditions: { region: "us-east-1", operation: "grounding" },
+          source_ref: sourceRef,
+          derived: false,
+          raw_price: "0.03",
+          raw_unit: "Requests",
+        },
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "amazon-bedrock",
+      observedAt,
+      [{ source: pricingSource, models: [bedrock] }],
+      [bedrock],
+    );
+    const books = partition?.books ?? [];
+    const modelBook = books.find(({ scope }) => scope.kind === "models");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual([
+      "batch",
+      "on-demand",
+    ]);
+    for (const offer of modelBook?.offers ?? []) {
+      const input = offer.terms.find(({ term_key }) => term_key === "input_text");
+      if (input?.kind !== "rate") throw new Error("Missing Bedrock input rate");
+      expect(input.variants[0]?.charge_binding).toMatchObject({
+        aggregation: offer.offer_key === "batch" ? "result_item" : "attempt",
+        signal: {
+          namespace: "provider",
+          provider_id: "amazon-bedrock",
+          value: "runtime_input_tokens",
+        },
+      });
+      expect(
+        input.variants[0]?.applicability.any_of[0]?.all_of.some(
+          ({ dimension }) => dimension.value === "service_tier",
+        ),
+      ).toBe(false);
+    }
+
+    const capacity = books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" &&
+        scope.resource_kind.value === "capacity" &&
+        scope.resource_key === "model-capacity:amazon-bedrock/test-model",
+    );
+    expect(capacity?.offers.map(({ offer_key }) => offer_key).sort()).toEqual([
+      "reserved_1_month",
+      "reserved_1_month-covered",
+    ]);
+    expect(
+      capacity?.offers
+        .find(({ offer_key }) => offer_key === "reserved_1_month-covered")
+        ?.states.map(({ state }) => state),
+    ).toEqual(["included"]);
+
+    const grounding = books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" &&
+        scope.resource_key === "nova-web-grounding:amazon-bedrock/test-model",
+    );
+    expect(grounding?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      meter: { namespace: "kmodels", value: "web_search" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "amazon-bedrock",
+              value: "nova_web_grounding_requests",
+            },
+          }),
+        }),
+      ],
+    });
+    expect(
+      modelBook?.offers
+        .flatMap(({ terms }) => terms)
+        .some(({ term_key }) => term_key.startsWith("tool_call")),
+    ).toBe(false);
+  });
+
+  it("normalizes Bedrock and AgentCore service meters without turning them into models", () => {
+    const { source: pricingSource } = pricingManifest();
+    const raw = (
+      termKey: string,
+      amount: string,
+      unit: string,
+      usageType: string,
+      fragment: string,
+      attributes: Record<string, string> = {},
+    ): SourceCommercialPricingFact["raw_price_facts"][number] => ({
+      term_key: termKey,
+      impact: "base_price",
+      reason: "unsupported_structure",
+      conditions: { region: "us-east-1" },
+      source_ref: sourceRef,
+      raw: {
+        amount,
+        denomination: "USD",
+        unit,
+        fragment,
+        conditions: [
+          { dimension: "usagetype", value: usageType },
+          ...Object.entries(attributes).map(([dimension, value]) => ({ dimension, value })),
+        ],
+      },
+    });
+    const commercial = (
+      resourceKey: string,
+      name: string,
+      offerKey: string,
+      facts: SourceCommercialPricingFact["raw_price_facts"],
+      pricingState: SourceCommercialPricingFact["pricing_state"] = "numeric",
+    ): SourceCommercialPricingFact => ({
+      source_ref: sourceRef,
+      book_key: `service:${resourceKey}`,
+      book_name: name,
+      resource_kind: "service",
+      resource_key: resourceKey,
+      model_refs: [],
+      offer_key: offerKey,
+      offer_name: offerKey,
+      billing_mode: "usage",
+      pricing_state: pricingState,
+      price_facts: [],
+      raw_price_facts: facts,
+    });
+    const pageRaw = (
+      termKey: string,
+      impact: SourceCommercialPricingFact["raw_price_facts"][number]["impact"],
+      fragment: string,
+      amount?: string,
+      unit?: string,
+      usd = false,
+    ): SourceCommercialPricingFact["raw_price_facts"][number] => ({
+      term_key: termKey,
+      impact,
+      reason: "unsupported_structure",
+      conditions: {},
+      source_ref: sourceRef,
+      raw: {
+        fragment,
+        ...(amount === undefined ? {} : { amount }),
+        ...(unit === undefined ? {} : { unit }),
+        ...(usd ? { denomination: "USD" } : {}),
+      },
+    });
+    const bedrock: ParsedProviderModel = {
+      ...model(),
+      provider_id: "amazon-bedrock",
+      uid: "amazon-bedrock/test-model",
+      price_facts: [tokenRate("1", {})],
+      commercial_facts: [
+        commercial("guardrails", "Guardrails", "apply", [
+          raw(
+            "content",
+            "0.15",
+            "TextUnit",
+            "USE1-Guardrail-ContentPolicyUnitsConsumed",
+            "$0.15 per 1K text units",
+          ),
+        ]),
+        commercial("agentcore-browser", "AgentCore Browser", "consumption", [
+          raw(
+            "cpu",
+            "0.0895",
+            "vCPU-Hours",
+            "USE1-BrowserTool:Consumption-based:vCPU",
+            "$0.0895 per vCPU-Hour",
+          ),
+          raw(
+            "memory",
+            "0.00945",
+            "GB-Hours",
+            "USE1-BrowserTool:Consumption-based:Memory",
+            "$0.00945 per GB-Hour",
+          ),
+        ]),
+        commercial("agentcore-runtime", "AgentCore Runtime", "instance-based", [
+          raw(
+            "instance-runtime",
+            "0.24",
+            "Hours",
+            "Runtime:Instance-based:c5d.9xlarge:Management-Hours",
+            "$0.24 per Hour",
+            { instanceType: "c5d.9xlarge" },
+          ),
+        ]),
+        commercial("agentcore-gateway", "AgentCore Gateway", "consumption", [
+          raw(
+            "api-invocations",
+            "0.005",
+            "API Calls",
+            "USE1-Gateway:Consumption-based:APIInvocations",
+            "$0.005 per 1K invocations",
+          ),
+        ]),
+        commercial("agentcore-identity", "AgentCore Identity", "direct", [
+          pageRaw(
+            "credential-requests",
+            "base_price",
+            "$0.010 per 1,000 successful requests",
+            "0.010",
+            "Per 1000 requests",
+            true,
+          ),
+        ]),
+        commercial(
+          "agentcore-identity",
+          "AgentCore Identity",
+          "runtime-or-gateway",
+          [
+            pageRaw(
+              "covering-services",
+              "informational",
+              "Included through AgentCore Runtime or Gateway",
+            ),
+          ],
+          "included",
+        ),
+        commercial("agentcore-registry", "AWS Agent Registry", "consumption", [
+          pageRaw(
+            "records",
+            "base_price",
+            "First 5,000 free, then $0.400 per 1,000 records",
+            "0.400",
+            "1K Registry Record-Months",
+            true,
+          ),
+          pageRaw(
+            "records-allowance",
+            "allowance",
+            "First 5,000 records free monthly",
+            "5000",
+            "Registry Records",
+          ),
+        ]),
+        commercial("model-evaluation", "Model Evaluation", "human-evaluation", [
+          pageRaw(
+            "completed-human-task",
+            "base_price",
+            "$0.21 per completed human task",
+            "0.21",
+            "Evaluations",
+            true,
+          ),
+        ]),
+        commercial("web-search", "Bedrock Web Search", "query", [
+          raw("query", "0.01", "Queries", "USE1-Bedrock-Websearch-Queries", "$0.01 per query"),
+        ]),
+        commercial("agentcore-web-search", "AgentCore Web Search", "consumption", [
+          raw(
+            "queries",
+            "0.01",
+            "Queries",
+            "USE1-WebSearchTool:Consumption-based:Queries",
+            "$0.01 per query",
+          ),
+        ]),
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "amazon-bedrock",
+      observedAt,
+      [{ source: pricingSource, models: [bedrock] }],
+      [bedrock],
+    );
+    const resources = (partition?.books ?? []).filter(
+      ({ scope }) => scope.kind === "provider_resource",
+    );
+    const guardrails = resources.find(
+      ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "guardrails",
+    );
+    const guardrailTerm = guardrails?.offers[0]?.terms[0];
+    if (guardrailTerm?.kind !== "rate") throw new Error("Missing Guardrails rate");
+    expect(guardrailTerm.meter).toEqual({ namespace: "kmodels", value: "content_safety" });
+    expect(guardrailTerm.variants[0]?.price).toMatchObject({
+      value: { numerator: "3", denominator: "20000" },
+      per: {
+        factors: [
+          {
+            unit: {
+              namespace: "provider",
+              provider_id: "amazon-bedrock",
+              value: "guardrail_text_unit",
+            },
+          },
+        ],
+      },
+    });
+    expect(guardrailTerm.variants[0]?.charge_binding).toMatchObject({
+      aggregation: "billing_period",
+      scale: { numerator: "1000", denominator: "1" },
+    });
+
+    const browser = resources.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "agentcore-browser",
+    );
+    expect(
+      browser?.offers[0]?.terms.map((term) => ({
+        meter: term.kind === "rate" ? term.meter.value : "raw",
+        unit:
+          term.kind === "rate"
+            ? term.variants[0]?.price.per.factors.map(({ unit }) => unit.value)
+            : [],
+      })),
+    ).toEqual([
+      { meter: "compute", unit: ["second", "vcpu"] },
+      { meter: "compute", unit: ["byte", "second"] },
+    ]);
+
+    const instance = resources.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "agentcore-runtime",
+    )?.offers[0]?.terms[0];
+    if (instance?.kind !== "rate") throw new Error("Missing AgentCore instance rate");
+    expect(instance.variants[0]?.applicability).toMatchObject({
+      any_of: [
+        {
+          all_of: expect.arrayContaining([
+            expect.objectContaining({
+              dimension: {
+                namespace: "provider",
+                provider_id: "amazon-bedrock",
+                value: "agentcore_instance_type",
+              },
+              values: [expect.objectContaining({ value: "c5d.9xlarge" })],
+            }),
+          ]),
+        },
+      ],
+    });
+
+    for (const resourceKey of ["web-search", "agentcore-web-search"])
+      expect(
+        resources.find(
+          ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === resourceKey,
+        )?.offers[0]?.terms[0],
+      ).toMatchObject({
+        kind: "rate",
+        meter: { namespace: "kmodels", value: "web_search" },
+      });
+
+    const registry = resources.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "agentcore-registry",
+    );
+    const registryRate = registry?.offers[0]?.terms.find(
+      (term) => term.kind === "rate" && term.term_key === "records",
+    );
+    const registryAllowance = registry?.offers[0]?.terms.find(
+      (term) => term.kind === "allowance" && term.term_key === "records-allowance",
+    );
+    expect(registryRate).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          price: {
+            value: { numerator: "1", denominator: "2500" },
+            denomination: { kind: "fiat", currency: "USD" },
+            per: {
+              factors: expect.arrayContaining([
+                expect.objectContaining({
+                  unit: expect.objectContaining({ value: "registry_record" }),
+                }),
+                expect.objectContaining({ unit: { namespace: "kmodels", value: "billing_month" } }),
+              ]),
+            },
+          },
+          charge_binding: expect.objectContaining({ aggregation: "billing_period" }),
+        }),
+      ],
+    });
+    if (registryRate?.kind !== "rate" || registryAllowance?.kind !== "allowance")
+      throw new Error("Missing Agent Registry rate or allowance");
+    expect(registryAllowance.variants[0]).toMatchObject({
+      benefit: {
+        kind: "quantity",
+        quantity: { value: { numerator: "5000", denominator: "1" } },
+      },
+      target: { kind: "rate_terms", term_refs: [registryRate.id] },
+      reset: { namespace: "kmodels", value: "monthly" },
+    });
+
+    const identity = resources.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "agentcore-identity",
+    );
+    expect(
+      identity?.offers.find(({ offer_key }) => offer_key === "direct")?.terms[0],
+    ).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "request",
+            signal: expect.objectContaining({
+              value: "agentcore_identity_successful_credential_requests",
+            }),
+          }),
+        }),
+      ],
+    });
+    expect(
+      identity?.offers.find(({ offer_key }) => offer_key === "runtime-or-gateway")?.relations[0],
+    ).toMatchObject({
+      kind: "requires",
+      target: { kind: "offers", offer_refs: expect.any(Array) },
+    });
+    expect(
+      resources.find(
+        ({ scope }) =>
+          scope.kind === "provider_resource" && scope.resource_key === "model-evaluation",
+      )?.offers[0]?.terms[0],
+    ).toMatchObject({
+      kind: "rate",
+      meter: { namespace: "kmodels", value: "evaluation" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({ aggregation: "job" }),
+        }),
+      ],
+    });
+  });
+
   it("keeps Anthropic speed, service tier, and inference geography independent", () => {
     const { source: pricingSource } = pricingManifest();
     const base = model();
@@ -700,9 +1894,10 @@ describe("parsed-source canonical pricing adapter", () => {
       [{ source: pricingSource, models: [parsedModel] }],
       [parsedModel],
     );
-    const term = partition?.books[0]?.offers[0]?.terms[0];
-    if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
-    const conditions = (amount: string) => {
+    const book = partition?.books[0];
+    const conditions = (offerKey: string, amount: string) => {
+      const term = book?.offers.find(({ offer_key }) => offer_key === offerKey)?.terms[0];
+      if (term?.kind !== "rate") throw new Error("Input rate term was not assembled");
       const variant = term.variants.find(({ observations }) =>
         observations.some(({ raw }) => raw.amount === amount),
       );
@@ -714,16 +1909,631 @@ describe("parsed-source canonical pricing adapter", () => {
         ),
       );
     };
-    expect(conditions("0.5")).toEqual({
-      service_tier: "batch",
+    expect(conditions("batch", "0.5")).toEqual({
       speed: "standard",
       inference_geo: "global",
     });
-    expect(conditions("2")).toEqual({
+    expect(conditions("sync", "2")).toEqual({
       service_tier: "standard",
       speed: "fast",
       inference_geo: "global",
     });
+  });
+
+  it("publishes OpenAI Batch and separately billed services as distinct offers", () => {
+    const openAi = manifests.find(({ provider }) => provider.id === "openai");
+    const pricingSource = openAi?.sources.find(({ id }) => id === "openai-pricing");
+    if (pricingSource === undefined) throw new Error("OpenAI pricing manifest is missing");
+    const sourceId = pricingSource.id;
+    const parsedModel: ParsedProviderModel = {
+      ...model(),
+      provider_id: "openai",
+      model_id: "gpt-test",
+      uid: "openai/gpt-test",
+      source_refs: [sourceId],
+      capabilities: { ...unknownCapabilities(), reasoning: true },
+      price_facts: [
+        {
+          meter: "input_text",
+          price: "2",
+          currency: "USD",
+          unit: "million_tokens",
+          conditions: { service_tier: "standard" },
+          source_ref: sourceId,
+          derived: false,
+        },
+        {
+          meter: "input_text",
+          price: "1",
+          currency: "USD",
+          unit: "million_tokens",
+          conditions: { service_tier: "batch" },
+          source_ref: sourceId,
+          derived: false,
+        },
+      ],
+      commercial_facts: [
+        {
+          source_ref: sourceId,
+          book_key: "service:file-search",
+          book_name: "File Search",
+          resource_kind: "service",
+          resource_key: "file-search",
+          model_refs: ["openai/gpt-test"],
+          offer_key: "usage",
+          offer_name: "File Search usage",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "file_search",
+              price: "2.5",
+              currency: "USD",
+              unit: "thousand_events",
+              conditions: {},
+              source_ref: sourceId,
+              derived: false,
+            },
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: sourceId,
+          book_key: "service:web-search",
+          book_name: "Web Search",
+          resource_kind: "service",
+          resource_key: "web-search",
+          model_refs: ["openai/gpt-test"],
+          offer_key: "current",
+          offer_name: "Web Search",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "web_search",
+              price: "10",
+              currency: "USD",
+              unit: "thousand_events",
+              conditions: { operation: "search" },
+              source_ref: sourceId,
+              derived: false,
+            },
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: sourceId,
+          book_key: "service:fine-tuning:gpt-test",
+          book_name: "Fine-tuning gpt-test",
+          resource_kind: "service",
+          resource_key: "fine-tuning:gpt-test",
+          model_refs: ["openai/gpt-test"],
+          offer_key: "training",
+          offer_name: "Fine-tuning training",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "training_input",
+              price: "25",
+              currency: "USD",
+              unit: "million_tokens",
+              conditions: {},
+              source_ref: sourceId,
+              derived: false,
+            },
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: sourceId,
+          book_key: "account-resource:fine-tuned-model:gpt-test",
+          book_name: "Fine-tuned model derived from gpt-test",
+          resource_kind: "account_resource_template",
+          resource_key: "fine-tuned-model:gpt-test",
+          model_refs: ["openai/gpt-test"],
+          offer_key: "inference",
+          offer_name: "Fine-tuned model inference",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "input_text",
+              price: "3",
+              currency: "USD",
+              unit: "million_tokens",
+              conditions: { service_tier: "standard" },
+              source_ref: sourceId,
+              derived: false,
+            },
+            {
+              meter: "input_text",
+              price: "1.5",
+              currency: "USD",
+              unit: "million_tokens",
+              conditions: { service_tier: "batch" },
+              source_ref: sourceId,
+              derived: false,
+            },
+          ],
+          raw_price_facts: [],
+        },
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+    );
+    const modelBook = partition?.books.find(({ book_key }) => book_key === "model:openai/gpt-test");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect(sync?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          charge_binding: {
+            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+            aggregation: "request",
+          },
+        },
+      ],
+    });
+    expect(batch?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          applicability: { any_of: [{ all_of: [] }] },
+          charge_binding: {
+            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+            aggregation: "result_item",
+          },
+        },
+      ],
+    });
+    expect(sync?.relations).toEqual([
+      expect.objectContaining({
+        kind: "exclusive_with",
+        target: { kind: "offers", offer_refs: [batch?.id] },
+      }),
+    ]);
+
+    const service = partition?.books.find(({ book_key }) => book_key === "service:file-search");
+    expect(service?.scope).toEqual({
+      kind: "provider_resource",
+      resource_kind: { namespace: "kmodels", value: "service" },
+      resource_key: "file-search",
+      model_refs: ["openai/gpt-test"],
+    });
+    expect(service?.offers[0]).toMatchObject({
+      relations: [
+        {
+          kind: "compatible_with",
+          target: { kind: "offers", offer_refs: [sync?.id] },
+        },
+      ],
+      terms: [
+        {
+          kind: "rate",
+          meter: { namespace: "kmodels", value: "file_search" },
+          variants: [
+            {
+              charge_binding: {
+                signal: {
+                  namespace: "provider",
+                  provider_id: "openai",
+                  value: "file_search_calls",
+                },
+                aggregation: "request",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    const contribution = search?.offers[0]?.terms.find(({ kind }) => kind === "contribution");
+    expect(contribution).toMatchObject({
+      kind: "contribution",
+      variants: [
+        {
+          target_rate_refs: [pricingTermId(sync?.id ?? "", "rate", sync?.terms[0]?.term_key ?? "")],
+          charge_bindings: [],
+        },
+      ],
+    });
+
+    const training = partition?.books.find(
+      ({ book_key }) => book_key === "service:fine-tuning:gpt-test",
+    );
+    const derived = partition?.books.find(
+      ({ book_key }) => book_key === "account-resource:fine-tuned-model:gpt-test",
+    );
+    expect(training?.offers[0]).toMatchObject({
+      enrollment: [{ state: "closed_to_new" }],
+    });
+    expect(training?.resource_edges).toEqual([
+      expect.objectContaining({
+        kind: "produces_resource",
+        target: { kind: "books", book_refs: [derived?.id] },
+      }),
+    ]);
+    expect(derived?.resource_edges).toEqual([
+      expect.objectContaining({
+        kind: "derived_from",
+        target: { kind: "models", model_refs: ["openai/gpt-test"] },
+      }),
+    ]);
+    expect(derived?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    expect(
+      derived?.offers.map(({ offer_key, terms }) => ({
+        offer_key,
+        aggregation:
+          terms[0]?.kind === "rate" ? terms[0].variants[0]?.charge_binding?.aggregation : undefined,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        { offer_key: "sync", aggregation: "request" },
+        { offer_key: "batch", aggregation: "result_item" },
+      ]),
+    );
+    if (partition === undefined) throw new Error("OpenAI pricing partition is missing");
+    const view = modelPricingView(
+      {
+        provider_vocabularies: [partition.vocabulary],
+        provider_snapshots: [partition.snapshot],
+        model_dispositions: partition.model_dispositions,
+        books: partition.books,
+      },
+      parsedModel,
+    );
+    expect(view.modelMechanisms.map(({ offer_key }) => offer_key).sort()).toEqual([
+      "batch",
+      "sync",
+    ]);
+    expect(view).toMatchObject({
+      optionalServices: expect.arrayContaining([
+        expect.objectContaining({ offer_key: "usage" }),
+        expect.objectContaining({ offer_key: "current" }),
+      ]),
+      automaticComponents: [],
+      plansAndCapacity: [],
+      standaloneOffers: expect.arrayContaining([
+        expect.objectContaining({ offer_key: "training" }),
+        expect.objectContaining({ offer_key: "sync" }),
+        expect.objectContaining({ offer_key: "batch" }),
+      ]),
+    });
+  });
+
+  it("publishes Anthropic model mechanisms, provider services, and capacity separately", () => {
+    const anthropic = manifests.find(({ provider }) => provider.id === "anthropic");
+    const pricingSource = anthropic?.sources.find(({ id }) => id === "anthropic-models");
+    if (pricingSource === undefined) throw new Error("Anthropic pricing manifest is missing");
+    const sourceId = pricingSource.id;
+    const modelRef = "anthropic/claude-test";
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      price: string,
+      unit: SourcePriceFact["unit"],
+      conditions: SourcePriceFact["conditions"] = {},
+    ): SourcePriceFact => ({
+      meter,
+      price,
+      currency: "USD",
+      unit,
+      conditions,
+      source_ref: sourceId,
+      derived: false,
+    });
+    const commercial = (
+      resourceKey: string,
+      offerKey: string,
+      pricingState: SourceCommercialPricingFact["pricing_state"],
+      priceFacts: SourcePriceFact[] = [],
+      rawPriceFacts: SourceCommercialPricingFact["raw_price_facts"] = [],
+      resourceKind: SourceCommercialPricingFact["resource_kind"] = "service",
+    ): SourceCommercialPricingFact => ({
+      source_ref: sourceId,
+      book_key: `${resourceKind}:${resourceKey}`,
+      book_name: resourceKey,
+      resource_kind: resourceKind,
+      resource_key: resourceKey,
+      model_refs: [modelRef],
+      offer_key: offerKey,
+      offer_name: offerKey,
+      billing_mode: resourceKind === "capacity" ? "capacity" : "usage",
+      pricing_state: pricingState,
+      price_facts: priceFacts,
+      raw_price_facts: rawPriceFacts,
+    });
+    const raw = (
+      termKey: string,
+      impact: SourceCommercialPricingFact["raw_price_facts"][number]["impact"],
+      reason: SourceCommercialPricingFact["raw_price_facts"][number]["reason"],
+      fragment: string,
+    ): SourceCommercialPricingFact["raw_price_facts"][number] => ({
+      term_key: termKey,
+      impact,
+      reason,
+      conditions: {},
+      source_ref: sourceId,
+      raw: { fragment },
+    });
+    const parsedModel: ParsedProviderModel = {
+      ...model(),
+      provider_id: "anthropic",
+      model_id: "claude-test",
+      uid: modelRef,
+      source_refs: [sourceId],
+      capabilities: { ...unknownCapabilities(), batch: true },
+      price_facts: [
+        rate("input_text", "2", "million_tokens", { service_tier: "standard" }),
+        rate("output_text", "10", "million_tokens", { service_tier: "standard" }),
+        rate("cache_write_text", "2.5", "million_tokens", {
+          service_tier: "standard",
+          cache_ttl_seconds: 300,
+        }),
+        rate("cache_read_text", "0.2", "million_tokens", { service_tier: "standard" }),
+        rate("input_text", "1", "million_tokens", { service_tier: "batch" }),
+        rate("output_text", "5", "million_tokens", { service_tier: "batch" }),
+      ],
+      commercial_facts: [
+        commercial(
+          "web-search",
+          "sync",
+          "numeric",
+          [rate("web_search", "10", "thousand_events")],
+          [raw("usage-signal", "informational", "unsupported_structure", "web_search_requests")],
+        ),
+        commercial(
+          "web-search",
+          "batch",
+          "numeric",
+          [rate("web_search", "10", "thousand_events")],
+          [raw("usage-signal", "informational", "unsupported_structure", "web_search_requests")],
+        ),
+        commercial("web-fetch", "sync", "included"),
+        commercial(
+          "code-execution",
+          "sync",
+          "numeric",
+          [rate("container_runtime", "0.05", "hour")],
+          [raw("minimum-runtime", "informational", "unsupported_structure", "5 minute minimum")],
+        ),
+        commercial(
+          "code-execution",
+          "organization-allowance",
+          "included",
+          [],
+          [
+            raw(
+              "daily-container-allowance",
+              "allowance",
+              "unsupported_structure",
+              "50 free container-hours per organization per day",
+            ),
+          ],
+        ),
+        commercial("code-execution", "managed-agents", "included"),
+        commercial(
+          `advisor:${modelRef}`,
+          "sync",
+          "included",
+          [],
+          [raw("advisor-model-usage", "base_price", "target_rate_not_normalized", "iterations")],
+        ),
+        commercial(
+          "managed-agents-runtime",
+          "runtime",
+          "numeric",
+          [rate("session_runtime", "0.08", "hour")],
+          [
+            raw("runtime-signal", "informational", "unsupported_structure", "active_seconds"),
+            raw("model-usage", "informational", "unsupported_structure", "model token rates"),
+            raw(
+              "session-list-cost",
+              "informational",
+              "requires_usage_aggregation",
+              "authoritative list cost",
+            ),
+          ],
+        ),
+        commercial(
+          `priority-tier:${modelRef}`,
+          "commitment",
+          "not_published",
+          [],
+          [
+            raw("commitment", "base_price", "unknown_amount", "existing commitment"),
+            raw(
+              "closed-enrollment",
+              "informational",
+              "unsupported_structure",
+              "closed to new commitments",
+            ),
+          ],
+          "capacity",
+        ),
+        commercial(
+          "fallback-credit-token",
+          "redemption",
+          "included",
+          [],
+          [
+            raw(
+              "fallback-rate-substitution",
+              "allowance",
+              "unsupported_structure",
+              "cache writes become cache reads",
+            ),
+          ],
+          "account_resource_template",
+        ),
+        commercial(
+          "claude-platform-aws",
+          "marketplace",
+          "externally_billed",
+          [],
+          [raw("ccu", "informational", "unsupported_structure", "100 CCU = USD 1")],
+          "distribution",
+        ),
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "anthropic",
+      observedAt,
+      [{ source: pricingSource, models: [parsedModel] }],
+      [parsedModel],
+      anthropic?.pricingCategoricalLabels,
+    );
+    const modelBook = partition?.books.find(({ book_key }) => book_key === `model:${modelRef}`);
+    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect({
+      offers: modelBook?.offers.map(({ offer_key }) => offer_key).sort(),
+      syncAggregation:
+        sync?.terms[0]?.kind === "rate"
+          ? sync.terms[0].variants[0]?.charge_binding?.aggregation
+          : undefined,
+      batchAggregation:
+        batch?.terms[0]?.kind === "rate"
+          ? batch.terms[0].variants[0]?.charge_binding?.aggregation
+          : undefined,
+      exclusive: sync?.relations[0]?.target,
+    }).toEqual({
+      offers: ["batch", "sync"],
+      syncAggregation: "attempt",
+      batchAggregation: "result_item",
+      exclusive: { kind: "offers", offer_refs: [batch?.id] },
+    });
+
+    const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    expect(search?.offers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          offer_key: "sync",
+          relations: [
+            expect.objectContaining({
+              kind: "requires",
+              target: { kind: "offers", offer_refs: [sync?.id] },
+            }),
+          ],
+          terms: [
+            expect.objectContaining({
+              kind: "rate",
+              variants: [
+                expect.objectContaining({
+                  charge_binding: expect.objectContaining({
+                    signal: { namespace: "kmodels", value: "successful_web_searches" },
+                    aggregation: "request",
+                  }),
+                }),
+              ],
+            }),
+          ],
+        }),
+      ]),
+    );
+
+    const code = partition?.books.find(({ book_key }) => book_key === "service:code-execution");
+    const allowance = code?.offers
+      .find(({ offer_key }) => offer_key === "organization-allowance")
+      ?.terms.find(({ kind }) => kind === "allowance");
+    expect(allowance).toMatchObject({
+      kind: "allowance",
+      variants: [
+        {
+          benefit: {
+            kind: "quantity",
+            quantity: { value: { numerator: "180000", denominator: "1" } },
+          },
+          reset: { namespace: "kmodels", value: "daily" },
+        },
+      ],
+    });
+
+    const advisor = partition?.books.find(
+      ({ book_key }) => book_key === `service:advisor:${modelRef}`,
+    );
+    expect(advisor?.offers[0]?.relations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "incurs",
+          target: expect.objectContaining({ offer_refs: [sync?.id] }),
+        }),
+      ]),
+    );
+    expect(advisor?.offers[0]?.terms).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "contribution",
+          variants: expect.arrayContaining([
+            expect.objectContaining({
+              charge_bindings: [
+                expect.objectContaining({
+                  signal: expect.objectContaining({ namespace: "provider" }),
+                  aggregation: "attempt",
+                }),
+              ],
+            }),
+          ]),
+        }),
+      ]),
+    );
+
+    const runtime = partition?.books.find(
+      ({ book_key }) => book_key === "service:managed-agents-runtime",
+    );
+    const runtimeTerm = runtime?.offers[0]?.terms.find(({ kind }) => kind === "rate");
+    expect(runtimeTerm).toMatchObject({
+      kind: "rate",
+      meter: { namespace: "kmodels", value: "session_runtime" },
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "active_seconds" },
+            aggregation: "session",
+          }),
+        }),
+      ],
+    });
+    expect(runtime?.offers[0]?.relations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "incurs",
+          target: { kind: "offers", offer_refs: [sync?.id] },
+        }),
+      ]),
+    );
+    const fallback = partition?.books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" && scope.resource_key === "fallback-credit-token",
+    );
+    expect(fallback?.offers[0]).toMatchObject({
+      offer_key: "redemption",
+      relations: [expect.objectContaining({ kind: "requires" })],
+      terms: [
+        expect.objectContaining({
+          kind: "allowance",
+          variants: [
+            expect.objectContaining({
+              benefit: expect.objectContaining({ kind: "rate_substitution" }),
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(
+      partition?.books.find(({ book_key }) => book_key === `capacity:priority-tier:${modelRef}`)
+        ?.offers[0]?.enrollment,
+    ).toEqual([expect.objectContaining({ state: "closed_to_new" })]);
+    expect(
+      partition?.books.find(({ book_key }) => book_key === "distribution:claude-platform-aws")
+        ?.offers[0]?.settlement,
+    ).toEqual([expect.objectContaining({ channel: "marketplace", biller: "AWS Marketplace" })]);
   });
 
   it("preserves explicit non-numeric source states", () => {
