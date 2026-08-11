@@ -15,6 +15,7 @@ import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
+  type SourceRawPricingFact,
   sourcePriceFactKey,
 } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems } from "./source-contract.ts";
@@ -80,6 +81,7 @@ interface DiscountPolicy {
 
 const publicPriceSuffixes = new Map<string, string | null>([
   ["Input (/M tokens)", null],
+  ["Cached input (/M tokens)", null],
   ["Output (/M tokens)", null],
   ["OCR", "/ 1000 pages"],
   ["Document AI", "/ 1000 pages"],
@@ -135,12 +137,12 @@ const accountingReferences: readonly {
     message: "Mistral account plan guide drifted",
   },
   {
-    path: "/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/regional-inference/page.mdx",
+    path: "/mistralai/platform-docs-public/main/src/content/en/docs/inference/regional-inference/page.mdx",
     markers: [
       /Regional inference is billed at \*\*1\.1× standard list pricing\*\*/,
       /input tokens, output tokens, cached reads, and cache writes/,
       /Regional endpoints only serve models hosted in that region/,
-      /Stateful features.*Agents, Batch, Files API.*not available/is,
+      /Stateful features[^.]*Agents[^.]*Batch[^.]*Files API[^.]*not available/is,
     ],
     message: "Mistral regional pricing guide drifted",
   },
@@ -895,6 +897,9 @@ function pageRate(
   if (label === "Input (/M tokens)") {
     meter = model.tasks.includes("embeddings") ? "embedding" : "input_text";
     unit = "million_tokens";
+  } else if (label === "Cached input (/M tokens)") {
+    meter = "cache_read_text";
+    unit = "million_tokens";
   } else if (label === "Output (/M tokens)") {
     meter = "output_text";
     unit = "million_tokens";
@@ -1020,10 +1025,23 @@ function publicPricing(
           sample: id,
         });
       } else if (target.price_facts.some(({ price }) => !decimalsEqual(price, "0"))) {
+        models[targetIndex] = {
+          ...target,
+          pricing_state: "free",
+          price_facts: [],
+          raw_price_facts: [
+            ...target.raw_price_facts,
+            ...target.price_facts.map((rate) => supersededPrice(rate, input.source.id, "Free")),
+          ],
+        };
         input.onPricingReconciliation?.({
-          disposition: "ambiguous",
-          reason_code: "public_free_model_conflict",
-          sample: id,
+          disposition: "raw",
+          reason_code: "first_party_price_conflict_resolved",
+          sample: `${id}: Free`,
+        });
+        input.onPricingReconciliation?.({
+          disposition: "explicit_non_numeric",
+          reason_code: "free",
         });
       } else if (target.pricing_state === "free" || target.price_facts.length > 0) {
         input.onPricingReconciliation?.({
@@ -1135,14 +1153,15 @@ function selectPublicRate(
       ? {}
       : { resolution_policy: "mistral_public_price_page_over_repository" }),
   };
-  const direct = [selected];
   const additions = [
-    ...direct,
-    ...derivedPricing(
-      direct,
-      discounts.batch && model.capabilities.batch === true,
-      discounts.cache && model.capabilities.prompt_cache === true,
-    ),
+    selected,
+    ...(selected.meter === "cache_read_text"
+      ? []
+      : derivedPricing(
+          [selected],
+          discounts.batch && model.capabilities.batch === true,
+          discounts.cache && model.capabilities.prompt_cache === true,
+        )),
   ];
   if (superseded.length > 0)
     reconcile?.({
@@ -1156,21 +1175,29 @@ function selectPublicRate(
     price_facts: [...remaining, ...additions],
     raw_price_facts: [
       ...model.raw_price_facts,
-      ...superseded.map((old) => ({
-        term_key: `repository_price_superseded:${old.meter}:${old.currency}`,
-        impact: "informational" as const,
-        reason: "superseded_value" as const,
-        resolution_policy: "mistral_public_price_page_over_repository",
-        conditions: old.conditions,
-        source_ref: sourceId,
-        raw: {
-          label: "Repository price superseded by the dedicated Mistral API pricing page",
-          amount: old.price,
-          denomination: old.currency,
-          unit: old.raw_unit ?? old.unit,
-        },
-      })),
+      ...superseded.map((old) => supersededPrice(old, sourceId, label)),
     ],
+  };
+}
+
+function supersededPrice(
+  rate: SourcePriceFact,
+  sourceId: string,
+  label: string,
+): SourceRawPricingFact {
+  return {
+    term_key: `repository_price_superseded:${rate.meter}:${rate.currency}`,
+    impact: "informational",
+    reason: "superseded_value",
+    resolution_policy: "mistral_public_price_page_over_repository",
+    conditions: rate.conditions,
+    source_ref: sourceId,
+    raw: {
+      label: `Repository price superseded by the dedicated Mistral API pricing page (${label})`,
+      amount: rate.price,
+      denomination: rate.currency,
+      unit: rate.raw_unit ?? rate.unit,
+    },
   };
 }
 
@@ -1458,10 +1485,14 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   );
   const companion = (path: string): string => (optionalDocument(path) ?? "").replace(/\s+/g, " ");
   const discounts = {
-    cache: companion("/studio-api/conversations/advanced/prompt-caching.md").includes(
-      "Cached prompt tokens are billed at 10% of the standard input token price",
+    cache: companion(
+      "/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
+    ).includes("Cached prompt tokens are billed at 10% of the standard input token price"),
+    batch: /50% discount/i.test(
+      companion(
+        "/mistralai/platform-docs-public/main/src/content/en/docs/studio/batch-processing/page.mdx",
+      ),
     ),
-    batch: /50% discount/i.test(companion("/studio-api/batch-processing.md")),
   };
   reconcileMany(input.onPricingReconciliation, Number(discounts.cache) + Number(discounts.batch), {
     disposition: "normalized",

@@ -67,11 +67,14 @@ export function parseMistralPricingCards(
     const id = compact(element.find("mistral-atom-button-copy-clipboard").attr("data-text") ?? "");
     const text = compact(element.text());
     const heading = compact(element.find("h1,h2,h3,h4,h5,h6").first().text());
-    const title =
-      heading ||
-      (id.startsWith("Classifier API model")
-        ? id
-        : (serviceTitles.find((candidate) => text.startsWith(candidate)) ?? ""));
+    const labels = element
+      .find("p")
+      .toArray()
+      .map((paragraph) => compact($(paragraph).text()));
+    const reviewedTitle =
+      serviceTitles.find((candidate) => labels.includes(candidate)) ??
+      labels.find((candidate) => /^Classifier API model \((?:3B|8B)\)$/i.test(candidate));
+    const title = heading || reviewedTitle || (id.startsWith("Classifier API model") ? id : "");
     const rows: MistralPricingRow[] = [];
     for (const priceElement of element.find("mistral-atom-text-price").toArray()) {
       const price = $(priceElement);
@@ -93,12 +96,9 @@ export function parseMistralPricingCards(
         suffix: parsed.suffix,
       });
     }
-    const free = element
-      .find("p")
-      .toArray()
-      .some((paragraph) => compact($(paragraph).text()) === "Free");
+    const free = labels.includes("Free");
     const parsed = { id, title, text, rows, free };
-    const fingerprint = JSON.stringify(parsed);
+    const fingerprint = JSON.stringify(id === "" ? parsed : { id, rows, free });
     if (seen.has(fingerprint)) {
       reconcileMany(reconcile, rows.length + Number(free), {
         disposition: "excluded",
@@ -594,7 +594,7 @@ function addEnterpriseServices(input: Input, facts: SourceCommercialPricingFact[
       "/products/compute/",
       "compute",
       "Mistral Compute",
-      [/Dedicated GPU clusters/i, /Kubernetes/i, /Slurm/i],
+      [/Reserve AI compute capacity/i, /dedicated compute/i, /Slurm/i],
     ],
     [
       "/services/",
@@ -630,7 +630,7 @@ function addEnterpriseServices(input: Input, facts: SourceCommercialPricingFact[
 }
 
 function commercialBindingEvidence(input: Input): Set<string> {
-  const root = "/mistralai/platform-docs-public/main/src/content/en/docs/studio-api";
+  const root = "/mistralai/platform-docs-public/main/src/content/en/docs/studio";
   const definitions = [
     [
       `${root}/agents/agent-tools/code_interpreter/page.mdx`,

@@ -10,9 +10,15 @@
       "name": "Text One",
       "description": "A text model.",
       "type": "language",
-      "tags": ["reasoning", "tool-use", "implicit-caching", "websocket-realtime"],
+      "tags": [
+        "reasoning",
+        "structured-output",
+        "tool-use",
+        "implicit-caching",
+        "websocket-realtime"
+      ],
       "modalities": { "input": ["text", "image"], "output": ["text"] },
-      "supported_parameters": ["tools", "reasoning"],
+      "supported_parameters": ["tools", "reasoning", "response_format", "structured_outputs"],
       "supported_specifications": ["v2", "v3", "v4"],
       "reasoning_options": [{ "type": "effort", "values": ["low", "high"] }],
       "pricing": {
@@ -69,6 +75,8 @@
         "image": "0.04",
         "image_dimension_quality_pricing": [
           { "size": "4K", "cost": "0.08" },
+          { "quality": "low", "cost": "0.06" },
+          { "size": "4K", "quality": "low", "cost": "0.1" },
           { "style": "vector", "cost": "0.12" }
         ]
       }

@@ -182,7 +182,7 @@ export interface SourceGroup {
   models: ParsedProviderModel[];
 }
 
-interface InventoryRetention {
+interface SourceRetention {
   models: ParsedProviderModel[];
   count: number;
 }
@@ -423,11 +423,12 @@ function applyFields(
   };
 }
 
-export function retainInventoryFacts(
+export function retainSourceFacts(
   models: ParsedProviderModel[],
   previous: ProviderModel[],
   source: SourceManifest,
-): InventoryRetention {
+  observed: ReadonlySet<string> = new Set(),
+): SourceRetention {
   const oldByUid = new Map(
     previous
       .filter((model) => model.source_refs.includes(source.id))
@@ -436,6 +437,7 @@ export function retainInventoryFacts(
   let count = 0;
   return {
     models: models.map((model) => {
+      if (observed.has(model.uid)) return model;
       const old = oldByUid.get(model.uid);
       if (old === undefined) return model;
       const incoming: ParsedProviderModel = {
@@ -784,6 +786,7 @@ async function collectProvider(
     const overlays: SourceGroup[] = [];
     const inventories: SourceGroup[] = [];
     const unavailableInventories: SourceManifest[] = [];
+    const retainedOmissions: { source: SourceManifest; observed: Set<string> }[] = [];
     function recordOptionalOmission(source: SourceManifest, role: SourceRecord["role"]): void {
       if (role === "inventory") unavailableInventories.push(source);
       if (source.fields.includes("pricing")) omittedPricingDependencies.add(source.id);
@@ -890,6 +893,8 @@ async function collectProvider(
       const oldSource = oldSourceById.get(source.id);
       const contentChanged = oldSource?.content_hash !== result.contentHash;
       const extractorChanged = oldSource?.extractor_version !== source.extractorVersion;
+      if (source.retainOmittedFacts === true && !extractorChanged)
+        retainedOmissions.push({ source, observed: new Set(parsed.map(({ uid }) => uid)) });
       sourceAttempts.push({
         source_id: source.id,
         outcome: contentChanged || extractorChanged ? "changed" : "unchanged",
@@ -981,7 +986,7 @@ async function collectProvider(
       candidate = applyGroups(candidate, [inventory], false);
     }
     for (const source of unavailableInventories) {
-      const retention = retainInventoryFacts(candidate, comparableOldModels, source);
+      const retention = retainSourceFacts(candidate, comparableOldModels, source);
       candidate = retention.models;
       if (retention.count > 0)
         warnings.push(
@@ -990,6 +995,19 @@ async function collectProvider(
             manifest.provider.id,
             source.id,
             `Retained the last successful inventory enrichment for ${retention.count} ${retention.count === 1 ? "model" : "models"}.`,
+          ),
+        );
+    }
+    for (const { source, observed } of retainedOmissions) {
+      const retention = retainSourceFacts(candidate, comparableOldModels, source, observed);
+      candidate = retention.models;
+      if (retention.count > 0)
+        warnings.push(
+          sourceWarning(
+            "source_partial_retention",
+            manifest.provider.id,
+            source.id,
+            `Retained last verified facts for ${retention.count} ${retention.count === 1 ? "model" : "models"} omitted by the current non-exhaustive source.`,
           ),
         );
     }

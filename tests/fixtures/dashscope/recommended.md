@@ -7,7 +7,7 @@ Base URL `https://`[{WorkspaceId}](https://bailian.console.alibabacloud.com/work
 API Key [Get](https://bailian.console.alibabacloud.com/key) Model ID`qwen3.8-max`  
 Base URL `https://`[{WorkspaceId}](https://modelstudio.console.alibabacloud.com/workspace)`.ap-southeast-1.maas.aliyuncs.com/apps/anthropic`  
 API Key [Get](https://modelstudio.console.alibabacloud.com/key) Model ID`qwen3.8-max`  
-Base URL `https://dashscope-us.aliyuncs.com/api/v1`  
+Base URL `https://{WorkspaceId}.us-east-1.maas.aliyuncs.com/api/v1`
 API Key [Get](https://modelstudio.console.alibabacloud.com/key)
 
 ## Image generation
