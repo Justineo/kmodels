@@ -21,6 +21,8 @@ import {
 } from "./pricing-presentation.ts";
 import type {
   AllowanceReset,
+  BillingMode,
+  ChargeBinding,
   PriceAllowanceTarget,
   PriceCategoricalValue,
   PriceCondition,
@@ -30,7 +32,10 @@ import type {
   PricingCatalog,
   PricingOffer,
   PricingRefreshFailureCode,
+  ProviderAtomRegistryEntry,
+  UsageSignal,
 } from "./pricing-schema.ts";
+import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
 import {
   websiteCatalogIndexSchema,
@@ -49,6 +54,7 @@ import {
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
 type CategoricalLabelIndex = ReadonlyMap<string, string>;
+type ProviderAtomIndex = ReadonlyMap<string, ProviderAtomRegistryEntry>;
 const selectorCache = new WeakMap<
   PricingOffer,
   WeakMap<CategoricalLabelIndex, WebsitePricingSelector[]>
@@ -67,6 +73,7 @@ export function websitePublication(
 ): WebsitePublication {
   const index = pricingViewIndex(pricing);
   const labels = categoricalLabelIndex(pricing);
+  const atoms = providerAtomIndex(pricing);
   const pricingViews = new Map(
     catalog.models.map((model) => [model.uid, modelPricingViewFromIndex(index, model)]),
   );
@@ -75,7 +82,7 @@ export function websitePublication(
     if (result === undefined) throw new Error(`Missing pricing view for ${model.uid}`);
     return result;
   };
-  const details = websiteDetailChunks(catalog, dataVersion, view, labels);
+  const details = websiteDetailChunks(catalog, dataVersion, view, labels, atoms);
   const detailChunkByModel = new Map(
     details.flatMap(({ chunk, details: chunkDetails }) =>
       chunkDetails.map((detail): [string, number] => [detail.model_ref, chunk]),
@@ -122,6 +129,7 @@ function websiteDetailChunks(
   dataVersion: string,
   view: (model: ProviderModel) => ModelPricingView,
   labels: CategoricalLabelIndex,
+  atoms: ProviderAtomIndex,
 ): WebsiteDetailChunk[] {
   const chunks: WebsiteDetailChunk[] = [];
 
@@ -129,7 +137,7 @@ function websiteDetailChunks(
     const providerDetails = catalog.models
       .filter((model) => model.provider_id === provider.id)
       .map((model) => {
-        const detail = websiteModelDetailFromView(view(model), model, labels);
+        const detail = websiteModelDetailFromView(view(model), model, labels, atoms);
         return {
           detail,
           bytes: Buffer.byteLength(JSON.stringify(detail)),
@@ -142,7 +150,7 @@ function websiteDetailChunks(
     function emitChunk(): void {
       if (chunkDetails.length === 0) return;
       const detailChunk = websiteDetailChunkSchema.parse({
-        schema_version: 3,
+        schema_version: 4,
         data_version: dataVersion,
         provider_id: provider.id,
         chunk,
@@ -257,6 +265,7 @@ export function websiteModelDetail(
     modelPricingView(pricing, model),
     model,
     categoricalLabelIndex(pricing),
+    providerAtomIndex(pricing),
   );
 }
 
@@ -264,8 +273,9 @@ function websiteModelDetailFromView(
   view: ModelPricingView,
   model: ProviderModel,
   labels: CategoricalLabelIndex,
+  atoms: ProviderAtomIndex,
 ): WebsiteModelDetail {
-  const pricingDetail = websitePricingDetail(view, model.uid, labels);
+  const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
   return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
@@ -287,6 +297,7 @@ function websitePricingDetail(
   view: ModelPricingView,
   modelRef: string,
   labels: CategoricalLabelIndex,
+  atoms: ProviderAtomIndex,
 ): WebsitePricingDetail | undefined {
   const snapshot =
     view.snapshot === undefined
@@ -317,7 +328,7 @@ function websitePricingDetail(
     })),
     ...view.plansAndCapacity.map((offer) => ({ offer, group: "plan_capacity" as const })),
     ...view.standaloneOffers.map((offer) => ({ offer, group: "standalone" as const })),
-  ].map(({ offer, group }) => websiteOffer(view.books, offer, group, modelRef, labels));
+  ].map(({ offer, group }) => websiteOffer(view.books, offer, group, modelRef, labels, atoms));
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
@@ -345,6 +356,7 @@ function websiteOffer(
   group: WebsitePricingOffer["group"],
   modelRef: string,
   labels: CategoricalLabelIndex,
+  atoms: ProviderAtomIndex,
 ): WebsitePricingOffer {
   const states = offer.states.map((state, index) => ({
     key: `state:${index}`,
@@ -370,6 +382,9 @@ function websiteOffer(
           amount: price.amount,
           unit: `per ${price.displayUnit}`,
           accessible_text: price.accessibleText,
+          ...(variant.charge_binding === undefined
+            ? {}
+            : { driver: chargeDriver(variant.charge_binding, atoms) }),
           applicability: variant.applicability,
           ...(variant.validity === undefined ? {} : { validity: variant.validity }),
         });
@@ -391,6 +406,7 @@ function websiteOffer(
           key: `${term.id}:contribution:${index}`,
           label: formatSentenceCase(term.term_key.replaceAll("-", "_")),
           target: contributionTarget(books, variant.target_rate_refs),
+          drivers: variant.charge_bindings.map((binding) => chargeDriver(binding, atoms)),
           applicability: variant.applicability,
           ...(variant.validity === undefined ? {} : { validity: variant.validity }),
         });
@@ -420,6 +436,7 @@ function websiteOffer(
     id: offer.id,
     title: offer.name ?? formatSentenceCase(offer.offer_key),
     group,
+    billing_mode: billingMode(offer.billing_mode, atoms),
     ...(offer.relations.length === 0 ? {} : { composition: relationLabel(books, offer) }),
     state_summary: offerStateSummary(offer, modelRef),
     selectors: pricingSelectors(offer, labels),
@@ -427,6 +444,20 @@ function websiteOffer(
     rates,
     allowances,
     contributions,
+    enrollment: offer.enrollment.map((variant, index) => ({
+      key: `enrollment:${index}`,
+      label: enrollmentLabel(variant.state),
+      applicability: variant.applicability,
+      ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+    })),
+    settlement: offer.settlement.map((variant, index) => ({
+      key: `settlement:${index}`,
+      channel: formatSentenceCase(variant.channel),
+      biller: variant.biller,
+      payment_sources: variant.payment_sources.map((source) => formatSentenceCase(source)),
+      applicability: variant.applicability,
+      ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+    })),
     unnormalized,
   };
 }
@@ -543,6 +574,34 @@ function categoricalLabelIndex(pricing: PricingCatalog): CategoricalLabelIndex {
         label.label,
       );
   return labels;
+}
+
+function providerAtomIndex(pricing: PricingCatalog): ProviderAtomIndex {
+  const atoms = new Map<string, ProviderAtomRegistryEntry>();
+  for (const vocabulary of pricing.provider_vocabularies)
+    for (const atom of vocabulary.atoms) {
+      if (atom.kind === "categorical_value") continue;
+      const key = providerAtomIdentity(vocabulary.provider_id, atom.kind, atom.key);
+      if (atoms.has(key)) throw new Error(`Duplicate provider pricing atom ${key}`);
+      atoms.set(key, atom);
+    }
+  return atoms;
+}
+
+function providerAtomIdentity(providerId: string, kind: string, key: string): string {
+  return canonicalJsonKey([providerId, kind, key]);
+}
+
+function providerAtom(
+  atoms: ProviderAtomIndex,
+  providerId: string,
+  kind: Exclude<ProviderAtomRegistryEntry["kind"], "categorical_value" | "dimension">,
+  key: string,
+): ProviderAtomRegistryEntry {
+  const atom = atoms.get(providerAtomIdentity(providerId, kind, key));
+  if (atom === undefined || atom.kind !== kind)
+    throw new Error(`Missing ${providerId} ${kind} atom ${key}`);
+  return atom;
 }
 
 function addCategoricalLabel(labels: Map<string, string>, identity: string, label: string): void {
@@ -781,6 +840,83 @@ function relationLabel(books: PricingBook[], offer: PricingOffer): string {
       return `${prefix} ${target.join(", ")}`;
     })
     .join("; ");
+}
+
+function chargeDriver(
+  binding: ChargeBinding,
+  atoms: ProviderAtomIndex,
+): NonNullable<WebsitePricingOffer["rates"][number]["driver"]> {
+  const signal = usageSignalDetails(binding.signal, atoms);
+  const aggregation = aggregationDetails(binding.aggregation, atoms);
+  return {
+    label: signal.label,
+    definition: signal.definition,
+    aggregation: aggregation.label,
+    ...(aggregation.definition === undefined
+      ? {}
+      : { aggregation_definition: aggregation.definition }),
+    resolution_phase: signal.resolution_phase,
+  };
+}
+
+function usageSignalDetails(signal: UsageSignal, atoms: ProviderAtomIndex) {
+  if (signal.namespace === "kmodels") return standardUsageSignalDetails[signal.value];
+  const atom = providerAtom(atoms, signal.provider_id, "usage_signal", signal.value);
+  if (atom.kind !== "usage_signal") throw new Error(`Invalid usage signal ${signal.value}`);
+  return {
+    label: formatSentenceCase(signal.value),
+    definition: atom.definition,
+    resolution_phase: atom.resolution_phase,
+  };
+}
+
+function aggregationDetails(
+  aggregation: ChargeBinding["aggregation"],
+  atoms: ProviderAtomIndex,
+): { label: string; definition?: string } {
+  if (typeof aggregation === "string")
+    return {
+      label:
+        aggregation === "result_item"
+          ? "Result item"
+          : aggregation === "billing_period"
+            ? "Billing period"
+            : formatSentenceCase(aggregation),
+    };
+  const atom = providerAtom(atoms, aggregation.provider_id, "aggregation", aggregation.value);
+  return { label: formatSentenceCase(aggregation.value), definition: atom.definition };
+}
+
+function billingMode(
+  mode: BillingMode,
+  atoms: ProviderAtomIndex,
+): WebsitePricingOffer["billing_mode"] {
+  if (mode.namespace === "kmodels")
+    return {
+      label:
+        mode.value === "usage"
+          ? "Usage-based"
+          : mode.value === "one_time"
+            ? "One-time purchase"
+            : formatSentenceCase(mode.value),
+    };
+  const atom = providerAtom(atoms, mode.provider_id, "billing_mode", mode.value);
+  return { label: formatSentenceCase(mode.value), description: atom.definition };
+}
+
+function enrollmentLabel(state: PricingOffer["enrollment"][number]["state"]): string {
+  switch (state) {
+    case "open":
+      return "Open enrollment";
+    case "waitlist":
+      return "Waitlist";
+    case "closed_to_new":
+      return "Closed to new customers";
+    case "private_preview":
+      return "Private preview";
+    case "account_scoped":
+      return "Account-scoped enrollment";
+  }
 }
 
 function stateLabel(state: PricingOffer["states"][number]["state"]): string {

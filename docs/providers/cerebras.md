@@ -86,10 +86,11 @@
 
 ## Commercial topology audit
 
-Design status: audited; implementation pending. This section is the Cerebras disposition for the
-provider-wide commercial-topology review. It describes the intended resources, books, offers,
-relationships, meters, accounting bindings, and evidence boundaries; it does not claim that the
-current collector, schema, generated data, or UI already represents them.
+Design status: audited and implemented. The collector publishes direct PAYG model books, the trial
+allowance, account-only subscriptions, Cerebras Code, Batch and its File prerequisite, Dedicated,
+enterprise model services, AWS Marketplace settlement, and account reporting/quota resources. Exact
+token rates bind only to documented response usage; account-only amounts and unresolved Code routing
+remain raw instead of becoming synthetic numeric terms.
 
 ### Public commercial source graph
 
@@ -310,17 +311,20 @@ account endpoint; and AWS Marketplace as a settlement channel. Cerebras Code sho
 a current exact model relation is published. Its generic live plan must not be attached to every
 public model.
 
-The immediate calculator sums prompt and completion tokens once. Cached and image tokens explain
-input composition; reasoning and prediction details explain output composition. They are not added
-again. Batch cannot produce a numeric total without a public or account rate. Caller tools add only
-explicit follow-up inference and externally billed execution. Coverage is deliberately partial:
-show active subscription, trial credit, Code ambiguity, Dedicated contract, account adjustments, and
-delayed settlement as unresolved or account-level facts instead of rejecting the offer or claiming an
-exact invoice.
+Rate details show prompt and completion meters separately. Cached and image tokens explain input
+composition; reasoning and prediction details explain output composition. Batch stays amount-unpublished
+without a public or account rate. Active subscription, trial credit, Code ambiguity, Dedicated contract,
+account adjustments, and delayed settlement remain unresolved or account-level context. The UI does not
+accept quantities, add components, or claim an exact invoice.
 
 ## Comparator audit
 
-- models.dev and LiteLLM keep direct Cerebras entries manually rather than synchronizing the official
-  public endpoint. Portkey and Helicone likewise publish community-maintained subsets; routed catalogs
-  such as OpenRouter and Hugging Face describe their own downstream offers. These sources are useful
-  drift alarms, but they neither establish Cerebras inventory nor override first-party facts.
+- In the 2026-08-10 review snapshot, models.dev contained the same three current public IDs and the
+  same six Developer input/output amounts as Cerebras's native public endpoint. That agreement is a
+  useful completeness alarm, but models.dev remains downstream evidence and cannot admit a row or
+  override a first-party claim.
+- LiteLLM's snapshot still contained retired Llama/Qwen/GLM 4.6 entries, omitted current Gemma, and
+  described GPT OSS with a 32,768-token output limit where Cerebras publishes 40,960. It is a useful
+  stale-data alarm, not a fallback authority. Portkey and Helicone likewise publish
+  community-maintained subsets; routed OpenRouter and Hugging Face catalogs describe their own
+  downstream commercial offers rather than the direct Cerebras book.

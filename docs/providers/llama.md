@@ -25,7 +25,8 @@ Status: current
   `id`, `created`, `object: "model"`, and `owned_by`. The collector validates the
   resource, model type, and list type before trusting the optional runtime response;
   a new page parameter, cursor/container, or item field is a review signal rather
-  than silently discarded JSON.
+  than silently discarded JSON. Contract drift suppresses that account-inventory
+  claim without erasing registry artifacts.
 - Optional `/v1/models` is account-scoped and non-creating. API `created` is not an
   artifact release date, and absence from one account does not retire a global model.
   Enable it with `LLAMA_API_KEY`.
@@ -34,11 +35,10 @@ Status: current
 
 - Generative weights are text generation, Llama Guard is moderation, and Prompt
   Guard is classification.
-- Until the commercial-topology migration, downloadable-only weights retain the flat
-  `not_applicable` pricing projection. The audited target separates Meta artifact
-  distribution from self-hosted execution: exact royalty-free access is not free
-  inference, and operator or deployment-provider compute is `externally_billed` rather
-  than copied into the Meta Llama price book.
+- Every admitted weight has separate artifact-distribution and self-hosted-execution
+  resources. Exact royalty-free access is free acquisition, not free inference;
+  operator or deployment-provider compute is `externally_billed` and is never copied
+  into the Meta Llama price book.
 - A Meta-hosted API identity with no current public amount is `not_published`, never
   free or not applicable. The dated 2025 launch statement that Llama API was a
   “limited free preview” does not establish an indefinitely current zero rate.
@@ -62,10 +62,9 @@ Status: current
 
 ## Commercial topology audit
 
-Design status: audited; implementation pending. This is Meta Llama's disposition for
-the provider-wide commercial-topology review. It describes the intended resources,
-books, offers, relationships, meters, and evidence boundaries; it does not claim that
-the current collector, schema, generated data, or UI already represents them.
+Design status: implemented. The collector emits the resources, offers, relationships,
+enrollment, settlement, and evidence boundaries below through the shared commercial
+wire.
 
 ### Public commercial source graph
 
@@ -373,15 +372,18 @@ Refresh remains deterministic and claim-local:
 - The SDK list resource and response types are fetched atomically with the artifact
   registry. Runtime JSON uses strict schemas, so additive pagination or metadata does
   not become an accidental partial parse. The generated list contract is intentionally
-  unpaginated today; if Meta adds pagination, refresh stops for review instead of
-  publishing only the first page.
-- Every catalog identity receives an explicit pricing disposition. The dated free
-  preview and artifact license are reconciled as out-of-scope historical/eligibility
-  terms rather than silently converted into current model rates.
+  unpaginated today; if Meta adds pagination, the account-inventory claim stops for
+  review instead of publishing only the first page, while registry artifacts survive.
+- Every catalog identity receives exact artifact-distribution and self-hosted-execution
+  resources. Exact hosted example identities additionally receive Chat or Moderations
+  resources; the dated free preview remains historical evidence rather than a current
+  model rate.
 - A newly generated SDK Billing/Costs/Usage resource is surfaced as an unsupported
-  pricing diagnostic instead of failing the artifact catalog. Structural drift in an
-  already reviewed request/response contract still fails closed because existing
-  gateway accounting assumptions would no longer be proven.
+  pricing diagnostic instead of failing the artifact catalog. Drift in a hosted
+  example, route, metric schema, model-list schema, one family license, or one use
+  policy suppresses only that claim and emits a diagnostic; registry identity,
+  context, release-family classification, and exact descriptor invariants remain
+  strict.
 - LiteLLM and models.dev keep native Meta rows manually; their automated updates use routed catalogs
   rather than Meta's SDK registry. Portkey's Llama prices belong to hosting providers, not the model
   publisher. Hugging Face namespace contents are useful drift evidence but cannot add or rewrite a

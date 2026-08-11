@@ -53,15 +53,20 @@ Status: current
   independent inventory drift guards. The SDK registry currently has the same 18
   routed partners plus `openai`; the latter is an SDK integration and has no public
   partner mapping registry, so it is validated but not collected as an HF gateway
-  route. A configured partner disappearing still fails the source. Newly documented
-  partners are accepted as additive drift and surfaced as unsupported until their
-  official mapping endpoint is configured.
+  route. A missing or additive partner on either companion is a claim-local finding:
+  current router rows and sibling documentation remain usable, while a new provider is
+  surfaced as unsupported until its official mapping endpoint is configured. The
+  exhaustive mapping transport still requires one bounded response for every configured
+  partner before it can claim a complete mapping snapshot.
 - The router source bundles fixed first-party documentation for the Hub and mapping
   APIs, provider selection, pricing, Chat Completions, Responses, partner validation
-  and billing, the Python inference client, and Hub billing. Those companions guard
-  semantics and accounting. For partner-only rows, only the task-index documents
-  described above supply bounded single-partner product evidence, and only by
-  exact join to a current live mapping.
+  and billing, the Python inference client, Hub billing, Endpoint and Spaces hardware,
+  ZeroGPU, Jobs and its hardware API, storage, and plan and Enterprise pricing. Each
+  optional companion owns only the claims extracted from it; absence or prose drift
+  reports an unbound claim but does not reject current router rows or independently
+  parseable commercial tables. For partner-only rows, only the task-index documents
+  described above supply bounded single-partner product evidence, and only by exact
+  join to a current live mapping.
 - Featherless's unauthenticated native `GET /v1/models?status=active` catalog is a
   provider-operated pricing overlay, not presence evidence. Pagination requests the
   documented maximum of 1,000 rows and follows the returned page count with bounded
@@ -84,7 +89,7 @@ Status: current
   bounded per-partner mapping registries preserve the contract before those filters
   expand over matching Hub artifacts.
 - Global collection uses neither an HF token nor a Featherless token. Broken top-level
-  envelopes, missing configured partners or task documents, empty admitted inventories,
+  envelopes, missing configured mapping responses or task documents, empty admitted inventories,
   and hard safety bounds still fail their source. Expected cardinality is not an
   admission rule; provider-level churn validation protects publication from a partial
   exhaustive response. Additive fields are ignored, while malformed, duplicate,
@@ -144,26 +149,35 @@ Status: current
 - First-token latency and throughput come from the latest validation probe. They are
   useful live routing inputs but too volatile to become durable model facts.
 
-## Commercial topology audit
+## Commercial topology
 
-Design status: audited; implementation pending. This is Hugging Face's disposition
-for the provider-wide commercial-topology review. It describes the intended
-resources, books, offers, relationships, meters, accounting bindings, and evidence
-boundaries; it does not claim that the current collector, schema, generated data, or
-UI already represents them.
+Implementation status: current. The collector and canonical price book represent the
+router's route-qualified list rates, temporary promotions, unpriced routes, HF versus
+custom-key settlement, Endpoint and Spaces capacity, Jobs hardware and exposed ports,
+ZeroGPU quotas and overage, public storage add-ons, private-storage raw bands, and Hub
+plan prices. Exact route token and compute-duration signals have charge bindings;
+provider resources stay standalone unless first-party evidence supplies an exact
+model projection or resource edge.
+
+Some audited account facts intentionally remain raw or outside public calculation:
+the ZeroGPU xlarge multiplier needs usage aggregation, private storage lacks a shared
+TB-month denominator, `hf-inference` lacks the public hardware/time join, and monthly
+credits, plan storage allowances, invoices, negotiated terms, and private resource
+instances need account evidence. This is partial cost coverage, not missing catalog
+presence and not permission to invent a representative rate.
 
 ### Public commercial source graph
 
-| Surface                                                                                                                                                                                                                                                                                | Exact authority and completeness boundary                                                                                                                                                                                                                                                      |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The [Inference Providers overview](https://huggingface.co/docs/inference-providers/en/index), [pricing guide](https://huggingface.co/docs/inference-providers/en/pricing), public partner mappings, and router `/v1/models`                                                            | Current routed product presence, backend variants, task, public token rates, context, tool/structured-output support, temporary `is_free` state, and provider selection policies. A router omission says nothing about non-chat mappings, dedicated deployments, or ordinary Hub repositories. |
-| The [Hub billing API guide](https://huggingface.co/docs/inference-providers/en/hub-api) and [provider registration contract](https://huggingface.co/docs/inference-providers/en/register-as-a-provider)                                                                                | `bill_to` attribution, HF-routed versus custom-key settlement, provider request-ID correlation, immediate placeholders, delayed integer nano-USD resolution, and retry behavior. The cost endpoint is provider-to-HF infrastructure rather than a public customer price API.                   |
-| The [function-calling](https://huggingface.co/docs/inference-providers/en/guides/function-calling) and [Responses](https://huggingface.co/docs/inference-providers/en/guides/responses-api) guides                                                                                     | Interface behavior, caller-executed functions, Remote MCP execution, request selectors, and response usage. Capability alone does not establish a Hugging Face tool charge.                                                                                                                    |
-| The [Inference Endpoints pricing](https://huggingface.co/docs/inference-endpoints/en/support/pricing), [foundations](https://huggingface.co/docs/inference-endpoints/en/guides/foundations), and [advanced](https://huggingface.co/docs/inference-endpoints/en/guides/advanced) guides | Exact cloud/region/instance/size capacity rates, per-minute billing, replica and lifecycle semantics, endpoint configuration, and enrollment. These are dedicated resource rates, not token prices for every deployable Hub repository.                                                        |
-| The [Spaces hardware and billing](https://huggingface.co/docs/hub/en/spaces-gpus), [Spaces overview](https://huggingface.co/docs/hub/en/spaces-overview), and [ZeroGPU guide](https://huggingface.co/docs/hub/en/spaces-zerogpu)                                                       | Hardware capacity rates, replica billing, charged states, sleep/pause behavior, ZeroGPU daily allowances, size multipliers, and credit overage. A Space may host arbitrary software and therefore supplies no model-catalog presence by itself.                                                |
-| The [Jobs overview](https://huggingface.co/docs/hub/en/jobs-overview), [Jobs pricing](https://huggingface.co/docs/hub/en/jobs-pricing), and `GET /api/jobs/hardware`                                                                                                                   | Current hardware inventory and rates, billed lifecycle, arbitrary job workload, and exposed-port pricing. Jobs can train or run a model, but that does not create a per-model offer.                                                                                                           |
-| The general [pricing](https://huggingface.co/pricing), [PRO](https://huggingface.co/pro), [Enterprise](https://huggingface.co/enterprise), and [Hub billing](https://huggingface.co/docs/hub/en/billing) pages                                                                         | Plan prices and procurement, monthly inference credits, subscription renewal, compute separation, balance/invoice settlement, and marketplace payment rails. A plan benefit applies only to the exact product named by its terms.                                                              |
-| The dedicated [storage limits and billing guide](https://huggingface.co/docs/hub/en/storage-limits)                                                                                                                                                                                    | Public and private repository-storage allowances, paid public tiers, private overage increments, and plan prerequisites. It owns exact storage mechanics over summary marketing rows.                                                                                                          |
+| Surface                                                                                                                                                                                                                                                                                      | Exact authority and completeness boundary                                                                                                                                                                                                                                                      |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The [Inference Providers overview](https://huggingface.co/docs/inference-providers/en/index), [pricing guide](https://huggingface.co/docs/inference-providers/en/pricing), public partner mappings, and router `/v1/models`                                                                  | Current routed product presence, backend variants, task, public token rates, context, tool/structured-output support, temporary `is_free` state, and provider selection policies. A router omission says nothing about non-chat mappings, dedicated deployments, or ordinary Hub repositories. |
+| The [Hub billing API guide](https://huggingface.co/docs/inference-providers/en/hub-api) and [provider registration contract](https://huggingface.co/docs/inference-providers/en/register-as-a-provider)                                                                                      | `bill_to` attribution, HF-routed versus custom-key settlement, provider request-ID correlation, immediate placeholders, delayed integer nano-USD resolution, and retry behavior. The cost endpoint is provider-to-HF infrastructure rather than a public customer price API.                   |
+| The [function-calling](https://huggingface.co/docs/inference-providers/en/guides/function-calling) and [Responses](https://huggingface.co/docs/inference-providers/en/guides/responses-api) guides                                                                                           | Interface behavior, caller-executed functions, Remote MCP execution, request selectors, and response usage. Capability alone does not establish a Hugging Face tool charge.                                                                                                                    |
+| The [Inference Endpoints pricing](https://huggingface.co/docs/inference-endpoints/en/support/pricing), [foundations](https://huggingface.co/docs/inference-endpoints/en/guides/foundations), and [autoscaling](https://huggingface.co/docs/inference-endpoints/en/guides/autoscaling) guides | Exact cloud/region/instance/size capacity rates, per-minute billing, replica and lifecycle semantics, endpoint configuration, and enrollment. These are dedicated resource rates, not token prices for every deployable Hub repository.                                                        |
+| The [Spaces hardware and billing](https://huggingface.co/docs/hub/en/spaces-gpus), [Spaces overview](https://huggingface.co/docs/hub/en/spaces-overview), and [ZeroGPU guide](https://huggingface.co/docs/hub/en/spaces-zerogpu)                                                             | Hardware capacity rates, replica billing, charged states, sleep/pause behavior, ZeroGPU daily allowances, size multipliers, and credit overage. A Space may host arbitrary software and therefore supplies no model-catalog presence by itself.                                                |
+| The [Jobs overview](https://huggingface.co/docs/hub/en/jobs-overview), [Jobs pricing](https://huggingface.co/docs/hub/en/jobs-pricing), and `GET /api/jobs/hardware`                                                                                                                         | Current hardware inventory and rates, billed lifecycle, arbitrary job workload, and exposed-port pricing. Jobs can train or run a model, but that does not create a per-model offer.                                                                                                           |
+| The general [pricing](https://huggingface.co/pricing), [PRO](https://huggingface.co/pro), [Enterprise](https://huggingface.co/enterprise), and [Hub billing](https://huggingface.co/docs/hub/en/billing) pages                                                                               | Plan prices and procurement, monthly inference credits, subscription renewal, compute separation, balance/invoice settlement, and marketplace payment rails. A plan benefit applies only to the exact product named by its terms.                                                              |
+| The dedicated [storage limits and billing guide](https://huggingface.co/docs/hub/en/storage-limits)                                                                                                                                                                                          | Public and private repository-storage allowances, paid public tiers, private overage increments, and plan prerequisites. It owns exact storage mechanics over summary marketing rows.                                                                                                          |
 
 Comparator catalogs are audit-only. models.dev, LiteLLM, Portkey, gateway catalogs,
 and cloud marketplaces may reveal a missing first-party Hugging Face claim, but they
@@ -216,12 +230,16 @@ seller's amount into the HF-direct book.
   for an Enterprise member. Large hardware consumes 1x quota and xlarge consumes 2x;
   queue priority is an operational benefit, not another price. The allowance resets
   exactly 24 hours after the account's first GPU use, not at a shared calendar boundary.
+  The canonical book normalizes each included quantity and rolling reset plus the
+  derived `$0.10/GPU-minute` overage for paid tiers. It retains the xlarge multiplier
+  as a usage-aggregation term rather than pretending the base duration counter already
+  applied it.
 - A Job is an arbitrary account compute resource backed by an exact hardware-capacity
   offer. Exposed ports add one flat provider-service offer per active job regardless
   of port count, currently `$0.01/hour` billed per minute. Training, inference, or data
   processing performed by the job does not create a model-specific rate.
 - Hub Free enrollment, PRO, Team per-seat, and Enterprise procurement are subscription
-  books. Their prices, seats, credits, storage allowances, and eligibility do not
+  facts. Their prices, seats, credits, storage allowances, and eligibility do not
   rewrite usage rates. PRO is currently `$9/month`; Team is `$20/user/month`;
   Enterprise remains `custom_quote` under the dedicated procurement page despite the
   general pricing page's `$50/month` observation. Monthly Inference Providers credits
@@ -230,14 +248,20 @@ seller's amount into the HF-direct book.
   and Enterprise. Public storage is best effort with no numeric Free allowance; the
   documented thresholds are up to 10 TB for PRO, 12 TB plus 1 TB/seat for Team, and
   200 TB plus 1 TB/seat for Enterprise. Purchased credits are balances usable by
-  enumerated HF products, not discounts or public model prices.
+  enumerated HF products, not discounts or public model prices. The current public
+  book normalizes PRO and Team subscription rates and the Enterprise custom-quote
+  conflict; Free enrollment and plan allowances remain account evidence until their
+  exact targets and reset semantics can be represented without broadening them.
 - Public Storage add-ons are fixed-capacity monthly subscription tiers that require a
   paid plan: the dedicated guide currently lists 1/5/10/20 TB for `$12/$60/$120/$240`
   per month and 50 TB for `$500/month`. Private storage overage is a separate offer
   billed in 1-TB increments after the plan allowance, starting at `$18/TB/month` and
   decreasing at the documented 50/200/500-TB bands. Neither should be normalized as a
   continuous per-byte model meter when first-party billing defines tier and increment
-  semantics.
+  semantics. Fixed public tiers are numeric offers. Private bands remain raw exact
+  observations because the shared source vocabulary has no TB-month denominator;
+  recording `$18/TB/mo` as an ordinary generic `unit_month` would erase the storage
+  quantity and falsely make it calculator-ready.
 - Ordinary caller-defined functions have no Hugging Face function-call fee. Responses
   Remote MCP can execute an external service, but Hugging Face publishes no generic
   MCP invocation price. Any external MCP seller's charge remains in that seller's
@@ -248,19 +272,19 @@ seller's amount into the HF-direct book.
 
 ### Commercial relationships
 
-| Source offer or resource      | Relation                    | Target and scope                                                                                  | Cost consequence                                                                                                                 |
-| ----------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| HF-routed provider offer      | `exclusive_with`            | Custom-key offer for the same realized provider attempt                                           | One request settles through HF credits/billing or directly with the upstream provider, never both.                               |
-| Realized backend variant      | `exclusive_with` by outcome | Other candidate backend variants for the same router attempt                                      | Failover or policy selection chooses one actual provider rate; candidate variants are not additive.                              |
-| Temporary `is_free` promotion | effective override          | Exact backend base-rate offer while the promotion is observed                                     | Effective routed charge is zero, while the underlying published base rate remains visible for provenance and later refresh.      |
-| Monthly inference credit      | allowance over              | Eligible HF-routed Inference Providers usage for the owning user, organization, or resource group | Credit reduces account settlement until exhausted; it does not cover custom-key usage or change the route's public list price.   |
-| PRO, Team, or Enterprise plan | includes allowance          | Exact documented inference, ZeroGPU, and storage benefits                                         | Apply only the benefit quantity and period stated for that plan. Shared organization credits remain account-scoped.              |
-| Compute Space resource        | `requires` enrollment       | One eligible paid plan, except the separately documented ZeroGPU path                             | Enrollment permits creation; selected hardware/replicas still accrue their own capacity charges.                                 |
-| Inference Endpoint resource   | `requires` enrollment       | Active subscription plus payment or credit setup                                                  | Enrollment enables deployment but does not include endpoint capacity unless an exact contract says so.                           |
-| Jobs exposed-port service     | `requires` and additive     | One active Job hardware offer                                                                     | Add one port-service charge per job-minute, not per exposed port; hardware remains independently billed.                         |
-| Public Storage add-on         | `requires`                  | One paid Hub plan                                                                                 | The selected monthly tier supplements the plan allowance; it is not model usage.                                                 |
-| Private storage overage       | `requires` after allowance  | Eligible plan plus retained private storage above its included quantity                           | Bill the documented 1-TB increments; do not create an overage offer for a free account that is not eligible to exceed its limit. |
-| Direct cloud solution         | `exclusive_with` by seller  | HF-routed execution for the same work                                                             | The cloud seller and HF route are alternative settlement paths even when they expose the same underlying model.                  |
+| Source offer or resource      | Relation                    | Target and scope                                                                                  | Cost consequence                                                                                                                   |
+| ----------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| HF-routed provider offer      | `exclusive_with`            | Custom-key offer for the same realized provider attempt                                           | One request settles through HF credits/billing or directly with the upstream provider, never both.                                 |
+| Realized backend variant      | `exclusive_with` by outcome | Other candidate backend variants for the same router attempt                                      | Failover or policy selection chooses one actual provider rate; candidate variants are not additive.                                |
+| Temporary `is_free` promotion | effective override          | Exact backend base-rate offer while the promotion is observed                                     | Effective routed charge is zero, while the underlying published base rate remains visible for provenance and later refresh.        |
+| Monthly inference credit      | account-only allowance      | Eligible HF-routed Inference Providers usage for the owning user, organization, or resource group | Keep outside public calculation until exact owner, reset, and offer targets are bound; never change the route's public list price. |
+| PRO, Team, or Enterprise plan | includes allowance          | Exact documented inference, ZeroGPU, and storage benefits                                         | Apply only the benefit quantity and period stated for that plan. Shared organization credits remain account-scoped.                |
+| Compute Space resource        | `requires` enrollment       | One eligible paid plan, except the separately documented ZeroGPU path                             | Enrollment permits creation; selected hardware/replicas still accrue their own capacity charges.                                   |
+| Inference Endpoint resource   | `requires` enrollment       | Active subscription plus payment or credit setup                                                  | Enrollment enables deployment but does not include endpoint capacity unless an exact contract says so.                             |
+| Jobs exposed-port service     | `requires_resource`         | The Jobs hardware capacity book                                                                   | Add one port-service charge per job-minute, not per exposed port; hardware remains independently billed.                           |
+| Public Storage add-on         | `requires`                  | One paid Hub plan                                                                                 | The selected monthly tier supplements the plan allowance; it is not model usage.                                                   |
+| Private storage overage       | `requires` after allowance  | Eligible plan plus retained private storage above its included quantity                           | Bill the documented 1-TB increments; do not create an overage offer for a free account that is not eligible to exceed its limit.   |
+| Direct cloud solution         | `exclusive_with` by seller  | HF-routed execution for the same work                                                             | The cloud seller and HF route are alternative settlement paths even when they expose the same underlying model.                    |
 
 Endpoint, Space, Job, ZeroGPU, storage, and routed-inference offers need no global
 pairwise exclusivity. They are independently selectable products and can legitimately
@@ -320,24 +344,24 @@ because no corresponding HF service rate has been published.
 
 ### Commercial-atom disposition ledger
 
-| Reviewed atom class                                         | Design disposition                                                                                                                                                                              |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Router backend input/output rows                            | Normalize only for the exact model/backend chat or compatible Responses route and retain route applicability. Never spread them to other tasks.                                                 |
-| Router `is_free` plus nonzero rates                         | Preserve base rates and current temporary effective promotion together. This is not an amount conflict and supplies no permanent-free claim.                                                    |
-| Backend policies and failover                               | Preserve as selectors and realized outcomes, not prices. Preflight totals remain partial until a backend is pinned or observed.                                                                 |
-| Custom provider keys                                        | Normalize a separate `externally_billed` offer and settlement path, exclusive with HF billing for the same attempt. Preserve upstream cost as unknown until joined to that provider's evidence. |
-| `hf-inference`                                              | Preserve the live serverless offer, compute-time formula, and delayed exact settlement; keep public amount `not_published` until hardware and duration are jointly observable.                  |
-| Other partner task mappings                                 | Preserve admitted live offers with `not_published` amounts. Do not copy chat, provider-average, or representative rates.                                                                        |
-| Caller functions and Remote MCP                             | Preserve capabilities and external-service boundary. Emit no generic HF tool-call offer or invocation fee.                                                                                      |
-| Inference Endpoint SKUs                                     | Normalize standalone cloud/region/instance/size capacity offers with minute billing and replica-state applicability. Keep artifact configuration resource-scoped.                               |
-| Spaces hardware SKUs                                        | Normalize standalone per-replica capacity offers, explicit CPU Basic zero rate, and charged lifecycle. Do not infer hosted-model presence.                                                      |
-| ZeroGPU                                                     | Normalize daily plan allowances, size multipliers, and exact credit overage as a separate provider-service mechanism.                                                                           |
-| Jobs hardware and exposed ports                             | Normalize hardware capacity plus one additive port-service offer with an exact `requires` relation. Keep workload/model identity external to the rate.                                          |
-| PRO, Team, Enterprise, and Free                             | Normalize separate subscription/enrollment books, current numeric self-serve plans, exact allowances, and `custom_quote` procurement where no stable amount is authoritative.                   |
-| Public and private Hub storage                              | Normalize fixed public subscription tiers and private 1-TB-increment overage separately from plan allowances and inference.                                                                     |
-| Purchased credits, billing balance, `bill_to`, and invoices | Preserve as allowance, attribution, or settlement evidence. Never turn a balance or invoice average into an unqualified public rate.                                                            |
-| AWS Marketplace payment and direct cloud routes             | Preserve Marketplace as a settlement rail and cloud-direct products in the cloud seller's book. Do not duplicate the HF rate.                                                                   |
-| Hub repositories, revisions, licenses, and gating           | Preserve artifact/resource identity and access only. Deployability or public availability creates no global inference offer or catalog admission.                                               |
+| Reviewed atom class                                         | Design disposition                                                                                                                                                                                          |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Router backend input/output rows                            | Normalize only for the exact model/backend chat or compatible Responses route and retain route applicability. Never spread them to other tasks.                                                             |
+| Router `is_free` plus nonzero rates                         | Preserve base rates and current temporary effective promotion together. This is not an amount conflict and supplies no permanent-free claim.                                                                |
+| Backend policies and failover                               | Preserve as selectors and realized outcomes, not prices. Preflight totals remain partial until a backend is pinned or observed.                                                                             |
+| Custom provider keys                                        | Normalize a separate `externally_billed` offer and settlement path, exclusive with HF billing for the same attempt. Preserve upstream cost as unknown until joined to that provider's evidence.             |
+| `hf-inference`                                              | Preserve a standalone serverless service, its compute-time formula, and exact router-model projection where present; keep public amount `not_published` until hardware and duration are jointly observable. |
+| Other partner task mappings                                 | Preserve admitted catalog routes and unknown pricing disposition. Do not manufacture a canonical offer without a task applicability dimension or copy chat, provider-average, or representative rates.      |
+| Caller functions and Remote MCP                             | Preserve capabilities and external-service boundary. Emit no generic HF tool-call offer or invocation fee.                                                                                                  |
+| Inference Endpoint SKUs                                     | Normalize standalone cloud/instance/size capacity offers with billed-duration bindings and account-scoped enrollment. Keep artifact configuration resource-scoped.                                          |
+| Spaces hardware SKUs                                        | Normalize standalone per-replica capacity offers, explicit CPU Basic free state, billed-duration bindings, and account-scoped enrollment. Do not infer hosted-model presence.                               |
+| ZeroGPU                                                     | Normalize daily plan allowances, rolling resets, and exact paid-tier overage; retain the xlarge multiplier raw until usage aggregation applies it.                                                          |
+| Jobs hardware and exposed ports                             | Normalize hardware capacity plus one port-service offer and a `requires_resource` edge to the hardware book. Keep workload/model identity external to the rate.                                             |
+| PRO, Team, Enterprise, and Free                             | Normalize current PRO and Team rates plus Enterprise `custom_quote`; retain the conflicting general Enterprise amount raw, and keep Free/plan allowances account-only.                                      |
+| Public and private Hub storage                              | Normalize fixed public subscription tiers; retain exact private TB-month bands raw until a dimensionally complete denominator exists.                                                                       |
+| Purchased credits, billing balance, `bill_to`, and invoices | Preserve as allowance, attribution, or settlement evidence. Never turn a balance or invoice average into an unqualified public rate.                                                                        |
+| AWS Marketplace payment and direct cloud routes             | Preserve Marketplace as a settlement rail and cloud-direct products in the cloud seller's book. Do not duplicate the HF rate.                                                                               |
+| Hub repositories, revisions, licenses, and gating           | Preserve artifact/resource identity and access only. Deployability or public availability creates no global inference offer or catalog admission.                                                           |
 
 ### Authority, conflicts, and claim-local refresh
 
@@ -383,28 +407,29 @@ rather than erasing the current live route. A malformed meter, one partner's dri
 or an unresolved conflict suppresses only that claim and preserves the model, sibling
 route, other meter, resource, raw evidence, and provider snapshot.
 
-Every recognized commercial atom receives a disposition: normalized, derived by an
-exact join or multiplier, temporarily promoted, included, externally billed,
-account-only, conflicting, unsupported, ambiguous, or pending an exact relation. No
-row is rejected merely because one optional amount or attribute is missing.
+Every recognized public atom is normalized, retained raw, or reconciled as
+account-only, conflicting, unsupported, ambiguous, or pending an exact relation.
+Claim-local parsing keeps valid table rows and plan siblings when prose, another row,
+or an optional companion drifts. No row is rejected merely because one optional
+amount or attribute is missing.
 
 ### Model-detail composition and cost coverage
 
-Model details should project only exact routed and custom-key offers for the admitted
-model: backend, task, biller, credit eligibility, base rate, temporary promotion, and
-the capabilities/context of that route. A current Endpoint, Space, Job, ZeroGPU,
+Model details project routed and custom-key offers only for exact router models:
+backend, biller, base rate, temporary promotion, and the capabilities/context of that
+route. Mapping-only task routes retain catalog and unknown-pricing evidence but do not
+receive a fabricated chat offer while task applicability is absent from the shared
+price selector vocabulary. A current Endpoint, Space, Job, ZeroGPU,
 storage, plan, or credit offer remains standalone unless an exact account resource
 relates it to that artifact. This keeps arbitrary Hub deployability from expanding the
 global catalog or falsely attaching shared infrastructure prices to every repository.
 
-The calculator treats one routed request as selected-backend input and output usage,
-then applies either HF settlement/credits or upstream custom-key settlement. It must
-not add candidate failover backends, base price and temporary free price, HF and BYOK
-billing, caller functions, or an external MCP charge without first-party evidence.
-Dedicated resource cost is reconstructed separately from SKU, replicas, charged
-lifecycle, and add-ons. Partial coverage is expected: show unresolved route, hidden
-`hf-inference` hardware, allowance, or delayed account cost instead of rejecting the
-offer or inventing a complete total.
+Rate details keep selected-backend input/output, HF settlement, custom-key settlement,
+dedicated SKU, replica, lifecycle, and add-on meters distinct. They never combine
+candidate failover backends, base and temporary-free prices, HF and BYOK billing,
+caller functions, or external MCP charges without first-party evidence. Unresolved
+routes, hidden `hf-inference` hardware, allowances, and delayed account cost remain
+partial context; the UI does not invent or calculate a complete total.
 
 ## Public estimate and account-exact cost
 
@@ -495,8 +520,9 @@ offer or inventing a complete total.
   prices are discarded. Invalid and non-identity rows are likewise aggregate
   diagnostics. A later exact router or Featherless offer can make an admitted model
   numeric without pretending that the mapping registry itself published a price.
-- Every router backend also receives one disposition: live priced/free offers are
-  normalized, live unpriced offers are unbound, and error offers are excluded. Account
+- Every router backend also receives one disposition: published list rates are
+  normalized, `is_free` is an explicit temporary promotion, live missing meters are
+  retained raw and unbound, and error routes are excluded. Account
   credits, controls, BYOK, provider-side exact-cost retrieval, and dashboard history
   are classified separately.
 - Featherless's complete native active inventory is still fetched so every admitted

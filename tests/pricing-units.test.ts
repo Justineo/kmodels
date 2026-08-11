@@ -58,6 +58,20 @@ describe("pricing fixed-unit conversion", () => {
         ],
       },
     });
+    expect(
+      canonicalizeSourceUnit([
+        {
+          unit: { namespace: "kmodels", value: "byte" },
+          power: 1,
+          scale: "gibibyte",
+        },
+        {
+          unit: { namespace: "kmodels", value: "second" },
+          power: 1,
+          scale: "day",
+        },
+      ]).scale,
+    ).toEqual({ numerator: "92771293593600", denominator: "1" });
   });
 
   it("multiplies quantities and decimal bounds in the opposite direction", () => {

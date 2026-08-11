@@ -126,12 +126,7 @@ const featherlessModelsPageSchema = z.object({
     total_pages: z.number().int().nonnegative(),
   }),
 });
-const ollamaListSchema = z
-  .object({
-    models: z.array(z.object({ model: modelIdSchema }).passthrough()),
-  })
-  .passthrough();
-const ollamaErrorSchema = z.strictObject({ error: z.string().min(1) });
+const ollamaListSchema = z.object({ models: z.array(z.unknown()) }).passthrough();
 const vercelModelsTransportSchema = z.strictObject({
   object: z.literal("list"),
   data: z.array(
@@ -1757,8 +1752,9 @@ function ollamaCloudIds(body: string): string[] {
     )
       return;
     const match = anchor.attr("href")?.match(/^\/library\/([a-z0-9][a-z0-9._-]*)$/i);
-    if (match?.[1] === undefined) throw new Error("Ollama cloud catalog link changed shape");
-    ids.add(modelIdSchema.parse(match[1]));
+    if (match?.[1] === undefined) return;
+    const id = modelIdSchema.safeParse(match[1]);
+    if (id.success) ids.add(id.data);
   });
   return [...ids].sort();
 }
@@ -1838,21 +1834,33 @@ export function normalizeVercelEndpointResponse(body: string): string {
 }
 
 export function normalizeOllamaList(body: string): string {
-  const list = ollamaListSchema.parse(json(body));
+  const value = json(body);
+  const parsed = ollamaListSchema.safeParse(value);
+  if (!parsed.success) return JSON.stringify(value);
+  const list = parsed.data;
   return JSON.stringify({
     ...list,
-    models: list.models.sort((left, right) => left.model.localeCompare(right.model)),
+    models: list.models.sort((left, right) =>
+      ollamaListKey(left).localeCompare(ollamaListKey(right)),
+    ),
   });
+}
+
+function ollamaListKey(value: unknown): string {
+  if (value !== null && typeof value === "object") {
+    const model = Reflect.get(value, "model");
+    if (typeof model === "string") return `0\0${model}`;
+  }
+  return `1\0${JSON.stringify(value)}`;
 }
 
 export function normalizeOllamaResponse(status: 200 | 404 | 410, body: string): unknown {
   const value = json(body);
   if (status !== 410) return value;
-  const { error } = ollamaErrorSchema.parse(value);
-  const match = error.match(/^(.*) \(ref: [0-9a-f-]{36}\)$/);
-  if (match?.[1] === undefined)
-    throw new Error("Ollama cloud retirement response omitted its request reference");
-  return { error: match[1] };
+  if (value === null || typeof value !== "object") return value;
+  const error = Reflect.get(value, "error");
+  if (typeof error !== "string") return value;
+  return { ...value, error: error.replace(/ \(ref: [0-9a-f-]{36}\)$/, "") };
 }
 
 function directOllamaCloudId(value: string): string | undefined {
@@ -1861,14 +1869,15 @@ function directOllamaCloudId(value: string): string | undefined {
     : value.endsWith(":cloud")
       ? value.slice(0, -":cloud".length)
       : undefined;
-  return id === undefined ? undefined : modelIdSchema.parse(id);
+  if (id === undefined) return;
+  const parsed = modelIdSchema.safeParse(id);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function normalizeOllamaModelPage(model: string, body: string): string {
   const family = modelIdSchema.parse(model);
   const $ = load(body);
-  if (normalizedText($("title").first().text()) !== family)
-    throw new Error("Ollama model page identity changed shape");
+  const title = normalizedText($("title").first().text());
   const tagTexts = new Map<string, string[]>();
   $('a[href^="/library/"]').each((_index, element) => {
     const href = $(element).attr("href");
@@ -1888,40 +1897,37 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
           return match === undefined ? [] : [match.toLowerCase()];
         }),
       );
-      if (texts.some((text) => /\bUsage\b/i.test(text)) && labels.size !== 1)
-        throw new Error("Ollama cloud usage level changed shape");
       const [label] = labels;
       return {
         model: id,
         ...(label === undefined ? {} : { label }),
+        ...(texts.some((text) => /\bUsage\b/i.test(text)) && labels.size !== 1
+          ? { usageText: texts.join(" ") }
+          : {}),
       };
     })
     .sort((left, right) => left.model.localeCompare(right.model));
-  if (tags.length === 0) throw new Error("Ollama cloud model page omitted Cloud tags");
-
   const page = normalizedText($.root().text());
-  const cost = page.match(
-    /\bCost \/1M tokens \$((?:0|[1-9]\d*)(?:\.\d+)?)\s*input \$((?:0|[1-9]\d*)(?:\.\d+)?)\s*cached \$((?:0|[1-9]\d*)(?:\.\d+)?)\s*output\b/,
-  );
-  if (/\bCost \/1M tokens\b/.test(page) && cost === null)
-    throw new Error("Ollama cloud model cost changed shape");
-  if (
-    cost !== null &&
-    !/requires a Pro or Max subscription, and consumes extra usage credits/i.test(page)
-  )
-    throw new Error("Ollama cloud model cost applicability changed");
+  const costCard = /\bCost \/1M tokens\b/.test(page);
+  const amount = (label: "input" | "cached" | "output"): string | undefined =>
+    page.match(new RegExp(`\\$((?:0|[1-9]\\d*)(?:\\.\\d+)?)\\s*${label}\\b`))?.[1];
+  const input = amount("input");
+  const cached = amount("cached");
+  const output = amount("output");
+  const gated = /requires a Pro or Max subscription, and consumes extra usage credits/i.test(page);
   return JSON.stringify({
     model: family,
+    ...(title === "" ? {} : { title }),
     tags,
-    ...(cost === null
+    ...(!costCard
       ? {}
       : {
           cost: {
-            input: cost[1],
-            cached: cost[2],
-            output: cost[3],
+            ...(input === undefined ? {} : { input }),
+            ...(cached === undefined ? {} : { cached }),
+            ...(output === undefined ? {} : { output }),
             unit: "1M tokens",
-            accountEligibility: "extra_usage_balance",
+            ...(gated ? { accountEligibility: "extra_usage_balance", plans: ["Pro", "Max"] } : {}),
           },
         }),
   });
@@ -1950,61 +1956,83 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     source.maxResponseBytes,
   );
   const [rawIndex, catalog, documents] = await Promise.all([
-    fetchPayload(indexSource),
-    fetchPayload(catalogSource),
+    fetchPayload(indexSource).catch(() => undefined),
+    fetchPayload(catalogSource).catch(() => undefined),
     fetchConfiguredDocuments(source, "Ollama"),
   ]);
-  const indexBody = normalizeOllamaList(rawIndex.body);
-  const index = {
-    ...rawIndex,
+  if (rawIndex === undefined && catalog === undefined)
+    throw new Error("Ollama Cloud inventory witnesses were unavailable");
+  let indexBody = "{}";
+  if (rawIndex !== undefined)
+    try {
+      indexBody = normalizeOllamaList(rawIndex.body);
+    } catch {
+      indexBody = "{}";
+    }
+  const index: FetchPayload = {
     body: indexBody,
     contentHash: sha256(indexBody),
+    etag: rawIndex?.etag,
+    lastModified: rawIndex?.lastModified,
   };
-  const list = ollamaListSchema.parse(json(index.body));
-  const listed = new Set(list.models.map((item) => item.model));
-  if (listed.size !== list.models.length) throw new Error("Ollama cloud list identity drift");
+  const list = ollamaListSchema.safeParse(json(index.body));
+  const listed = new Set(
+    (list.success ? list.data.models : []).flatMap((item) => {
+      if (item === null || typeof item !== "object") return [];
+      const parsed = modelIdSchema.safeParse(Reflect.get(item, "model"));
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+  assertItemCount("Ollama cloud transport list upper bound", listed.size, 0, transport.maxModels);
+  const catalogIds = catalog === undefined ? [] : ollamaCloudIds(catalog.body);
   assertItemCount(
-    "Ollama cloud transport models",
-    listed.size,
-    transport.minModels,
+    "Ollama cloud transport catalog upper bound",
+    catalogIds.length,
+    0,
     transport.maxModels,
   );
-  const catalogIds = ollamaCloudIds(catalog.body);
   assertItemCount(
-    "Ollama cloud transport catalog",
-    catalogIds.length,
+    "Ollama cloud transport independent inventory",
+    Math.max(listed.size, catalogIds.length),
     transport.minModels,
     transport.maxModels,
   );
   const modelIds = [...new Set([...listed, ...catalogIds])].sort();
-  const details = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
-    const key = `${source.id}/show/${sha256(model)}`;
-    const showSource = {
-      ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
-    } satisfies SourceManifest;
-    const payload = await fetchPost(showSource, JSON.stringify({ model }));
-    if (listed.has(model) && payload.status !== 200)
-      throw new Error("Ollama cloud listed model details were unavailable");
-    const body = JSON.stringify(normalizeOllamaResponse(payload.status, payload.body));
-    return { key, model, payload: { ...payload, body, contentHash: sha256(body) } };
+  const detailResults = await mapConcurrent(modelIds, transport.concurrency, async (model) => {
+    try {
+      const key = `${source.id}/show/${sha256(model)}`;
+      const showSource = {
+        ...requestSource(source, key, new URL("https://ollama.com/api/show"), "json", 256 * 1024),
+      } satisfies SourceManifest;
+      const payload = await fetchPost(showSource, JSON.stringify({ model }));
+      const body = JSON.stringify(normalizeOllamaResponse(payload.status, payload.body));
+      return { key, model, payload: { ...payload, body, contentHash: sha256(body) } };
+    } catch {
+      return;
+    }
   });
+  const details = detailResults.filter((item) => item !== undefined);
   const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
   if (modelPageBase.href !== "https://ollama.com/library/")
     throw new Error("Ollama model-page base URL is not reviewed");
-  const pages = await mapConcurrent(catalogIds, transport.concurrency, async (model) => {
-    const key = `${source.id}/model-page/${sha256(model)}`;
-    const url = checkedUrl(new URL(model, modelPageBase).href, source);
-    if (url.hostname !== "ollama.com" || url.pathname !== `/library/${model}`)
-      throw new Error("Ollama model page left the reviewed path");
-    const raw = await fetchPayload(
-      requestSource(source, key, url, "html", transport.maxModelPageBytes),
-    );
-    const body = normalizeOllamaModelPage(model, raw.body);
-    return { key, model, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
+  const pageResults = await mapConcurrent(catalogIds, transport.concurrency, async (model) => {
+    try {
+      const key = `${source.id}/model-page/${sha256(model)}`;
+      const url = checkedUrl(new URL(model, modelPageBase).href, source);
+      if (url.hostname !== "ollama.com" || url.pathname !== `/library/${model}`) return;
+      const raw = await fetchPayload(
+        requestSource(source, key, url, "html", transport.maxModelPageBytes),
+      );
+      const body = normalizeOllamaModelPage(model, raw.body);
+      return { key, model, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
+    } catch {
+      return;
+    }
   });
+  const pages = pageResults.filter((item) => item !== undefined);
   const body = JSON.stringify({
     list: json(index.body),
-    catalog: { url: catalogUrl.href, body: catalog.body },
+    ...(catalog === undefined ? {} : { catalog: { url: catalogUrl.href, body: catalog.body } }),
     pages: pages.map(({ model, url, payload }) => ({
       model,
       url,
@@ -2025,8 +2053,8 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     etag: index.etag,
     lastModified: index.lastModified,
     dependencies: [
-      observation(indexKey, index),
-      observation(catalogKey, catalog),
+      ...(rawIndex === undefined ? [] : [observation(indexKey, index)]),
+      ...(catalog === undefined ? [] : [observation(catalogKey, catalog)]),
       ...pages.map(({ key, payload }) => observation(key, payload)),
       ...details.map(({ key, payload }) => observation(key, payload)),
       ...documents.map(({ key, payload }) => observation(key, payload)),

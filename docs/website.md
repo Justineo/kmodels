@@ -81,8 +81,8 @@ Status: implemented
   compact fixed context instead of rendered as a control. A rate appears only
   when the current partial context proves that it applies; unresolved
   alternatives stay hidden behind a prompt for their missing dimensions. The
-  calculator resolves exact applicable rates but does not estimate usage,
-  consume allowances, or calculate an invoice. Selected applicability is not
+  pricing-context controls resolve exact applicable rates but do not estimate
+  usage, consume allowances, or calculate a total. Selected applicability is not
   repeated on each resolved rate, allowance, or state; validity qualifications
   remain visible. Its reset action appears only after a configurable selection
   and does not repeat a selection count. A single offer state stays in the offer
@@ -92,6 +92,16 @@ Status: implemented
   choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
   operators. Ranges with gaps or overlaps continue to accept an exact value and
   reject invalid or non-integral count/TTL input.
+- Each resolved rate retains its display-ready charge binding. The rate matrix
+  shows the official cost driver, its reviewed billable-trigger definition,
+  aggregation boundary, and earliest resolution phase. A known rate without an
+  exact public quantity signal stays visible and says that its usage binding is
+  unavailable; the UI never treats that as a missing rate. Contribution rows
+  expose the same driver metadata without copying the target rate. Billing mode,
+  enrollment, settlement channel, biller, and ordered payment-source classes
+  appear as read-only commercial context. These facts explain what affects cost
+  without accepting usage input, multiplying quantities, consuming allowances,
+  allocating capacity, or presenting an account total.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -248,7 +258,9 @@ Status: implemented
   small reactive state object with the catalog root.
 - All UI projections exclude source records, observations, locators, raw source
   values, derivations, evidence arrays, and canonical audit-envelope metadata.
-  They retain only displayed semantics and provider-snapshot freshness copy.
+  They retain displayed commercial semantics—including reviewed usage-signal
+  definitions, aggregation boundaries, resolution phases, enrollment, and
+  settlement context—and provider-snapshot freshness copy.
 - Build-time projection indexes snapshots, dispositions, and model-scoped
   books once. Each model reuses one pricing view for its summary and detail,
   and the checked-in pack is compared with asset sources from that same

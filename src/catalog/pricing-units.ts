@@ -19,6 +19,7 @@ export type FixedUnitScale =
   | "thousand"
   | "million"
   | "gigabyte"
+  | "gibibyte"
   | "millisecond"
   | "minute"
   | "hour"
@@ -39,6 +40,7 @@ const scales: Record<FixedUnitScale, Rational> = {
   thousand: { numerator: "1000", denominator: "1" },
   million: { numerator: "1000000", denominator: "1" },
   gigabyte: { numerator: "1000000000", denominator: "1" },
+  gibibyte: { numerator: "1073741824", denominator: "1" },
   millisecond: { numerator: "1", denominator: "1000" },
   minute: { numerator: "60", denominator: "1" },
   hour: { numerator: "3600", denominator: "1" },

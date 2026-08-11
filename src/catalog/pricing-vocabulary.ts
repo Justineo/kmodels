@@ -116,6 +116,61 @@ export const applicabilityResolutionPhases = [
   "account",
 ] as const;
 
+interface StandardUsageSignalDetails {
+  label: string;
+  definition: string;
+  resolution_phase: (typeof applicabilityResolutionPhases)[number];
+}
+
+function outcomeSignal(label: string, definition: string): StandardUsageSignalDetails {
+  return { label, definition, resolution_phase: "outcome" };
+}
+
+export const standardUsageSignalDetails = {
+  input_tokens: outcomeSignal("Input tokens", "Provider-reported full billable input tokens"),
+  uncached_input_tokens: outcomeSignal(
+    "Uncached input tokens",
+    "Billable input tokens excluding the provider-reported cached partition",
+  ),
+  cached_input_tokens: outcomeSignal(
+    "Cached input tokens",
+    "Provider-reported cached-input partition",
+  ),
+  cache_write_tokens: outcomeSignal(
+    "Cache-write tokens",
+    "Provider-reported cache-creation partition",
+  ),
+  output_tokens: outcomeSignal("Output tokens", "Provider-reported billable output tokens"),
+  accepted_requests: outcomeSignal(
+    "Accepted requests",
+    "Requests the provider accepted as billable",
+  ),
+  completed_result_items: outcomeSignal(
+    "Completed result items",
+    "Completed result items with independently billable usage",
+  ),
+  successful_web_searches: outcomeSignal(
+    "Successful web searches",
+    "Provider-confirmed successful web-search executions; errors are excluded",
+  ),
+  generated_items: outcomeSignal("Generated items", "Provider-reported completed generated items"),
+  generated_images: outcomeSignal(
+    "Generated images",
+    "Provider-reported completed generated images",
+  ),
+  generated_seconds: outcomeSignal(
+    "Generated duration",
+    "Provider-reported completed media duration",
+  ),
+  active_seconds: outcomeSignal("Active runtime", "Provider-reported active runtime"),
+  stored_byte_seconds: {
+    label: "Stored data over time",
+    definition: "Officially integrated retained bytes over time",
+    resolution_phase: "account",
+  },
+  transferred_bytes: outcomeSignal("Transferred data", "Provider-reported transferred bytes"),
+} satisfies Record<(typeof standardUsageSignals)[number], StandardUsageSignalDetails>;
+
 export const standardResourceKinds = [
   "service",
   "plan",

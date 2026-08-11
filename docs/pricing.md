@@ -678,7 +678,7 @@ selection. Changing the focused offer resets its context. A unique model
 mechanism is fixed and summarized instead of rendered as a one-item selector;
 this is not inference of a provider default.
 
-The calculator filters applicability from explicit user selections. A
+The pricing-context controls filter applicability from explicit user selections. A
 categorical selector with one possible value is fixed automatically and shown
 as compact context rather than as a disabled selector. Exact
 rate or allowance rows appear only when the current partial context proves that
@@ -686,8 +686,12 @@ they apply. Alternatives whose applicability is still unresolved remain hidden,
 and the rate section prompts for exactly those missing dimensions. Resolved
 rows do not repeat the chosen context. A single offer state stays in the offer
 summary, while offers with several possible states show the resolved state
-after context selection. The calculator does not multiply usage, apply
-allowances, estimate a request, or calculate an invoice. Possibly applicable
+after context selection. The UI does not multiply usage, apply allowances,
+estimate a request, or calculate a total. Each resolved rate instead shows its
+known cost driver, reviewed trigger definition, aggregation boundary, and
+earliest resolution phase. An unbound rate remains visible with an explicit
+missing-signal note. Contribution bindings, billing mode, enrollment, and
+settlement context are projected as read-only commercial facts. Possibly applicable
 raw base pricing marks the offer incomplete while normalized rows remain
 available after resolution. Exact offer relations are shown as composition
 context, and do not alter list-price selection. Raw allowance facts similarly
@@ -707,8 +711,9 @@ is contained in or disjoint from it, while a partial overlap stays unresolved.
 Ranges with a gap or overlap remain exact-value inputs and reject out-of-range
 values. The UI never widens an exact price condition into a neighboring interval.
 
-The compact detail payload contains display-ready values and selectors, not
-audit observations. Source-native display strings are derived while the
+The compact detail payload contains display-ready values, selectors, charge
+drivers, billing context, and settlement context, not audit observations.
+Source-native display strings are derived while the
 validated observations are available and then emitted without their locators,
 raw fields, or evidence arrays. Equal observations remain one row rather than
 being expanded back into the source's flattened layout.

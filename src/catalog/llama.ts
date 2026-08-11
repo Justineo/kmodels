@@ -4,9 +4,14 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
+import { rawPricingFact } from "./pricing.ts";
 import type { SourceManifest } from "./manifests.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourceCommercialPricingFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -43,6 +48,30 @@ interface HostedExamples {
   structured: string;
   tool: string;
 }
+
+interface LicenseSpec {
+  family: string;
+  name: string;
+  path: string;
+  euMultimodalRestriction: boolean;
+}
+
+interface LicenseEvidence {
+  spec: LicenseSpec;
+  published: boolean;
+  royaltyFree: boolean;
+  separateGrant: boolean;
+  euMultimodalRestricted: boolean;
+}
+
+const licenseSpecs: LicenseSpec[] = [
+  { family: "llama2", name: "Llama 2", path: "llama2", euMultimodalRestriction: false },
+  { family: "llama3", name: "Llama 3", path: "llama3", euMultimodalRestriction: false },
+  { family: "llama3_1", name: "Llama 3.1", path: "llama3_1", euMultimodalRestriction: false },
+  { family: "llama3_2", name: "Llama 3.2", path: "llama3_2", euMultimodalRestriction: true },
+  { family: "llama3_3", name: "Llama 3.3", path: "llama3_3", euMultimodalRestriction: false },
+  { family: "llama4", name: "Llama 4", path: "llama4", euMultimodalRestriction: true },
+];
 
 const hostedSpecs: {
   key: keyof HostedExamples;
@@ -137,6 +166,36 @@ function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): s
   const matches = bundle.documents.filter(({ url }) => new URL(url).pathname.endsWith(suffix));
   if (matches.length !== 1) throw new Error(`Llama bundle requires exactly one ${suffix}`);
   return matches[0]?.body ?? "";
+}
+
+function optionalDocument(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  suffix: string,
+): string | undefined {
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname.endsWith(suffix));
+  if (matches.length > 1) throw new Error(`Llama bundle contains duplicate ${suffix}`);
+  return matches[0]?.body;
+}
+
+function diagnostic(input: ParseInput, reason_code: string, sample: string): void {
+  input.onPricingReconciliation?.({ disposition: "unsupported", reason_code, sample });
+}
+
+function claim<T>(
+  input: ParseInput,
+  reasonCode: string,
+  sample: string,
+  parse: () => T,
+): T | undefined {
+  try {
+    return parse();
+  } catch (error) {
+    diagnostic(
+      input,
+      reasonCode,
+      `${sample}: ${(error instanceof Error ? error.message : String(error)).slice(0, 180)}`,
+    );
+  }
 }
 
 function pythonString(value: string): string {
@@ -541,15 +600,20 @@ function hostedEndpoint(base: string, resourceBody: string, name: string): ApiEn
 }
 
 function hostedEvidence(
+  input: ParseInput,
   models: RegisteredModel[],
   examples: HostedExamples,
 ): Map<string, HostedEvidence> {
   const result = new Map<string, HostedEvidence>();
   for (const spec of hostedSpecs) {
-    const body = examples[spec.key];
-    if (!spec.valid(body)) throw new Error(`Llama ${spec.key} example changed shape`);
-    const id = exampleModelId(body, spec.key);
-    const model = resolveHostedModel(models, id, spec.key);
+    const resolved = claim(input, "hosted_example_drift", spec.key, () => {
+      const body = examples[spec.key];
+      if (!spec.valid(body)) throw new Error(`Llama ${spec.key} example changed shape`);
+      const id = exampleModelId(body, spec.key);
+      return { id, model: resolveHostedModel(models, id, spec.key) };
+    });
+    if (resolved === undefined) continue;
+    const { id, model } = resolved;
     const current = result.get(model.id);
     result.set(model.id, {
       aliases: unique([...(current?.aliases ?? []), id]),
@@ -599,7 +663,7 @@ function toolCall(
   return "unknown";
 }
 
-function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundleSchema>): void {
+function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundleSchema>): boolean {
   const params = document(bundle, "/types/chat/completion_create_params.py");
   const response = document(bundle, "/types/create_chat_completion_response.py");
   const stream = document(bundle, "/types/create_chat_completion_response_stream_chunk.py");
@@ -609,14 +673,14 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
     !/model: Required\[str\]/.test(params) ||
     !/max_completion_tokens: int/.test(params)
   )
-    throw new Error("Llama API request accounting inputs drifted");
+    diagnostic(input, "chat_accounting_contract_drift", "request inputs");
   if (
     !/class Metric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
       response,
     ) ||
     !/metrics: Optional\[List\[Metric\]\]/.test(response)
   )
-    throw new Error("Llama API response metrics drifted");
+    diagnostic(input, "chat_accounting_contract_drift", "response metrics");
   if (
     !/class EventMetric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
       stream,
@@ -624,44 +688,38 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
     !/event_type: Literal\["start", "complete", "progress", "metrics"\]/.test(stream) ||
     !/metrics: Optional\[List\[EventMetric\]\]/.test(stream)
   )
-    throw new Error("Llama API streaming metrics drifted");
+    diagnostic(input, "stream_accounting_contract_drift", "stream metrics");
   if (
     !/class ModerationCreateResponse\(BaseModel\):[\s\S]*model: str[\s\S]*results: List\[Result\]/.test(
       moderation,
     )
   )
-    throw new Error("Llama API moderation response drifted");
+    diagnostic(input, "moderation_accounting_contract_drift", "moderation response");
 
-  hostedModelInventory(bundle);
+  claim(input, "model_inventory_contract_drift", "generated Models resource", () =>
+    hostedModelInventory(bundle),
+  );
 
-  const launch = document(bundle, "/blog/llamacon-llama-news/");
-  if (
-    announcementDate(launch, "Everything we announced at our first-ever LlamaCon", [
-      "Llama API",
-      "limited free preview",
-      "Llama 4 Scout",
-      "Llama 4 Maverick",
-      "all usage tracked in one location",
-    ]) !== "2025-04-29"
-  )
-    throw new Error("Llama API launch terms drifted");
-
-  const license = document(bundle, "/models/llama4/LICENSE");
-  if (
-    !/royalty-free limited license/i.test(license) ||
-    !/greater than 700 million\s+monthly\s+active users/i.test(license) ||
-    !/must request a license from Meta/i.test(license)
-  )
-    throw new Error("Llama 4 commercial license terms drifted");
-
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "historical_limited_free_preview",
-  });
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "artifact_license_not_api_rate",
-  });
+  const historicalPreview =
+    claim(input, "launch_terms_drift", "LlamaCon launch", () => {
+      const launch = document(bundle, "/blog/llamacon-llama-news/");
+      if (
+        announcementDate(launch, "Everything we announced at our first-ever LlamaCon", [
+          "Llama API",
+          "limited free preview",
+          "Llama 4 Scout",
+          "Llama 4 Maverick",
+          "all usage tracked in one location",
+        ]) !== "2025-04-29"
+      )
+        throw new Error("Llama API launch terms drifted");
+      return true;
+    }) === true;
+  if (historicalPreview)
+    input.onPricingReconciliation?.({
+      disposition: "excluded",
+      reason_code: "historical_limited_free_preview",
+    });
 
   const client = document(bundle, "/src/llama_api_client/_client.py");
   const resources = unique(
@@ -669,17 +727,10 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
       (match[1] ?? "").split(",").map((value) => value.trim()),
     ),
   );
-  if (resources.length === 0)
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "api_resource_registry_unparsed",
-    });
+  if (resources.length === 0) diagnostic(input, "api_resource_registry_unparsed", "client");
   for (const resource of resources.filter((value) => /^(?:billing|costs?|usage)$/.test(value)))
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "account_cost_api_unmodeled",
-      sample: resource,
-    });
+    diagnostic(input, "account_cost_api_unmodeled", resource);
+  return historicalPreview;
 }
 
 function hostedModelInventory(bundle: z.infer<typeof linkedBundleSchema>): void {
@@ -735,6 +786,217 @@ function hostedModelInventory(bundle: z.infer<typeof linkedBundleSchema>): void 
     throw new Error("Llama API model-list response drifted");
 }
 
+function licenseEvidence(
+  input: ParseInput,
+  bundle: z.infer<typeof linkedBundleSchema>,
+): Map<string, LicenseEvidence> {
+  const result = new Map<string, LicenseEvidence>();
+  for (const spec of licenseSpecs) {
+    const license = optionalDocument(bundle, `/models/${spec.path}/LICENSE`);
+    const royaltyFree =
+      license !== undefined &&
+      /non-exclusive[\s\S]{0,200}royalty-free limited license/i.test(license);
+    const separateGrant =
+      license !== undefined &&
+      /greater than 700 million\s+monthly\s+active users/i.test(license) &&
+      /must request a license from Meta/i.test(license);
+    if (!royaltyFree || !separateGrant) diagnostic(input, "license_claim_unavailable", spec.family);
+
+    let euMultimodalRestricted = false;
+    if (spec.euMultimodalRestriction) {
+      const policy = optionalDocument(bundle, `/models/${spec.path}/USE_POLICY.md`);
+      euMultimodalRestricted =
+        policy !== undefined &&
+        /multimodal/i.test(policy) &&
+        /European Union|\bEU\b/i.test(policy) &&
+        /end user/i.test(policy);
+      if (!euMultimodalRestricted) diagnostic(input, "use_policy_claim_unavailable", spec.family);
+    }
+    result.set(spec.family, {
+      spec,
+      published: license !== undefined,
+      royaltyFree,
+      separateGrant,
+      euMultimodalRestricted,
+    });
+  }
+  return result;
+}
+
+function licenseFamily(model: RegisteredModel): string | undefined {
+  if (model.family !== "safety") return model.family;
+  if (model.id.startsWith("Llama-Guard-2-")) return "llama3";
+  if (/^Llama-Guard-3-8B(?:$|:)/.test(model.id) || model.id === "Prompt-Guard-86M")
+    return "llama3_1";
+  if (/^Llama-Guard-3-(?:1B|11B-Vision)(?:$|:)/.test(model.id)) return "llama3_2";
+  if (/^(?:Llama-Guard-4-|Llama-Prompt-Guard-2-)/.test(model.id)) return "llama4";
+}
+
+function rawCommercialFact(
+  sourceRef: string,
+  termKey: string,
+  label: string,
+  fragment: string,
+): SourceRawPricingFact {
+  return rawPricingFact(sourceRef, termKey, "informational", "unknown_amount", {
+    label,
+    fragment,
+  });
+}
+
+function commercialFact(
+  sourceRef: string,
+  input: Omit<SourceCommercialPricingFact, "source_ref" | "price_facts">,
+): SourceCommercialPricingFact {
+  return { source_ref: sourceRef, price_facts: [], ...input };
+}
+
+function modelCommercialFacts(
+  input: ParseInput,
+  model: RegisteredModel,
+  modelRef: string,
+  license: LicenseEvidence | undefined,
+  hostedChat: boolean,
+  hostedModeration: boolean,
+  historicalPreview: boolean,
+  multimodal: boolean,
+): SourceCommercialPricingFact[] {
+  const distributionFacts = [
+    rawCommercialFact(
+      input.source.id,
+      "artifact_distribution",
+      `${model.id} official artifact distribution`,
+      `https://huggingface.co/${model.huggingFaceRepo} https://github.com/meta-llama/llama-models`,
+    ),
+    ...(license?.published !== true
+      ? []
+      : [
+          rawCommercialFact(
+            input.source.id,
+            "family_license",
+            `${license.spec.name} family license`,
+            `models/${license.spec.path}/LICENSE`,
+          ),
+        ]),
+    ...(license?.euMultimodalRestricted === true && multimodal
+      ? [
+          rawCommercialFact(
+            input.source.id,
+            "eu_multimodal_restriction",
+            `${license.spec.name} multimodal EU developer restriction with end-user exception`,
+            `models/${license.spec.path}/USE_POLICY.md`,
+          ),
+        ]
+      : []),
+  ];
+  const facts = [
+    commercialFact(input.source.id, {
+      book_key: `distribution:${modelRef}`,
+      book_name: `${model.id} artifact distribution`,
+      resource_kind: "distribution",
+      resource_key: `artifact:${modelRef}`,
+      model_refs: [modelRef],
+      offer_key: "artifact-access",
+      offer_name: "Artifact access",
+      billing_mode: "one_time",
+      pricing_state: license?.royaltyFree === true ? "free" : "not_published",
+      raw_price_facts: distributionFacts,
+    }),
+    commercialFact(input.source.id, {
+      book_key: `execution:self-hosted:${modelRef}`,
+      book_name: `${model.id} self-hosted execution`,
+      resource_kind: "service",
+      resource_key: `self-hosted:${modelRef}`,
+      model_refs: [modelRef],
+      offer_key: "self-hosted",
+      offer_name: "Self-hosted execution",
+      billing_mode: "usage",
+      pricing_state: "externally_billed",
+      raw_price_facts: [
+        rawCommercialFact(
+          input.source.id,
+          "operator_infrastructure_cost",
+          "Runtime infrastructure is selected and paid by the operator",
+          "llama-models local inference and deployment routes",
+        ),
+      ],
+    }),
+  ];
+  if (hostedChat)
+    facts.push(
+      commercialFact(input.source.id, {
+        book_key: `execution:llama-api-chat:${modelRef}`,
+        book_name: `${model.id} Llama API Chat`,
+        resource_kind: "service",
+        resource_key: `llama-api-chat:${modelRef}`,
+        model_refs: [modelRef],
+        offer_key: "hosted-chat",
+        offer_name: "Llama API Chat",
+        billing_mode: "usage",
+        pricing_state: "not_published",
+        raw_price_facts: [
+          rawCommercialFact(
+            input.source.id,
+            "hosted_price_unpublished",
+            "No current public Llama API Chat amount",
+            historicalPreview
+              ? "2025-04-29 limited free preview; no current validity"
+              : "Llama API SDK",
+          ),
+        ],
+      }),
+    );
+  if (hostedModeration)
+    facts.push(
+      commercialFact(input.source.id, {
+        book_key: `execution:llama-api-moderation:${modelRef}`,
+        book_name: `${model.id} Llama API Moderations`,
+        resource_kind: "service",
+        resource_key: `llama-api-moderation:${modelRef}`,
+        model_refs: [modelRef],
+        offer_key: "hosted-moderation",
+        offer_name: "Llama API Moderations",
+        billing_mode: "usage",
+        pricing_state: "not_published",
+        raw_price_facts: [
+          rawCommercialFact(
+            input.source.id,
+            "hosted_price_unpublished",
+            "No current public Llama API Moderations amount",
+            "/v1/moderations",
+          ),
+        ],
+      }),
+    );
+  return facts;
+}
+
+function licenseGrantFact(
+  input: ParseInput,
+  license: LicenseEvidence,
+  modelRefs: string[],
+): SourceCommercialPricingFact {
+  return commercialFact(input.source.id, {
+    book_key: `license-grant:${license.spec.family}`,
+    book_name: `${license.spec.name} separate commercial grant`,
+    resource_kind: "plan",
+    resource_key: `license-grant:${license.spec.family}`,
+    model_refs: modelRefs,
+    offer_key: "separate-grant",
+    offer_name: "Separate Meta license grant",
+    billing_mode: "one_time",
+    pricing_state: "not_published",
+    raw_price_facts: [
+      rawCommercialFact(
+        input.source.id,
+        "separate_license_threshold",
+        "Separate Meta grant required above the release-date 700M monthly-active-user threshold",
+        `models/${license.spec.path}/LICENSE`,
+      ),
+    ],
+  });
+}
+
 export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const skuTypes = document(bundle, "/models/sku_types.py");
@@ -771,11 +1033,24 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
     throw new Error("Llama 4 model card omitted multimodal input");
   const contexts = contextRules(skuTypes);
   const releases = safetyEvidence(bundle, models);
-  const apiBase = hostedApiBase(apiClient);
-  const chatEndpoint = hostedEndpoint(apiBase, chatCompletions, "Chat Completions");
-  const moderationEndpoint = hostedEndpoint(apiBase, moderations, "Moderations");
-  hostedAccounting(input, bundle);
-  const hosted = hostedEvidence(models, {
+  const licenses = licenseEvidence(input, bundle);
+  const apiBase = claim(input, "hosted_api_base_drift", "API base URL", () =>
+    hostedApiBase(apiClient),
+  );
+  const chatEndpoint =
+    apiBase === undefined
+      ? undefined
+      : claim(input, "hosted_route_drift", "Chat Completions", () =>
+          hostedEndpoint(apiBase, chatCompletions, "Chat Completions"),
+        );
+  const moderationEndpoint =
+    apiBase === undefined
+      ? undefined
+      : claim(input, "hosted_route_drift", "Moderations", () =>
+          hostedEndpoint(apiBase, moderations, "Moderations"),
+        );
+  const historicalPreview = hostedAccounting(input, bundle);
+  const hosted = hostedEvidence(input, models, {
     asyncChat: asyncChatExample,
     chat: chatExample,
     structured: structuredExample,
@@ -790,8 +1065,10 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       (alias) => alias !== model.id,
     );
     const endpoints = [
-      ...(evidence === undefined ? [] : [chatEndpoint]),
-      ...(safetyRelease?.moderation === true ? [moderationEndpoint] : []),
+      ...(evidence === undefined || chatEndpoint === undefined ? [] : [chatEndpoint]),
+      ...(safetyRelease?.moderation !== true || moderationEndpoint === undefined
+        ? []
+        : [moderationEndpoint]),
     ];
     const vision =
       model.key.includes("vision") ||
@@ -799,7 +1076,7 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       safetyRelease?.inputImage === true;
     const guard = model.key.startsWith("llama_guard_");
     const promptGuard = model.key === "prompt_guard";
-    return {
+    const parsed = {
       ...baseModel({
         providerId: input.provider.id,
         id: model.id,
@@ -827,14 +1104,48 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       limits: { context_tokens: contextTokens(model, contexts) },
       release_date: releaseDate(model, dates, quantizedDate, llama33Date, safetyRelease),
       status: "active",
-      pricing_state: endpoints.length === 0 ? "not_applicable" : "not_published",
-    };
+      pricing_state: "unknown" as const,
+    } satisfies ProviderModel;
+    const family = licenseFamily(model);
+    const license = family === undefined ? undefined : licenses.get(family);
+    if (family === undefined) diagnostic(input, "license_family_unmapped", model.id);
+    return {
+      ...parsed,
+      commercial_facts: modelCommercialFacts(
+        input,
+        model,
+        parsed.uid,
+        license,
+        evidence !== undefined && chatEndpoint !== undefined,
+        safetyRelease?.moderation === true && moderationEndpoint !== undefined,
+        historicalPreview,
+        vision,
+      ),
+    } satisfies ProviderModel;
   });
-  for (const model of parsed)
+  for (const license of licenses.values()) {
+    if (!license.separateGrant) continue;
+    const modelRefs = parsed.flatMap((model, index) => {
+      const registered = models[index];
+      return registered !== undefined && licenseFamily(registered) === license.spec.family
+        ? [model.uid]
+        : [];
+    });
+    const carrierIndex = parsed.findIndex((model) => model.uid === modelRefs[0]);
+    const carrier = parsed[carrierIndex];
+    if (carrier !== undefined)
+      parsed[carrierIndex] = {
+        ...carrier,
+        commercial_facts: [
+          ...(carrier.commercial_facts ?? []),
+          licenseGrantFact(input, license, modelRefs),
+        ],
+      };
+  }
+  for (let index = 0; index < parsed.length; index += 1)
     input.onPricingReconciliation?.({
       disposition: "explicit_non_numeric",
-      reason_code:
-        model.pricing_state === "not_applicable" ? "not_applicable" : "price_not_published",
+      reason_code: "commercial_topology",
     });
   return parsed;
 }

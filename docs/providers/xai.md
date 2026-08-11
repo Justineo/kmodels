@@ -15,11 +15,13 @@ Status: current
   its exact cluster region even though the current amounts agree across regions.
 - The fixed `llms.txt` companion owns public pricing terms, releases, Speech to Speech
   models, lifecycle redirects, capability-wide statements, request examples, and the
-  accounting contracts described below. Structured fixed-point prices must agree
-  independently with both the pricing page and the models-page tables, including voice;
-  hidden payload discount fields are not commercial evidence.
+  accounting contracts described below. The dedicated pricing page owns current public
+  amounts when its exact scope is valid; conflicting embedded or Models-summary values
+  remain warning evidence rather than rejecting the model or sibling rates. Hidden
+  payload discount fields are not commercial evidence.
 - Dated alias transitions in the public voice table are evaluated against the observation time and
-  must agree with the structured service alias at that same point in time. Redirected exact IDs remain separate `legacy` rows because their slugs continue to
+  reconciled with the structured service alias at that same point in time. A mismatch
+  suppresses only the documented alias join; exact structured Voice IDs remain. Redirected exact IDs remain separate `legacy` rows because their slugs continue to
   resolve. Their effective pricing is derived from the single documented redirect
   target from the redirect date. Voice configuration names without documented request
   model parameters do not become IDs.
@@ -45,8 +47,9 @@ Status: current
   request URL and resolvable model ID or alias. Model bindings come from the example,
   never a hardcoded model list or task inheritance.
 - Parse Speech to Speech prices per documented request model ID and resolve every one
-  against the structured realtime services. Each version keeps its own audio-minute and
-  text-input rates; shared tool rates remain separate. Validate internal TTS, STT, and
+  against the structured realtime services. Each version keeps one published audio-minute
+  rate because xAI does not split it into input and output audio, plus its text-input
+  event rate. Paid tools remain separate provider-service offers. Validate internal TTS, STT, and
   realtime service prices without publishing those service names as models.
 - Parse Batch discounts and Priority multipliers from public pricing prose. Batch
   support comes from the Batch API support document, including explicit model
@@ -57,9 +60,9 @@ Status: current
   threshold, service tier, media, duration, message, tool, and lifecycle-effective
   conditions. Reasoning tokens use the completion-token rate. The long-context switch
   uses total prompt tokens, including cached tokens, for the whole request.
-- The `$0.05` pre-generation Responses usage-guideline violation fee is retained as a
-  raw operation price because the shared meter vocabulary does not yet represent it.
-  Public TTS and REST/streaming STT rates are reconciled as unbound service prices: the
+- The `$0.05` pre-generation Responses usage-guideline violation fee is a normalized
+  provider-operation amount with an unresolved outcome binding. Public TTS and
+  REST/streaming STT rates are normalized as standalone provider-service offers: the
   official request schemas do not expose the internal `grok-tts` and `grok-stt`
   configuration names as request model IDs, so the catalog does not invent identities.
 - Dates require exact ID, alias, or display-name bindings. API `created` is not a model
@@ -67,11 +70,15 @@ Status: current
 
 ## Commercial topology audit
 
-Design status: audited; implementation pending. This is xAI's disposition for the
-provider-wide commercial-topology review. It describes the intended resources,
-books, offers, relationships, meters, accounting bindings, and evidence boundaries;
-it does not claim that the current collector, schema, generated data, or UI already
-represents them.
+Design status: implemented for the mechanically refreshable first-party developer
+sources. Model execution mechanisms, provider tools, Voice, TTS/STT, storage and
+download, context compaction, custom voices, and the policy fee now have separate
+books and charge bindings where public signals are sufficient. Consumer Grok plans,
+partner-cloud pricing, private discounts, and other account-only terms remain documented
+audit boundaries until an exact collectable contract supports their projection. ZDR is
+an account-scoped amount-unpublished setting with exact exclusions for Batch, Files,
+Collections, and agentic image generation; mixed stateful/stateless routes are not
+removed wholesale.
 
 ### Public commercial source graph
 
@@ -158,8 +165,8 @@ a partner price into the xAI-direct book.
   selector, normalize the amount and scope but keep automatic request-level binding
   unresolved.
 - Speech to Speech is one exact model-bound realtime offer per public model version.
-  Input audio duration, output audio duration, and qualifying text-input events are
-  additive terms in a session. Web Search, X Search, Collections Search, Remote MCP,
+  Its single published audio-duration rate is not duplicated into invented input and
+  output components; qualifying text-input events are additive. Web Search, X Search, Collections Search, Remote MCP,
   and client functions are capabilities of the exact Voice route; Code Execution,
   Attachment Search, and image generation are not projected onto Voice without exact
   first-party compatibility evidence.
@@ -309,28 +316,28 @@ select an upstream before the request runs.
 
 ### Commercial-atom disposition ledger
 
-| Reviewed atom class                                                              | Design disposition                                                                                                                                                                         |
-| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Current direct text short/long/cache/output rows                                 | Normalize into exact model/region synchronous offers. Keep reasoning at the output rate and select the long band from realized total prompt usage.                                         |
-| Priority 2x                                                                      | Normalize as a realized synchronous token variant; never as requested-only pricing or a capacity subscription.                                                                             |
-| Batch model discount/support                                                     | Normalize as separate asynchronous offers with exact model and endpoint applicability. Media Batch remains standard-rate; unlisted text models receive no invented discount.               |
-| Deferred and WebSocket Responses delivery                                        | Keep as delivery/state variants of ordinary model inference when no separate amount is published.                                                                                          |
-| Context Compaction                                                               | Normalize the separate model operation with `not_published` amount and exact usage evidence; do not inherit the normal text table without an official join.                                |
-| Direct image/video generation and editing                                        | Normalize exact model offers with additive input-media and output-resolution/duration components. Polling and output delivery are not additional charges.                                  |
-| Web, X, Code, Attachment, and Collections tools                                  | Normalize five provider-service offers with exact successful-execution meters and precise route/resource joins. Remove the current all-model flattening in the later implementation phase. |
-| Responses image-generation tool                                                  | Normalize as a separate provider-service offer priced from exact Imagine facts and completed image outcomes. Do not also select the direct Imagine offer.                                  |
-| Image Search, view tools, Remote MCP, caller functions                           | Preserve included/token-only/external semantics. Emit no generic invocation price.                                                                                                         |
-| File/Collection storage and download                                             | Normalize four standalone provider-service offers with retained-byte-time and transferred-byte meters. Keep search independent.                                                            |
-| Responses pre-generation violation fee                                           | Normalize the fixed provider-operation amount, but leave automatic outcome binding unresolved until a stable response/account signal exists.                                               |
-| Speech to Speech versions                                                        | Normalize exact model-bound realtime offers with additive input/output audio and qualifying text-event terms; attach only documented tools.                                                |
-| TTS and REST/streaming STT                                                       | Normalize provider-service offers without invented model IDs. TTS delivery variants share one rate; REST and streaming STT are alternative offers.                                         |
-| Custom voices                                                                    | Normalize a team resource, free 30-slot Console allowance, and amount-unpublished Enterprise API enrollment separately. Never admit a custom voice as a global model.                      |
-| Embedded PSTN minute value                                                       | Preserve bounded first-party raw evidence until billed-leg semantics and a charge signal are documented. Do not discard or present it as a complete public telephone price.                |
-| API credits, invoicing, limits, exact cost, Management usage                     | Settlement/account evidence only. Never convert balance, spend tier, or aggregate account rate into an unqualified public model amount.                                                    |
-| Grok application subscriptions and Extra Usage Credits                           | Normalize in separate subscription/balance books only where exact amounts and benefits are public. Do not project opaque weekly usage into API model details.                              |
-| Enterprise support, dedicated infrastructure, data residency, and volume pricing | Preserve real sales-scoped provider-service/procurement offers as `custom_quote`; account purchase terms own effective rates.                                                              |
-| ZDR and default retention                                                        | Preserve enrollment and route/resource applicability. Neither is a price or a free storage allowance.                                                                                      |
-| Azure, OCI, and Vertex routes                                                    | Preserve exact route compatibility only. Price and settlement belong to the cloud seller's first-party book.                                                                               |
+| Reviewed atom class                                                              | Design disposition                                                                                                                                                                           |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Current direct text short/long/cache/output rows                                 | Normalize into exact model/region synchronous offers. Keep reasoning at the output rate and select the long band from realized total prompt usage.                                           |
+| Priority 2x                                                                      | Normalize as a realized synchronous token variant; never as requested-only pricing or a capacity subscription.                                                                               |
+| Batch model discount/support                                                     | Normalize as separate asynchronous offers with exact model and endpoint applicability. Media Batch remains standard-rate; unlisted text models receive no invented discount.                 |
+| Deferred and WebSocket Responses delivery                                        | Keep as delivery/state variants of ordinary model inference when no separate amount is published.                                                                                            |
+| Context Compaction                                                               | Normalize the separate model operation with `not_published` amount and exact usage evidence; do not inherit the normal text table without an official join.                                  |
+| Direct image/video generation and editing                                        | Normalize exact model offers with additive input-media and output-resolution/duration components. Polling and output delivery are not additional charges.                                    |
+| Web, X, Code, Attachment, and Collections tools                                  | Five provider-service offers replace all-model flattening. Bind the four documented `server_side_tool_usage` categories; keep Attachment amount normalized but its event binding unresolved. |
+| Responses image-generation tool                                                  | Normalize as a separate provider-service offer priced from exact Imagine facts and completed image outcomes. Do not also select the direct Imagine offer.                                    |
+| Image Search, view tools, Remote MCP, caller functions                           | Preserve included/token-only/external semantics. Emit no generic invocation price.                                                                                                           |
+| File/Collection storage and download                                             | Normalize four standalone provider-service offers with retained-byte-time and transferred-byte meters. Keep search independent.                                                              |
+| Responses pre-generation violation fee                                           | Normalize the fixed provider-operation amount, but leave automatic outcome binding unresolved until a stable response/account signal exists.                                                 |
+| Speech to Speech versions                                                        | Exact model-bound realtime offers use one provider-owned billed-audio signal plus qualifying text-event terms; attach only documented tools.                                                 |
+| TTS and REST/streaming STT                                                       | Normalize provider-service offers without invented model IDs. TTS delivery variants share one rate; REST and streaming STT are alternative offers.                                           |
+| Custom voices                                                                    | Normalize a team resource, free 30-slot Console allowance, and amount-unpublished Enterprise API enrollment separately. Never admit a custom voice as a global model.                        |
+| Embedded PSTN minute value                                                       | Preserve bounded first-party raw evidence until billed-leg semantics and a charge signal are documented. Do not discard or present it as a complete public telephone price.                  |
+| API credits, invoicing, limits, exact cost, Management usage                     | Settlement/account evidence only. Never convert balance, spend tier, or aggregate account rate into an unqualified public model amount.                                                      |
+| Grok application subscriptions and Extra Usage Credits                           | Normalize in separate subscription/balance books only where exact amounts and benefits are public. Do not project opaque weekly usage into API model details.                                |
+| Enterprise support, dedicated infrastructure, data residency, and volume pricing | Preserve real sales-scoped provider-service/procurement offers as `custom_quote`; account purchase terms own effective rates.                                                                |
+| ZDR and default retention                                                        | Preserve enrollment and route/resource applicability. Neither is a price or a free storage allowance.                                                                                        |
+| Azure, OCI, and Vertex routes                                                    | Preserve exact route compatibility only. Price and settlement belong to the cloud seller's first-party book.                                                                                 |
 
 ### Authority, conflicts, and claim-local refresh
 
@@ -382,15 +389,13 @@ realized Priority/cache/long-context variants, and provider services whose exact
 downloads, custom voices, application plans, Enterprise procurement, and partner-cloud
 prices remain standalone unless a first-party exact relation makes them relevant.
 
-The calculator treats a request as independently reconstructable components: model
-input/cache/output/reasoning or media/Voice work, plus actually executed paid provider
-services. It must not add synchronous and Batch routes, requested and realized Priority,
-Image Search and Web Search twice, caller functions as xAI services, direct Imagine and
-the Responses image tool for the same image, or partner and xAI-direct settlement. A
-public estimate may be exact for tokens but unresolved for a tool-generated image's
-resolution, storage integration, PSTN call leg, or pre-generation policy outcome. Keep
-that partial coverage and reconcile with exact response/account cost; do not reject the
-model or invent a complete total.
+Rate details keep model input/cache/output/reasoning, media or Voice work, and paid
+provider services as independently metered components. They never combine synchronous
+and Batch routes, requested and realized Priority, duplicate search charges, caller
+functions as xAI services, direct Imagine and the Responses image tool for one image, or
+partner and xAI-direct settlement. Tool-image resolution, storage integration, PSTN
+legs, and policy outcomes may remain unresolved. Keep that partial coverage visible;
+the UI does not reject the model or invent a complete total.
 
 ## Public estimate and account-exact cost
 
@@ -454,8 +459,9 @@ model or invent a complete total.
 - The current Voice REST and WebSocket reference documents TTS, STT, and realtime
   response shapes but does not document `cost_in_usd_ticks` or a usage object for those
   responses. The broader cost-tracking prose is therefore not treated as proof of
-  exact per-response Voice cost. Public character/audio/time rates remain usable, and
-  a newly documented Voice cost field becomes an unsupported diagnostic for review.
+  exact per-response Voice cost. Public character/audio/time rates remain usable;
+  exact account settlement remains outside the public estimate until a stable Voice
+  cost signal is documented.
 
 ## Extraction and reconciliation
 
@@ -467,10 +473,10 @@ model or invent a complete total.
   timing, and account-tier semantics. The complete documented inference model API route
   and field inventory is a drift contract even when no account key is configured.
 - The extractor cross-checks public text/token/image/video/voice amounts against the
-  structured payload, binds price sets only to exact model identities, and emits an
-  explicit disposition for model price sets and reviewed commercial terms. Storage and
-  file-download prices are recognized provider-service charges but remain out of the
-  model price book. Credits/limits and aggregate account cost are accounting evidence,
+  structured payload, selects the exact dedicated price-table amount on a resolvable
+  conflict, binds price sets only to exact model identities, and emits an explicit
+  disposition for model price sets and reviewed commercial terms. Storage and download
+  prices remain standalone provider-service books rather than model terms. Credits/limits and aggregate account cost are accounting evidence,
   not public rates.
 - Catalog, price book, request/response accounting, and account billing remain separate evidence
   classes and are reconciled before output coverage is accepted.

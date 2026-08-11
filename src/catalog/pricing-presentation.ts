@@ -353,6 +353,8 @@ export function projectPricingTableCellFromView(
 export function offerConditions(offer: PricingOffer): PriceCondition[] {
   return [
     ...offer.states.map(({ applicability }) => applicability),
+    ...offer.enrollment.map(({ applicability }) => applicability),
+    ...offer.settlement.map(({ applicability }) => applicability),
     ...offer.terms.flatMap((term) =>
       term.kind === "raw"
         ? term.variants.flatMap(({ possible_scope }) =>
@@ -537,6 +539,8 @@ function displayUnits(value: UnitExpression): DisplayUnit[] {
     return [base, scaled("3600000000", "1M tokens·hour")];
   if (standardUnitProduct(value, "accelerator", "second"))
     return [base, scaled("3600", "accelerator·hour")];
+  if (standardUnitProduct(value, "byte", "second"))
+    return [scaled("92771293593600", "GiB·day"), scaled("86400000000000", "GB·day"), base];
   if (
     single?.power === 1 &&
     single.unit.namespace === "provider" &&

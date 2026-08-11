@@ -25,12 +25,13 @@ This index points to the repository's current decisions. Detailed documents are 
   catalog binding, provider-atomic collection, commercial diffing, and
   crash-consistent pair publication.
 - [Commercial topology](docs/commercial-topology.md): converged provider-wide
-  contract and remaining provider migration plan for resources, offer
+  contract for resources, offer
   composition, accounting, settlement, presentation, conflict resolution, and
   resilient refresh. The shared wire cutover and the OpenAI, Anthropic,
   Amazon Bedrock, Databricks, Vercel AI Gateway, Microsoft Foundry, Gemini API,
-  Vertex AI, Kimi, Cohere, and Mistral AI migrations are implemented; `docs/pricing.md` owns the
-  exact wire.
+  Vertex AI, Kimi, Cohere, Mistral AI, Meta Llama, xAI, Hugging Face,
+  Alibaba Cloud Model Studio, DeepSeek, Cerebras, and Ollama migrations are implemented;
+  `docs/pricing.md` owns the exact wire.
 
 ## Providers
 

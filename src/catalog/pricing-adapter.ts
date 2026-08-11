@@ -36,14 +36,21 @@ import type { PricingCategoricalLabel, SourceManifest } from "./manifests.ts";
 import { applyAnthropicCommercialTopology } from "./anthropic-commercial.ts";
 import { applyAzureCommercialTopology } from "./azure-pricing-commercial.ts";
 import { applyBedrockCommercialTopology } from "./bedrock-commercial.ts";
+import { applyCerebrasCommercialTopology } from "./cerebras-commercial.ts";
 import { applyCohereCommercialTopology } from "./cohere-commercial.ts";
 import { applyDatabricksCommercialTopology } from "./databricks-commercial.ts";
+import { applyDashscopeCommercialTopology } from "./dashscope-commercial.ts";
+import { applyDeepseekCommercialTopology } from "./deepseek-commercial.ts";
 import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
+import { applyHuggingFaceCommercialTopology } from "./huggingface-commercial.ts";
 import { applyKimiCommercialTopology } from "./kimi-commercial.ts";
+import { applyLlamaCommercialTopology } from "./llama-commercial.ts";
 import { applyMistralCommercialTopology } from "./mistral-commercial.ts";
 import { applyOpenAiCommercialTopology } from "./openai-commercial.ts";
+import { applyOllamaCommercialTopology } from "./ollama-commercial.ts";
 import { applyVercelCommercialTopology } from "./vercel-commercial.ts";
 import { applyVertexCommercialTopology } from "./vertex-commercial.ts";
+import { applyXaiCommercialTopology } from "./xai-commercial.ts";
 import {
   sourcePriceFactSchema,
   type ParsedPricingModel,
@@ -58,9 +65,17 @@ export interface ParsedPricingSource {
   models: ParsedPricingModel[];
 }
 
-type PublishedPricingModel = Pick<
+export type PublishedPricingModel = Pick<
   ParsedProviderModel,
-  "capabilities" | "model_id" | "name" | "service_families" | "status" | "tasks" | "uid" | "version"
+  | "api_endpoints"
+  | "capabilities"
+  | "model_id"
+  | "name"
+  | "service_families"
+  | "status"
+  | "tasks"
+  | "uid"
+  | "version"
 >;
 
 export function isPricingSource(source: SourceManifest): boolean {
@@ -204,7 +219,14 @@ export function assembleParsedProviderPricing(
   const vertex = applyVertexCommercialTopology(gemini, publishedModels);
   const kimi = applyKimiCommercialTopology(vertex);
   const cohere = applyCohereCommercialTopology(kimi, publishedModels);
-  return assembleProviderPricing(applyMistralCommercialTopology(cohere));
+  const mistral = applyMistralCommercialTopology(cohere);
+  const llama = applyLlamaCommercialTopology(mistral);
+  const huggingFace = applyHuggingFaceCommercialTopology(llama);
+  const dashscope = applyDashscopeCommercialTopology(huggingFace);
+  const deepseek = applyDeepseekCommercialTopology(dashscope, publishedModels);
+  const cerebras = applyCerebrasCommercialTopology(deepseek, publishedModels);
+  const ollama = applyOllamaCommercialTopology(cerebras, publishedModels);
+  return assembleProviderPricing(applyXaiCommercialTopology(ollama, publishedModels));
 }
 
 function pricingEvidencePriority(source: SourceManifest): number {
@@ -880,8 +902,15 @@ function normalizedUnit(
         { unit: standard("byte"), power: 1, scale: "gigabyte" },
         { unit: standard("second"), power: 1, scale: "day" },
       ]);
+    case "gibibyte_day":
+      return canonicalizeSourceUnit([
+        { unit: standard("byte"), power: 1, scale: "gibibyte" },
+        { unit: standard("second"), power: 1, scale: "day" },
+      ]);
     case "gigabyte":
       return one("byte", "gigabyte");
+    case "gibibyte":
+      return one("byte", "gibibyte");
     case "container_session":
       return canonicalizeSourceUnit([
         {
@@ -987,6 +1016,19 @@ function normalizedUnit(
           ),
           power: 1,
         },
+      ]);
+    case "billing_month":
+      return canonicalizeSourceUnit([
+        { unit: { namespace: "kmodels", value: "billing_month" }, power: 1 },
+      ]);
+    case "billing_year":
+      return canonicalizeSourceUnit([
+        { unit: { namespace: "kmodels", value: "billing_year" }, power: 1 },
+      ]);
+    case "seat_month":
+      return canonicalizeSourceUnit([
+        { unit: { namespace: "kmodels", value: "seat" }, power: 1 },
+        { unit: { namespace: "kmodels", value: "billing_month" }, power: 1 },
       ]);
     case "thousand_tokens_per_minute_hour":
       return canonicalizeSourceUnit([

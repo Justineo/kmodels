@@ -6,13 +6,14 @@ import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { orderedTasks } from "./task.ts";
-import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
+import { multiplyDecimal, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type {
   ParsedProviderModel as ProviderModel,
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
+import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import {
   modalitySchema,
   type Modality,
@@ -117,6 +118,7 @@ const voiceEndpointSchema = z.discriminatedUnion("endpoint", [
       basis: z.literal("CONCURRENCY"),
       pricing: z
         .object({
+          pstnMinutePrice: integerString.optional(),
           realtimeAudioSecondPrice: integerString,
           realtimeTextInputPrice: integerString,
         })
@@ -353,6 +355,27 @@ function model(input: ParseInput, id: string, values: Partial<ProviderModel>): P
   };
 }
 
+function reviewClaim<Value>(
+  input: ParseInput,
+  reasonCode: string,
+  claim: () => Value,
+): Value | undefined {
+  try {
+    return claim();
+  } catch (error) {
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: reasonCode,
+      sample: (error instanceof Error ? error.message : String(error)).slice(0, 256),
+    });
+    return;
+  }
+}
+
+function pricingWarning(termKey: string, fragment: string, sourceId: string): SourceRawPricingFact {
+  return rawPricingFact(sourceId, termKey, "informational", "conflicting_values", fragment);
+}
+
 function exactRate(
   meter: SourcePriceFact["meter"],
   raw: string,
@@ -386,38 +409,54 @@ function tierRate(
 function textRates(
   value: z.infer<typeof languageModelSchema>,
   sourceId: string,
+  published: TextPrice[] | undefined,
+  batchSupported: boolean,
   batchMultiplier: string | undefined,
-  priorityMultiplier: string,
+  priorityMultiplier: string | undefined,
 ): SourcePriceFact[] {
   const threshold = Number(value.longContextThreshold);
   const standard = threshold > 0 ? { context_max_tokens: threshold - 1 } : {};
   const long = threshold > 0 ? { context_min_tokens: threshold } : {};
+  const shortRow = published?.find((row) => !row.long);
+  const longRow = published?.find((row) => row.long);
   const rate = (
     meter: SourcePriceFact["meter"],
     raw: string,
+    amount: string | undefined,
     conditions: SourcePriceFact["conditions"],
   ): SourcePriceFact =>
-    exactRate(meter, raw, 4, "million_tokens", sourceId, "USD cents / 100M tokens", conditions);
+    amount === undefined
+      ? exactRate(meter, raw, 4, "million_tokens", sourceId, "USD cents / 100M tokens", conditions)
+      : publishedRate(meter, amount, "million_tokens", sourceId, "USD / 1M tokens", conditions);
   const rates = [
-    rate("input_text", value.promptTextTokenPrice, standard),
-    rate("input_image", value.promptImageTokenPrice, standard),
-    rate("cache_read_text", value.cachedPromptTokenPrice, standard),
-    rate("output_text", value.completionTextTokenPrice, standard),
+    rate("input_text", value.promptTextTokenPrice, shortRow?.input, standard),
+    rate("input_image", value.promptImageTokenPrice, undefined, standard),
+    rate("cache_read_text", value.cachedPromptTokenPrice, shortRow?.cached, standard),
+    rate("output_text", value.completionTextTokenPrice, shortRow?.output, standard),
   ];
   if (threshold > 0)
     rates.push(
-      rate("input_text", value.promptTextTokenPriceLongContext, long),
-      rate("input_image", value.promptTextTokenPriceLongContext, long),
-      rate("cache_read_text", value.cachedPromptTokenPriceLongContext, long),
-      rate("output_text", value.completionTokenPriceLongContext, long),
+      rate("input_text", value.promptTextTokenPriceLongContext, longRow?.input, long),
+      rate("input_image", value.promptTextTokenPriceLongContext, undefined, long),
+      rate("cache_read_text", value.cachedPromptTokenPriceLongContext, longRow?.cached, long),
+      rate("output_text", value.completionTokenPriceLongContext, longRow?.output, long),
     );
-  const priority = rates.map((item) =>
-    tierRate(item, priorityMultiplier, "priority", "standard token price"),
-  );
-  const batch =
-    batchMultiplier === undefined
+  const priority =
+    priorityMultiplier === undefined
       ? []
-      : rates.map((item) => tierRate(item, batchMultiplier, "batch", "standard token price"));
+      : rates.map((item) => tierRate(item, priorityMultiplier, "priority", "standard token price"));
+  const batch = batchSupported
+    ? rates.map((item) =>
+        tierRate(
+          item,
+          batchMultiplier ?? "1",
+          "batch",
+          batchMultiplier === undefined
+            ? "Batch models not listed for a discount use standard token price"
+            : "standard token price",
+        ),
+      )
+    : [];
   return [...rates, ...batch, ...priority];
 }
 
@@ -728,13 +767,18 @@ function resolveModel(
 }
 
 function endpointFacts(
+  input: ParseInput,
   llms: string,
   models: { name: string; aliases: string[] }[],
 ): Map<string, ApiEndpoint[]> {
   const endpoints = new Map<string, ApiEndpoint[]>();
   for (const [pathname, name, path] of endpointEvidence) {
-    for (const modelId of requestModels(section(llms, pathname), `https://api.x.ai${path}`)) {
-      const id = resolveModel(modelId, models, "endpoint");
+    const ids = reviewClaim(input, "endpoint_contract_drift", () =>
+      requestModels(section(llms, pathname), `https://api.x.ai${path}`).map((modelId) =>
+        resolveModel(modelId, models, "endpoint"),
+      ),
+    );
+    for (const id of ids ?? []) {
       endpoints.set(id, [...(endpoints.get(id) ?? []), { name, path }]);
     }
   }
@@ -894,6 +938,11 @@ function count(value: string): number {
 }
 
 function textPriceRows(pricing: string): TextPrice[] {
+  requireClaims(
+    pricing,
+    ["Input / 1M tokens", "Cached input / 1M tokens", "Output / 1M tokens"],
+    "xAI text-price denominator changed",
+  );
   return [
     ...pricing.matchAll(
       /^\|\s*([a-z0-9._-]+)\s+\((<|≥|>=)\s*(\d+)k prompt tokens\)\s*\|\s*([\d.]+[kM])\s*\|\s*\$([\d.]+)\s*\|\s*\$([\d.]+)\s*\|\s*\$([\d.]+)\s*\|$/gim,
@@ -922,15 +971,10 @@ function textPriceRows(pricing: string): TextPrice[] {
   });
 }
 
-interface PricingTerms {
-  batchMultipliers: Map<string, string>;
-  priorityMultiplier: string;
-}
-
-function pricingTerms(
+function batchPricingMultipliers(
   pricing: string,
   models: { name: string; aliases: string[] }[],
-): PricingTerms {
+): Map<string, string> {
   const batch = pricing.slice(
     pricing.indexOf("## Batch API Pricing"),
     pricing.indexOf("## Priority Processing Pricing"),
@@ -962,7 +1006,10 @@ function pricingTerms(
     )
   )
     throw new Error("xAI batch pricing terms were incomplete");
+  return batchMultipliers;
+}
 
+function priorityPricingMultiplier(pricing: string): string {
   const priority = pricing.slice(pricing.indexOf("## Priority Processing Pricing"));
   const multiplier = priority.match(/billed at a \*\*([\d.]+)x\*\* premium/)?.[1];
   if (
@@ -971,7 +1018,7 @@ function pricingTerms(
     !priority.includes(`The ${multiplier}x multiplier applies to all token types`)
   )
     throw new Error("xAI priority pricing terms were incomplete");
-  return { batchMultipliers, priorityMultiplier: scaleDecimal(multiplier, 0) };
+  return scaleDecimal(multiplier, 0);
 }
 
 function batchExclusions(llms: string, models: { name: string; aliases: string[] }[]): Set<string> {
@@ -1003,122 +1050,270 @@ function assertStreaming(llms: string): void {
     throw new Error("xAI streaming support evidence changed");
 }
 
-function assertPublicPricing(
+interface PublicPricingReview {
+  text: Map<string, TextPrice[]>;
+  warnings: Map<string, SourceRawPricingFact[]>;
+}
+
+function publicPricingReview(
+  input: ParseInput,
   pricing: string,
+  modelsPage: string,
   language: z.infer<typeof languageModelSchema>[],
   images: z.infer<typeof imageModelSchema>[],
   videos: z.infer<typeof videoModelSchema>[],
-): void {
+): PublicPricingReview {
   const rows = textPriceRows(pricing);
-  if (rows.length !== language.length * 2)
-    throw new Error("xAI text pricing does not cover the structured language catalog");
+  const modelRows = textPriceRows(modelsPage);
+  const text = new Map<string, TextPrice[]>();
+  const warnings = new Map<string, SourceRawPricingFact[]>();
+  const warn = (id: string, key: string, fragment: string): void => {
+    warnings.set(id, [...(warnings.get(id) ?? []), pricingWarning(key, fragment, input.source.id)]);
+    input.onPricingReconciliation?.({
+      disposition: "ambiguous",
+      reason_code: key,
+      sample: id,
+    });
+  };
   for (const value of language) {
-    const modelRows = rows.filter(({ id }) => id === value.name);
-    const standard = modelRows.find(({ long }) => !long);
-    const long = modelRows.find((row) => row.long);
+    const current = rows.filter(({ id }) => id === value.name);
+    const standard = current.find(({ long }) => !long);
+    const long = current.find((row) => row.long);
     const threshold = Number(value.longContextThreshold);
     if (
-      modelRows.length !== 2 ||
+      current.length !== 2 ||
       standard === undefined ||
       long === undefined ||
       standard.context !== value.maxPromptLength ||
       long.context !== value.maxPromptLength ||
       standard.threshold !== threshold ||
-      long.threshold !== threshold ||
-      standard.input !== scaleDecimal(value.promptTextTokenPrice, -4) ||
-      standard.cached !== scaleDecimal(value.cachedPromptTokenPrice, -4) ||
-      standard.output !== scaleDecimal(value.completionTextTokenPrice, -4) ||
-      long.input !== scaleDecimal(value.promptTextTokenPriceLongContext, -4) ||
-      long.cached !== scaleDecimal(value.cachedPromptTokenPriceLongContext, -4) ||
-      long.output !== scaleDecimal(value.completionTokenPriceLongContext, -4)
-    )
-      throw new Error(`xAI structured and published pricing differ for ${value.name}`);
+      long.threshold !== threshold
+    ) {
+      warn(
+        value.name,
+        "public_text_pricing_scope_conflict",
+        "The dedicated pricing rows do not align with the structured model context bands; structured fixed-point rates remain the fallback",
+      );
+      continue;
+    }
+    text.set(value.name, current);
+    const structured = [
+      scaleDecimal(value.promptTextTokenPrice, -4),
+      scaleDecimal(value.cachedPromptTokenPrice, -4),
+      scaleDecimal(value.completionTextTokenPrice, -4),
+      scaleDecimal(value.promptTextTokenPriceLongContext, -4),
+      scaleDecimal(value.cachedPromptTokenPriceLongContext, -4),
+      scaleDecimal(value.completionTokenPriceLongContext, -4),
+    ];
+    const published = [
+      standard.input,
+      standard.cached,
+      standard.output,
+      long.input,
+      long.cached,
+      long.output,
+    ];
+    if (JSON.stringify(structured) !== JSON.stringify(published))
+      warn(
+        value.name,
+        "structured_price_superseded",
+        `Dedicated pricing page ${published.join("/")} supersedes embedded fixed-point values ${structured.join("/")} for the same text rate bands`,
+      );
+    const comparison = modelRows.filter(({ id }) => id === value.name);
+    if (JSON.stringify(comparison) !== JSON.stringify(current))
+      warn(
+        value.name,
+        "models_page_price_conflict",
+        "The Models summary disagrees with the dedicated pricing page; the dedicated pricing page owns current public amounts",
+      );
   }
-  const rowsById = new Map(
-    [...pricing.matchAll(/^\|\s*([a-z0-9._-]+)\s*\|\s*\$([\d.]+)\s*\/\s*(image|sec)\s*\|$/gim)].map(
-      (match) => [match[1] ?? "", scaleDecimal(match[2] ?? "", 0)],
-    ),
-  );
-  if (rowsById.size !== images.length + videos.length)
-    throw new Error("xAI Imagine pricing does not cover the structured catalog");
+  const summaryRows = (body: string) =>
+    new Map(
+      [...body.matchAll(/^\|\s*([a-z0-9._-]+)\s*\|\s*\$([\d.]+)\s*\/\s*(image|sec)\s*\|$/gim)].map(
+        (match) => [match[1] ?? "", scaleDecimal(match[2] ?? "", 0)],
+      ),
+    );
+  const rowsById = summaryRows(pricing);
+  const modelRowsById = summaryRows(modelsPage);
   for (const value of images) {
     const raw = value.imagePrice ?? value.resolutionPricing[0]?.pricePerImage;
-    if (raw === undefined || rowsById.get(value.name) !== scaleDecimal(raw, -10))
-      throw new Error(`xAI structured and published pricing differ for ${value.name}`);
+    const exact = raw === undefined ? undefined : scaleDecimal(raw, -10);
+    if (exact === undefined || rowsById.get(value.name) !== exact)
+      warn(
+        value.name,
+        "imagine_summary_price_conflict",
+        "The dedicated pricing summary differs from the more specific embedded image-resolution rate; the exact resolution row is retained",
+      );
+    if (modelRowsById.get(value.name) !== rowsById.get(value.name))
+      warn(
+        value.name,
+        "models_page_price_conflict",
+        "The Models summary disagrees with the dedicated pricing page",
+      );
   }
   for (const value of videos) {
     const raw = value.resolutionPricing[0]?.pricePerSecond;
-    if (raw === undefined || rowsById.get(value.name) !== scaleDecimal(raw, -10))
-      throw new Error(`xAI structured and published pricing differ for ${value.name}`);
+    const exact = raw === undefined ? undefined : scaleDecimal(raw, -10);
+    if (exact === undefined || rowsById.get(value.name) !== exact)
+      warn(
+        value.name,
+        "imagine_summary_price_conflict",
+        "The dedicated pricing summary differs from the more specific embedded video-resolution rate; the exact resolution row is retained",
+      );
+    if (modelRowsById.get(value.name) !== rowsById.get(value.name))
+      warn(
+        value.name,
+        "models_page_price_conflict",
+        "The Models summary disagrees with the dedicated pricing page",
+      );
   }
+  return { text, warnings };
 }
 
-function toolRates(pricing: string, sourceId: string): SourcePriceFact[] {
-  const rates = [
+function toolRates(input: ParseInput, pricing: string): XaiCommercialEvidence["toolRates"] {
+  const rows = [
     ...pricing.matchAll(
-      /^\|\s*[^|]+\|\s*((?:`[^`]+`(?:,\s*)?)+)[^|]*\|[^|]+\|\s*\$([\d.]+)\s*\|$/gim,
+      /^\|\s*([^|]+?)\s*\|\s*((?:`[^`]+`(?:,\s*)?)+)[^|]*\|[^|]+\|\s*\$([\d.]+)\s*\|$/gim,
     ),
   ].flatMap((match) => {
-    const names = match[1];
-    const price = match[2];
-    if (names === undefined || price === undefined) return [];
-    return [...names.matchAll(/`([^`]+)`/g)].flatMap((name) =>
-      name[1] === undefined
-        ? []
-        : [
-            publishedRate(
-              "tool_call",
-              scaleDecimal(price, 0),
-              "thousand_requests",
-              sourceId,
-              "USD / 1k calls",
-              { operation: name[1] },
-            ),
-          ],
-    );
+    const label = match[1]?.trim();
+    const names = match[2];
+    const price = match[3];
+    if (label === undefined || names === undefined || price === undefined) return [];
+    return [
+      {
+        label,
+        names: [...names.matchAll(/`([^`]+)`/g)].flatMap((name) =>
+          name[1] === undefined ? [] : [name[1]],
+        ),
+        price: scaleDecimal(price, 0),
+      },
+    ];
   });
-  if (rates.length < 7) throw new Error("xAI tool pricing table was incomplete");
-  return rates;
+  const definitions = [
+    {
+      key: "web-search",
+      name: "Web Search",
+      names: ["web_search"],
+      meter: "web_search",
+      supportsVoice: true,
+    },
+    {
+      key: "x-search",
+      name: "X Search",
+      names: ["x_search"],
+      meter: "retrieval",
+      supportsVoice: true,
+    },
+    {
+      key: "code-execution",
+      name: "Code Execution",
+      names: ["code_execution", "code_interpreter"],
+      meter: "code_execution",
+      supportsVoice: false,
+    },
+    {
+      key: "attachment-search",
+      name: "File Attachment Search",
+      names: ["attachment_search"],
+      meter: "file_search",
+      supportsVoice: false,
+    },
+    {
+      key: "collections-search",
+      name: "Collections Search",
+      names: ["collections_search", "file_search"],
+      meter: "file_search",
+      supportsVoice: true,
+    },
+  ] as const;
+  return definitions.flatMap((definition) => {
+    const value = reviewClaim(input, `tool_${definition.key}_price_drift`, () => {
+      requireClaims(pricing, ["Cost / 1k Calls"], "xAI tool-price denominator changed");
+      const expectedNames = new Set<string>(definition.names);
+      const matches = rows.filter(
+        (row) =>
+          row.label === definition.name.replace("File Attachment Search", "File Attachments") ||
+          row.names.some((name) => expectedNames.has(name)),
+      );
+      const row = matches[0];
+      if (
+        row === undefined ||
+        matches.length !== 1 ||
+        JSON.stringify([...row.names].sort()) !== JSON.stringify([...definition.names].sort())
+      )
+        throw new Error(`xAI ${definition.name} pricing row changed`);
+      return {
+        key: definition.key,
+        name: definition.name,
+        supportsVoice: definition.supportsVoice,
+        rate: publishedRate(
+          definition.meter,
+          row.price,
+          "thousand_events",
+          input.source.id,
+          "USD / 1k successful tool calls",
+        ),
+      };
+    });
+    return value === undefined ? [] : [value];
+  });
 }
 
 interface VoicePrices {
   realtime: Map<string, { audio: string; text: string }>;
-  speech: string;
-  transcription: string;
-  streamingTranscription: string;
+  speech?: string;
+  transcription?: string;
+  streamingTranscription?: string;
 }
 
-function voicePrices(pricing: string): VoicePrices {
-  const realtime = new Map(
-    [
-      ...pricing.matchAll(
-        /^\| Speech to Speech \(([^)]+)\) \| \$([\d.]+) \/ min \(\$[\d.]+ \/ hr\) audio<br\s*\/?>\$([\d.]+) \/ text input \|$/gim,
-      ),
-    ].map((match) => {
-      const id = modelIdSchema.parse(match[1]);
-      const audio = match[2];
-      const text = match[3];
-      if (audio === undefined || text === undefined)
-        throw new Error("xAI voice pricing table was incomplete");
-      return [id, { audio: scaleDecimal(audio, 0), text: scaleDecimal(text, 0) }] as const;
-    }),
-  );
-  const speech = pricing.match(/^\| Text to Speech \| \$([\d.]+) \/ 1M chars/m)?.[1];
-  const transcription = pricing
-    .match(/^\| Speech to Text \| \$([\d.]+) \/ hr \(REST\), \$([\d.]+) \/ hr \(Streaming\)/m)
-    ?.slice(1);
-  if (
-    realtime.size === 0 ||
-    speech === undefined ||
-    transcription?.[0] === undefined ||
-    transcription[1] === undefined
-  )
-    throw new Error("xAI voice pricing table was incomplete");
+function voicePrices(input: ParseInput, pricing: string): VoicePrices {
+  const realtime =
+    reviewClaim(input, "realtime_voice_price_drift", () => {
+      const rows = new Map(
+        [
+          ...pricing.matchAll(
+            /^\| Speech to Speech \(([^)]+)\) \| \$([\d.]+) \/ min \(\$[\d.]+ \/ hr\) audio<br\s*\/?>\$([\d.]+) \/ text input \|$/gim,
+          ),
+        ].map((match) => {
+          const id = modelIdSchema.parse(match[1]);
+          const audio = match[2];
+          const text = match[3];
+          if (audio === undefined || text === undefined)
+            throw new Error("xAI realtime Voice pricing row was incomplete");
+          return [id, { audio: scaleDecimal(audio, 0), text: scaleDecimal(text, 0) }] as const;
+        }),
+      );
+      if (rows.size === 0) throw new Error("xAI realtime Voice pricing rows were not found");
+      return rows;
+    }) ?? new Map<string, { audio: string; text: string }>();
+  const speech = reviewClaim(input, "tts_price_drift", () => {
+    const amount = pricing.match(/^\| Text to Speech \| \$([\d.]+) \/ 1M chars \|$/m)?.[1];
+    if (amount === undefined) throw new Error("xAI TTS pricing row was not found");
+    return scaleDecimal(amount, 0);
+  });
+  const transcription = reviewClaim(input, "stt_price_drift", () => {
+    const match = pricing.match(
+      /^\| Speech to Text \| \$([\d.]+) \/ hr \(REST\), \$([\d.]+) \/ hr \(Streaming\) \|$/m,
+    );
+    const rest = match?.[1];
+    const streaming = match?.[2];
+    if (rest === undefined || streaming === undefined)
+      throw new Error("xAI STT pricing row was not found");
+    return {
+      rest: scaleDecimal(rest, 0),
+      streaming: scaleDecimal(streaming, 0),
+    };
+  });
   return {
     realtime,
-    speech: scaleDecimal(speech, 0),
-    transcription: scaleDecimal(transcription[0], 0),
-    streamingTranscription: scaleDecimal(transcription[1], 0),
+    ...(speech === undefined ? {} : { speech }),
+    ...(transcription === undefined
+      ? {}
+      : {
+          transcription: transcription.rest,
+          streamingTranscription: transcription.streaming,
+        }),
   };
 }
 
@@ -1137,208 +1332,315 @@ function requireClaims(body: string, claims: readonly string[], message: string)
   if (claims.some((claim) => !body.includes(claim))) throw new Error(message);
 }
 
-function accountingEvidence(
+function commercialEvidence(
   input: ParseInput,
   llms: string,
   pricing: string,
-  voice: VoicePrices,
-): SourceRawPricingFact {
-  requireClaims(
-    section(llms, "/developers/cost-tracking"),
-    [
-      "exact cost you were charged",
-      "`cost_in_usd_ticks`",
-      "after all applicable discounts",
-      "inclusive of all token costs and server-side tool invocation costs",
-      "1 USD = 10,000,000,000 ticks",
-      "Cost is only included in the final chunk",
-    ],
-    "xAI exact response-cost reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/advanced-api-usage/prompt-caching/usage-and-pricing"),
-    [
-      "`usage.prompt_tokens_details.cached_tokens`",
-      "`usage.input_tokens_details.cached_tokens`",
-      "Reasoning tokens | Full completion token price",
-      "total prompt tokens (including cached tokens)",
-    ],
-    "xAI cached-token accounting reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/advanced-api-usage/priority-processing"),
-    [
-      'service_tier: "priority"',
-      'response confirms `"priority"`',
-      "only billed at the priority rate",
-      '"cost_in_usd_ticks"',
-    ],
-    "xAI priority accounting reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/tools/tool-usage-details"),
-    [
-      "`server_side_tool_usage` - Successful Calls (Billable)",
-      "determines your billing",
-      "Only successful tool executions",
-      "`completion_tokens`",
-      "`prompt_tokens`",
-      "`reasoning_tokens`",
-      "`cached_prompt_text_tokens`",
-      "`prompt_image_tokens`",
-    ],
-    "xAI tool accounting reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/advanced-api-usage/batch-api"),
-    ["cost_in_usd_ticks", "total_cost_usd_ticks"],
-    "xAI Batch cost reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/rest-api-reference/management"),
-    ["management key", "https://management-api.x.ai"],
-    "xAI Management API reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/rest-api-reference/management/billing"),
-    [
-      "POST /v1/billing/teams/\\{team\\_id}/usage",
-      "Get historical usage of the API",
-      '"name": "usd"',
-      "TIME\\_UNIT\\_SECOND",
-      "`limitReached`",
-    ],
-    "xAI historical usage API reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/faq/billing"),
-    ["cost is calculated immediately", "inference endpoints add pre-defined tokens"],
-    "xAI billing timing reference drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/rate-limits"),
-    ["tier is based on cumulative spend", "Rate limit tiers apply to text and embedding models"],
-    "xAI account-tier reference drifted",
-  );
-  requireClaims(
-    section(llms, "/console/billing"),
-    [
-      "Prepaid credits",
-      "Monthly invoiced billing",
-      "disabled by default",
-      "minimum $25",
-      "5 top-ups per 24 hours",
-      "$0 invoiced billing limit",
-      "automatically rejected once your prepaid credits are depleted",
-      "prepaid credits first",
-      "2-3 business days",
-    ],
-    "xAI Console billing contract drifted",
-  );
-  requireClaims(
-    section(llms, "/console/usage"),
-    [
-      "usage is calculated by cost in USD",
-      "Dimension -> Tokens",
-      "Dimension -> Billing items",
-      "Group by: API Key",
-      "API key, a model, a request IP, a cluster, or the token type",
-    ],
-    "xAI Console usage contract drifted",
-  );
-  requireClaims(
-    section(llms, "/developers/management-api-guide"),
-    [
-      "management key, which is separate from your API key",
-      "https://management-api.x.ai",
-      "api-key:model:*",
-      "api-key:endpoint:*",
-      '"qps"',
-      '"qpm"',
-      '"tpm"',
-      "slight delay between creating an API key",
-      "auth/teams/{teamId}/models",
-      "auth/teams/{teamId}/endpoints",
-    ],
-    "xAI Management API inventory contract drifted",
-  );
-  requireClaims(
-    pricing,
-    [
-      "File storage",
-      "Collection storage",
-      "File downloads",
-      "geographical location, account limitations",
-    ],
-    "xAI auxiliary and availability pricing reference drifted",
-  );
-
-  const fee = pricing.match(
-    /caught before generation in the Responses API[\s\S]*?\$([\d.]+)\s+usage guideline violation fee per request/i,
-  )?.[1];
-  if (fee === undefined) throw new Error("xAI usage-guideline violation fee drifted");
-
-  input.onPricingReconciliation?.({
-    disposition: "raw",
-    reason_code: "usage_guideline_violation_fee",
+  voice: VoicePrices | undefined,
+  services: z.infer<typeof voiceServiceSchema>[],
+): XaiCommercialEvidence {
+  auditCommercialContracts(input, llms, pricing);
+  const rate = (
+    reasonCode: string,
+    label: string,
+    meter: SourcePriceFact["meter"],
+    unit: SourcePriceFact["unit"],
+    rawUnit: string,
+  ): SourcePriceFact | undefined =>
+    reviewClaim(input, reasonCode, () => {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const denominator = rawUnit.replace(/^USD \/ /, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const amount = pricing.match(
+        new RegExp(
+          `^\\|\\s*${escaped}\\s*\\|\\s*\\$([\\d.]+)\\s*\\/\\s*${denominator}\\s*\\|$`,
+          "im",
+        ),
+      )?.[1];
+      if (amount === undefined) throw new Error(`xAI ${label} price was not found`);
+      return publishedRate(meter, scaleDecimal(amount, 0), unit, input.source.id, rawUnit);
+    });
+  const compaction = reviewClaim(input, "context_compaction_contract_drift", () => {
+    const body = section(llms, "/developers/advanced-api-usage/context-compaction");
+    requireClaims(
+      body,
+      ["POST /v1/responses/compact", "usage.input_tokens", "usage.output_tokens"],
+      "xAI context-compaction contract drifted",
+    );
+    const ids = unique(
+      [...body.matchAll(/model(?:=|":\s*)["'](grok-[a-z0-9._-]+)["']/gi)].flatMap((match) =>
+        match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
+      ),
+    );
+    if (ids.length === 0) throw new Error("xAI context-compaction models were not found");
+    return ids;
   });
-  for (const item of [
-    {
-      reason_code: "non_model_tts_price_unbound",
-      sample: `$${voice.speech} / 1M chars`,
+  const customVoices =
+    reviewClaim(input, "custom_voice_contract_drift", () => {
+      requireClaims(
+        section(llms, "/developers/model-capabilities/audio/custom-voices"),
+        [
+          "create up to 30 custom voices for free",
+          "Enterprise plan",
+          "POST /v1/custom-voices",
+          "POST /v1/tts",
+          "wss://api.x.ai/v1/realtime",
+        ],
+        "xAI custom-voice contract drifted",
+      );
+      return true;
+    }) ?? false;
+  const imageGenerationTool =
+    reviewClaim(input, "image_generation_tool_contract_drift", () => {
+      requireClaims(
+        section(llms, "/developers/tools/image-generation"),
+        ["`grok-imagine-image-quality`", "`image_generation_call`", "no size or format parameters"],
+        "xAI image-generation tool contract drifted",
+      );
+      return true;
+    }) ?? false;
+  const voiceTools =
+    reviewClaim(input, "voice_tool_contract_drift", () => {
+      requireClaims(
+        section(llms, "/developers/model-capabilities/audio/speech-to-speech"),
+        ["`file_search`", "`web_search`", "`x_search`", "`mcp`"],
+        "xAI Voice tool contract drifted",
+      );
+      return true;
+    }) ?? false;
+  const zeroDataRetention =
+    reviewClaim(input, "zero_data_retention_contract_drift", () => {
+      requireClaims(
+        section(llms, "/developers/faq/security"),
+        [
+          "30 days",
+          "Stateful Responses",
+          "Files",
+          "Collections",
+          "Batch",
+          "deferred completions",
+          "stored media output",
+        ],
+        "xAI Zero Data Retention contract drifted",
+      );
+      return true;
+    }) ?? false;
+  const includedTools = [
+    ["image-search", ["Image Search is part of Web Search", "standard Web Search rate"]],
+    ["remote-mcp", ["Remote MCP tools", "will not be charged for the tool invocation"]],
+    ["view-media", ["view image and view x video tools", "not be charged for the tool invocation"]],
+  ] as const;
+  const pstn = reviewClaim(input, "pstn_price_contract_drift", () => {
+    const values = unique(
+      services.flatMap(({ endpoints }) => {
+        const endpoint = endpoints[0];
+        return endpoint?.endpoint === "REALTIME" && endpoint.pricing.pstnMinutePrice !== undefined
+          ? [endpoint.pricing.pstnMinutePrice]
+          : [];
+      }),
+    );
+    if (values.length > 1) throw new Error("xAI PSTN candidates disagree");
+    return values[0];
+  });
+  const fee = reviewClaim(input, "usage_guideline_violation_fee_drift", () => {
+    const amount = pricing.match(
+      /caught before generation in the Responses API[\s\S]*?\$([\d.]+)\s+usage guideline violation fee per request/i,
+    )?.[1];
+    if (amount === undefined) throw new Error("xAI usage-guideline violation fee was not found");
+    return publishedRate(
+      "content_safety",
+      scaleDecimal(amount, 0),
+      "request",
+      input.source.id,
+      "USD / rejected request",
+    );
+  });
+  const fileStorage = rate(
+    "file_storage_price_drift",
+    "File storage",
+    "storage",
+    "gibibyte_day",
+    "USD / GiB / day",
+  );
+  const collectionStorage = rate(
+    "collection_storage_price_drift",
+    "Collection storage",
+    "storage",
+    "gibibyte_day",
+    "USD / GiB / day",
+  );
+  const fileDownload = rate(
+    "file_download_price_drift",
+    "File downloads",
+    "data_transfer",
+    "gibibyte",
+    "USD / GiB downloaded",
+  );
+  const collectionDownload = rate(
+    "collection_download_price_drift",
+    "Collection downloads",
+    "data_transfer",
+    "gibibyte",
+    "USD / GiB downloaded",
+  );
+  return {
+    contextCompactionModels: compaction ?? [],
+    customVoices,
+    imageGenerationTool,
+    includedTools: includedTools.flatMap(([key, claims]) =>
+      reviewClaim(input, `${key}_contract_drift`, () => {
+        requireClaims(pricing, claims, `xAI ${key} pricing contract drifted`);
+        return key;
+      }) === undefined
+        ? []
+        : [key],
+    ),
+    ...(pstn === undefined ? {} : { pstnMinuteTicks: pstn }),
+    storageRates: {
+      ...(fileStorage === undefined ? {} : { fileStorage }),
+      ...(collectionStorage === undefined ? {} : { collectionStorage }),
+      ...(fileDownload === undefined ? {} : { fileDownload }),
+      ...(collectionDownload === undefined ? {} : { collectionDownload }),
     },
-    {
-      reason_code: "non_model_stt_prices_unbound",
-      sample: `$${voice.transcription} / hr REST; $${voice.streamingTranscription} / hr streaming`,
-    },
-  ])
-    input.onPricingReconciliation?.({ disposition: "unbound", ...item });
+    toolRates: toolRates(input, pricing),
+    ...(voice?.speech === undefined
+      ? {}
+      : {
+          ttsRate: publishedRate(
+            "output_audio",
+            voice.speech,
+            "million_characters",
+            input.source.id,
+            "USD / 1M characters",
+          ),
+        }),
+    ...(voice?.transcription === undefined
+      ? {}
+      : {
+          restSttRate: publishedRate(
+            "input_audio",
+            voice.transcription,
+            "hour",
+            input.source.id,
+            "USD / hour",
+          ),
+        }),
+    ...(voice?.streamingTranscription === undefined
+      ? {}
+      : {
+          streamingSttRate: publishedRate(
+            "input_audio",
+            voice.streamingTranscription,
+            "hour",
+            input.source.id,
+            "USD / hour",
+          ),
+        }),
+    ...(fee === undefined ? {} : { violationRate: fee }),
+    voiceTools,
+    zeroDataRetention,
+  };
+}
+
+function auditCommercialContracts(input: ParseInput, llms: string, pricing: string): void {
+  const contracts = [
+    [
+      "exact_response_cost",
+      "/developers/cost-tracking",
+      [
+        "exact cost you were charged",
+        "`cost_in_usd_ticks`",
+        "after all applicable discounts",
+        "inclusive of all token costs and server-side tool invocation costs",
+        "1 USD = 10,000,000,000 ticks",
+      ],
+    ],
+    [
+      "cached_token_accounting",
+      "/developers/advanced-api-usage/prompt-caching/usage-and-pricing",
+      ["cached_tokens", "Reasoning tokens | Full completion token price"],
+    ],
+    [
+      "priority_accounting",
+      "/developers/advanced-api-usage/priority-processing",
+      ['response confirms `"priority"`', '"cost_in_usd_ticks"'],
+    ],
+    [
+      "tool_accounting",
+      "/developers/tools/tool-usage-details",
+      ["`server_side_tool_usage` - Successful Calls (Billable)", "determines your billing"],
+    ],
+    [
+      "batch_accounting",
+      "/developers/advanced-api-usage/batch-api",
+      ["cost_in_usd_ticks", "total_cost_usd_ticks"],
+    ],
+    [
+      "management_api",
+      "/developers/rest-api-reference/management",
+      ["management key", "https://management-api.x.ai"],
+    ],
+    [
+      "historical_usage_api",
+      "/developers/rest-api-reference/management/billing",
+      ["Get historical usage of the API", '"name": "usd"'],
+    ],
+    [
+      "billing_timing",
+      "/developers/faq/billing",
+      ["cost is calculated immediately", "inference endpoints add pre-defined tokens"],
+    ],
+    [
+      "account_tier",
+      "/developers/rate-limits",
+      ["tier is based on cumulative spend", "Rate limit tiers apply to text and embedding models"],
+    ],
+    [
+      "console_billing",
+      "/console/billing",
+      ["Prepaid credits", "Monthly invoiced billing", "minimum $25"],
+    ],
+    [
+      "console_usage",
+      "/console/usage",
+      ["usage is calculated by cost in USD", "Dimension -> Billing items"],
+    ],
+    [
+      "management_inventory",
+      "/developers/management-api-guide",
+      [
+        "management key, which is separate from your API key",
+        "api-key:model:*",
+        "auth/teams/{teamId}/models",
+      ],
+    ],
+  ] as const;
+  for (const [key, path, claims] of contracts)
+    reviewClaim(input, `${key}_contract_drift`, () =>
+      requireClaims(section(llms, path), claims, `xAI ${key} contract drifted`),
+    );
+  reviewClaim(input, "availability_contract_drift", () =>
+    requireClaims(
+      pricing,
+      ["geographical location, account limitations"],
+      "xAI availability contract drifted",
+    ),
+  );
   for (const reason_code of [
     "account_response_cost_out_of_catalog",
     "account_usage_api_out_of_catalog",
     "credits_and_limits_not_public_rates",
-    "auxiliary_storage_price_out_of_scope",
     "spend_tier_affects_limits_not_rates",
     "console_billing_terms_out_of_catalog",
     "console_usage_reporting_out_of_catalog",
     "management_team_inventory_out_of_catalog",
   ])
     input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
-
-  const voiceApi = section(llms, "/developers/rest-api-reference/inference/voice");
-  requireClaims(
-    voiceApi,
-    ["/v1/tts", "/v1/stt", "wss://api.x.ai/v1/realtime"],
-    "xAI Voice API reference drifted",
-  );
-  const voiceReturnsCost = voiceApi.includes("cost_in_usd_ticks");
-  input.onPricingReconciliation?.({
-    disposition: voiceReturnsCost ? "unsupported" : "excluded",
-    reason_code: voiceReturnsCost
-      ? "voice_response_cost_unmodeled"
-      : "voice_response_cost_not_documented",
-  });
-
-  return {
-    term_key: "usage_guideline_violation_fee",
-    impact: "base_price",
-    reason: "unknown_meter",
-    conditions: {},
-    source_ref: input.source.id,
-    raw: {
-      label: "Pre-generation Responses usage-guideline violation fee",
-      amount: fee,
-      denomination: "USD",
-      unit: "request",
-    },
-  };
 }
 
 function voiceRates(prices: VoicePrices, id: string, sourceId: string): SourcePriceFact[] {
   const rate = prices.realtime.get(id);
   if (rate === undefined) throw new Error(`xAI voice pricing omitted ${id}`);
   return [
-    publishedRate("input_audio", rate.audio, "minute", sourceId, "USD / min"),
     publishedRate("output_audio", rate.audio, "minute", sourceId, "USD / min"),
     publishedRate("input_text", rate.text, "request", sourceId, "USD / text input", {
       operation: "conversation.item.create",
@@ -1359,15 +1661,25 @@ function assertVoiceServices(
   };
   const tts = endpoint("TTS");
   const stt = endpoint("STT");
-  if (tts?.endpoint !== "TTS" || stt?.endpoint !== "STT")
+  if (
+    (prices.speech !== undefined && tts?.endpoint !== "TTS") ||
+    ((prices.transcription !== undefined || prices.streamingTranscription !== undefined) &&
+      stt?.endpoint !== "STT")
+  )
     throw new Error("xAI voice service catalog was incomplete");
   const roundedCents = (ticksPerSecond: string, seconds: bigint): string =>
     ((BigInt(ticksPerSecond) * seconds + 50_000_000n) / 100_000_000n).toString();
   if (
-    scaleDecimal(tts.pricing.perCharacter, -4) !== prices.speech ||
-    roundedCents(stt.pricing.perAudioSecond, 3_600n) !== scaleDecimal(prices.transcription, 2) ||
-    roundedCents(stt.pricing.perAudioSecondStreaming, 3_600n) !==
-      scaleDecimal(prices.streamingTranscription, 2)
+    (prices.speech !== undefined &&
+      tts?.endpoint === "TTS" &&
+      scaleDecimal(tts.pricing.perCharacter, -4) !== prices.speech) ||
+    (prices.transcription !== undefined &&
+      stt?.endpoint === "STT" &&
+      roundedCents(stt.pricing.perAudioSecond, 3_600n) !== scaleDecimal(prices.transcription, 2)) ||
+    (prices.streamingTranscription !== undefined &&
+      stt?.endpoint === "STT" &&
+      roundedCents(stt.pricing.perAudioSecondStreaming, 3_600n) !==
+        scaleDecimal(prices.streamingTranscription, 2))
   )
     throw new Error("xAI structured and published voice pricing differ");
   const realtime = services.flatMap((service) => {
@@ -1408,7 +1720,7 @@ function currentModels(
   catalog: z.infer<typeof publicModelsSchema>,
   html: string,
   llms: string,
-): ProviderModel[] {
+): { evidence: XaiCommercialEvidence; models: ProviderModel[] } {
   const language = distinct(
     catalog.clusterConfigs.flatMap(({ languageModels }) => languageModels),
     "language",
@@ -1433,27 +1745,69 @@ function currentModels(
   const ratesFor = (id: string, rates: SourcePriceFact[]): SourcePriceFact[] =>
     regionalRates(rates, regions.get(id) ?? []);
   const routable = [...language, ...embeddings, ...images, ...videos];
-  const endpoints = endpointFacts(llms, routable);
-  const multiAgent = multiAgentModels(llms, language);
-  const excludedFromBatch = batchExclusions(llms, routable);
-  assertStreaming(llms);
+  const endpoints = endpointFacts(input, llms, routable);
+  const multiAgent =
+    reviewClaim(input, "multi_agent_contract_drift", () => multiAgentModels(llms, language)) ??
+    new Set<string>();
+  const excludedFromBatch = reviewClaim(input, "batch_contract_drift", () =>
+    batchExclusions(llms, routable),
+  );
+  const streaming =
+    reviewClaim(input, "streaming_contract_drift", () => {
+      assertStreaming(llms);
+      return true;
+    }) ?? "unknown";
   const count = language.length + embeddings.length + images.length + voice.length + videos.length;
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-catalog") throw new Error("Invalid xAI catalog extractor");
   assertItemCount("xAI structured models", count, extractor.minModels, extractor.maxModels);
-  const pricing = section(llms, "/developers/pricing");
-  assertPublicPricing(pricing, language, images, videos);
-  const modelsPage = section(llms, "/developers/models");
-  assertPublicPricing(modelsPage, language, images, videos);
-  const prices = voicePrices(pricing);
-  assertSameVoicePrices(prices, voicePrices(modelsPage));
-  assertModelApiContract(llms);
-  if (voice.length > 0) assertVoiceServices(prices, voice);
-  const violationFee = accountingEvidence(input, llms, pricing, prices);
-  const terms = pricingTerms(pricing, language);
-  const tools = toolRates(pricing, input.source.id);
-  const names = displayNames(html);
-  const releases = releaseSections(section(llms, "/developers/release-notes"));
+  const pricing = reviewClaim(input, "pricing_document_drift", () =>
+    section(llms, "/developers/pricing"),
+  );
+  const modelsPage = reviewClaim(input, "models_document_drift", () =>
+    section(llms, "/developers/models"),
+  );
+  const publicPrices =
+    pricing === undefined || modelsPage === undefined
+      ? {
+          text: new Map<string, TextPrice[]>(),
+          warnings: new Map<string, SourceRawPricingFact[]>(),
+        }
+      : (reviewClaim(input, "public_pricing_contract_drift", () =>
+          publicPricingReview(input, pricing, modelsPage, language, images, videos),
+        ) ?? {
+          text: new Map<string, TextPrice[]>(),
+          warnings: new Map<string, SourceRawPricingFact[]>(),
+        });
+  const prices =
+    pricing === undefined
+      ? undefined
+      : reviewClaim(input, "voice_pricing_contract_drift", () => voicePrices(input, pricing));
+  if (prices !== undefined && modelsPage !== undefined)
+    reviewClaim(input, "voice_price_summary_conflict", () =>
+      assertSameVoicePrices(prices, voicePrices(input, modelsPage)),
+    );
+  reviewClaim(input, "model_api_contract_drift", () => assertModelApiContract(llms));
+  if (voice.length > 0 && prices !== undefined)
+    reviewClaim(input, "voice_service_price_conflict", () => assertVoiceServices(prices, voice));
+  const batchMultipliers =
+    pricing === undefined
+      ? undefined
+      : reviewClaim(input, "batch_pricing_terms_contract_drift", () =>
+          batchPricingMultipliers(pricing, language),
+        );
+  const priorityMultiplier =
+    pricing === undefined
+      ? undefined
+      : reviewClaim(input, "priority_pricing_terms_contract_drift", () =>
+          priorityPricingMultiplier(pricing),
+        );
+  const names =
+    reviewClaim(input, "display_name_contract_drift", () => displayNames(html)) ?? new Map();
+  const releases =
+    reviewClaim(input, "release_notes_contract_drift", () =>
+      releaseSections(section(llms, "/developers/release-notes")),
+    ) ?? [];
   const details = (
     id: string,
     aliases: string[],
@@ -1487,8 +1841,8 @@ function currentModels(
           : (value.features.reasoning ?? "unknown"),
         tool_call: value.features.functionCalling ?? "unknown",
         structured_output: value.features.structuredOutputs ?? "unknown",
-        streaming: true,
-        batch: !excludedFromBatch.has(value.name),
+        streaming,
+        batch: excludedFromBatch === undefined ? "unknown" : !excludedFromBatch.has(value.name),
         prompt_cache: true,
         citations: isMultiAgent ? true : "unknown",
         code_execution: isMultiAgent ? true : "unknown",
@@ -1499,21 +1853,20 @@ function currentModels(
       status: "active",
       release_stage: releaseStage,
       pricing_state: "numeric",
-      price_facts: [
-        ...ratesFor(
-          value.name,
-          textRates(
-            value,
-            input.source.id,
-            terms.batchMultipliers.get(value.name),
-            terms.priorityMultiplier,
-          ),
+      price_facts: ratesFor(
+        value.name,
+        textRates(
+          value,
+          input.source.id,
+          publicPrices.text.get(value.name),
+          batchMultipliers !== undefined &&
+            excludedFromBatch !== undefined &&
+            !excludedFromBatch.has(value.name),
+          batchMultipliers?.get(value.name),
+          priorityMultiplier,
         ),
-        ...tools,
-      ],
-      raw_price_facts: endpoints.get(value.name)?.some(({ path }) => path === "/v1/responses")
-        ? [violationFee]
-        : [],
+      ),
+      raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
     });
   });
   const embeddingModels = embeddings.map((value) => {
@@ -1568,10 +1921,15 @@ function currentModels(
         input: upperModalities(value.inputModalities),
         output: upperModalities(value.outputModalities),
       },
-      capabilities: { ...unknownCapabilities(), streaming: false, batch: true },
+      capabilities: {
+        ...unknownCapabilities(),
+        streaming: false,
+        batch: excludedFromBatch === undefined ? "unknown" : true,
+      },
       status: "active",
       pricing_state: "numeric",
       price_facts: ratesFor(value.name, rates),
+      raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
     });
   });
   const videoModels = videos.map((value) => {
@@ -1596,27 +1954,31 @@ function currentModels(
         input: upperModalities(value.inputModalities),
         output: upperModalities(value.outputModalities),
       },
-      capabilities: { ...unknownCapabilities(), batch: true },
+      capabilities: {
+        ...unknownCapabilities(),
+        batch: excludedFromBatch === undefined ? "unknown" : true,
+      },
       status: "active",
       pricing_state: "numeric",
       price_facts: ratesFor(value.name, rates),
+      raw_price_facts: publicPrices.warnings.get(value.name) ?? [],
     });
   });
-  return [
-    ...languageModels,
-    ...embeddingModels,
-    ...imageModels,
-    ...videoModels,
-    ...voiceModels(input, llms, voice, prices, tools, releases, regions),
-  ];
+  const realtime =
+    reviewClaim(input, "voice_model_contract_drift", () =>
+      voiceModels(input, llms, voice, prices, releases, regions),
+    ) ?? fallbackVoiceModels(input, voice, prices, releases, regions);
+  return {
+    evidence: commercialEvidence(input, llms, pricing ?? "", prices, voice),
+    models: [...languageModels, ...embeddingModels, ...imageModels, ...videoModels, ...realtime],
+  };
 }
 
 function voiceModels(
   input: ParseInput,
   llms: string,
   services: z.infer<typeof voiceServiceSchema>[],
-  prices: VoicePrices,
-  tools: SourcePriceFact[],
+  prices: VoicePrices | undefined,
   releases: ReleaseSection[],
   regions: Map<string, string[]>,
 ): ProviderModel[] {
@@ -1707,12 +2069,57 @@ function voiceModels(
       },
       release_date: releaseDate(releases, row.id, row.id),
       status: row.deprecated ? "deprecated" : "active",
-      pricing_state: "numeric",
-      price_facts: [
-        ...regionalRates(voiceRates(prices, row.id, input.source.id), regions.get(row.id) ?? []),
-        ...tools,
-      ],
+      pricing_state: prices === undefined ? "unknown" : "numeric",
+      price_facts:
+        prices === undefined
+          ? []
+          : regionalRates(voiceRates(prices, row.id, input.source.id), regions.get(row.id) ?? []),
     });
+  });
+}
+
+function fallbackVoiceModels(
+  input: ParseInput,
+  services: z.infer<typeof voiceServiceSchema>[],
+  prices: VoicePrices | undefined,
+  releases: ReleaseSection[],
+  regions: Map<string, string[]>,
+): ProviderModel[] {
+  return services.flatMap((service) => {
+    const endpoint = service.endpoints[0];
+    if (endpoint?.endpoint !== "REALTIME" || !service.name.startsWith("grok-voice-")) return [];
+    const rates =
+      prices === undefined
+        ? []
+        : (reviewClaim(input, `voice_price_${service.name}_drift`, () =>
+            regionalRates(
+              voiceRates(prices, service.name, input.source.id),
+              regions.get(service.name) ?? [],
+            ),
+          ) ?? []);
+    return [
+      model(input, service.name, {
+        version: service.version,
+        aliases: service.aliases,
+        tasks: ["text_generation", "speech_to_speech"],
+        api_endpoints: [{ name: "Realtime", path: "/v1/realtime" }],
+        modalities: {
+          input: upperModalities(service.inputModalities),
+          output: upperModalities(service.outputModalities),
+        },
+        capabilities: {
+          ...unknownCapabilities(),
+          reasoning: true,
+          tool_call: true,
+          streaming: true,
+          effort_control: true,
+        },
+        release_date: releaseDate(releases, service.name, service.name, service.aliases),
+        status: "active",
+        pricing_state: rates.length > 0 ? "numeric" : "unknown",
+        price_facts: rates,
+      }),
+    ];
   });
 }
 
@@ -1741,7 +2148,10 @@ function lifecycleModels(input: ParseInput, llms: string): ProviderModel[] {
   )
     throw new Error("xAI redirect model and replacement evidence changed");
   const isLegacy = input.observedAt.slice(0, 10) >= date;
-  const releases = releaseSections(section(llms, "/developers/release-notes"));
+  const releases =
+    reviewClaim(input, "lifecycle_release_notes_contract_drift", () =>
+      releaseSections(section(llms, "/developers/release-notes")),
+    ) ?? [];
   return redirected.map((id) =>
     model(input, id, {
       release_date: releaseDate(releases, id, id),
@@ -1830,6 +2240,14 @@ function combine(models: ProviderModel[]): ProviderModel[] {
           ]),
         ).values(),
       ],
+      raw_price_facts: [
+        ...new Map(
+          [...current.raw_price_facts, ...value.raw_price_facts].map((fact) => [
+            `${fact.term_key}\0${JSON.stringify(fact.conditions)}\0${JSON.stringify(fact.raw)}`,
+            fact,
+          ]),
+        ).values(),
+      ],
     });
   }
   return [...values.values()].sort((left, right) => left.uid.localeCompare(right.uid));
@@ -1879,12 +2297,13 @@ function redirectedModels(models: ProviderModel[]): ProviderModel[] {
 export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const llms = companion(bundle, "/llms.txt");
-  const models = redirectedModels(
-    combine([
-      ...currentModels(input, embeddedModels(bundle.index.body), bundle.index.body, llms),
-      ...lifecycleModels(input, llms),
-    ]),
-  );
+  const current = currentModels(input, embeddedModels(bundle.index.body), bundle.index.body, llms);
+  const lifecycle =
+    reviewClaim(input, "lifecycle_contract_drift", () => lifecycleModels(input, llms)) ?? [];
+  const combined = combine([...current.models, ...lifecycle]);
+  const models =
+    reviewClaim(input, "redirect_price_join_drift", () => redirectedModels(combined)) ?? combined;
+  extractXaiCommercialFacts(models, input.source.id, current.evidence);
   for (const model of models)
     input.onPricingReconciliation?.({
       disposition: model.price_facts.length > 0 ? "normalized" : "unresolved",

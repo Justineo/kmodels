@@ -343,6 +343,46 @@ describe("canonical pricing presentation", () => {
         ],
       }),
     ).toBe('provider-unit("test","unit")^2');
+    expect(
+      displayUnitPrice({
+        value: { numerator: "1", denominator: "3710851743744000" },
+        denomination: { kind: "fiat", currency: "USD" },
+        per: {
+          factors: [
+            { unit: { namespace: "kmodels", value: "byte" }, power: 1 },
+            { unit: { namespace: "kmodels", value: "second" }, power: 1 },
+          ],
+        },
+      }),
+    ).toEqual({
+      amount: "$0.025",
+      displayUnit: "GiB·day",
+      accessibleText: "USD 0.025 per GiB·day",
+    });
+    expect(
+      displayUnitPrice(
+        {
+          value: { numerator: "1", denominator: "864000000000000" },
+          denomination: { kind: "fiat", currency: "USD" },
+          per: {
+            factors: [
+              { unit: { namespace: "kmodels", value: "byte" }, power: 1 },
+              { unit: { namespace: "kmodels", value: "second" }, power: 1 },
+            ],
+          },
+        },
+        [
+          {
+            ...source,
+            raw: { amount: "0.10", denomination: "USD", unit: "per GB-day" },
+          },
+        ],
+      ),
+    ).toEqual({
+      amount: "$0.1",
+      displayUnit: "GB·day",
+      accessibleText: "USD 0.1 per GB·day",
+    });
   });
 
   it("projects one exact unconditional rate and scales only token power one", () => {

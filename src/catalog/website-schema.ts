@@ -8,6 +8,7 @@ import {
   modelTasks,
 } from "./catalog-vocabulary.ts";
 import {
+  applicabilityResolutionPhases,
   priceStates,
   publishedTimePrecisions,
   rawPricingImpacts,
@@ -247,12 +248,21 @@ const websiteStateRowSchema = z.strictObject({
   ...scopeFields,
 });
 
+const websiteChargeDriverSchema = z.strictObject({
+  label: nonEmpty,
+  definition: nonEmpty,
+  aggregation: nonEmpty,
+  aggregation_definition: nonEmpty.optional(),
+  resolution_phase: z.enum(applicabilityResolutionPhases),
+});
+
 const websiteRateRowSchema = z.strictObject({
   key: z.string().min(1),
   label: z.string().min(1),
   amount: z.string().min(1),
   unit: z.string().min(1),
   accessible_text: z.string().min(1),
+  driver: websiteChargeDriverSchema.optional(),
   ...scopeFields,
 });
 
@@ -268,6 +278,21 @@ const websiteContributionRowSchema = z.strictObject({
   key: z.string().min(1),
   label: z.string().min(1),
   target: z.string().min(1),
+  drivers: z.array(websiteChargeDriverSchema),
+  ...scopeFields,
+});
+
+const websiteEnrollmentRowSchema = z.strictObject({
+  key: nonEmpty,
+  label: nonEmpty,
+  ...scopeFields,
+});
+
+const websiteSettlementRowSchema = z.strictObject({
+  key: nonEmpty,
+  channel: nonEmpty,
+  biller: nonEmpty,
+  payment_sources: z.array(nonEmpty).min(1),
   ...scopeFields,
 });
 
@@ -290,6 +315,10 @@ const websitePricingOfferSchema = z.strictObject({
     "plan_capacity",
     "standalone",
   ]),
+  billing_mode: z.strictObject({
+    label: nonEmpty,
+    description: nonEmpty.optional(),
+  }),
   composition: z.string().min(1).optional(),
   state_summary: z.string().min(1),
   selectors: z.array(websitePricingSelectorSchema),
@@ -297,6 +326,8 @@ const websitePricingOfferSchema = z.strictObject({
   rates: z.array(websiteRateRowSchema),
   allowances: z.array(websiteAllowanceRowSchema),
   contributions: z.array(websiteContributionRowSchema),
+  enrollment: z.array(websiteEnrollmentRowSchema),
+  settlement: z.array(websiteSettlementRowSchema),
   unnormalized: z.array(websiteUnnormalizedRowSchema),
 });
 
@@ -343,7 +374,7 @@ export const websiteModelDetailSchema = z.strictObject({
 });
 
 export const websiteDetailChunkSchema = z.strictObject({
-  schema_version: z.literal(3),
+  schema_version: z.literal(4),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),

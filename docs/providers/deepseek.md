@@ -4,17 +4,17 @@ Status: current
 
 ## Sources and identity
 
-- The exhaustive global catalog is the official [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing) table. Callable IDs and facts come only from its model columns; compatibility names mentioned only in footnotes or history do not become current rows.
-- Parse and validate every table row. Base URLs, beta feature support, and positive concurrency values are source-shape contracts even when the public model schema cannot represent their base-path or account-quota semantics.
+- The exhaustive global catalog is the official [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing) table. Callable IDs and facts come only from valid model columns; compatibility names mentioned only in footnotes, integrations, wildcard routing, or history do not become current rows. A missing or ambiguous model table is systemic, but an invalid model header is skipped without erasing valid siblings.
+- Every recognized table cell is an independent claim. Unknown rows, changed base URLs, malformed support values, invalid limits, and malformed price cells produce bounded diagnostics and suppress only the affected field or rate. They do not reject another model column or another rate.
 - Lifecycle/replacements require an exact official footnote. Release/update dates require a valid dated log entry and exact callable ID. “Backward compatibility” establishes an update or alias observation, never a first release. A date-like model-version suffix such as `0731` is not sufficient release-date evidence by itself.
-- The public [Lists Models](https://api-docs.deepseek.com/api/list-models) contract is a second current-inventory witness. Require exactly one `GET /models` operation, the documented `object`/`data` and `id`/`object`/`owned_by` response topology, one non-placeholder strict JSON example, and exact ID-set equality with the price-table columns. This catches a stale price table, stale generated API reference, and DeepSeek's 200-status fallback page without treating an example owner as identity.
-- Optional authenticated `/models` is account-scoped strict-schema validation. Unknown root or item fields, duplicate IDs, and invalid discriminators fail closed. It may add API provenance to exact public matches but cannot create/remove rows or retain raw data. Enable it with `DEEPSEEK_API_KEY`.
+- The public [Lists Models](https://api-docs.deepseek.com/api/list-models) contract is a second current-inventory witness. Its exact `GET /models` operation, response topology, and non-placeholder strict JSON example are validated claim-locally. Schema drift or ID disagreement is reported but cannot remove a price-table row.
+- Optional authenticated `/models` is account-scoped validation. Required discriminators and IDs are parsed per item; unknown fields are ignored without retention, while invalid or duplicate items are skipped with diagnostics. Valid exact matches may add API provenance but cannot create or remove global rows. Enable it with `DEEPSEEK_API_KEY`.
 
 ## First-party commercial source graph
 
-The current catalog collector treats the English USD price book, public model-list reference, and accounting references as one atomic first-party bundle. Reviewed companions cover [Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion), [Responses](https://api-docs.deepseek.com/api/create-response), [Lists Models](https://api-docs.deepseek.com/api/list-models), [token usage](https://api-docs.deepseek.com/quick_start/token_usage/), [context caching](https://api-docs.deepseek.com/guides/kv_cache/), [current balance](https://api-docs.deepseek.com/api/get-user-balance), [rate limits and isolation](https://api-docs.deepseek.com/quick_start/rate_limit/), [insufficient-balance errors](https://api-docs.deepseek.com/quick_start/error_codes/), the [Responses compatibility guide](https://api-docs.deepseek.com/guides/responses_api/), and the [Anthropic compatibility guide](https://api-docs.deepseek.com/guides/anthropic_api/).
+The collector uses one fetch bundle but not one acceptance boundary. The English USD price table is the required index. Optional exact-URL companions independently cover the [Chinese CNY price table](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/), [Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion), [Responses](https://api-docs.deepseek.com/api/create-response), [FIM](https://api-docs.deepseek.com/api/create-completion), [Lists Models](https://api-docs.deepseek.com/api/list-models), [token usage](https://api-docs.deepseek.com/quick_start/token_usage/), [context caching](https://api-docs.deepseek.com/guides/kv_cache/), [current balance](https://api-docs.deepseek.com/api/get-user-balance), [rate limits and isolation](https://api-docs.deepseek.com/quick_start/rate_limit/), [insufficient-balance errors](https://api-docs.deepseek.com/quick_start/error_codes/), the [Responses guide](https://api-docs.deepseek.com/guides/responses_api/), the [Anthropic guide](https://api-docs.deepseek.com/guides/anthropic_api/), the [Claude Code integration](https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/), and the [FAQ](https://api-docs.deepseek.com/faq).
 
-All documents are public, exact URLs. Docusaurus companions under `/quick_start` and `/guides` keep their trailing slash because the slashless CDN objects serve the site root instead of the named documents. Deterministic HTML/schema extraction verifies the model enum, usage fields, cache semantics, account deductions, route mappings, and future-price notice. Missing documents, changed commercial claims, an unknown price row, a partially parsed model column, or an API-reference disagreement currently rejects the provider refresh; the audited target below replaces this provider-wide boundary with claim-local refresh. Third-party price books are never fallbacks.
+All documents are public, exact URLs. Docusaurus companions under `/quick_start` and `/guides` keep their trailing slash because the slashless CDN objects can serve the site root instead of the named document. Deterministic HTML/schema extraction verifies each model enum, usage field group, cache claim, account deduction, route mapping, and pending-price notice separately. A missing or duplicate companion, a changed claim, a new table row, a partial model column, or an API-reference disagreement yields a reconciliation diagnostic and preserves compatible first-party siblings. Third-party price books are never fallbacks.
 
 The documentation is server-rendered Docusaurus backed by a build-time OpenAPI file, but DeepSeek
 does not publish that file as a stable asset. Guessed machine-readable paths return the site root and
@@ -25,22 +25,25 @@ Other first-party surfaces are deliberately not merged. The [Transparency Center
 
 ## Public price normalization
 
-- The current collector normalizes the English USD public pricing per one million tokens. Each exact catalog model receives separate cache-hit input, cache-miss input, and output-token facts. The source formula is `tokens × price`; reasoning tokens are part of generated completion/output tokens rather than a separate rate. The audited target below also preserves the first-party CNY book without currency conversion.
+- The collector normalizes both official USD and CNY prices per one million tokens. Each exact catalog model receives separate cache-hit input, cache-miss input, and output-token facts. Currency is retained as denomination and `billing_currency` applicability, with no FX conversion. Account selection between the books remains explicitly unresolved rather than becoming a price conflict.
 - Context caching is automatic and enabled by default. Cache writes have no separately published write fee; input tokens are billed at either the cache-hit or cache-miss rate reported for the model. Cache construction takes seconds, operation is best-effort, and unused cache entries normally disappear within hours to days.
-- The current price page announces a significant overall price increase but publishes neither its rates nor its effective date. Keep the six currently normalized USD rates active and record the future increase as unbound; the daily contract will fail again when the provider publishes actionable applicability or amounts.
+- The current price page announces a significant overall price increase but publishes neither rates nor an effective date. Current numeric rows remain active and the notice is unbound; notice drift cannot reject those rows.
 - The Responses and Anthropic-compatible APIs execute server-side web search. No separate search-call amount is published, while the Claude Code integration explicitly says a search can generate additional LLM requests and model-token charges. Preserve the provider service and realized search action with incomplete cost coverage; do not call the search free, fabricate a per-call amount, or treat every generic tool call as search.
-- The Anthropic-compatible route maps `claude-opus*` to `deepseek-v4-pro`, maps `claude-haiku*` and `claude-sonnet*` to `deepseek-v4-flash`, and maps other unsupported model names to Flash. These are wildcard request-route mappings, not additional price-book model IDs. The current schema cannot safely publish them as exact aliases, so the mapping remains a visible unbound gateway requirement.
+- The Anthropic-compatible route maps `claude-opus*` to `deepseek-v4-pro`, maps `claude-haiku*` and `claude-sonnet*` to `deepseek-v4-flash`, and maps other unsupported model names to Flash. These are preserved as an included distribution/routing resource compatible with exact model offers, never as aliases or extra catalog rows.
+- The current FIM price-table row marks both models as eligible, while the more specific OpenAPI operation enumerates only `deepseek-v4-pro`. The callable endpoint follows the operation-specific enum and the disagreement remains visible; neither source erases the model or its ordinary token rates.
 
 Change-log rows may enrich an exact current model with release, update, and maturity facts, but they
 cannot create a model absent from the current price-table inventory.
 
-## Commercial topology audit
+## Commercial topology
 
-Design status: audited; implementation pending. This section is the DeepSeek
-disposition for the provider-wide commercial-topology review. It describes the
-intended resources, books, offers, relationships, meters, accounting bindings,
-and evidence boundaries; it does not claim that the current collector, schema,
-generated data, or UI already represents them.
+Implementation status: current. Direct model books publish one PAYG offer with
+USD/CNY cache-hit, cache-miss, and output variants; exact Chat, Responses, and
+eligible FIM usage bindings; and direct DeepSeek settlement through granted or
+topped-up balance. Separate resource books preserve built-in web search,
+account balance, account concurrency, and Anthropic request-name routing.
+Accounting or companion drift removes only the affected binding or resource
+claim while keeping published amounts and sibling topology.
 
 ### Public commercial source graph
 
@@ -257,14 +260,12 @@ separate provider-service identity, unknown search amount, action signal, and
 additional-model-usage warning. Anthropic wildcard names, `[1m]` route syntax,
 balances, and concurrency do not create model rows.
 
-The calculator resolves the realized DeepSeek model and settlement currency,
-then sums hit input, miss input, and output once for every observable inference
-event. A realized built-in search can add further inference events, but not a
-fabricated search-call fee or a zero. Caller functions add only explicit
-follow-up model requests and externally owned execution cost. Partial coverage
-is expected: show unknown account currency, hidden search subrequest usage,
-pending price increase, grants, and delayed settlement instead of rejecting the
-offer or claiming an exact total.
+Rate details keep settlement currency, cache-hit input, cache-miss input, output,
+and built-in-search effects distinct. Search may generate further metered model
+usage, but no search-call amount or numeric zero is invented. Unknown account
+currency, hidden search subrequest usage, pending price increase, grants, and
+delayed settlement stay visible as partial context. The UI does not add the
+components or claim an exact total.
 
 ## Request usage and account cost
 
@@ -277,7 +278,7 @@ The API response supplies the quantities needed for an immediate list-price calc
 
 Granted balance is preferred before topped-up balance. A grant is an account entitlement, not a public model discount, and the 402 response only reports that balance is exhausted. The authenticated `/user/balance` API exposes availability plus total, granted, and topped-up balances, but no request ID, model usage, charged amount, or documented update latency. It is suitable for availability/budget guards, not request-cost attribution.
 
-The official [FAQ](https://static.deepseek.com/faq/index.html?lang=en#/category/4) points users to authenticated Usage and Billing pages; Usage can be filtered by API Key and exported, including an `amount` CSV. No public Usage/Costs API or freshness guarantee is documented. Consequently, account-effective cost can be reconciled from console exports and balance movements, but those surfaces cannot provide a proven real-time cost signal.
+The official [FAQ](https://api-docs.deepseek.com/faq) points users to authenticated Usage and Billing pages; Usage can be filtered by API Key and exported, including an `amount` CSV. No public Usage/Costs API or freshness guarantee is documented. Consequently, account-effective cost can be reconciled from console exports and balance movements, but those surfaces cannot provide a proven real-time cost signal.
 
 ## Gateway costing decision
 

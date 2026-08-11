@@ -1,4 +1,9 @@
-import type { SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel,
+  SourceCommercialPricingFact,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 
 export function scaleDecimal(value: string, places: number): string {
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) throw new Error(`Invalid decimal: ${value}`);
@@ -56,4 +61,63 @@ export function publishedRate(
     raw_price: price,
     raw_unit: rawUnit,
   };
+}
+
+export function commercialResource(
+  source_ref: string,
+  book_key: string,
+  book_name: string,
+  resource_kind: SourceCommercialPricingFact["resource_kind"],
+  resource_key: string,
+  model_refs: string[],
+  billing_mode: SourceCommercialPricingFact["billing_mode"],
+): Pick<
+  SourceCommercialPricingFact,
+  | "billing_mode"
+  | "book_key"
+  | "book_name"
+  | "model_refs"
+  | "resource_key"
+  | "resource_kind"
+  | "source_ref"
+> {
+  return {
+    source_ref,
+    book_key,
+    book_name,
+    resource_kind,
+    resource_key,
+    model_refs,
+    billing_mode,
+  };
+}
+
+export function rawPricingFact(
+  source_ref: string,
+  term_key: string,
+  impact: SourceRawPricingFact["impact"],
+  reason: SourceRawPricingFact["reason"],
+  raw: SourceRawPricingFact["raw"] | string,
+  conditions: SourceRawPricingFact["conditions"] = {},
+): SourceRawPricingFact {
+  return {
+    term_key,
+    impact,
+    reason,
+    conditions,
+    source_ref,
+    raw: typeof raw === "string" ? { fragment: raw } : raw,
+  };
+}
+
+export function attachCommercialFacts(
+  models: readonly ParsedProviderModel[],
+  facts: SourceCommercialPricingFact[],
+): void {
+  const carrier = models.reduce<ParsedProviderModel | undefined>(
+    (current, model) => (current === undefined || model.uid < current.uid ? model : current),
+    undefined,
+  );
+  if (carrier !== undefined && facts.length > 0)
+    carrier.commercial_facts = [...(carrier.commercial_facts ?? []), ...facts];
 }

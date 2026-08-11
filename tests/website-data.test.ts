@@ -20,6 +20,8 @@ const websiteDataBudgets = {
 
 const auditFields = new Set([
   "atom_contract_hash",
+  "charge_binding",
+  "charge_bindings",
   "relation_observations",
   "core_catalog_version",
   "core_data_sha256",
@@ -134,12 +136,17 @@ describe("website data", () => {
       expect(offer).not.toHaveProperty("book_title");
       expect(offer).not.toHaveProperty("mode");
     }
+    const rates = offers.flatMap(({ rates }) => rates);
+    expect(rates.some(({ driver }) => driver !== undefined)).toBe(true);
     expect(
-      details.flatMap(
-        ({ pricing }) =>
-          pricing?.offers.flatMap(({ rates }) => rates.map(({ amount }) => amount)) ?? [],
+      rates.some(
+        ({ driver }) => driver?.resolution_phase === "outcome" && driver.definition.length > 0,
       ),
-    ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
+    ).toBe(true);
+    expect(offers.some(({ settlement }) => settlement.length > 0)).toBe(true);
+    expect(rates.map(({ amount }) => amount)).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/\d\/\d/)]),
+    );
     expect(
       details.flatMap(
         ({ pricing }) =>
