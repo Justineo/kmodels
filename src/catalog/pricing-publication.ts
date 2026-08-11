@@ -16,9 +16,7 @@ import { catalogPairId, type CatalogPairIdentity } from "./pair-identity.ts";
 import {
   createPricingCatalogEnvelope,
   createPricingCatalogEnvelopeFromValidatedData,
-  decodePricingCatalog,
   pricingCatalogJsonFromValidatedData,
-  validatePricingCatalogEnvelope,
   validatePricingCatalogEnvelopeMetadata,
 } from "./pricing-envelope.ts";
 import { pricingLimits } from "./pricing-constants.ts";
@@ -176,8 +174,8 @@ export async function recoverCatalogPair(
     readFile(join(snapshot, "pricing.json")),
   ]);
   const catalog = decodeCatalogStorage(catalogBytes);
-  const pricing = decodePricingCatalog(pricingAssetBytes, catalog);
-  const candidate = prepareCatalogPair(catalog, pricing);
+  const pricing = decodePricingCatalogStorage(pricingAssetBytes);
+  const candidate = await prepareCatalogPairInParallel(catalog, pricing);
   if (
     candidate.pairId !== manifest.pair_id ||
     candidate.identity.catalog_asset_sha256 !== manifest.catalog_asset_sha256 ||
@@ -202,7 +200,7 @@ export async function commitCatalogPair(
   if (!preparedCandidates.has(candidate))
     throw new Error("Catalog pair candidate was not prepared");
 
-  const projections = projectCatalogPair(candidate);
+  const projections = await projectCatalogPair(candidate);
   const snapshot = snapshotDirectory(paths, candidate.pairId);
   await mkdir(snapshot, { recursive: true });
   await Promise.all([
@@ -233,8 +231,8 @@ export async function readCatalogPairMirrors(
   const pricing =
     pricingBytes === undefined
       ? createPricingCatalogEnvelope(emptyPricingCatalog(), catalog)
-      : decodePricingCatalogStorage(decompressPricing(pricingBytes), catalog);
-  return prepareCatalogPair(catalog, pricing);
+      : decodePricingCatalogStorage(decompressPricing(pricingBytes));
+  return prepareCatalogPairInParallel(catalog, pricing);
 }
 
 function decodeCatalogStorage(input: Uint8Array): Catalog {
@@ -243,12 +241,8 @@ function decodeCatalogStorage(input: Uint8Array): Catalog {
   );
 }
 
-function decodePricingCatalogStorage(input: Uint8Array, catalog: Catalog): PricingCatalogEnvelope {
-  const envelope = pricingCatalogEnvelopeSchema.parse(
-    parseIJson(input, pricingLimits.pricingInputBytes),
-  );
-  validatePricingCatalogEnvelope(envelope, catalog);
-  return envelope;
+function decodePricingCatalogStorage(input: Uint8Array): PricingCatalogEnvelope {
+  return pricingCatalogEnvelopeSchema.parse(parseIJson(input, pricingLimits.pricingInputBytes));
 }
 
 function manifestPath(paths: CatalogPairPaths): string {
@@ -327,7 +321,7 @@ async function ensurePairProjections(
       // Derived assets are regenerated from the authoritative accepted pair below.
     }
 
-  const projections = projectCatalogPair(candidate);
+  const projections = await projectCatalogPair(candidate);
   await writePairProjections(paths, projections);
   return projections;
 }

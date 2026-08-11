@@ -30,3 +30,31 @@ export async function mapConcurrent<T, R>(
     return result.value;
   });
 }
+
+export function mapConcurrentByKey<T, R>(
+  values: readonly T[],
+  keys: (value: T) => readonly string[],
+  task: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const entries = values.map((value) => {
+    const taskKeys = [...new Set(keys(value))];
+    if (taskKeys.length === 0 || taskKeys.some((key) => key.length === 0))
+      throw new Error("Concurrent tasks require at least one non-empty key");
+    return { value, keys: taskKeys };
+  });
+  const tails = new Map<string, Promise<void>>();
+  const tasks = entries.map(({ value, keys: taskKeys }) => {
+    const blockers = taskKeys.flatMap((key) => {
+      const tail = tails.get(key);
+      return tail === undefined ? [] : [tail];
+    });
+    const result = Promise.all(blockers).then(() => task(value));
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    for (const key of taskKeys) tails.set(key, tail);
+    return result;
+  });
+  return Promise.all(tasks);
+}

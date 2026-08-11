@@ -118,7 +118,7 @@ describe("generated static catalog", () => {
       catalog,
     );
     const candidate = prepareCatalogPair(catalog, pricing);
-    const projections = projectCatalogPair(candidate);
+    const projections = await projectCatalogPair(candidate);
     const assets: AssetSource[] = [projections.ui, projections.exports].flatMap(
       ({ manifest, pack }) =>
         manifest.assets.map(({ file_name, offset, length }) => ({

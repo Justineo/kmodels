@@ -7,13 +7,13 @@ import {
 } from "../catalog/website-loader.ts";
 import type {
   WebsitePricingOffer,
-  WebsitePricingSelector,
   WebsiteProvider,
   WebsiteProviderPricingDetail,
   WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
+import ProviderPricingOfferDetails from "./ProviderPricingOfferDetails.vue";
 import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
@@ -37,6 +37,27 @@ const offerLoads = ref<
 >({});
 const hasMoreChunks = computed(
   () => nextChunk.value < (props.provider?.pricing_coverage.detail_chunks ?? 0),
+);
+const resourceGroups = computed(() =>
+  [
+    {
+      id: "normalized",
+      rawOnly: false,
+      title: "Normalized resources",
+      description: "Reviewed rates and commercial states.",
+    },
+    {
+      id: "raw-only",
+      rawOnly: true,
+      title: "Unresolved official rows",
+      description: "Official pricing facts retained for audit without normalized terms.",
+    },
+  ]
+    .map((group) => ({
+      ...group,
+      resources: resources.value.filter(({ raw_only }) => raw_only === group.rawOnly),
+    }))
+    .filter(({ resources: groupedResources }) => groupedResources.length > 0),
 );
 const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
@@ -81,21 +102,6 @@ function requestClose(): void {
 
 function finishClose(): void {
   if (closing.value) emit("close");
-}
-
-function selectorSummary(selector: WebsitePricingSelector): string {
-  if (selector.kind === "categorical") return summarize(selector.values.map(({ label }) => label));
-  if (selector.kind === "boolean") return "Yes or no";
-  if (selector.kind === "decimal_values") return summarize(selector.values);
-  if (selector.kind === "decimal_buckets")
-    return summarize(selector.values.map(({ label }) => label));
-  return "Published numeric range";
-}
-
-function summarize(values: string[]): string {
-  return values.length <= 3
-    ? values.join(", ")
-    : `${values.slice(0, 3).join(", ")} +${values.length - 3}`;
 }
 
 function loadedOffer(offerId: string): WebsitePricingOffer[] {
@@ -215,144 +221,65 @@ async function loadMoreResources(): Promise<void> {
                 >: {{ detail.snapshot.refresh_failure.message }}
               </p>
 
-              <section v-for="resource in resources" :key="resource.id" class="provider-resource">
+              <section
+                v-for="group in resourceGroups"
+                :key="group.id"
+                class="provider-resource-group"
+                :aria-labelledby="`provider-resource-group-${group.id}`"
+              >
                 <header>
-                  <div>
-                    <span class="provider-resource-kind">{{ resource.kind }}</span>
-                    <h3>{{ resource.title }}</h3>
-                  </div>
-                  <span
-                    >{{ resource.offers.length }} offer{{
-                      resource.offers.length === 1 ? "" : "s"
-                    }}</span
-                  >
+                  <h3 :id="`provider-resource-group-${group.id}`">{{ group.title }}</h3>
+                  <p>{{ group.description }}</p>
                 </header>
 
-                <details
-                  v-for="summary in resource.offers"
-                  :key="summary.id"
-                  class="provider-offer"
-                  @toggle="toggleOffer(summary, $event)"
+                <section
+                  v-for="resource in group.resources"
+                  :key="resource.id"
+                  class="provider-resource"
                 >
-                  <summary class="provider-offer-summary">
+                  <header>
                     <div>
-                      <h4>{{ summary.title }}</h4>
-                      <small>{{ summary.billing_mode.label }} · {{ summary.state_summary }}</small>
+                      <span class="provider-resource-kind">{{ resource.kind }}</span>
+                      <h4>{{ resource.title }}</h4>
                     </div>
-                  </summary>
+                    <span
+                      >{{ resource.offers.length }} offer{{
+                        resource.offers.length === 1 ? "" : "s"
+                      }}</span
+                    >
+                  </header>
 
-                  <template v-if="offerOpen(summary.id)">
-                    <p v-if="offerLoading(summary.id)" class="provider-pricing-status">
-                      Loading offer details…
-                    </p>
-                    <p v-else-if="offerError(summary.id)" class="unknown-note" role="alert">
-                      {{ offerError(summary.id) }}
-                    </p>
-                  </template>
-
-                  <template
-                    v-for="offer in offerOpen(summary.id) ? loadedOffer(summary.id) : []"
-                    :key="offer.id"
+                  <details
+                    v-for="summary in resource.offers"
+                    :key="summary.id"
+                    class="provider-offer"
+                    @toggle="toggleOffer(summary, $event)"
                   >
-                    <div class="provider-offer-body">
-                      <p v-if="offer.composition">{{ offer.composition }}</p>
-
-                      <dl v-if="offer.selectors.length > 0" class="provider-context-list">
-                        <div v-for="selector in offer.selectors" :key="selector.key">
-                          <dt>{{ selector.label }}</dt>
-                          <dd>{{ selectorSummary(selector) }}</dd>
-                        </div>
-                      </dl>
-
-                      <div v-if="offer.rates.length > 0" class="provider-rate-list">
-                        <div v-for="rate in offer.rates" :key="rate.key">
-                          <div>
-                            <strong>{{ rate.label }}</strong>
-                            <small v-if="rate.applicability_label !== 'All contexts'">
-                              {{ rate.applicability_label }}
-                            </small>
-                            <small v-if="rate.validity">Validity-qualified</small>
-                          </div>
-                          <div class="provider-rate-value" :aria-label="rate.accessible_text">
-                            <strong>{{ rate.amount }}</strong>
-                            <small>{{ rate.unit }}</small>
-                          </div>
-                          <details v-if="rate.driver">
-                            <summary>{{ rate.driver.label }}</summary>
-                            <small>{{ rate.driver.definition }}</small>
-                            <small>
-                              {{ rate.driver.aggregation }} · {{ rate.driver.resolution_phase }}
-                            </small>
-                          </details>
-                          <small v-else class="provider-binding-status">
-                            Usage binding unavailable
-                          </small>
-                        </div>
-                      </div>
-
-                      <ul v-if="offer.allowances.length > 0" class="provider-fact-list">
-                        <li v-for="allowance in offer.allowances" :key="allowance.key">
-                          Allowance: {{ allowance.value }} · {{ allowance.target }} ·
-                          {{ allowance.reset }}
-                          <small v-if="allowance.applicability_label !== 'All contexts'">
-                            {{ allowance.applicability_label }}
-                          </small>
-                        </li>
-                      </ul>
-                      <ul v-if="offer.contributions.length > 0" class="provider-fact-list">
-                        <li v-for="entry in offer.contributions" :key="entry.key">
-                          {{ entry.label }} → {{ entry.target }}
-                          <small v-if="entry.applicability_label !== 'All contexts'">
-                            {{ entry.applicability_label }}
-                          </small>
-                          <small v-for="driver in entry.drivers" :key="driver.label">
-                            {{ driver.label }} · {{ driver.aggregation }} ·
-                            {{ driver.resolution_phase }}
-                          </small>
-                        </li>
-                      </ul>
-                      <ul v-if="offer.enrollment.length > 0" class="provider-fact-list">
-                        <li v-for="entry in offer.enrollment" :key="entry.key">
-                          {{ entry.label }}
-                          <small v-if="entry.applicability_label !== 'All contexts'">
-                            {{ entry.applicability_label }}
-                          </small>
-                        </li>
-                      </ul>
-                      <ul v-if="offer.settlement.length > 0" class="provider-fact-list">
-                        <li v-for="entry in offer.settlement" :key="entry.key">
-                          {{ entry.channel }} · {{ entry.biller }} ·
-                          {{ entry.payment_sources.join(" → ") }}
-                          <small v-if="entry.applicability_label !== 'All contexts'">
-                            {{ entry.applicability_label }}
-                          </small>
-                        </li>
-                      </ul>
-                      <details v-if="offer.unnormalized_count > 0">
-                        <summary>
-                          {{ offer.unnormalized_count }} unnormalized official fact{{
-                            offer.unnormalized_count === 1 ? "" : "s"
-                          }}
-                        </summary>
-                        <ul class="provider-fact-list">
-                          <li v-for="fact in offer.unnormalized" :key="fact.key">
-                            <strong>{{ fact.label }}</strong> · {{ fact.reason }}
-                            <small v-for="factDetail in fact.details ?? []" :key="factDetail">
-                              {{ factDetail }}
-                            </small>
-                          </li>
-                        </ul>
-                        <p
-                          v-if="offer.unnormalized_count > offer.unnormalized.length"
-                          class="provider-pricing-status"
+                    <summary class="provider-offer-summary">
+                      <div>
+                        <h5>{{ summary.title }}</h5>
+                        <small
+                          >{{ summary.billing_mode.label }} · {{ summary.state_summary }}</small
                         >
-                          Showing {{ offer.unnormalized.length }} representative facts.
-                          <a href="/pricing/index.json">Download the canonical pricing audit.</a>
-                        </p>
-                      </details>
-                    </div>
-                  </template>
-                </details>
+                      </div>
+                    </summary>
+
+                    <template v-if="offerOpen(summary.id)">
+                      <p v-if="offerLoading(summary.id)" class="provider-pricing-status">
+                        Loading offer details…
+                      </p>
+                      <p v-else-if="offerError(summary.id)" class="unknown-note" role="alert">
+                        {{ offerError(summary.id) }}
+                      </p>
+                    </template>
+
+                    <ProviderPricingOfferDetails
+                      v-for="offer in offerOpen(summary.id) ? loadedOffer(summary.id) : []"
+                      :key="offer.id"
+                      :offer
+                    />
+                  </details>
+                </section>
               </section>
 
               <p v-if="chunkError" class="unknown-note" role="alert">{{ chunkError }}</p>
@@ -365,6 +292,9 @@ async function loadMoreResources(): Promise<void> {
               >
                 {{ loadingMore ? "Loading…" : "Load more resources" }}
               </button>
+              <a class="provider-audit-link" href="/pricing/index.json">
+                Inspect the complete canonical pricing audit
+              </a>
             </template>
           </div>
         </div>
@@ -375,48 +305,47 @@ async function loadMoreResources(): Promise<void> {
 
 <style scoped>
 .provider-pricing-content,
-.provider-resource,
-.provider-offer-body,
-.provider-context-list,
-.provider-rate-list {
+.provider-resource-group,
+.provider-resource {
   display: grid;
   gap: var(--space-3);
 }
 
 .provider-pricing-status,
-.provider-offer p,
-.provider-fact-list,
-.provider-binding-status {
+.provider-offer p {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-body);
 }
 
-.provider-resource {
+.provider-resource-group {
   padding-top: var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 }
 
+.provider-resource-group > header h3,
+.provider-resource-group > header p,
+.provider-resource h4,
+.provider-offer h5 {
+  margin: 0;
+}
+
+.provider-resource-group > header p {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-micro);
+}
+
 .provider-resource > header,
-.provider-offer-summary,
-.provider-rate-list > div {
+.provider-offer-summary {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.provider-resource h3,
-.provider-offer h4 {
-  margin: 0;
-}
-
 .provider-resource-kind,
 .provider-resource > header > span,
-.provider-offer small,
-.provider-context-list,
-.provider-rate-list small,
-.provider-fact-list {
+.provider-offer small {
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);
 }
@@ -432,61 +361,8 @@ async function loadMoreResources(): Promise<void> {
   cursor: pointer;
 }
 
-.provider-offer-body {
-  padding: 0 var(--space-3) var(--space-3);
-}
-
-.provider-context-list {
-  margin: 0;
-}
-
-.provider-context-list > div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
-  gap: var(--space-3);
-}
-
-.provider-context-list dd {
-  margin: 0;
-}
-
-.provider-rate-list > div {
-  flex-wrap: wrap;
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.provider-rate-list > div > div,
-.provider-rate-list details {
-  display: grid;
-  gap: var(--space-0-5);
-}
-
-.provider-rate-value {
-  margin-left: auto;
-  text-align: right;
-}
-
-.provider-rate-list details {
-  flex-basis: 100%;
-}
-
-.provider-rate-list summary {
-  cursor: pointer;
-}
-
-.provider-fact-list {
-  display: grid;
-  gap: var(--space-1);
-  padding-left: var(--space-4);
-}
-
-.provider-fact-list li,
-.provider-fact-list small {
-  display: block;
-}
-
-.provider-load-more {
+.provider-load-more,
+.provider-audit-link {
   justify-self: start;
 }
 </style>

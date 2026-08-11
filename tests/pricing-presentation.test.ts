@@ -21,6 +21,7 @@ import type {
   PriceApplicability,
   PriceRateTerm,
   PricingCatalog,
+  PricingOffer,
   UnitPrice,
 } from "../src/catalog/pricing-schema.ts";
 import type { ProviderModel } from "../src/catalog/schema.ts";
@@ -677,7 +678,7 @@ describe("canonical pricing presentation", () => {
     });
   });
 
-  it("classifies a provider service that requires the model as an optional add-on", () => {
+  it("distinguishes selectable services from components incurred by a model", () => {
     const data = catalog([term("input", "input_text", tokenPrice)]);
     const otherBookId = pricingBookId(providerId, "other-model");
     const otherOfferId = pricingOfferId(otherBookId, "usage");
@@ -692,7 +693,9 @@ describe("canonical pricing presentation", () => {
     };
     data.books.push(otherBook);
     const resourceBookId = pricingBookId(providerId, "service:search");
-    const resourceOfferId = pricingOfferId(resourceBookId, "built-in");
+    const requiredOfferId = pricingOfferId(resourceBookId, "required-model");
+    const incurringOfferId = pricingOfferId(resourceBookId, "incurring-model");
+    const automaticOfferId = pricingOfferId(resourceBookId, "automatic");
     const otherResourceOfferId = pricingOfferId(resourceBookId, "other-model");
     const unrelatedResourceOfferId = pricingOfferId(resourceBookId, "other-standalone");
     const resourceScope = {
@@ -701,6 +704,49 @@ describe("canonical pricing presentation", () => {
       resource_key: "search",
       model_refs: [modelRef, "test/other-model"],
     };
+    function serviceOffer(
+      id: string,
+      key: string,
+      modelRefs: string[],
+      relation?: { kind: "requires" | "incurs"; target: string },
+    ): PricingOffer {
+      return {
+        id,
+        offer_key: key,
+        model_refs: modelRefs,
+        billing_mode: { namespace: "kmodels", value: "usage" },
+        states: [
+          {
+            state: "free",
+            applicability: unconditionalApplicability,
+            observations: [source],
+          },
+        ],
+        enrollment: [],
+        terms: [],
+        relations:
+          relation === undefined
+            ? []
+            : [
+                {
+                  kind: relation.kind,
+                  target: { kind: "offers", offer_refs: [relation.target] },
+                  applicability: unconditionalApplicability,
+                  observations: [
+                    {
+                      source_ref: sourceRef,
+                      locator: { kind: "table", value: key },
+                      establishes_offer_refs: [relation.target],
+                      establishes_book_refs: [],
+                      raw: { label: key },
+                    },
+                  ],
+                },
+              ],
+        settlement: [],
+        source_refs: [sourceRef],
+      };
+    }
     data.books.push({
       id: resourceBookId,
       provider_id: providerId,
@@ -716,95 +762,46 @@ describe("canonical pricing presentation", () => {
       ],
       resource_edges: [],
       offers: [
-        {
-          id: resourceOfferId,
-          offer_key: "built-in",
-          billing_mode: { namespace: "kmodels", value: "usage" },
-          states: [
-            {
-              state: "free",
-              applicability: unconditionalApplicability,
-              observations: [source],
-            },
-          ],
-          enrollment: [],
-          terms: [],
-          relations: [
-            {
-              kind: "requires",
-              target: { kind: "offers", offer_refs: [offerId] },
-              applicability: unconditionalApplicability,
-              observations: [
-                {
-                  source_ref: sourceRef,
-                  locator: { kind: "table", value: "service" },
-                  establishes_offer_refs: [offerId],
-                  establishes_book_refs: [],
-                  raw: { label: "Search requires model inference" },
-                },
-              ],
-            },
-          ],
-          settlement: [],
-          source_refs: [sourceRef],
-        },
-        {
-          id: otherResourceOfferId,
-          offer_key: "other-model",
-          model_refs: ["test/other-model"],
-          billing_mode: { namespace: "kmodels", value: "usage" },
-          states: [
-            {
-              state: "free",
-              applicability: unconditionalApplicability,
-              observations: [source],
-            },
-          ],
-          enrollment: [],
-          terms: [],
-          relations: [
-            {
-              kind: "requires",
-              target: { kind: "offers", offer_refs: [otherOfferId] },
-              applicability: unconditionalApplicability,
-              observations: [
-                {
-                  source_ref: sourceRef,
-                  locator: { kind: "table", value: "other service" },
-                  establishes_offer_refs: [otherOfferId],
-                  establishes_book_refs: [],
-                  raw: { label: "Search requires the other model" },
-                },
-              ],
-            },
-          ],
-          settlement: [],
-          source_refs: [sourceRef],
-        },
-        {
-          id: unrelatedResourceOfferId,
-          offer_key: "other-standalone",
-          model_refs: ["test/other-model"],
-          billing_mode: { namespace: "kmodels", value: "usage" },
-          states: [
-            {
-              state: "free",
-              applicability: unconditionalApplicability,
-              observations: [source],
-            },
-          ],
-          enrollment: [],
-          terms: [],
-          relations: [],
-          settlement: [],
-          source_refs: [sourceRef],
-        },
+        serviceOffer(requiredOfferId, "required-model", [modelRef], {
+          kind: "requires",
+          target: offerId,
+        }),
+        serviceOffer(incurringOfferId, "incurring-model", [modelRef], {
+          kind: "incurs",
+          target: offerId,
+        }),
+        serviceOffer(automaticOfferId, "automatic", [modelRef]),
+        serviceOffer(otherResourceOfferId, "other-model", ["test/other-model"], {
+          kind: "requires",
+          target: otherOfferId,
+        }),
+        serviceOffer(unrelatedResourceOfferId, "other-standalone", ["test/other-model"]),
       ],
       source_refs: [sourceRef],
     });
+    const modelOffer = data.books[0]?.offers[0];
+    if (modelOffer === undefined) throw new Error("Missing model offer");
+    modelOffer.relations.push({
+      kind: "incurs",
+      target: { kind: "offers", offer_refs: [automaticOfferId] },
+      applicability: unconditionalApplicability,
+      observations: [
+        {
+          source_ref: sourceRef,
+          locator: { kind: "table", value: "automatic" },
+          establishes_offer_refs: [automaticOfferId],
+          establishes_book_refs: [],
+          raw: { label: "Model incurs automatic service" },
+        },
+      ],
+    });
 
     expect(modelPricingView(data, model())).toMatchObject({
-      optionalServices: [expect.objectContaining({ id: resourceOfferId })],
+      optionalServices: [
+        expect.objectContaining({ id: incurringOfferId }),
+        expect.objectContaining({ id: requiredOfferId }),
+      ],
+      automaticComponents: [expect.objectContaining({ id: automaticOfferId })],
       standaloneOffers: [],
     });
   });

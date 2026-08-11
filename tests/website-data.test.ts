@@ -10,6 +10,7 @@ import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
 import {
   PROVIDER_UNNORMALIZED_PREVIEW_LIMIT,
+  WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH,
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websitePublication,
   type WebsitePublication,
@@ -271,6 +272,9 @@ describe("website data", () => {
       ]);
       for (const row of rows) {
         expect(row.applicability_label.trim(), providerId).not.toBe("");
+        expect(row.applicability_label.length, providerId).toBeLessThanOrEqual(
+          WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH,
+        );
         if (!row.applicability.any_of.some(({ all_of }) => all_of.length === 0)) {
           expect(row.applicability_label, providerId).not.toBe("All contexts");
           if ("amount" in row) conditionalRates += 1;

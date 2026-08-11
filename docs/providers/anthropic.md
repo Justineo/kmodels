@@ -163,7 +163,7 @@ The official inventory is a discovery contract as well as a presence check. A ne
 
 ### Model-detail composition and cost coverage
 
-Model details may project an Anthropic provider service only from exact compatible model refs. The UI derives supplemental services from exact `requires` closure; it never infers them from a model capability or a shared tool name. The calculator includes each independently charged component once: every billable model iteration, successful web search, standalone code runtime when measurable, and Managed Agents runtime. Included/free services stay visible without being added as numeric zero.
+Model details may project an Anthropic provider service only from exact compatible model refs. The UI treats exact service-to-model `requires` and `incurs` edges as independently selectable services; a model-to-service `incurs` edge remains an automatic component. It never infers either direction from a model capability or shared tool name. The calculator includes each independently charged component once: every billable model iteration, successful web search, standalone code runtime when measurable, and Managed Agents runtime. Included/free services stay visible without being added as numeric zero.
 
 Coverage must distinguish `complete`, `partial`, and `unavailable`. A normal response can be complete from outcome usage. Code execution is partial until duration/allowance or Cost API settlement is available. Priority, private discounts, credits, marketplace conversion, and fallback attempts with incomplete realized modifier fields remain explicit account/outcome gaps. Managed Agents `list_cost` is an authoritative public-list reconciliation signal but not proof of contracted cost.
 

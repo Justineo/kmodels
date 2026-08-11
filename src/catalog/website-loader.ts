@@ -208,11 +208,14 @@ export async function loadWebsiteProviderPricingOffer(
   providerId: string,
   offer: WebsiteProviderPricingOffer,
 ): Promise<WebsitePricingOffer> {
-  return mergeProviderOffer(
+  const detail = mergeProviderOffer(
     await Promise.all(
       offer.offer_refs.map((reference) => loadOffer(dataVersion, providerId, reference)),
     ),
   );
+  if (!sameOfferSummary(detail, offer))
+    throw new Error("Provider pricing offer does not match its summary");
+  return detail;
 }
 
 function mergeProviderOffer(fragments: WebsitePricingOffer[]): WebsitePricingOffer {
@@ -220,13 +223,10 @@ function mergeProviderOffer(fragments: WebsitePricingOffer[]): WebsitePricingOff
   if (first === undefined) throw new Error("Provider pricing offer has no fragments");
   return fragments.slice(1).reduce((current, fragment) => {
     if (
-      current.id !== fragment.id ||
-      current.title !== fragment.title ||
+      !sameOfferSummary(current, fragment) ||
       current.group !== fragment.group ||
       current.composition !== fragment.composition ||
-      current.state_summary !== fragment.state_summary ||
-      current.unnormalized_count !== fragment.unnormalized_count ||
-      JSON.stringify(current.billing_mode) !== JSON.stringify(fragment.billing_mode)
+      current.unnormalized_count !== fragment.unnormalized_count
     )
       throw new Error("Provider pricing offer fragments disagree");
     return {
@@ -241,6 +241,19 @@ function mergeProviderOffer(fragments: WebsitePricingOffer[]): WebsitePricingOff
       unnormalized: appendUnique(current.unnormalized, fragment.unnormalized),
     };
   }, first);
+}
+
+function sameOfferSummary(
+  left: WebsitePricingOffer,
+  right: Pick<WebsitePricingOffer, "id" | "title" | "billing_mode" | "state_summary">,
+): boolean {
+  return (
+    left.id === right.id &&
+    left.title === right.title &&
+    left.state_summary === right.state_summary &&
+    left.billing_mode.label === right.billing_mode.label &&
+    left.billing_mode.description === right.billing_mode.description
+  );
 }
 
 function appendUnique<Row extends { key: string }>(current: Row[], appended: Row[]): Row[] {

@@ -21,21 +21,22 @@ export function websiteDataVersion(catalogVersion: string, pricingDataVersion: s
   return sha256(`${catalogVersion}\u0000${pricingDataVersion}`);
 }
 
-export function projectCatalogPair(input: ProjectionInput): PairProjections {
+export async function projectCatalogPair(input: ProjectionInput): Promise<PairProjections> {
   const dataVersion = websiteDataVersion(
     input.catalog.catalog_version,
     input.pricing.pricing_data_version,
   );
+  const uiAssets = websiteAssets(input.catalog, input.pricing.data, dataVersion);
+  const exportAssets = [
+    ...catalogExportAssets(input.catalog, input.catalogAssetSource),
+    { fileName: "pricing/index.json", source: input.pricingAssetSource },
+  ];
+  const [ui, exports] = await Promise.all([
+    createAssetPack("ui", input.pairId, dataVersion, uiAssets),
+    createAssetPack("exports", input.pairId, input.pairId, exportAssets),
+  ]);
   return {
-    ui: createAssetPack(
-      "ui",
-      input.pairId,
-      dataVersion,
-      websiteAssets(input.catalog, input.pricing.data, dataVersion),
-    ),
-    exports: createAssetPack("exports", input.pairId, input.pairId, [
-      ...catalogExportAssets(input.catalog, input.catalogAssetSource),
-      { fileName: "pricing/index.json", source: input.pricingAssetSource },
-    ]),
+    ui,
+    exports,
   };
 }

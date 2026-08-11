@@ -522,7 +522,9 @@ cache, and output rates. Model details derive five groups:
 
 - **model mechanisms**: request-time inference alternatives;
 - **optional provider services**: exact compatible or dependent services the
-  caller may select in addition to the model;
+  caller may select in addition to the model. A service-side `requires` or
+  `incurs` edge to the model mechanism is such a dependency; the reverse
+  model-side `incurs` direction is automatic instead;
 - **automatic components**: read-only `incurs` closure, including model or
   service usage caused by the selected operation;
 - **plans and capacity**: required entitlements and acquisition context;

@@ -273,9 +273,10 @@ Unsafe catalog identity and required operational-contract drift remain provider-
 publishing a wrongly bound callable ID or charge signal would corrupt every dependent claim.
 Commercial parsing is claim-local: an unrecognized model price cannot admit a model and loses only
 that price; a malformed price table does not erase other price pages; an unrecognized provider card
-remains raw in an unreviewed service book. Missing source data retires a fact only when the source is
-exhaustive for that exact claim; temporary/partial failure may retain the prior fact with visible
-staleness. Provider publication remains crash-atomic after reconciliation.
+remains raw in an unreviewed service book and separate from same-name normalized resources in
+provider presentation. Missing source data retires a fact only when the source is exhaustive for
+that exact claim; temporary/partial failure may retain the prior fact with visible staleness.
+Provider publication remains crash-atomic after reconciliation.
 
 ### Model-detail composition and cost coverage
 

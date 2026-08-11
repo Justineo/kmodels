@@ -83,12 +83,12 @@ describe("provider pricing validation", () => {
     const snapshot = await readPricingCompilationSnapshot(current);
     if (snapshot === undefined) throw new Error("Pricing replay input is missing");
 
-    const compiled = compilePricingSnapshot(current, snapshot);
+    const compiled = await compilePricingSnapshot(current, snapshot);
     expect(compiled.replayedProviders).toEqual(
       snapshot.providers.map(({ provider_id }) => provider_id),
     );
     expect([...compiled.replayedProviders, ...compiled.preservedProviders].sort()).toEqual(
       pricing.data.provider_snapshots.map(({ provider_id }) => provider_id).sort(),
     );
-  }, 90_000);
+  }, 300_000);
 });

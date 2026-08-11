@@ -1,4 +1,5 @@
-import { gzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gzip as gzipCallback } from "node:zlib";
 import { z } from "zod";
 import { canonicalJsonBytes, parseIJson } from "./canonical-json.ts";
 import { compareUtf8 } from "./canonical-value.ts";
@@ -8,6 +9,7 @@ import { pricingLimits } from "./pricing-constants.ts";
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const utf8Decoder = new TextDecoder();
 const utf8Encoder = new TextEncoder();
+const gzip = promisify(gzipCallback);
 const assetProfileSchema = z.enum(["ui", "exports"]);
 const assetEntrySchema = z.strictObject({
   file_name: z.string().min(1),
@@ -72,37 +74,46 @@ const PACK_MAX_BYTES: Record<AssetPackProfile, number> = {
   exports: 32 * 1024 * 1024,
 };
 
-export function createAssetPack(
+export async function createAssetPack(
   profile: AssetPackProfile,
   pairId: string,
   dataVersion: string,
   sourceAssets: AssetSource[],
-): EncodedAssetPack {
+): Promise<EncodedAssetPack> {
   const assets = [...sourceAssets].sort((left, right) =>
     compareUtf8(left.fileName, right.fileName),
   );
-  const chunks: Uint8Array[] = [];
+  const chunks = await Promise.all(
+    assets.map(async ({ fileName, source }) => {
+      const sourceBytes = utf8Encoder.encode(source);
+      if (sourceBytes.byteLength > ASSET_SOURCE_MAX_BYTES[profile])
+        throw new Error(`${fileName} exceeds the decoded asset limit`);
+      const chunk = await gzip(sourceBytes);
+      // Asset hashes must not depend on zlib's host-specific gzip metadata.
+      chunk[GZIP_OS_OFFSET] = CANONICAL_GZIP_OS;
+      return {
+        fileName,
+        chunk,
+        sourceLength: sourceBytes.byteLength,
+        sourceHash: sha256(sourceBytes),
+        gzipHash: sha256(chunk),
+      };
+    }),
+  );
   let offset = 0;
   const manifest = assetPackManifestSchema.parse({
     schema_version: 1,
     profile,
     pair_id: pairId,
     data_version: dataVersion,
-    assets: assets.map(({ fileName, source }) => {
-      const sourceBytes = utf8Encoder.encode(source);
-      if (sourceBytes.byteLength > ASSET_SOURCE_MAX_BYTES[profile])
-        throw new Error(`${fileName} exceeds the decoded asset limit`);
-      const chunk = gzipSync(sourceBytes);
-      // Asset hashes must not depend on zlib's host-specific gzip metadata.
-      chunk[GZIP_OS_OFFSET] = CANONICAL_GZIP_OS;
-      chunks.push(chunk);
+    assets: chunks.map(({ fileName, chunk, sourceLength, sourceHash, gzipHash }) => {
       const entry = {
         file_name: fileName,
         offset,
         length: chunk.byteLength,
-        source_length: sourceBytes.byteLength,
-        source_sha256: sha256(sourceBytes),
-        gzip_sha256: sha256(chunk),
+        source_length: sourceLength,
+        source_sha256: sourceHash,
+        gzip_sha256: gzipHash,
       };
       offset += chunk.byteLength;
       return entry;
@@ -110,7 +121,7 @@ export function createAssetPack(
   });
   if (offset > PACK_MAX_BYTES[profile])
     throw new Error(`${profile} asset pack exceeds its encoded-input limit`);
-  const pack = Buffer.concat(chunks);
+  const pack = Buffer.concat(chunks.map(({ chunk }) => chunk));
   return {
     manifest,
     manifestSource: utf8Decoder.decode(canonicalJsonBytes(manifest)),

@@ -367,10 +367,11 @@ const websiteProviderPricingResourceShape = {
   id: hash,
   title: nonEmpty,
   kind: nonEmpty,
+  raw_only: z.boolean(),
 };
 
 export const websiteProviderPricingChunkSchema = z.strictObject({
-  schema_version: z.literal(2),
+  schema_version: z.literal(3),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
