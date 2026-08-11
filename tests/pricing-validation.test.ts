@@ -168,6 +168,18 @@ describe("canonical pricing serialized catalog validation", () => {
     expect(() => validatePricingCatalog(catalog(), foreignCore)).toThrow(
       "belongs to another provider",
     );
+
+    const offerWidened = catalog();
+    offerWidened.books[0]!.offers[0]!.model_refs = ["test/other"];
+    expect(() => validatePricingCatalog(offerWidened, core)).toThrow(
+      "offer references a model outside its book scope",
+    );
+
+    const redundant = catalog();
+    redundant.books[0]!.offers[0]!.model_refs = [modelRef];
+    expect(() => validatePricingCatalog(redundant, core)).toThrow(
+      "offer repeats its complete book model scope",
+    );
   });
 
   it("accepts reviewed calculation evidence and rejects non-canonical units", () => {

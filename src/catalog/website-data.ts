@@ -9,7 +9,7 @@ import {
   formatAllowanceBenefit,
   formatCategoricalValue,
   formatDimension,
-  formatMeter,
+  formatUnitExpression,
   isWholeNumberDimension,
   isModelDimension,
   modelPricingView,
@@ -53,7 +53,6 @@ import {
   type WebsiteOfferChunk,
   type WebsiteOfferReference,
   type WebsiteProviderPricingChunk,
-  type WebsiteProviderPricingDetail,
   type WebsitePricingDetail,
   type WebsitePricingOffer,
   type WebsitePricingSelector,
@@ -62,6 +61,7 @@ import {
 } from "./website-schema.ts";
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
+export const PROVIDER_UNNORMALIZED_PREVIEW_LIMIT = 20;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
 type CategoricalLabelIndex = ReadonlyMap<string, string>;
 type ProviderAtomIndex = ReadonlyMap<string, ProviderAtomRegistryEntry>;
@@ -235,14 +235,17 @@ function websiteDeferredAssets(
       atoms,
     ).map(({ offers: resourceOffers, ...resource }) => ({
       resource,
-      offerIndexes: resourceOffers.map((offer) => websiteOfferFragments(offer).map(indexOffer)),
+      offers: resourceOffers.map((offer) => ({
+        offer,
+        indexes: websiteOfferFragments(offer).map(indexOffer),
+      })),
     }));
     offerIndexes.clear();
     const providerOffers = boundedChunks(
       uniqueOffers,
       (values, chunk) =>
         websiteOfferChunkSchema.parse({
-          schema_version: 1,
+          schema_version: 2,
           data_version: dataVersion,
           provider_id: provider.id,
           chunk,
@@ -283,11 +286,15 @@ function websiteDeferredAssets(
     );
 
     const storedResources: WebsiteProviderPricingChunk["resources"] = providerResources.map(
-      ({ resource, offerIndexes }) => ({
+      ({ resource, offers: resourceOffers }) => ({
         ...resource,
-        offer_refs: offerIndexes.map((indexes) =>
-          indexes.map((index) => offerReference(references, index, resource.id)),
-        ),
+        offers: resourceOffers.map(({ offer, indexes }) => ({
+          id: offer.id,
+          title: offer.title,
+          billing_mode: offer.billing_mode,
+          state_summary: offer.state_summary,
+          offer_refs: indexes.map((index) => offerReference(references, index, resource.id)),
+        })),
       }),
     );
     const snapshot = websiteSnapshot(
@@ -298,7 +305,7 @@ function websiteDeferredAssets(
         storedResources,
         (values, chunk) =>
           websiteProviderPricingChunkSchema.parse({
-            schema_version: 1,
+            schema_version: 2,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -344,6 +351,7 @@ function websiteOfferFragments(offer: WebsitePricingOffer): WebsitePricingOffer[
     contributions: [],
     enrollment: [],
     settlement: [],
+    unnormalized_count: offer.unnormalized_count,
     unnormalized: [],
   });
   const fragments: WebsitePricingOffer[] = [];
@@ -561,7 +569,7 @@ function websiteProviderPricingResources(
   providerId: string,
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
-): WebsiteProviderPricingDetail["resources"] {
+): Array<{ id: string; title: string; kind: string; offers: WebsitePricingOffer[] }> {
   const books = pricing.books.filter(({ provider_id }) => provider_id === providerId);
   return books
     .filter(({ scope }) => scope.kind === "provider_resource" && scope.model_refs.length === 0)
@@ -576,7 +584,9 @@ function websiteProviderPricingResources(
             ? formatSentenceCase(book.scope.resource_kind.value)
             : formatSentenceCase(book.scope.resource_kind.value.replaceAll("-", "_")),
         offers: book.offers.map((offer) =>
-          websiteOffer(books, offer, "standalone", undefined, labels, atoms),
+          websiteOffer(books, offer, "standalone", undefined, labels, atoms, {
+            unnormalizedLimit: PROVIDER_UNNORMALIZED_PREVIEW_LIMIT,
+          }),
         ),
       };
     });
@@ -621,12 +631,14 @@ function websiteOffer(
   modelRef: string | undefined,
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
+  options: { unnormalizedLimit?: number } = {},
 ): WebsitePricingOffer {
   const states = offer.states.map((state, index) => ({
     key: `state:${index}`,
     state: state.state,
     label: stateLabel(state.state),
     applicability: state.applicability,
+    applicability_label: applicabilityLabel(state.applicability, labels),
     ...(state.validity === undefined ? {} : { validity: state.validity }),
   }));
   const rates: WebsitePricingOffer["rates"] = [];
@@ -642,7 +654,7 @@ function websiteOffer(
         });
         rates.push({
           key: `${term.id}:rate:${index}`,
-          label: meterLabel(term.meter),
+          label: meterLabel(term.meter, atoms),
           amount: price.amount,
           unit: `per ${price.displayUnit}`,
           accessible_text: price.accessibleText,
@@ -650,6 +662,7 @@ function websiteOffer(
             ? {}
             : { driver: chargeDriver(variant.charge_binding, atoms) }),
           applicability: variant.applicability,
+          applicability_label: applicabilityLabel(variant.applicability, labels),
           ...(variant.validity === undefined ? {} : { validity: variant.validity }),
         });
       });
@@ -658,9 +671,10 @@ function websiteOffer(
         allowances.push({
           key: `${term.id}:allowance:${index}`,
           value: formatAllowanceBenefit(variant.benefit),
-          target: allowanceTarget(variant.target, offer),
+          target: allowanceTarget(variant.target, offer, atoms),
           reset: resetLabel(variant.reset),
           applicability: variant.applicability,
+          applicability_label: applicabilityLabel(variant.applicability, labels),
           ...(variant.validity === undefined ? {} : { validity: variant.validity }),
         });
       });
@@ -669,9 +683,10 @@ function websiteOffer(
         contributions.push({
           key: `${term.id}:contribution:${index}`,
           label: formatSentenceCase(term.term_key.replaceAll("-", "_")),
-          target: contributionTarget(books, variant.target_rate_refs),
+          target: contributionTarget(books, variant.target_rate_refs, atoms),
           drivers: variant.charge_bindings.map((binding) => chargeDriver(binding, atoms)),
           applicability: variant.applicability,
+          applicability_label: applicabilityLabel(variant.applicability, labels),
           ...(variant.validity === undefined ? {} : { validity: variant.validity }),
         });
       });
@@ -680,7 +695,7 @@ function websiteOffer(
     const variants = term.kind === "raw" ? term.variants : term.raw_variants;
     const label =
       term.kind === "rate"
-        ? meterLabel(term.meter)
+        ? meterLabel(term.meter, atoms)
         : term.kind === "allowance"
           ? "Allowance"
           : formatSentenceCase(term.term_key);
@@ -714,6 +729,7 @@ function websiteOffer(
       key: `enrollment:${index}`,
       label: enrollmentLabel(variant.state),
       applicability: variant.applicability,
+      applicability_label: applicabilityLabel(variant.applicability, labels),
       ...(variant.validity === undefined ? {} : { validity: variant.validity }),
     })),
     settlement: offer.settlement.map((variant, index) => ({
@@ -722,9 +738,14 @@ function websiteOffer(
       biller: variant.biller,
       payment_sources: variant.payment_sources.map((source) => formatSentenceCase(source)),
       applicability: variant.applicability,
+      applicability_label: applicabilityLabel(variant.applicability, labels),
       ...(variant.validity === undefined ? {} : { validity: variant.validity }),
     })),
-    unnormalized,
+    unnormalized_count: unnormalized.length,
+    unnormalized:
+      options.unnormalizedLimit === undefined
+        ? unnormalized
+        : unnormalized.slice(0, options.unnormalizedLimit),
   };
 }
 
@@ -775,7 +796,7 @@ function pricingSelector(
   if (first === undefined) throw new Error(`Pricing selector ${key} has no conditions`);
   const base = {
     key,
-    label: formatDimension(first.dimension),
+    label: dimensionLabel(first.dimension),
     dimension: first.dimension,
   };
   if (first.kind === "categorical") {
@@ -901,6 +922,42 @@ function categoricalLabel(
     if (label !== undefined) return label;
   }
   return formatCategoricalValue(value);
+}
+
+function applicabilityLabel(
+  applicability: PricingOffer["states"][number]["applicability"],
+  labels: CategoricalLabelIndex,
+): string {
+  const clauses = applicability.any_of.map(({ all_of }) =>
+    all_of
+      .filter(({ dimension }) => !isModelDimension(dimension))
+      .map((condition) => {
+        const label = dimensionLabel(condition.dimension);
+        if (condition.kind === "categorical")
+          return `${label}: ${condition.values
+            .map((value) => categoricalLabel(labels, condition.dimension, value))
+            .join(", ")}`;
+        if (condition.kind === "boolean")
+          return condition.value ? label : `No ${label.toLowerCase()}`;
+        const bounds = [
+          condition.lower === undefined
+            ? undefined
+            : `${condition.lower.inclusive ? "≥" : ">"} ${condition.lower.value}`,
+          condition.upper === undefined
+            ? undefined
+            : `${condition.upper.inclusive ? "≤" : "<"} ${condition.upper.value}`,
+        ].filter((value): value is string => value !== undefined);
+        return `${label}: ${bounds.join(" · ")} ${formatUnitExpression(condition.unit)}`;
+      }),
+  );
+  if (clauses.some((conditions) => conditions.length === 0)) return "All contexts";
+  return clauses.map((conditions) => conditions.join(" · ")).join(" or ");
+}
+
+function dimensionLabel(dimension: PriceDimension): string {
+  return dimension.namespace === "kmodels"
+    ? formatDimension(dimension)
+    : formatSentenceCase(dimension.value);
 }
 
 function categoricalLabelIdentity(
@@ -1082,21 +1139,31 @@ function applicabilityPossible(
   );
 }
 
-function allowanceTarget(target: PriceAllowanceTarget, offer: PricingOffer): string {
+function allowanceTarget(
+  target: PriceAllowanceTarget,
+  offer: PricingOffer,
+  atoms: ProviderAtomIndex,
+): string {
   if (target.kind === "offers") return `${target.offer_refs.length} offer target`;
   const labels = target.term_refs.map((ref) => {
     const term = offer.terms.find(({ id }) => id === ref);
-    return term?.kind === "rate" ? meterLabel(term.meter) : "Rate term";
+    return term?.kind === "rate" ? meterLabel(term.meter, atoms) : "Rate term";
   });
   return `Offsets ${[...new Set(labels)].join(", ")}`;
 }
 
-function contributionTarget(books: PricingBook[], termRefs: string[]): string {
+function contributionTarget(
+  books: PricingBook[],
+  termRefs: string[],
+  atoms: ProviderAtomIndex,
+): string {
   const labels = books.flatMap(({ offers }) =>
     offers.flatMap((offer) =>
       offer.terms.flatMap((term) =>
         term.kind === "rate" && termRefs.includes(term.id)
-          ? [`${offer.name ?? formatSentenceCase(offer.offer_key)} · ${meterLabel(term.meter)}`]
+          ? [
+              `${offer.name ?? formatSentenceCase(offer.offer_key)} · ${meterLabel(term.meter, atoms)}`,
+            ]
           : [],
       ),
     ),
@@ -1235,8 +1302,10 @@ function resetLabel(reset: AllowanceReset): string {
     : `${reset.provider_id} · ${reset.value}`;
 }
 
-function meterLabel(meter: PriceMeter): string {
-  return meter.namespace === "kmodels" ? formatSentenceCase(meter.value) : formatMeter(meter);
+function meterLabel(meter: PriceMeter, atoms: ProviderAtomIndex): string {
+  if (meter.namespace === "kmodels") return formatSentenceCase(meter.value);
+  providerAtom(atoms, meter.provider_id, "meter", meter.value);
+  return formatSentenceCase(meter.value);
 }
 
 function hasFixedValue(selector: WebsitePricingSelector): boolean {

@@ -9,11 +9,12 @@ import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
 import {
+  PROVIDER_UNNORMALIZED_PREVIEW_LIMIT,
   WEBSITE_DETAIL_CHUNK_MAX_BYTES,
   websitePublication,
   type WebsitePublication,
 } from "../src/catalog/website-data.ts";
-import type { WebsiteModelDetail } from "../src/catalog/website-schema.ts";
+import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 const websiteDataBudgets = {
@@ -101,6 +102,27 @@ function publishedModelDetails(publication: WebsitePublication): WebsiteModelDet
         },
       };
     }),
+  );
+}
+
+function publishedProviderOffers(
+  publication: WebsitePublication,
+): Array<{ providerId: string; fragments: WebsitePricingOffer[] }> {
+  const chunks = new Map(
+    publication.offers.map(({ provider_id, chunk, offers }) => [`${provider_id}/${chunk}`, offers]),
+  );
+  return publication.providerPricing.flatMap(({ provider_id, resources }) =>
+    resources.flatMap(({ offers }) =>
+      offers.map(({ offer_refs }) => ({
+        providerId: provider_id,
+        fragments: offer_refs.map(([chunk, index]) => {
+          const offer = chunks.get(`${provider_id}/${chunk}`)?.[index];
+          if (offer === undefined)
+            throw new Error(`Missing provider offer ${provider_id}/${chunk}`);
+          return offer;
+        }),
+      })),
+    ),
   );
 }
 
@@ -215,6 +237,57 @@ describe("website data", () => {
           pricing?.offers.flatMap(({ allowances }) => allowances.map(({ value }) => value)) ?? [],
       ),
     ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
+
+    expect(
+      Math.max(...hydratedDetails.map(({ pricing }) => pricing?.offers.length ?? 0)),
+    ).toBeLessThanOrEqual(32);
+    expect(
+      hydratedDetails.find(({ model_ref }) => model_ref === "ollama/alfred")?.pricing?.offers,
+    ).toEqual([expect.objectContaining({ title: "Local execution" })]);
+    expect(
+      hydratedDetails
+        .find(({ model_ref }) => model_ref === "vercel/google/gemini-3-flash")
+        ?.pricing?.offers.filter(({ title }) => /GPT|Claude|other Gemini/i.test(title)),
+    ).toEqual([]);
+  }, 90_000);
+
+  it("keeps provider detail qualifiers readable and raw previews bounded", async () => {
+    const offers = publishedProviderOffers((await publicationData()).publication);
+    expect(offers.length).toBeGreaterThan(0);
+    let conditionalRates = 0;
+    for (const { providerId, fragments } of offers) {
+      const rawRows = fragments.flatMap(({ unnormalized }) => unnormalized);
+      expect(rawRows.length, providerId).toBeLessThanOrEqual(PROVIDER_UNNORMALIZED_PREVIEW_LIMIT);
+      expect(new Set(fragments.map(({ unnormalized_count }) => unnormalized_count)).size).toBe(1);
+      expect(fragments[0]?.unnormalized_count ?? 0).toBeGreaterThanOrEqual(rawRows.length);
+
+      const rows = fragments.flatMap((offer) => [
+        ...offer.states,
+        ...offer.rates,
+        ...offer.allowances,
+        ...offer.contributions,
+        ...offer.enrollment,
+        ...offer.settlement,
+      ]);
+      for (const row of rows) {
+        expect(row.applicability_label.trim(), providerId).not.toBe("");
+        if (!row.applicability.any_of.some(({ all_of }) => all_of.length === 0)) {
+          expect(row.applicability_label, providerId).not.toBe("All contexts");
+          if ("amount" in row) conditionalRates += 1;
+        }
+      }
+      for (const fragment of fragments) {
+        expect(
+          fragment.rates.map(({ label }) => label),
+          providerId,
+        ).not.toEqual(expect.arrayContaining([expect.stringMatching(/^provider-meter\(/)]));
+        expect(
+          fragment.allowances.map(({ value }) => value),
+          providerId,
+        ).not.toEqual(expect.arrayContaining([expect.stringMatching(/^provider-credit\(/)]));
+      }
+    }
+    expect(conditionalRates).toBeGreaterThan(0);
   }, 90_000);
 
   it("projects exact numeric values and complete range partitions as choices", async () => {

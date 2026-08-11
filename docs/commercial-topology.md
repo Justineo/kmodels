@@ -110,7 +110,11 @@ numeric.
 An optional model projection is only an index for model details. It means that
 first-party evidence relates the resource to those models; it does not prove
 execution, inclusion, or additive cost. Standalone services and plans may have
-an empty projection.
+an empty projection. When one resource book contains offers with different
+model coverage, each offer carries its exact `model_refs` subset; omitting it
+means the offer applies to the book's complete projection. Model presentation
+filters this offer-level scope before classification, so an incompatible offer
+cannot reappear as a generic standalone offer.
 
 Books from different providers never reference one another. A reseller or
 cloud seller publishes its own book even when it delegates economics to or
@@ -253,7 +257,8 @@ automatically incur K3 inference; when the user explicitly composes both,
 
 A deterministic consumer composes a commercial context as follows:
 
-1. select one request mechanism for the exact model or resource;
+1. select one request mechanism for the exact model or resource, after applying
+   its offer-level model scope;
 2. add provider services that the caller explicitly selects;
 3. close applicable `requires` relationships, resolving each alternative;
 4. close realized `incurs` relationships, using observed outcomes when the

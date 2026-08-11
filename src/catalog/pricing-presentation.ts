@@ -79,6 +79,7 @@ interface PricingViewIndex {
   dispositions: ReadonlySet<string>;
   books: ReadonlyMap<string, PricingBook[]>;
   offers: ReadonlyMap<string, { book: PricingBook; offer: PricingOffer }>;
+  mechanismScopedOffers: ReadonlySet<string>;
 }
 
 interface PricingTableCell {
@@ -169,6 +170,24 @@ export function pricingViewIndex(data: PricingCatalog): PricingViewIndex {
       if (current === undefined) books.set(modelRef, [book]);
       else current.push(book);
     }
+  const modelOffers = data.books
+    .filter(({ scope }) => scope.kind === "models")
+    .flatMap(({ offers }) => offers);
+  const modelOfferIds = new Set(modelOffers.map(({ id }) => id));
+  const mechanismScopedOffers = new Set(
+    data.books.flatMap(({ offers }) =>
+      offers.flatMap((offer) =>
+        offer.relations.some(({ target }) =>
+          target.offer_refs.some((offerRef) => modelOfferIds.has(offerRef)),
+        )
+          ? [offer.id]
+          : [],
+      ),
+    ),
+  );
+  for (const offer of modelOffers)
+    for (const relation of offer.relations)
+      for (const offerRef of relation.target.offer_refs) mechanismScopedOffers.add(offerRef);
   return {
     snapshots: new Map(data.provider_snapshots.map((snapshot) => [snapshot.provider_id, snapshot])),
     dispositions: new Set(data.model_dispositions.map(({ model_ref }) => model_ref)),
@@ -176,6 +195,7 @@ export function pricingViewIndex(data: PricingCatalog): PricingViewIndex {
     offers: new Map(
       data.books.flatMap((book) => book.offers.map((offer) => [offer.id, { book, offer }])),
     ),
+    mechanismScopedOffers,
   };
 }
 
@@ -200,12 +220,14 @@ export function modelPricingViewFromIndex(
   const hasExternalExecution = projectedBooks.some(
     (book) =>
       book.scope.kind === "provider_resource" &&
-      book.offers.some((offer) =>
-        offer.states.some(
-          ({ state, applicability }) =>
-            state === "externally_billed" &&
-            evaluateModelApplicability(applicability, model.uid, selections).state !== "false",
-        ),
+      book.offers.some(
+        (offer) =>
+          offerIncludesModel(offer, model.uid) &&
+          offer.states.some(
+            ({ state, applicability }) =>
+              state === "externally_billed" &&
+              evaluateModelApplicability(applicability, model.uid, selections).state !== "false",
+          ),
       ),
   );
   if (index.dispositions.has(model.uid) && !hasExternalExecution)
@@ -217,7 +239,9 @@ export function modelPricingViewFromIndex(
     projectedBooks
       .filter(({ scope }) => scope.kind === "models")
       .flatMap(({ offers }) => offers)
-      .filter((offer) => offerCanApplyToModel(offer, context)),
+      .filter(
+        (offer) => offerIncludesModel(offer, model.uid) && offerCanApplyToModel(offer, context),
+      ),
   );
   const mechanismIds = new Set(modelMechanisms.map(({ id }) => id));
   const automaticIds = new Set(
@@ -236,7 +260,16 @@ export function modelPricingViewFromIndex(
     }),
   ]);
   const resources = books.flatMap((book) =>
-    book.scope.kind === "provider_resource" ? book.offers.map((offer) => ({ book, offer })) : [],
+    book.scope.kind === "provider_resource"
+      ? book.offers
+          .filter(
+            (offer) =>
+              offerIncludesModel(offer, model.uid) &&
+              (!index.mechanismScopedOffers.has(offer.id) ||
+                isRelatedToMechanism(offer, mechanismIds, modelMechanisms)),
+          )
+          .map((offer) => ({ book, offer }))
+      : [],
   );
   const automaticComponents = uniqueOffers(
     resources.flatMap(({ offer }) => (automaticIds.has(offer.id) ? [offer] : [])),
@@ -273,6 +306,10 @@ export function modelPricingViewFromIndex(
     standaloneOffers,
     ...metadata,
   };
+}
+
+function offerIncludesModel(offer: PricingOffer, modelRef: string): boolean {
+  return offer.model_refs === undefined || offer.model_refs.includes(modelRef);
 }
 
 export function projectPricingTableCell(
@@ -642,7 +679,8 @@ export function displayUnitPrice(
       unit: fallbackUnit,
       approximate: true,
     };
-  const denomination = formatDenomination(price.denomination);
+  const denomination =
+    price.denomination.kind === "fiat" ? price.denomination.currency : price.denomination.code;
   return {
     amount: formatDisplayAmountText(price.denomination, display.amount, display.approximate),
     displayUnit: display.unit.display,
@@ -671,7 +709,9 @@ function formatDisplayAmountText(
   const label =
     denomination.kind === "fiat" && denomination.currency === "USD"
       ? "$"
-      : formatDenomination(denomination);
+      : denomination.kind === "provider_credit"
+        ? denomination.code
+        : formatDenomination(denomination);
   return `${label}${label === "$" ? "" : " "}${value}${approximate ? "…" : ""}`;
 }
 
@@ -755,6 +795,19 @@ function isCompatibleWithMechanism(
       relations.some(
         ({ kind, target }) => kind === "compatible_with" && target.offer_refs.includes(offer.id),
       ),
+    )
+  );
+}
+
+function isRelatedToMechanism(
+  offer: PricingOffer,
+  mechanismIds: ReadonlySet<string>,
+  mechanisms: readonly PricingOffer[],
+): boolean {
+  return (
+    offer.relations.some(({ target }) => target.offer_refs.some((ref) => mechanismIds.has(ref))) ||
+    mechanisms.some(({ relations }) =>
+      relations.some(({ target }) => target.offer_refs.includes(offer.id)),
     )
   );
 }

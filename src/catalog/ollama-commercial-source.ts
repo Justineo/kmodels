@@ -30,33 +30,31 @@ export function attachOllamaLocalCommercialFacts(
   models: ParsedProviderModel[],
   sourceId: string,
 ): void {
-  const facts = models.map(
-    (model): SourceCommercialPricingFact => ({
-      ...resource(
+  const fact: SourceCommercialPricingFact = {
+    ...resource(
+      sourceId,
+      "execution:local",
+      "Ollama local execution",
+      "service",
+      "local-execution",
+      models.map(({ uid }) => uid),
+      "usage",
+    ),
+    offer_key: "local",
+    offer_name: "Local execution",
+    pricing_state: "externally_billed",
+    price_facts: [],
+    raw_price_facts: [
+      raw(
         sourceId,
-        "execution:local",
-        "Ollama local execution",
-        "service",
-        "local-execution",
-        [model.uid],
-        "usage",
+        "operator-compute",
+        "base_price",
+        "unknown_amount",
+        "Ollama does not bill local inference; hardware, energy, administration, and external hosting remain operator costs",
       ),
-      offer_key: `model:${model.uid}`,
-      offer_name: `Local execution for ${model.model_id}`,
-      pricing_state: "externally_billed",
-      price_facts: [],
-      raw_price_facts: [
-        raw(
-          sourceId,
-          "operator-compute",
-          "base_price",
-          "unknown_amount",
-          "Ollama does not bill local inference; hardware, energy, administration, and external hosting remain operator costs",
-        ),
-      ],
-    }),
-  );
-  attachCommercialFacts(models, facts);
+    ],
+  };
+  attachCommercialFacts(models, [fact]);
 }
 
 export function attachOllamaCloudCommercialFacts(

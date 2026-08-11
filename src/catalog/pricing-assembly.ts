@@ -64,6 +64,7 @@ export interface AtomicPricingBook {
 export interface AtomicPricingOffer {
   offer_key: string;
   name?: string;
+  model_refs?: string[];
   billing_mode: BillingMode;
   states: AtomicPriceState[];
   enrollment?: PricingOffer["enrollment"];
@@ -247,13 +248,13 @@ function assembleBook(prepared: PreparedBook): PricingBook {
     ),
     resource_edges: sortByCanonicalKey(input.resource_edges ?? [], (edge) => edge),
     offers: prepared.offers
-      .map(assembleOffer)
+      .map((offer) => assembleOffer(offer, input.scope.model_refs))
       .sort((left, right) => compareUtf8(left.id, right.id)),
     source_refs: sortUniqueStrings(input.source_refs),
   };
 }
 
-function assembleOffer(prepared: PreparedOffer): PricingOffer {
+function assembleOffer(prepared: PreparedOffer, bookModelRefs: readonly string[]): PricingOffer {
   const { input } = prepared;
   const stateResult = assembleStates(input.states);
   let states = stateResult.states;
@@ -278,10 +279,19 @@ function assembleOffer(prepared: PreparedOffer): PricingOffer {
     terms = applyRateContainment(states, terms);
   }
 
+  const modelRefs =
+    input.model_refs === undefined ? undefined : sortUniqueStrings(input.model_refs);
   const base = {
     id: prepared.id,
     offer_key: input.offer_key,
     ...optional("name", input.name),
+    ...optional(
+      "model_refs",
+      modelRefs !== undefined &&
+        compareUtf8Sequences(modelRefs, sortUniqueStrings([...bookModelRefs])) === 0
+        ? undefined
+        : modelRefs,
+    ),
     billing_mode: input.billing_mode,
     states: sortStates(states),
     enrollment: sortByCanonicalKey(input.enrollment ?? [], (variant) => variant),
@@ -1074,6 +1084,12 @@ function precompactionProjection(prepared: PreparedProvider) {
           book_id: offer.bookId,
           offer_key: offer.input.offer_key,
           ...optional("name", offer.input.name),
+          ...optional(
+            "model_refs",
+            offer.input.model_refs === undefined
+              ? undefined
+              : sortUniqueStrings(offer.input.model_refs),
+          ),
           billing_mode: offer.input.billing_mode,
           source_refs: sortUniqueStrings(offer.input.source_refs),
           relations: offer.input.relations.map(canonicalRelation),

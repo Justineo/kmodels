@@ -247,6 +247,7 @@ const websitePricingSelectorSchema = z.discriminatedUnion("kind", [
 
 const scopeFields = {
   applicability: priceApplicabilitySchema,
+  applicability_label: nonEmpty,
   validity: publishedValiditySchema.optional(),
 };
 
@@ -315,6 +316,11 @@ const websiteUnnormalizedRowSchema = z.strictObject({
   validity: publishedValiditySchema.optional(),
 });
 
+const websiteBillingModeSchema = z.strictObject({
+  label: nonEmpty,
+  description: nonEmpty.optional(),
+});
+
 const websitePricingOfferSchema = z.strictObject({
   id: hash,
   title: z.string().min(1),
@@ -325,10 +331,7 @@ const websitePricingOfferSchema = z.strictObject({
     "plan_capacity",
     "standalone",
   ]),
-  billing_mode: z.strictObject({
-    label: nonEmpty,
-    description: nonEmpty.optional(),
-  }),
+  billing_mode: websiteBillingModeSchema,
   composition: z.string().min(1).optional(),
   state_summary: z.string().min(1),
   selectors: z.array(websitePricingSelectorSchema),
@@ -338,6 +341,7 @@ const websitePricingOfferSchema = z.strictObject({
   contributions: z.array(websiteContributionRowSchema),
   enrollment: z.array(websiteEnrollmentRowSchema),
   settlement: z.array(websiteSettlementRowSchema),
+  unnormalized_count: z.number().int().nonnegative(),
   unnormalized: z.array(websiteUnnormalizedRowSchema),
 });
 
@@ -352,7 +356,7 @@ const websiteOfferReferenceSchema = z.tuple([
 ]);
 
 export const websiteOfferChunkSchema = z.strictObject({
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
@@ -366,7 +370,7 @@ const websiteProviderPricingResourceShape = {
 };
 
 export const websiteProviderPricingChunkSchema = z.strictObject({
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
@@ -374,7 +378,17 @@ export const websiteProviderPricingChunkSchema = z.strictObject({
   resources: z.array(
     z.strictObject({
       ...websiteProviderPricingResourceShape,
-      offer_refs: z.array(z.array(websiteOfferReferenceSchema).min(1)).min(1),
+      offers: z
+        .array(
+          z.strictObject({
+            id: hash,
+            title: nonEmpty,
+            billing_mode: websiteBillingModeSchema,
+            state_summary: nonEmpty,
+            offer_refs: z.array(websiteOfferReferenceSchema).min(1),
+          }),
+        )
+        .min(1),
     }),
   ),
 });
@@ -456,14 +470,9 @@ export type WebsiteModelDetail = z.infer<typeof websiteModelDetailSchema>;
 export type WebsiteStoredModelDetail = z.infer<typeof websiteStoredModelDetailSchema>;
 export type WebsitePricingDetail = z.infer<typeof websitePricingDetailSchema>;
 export type WebsiteProviderPricingChunk = z.infer<typeof websiteProviderPricingChunkSchema>;
-export type WebsiteProviderPricingDetail = Omit<WebsiteProviderPricingChunk, "resources"> & {
-  resources: Array<{
-    id: string;
-    title: string;
-    kind: string;
-    offers: WebsitePricingOffer[];
-  }>;
-};
+export type WebsiteProviderPricingDetail = WebsiteProviderPricingChunk;
+export type WebsiteProviderPricingOffer =
+  WebsiteProviderPricingChunk["resources"][number]["offers"][number];
 export type WebsiteProvider = WebsiteCatalogIndex["providers"][number];
 export type WebsitePricingOffer = z.infer<typeof websitePricingOfferSchema>;
 export type WebsitePricingSelector = z.infer<typeof websitePricingSelectorSchema>;

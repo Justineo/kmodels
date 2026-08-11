@@ -37,6 +37,7 @@ export interface CommercialPricingBook {
 export interface CommercialPricingOffer {
   id: string;
   offer_key: string;
+  model_refs?: string[];
   billing_mode: PricingOffer["billing_mode"];
   states: Array<Omit<PricingOffer["states"][number], "observations">>;
   enrollment: Array<Omit<PricingOffer["enrollment"][number], "observations">>;
@@ -165,6 +166,7 @@ function commercialOffer(offer: PricingOffer, used: UsedAtoms): CommercialPricin
   const base = {
     id: offer.id,
     offer_key: offer.offer_key,
+    ...(offer.model_refs === undefined ? {} : { model_refs: offer.model_refs }),
     billing_mode: offer.billing_mode,
     states: offer.states.map(({ observations: _, ...state }) => state),
     enrollment: offer.enrollment.map(({ observations: _, ...variant }) => variant),

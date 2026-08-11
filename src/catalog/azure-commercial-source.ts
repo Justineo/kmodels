@@ -11,7 +11,6 @@ import type {
 interface Input {
   documents: readonly { url: string; body: string }[];
   sourceId: string;
-  modelRefs: readonly string[];
   modelRefsForLabel: (label: string) => string[];
   region: (value: string) => string;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
@@ -179,34 +178,24 @@ function isCommercialTable(path: string, table: string): boolean {
 
 function rateSpec(price: EmbeddedPrice, input: Input): RateSpec | undefined {
   const text = `${price.table} ${price.row} ${price.prefix} ${price.header} ${price.segment}`;
-  if (price.path === "/en-us/pricing/details/foundry-agent-service/")
-    return agentSpec(price, text, input.modelRefs);
-  if (price.path === "/en-us/pricing/details/foundryobservability/")
-    return evaluationSpec(text, input.modelRefs);
+  if (price.path === "/en-us/pricing/details/foundry-agent-service/") return agentSpec(price, text);
+  if (price.path === "/en-us/pricing/details/foundryobservability/") return evaluationSpec(text);
   if (price.path === "/en-us/pricing/details/content-safety/")
-    return contentSafetySpec(price, text, input.modelRefs);
-  if (price.path === "/en-us/pricing/details/microsoft-foundry/")
-    return acuSpec(price, text, input.modelRefs);
+    return contentSafetySpec(price, text);
+  if (price.path === "/en-us/pricing/details/microsoft-foundry/") return acuSpec(price, text);
   if (price.path === "/en-us/pricing/details/ai-foundry-models/fine-tuning-models/")
     return fineTuningSpec(price, text, input);
   if (price.path === "/en-us/pricing/details/azure-openai/")
     return openAiCommercialSpec(price, text, input);
 }
 
-function agentSpec(
-  price: EmbeddedPrice,
-  text: string,
-  modelRefs: readonly string[],
-): RateSpec | undefined {
-  const common = { modelRefs: [...modelRefs] };
+function agentSpec(price: EmbeddedPrice, text: string): RateSpec | undefined {
   if (/hosted agents/i.test(price.row) && /vcpu/i.test(price.segment))
     return serviceRate("hosted-agent-runtime", "Hosted agent runtime", "compute", "unit_hour", {
-      ...common,
       conditions: { capacity: "vCPU" },
     });
   if (/hosted agents/i.test(price.row) && /memory|gib/i.test(price.segment))
     return serviceRate("hosted-agent-runtime", "Hosted agent runtime", "compute", "unit_hour", {
-      ...common,
       conditions: { capacity: "GiB memory" },
     });
   if (/file search storage/i.test(text))
@@ -215,7 +204,6 @@ function agentSpec(
       "Agent File Search storage",
       "storage",
       "gigabyte_day",
-      common,
     );
   if (/code interpreter/i.test(text))
     return serviceRate(
@@ -223,7 +211,6 @@ function agentSpec(
       "Agent Code Interpreter",
       "code_execution",
       "session",
-      common,
     );
   if (/custom search/i.test(text))
     return serviceRate(
@@ -232,18 +219,16 @@ function agentSpec(
       "web_search",
       "thousand_requests",
       {
-        ...common,
         conditions: { operation: "custom_search_transaction" },
       },
     );
   if (/web search/i.test(text))
     return serviceRate("agent-web-search", "Agent Web Search", "web_search", "thousand_requests", {
-      ...common,
       conditions: { operation: "web_search_transaction" },
     });
 }
 
-function evaluationSpec(text: string, modelRefs: readonly string[]): RateSpec | undefined {
+function evaluationSpec(text: string): RateSpec | undefined {
   const operation = /output/i.test(text)
     ? "output_tokens"
     : /input/i.test(text)
@@ -251,20 +236,14 @@ function evaluationSpec(text: string, modelRefs: readonly string[]): RateSpec | 
       : undefined;
   if (operation === undefined) return;
   return serviceRate("ai-evaluation", "AI Evaluation", "evaluation", "million_tokens", {
-    modelRefs: [...modelRefs],
     conditions: { operation },
   });
 }
 
-function contentSafetySpec(
-  price: EmbeddedPrice,
-  text: string,
-  modelRefs: readonly string[],
-): RateSpec | undefined {
+function contentSafetySpec(price: EmbeddedPrice, text: string): RateSpec | undefined {
   if (/standard/i.test(text)) {
     const modality = /image|multimodal/i.test(text) ? "image" : "text";
     return serviceRate("content-safety", "Content Safety", "content_safety", "thousand_items", {
-      modelRefs: [...modelRefs],
       conditions: { account_eligibility: "standard", modality },
     });
   }
@@ -285,11 +264,7 @@ function contentSafetySpec(
   }
 }
 
-function acuSpec(
-  price: EmbeddedPrice,
-  _text: string,
-  modelRefs: readonly string[],
-): RateSpec | undefined {
+function acuSpec(price: EmbeddedPrice, _text: string): RateSpec | undefined {
   const amounts = price.prefix.match(/\d[\d,]*/g) ?? price.segment.match(/\d[\d,]*/g) ?? [];
   const units = amounts.find((value) => value.includes(",")) ?? amounts[1];
   const tier = price.row.match(/^\s*(\d+)\b/)?.[1] ?? "unknown";
@@ -298,7 +273,6 @@ function acuSpec(
     bookName: "Agent Prepurchase Plan",
     resourceKind: "plan",
     resourceKey: "agent-prepurchase",
-    modelRefs: [...modelRefs],
     offerKey: `tier-${tier}`,
     offerName: `Agent Prepurchase tier ${tier}`,
     billingMode: "subscription",
@@ -322,7 +296,6 @@ function fineTuningSpec(price: EmbeddedPrice, text: string, input: Input): RateS
       bookName: "Managed Compute",
       resourceKind: "capacity",
       resourceKey: "managed-compute",
-      modelRefs: [...input.modelRefs],
       offerKey: "accelerator-hour",
       offerName: "Managed accelerator compute",
       billingMode: "capacity",
@@ -361,14 +334,12 @@ function openAiCommercialSpec(
   input: Input,
 ): RateSpec | undefined {
   if (/built-in tools/i.test(price.table)) {
-    const common = { modelRefs: [...input.modelRefs] };
     if (/file search tool call/i.test(text))
       return serviceRate(
         "responses-file-search",
         "Responses File Search",
         "file_search",
         "thousand_requests",
-        common,
       );
     if (/file search/i.test(text))
       return serviceRate(
@@ -376,7 +347,6 @@ function openAiCommercialSpec(
         "Responses File Search storage",
         "storage",
         "gigabyte_day",
-        common,
       );
     if (/code interpreter/i.test(text))
       return serviceRate(
@@ -384,7 +354,6 @@ function openAiCommercialSpec(
         "Responses Code Interpreter",
         "code_execution",
         "session",
-        common,
       );
     if (/computer use/i.test(text))
       return serviceRate(
@@ -392,7 +361,6 @@ function openAiCommercialSpec(
         "Computer Use",
         /output/i.test(price.segment) ? "output_text" : "input_text",
         "million_tokens",
-        common,
       );
   }
   if (/provisioned/i.test(price.table)) {
@@ -472,7 +440,6 @@ function addRawFact(facts: Map<string, MutableFact>, price: EmbeddedPrice, input
     bookKey: `service:unresolved:${page}`,
     bookName: `Unresolved ${page} commercial terms`,
     resourceKey: `unresolved:${page}`,
-    modelRefs: [...input.modelRefs],
     offerKey: slug(`${price.table}-${price.row}`),
     offerName: [price.table, price.row].filter(Boolean).join(" — "),
     meter: "subscription",
@@ -505,9 +472,6 @@ function addContentSafetyAllowances(
       "Content Safety",
       "content_safety",
       "thousand_items",
-      {
-        modelRefs: [...input.modelRefs],
-      },
     );
     const fact = getFact(facts, {
       ...spec,

@@ -2577,9 +2577,6 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
   const commercial = azureCommercialFacts({
     documents: [bundle.index, ...bundle.documents],
     sourceId: input.source.id,
-    modelRefs: catalogModels.map((model) =>
-      modelUid(input.provider.id, model.model_id, model.version),
-    ),
     modelRefsForLabel: (label) => azureCommercialModelRefs(label, catalogModels, input.provider.id),
     region: azurePublicRegion,
     ...(input.onPricingReconciliation === undefined

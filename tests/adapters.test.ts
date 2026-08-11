@@ -5502,9 +5502,17 @@ describe("Azure adapters", () => {
       ]),
     );
     expect(byResource("ptu-reservation:azure/gpt-4o@2024-08-06")).toHaveLength(2);
+    expect(byResource("ptu-reservation:azure/gpt-4o@2024-08-06")[0]?.model_refs).toEqual([
+      "azure/gpt-4o@2024-08-06",
+    ]);
     expect(byResource("fine-tuning:llama-3-3-70b")[0]?.model_refs).toEqual([
       "azure/Llama-3.3-70B-Instruct",
     ]);
+    for (const key of ["agent-web-search", "content-safety", "ai-evaluation", "agent-prepurchase"])
+      expect(
+        byResource(key).every(({ model_refs }) => model_refs.length === 0),
+        key,
+      ).toBe(true);
     expect(byResource("hosted-agent-runtime")[0]?.price_facts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ meter: "compute", unit: "unit_hour", price: "0.0994" }),
@@ -5562,6 +5570,7 @@ describe("Azure adapters", () => {
         }),
       ],
     });
+    expect(plan?.scope.model_refs).toEqual([]);
   });
 
   it("normalizes official partner meters with provider-native billing units", () => {
@@ -15608,7 +15617,7 @@ describe("Ollama adapters", () => {
       "text_generation",
       "ocr",
     ]);
-    expect(models[0]?.commercial_facts).toHaveLength(4);
+    expect(models[0]?.commercial_facts).toHaveLength(1);
     expect(models[0]?.commercial_facts?.[0]).toMatchObject({
       book_key: "execution:local",
       pricing_state: "externally_billed",
@@ -15788,7 +15797,10 @@ describe("Ollama adapters", () => {
         { unit: { namespace: "kmodels", value: "seat" }, power: 1 },
       ],
     );
-    expect(resource("local-execution")?.offers).toHaveLength(4);
+    expect(resource("local-execution")).toMatchObject({
+      scope: { model_refs: expect.arrayContaining(libraryModels.map(({ uid }) => uid)) },
+      offers: [{ offer_key: "local" }],
+    });
     expect(resource("local-execution")?.offers[0]?.settlement[0]).toMatchObject({
       channel: "operator",
       payment_sources: ["external_bill"],

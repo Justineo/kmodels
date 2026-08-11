@@ -67,7 +67,7 @@ function modelBook(
     evaluation !== undefined
   ) {
     const source = evaluation.offers[0];
-    if (source !== undefined) offers.push(evaluationOffer(source));
+    if (source !== undefined) offers.push(evaluationOffer(source, modelRef));
   }
   addMutualExclusion(book.book_key, offers, input.provider_id);
   return { ...book, offers };
@@ -94,12 +94,13 @@ function hostedOffer(offer: AtomicPricingOffer, input: AtomicProviderPricing): A
     : directSettlement(migrated, "Cohere hosted production API");
 }
 
-function evaluationOffer(source: AtomicPricingOffer): AtomicPricingOffer {
+function evaluationOffer(source: AtomicPricingOffer, modelRef: string): AtomicPricingOffer {
   const evidence = offerEvidence(source);
   return {
     ...source,
     offer_key: "hosted-evaluation",
     name: "Hosted evaluation API",
+    model_refs: [modelRef],
     enrollment: [
       {
         state: "account_scoped",
@@ -132,7 +133,7 @@ function evaluationOnlyBook(
         raw: { label: `Evaluation API access for ${modelRef}` },
       },
     ],
-    offers: [evaluationOffer(source)],
+    offers: [evaluationOffer(source, modelRef)],
     source_refs: evaluation.source_refs,
   };
 }

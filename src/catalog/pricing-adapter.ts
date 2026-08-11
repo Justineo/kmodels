@@ -95,6 +95,7 @@ interface OfferBuilder {
   billingMode: "usage" | "capacity" | "subscription" | "one_time" | "hybrid";
   states: AtomicPriceState[];
   terms: Map<string, AtomicRateTerm | AtomicRawTerm>;
+  modelRefs: Set<string>;
   sourceRefs: Set<string>;
 }
 
@@ -352,6 +353,10 @@ function addModelPricing(
   if (rates.length === 0 && model.raw_price_facts.length === 0 && !publishesState) return;
 
   addScope(context, sourceRef, modelRefs);
+  if (forcedOffer !== undefined) {
+    const offer = forcedOfferBuilder(context, forcedOffer, "usage");
+    for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
+  }
   for (const { sourceRate, normalizedRate } of rates)
     addRate(context, sourceRef, model, sourceRate, normalizedRate, forcedOffer);
   for (const fact of model.raw_price_facts) addRaw(context, sourceRef, model, fact, forcedOffer);
@@ -422,11 +427,14 @@ function commercialPricingBooks(
     });
     if (fact.pricing_state === "included" || fact.pricing_state === "externally_billed") {
       addScope(context, sourceRef, modelRefs);
-      addState(context, sourceRef, fact.pricing_state, {
+      const forcedOffer = {
         key: fact.offer_key,
         name: fact.offer_name,
         billingMode: fact.billing_mode,
-      });
+      };
+      const offer = forcedOfferBuilder(context, forcedOffer, "usage");
+      for (const modelRef of modelRefs) offer.modelRefs.add(modelRef);
+      addState(context, sourceRef, fact.pricing_state, forcedOffer);
     }
   }
   return [...groups.values()].flatMap(({ context, resourceKind, resourceKey }) => {
@@ -714,6 +722,7 @@ function pricingOffer(value: OfferBuilder): AtomicPricingOffer {
   return {
     offer_key: value.offerKey,
     name: value.name,
+    ...(value.modelRefs.size === 0 ? {} : { model_refs: [...value.modelRefs] }),
     billing_mode: { namespace: "kmodels", value: value.billingMode },
     states: value.states,
     terms: [...value.terms.values()],
@@ -736,6 +745,7 @@ function offerBuilder(
     billingMode,
     states: [],
     terms: new Map(),
+    modelRefs: new Set(),
     sourceRefs: new Set(),
   };
   context.offers.set(key, created);
