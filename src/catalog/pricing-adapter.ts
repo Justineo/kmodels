@@ -478,13 +478,22 @@ function addRaw(
   term.variants.push({
     impact: fact.impact,
     reason: validity === false ? "unsupported_structure" : fact.reason,
+    ...(fact.resolution_policy === undefined ? {} : { resolution_policy: fact.resolution_policy }),
     possible_scope: rateApplicability(context, fact.conditions),
     ...(validity === undefined || validity === false ? {} : { validity }),
     observation: {
       source_ref: sourceRef,
       locator: {
         kind: "provider_key",
-        value: JSON.stringify([model.uid, fact.term_key, fact.conditions, fact.raw]),
+        value: JSON.stringify([
+          model.uid,
+          fact.term_key,
+          fact.impact,
+          fact.reason,
+          fact.resolution_policy,
+          fact.conditions,
+          fact.raw,
+        ]),
       },
       raw: fact.raw,
     },

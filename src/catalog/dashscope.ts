@@ -622,6 +622,7 @@ const recommendedRegions = new Map([
   ["Tokyo", "Japan (Tokyo)"],
   ["Frankfurt", "Germany (Frankfurt)"],
   ["US (Virginia)", "US (Virginia)"],
+  ["Virginia", "US (Virginia)"],
   ["International", "International"],
 ]);
 
@@ -719,14 +720,12 @@ function recommendedMarkdownRoute(raw: string): { endpoint?: ApiEndpoint; region
 function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, ProviderModel> {
   const lines = input.body.split(/\r?\n/);
   const starts = lines.flatMap((line, index) =>
-    /^\[!\[\]\([^\n]+\) ([A-Za-z0-9][A-Za-z0-9._:/-]*)\]\([^\n]+\)\s*$/.test(line) ? [index] : [],
+    /^\[!\[\]\([^\n]+\) [^\n]+\]\([^\n]+\)\s*$/.test(line) ? [index] : [],
   );
   const models = new Map<string, ProviderModel>();
   for (const [position, start] of starts.entries()) {
     const firstLine = lines[start] ?? "";
-    const id = exactId(
-      firstLine.match(/^\[!\[\]\([^\n]+\) ([A-Za-z0-9][A-Za-z0-9._:/-]*)\]\(/)?.[1] ?? "",
-    );
+    const heading = firstLine.match(/^\[!\[\]\([^\n]+\) (.+)\]\(/)?.[1] ?? "";
     const end = starts[position + 1] ?? lines.length;
     const block = lines.slice(start, end).join("\n");
     const publishedIds = unique(
@@ -734,7 +733,8 @@ function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, Provi
         (match) => exactId(match[1] ?? "") ?? [],
       ),
     );
-    if (id === undefined || publishedIds.length !== 1 || publishedIds[0] !== id)
+    const id = publishedIds[0];
+    if (id === undefined || publishedIds.length !== 1 || !heading.startsWith(id))
       throw new Error("DashScope recommended-model card ID drifted");
     const regionLine = text(lines[start + 1] ?? "");
     const regions = recommendedMarkdownRegions(regionLine);
@@ -1463,7 +1463,7 @@ function webSearchRate(
     const rate = publishedRate(
       "web_search",
       price,
-      "thousand_requests",
+      "thousand_events",
       input.source.id,
       "USD per 1,000 web-search calls",
       {

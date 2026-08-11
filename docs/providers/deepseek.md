@@ -198,9 +198,9 @@ remain preflight estimates.
 | Future increase notice                                  | Preserve an unbound pending price observation with no amount/effective date. It cannot override current numeric rows.                                                                           |
 | Consumer App and open weights                           | Preserve separate product/distribution facts. App free use does not apply to API; self-host compute is operator/external cost.                                                                  |
 | Products absent from the bounded API surface            | Emit no speculative Batch, training, subscription, media, embedding, or deployment offer. Reconsider only when exact first-party product evidence appears.                                      |
-| Missing, malformed, or conflicting claims               | Suppress only the affected claim and retain current models, sibling meters, routes, account facts, raw evidence, and compatible prior claims with freshness state.                              |
+| Missing, malformed, or conflicting claims               | Suppress only a malformed fact inside a complete bundle; an incomplete bundle retains the accepted provider pricing partition with visible staleness.                                           |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is specific to each claim:
 
@@ -242,9 +242,9 @@ Refresh remains deterministic and non-LLM. English and Chinese price tables,
 public and authenticated inventory, each delivery-interface schema, cache,
 thinking, caller tools, built-in search, route mappings, lifecycle, rate limits,
 balance, FAQ/terms, and account evidence are independent claim groups. Validate
-exhaustiveness only inside a source's proven scope. One missing guide, stale
-orphan, malformed usage field, unresolved currency binding, or web-search drift
-suppresses that claim or retains a compatible prior claim as stale; it must not
+exhaustiveness only inside a source's proven scope. A stale orphan, malformed usage field,
+unresolved currency binding, or web-search drift suppresses that claim; a missing
+commercial guide retains the accepted provider pricing partition. It must not
 erase the model, another meter, another interface, account facts, or the whole
 provider snapshot. Every recognized atom receives a normalized, derived,
 included, externally billed, account-only, superseded, conflicting,

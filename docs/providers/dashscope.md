@@ -18,7 +18,7 @@ Alibaba also publishes the [Model Studio CLI](https://github.com/modelstudioai/c
 
 ## First-party commercial source graph
 
-The price collector uses the Markdown price book as the only required public price source. Six exact first-party companions are optional claim groups: [context cache](https://www.alibabacloud.com/help/en/model-studio/context-cache.md), [batch inference](https://www.alibabacloud.com/help/en/model-studio/batch-inference.md), [Chat Completions usage](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md), [Responses usage](https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api.md), [web search](https://www.alibabacloud.com/help/en/model-studio/web-search.md), and [billing and cost management](https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management.md). Missing or changed companions suppress only their cache derivation, automatic charge binding, service offer, or settlement claim. They cannot erase price-book rows. Usage statistics, savings plans, billing-plan routes, and `DescribeInstanceBill` remain reviewed audit authorities below, but the runtime does not fetch them until their richer plan, allowance, or account-settlement atoms are normalized. No third-party price book is a fallback.
+The price collector uses the Markdown price book as the only required public price source. Six exact first-party companions cover [context cache](https://www.alibabacloud.com/help/en/model-studio/context-cache.md), [batch inference](https://www.alibabacloud.com/help/en/model-studio/batch-inference.md), [Chat Completions usage](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md), [Responses usage](https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api.md), [web search](https://www.alibabacloud.com/help/en/model-studio/web-search.md), and [billing and cost management](https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management.md). Inside a complete bundle, changed individual claims suppress only their cache derivation, automatic charge binding, service offer, or settlement claim. If a companion is unavailable, the complete previously accepted DashScope pricing partition is retained; price-book rows are never combined with a partial fresh commercial bundle. Usage statistics, savings plans, billing-plan routes, and `DescribeInstanceBill` remain reviewed audit authorities below, but the runtime does not fetch them until their richer plan, allowance, or account-settlement atoms are normalized. No third-party price book is a fallback.
 
 The public price book is standard pay-as-you-go pricing. Every amount retains exact ID, physical region, deployment scope, thinking mode, total-input context tier, modality, resolution, operation, promotion, account eligibility, and native unit. When same-level Markdown headings lose the enclosing physical-region section, the row's reviewed deployment scope recovers the corresponding region (`International` to Singapore, `Chinese mainland` to China (Beijing), and the exact EU, Japan, or US scopes to their published regions); `Global` does not imply a physical region. Availability is the union of every exact region observed across a model's rates, not the first rate only. Input and output image prices are separate meters; sparse resolution rows retain shared input price while binding the changed output price to the new resolution. Invitational-preview labels are metadata, not part of the ID.
 
@@ -207,9 +207,9 @@ not establish Alibaba product presence, rate applicability, or account settlemen
 | Personal, Team, and Coding plans          | Normalize distinct subscription books, exclusive routes, allowlists, quotas, packs, and enrollment. Opaque Credits remain their native unit, never converted to PAYG tokens.     |
 | Free quota and savings plans              | Normalize account allowance/commitment terms, eligibility, and deduction order separately from public rates.                                                                     |
 | Billing evidence                          | Preserve delayed account settlement and adjustments for reconciliation; never reverse-engineer an unqualified public rate from an aggregate line.                                |
-| Missing, malformed, or conflicting claims | Suppress only the affected claim and retain the model, sibling meters, resource, raw evidence, and compatible prior claim with freshness state.                                  |
+| Missing, malformed, or conflicting claims | Suppress only a malformed fact inside a complete bundle; an incomplete bundle retains the accepted provider pricing partition with visible staleness.                            |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is specific to each commercial claim:
 
@@ -249,9 +249,10 @@ Refresh is deterministic and non-LLM. Public price sections, task and lifecycle
 tables, authenticated regional inventories, each tool guide, cache, Batch, training,
 each deployment mechanism, each plan, quota/savings terms, and billing evidence are
 independent claim groups. Validate an exhaustive envelope only within the scope that
-the source itself owns. Failure or drift in one optional group suppresses that group
-or retains its compatible prior claim as stale; it must not erase the model, another
-region, sibling meter, unrelated tool, capacity offer, or provider snapshot. A
+the source itself owns. Fact-level drift in a successfully parsed bundle suppresses
+only the affected group. An unavailable public commercial companion retains the
+provider pricing partition; it must not erase the model, another region, sibling
+meter, unrelated tool, or capacity offer. A
 non-exhaustive omission never becomes a negative claim. Every recognized atom gets a
 normalized, derived, promotional, included, externally billed, account-only,
 conflicting, unsupported, ambiguous, or pending disposition instead of rejecting the

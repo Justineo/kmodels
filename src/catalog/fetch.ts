@@ -190,6 +190,7 @@ export type FetchObservation = Omit<FetchPayload, "body"> & { key: string };
 
 export interface FetchResult extends FetchPayload {
   dependencies: FetchObservation[];
+  omittedOptionalDependencies?: string[];
 }
 
 class TransientFetchError extends Error {
@@ -336,10 +337,19 @@ async function curlRequest(url: URL, source: SourceManifest, json?: string): Pro
     );
   args.push(url.href);
   try {
-    const result = await execute("curl", args, {
-      encoding: "utf8",
-      maxBuffer: source.maxResponseBytes + 64 * 1024,
-    });
+    const run = (requestArgs: string[]) =>
+      execute("curl", requestArgs, {
+        encoding: "utf8",
+        maxBuffer: source.maxResponseBytes + 64 * 1024,
+      });
+    let result;
+    try {
+      result = await run(args);
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
+      if (!["56", "92"].includes(code)) throw error;
+      result = await run([...args.slice(0, -1), "--http1.1", url.href]);
+    }
     return curlResponse(result.stdout);
   } catch (error) {
     const code = error instanceof Error && "code" in error ? String(error.code) : "unknown";
@@ -1624,7 +1634,7 @@ async function fetchDocumentEntry(
 async function fetchConfiguredDocuments(
   source: SourceManifest,
   label: string,
-): Promise<FetchedDocument[]> {
+): Promise<{ documents: FetchedDocument[]; omitted: string[] }> {
   const crawl = source.linkedDocuments;
   if (
     crawl === undefined ||
@@ -1642,7 +1652,13 @@ async function fetchConfiguredDocuments(
       ...(document.optional === undefined ? {} : { optional: document.optional }),
     }),
   );
-  return documents.filter((document): document is FetchedDocument => document !== undefined);
+  return {
+    documents: documents.filter((document): document is FetchedDocument => document !== undefined),
+    omitted: documents.flatMap((document, index) => {
+      const id = crawl.documents?.[index]?.id;
+      return document === undefined && id !== undefined ? [id] : [];
+    }),
+  };
 }
 
 async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
@@ -1720,7 +1736,7 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     return { key, url: url.href, payload };
   });
 
-  const documents = [...endpointDocuments, ...modelPages, ...documentation];
+  const documents = [...endpointDocuments, ...modelPages, ...documentation.documents];
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
     documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
@@ -1736,6 +1752,9 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       observation(indexKey, index),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
+    ...(documentation.omitted.length === 0
+      ? {}
+      : { omittedOptionalDependencies: documentation.omitted }),
   };
 }
 
@@ -1955,7 +1974,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     "html",
     source.maxResponseBytes,
   );
-  const [rawIndex, catalog, documents] = await Promise.all([
+  const [rawIndex, catalog, documentation] = await Promise.all([
     fetchPayload(indexSource).catch(() => undefined),
     fetchPayload(catalogSource).catch(() => undefined),
     fetchConfiguredDocuments(source, "Ollama"),
@@ -2030,6 +2049,7 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
     }
   });
   const pages = pageResults.filter((item) => item !== undefined);
+  const documents = documentation.documents;
   const body = JSON.stringify({
     list: json(index.body),
     ...(catalog === undefined ? {} : { catalog: { url: catalogUrl.href, body: catalog.body } }),
@@ -2059,6 +2079,9 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
       ...details.map(({ key, payload }) => observation(key, payload)),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
+    ...(documentation.omitted.length === 0
+      ? {}
+      : { omittedOptionalDependencies: documentation.omitted }),
   };
 }
 
@@ -2204,6 +2227,9 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Linked documents exceeded aggregate byte limit");
+  const omitted = configured.flatMap((entry, index) =>
+    configuredDocuments[index] === undefined ? [entry.key] : [],
+  );
   return {
     body,
     contentHash: sha256(body),
@@ -2214,5 +2240,6 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       ...nestedIndexes.map((document) => observation(document.key, document.payload)),
       ...documents.map((document) => observation(document.key, document.payload)),
     ],
+    ...(omitted.length === 0 ? {} : { omittedOptionalDependencies: omitted }),
   };
 }

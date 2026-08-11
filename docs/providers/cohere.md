@@ -235,7 +235,7 @@ Vault quotas, and replica caps are allowance, admission, or sizing facts, not mo
 | Retired historical amounts and deprecated fine-tuning API           | Preserve as historical/non-current evidence or exclusion. Do not expose as a current offer.                                                                                                                                  |
 | Duplicate, conflicting, malformed, or newly shaped evidence         | Reconcile claim-locally by exact identity, source specificity, validity, and semantics. Retain alternatives or bounded raw diagnostics when unresolved; do not reject recognized model rows, sibling facts, or the provider. |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 - Exact current pricing cells own public amounts. Exact model cards and route guides own identity,
   availability, limits, and model-specific enrollment. Response/API references own billed counters.
@@ -330,9 +330,10 @@ Vault quotas, and replica caps are allowance, admission, or sizing facts, not mo
 - Refresh is deterministic and non-LLM. Labeled model IDs own identity; typed RSC pricing products,
   exact legacy sentences, dedicated Standard/Encrypted Model Vault tables, and model-card pricing
   blocks own commercial facts. The first-party OpenAPI and identity/route structure remain strict
-  drift guards. Accounting phrases and optional commercial companions are claim-local: drift or a
-  failed fetch suppresses only the affected charge binding, enrollment, relation, or resource and
-  emits a reconciliation item.
+  drift guards. Accounting phrases normalize fact-locally inside a complete
+  commercial bundle. A failed companion fetch retains the complete accepted pricing
+  partition; a malformed individual claim suppresses only its dependent binding,
+  enrollment, relation, or resource and emits a reconciliation item.
 - Optional first-party companions cover generic Batch, V2 caller-executed tools, V1 migration,
   Standard and Encrypted Vault support/pricing, North-with-Vault, and private deployment. Their
   absence cannot discard the required model bundle or independently supported hosted rates.

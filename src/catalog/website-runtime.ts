@@ -20,7 +20,16 @@ const catalogKeys = new Set([
   "providers",
   "models",
 ]);
-const providerKeys = new Set(["id", "name"]);
+const providerKeys = new Set(["id", "name", "pricing_coverage"]);
+const providerPricingCoverageKeys = new Set([
+  "models",
+  "representative_models",
+  "offer_models",
+  "unknown_models",
+  "not_applicable_models",
+  "standalone_resources",
+  "detail_chunks",
+]);
 const pricingKeys = new Set(["schema_version", "data_version", "pricing"]);
 const modelKeys = new Set([
   "provider_id",
@@ -185,6 +194,29 @@ function parseModel(value: unknown, index: number): WebsiteCatalogIndexModel {
   };
 }
 
+function providerPricingCoverage(value: unknown, label: string) {
+  const coverage = record(value, label);
+  exactKeys(coverage, providerPricingCoverageKeys, label);
+  return {
+    models: nonnegativeInteger(coverage.models, `${label}.models`),
+    representative_models: nonnegativeInteger(
+      coverage.representative_models,
+      `${label}.representative_models`,
+    ),
+    offer_models: nonnegativeInteger(coverage.offer_models, `${label}.offer_models`),
+    unknown_models: nonnegativeInteger(coverage.unknown_models, `${label}.unknown_models`),
+    not_applicable_models: nonnegativeInteger(
+      coverage.not_applicable_models,
+      `${label}.not_applicable_models`,
+    ),
+    standalone_resources: nonnegativeInteger(
+      coverage.standalone_resources,
+      `${label}.standalone_resources`,
+    ),
+    detail_chunks: nonnegativeInteger(coverage.detail_chunks, `${label}.detail_chunks`),
+  };
+}
+
 function parseWebsitePricing(value: unknown): WebsitePricingSummaries {
   const pricing = record(value, "pricing");
   exactKeys(pricing, pricingKeys, "pricing");
@@ -204,7 +236,7 @@ function parseWebsitePricing(value: unknown): WebsitePricingSummaries {
 export function parseWebsiteCatalog(catalogValue: unknown, pricingValue: unknown): WebsiteCatalog {
   const catalog = record(catalogValue, "catalog");
   exactKeys(catalog, catalogKeys, "catalog");
-  if (catalog.schema_version !== 1) throw new Error("Unsupported website catalog schema");
+  if (catalog.schema_version !== 2) throw new Error("Unsupported website catalog schema");
   const dataVersion = nonEmptyString(catalog.data_version, "catalog.data_version");
   if (!hashPattern.test(dataVersion)) throw new Error("catalog.data_version must be a hash");
   if (!Array.isArray(catalog.providers)) throw new Error("catalog.providers must be an array");
@@ -222,6 +254,10 @@ export function parseWebsiteCatalog(catalogValue: unknown, pricingValue: unknown
     return {
       id: nonEmptyString(provider.id, `${label}.id`),
       name: nonEmptyString(provider.name, `${label}.name`),
+      pricing_coverage: providerPricingCoverage(
+        provider.pricing_coverage,
+        `${label}.pricing_coverage`,
+      ),
     };
   });
   const providerIds = new Set(providers.map(({ id }) => id));
@@ -241,7 +277,7 @@ export function parseWebsiteCatalog(catalogValue: unknown, pricingValue: unknown
   });
 
   return {
-    schema_version: 1,
+    schema_version: 2,
     data_version: dataVersion,
     generated_at: nonEmptyString(catalog.generated_at, "catalog.generated_at"),
     providers,

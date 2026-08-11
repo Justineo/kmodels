@@ -4,6 +4,7 @@ import { formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
   displayUnitPrice,
+  evaluateApplicability,
   evaluateModelApplicability,
   formatAllowanceBenefit,
   formatCategoricalValue,
@@ -33,6 +34,8 @@ import type {
   PricingOffer,
   PricingRefreshFailureCode,
   ProviderAtomRegistryEntry,
+  ProviderPricingSnapshot,
+  RawPriceFact,
   UsageSignal,
 } from "./pricing-schema.ts";
 import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
@@ -40,15 +43,22 @@ import type { Catalog, ProviderModel } from "./schema.ts";
 import {
   websiteCatalogIndexSchema,
   websiteDetailChunkSchema,
+  websiteOfferChunkSchema,
+  websiteProviderPricingChunkSchema,
   websitePricingDetailSchema,
   websitePricingSummariesSchema,
   type WebsiteCatalogIndex,
   type WebsiteDetailChunk,
   type WebsiteModelDetail,
+  type WebsiteOfferChunk,
+  type WebsiteOfferReference,
+  type WebsiteProviderPricingChunk,
+  type WebsiteProviderPricingDetail,
   type WebsitePricingDetail,
   type WebsitePricingOffer,
   type WebsitePricingSelector,
   type WebsitePricingSummaries,
+  type WebsiteStoredModelDetail,
 } from "./website-schema.ts";
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
@@ -64,6 +74,8 @@ export interface WebsitePublication {
   catalog: WebsiteCatalogIndex;
   pricing: WebsitePricingSummaries;
   details: WebsiteDetailChunk[];
+  offers: WebsiteOfferChunk[];
+  providerPricing: WebsiteProviderPricingChunk[];
 }
 
 export function websitePublication(
@@ -82,19 +94,33 @@ export function websitePublication(
     if (result === undefined) throw new Error(`Missing pricing view for ${model.uid}`);
     return result;
   };
-  const details = websiteDetailChunks(catalog, dataVersion, view, labels, atoms);
+  const summaries = catalog.models.map((model) => pricingSummary(view(model), model, labels));
+  const deferred = websiteDeferredAssets(catalog, pricing, dataVersion, view, labels, atoms);
+  const providerPricingChunks = new Map<string, number>();
+  for (const { provider_id } of deferred.providerPricing)
+    providerPricingChunks.set(provider_id, (providerPricingChunks.get(provider_id) ?? 0) + 1);
   const detailChunkByModel = new Map(
-    details.flatMap(({ chunk, details: chunkDetails }) =>
+    deferred.details.flatMap(({ chunk, details: chunkDetails }) =>
       chunkDetails.map((detail): [string, number] => [detail.model_ref, chunk]),
     ),
   );
 
   return {
     catalog: websiteCatalogIndexSchema.parse({
-      schema_version: 1,
+      schema_version: 2,
       data_version: dataVersion,
       generated_at: catalog.generated_at,
-      providers: catalog.providers.map(({ id, name }) => ({ id, name })),
+      providers: catalog.providers.map(({ id, name }) => ({
+        id,
+        name,
+        pricing_coverage: providerPricingCoverage(
+          catalog,
+          pricing,
+          summaries,
+          id,
+          providerPricingChunks.get(id) ?? 0,
+        ),
+      })),
       models: catalog.models.map((model) => {
         const detailChunk = detailChunkByModel.get(model.uid);
         if (detailChunk === undefined)
@@ -118,68 +144,257 @@ export function websitePublication(
     pricing: websitePricingSummariesSchema.parse({
       schema_version: 1,
       data_version: dataVersion,
-      pricing: catalog.models.map((model) => pricingSummary(view(model), model, labels)),
+      pricing: summaries,
     }),
-    details,
+    details: deferred.details,
+    offers: deferred.offers,
+    providerPricing: deferred.providerPricing,
   };
 }
 
-function websiteDetailChunks(
+function providerPricingCoverage(
   catalog: Catalog,
+  pricing: PricingCatalog,
+  summaries: WebsitePricingSummaries["pricing"],
+  providerId: string,
+  detailChunks: number,
+) {
+  const providerModels = catalog.models.flatMap((model, index) =>
+    model.provider_id === providerId && summaries[index] !== undefined ? [summaries[index]] : [],
+  );
+  return {
+    models: providerModels.length,
+    representative_models: providerModels.filter(
+      (summary) =>
+        summary.input !== undefined || summary.cache !== undefined || summary.output !== undefined,
+    ).length,
+    offer_models: providerModels.filter(({ outcome }) => outcome === "offers").length,
+    unknown_models: providerModels.filter(({ outcome }) => outcome === "unknown").length,
+    not_applicable_models: providerModels.filter(({ outcome }) => outcome === "not_applicable")
+      .length,
+    standalone_resources: pricing.books.filter(
+      ({ provider_id, scope }) =>
+        provider_id === providerId &&
+        scope.kind === "provider_resource" &&
+        scope.model_refs.length === 0,
+    ).length,
+    detail_chunks: detailChunks,
+  };
+}
+
+function websiteDeferredAssets(
+  catalog: Catalog,
+  pricing: PricingCatalog,
   dataVersion: string,
   view: (model: ProviderModel) => ModelPricingView,
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
-): WebsiteDetailChunk[] {
-  const chunks: WebsiteDetailChunk[] = [];
+): Pick<WebsitePublication, "details" | "offers" | "providerPricing"> {
+  const details: WebsiteDetailChunk[] = [];
+  const offers: WebsiteOfferChunk[] = [];
+  const providerPricing: WebsiteProviderPricingChunk[] = [];
 
   for (const provider of catalog.providers) {
+    const offerIndexes = new Map<string, number>();
+    const uniqueOffers: WebsitePricingOffer[] = [];
+    function indexOffer(offer: WebsitePricingOffer): number {
+      const source = JSON.stringify(offer);
+      const current = offerIndexes.get(source);
+      if (current !== undefined) return current;
+      const index = uniqueOffers.length;
+      offerIndexes.set(source, index);
+      uniqueOffers.push(offer);
+      return index;
+    }
+
     const providerDetails = catalog.models
       .filter((model) => model.provider_id === provider.id)
       .map((model) => {
-        const detail = websiteModelDetailFromView(view(model), model, labels, atoms);
+        const { pricing, ...detail } = websiteModelDetailFromView(
+          view(model),
+          model,
+          labels,
+          atoms,
+        );
         return {
           detail,
-          bytes: Buffer.byteLength(JSON.stringify(detail)),
+          ...(pricing === undefined
+            ? {}
+            : {
+                pricing: {
+                  ...(pricing.snapshot === undefined ? {} : { snapshot: pricing.snapshot }),
+                  offerIndexes: pricing.offers.map(indexOffer),
+                },
+              }),
         };
       });
-    let chunkDetails: WebsiteModelDetail[] = [];
-    let payloadBytes = 0;
-    let chunk = 0;
+    const providerResources = websiteProviderPricingResources(
+      pricing,
+      provider.id,
+      labels,
+      atoms,
+    ).map(({ offers: resourceOffers, ...resource }) => ({
+      resource,
+      offerIndexes: resourceOffers.map((offer) => websiteOfferFragments(offer).map(indexOffer)),
+    }));
+    offerIndexes.clear();
+    const providerOffers = boundedChunks(
+      uniqueOffers,
+      (values, chunk) =>
+        websiteOfferChunkSchema.parse({
+          schema_version: 1,
+          data_version: dataVersion,
+          provider_id: provider.id,
+          chunk,
+          offers: values,
+        }),
+      `Website offers for ${provider.id}`,
+    );
+    offers.push(...providerOffers);
+    const references: WebsiteOfferReference[] = providerOffers.flatMap(({ chunk, offers }) =>
+      offers.map((_, index): WebsiteOfferReference => [chunk, index]),
+    );
 
-    function emitChunk(): void {
-      if (chunkDetails.length === 0) return;
-      const detailChunk = websiteDetailChunkSchema.parse({
-        schema_version: 4,
-        data_version: dataVersion,
-        provider_id: provider.id,
-        chunk,
-        details: chunkDetails,
-      });
-      const bytes = Buffer.byteLength(JSON.stringify(detailChunk));
-      if (bytes > WEBSITE_DETAIL_CHUNK_MAX_BYTES)
-        throw new Error(
-          `Website detail chunk ${provider.id}/${chunk} exceeds ${WEBSITE_DETAIL_CHUNK_MAX_BYTES} bytes`,
-        );
-      chunks.push(detailChunk);
-      chunk += 1;
-      chunkDetails = [];
-      payloadBytes = 0;
-    }
+    const storedDetails = providerDetails.map(({ pricing, detail }): WebsiteStoredModelDetail => {
+      if (pricing === undefined) return detail;
+      return {
+        ...detail,
+        pricing: {
+          ...(pricing.snapshot === undefined ? {} : { snapshot: pricing.snapshot }),
+          offer_refs: pricing.offerIndexes.map((index) =>
+            offerReference(references, index, detail.model_ref),
+          ),
+        },
+      };
+    });
+    details.push(
+      ...boundedChunks(
+        storedDetails,
+        (values, chunk) =>
+          websiteDetailChunkSchema.parse({
+            schema_version: 5,
+            data_version: dataVersion,
+            provider_id: provider.id,
+            chunk,
+            details: values,
+          }),
+        `Website model details for ${provider.id}`,
+      ),
+    );
 
-    for (const entry of providerDetails) {
-      const separatorBytes = chunkDetails.length === 0 ? 0 : 1;
-      if (
-        chunkDetails.length > 0 &&
-        payloadBytes + separatorBytes + entry.bytes > WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES
-      )
-        emitChunk();
-      chunkDetails.push(entry.detail);
-      payloadBytes += (chunkDetails.length === 1 ? 0 : 1) + entry.bytes;
-    }
-    emitChunk();
+    const storedResources: WebsiteProviderPricingChunk["resources"] = providerResources.map(
+      ({ resource, offerIndexes }) => ({
+        ...resource,
+        offer_refs: offerIndexes.map((indexes) =>
+          indexes.map((index) => offerReference(references, index, resource.id)),
+        ),
+      }),
+    );
+    const snapshot = websiteSnapshot(
+      pricing.provider_snapshots.find(({ provider_id }) => provider_id === provider.id),
+    );
+    providerPricing.push(
+      ...boundedChunks(
+        storedResources,
+        (values, chunk) =>
+          websiteProviderPricingChunkSchema.parse({
+            schema_version: 1,
+            data_version: dataVersion,
+            provider_id: provider.id,
+            chunk,
+            ...(snapshot === undefined ? {} : { snapshot }),
+            resources: values,
+          }),
+        `Website provider pricing for ${provider.id}`,
+      ),
+    );
   }
 
+  return { details, offers, providerPricing };
+}
+
+function offerReference(
+  references: readonly WebsiteOfferReference[],
+  index: number,
+  owner: string,
+): WebsiteOfferReference {
+  const reference = references[index];
+  if (reference === undefined) throw new Error(`Missing website offer reference for ${owner}`);
+  return reference;
+}
+
+const offerRows = [
+  "selectors",
+  "states",
+  "rates",
+  "allowances",
+  "contributions",
+  "enrollment",
+  "settlement",
+  "unnormalized",
+] as const satisfies readonly (keyof WebsitePricingOffer)[];
+
+function websiteOfferFragments(offer: WebsitePricingOffer): WebsitePricingOffer[] {
+  const empty = (): WebsitePricingOffer => ({
+    ...offer,
+    selectors: [],
+    states: [],
+    rates: [],
+    allowances: [],
+    contributions: [],
+    enrollment: [],
+    settlement: [],
+    unnormalized: [],
+  });
+  const fragments: WebsitePricingOffer[] = [];
+  let current = empty();
+  let rowCount = 0;
+  for (const field of offerRows)
+    for (const row of offer[field]) {
+      const candidate = { ...current, [field]: [...current[field], row] };
+      if (
+        rowCount > 0 &&
+        Buffer.byteLength(JSON.stringify(candidate)) > WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES
+      ) {
+        fragments.push(current);
+        current = { ...empty(), [field]: [row] };
+        rowCount = 1;
+      } else {
+        current = candidate;
+        rowCount += 1;
+      }
+    }
+  return fragments.length === 0 && rowCount === 0 ? [offer] : [...fragments, current];
+}
+
+function boundedChunks<Value, Chunk>(
+  values: readonly Value[],
+  makeChunk: (values: Value[], chunk: number) => Chunk,
+  label: string,
+): Chunk[] {
+  const chunks: Chunk[] = [];
+  let current: Value[] = [];
+  let payloadBytes = 0;
+
+  function emit(): void {
+    if (current.length === 0) return;
+    const chunk = makeChunk(current, chunks.length);
+    if (Buffer.byteLength(JSON.stringify(chunk)) > WEBSITE_DETAIL_CHUNK_MAX_BYTES)
+      throw new Error(
+        `${label} chunk ${chunks.length} exceeds ${WEBSITE_DETAIL_CHUNK_MAX_BYTES} bytes`,
+      );
+    chunks.push(chunk);
+    current = [];
+    payloadBytes = 0;
+  }
+
+  for (const value of values) {
+    const bytes = Buffer.byteLength(JSON.stringify(value));
+    if (current.length > 0 && payloadBytes + 1 + bytes > WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES) emit();
+    current.push(value);
+    payloadBytes += (current.length === 1 ? 0 : 1) + bytes;
+  }
+  emit();
   return chunks;
 }
 
@@ -212,12 +427,33 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
       label: "Unknown",
       description: "Available sources do not establish whether pricing applies.",
     };
-  if (view.modelMechanisms.length === 0)
+  if (view.modelMechanisms.length === 0) {
+    const resourceOffers = [
+      ...view.optionalServices,
+      ...view.automaticComponents,
+      ...view.plansAndCapacity,
+      ...view.standaloneOffers,
+    ];
+    if (
+      resourceOffers.some((offer) =>
+        offer.states.some(
+          ({ state, applicability }) =>
+            state === "externally_billed" &&
+            evaluateModelApplicability(applicability, modelRef).state !== "false",
+        ),
+      )
+    )
+      return {
+        label: "External cost",
+        description:
+          "A self-hosted or externally billed execution path exists; infrastructure cost is set outside this provider price book.",
+      };
     return {
-      label: "No model offer",
+      label: "Context",
       description:
-        "Pricing details exist, but no model offer applies to this model. This is not a service-availability claim.",
+        "Commercial services or plans relate to this model, but no provider-priced inference offer applies.",
     };
+  }
   if (view.modelMechanisms.length > 1)
     return {
       label: `${view.modelMechanisms.length} offers`,
@@ -299,22 +535,7 @@ function websitePricingDetail(
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
 ): WebsitePricingDetail | undefined {
-  const snapshot =
-    view.snapshot === undefined
-      ? undefined
-      : view.snapshot.publication === "retained"
-        ? {
-            observed_at: view.snapshot.observed_at,
-            publication: view.snapshot.publication,
-            refresh_failure: {
-              attempted_at: view.snapshot.refresh_failure.attempted_at,
-              message: refreshFailureMessage(view.snapshot.refresh_failure.code),
-            },
-          }
-        : {
-            observed_at: view.snapshot.observed_at,
-            publication: view.snapshot.publication,
-          };
+  const snapshot = websiteSnapshot(view.snapshot);
   if (view.outcome !== "offers")
     return snapshot === undefined
       ? undefined
@@ -333,6 +554,49 @@ function websitePricingDetail(
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
   });
+}
+
+function websiteProviderPricingResources(
+  pricing: PricingCatalog,
+  providerId: string,
+  labels: CategoricalLabelIndex,
+  atoms: ProviderAtomIndex,
+): WebsiteProviderPricingDetail["resources"] {
+  const books = pricing.books.filter(({ provider_id }) => provider_id === providerId);
+  return books
+    .filter(({ scope }) => scope.kind === "provider_resource" && scope.model_refs.length === 0)
+    .map((book) => {
+      if (book.scope.kind !== "provider_resource")
+        throw new Error(`Provider resource ${book.book_key} lost its scope`);
+      return {
+        id: book.id,
+        title: book.name ?? formatSentenceCase(book.scope.resource_key.replaceAll("-", "_")),
+        kind:
+          book.scope.resource_kind.namespace === "kmodels"
+            ? formatSentenceCase(book.scope.resource_kind.value)
+            : formatSentenceCase(book.scope.resource_kind.value.replaceAll("-", "_")),
+        offers: book.offers.map((offer) =>
+          websiteOffer(books, offer, "standalone", undefined, labels, atoms),
+        ),
+      };
+    });
+}
+
+function websiteSnapshot(snapshot: ProviderPricingSnapshot | undefined) {
+  if (snapshot === undefined) return;
+  return snapshot.publication === "retained"
+    ? {
+        observed_at: snapshot.observed_at,
+        publication: snapshot.publication,
+        refresh_failure: {
+          attempted_at: snapshot.refresh_failure.attempted_at,
+          message: refreshFailureMessage(snapshot.refresh_failure.code),
+        },
+      }
+    : {
+        observed_at: snapshot.observed_at,
+        publication: snapshot.publication,
+      };
 }
 
 function refreshFailureMessage(code: PricingRefreshFailureCode): string {
@@ -354,7 +618,7 @@ function websiteOffer(
   books: PricingBook[],
   offer: PricingOffer,
   group: WebsitePricingOffer["group"],
-  modelRef: string,
+  modelRef: string | undefined,
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
 ): WebsitePricingOffer {
@@ -421,11 +685,13 @@ function websiteOffer(
           ? "Allowance"
           : formatSentenceCase(term.term_key);
     variants.forEach((variant, index) => {
+      const details = [...new Set(variant.observations.flatMap(({ raw }) => rawFactDetails(raw)))];
       unnormalized.push({
         key: `${term.id}:raw:${index}`,
         label,
         impact: variant.impact,
         reason: formatSentenceCase(variant.reason),
+        ...(details.length === 0 ? {} : { details }),
         ...(variant.possible_scope === undefined ? {} : { possible_scope: variant.possible_scope }),
         ...(variant.validity === undefined ? {} : { validity: variant.validity }),
       });
@@ -460,6 +726,20 @@ function websiteOffer(
     })),
     unnormalized,
   };
+}
+
+function rawFactDetails(raw: RawPriceFact): string[] {
+  const price = [raw.amount, raw.denomination].filter((value) => value !== undefined).join(" ");
+  const details = [
+    raw.label,
+    price === "" ? undefined : price,
+    raw.unit === undefined ? undefined : `Unit: ${raw.unit}`,
+    raw.meter === undefined ? undefined : `Meter: ${raw.meter}`,
+    raw.formula === undefined ? undefined : `Formula: ${raw.formula}`,
+    raw.validity === undefined ? undefined : `Validity: ${raw.validity}`,
+    raw.conditions?.map(({ dimension, value }) => `${dimension}: ${value}`).join(", "),
+  ].filter((value): value is string => value !== undefined);
+  return details;
 }
 
 function pricingSelectors(
@@ -769,28 +1049,37 @@ function formatSelectorDecimal(value: string): string {
   return fraction === undefined ? grouped : `${grouped}.${fraction}`;
 }
 
-function offerStateSummary(offer: PricingOffer, modelRef: string): string {
+function offerStateSummary(offer: PricingOffer, modelRef: string | undefined): string {
   if (
     offerRawVariants(offer).some(
       (variant) =>
         variant.impact === "base_price" &&
         (variant.possible_scope === undefined ||
-          evaluateModelApplicability(variant.possible_scope, modelRef).state !== "false"),
+          applicabilityPossible(variant.possible_scope, modelRef)),
     )
   )
     return "Incomplete";
   const states = [
     ...new Set(
       offer.states
-        .filter(
-          ({ applicability }) =>
-            evaluateModelApplicability(applicability, modelRef).state !== "false",
-        )
+        .filter(({ applicability }) => applicabilityPossible(applicability, modelRef))
         .map(({ state }) => stateLabel(state)),
     ),
   ];
   if (states.length === 0) return "No matching state";
   return states.length === 1 ? states[0]! : `${states.length} pricing states`;
+}
+
+function applicabilityPossible(
+  applicability: PricingOffer["states"][number]["applicability"],
+  modelRef: string | undefined,
+): boolean {
+  return (
+    (modelRef === undefined
+      ? evaluateApplicability(applicability, [])
+      : evaluateModelApplicability(applicability, modelRef)
+    ).state !== "false"
+  );
 }
 
 function allowanceTarget(target: PriceAllowanceTarget, offer: PricingOffer): string {
@@ -826,9 +1115,11 @@ function relationLabel(books: PricingBook[], offer: PricingOffer): string {
   );
   return offer.relations
     .map((relation) => {
-      const target = relation.target.offer_refs.map(
-        (ref) => offerNames.get(ref) ?? "Referenced offer",
-      );
+      const names = relation.target.offer_refs.map((ref) => offerNames.get(ref));
+      const target =
+        names.length <= 3 && names.every((name) => name !== undefined)
+          ? names.join(", ")
+          : `${names.length} ${names.length === 1 ? "offer" : "offers"}`;
       const prefix =
         relation.kind === "requires"
           ? "Requires one of"
@@ -837,7 +1128,7 @@ function relationLabel(books: PricingBook[], offer: PricingOffer): string {
             : relation.kind === "compatible_with"
               ? "Compatible with"
               : "Mutually exclusive with";
-      return `${prefix} ${target.join(", ")}`;
+      return `${prefix} ${target}`;
     })
     .join("; ");
 }

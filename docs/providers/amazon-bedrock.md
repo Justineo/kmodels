@@ -295,7 +295,7 @@ cannot be assigned to one call without an explicit operator allocation policy.
 | S3, ECR, EC2, CloudWatch, Lambda, vector-store, and third-party fees                                                     | Explicit external boundary                                                           | The owning AWS service or provider controls the rate.                                                                                     |
 | Private offers, EDP/private discounts, credits, taxes, currency conversion, refunds, and invoices                        | Account settlement only                                                              | They cannot be derived from the public price book.                                                                                        |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific:
 

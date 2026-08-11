@@ -275,9 +275,9 @@ partial unless an exact billed quantity is documented.
 | Native/OpenAI/Anthropic routes            | Preserve route and usage precision differences over one execution offer. Local aliases and compatibility names create no global rows.                                      |
 | Private models, queues, future priority   | Preserve current plan entitlement or future/pending observation. Emit no storage, queue, or priority offer/rate.                                                           |
 | Cloud retirements and replacements        | Preserve route-specific lifecycle. Local Library evidence can keep the catalog model active without reviving the Cloud route.                                              |
-| Missing, malformed, or conflicting claims | Suppress only the affected model, route, rate, allowance, or relation and retain sibling facts, raw evidence, and compatible prior claims with freshness state.            |
+| Missing, malformed, or conflicting claims | Suppress only a malformed fact inside a complete bundle; an incomplete bundle retains the accepted provider pricing partition with visible staleness.                      |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is specific to each claim:
 
@@ -318,9 +318,9 @@ Refresh remains deterministic and non-LLM. Library distribution, direct Cloud li
 each family page/tag, Show detail, plan, allowance, Kimi K3 rate component and gate, terms, usage
 schema, compatibility route, Search, Fetch, caller tools, modalities, and lifecycle are independent
 claim groups. Validate exhaustiveness only inside a source's proven scope. A new commercial-looking
-page becomes pending/unbound; a missing page, malformed tag, unknown capability, count drift, stale
-FAQ sentence, unbound price card, or unresolved replacement suppresses its dependent claim or retains
-a compatible prior claim as stale. None may erase another valid model, route, plan, service, or the
+page becomes pending/unbound; a malformed tag, unknown capability, count drift, stale
+FAQ sentence, unbound price card, or unresolved replacement suppresses its dependent claim. A missing
+commercial page retains the accepted provider pricing partition. None may erase another valid model, route, plan, service, or the
 provider snapshot. Every recognized atom receives a normalized, included, externally billed,
 account-only, custom-quote, not-published, superseded, conflicting, ambiguous, or pending
 disposition.

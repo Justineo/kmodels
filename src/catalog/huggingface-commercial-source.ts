@@ -184,6 +184,7 @@ function endpointFacts(input: Input, body: string): SourceCommercialPricingFact[
                   label: "The exact current capacity table owns the normalized hourly amount",
                 },
                 { capacity: key },
+                "exact_capacity_table_over_monthly_example",
               ),
             ]
           : [],
@@ -663,8 +664,17 @@ function raw(
   reason: SourceRawPricingFact["reason"],
   value: SourceRawPricingFact["raw"],
   conditions: SourceRawPricingFact["conditions"] = {},
+  resolutionPolicy?: string,
 ): SourceRawPricingFact {
-  return rawPricingFact(input.sourceId, termKey, impact, reason, value, conditions);
+  return rawPricingFact(
+    input.sourceId,
+    termKey,
+    impact,
+    reason,
+    value,
+    conditions,
+    resolutionPolicy,
+  );
 }
 
 function markdownRows(body: string): string[][] {

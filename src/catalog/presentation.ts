@@ -13,6 +13,10 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
+export function formatSnapshotAt(value: string): string {
+  return `${value.slice(0, 10)} ${value.slice(11, 16)} UTC`;
+}
+
 export function versionBadgeModelUids(models: readonly VersionedModel[]): Set<string> {
   const counts = new Map<string, number>();
   for (const model of models) {

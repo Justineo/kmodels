@@ -283,9 +283,12 @@ The committed generated state is:
 Candidate preparation overlaps canonical serialization with work-conserving
 provider validation, then freezes the exact accepted candidate. One projection
 stage creates both packs without a redundant validation pass before the
-accepted-pair pointer advances. Immutable pair snapshots and the atomic current
-pointer remain authoritative during collection and recovery; canonical and
-derived mirrors are repaired from that pointer after interruption. The
+accepted-pair pointer advances. The atomic current pointer and its immutable
+pair snapshot remain authoritative during collection and recovery; canonical
+and derived mirrors are repaired from that pointer after interruption. Once
+those mirrors are durable, superseded local snapshots are removed. Git history
+retains published pairs, while ignored crash-recovery state stays bounded to
+the only pair it can recover. The
 committed mirrors define the pair in a checkout, so `vp run prepare:assets`
 reads them directly and regenerates projections without letting stale ignored
 local state replace newer fetched or pulled data. `vp run compile:pricing`

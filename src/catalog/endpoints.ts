@@ -113,5 +113,13 @@ export function websitePublicationAssets(website: WebsitePublication): AssetSour
       fileName: `ui/details/${detail.provider_id}/${detail.chunk}.json`,
       source: JSON.stringify(detail),
     })),
+    ...website.offers.map((offers) => ({
+      fileName: `ui/offers/${offers.provider_id}/${offers.chunk}.json`,
+      source: JSON.stringify(offers),
+    })),
+    ...website.providerPricing.map((detail) => ({
+      fileName: `ui/providers/${detail.provider_id}/pricing/${detail.chunk}.json`,
+      source: JSON.stringify(detail),
+    })),
   ];
 }

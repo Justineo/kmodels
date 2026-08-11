@@ -5,6 +5,7 @@ import type {
   AtomicProviderPricing,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom, unitIdentityKey } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
@@ -13,7 +14,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   PricingOffer,
   UnitExpression,
@@ -79,7 +79,7 @@ function bindResourceTerm(
         ...variant,
         charge_binding: providerBinding(
           input,
-          resourceSignal(resourceKey, term.meter, variant.applicability),
+          resourceSignal(resourceKey, term.meter, variant.applicability, variant.price.per),
           `Microsoft-reported billable ${term.meter.value.replaceAll("_", " ")} quantity for ${resourceKey}`,
           variant.price.per,
           aggregation,
@@ -117,6 +117,7 @@ function resourceSignal(
   resourceKey: string,
   meter: PriceMeter,
   applicability: PriceApplicability,
+  unit: UnitExpression,
 ): string {
   const operation = applicability.any_of
     .flatMap(({ all_of }) => all_of)
@@ -125,7 +126,7 @@ function resourceSignal(
     );
   const suffix =
     operation?.kind === "categorical" ? operation.values.map(({ value }) => value).join("_") : "";
-  return [resourceKey, meter.value, suffix]
+  return [resourceKey, meter.value, suffix, unitIdentityKey(unit)]
     .filter(Boolean)
     .join("_")
     .replace(/[^a-zA-Z0-9_]+/g, "_");
@@ -427,12 +428,12 @@ function modelChargeBinding(
 ): ChargeBinding | undefined {
   const key =
     router && meter.namespace === "provider" && meter.value === "model_router_input"
-      ? "router_input_tokens"
-      : `${mechanism === "batch" ? "batch_result" : "response"}_${meter.value}`;
+      ? `router_input_${unitIdentityKey(unit)}`
+      : `${mechanism === "batch" ? "batch_result" : "response"}_${meter.value}_${unitIdentityKey(unit)}`;
   return providerBinding(
     input,
     key,
-    `${mechanism === "batch" ? "Completed Batch result-item" : "Resolved Azure inference response"} ${meter.value.replaceAll("_", " ")} usage`,
+    `${mechanism === "batch" ? "Completed Batch result-item" : "Resolved Azure inference response"} ${meter.value.replaceAll("_", " ")} usage measured in ${unitIdentityKey(unit)}`,
     unit,
     mechanism === "batch" ? "result_item" : "attempt",
     observation,
@@ -566,17 +567,4 @@ function usageObservation(
     locator: { kind: "provider_key", value: locator },
     raw: { fragment: locator },
   };
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) =>
-      candidate.kind === atom.kind &&
-      candidate.key === atom.key &&
-      (candidate.kind !== "categorical_value" ||
-        atom.kind !== "categorical_value" ||
-        (candidate.dimension.namespace === atom.dimension.namespace &&
-          candidate.dimension.value === atom.dimension.value)),
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
 }

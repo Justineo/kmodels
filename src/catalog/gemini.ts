@@ -1439,9 +1439,17 @@ function validateAccountingDocumentation(bundle: z.infer<typeof linkedBundleSche
     !urlContext.includes("tool_use_input_tokens") ||
     !codeExecution.includes("charged for input tokens and output tokens") ||
     !deepResearch.includes("based on the underlying Gemini models and the specific tools") ||
-    !computerUse.includes("client-controlled browser environment") ||
-    !modelTuning.includes("no models available for tuning in the Gemini API") ||
-    !agents.includes("orchestrate models and tools through the Interactions API") ||
+    !["client-controlled browser environment", "client-side execution environment"].some((claim) =>
+      computerUse.includes(claim),
+    ) ||
+    ![
+      "no models available for tuning in the Gemini API",
+      "no longer have a model available which supports fine-tuning in the Gemini API",
+    ].some((claim) => modelTuning.includes(claim)) ||
+    !(
+      agents.includes("orchestrate models and tools through the Interactions API") ||
+      (agents.includes("configurable agent harness") && agents.includes("Interactions API"))
+    ) ||
     !agentEnvironment.includes(
       "Environment compute (CPU, memory, sandbox execution) is not billed during the preview period",
     )

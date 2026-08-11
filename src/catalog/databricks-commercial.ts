@@ -10,6 +10,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
 import { isNonNegativeDecimal } from "./pricing-constants.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import { rationalFromDecimal } from "./pricing-rational.ts";
@@ -21,7 +22,6 @@ import type {
   PriceCondition,
   PriceDenomination,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -828,20 +828,6 @@ function providerBinding(
   };
 }
 
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) =>
-      candidate.kind === atom.kind &&
-      candidate.key === atom.key &&
-      (!("dimension" in candidate) ||
-        !("dimension" in atom) ||
-        JSON.stringify(candidate.dimension) === JSON.stringify(atom.dimension)),
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
-  else if (JSON.stringify(current) !== JSON.stringify(atom))
-    throw new Error(`Databricks pricing atom ${atom.key} changed definition`);
-}
-
 function isUnit(unit: UnitExpression, value: "token"): boolean {
   return (
     unit.factors.length === 1 &&
@@ -866,7 +852,7 @@ function normalizedRawObservation(
 }
 
 function usageObservation(observation: RawPriceObservation, value: string): RawPriceObservation {
-  return { ...observation, locator: { kind: "meter", value } };
+  return { ...rawEvidence(observation), locator: { kind: "meter", value } };
 }
 
 function relationFromOffer(
@@ -901,7 +887,7 @@ function relation(
     applicability: unconditionalApplicability,
     observations: [
       {
-        ...source,
+        ...rawEvidence(source),
         raw: { label },
         establishes_offer_refs: targets,
         establishes_book_refs: [],

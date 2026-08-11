@@ -234,7 +234,7 @@ storage rule.
 | Rate limits, usage tiers, balance, spend caps, taxes, generic credits, API-key metadata, Vertex/Enterprise use | Keep as admission, enrollment, external, or settlement facts. They are not Gemini API public usage rates.                                                                                                                 |
 | Unrecognized price row, unit, agent formula, tool kind, SKU relation, or allowance scope                       | Retain the safe exact atom bounded raw with a coverage warning; withhold only the unresolved claim. It must not erase recognized siblings, model identity, or previous independent sources.                               |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 - The exact pricing-page cell owns its public list amount. Mechanism guides own selectors,
   eligibility, failure/downgrade behavior, billable outcome, and usage-field semantics. Model

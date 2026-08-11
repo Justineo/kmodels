@@ -4,10 +4,9 @@ Status: implemented
 
 This document is the current wire and presentation contract. The
 [commercial topology](commercial-topology.md) supplies its provider-wide
-semantics. The shared cutover and the OpenAI, Anthropic, Amazon Bedrock,
-Databricks, Vercel AI Gateway, Microsoft Foundry, Gemini API, Vertex AI, and
-Kimi migrations are implemented; other providers remain mechanically
-projected into this wire until their individual migration turns.
+semantics. The shared cutover and all 18 provider migrations are implemented.
+Generated artifacts must pass the provider topology and replay-adoption gates
+before a migration is considered current.
 
 ## Decision
 
@@ -49,8 +48,10 @@ envelope.
 
 Canonical pricing is compiled from a bounded intermediate input, not owned by
 the website renderer and not executable only inside a source refresh. A
-successful collection writes `data/pricing-inputs.json.gz` with the minimal
-public parsed facts needed by provider pricing assembly. `vp run
+collection writes `data/pricing-inputs.json.gz` with the minimal public parsed
+facts needed by provider pricing assembly whenever a complete public source
+bundle was parsed, including one whose assembled topology subsequently failed
+validation. `vp run
 compile:pricing` reads that input, reassembles every replayable provider,
 validates the complete canonical resource, advances the accepted pair, and
 regenerates its projections without network access.
@@ -68,6 +69,14 @@ pricing input cannot safely be persisted has no replay entry, so its accepted
 partition is carried through unchanged. Binding, source, extractor, ownership,
 provenance, completeness, or validation failures abort the compilation rather
 than publishing a partial result.
+
+The generated-data gate replays every captured provider with the current
+extractor version and verifies that all accepted providers still expose their
+adopted resources, edges, relationships, accounting terms, settlement, and
+model dispositions. A provider may be
+carried through without a replay entry only when the current public source
+bundle was unavailable; that retained partition remains visibly stale and must
+already satisfy the topology gate.
 
 This boundary permits canonical assembly, normalization, and validation changes
 to be evaluated locally at any time. Projection-only presentation changes use
@@ -170,14 +179,18 @@ source kind, permitted identity binding, and currentness semantics. This describ
 admissible; it is metadata about Kmodels' evidence boundary, not a provider price. Refresh summaries
 retain operational resolution coverage and reconciliation. Neither enters the UI packs.
 
-The website is built from three closed runtime payloads:
+The website is built from five closed runtime payload families:
 
 - `/ui/catalog/index.json` contains only fields needed to render, search,
   filter, and sort;
 - `/ui/catalog/pricing.json` contains build-time representative pricing and is
   loaded concurrently with the catalog before the application mounts;
-- `/ui/details/<provider>/<chunk>.json` contains bounded deferred model details
-  and compact price-book views.
+- `/ui/details/<provider>/<chunk>.json` contains bounded deferred model facts
+  and references to their model-scoped offers;
+- `/ui/offers/<provider>/<chunk>.json` contains bounded, exact-content-deduplicated
+  display-ready offers shared by model and provider-resource details;
+- `/ui/providers/<provider>/pricing/<chunk>.json` contains bounded deferred
+  standalone provider-resource metadata and grouped references to those offers.
 
 The browser does not fetch the canonical catalog or pricing asset during normal
 application startup or model inspection. The canonical endpoints remain
@@ -694,7 +707,9 @@ missing-signal note. Contribution bindings, billing mode, enrollment, and
 settlement context are projected as read-only commercial facts. Possibly applicable
 raw base pricing marks the offer incomplete while normalized rows remain
 available after resolution. Exact offer relations are shown as composition
-context, and do not alter list-price selection. Raw allowance facts similarly
+context, and do not alter list-price selection. Small fully resolved target
+sets name their offers; broad or partially loaded sets show the exact target
+count instead of repeating placeholder labels. Raw allowance facts similarly
 make only the allowance summary incomplete.
 
 Numeric selectors preserve their canonical domain. Dimensions containing only
@@ -711,8 +726,8 @@ is contained in or disjoint from it, while a partial overlap stays unresolved.
 Ranges with a gap or overlap remain exact-value inputs and reject out-of-range
 values. The UI never widens an exact price condition into a neighboring interval.
 
-The compact detail payload contains display-ready values, selectors, charge
-drivers, billing context, and settlement context, not audit observations.
+The compact detail and shared-offer payloads contain display-ready values,
+selectors, charge drivers, billing context, and settlement context, not audit observations.
 Source-native display strings are derived while the
 validated observations are available and then emitted without their locators,
 raw fields, or evidence arrays. Equal observations remain one row rather than

@@ -73,9 +73,7 @@ export function applyXaiCommercialTopology(
     )
       return [atom];
     if (atom.key === "batch") return [];
-    return atom.key === "priority"
-      ? [{ ...atom, dimension: { namespace: "kmodels", value: "served_service_tier" } }]
-      : [atom];
+    return [{ ...atom, dimension: { namespace: "kmodels", value: "served_service_tier" } }];
   });
   return { ...input, books };
 }

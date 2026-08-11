@@ -9,6 +9,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import { rationalFromDecimal } from "./pricing-rational.ts";
 import { canonicalizeSourceUnit, canonicalizeUnitPrice } from "./pricing-units.ts";
@@ -19,7 +20,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -845,7 +845,7 @@ function commercialUnit(
         { unit: standard("second"), power: 1, scale: "hour" },
       ]);
     case "Search Units":
-      return one(provider("search_unit", "One Amazon Bedrock provider-published Search Unit"));
+      return one(provider("search_unit", "One provider-published search or rerank billing unit"));
     case "TextUnit":
       return one(
         provider(
@@ -1036,7 +1036,7 @@ function commercialBinding(
   addAtom(input, {
     kind: "usage_signal",
     key,
-    definition: `${book.name} ${termKey.replaceAll("-", " ")} quantity from the selected AWS CUR usage type`,
+    definition: `AWS CUR billing quantity identified by ${key.replaceAll("_", " ")}`,
     unit,
     resolution_phase: "account",
   });
@@ -1164,7 +1164,7 @@ function modelChargeBinding(
   addAtom(input, {
     kind: "usage_signal",
     key,
-    definition: `${mechanism === "batch" ? "Successful Batch result-item" : "Resolved invocation"} ${field} usage reported by Bedrock`,
+    definition: `${field} token usage reported by a completed Bedrock invocation or Batch result item`,
     unit: tokenUnit,
     resolution_phase: "outcome",
   });
@@ -1278,15 +1278,6 @@ function withApplicability(
   applicability: PriceApplicability,
 ): NormalizedPriceObservation {
   return { ...observation, establishes_applicability: applicability };
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  if (
-    !input.vocabulary.atoms.some(
-      (candidate) => candidate.kind === atom.kind && candidate.key === atom.key,
-    )
-  )
-    input.vocabulary.atoms.push(atom);
 }
 
 function sameUnit(left: UnitExpression, right: UnitExpression): boolean {

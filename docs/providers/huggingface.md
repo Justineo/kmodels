@@ -62,9 +62,10 @@ Status: current
   APIs, provider selection, pricing, Chat Completions, Responses, partner validation
   and billing, the Python inference client, Hub billing, Endpoint and Spaces hardware,
   ZeroGPU, Jobs and its hardware API, storage, and plan and Enterprise pricing. Each
-  optional companion owns only the claims extracted from it; absence or prose drift
-  reports an unbound claim but does not reject current router rows or independently
-  parseable commercial tables. For partner-only rows, only the task-index documents
+  companion owns only the claims extracted from it inside a complete bundle. Prose
+  drift reports an unbound claim, while an unavailable commercial companion retains
+  the complete previously accepted HF pricing partition without rejecting current
+  router catalog rows. For partner-only rows, only the task-index documents
   described above supply bounded single-partner product evidence, and only by exact
   join to a current live mapping.
 - Featherless's unauthenticated native `GET /v1/models?status=active` catalog is a
@@ -363,7 +364,7 @@ because no corresponding HF service rate has been published.
 | AWS Marketplace payment and direct cloud routes             | Preserve Marketplace as a settlement rail and cloud-direct products in the cloud seller's book. Do not duplicate the HF rate.                                                                               |
 | Hub repositories, revisions, licenses, and gating           | Preserve artifact/resource identity and access only. Deployability or public availability creates no global inference offer or catalog admission.                                                           |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific rather than one total source order:
 
@@ -399,11 +400,12 @@ Authority is claim-specific rather than one total source order:
 
 Refresh remains deterministic and non-LLM. Mapping registries, router catalog,
 provider-native overlays, task pages, capacity tables, plan pages, storage terms, and
-optional account evidence are independently validated claim groups. Fresh exhaustive
+optional account evidence are independently validated claim groups inside a complete
+bundle. Fresh exhaustive
 route absence can remove only the route it owns; omission from a recommendation page
 or non-exhaustive product surface cannot retire a model. Failure or drift in an
-optional native price overlay retains the compatible previous price claim as stale
-rather than erasing the current live route. A malformed meter, one partner's drift,
+optional native price overlay retains the previous provider pricing partition rather
+than erasing the current live route. A malformed meter, one partner's drift,
 or an unresolved conflict suppresses only that claim and preserves the model, sibling
 route, other meter, resource, raw evidence, and provider snapshot.
 

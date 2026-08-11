@@ -9,6 +9,7 @@ import type {
 } from "./pricing-assembly.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
+import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
 import { rationalFromDecimal } from "./pricing-rational.ts";
 import type {
   ChargeBinding,
@@ -17,7 +18,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -181,15 +181,19 @@ function statesForTerms(
     ...terms.flatMap((term) =>
       term.kind === "raw"
         ? []
-        : term.variants.map((variant) => ({
-            state: "numeric" as const,
-            applicability: variant.applicability,
-            ...(variant.validity === undefined ? {} : { validity: variant.validity }),
-            observation: {
-              ...variant.observation,
-              establishes_applicability: variant.applicability,
-            },
-          })),
+        : term.variants.map((variant) => {
+            const { formula: _, ...raw } = variant.observation.raw;
+            return {
+              state: "numeric" as const,
+              applicability: variant.applicability,
+              ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+              observation: {
+                ...variant.observation,
+                raw,
+                establishes_applicability: variant.applicability,
+              },
+            };
+          }),
     ),
   ];
 }
@@ -628,27 +632,13 @@ function providerBinding(
   return {
     signal: { namespace: "provider", provider_id: input.provider_id, value: key },
     aggregation,
-    observations: [{ ...observation, locator: { kind: "meter", value: locator } }],
+    observations: [{ ...rawEvidence(observation), locator: { kind: "meter", value: locator } }],
   };
 }
 
 function providerMeter(input: AtomicProviderPricing, key: string, definition: string): PriceMeter {
   addAtom(input, { kind: "meter", key, definition });
   return { namespace: "provider", provider_id: input.provider_id, value: key };
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) =>
-      candidate.kind === atom.kind &&
-      candidate.key === atom.key &&
-      (!("dimension" in candidate) ||
-        !("dimension" in atom) ||
-        JSON.stringify(candidate.dimension) === JSON.stringify(atom.dimension)),
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
-  else if (JSON.stringify(current) !== JSON.stringify(atom))
-    throw new Error(`Vercel pricing atom ${atom.key} changed definition`);
 }
 
 function relation(
@@ -672,7 +662,7 @@ function relationFromEvidence(
     applicability: unconditionalApplicability,
     observations: [
       {
-        ...evidence,
+        ...rawEvidence(evidence),
         raw: { label },
         establishes_offer_refs: targets,
         establishes_book_refs: [],

@@ -12,7 +12,7 @@ import {
   isWholeNumberDimension,
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
-import { formatSentenceCase } from "../catalog/presentation.ts";
+import { formatSentenceCase, formatSnapshotAt } from "../catalog/presentation.ts";
 import type {
   WebsiteModel,
   WebsitePriceApplicability,
@@ -85,6 +85,7 @@ const selectionValues = computed(() => [
 const hasSelections = computed(() => Object.keys(inputs.value).length > 0);
 const visibleStates = computed(() => matchingRows(activeOffer.value?.states ?? []));
 const visibleRates = computed(() => matchingRows(activeOffer.value?.rates ?? []));
+const hasVisibleRateDrivers = computed(() => visibleRates.value.some(({ driver }) => driver));
 const visibleAllowances = computed(() => matchingRows(activeOffer.value?.allowances ?? []));
 const visibleContributions = computed(() => matchingRows(activeOffer.value?.contributions ?? []));
 const visibleEnrollment = computed(() => matchingRows(activeOffer.value?.enrollment ?? []));
@@ -369,10 +370,6 @@ function inputValue(key: string): string {
 function joinLabels(labels: string[]): string {
   if (labels.length < 2) return labels[0] ?? "the required context";
   return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
-}
-
-function formatSnapshotAt(value: string): string {
-  return `${value.slice(0, 10)} ${value.slice(11, 16)} UTC`;
 }
 
 type ChargeDriver = NonNullable<WebsitePricingOffer["rates"][number]["driver"]>;
@@ -677,13 +674,17 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
           <p v-if="unresolvedRateDimensions.length > 0" class="context-prompt">
             {{ contextPrompt }}
           </p>
-          <div v-if="visibleRates.length > 0" class="pricing-matrix">
+          <div
+            v-if="visibleRates.length > 0"
+            class="pricing-matrix"
+            :class="{ 'has-drivers': hasVisibleRateDrivers }"
+          >
             <table>
               <thead>
                 <tr>
                   <th scope="col">Meter</th>
                   <th scope="col">Exact rate</th>
-                  <th scope="col">Cost driver</th>
+                  <th v-if="hasVisibleRateDrivers" scope="col">Cost driver</th>
                 </tr>
               </thead>
               <tbody>
@@ -691,12 +692,13 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
                   <th scope="row">
                     <span class="rate-name">{{ rate.label }}</span>
                     <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
+                    <small v-if="!rate.driver">Usage binding unavailable</small>
                   </th>
                   <td class="numeric" :aria-label="rate.accessible_text">
                     <span class="exact-rate">{{ rate.amount }}</span>
                     <small>{{ rate.unit }}</small>
                   </td>
-                  <td class="driver-cell">
+                  <td v-if="hasVisibleRateDrivers" class="driver-cell">
                     <template v-if="rate.driver">
                       <span class="cost-driver-name">{{ rate.driver.label }}</span>
                       <small>{{ rate.driver.definition }}</small>
@@ -706,10 +708,8 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
                       </small>
                     </template>
                     <template v-else>
-                      <span class="cost-driver-name">No observable usage signal</span>
-                      <small
-                        >The rate is known, but no exact public quantity signal is bound.</small
-                      >
+                      <span class="cost-driver-name">Unbound</span>
+                      <small>No exact public quantity signal is bound.</small>
                     </template>
                   </td>
                 </tr>
@@ -772,6 +772,7 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
                 <strong>{{ fact.label }}</strong>
                 <span>{{ fact.reason }}</span>
               </header>
+              <small v-for="detail in fact.details ?? []" :key="detail">{{ detail }}</small>
               <small>{{ formatSentenceCase(fact.impact) }} · {{ fact.scope.primary }}</small>
               <small v-if="fact.scope.secondary">{{ fact.scope.secondary }}</small>
             </div>
@@ -1124,17 +1125,26 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
   border-collapse: collapse;
 }
 
-.pricing-matrix thead th:first-child {
+.pricing-matrix.has-drivers thead th:first-child {
   width: 28%;
 }
 
-.pricing-matrix thead th:nth-child(2) {
+.pricing-matrix.has-drivers thead th:nth-child(2) {
   width: 26%;
   text-align: right;
 }
 
-.pricing-matrix thead th:last-child {
+.pricing-matrix.has-drivers thead th:last-child {
   width: 46%;
+}
+
+.pricing-matrix:not(.has-drivers) thead th:first-child {
+  width: 60%;
+}
+
+.pricing-matrix:not(.has-drivers) thead th:last-child {
+  width: 40%;
+  text-align: right;
 }
 
 .pricing-matrix th,

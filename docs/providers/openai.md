@@ -243,7 +243,7 @@ counting.
 | API endpoint access, bandwidth/connections where explicitly unpriced, rate/spend limits                            | Explicit exclusion from price terms. Preserve route or account constraints separately; “API not priced separately” is not a free model execution.                                                 |
 | Bedrock-billed OpenAI models, remote MCP charges, taxes, private discounts, balances, invoices                     | Explicit exclusion from the OpenAI public list-price partition. Bedrock belongs to AWS; third-party and private settlement stay external/account scoped.                                          |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 - For an exact covered amount, the dedicated pricing row supersedes the card fallback because cards
   link to the pricing page for details. Keep an unequal card observation as superseded/conflicting

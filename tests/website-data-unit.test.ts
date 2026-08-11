@@ -13,6 +13,7 @@ import type {
   PricingCatalog,
   PricingOffer,
   ProviderAtomRegistryEntry,
+  RawPricingVariant,
   UnitExpression,
 } from "../src/catalog/pricing-schema.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
@@ -67,6 +68,8 @@ function detail(
     rateBinding?: ChargeBinding;
     contributionBindings?: ChargeBinding[];
     enrollment?: PricingOffer["enrollment"];
+    relations?: PricingOffer["relations"];
+    rawVariants?: RawPricingVariant[];
     settlement?: PricingOffer["settlement"];
   } = {},
 ) {
@@ -123,7 +126,7 @@ function detail(
                     : { charge_binding: options.rateBinding }),
                   observations: [normalizedObservation(scope)],
                 })),
-                raw_variants: [],
+                raw_variants: options.rawVariants ?? [],
               },
               ...(options.contributionBindings === undefined
                 ? []
@@ -145,7 +148,7 @@ function detail(
                     },
                   ]),
             ],
-            relations: [],
+            relations: options.relations ?? [],
             enrollment: options.enrollment ?? [],
             settlement: options.settlement ?? [],
             source_refs: [sourceId],
@@ -168,6 +171,68 @@ function detail(
 }
 
 describe("website data projection", () => {
+  it("summarizes broad offer relations instead of repeating every target", () => {
+    const offerRefs = ["1", "2", "3", "4"].map((value) => value.repeat(64));
+    expect(
+      detail([], [], {
+        relations: [
+          {
+            kind: "compatible_with",
+            target: { kind: "offers", offer_refs: offerRefs },
+            applicability: unconditionalApplicability,
+            observations: [
+              {
+                source_ref: sourceId,
+                locator: { kind: "table", value: "compatibility" },
+                establishes_offer_refs: offerRefs,
+                establishes_book_refs: [],
+                raw: { label: "Compatible offers" },
+              },
+            ],
+          },
+        ],
+      }).pricing?.offers[0]?.composition,
+    ).toBe("Compatible with 4 offers");
+  });
+
+  it("projects structured cost parameters without source fragments", () => {
+    const projected = detail([], [], {
+      rawVariants: [
+        {
+          impact: "base_price",
+          reason: "requires_usage_aggregation",
+          observations: [
+            {
+              source_ref: sourceId,
+              locator: { kind: "table", value: "row" },
+              raw: {
+                label: "Storage duration",
+                amount: "0.10",
+                denomination: "USD",
+                unit: "GB-hour",
+                meter: "storage",
+                formula: "retained GB × hours",
+                validity: "current",
+                conditions: [{ dimension: "region", value: "global" }],
+                fragment: "undigested source prose",
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(projected.pricing?.offers[0]?.unnormalized[0]?.details).toEqual([
+      "Storage duration",
+      "0.10 USD",
+      "Unit: GB-hour",
+      "Meter: storage",
+      "Formula: retained GB × hours",
+      "Validity: current",
+      "region: global",
+    ]);
+  });
+
   it("projects additional usage without copying its target rate", () => {
     expect(detail([], [], { contributionBindings: [] }).pricing?.offers[0]?.contributions).toEqual([
       expect.objectContaining({

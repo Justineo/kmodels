@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
@@ -24,6 +24,7 @@ import {
 import { pricingLimits } from "./pricing-constants.ts";
 import {
   emptyPricingCatalog,
+  pricingCatalogSchema,
   pricingCatalogEnvelopeSchema,
   type PricingCatalog,
   type PricingCatalogEnvelope,
@@ -79,7 +80,7 @@ export function prepareCatalogPair(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
-  const data = "pricing_data_version" in pricing ? pricing.data : pricing;
+  const data = pricingData(pricing);
   validatePricingCatalog(data, parsedCatalog);
   const canonicalDataSource = canonicalJsonFromValidated(data);
   const canonicalDataHash = sha256(canonicalDataSource);
@@ -94,13 +95,17 @@ export async function prepareCatalogPairInParallel(
   const catalogStorageSource = stableJson(catalogSchema.parse(catalog));
   const parsedCatalog = catalogSchema.parse(JSON.parse(catalogStorageSource));
   assertIJsonValue(parsedCatalog);
-  const data = "pricing_data_version" in pricing ? pricing.data : pricing;
+  const data = pricingData(pricing);
   const validation = validatePricingCatalogInParallel(data, parsedCatalog);
   const canonicalDataSource = canonicalJsonFromValidated(data);
   const canonicalDataHash = sha256(canonicalDataSource);
   await validation;
   const envelope = pricingEnvelope(pricing, parsedCatalog, canonicalDataHash);
   return catalogPairCandidate(parsedCatalog, envelope, catalogStorageSource, canonicalDataSource);
+}
+
+function pricingData(pricing: PricingCatalog | PricingCatalogEnvelope): PricingCatalog {
+  return pricingCatalogSchema.parse("pricing_data_version" in pricing ? pricing.data : pricing);
 }
 
 function pricingEnvelope(
@@ -186,6 +191,7 @@ export async function recoverCatalogPair(
 
   const projections = await ensurePairProjections(candidate, snapshotProjectionPaths(snapshot));
   await writePairMirrors(candidate, projections, paths);
+  await pruneSnapshots(paths, candidate.pairId);
   return candidate;
 }
 
@@ -214,6 +220,7 @@ export async function commitCatalogPair(
   await atomicWrite(manifestPath(paths), canonicalJson(manifest));
 
   await writePairMirrors(candidate, projections, paths);
+  await pruneSnapshots(paths, candidate.pairId);
 }
 
 export async function readCatalogPairMirrors(
@@ -251,6 +258,27 @@ function manifestPath(paths: CatalogPairPaths): string {
 function snapshotDirectory(paths: CatalogPairPaths, id: string): string {
   hashSchema.parse(id);
   return join(paths.stateDirectory, "snapshots", id);
+}
+
+async function pruneSnapshots(paths: CatalogPairPaths, currentPairId: string): Promise<void> {
+  const directory = join(paths.stateDirectory, "snapshots");
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+  await Promise.all(
+    entries
+      .filter(
+        (entry) =>
+          entry.isDirectory() &&
+          entry.name !== currentPairId &&
+          hashSchema.safeParse(entry.name).success,
+      )
+      .map((entry) => rm(join(directory, entry.name), { recursive: true })),
+  );
 }
 
 async function optionalRead(path: string): Promise<Uint8Array | undefined> {

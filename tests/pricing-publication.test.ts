@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -83,6 +83,14 @@ describe("crash-consistent catalog pair publication", () => {
     expect(Object.isFrozen(parallel.pricing.data)).toBe(true);
   });
 
+  it("rejects structurally invalid pricing before publication", async () => {
+    const invalid = { ...pricing, accidental_field: true } as unknown as PricingCatalog;
+    expect(() => prepareCatalogPair(catalog(), invalid)).toThrow("Unrecognized key");
+    await expect(prepareCatalogPairInParallel(catalog(), invalid)).rejects.toThrow(
+      "Unrecognized key",
+    );
+  });
+
   it("commits only the exact immutable object returned by preparation", async () => {
     const output = await paths();
     const candidate = prepareCatalogPair(catalog(), pricing);
@@ -99,6 +107,20 @@ describe("crash-consistent catalog pair publication", () => {
     expect(recovered?.identity).toEqual(candidate.identity);
     expect(await pricingMirrorSource(output.pricingMirrorGzip)).toBe(candidate.pricingAssetSource);
     await expectProjectionPair(output.projections, candidate.pairId);
+  });
+
+  it("keeps only the current crash-recovery snapshot", async () => {
+    const output = await paths();
+    const initial = prepareCatalogPair(catalog(), pricing);
+    const current = prepareCatalogPair(
+      catalog([{ code: "test", message: "current pair" }]),
+      initial.pricing,
+    );
+
+    await commitCatalogPair(initial, output);
+    await commitCatalogPair(current, output);
+
+    expect(await readdir(join(output.stateDirectory, "snapshots"))).toEqual([current.pairId]);
   });
 
   it("repairs all mirrors from the atomic accepted-pair pointer", async () => {

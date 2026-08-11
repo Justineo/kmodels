@@ -2,10 +2,24 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 
 const catalog = {
-  schema_version: 1,
+  schema_version: 2,
   data_version: "1".repeat(64),
   generated_at: "2026-07-29T00:00:00.000Z",
-  providers: [{ id: "test", name: "Test" }],
+  providers: [
+    {
+      id: "test",
+      name: "Test",
+      pricing_coverage: {
+        models: 1,
+        representative_models: 1,
+        offer_models: 1,
+        unknown_models: 0,
+        not_applicable_models: 0,
+        standalone_resources: 0,
+        detail_chunks: 0,
+      },
+    },
+  ],
   models: [
     {
       provider_id: "test",

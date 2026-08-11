@@ -9,6 +9,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import { multiplyRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import type {
@@ -18,7 +19,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -518,7 +518,7 @@ function bindAdvisor(
     const advisor = offersByModel.get(advisorRef)?.[mechanism];
     if (advisor === undefined) continue;
     offer.relations.push(relation(book, "incurs", [advisor.ref], "Advisor model inference"));
-    const variants: AtomicContributionTerm["variants"] = [];
+    const contributions: AtomicContributionTerm[] = [];
     for (const term of advisor.offer.terms) {
       if (term.kind !== "rate") continue;
       const signal = tokenSignal(term.meter, term.variants[0]?.price.per ?? { factors: [] });
@@ -527,7 +527,7 @@ function bindAdvisor(
       addAtom(input, {
         kind: "usage_signal",
         key,
-        definition: `${advisorRef} ${signal.replaceAll("_", " ")} reported in advisor_message iterations`,
+        definition: `${signal.replaceAll("_", " ")} reported in advisor_message iterations for the selected advisor model`,
         unit: { factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }] },
         resolution_phase: "outcome",
       });
@@ -535,40 +535,43 @@ function bindAdvisor(
         signal === "cache_write_tokens"
           ? withCacheTtl(unconditionalApplicability, 300)
           : unconditionalApplicability;
-      variants.push({
-        target_rate_refs: [pricingTermId(advisor.ref, "rate", term.term_key)],
+      const observation = normalizedBookObservation(
+        book,
         applicability,
-        charge_bindings: [
+        `Advisor usage is billed at ${advisorRef} rates`,
+      );
+      contributions.push({
+        term_key: `advisor-model-${signal.replaceAll("_tokens", "")}`,
+        kind: "contribution",
+        variants: [
           {
-            signal: { namespace: "provider", provider_id: "anthropic", value: key },
-            aggregation: mechanism === "batch" ? "result_item" : "attempt",
-            observations: [
-              rawBookObservation(
-                book,
-                `openapi:usage.iterations[type=advisor_message][model=${advisorRef}].${usageField(signal)}`,
-              ),
+            target_rate_refs: [pricingTermId(advisor.ref, "rate", term.term_key)],
+            applicability,
+            charge_bindings: [
+              {
+                signal: { namespace: "provider", provider_id: "anthropic", value: key },
+                aggregation: mechanism === "batch" ? "result_item" : "attempt",
+                observations: [
+                  rawBookObservation(
+                    book,
+                    `openapi:usage.iterations[type=advisor_message][model=${advisorRef}].${usageField(signal)}`,
+                  ),
+                ],
+              },
             ],
+            observation,
           },
         ],
-        observation: normalizedBookObservation(
-          book,
-          applicability,
-          `Advisor usage is billed at ${advisorRef} rates`,
-        ),
+        raw_variants: [],
+        source_refs: [observation.source_ref],
       });
     }
-    if (variants.length > 0)
+    if (contributions.length > 0)
       offer.terms = [
         ...offer.terms.filter(
           (term) => !(term.kind === "raw" && term.term_key === "advisor-model-usage"),
         ),
-        {
-          term_key: "advisor-model-usage",
-          kind: "contribution",
-          variants,
-          raw_variants: [],
-          source_refs: [...new Set(variants.map(({ observation }) => observation.source_ref))],
-        },
+        ...contributions,
       ];
   }
 }
@@ -834,15 +837,6 @@ function withCacheTtl(applicability: PriceApplicability, seconds: number): Price
       ],
     })),
   });
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  if (
-    !input.vocabulary.atoms.some(
-      (candidate) => candidate.kind === atom.kind && candidate.key === atom.key,
-    )
-  )
-    input.vocabulary.atoms.push(atom);
 }
 
 function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {

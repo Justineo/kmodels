@@ -101,14 +101,17 @@ export function extractVertexCommercialFacts(
       if (service === undefined) return true;
       addRaw(
         facts,
-        resource(
-          service,
-          model,
-          raw.impact === "allowance" ? "shared-allowance" : "billing-rules",
-          raw.impact === "allowance"
-            ? `${service.name} allowance`
-            : `${service.name} billing rules`,
-        ),
+        {
+          ...resource(
+            service,
+            model,
+            raw.impact === "allowance" ? "shared-allowance" : "billing-rules",
+            raw.impact === "allowance"
+              ? `${service.name} allowance`
+              : `${service.name} billing rules`,
+          ),
+          pricing_state: raw.impact === "allowance" ? "included" : "not_published",
+        },
         raw,
       );
       return false;

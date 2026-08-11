@@ -9,6 +9,10 @@ Status: implemented
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
 - One toolbar keeps model-ID/name search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
+- When the selected provider has standalone commercial resources, show their
+  count as an action that opens a provider-level pricing inspector. This is the
+  home for services, plans, capacity, distribution, and account-resource
+  templates that do not belong to one model row.
 - One semantic table fills the remaining viewport. Model details open in a right-side inspector.
 - Unknown values stay explicit. Rows without a representative numeric price
   show a short model-level status with an explanatory tooltip.
@@ -102,6 +106,10 @@ Status: implemented
   appear as read-only commercial context. These facts explain what affects cost
   without accepting usage input, multiplying quantities, consuming allowances,
   allocating capacity, or presenting an account total.
+- The provider-level pricing inspector uses the same rate, driver, allowance,
+  contribution, enrollment, settlement, raw-fact, and retained-snapshot
+  semantics. Known raw facts may expose only concise source-native parameters
+  that affect cost; observations, locators, and audit evidence remain excluded.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -228,14 +236,25 @@ Status: implemented
   build-time representative pricing in matching model order. Browser-only UIDs
   are derived from the exact tuple; `updated_date`, inspector facts, audit
   fields, and random per-model references do not inflate either payload.
-- Immediately after the first rendered frame, start every detail-chunk request.
-  Detail assets are provider-scoped, deterministic chunks capped at 2 MiB
-  uncompressed; large providers may own several numbered chunks. Consume each
-  response into a `Blob`, so opening the inspector reuses an already completed
-  or in-flight request without retaining every JSON document as parsed objects.
-  Parsing remains bounded to the selected chunk.
+- Request model details only when their inspector opens. Detail assets are
+  provider-scoped, deterministic chunks capped at 2 MiB uncompressed; large
+  providers may own several numbered chunks. Model pricing refers to exact
+  provider-local offers in `/ui/offers/<provider>/<chunk>.json` instead of
+  copying the same display-ready offer into every applicable model. Standalone
+  provider resources use the same offer dictionary. Offer chunks use the same
+  bound and are requested only for the selected model or provider.
+  Cache completed and in-flight chunks by data version, and retain parsed model
+  details only after they are requested.
+- Provider pricing detail uses
+  `/ui/providers/<provider>/pricing/<chunk>.json`. It is requested on demand,
+  split into deterministic whole-resource chunks capped at 2 MiB uncompressed,
+  validated as one versioned provider detail, and cached by provider plus data
+  version. Resources carry grouped offer references. A large offer may span
+  several shared-offer fragments; the loader verifies stable metadata and
+  rejects duplicate rows while reassembling that one offer.
 - Use one `data_version` derived from the accepted catalog/pricing pair on the
-  catalog, pricing-summary, and detail-chunk projections. Reject mismatched core
+  catalog, pricing-summary, model-detail, shared-offer, and provider-detail
+  projections. Reject mismatched core
   chunks before mounting and mismatched deferred details before rendering them.
   Scope deferred-source, parsed-chunk, and model-detail caches to that version;
   evict rejected requests so a transient fetch or validation failure cannot
@@ -256,15 +275,21 @@ Status: implemented
   deferred chunks must not be module-preloaded by the HTML shell. Mount the
   deferred inspector into its dedicated second Vapor root and share only a
   small reactive state object with the catalog root.
-- All UI projections exclude source records, observations, locators, raw source
-  values, derivations, evidence arrays, and canonical audit-envelope metadata.
-  They retain displayed commercial semantics—including reviewed usage-signal
+- All UI projections exclude source records, observations, locators, undigested
+  source fragments, derivations, evidence arrays, and canonical audit-envelope
+  metadata. Raw commercial facts may retain only display-safe structured
+  parameters such as amount, denomination, unit, meter, validity, formula, and
+  conditions. They retain displayed commercial semantics—including reviewed usage-signal
   definitions, aggregation boundaries, resolution phases, enrollment, and
   settlement context—and provider-snapshot freshness copy.
 - Build-time projection indexes snapshots, dispositions, and model-scoped
-  books once. Each model reuses one pricing view for its summary and detail,
-  and the checked-in pack is compared with asset sources from that same
-  publication instead of rebuilding the projection a second time.
+  books once. Each model reuses one pricing view for its summary and detail.
+  Equal display-ready offers are stored once per provider and referenced by
+  chunk and position from model details and standalone resources. Equality is
+  exact serialized content, so this changes storage only and cannot merge
+  distinct commercial facts. The checked-in pack
+  is compared with asset sources from that same publication instead of
+  rebuilding the projection a second time.
 - Development serves those projections from the pair-bound,
   indexed `data/website-assets.pack`; every entry is independently compressed,
   so Vite can return the requested bytes without decoding the pack. UI requests

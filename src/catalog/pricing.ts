@@ -99,6 +99,7 @@ export function rawPricingFact(
   reason: SourceRawPricingFact["reason"],
   raw: SourceRawPricingFact["raw"] | string,
   conditions: SourceRawPricingFact["conditions"] = {},
+  resolution_policy?: string,
 ): SourceRawPricingFact {
   return {
     term_key,
@@ -107,6 +108,7 @@ export function rawPricingFact(
     conditions,
     source_ref,
     raw: typeof raw === "string" ? { fragment: raw } : raw,
+    ...(resolution_policy === undefined ? {} : { resolution_policy }),
   };
 }
 
