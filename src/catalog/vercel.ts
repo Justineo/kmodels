@@ -72,6 +72,7 @@ const imagePriceSchema = z
   .object({
     cost: decimal,
     operation: z.string().min(1).optional(),
+    quality: z.string().min(1).optional(),
     size: z.string().min(1).optional(),
     style: z.string().min(1).optional(),
   })
@@ -190,6 +191,7 @@ const tagSchema = z.enum([
   "image-generation",
   "implicit-caching",
   "reasoning",
+  "structured-output",
   "tool-use",
   "video-generation",
   "vision",
@@ -202,7 +204,9 @@ const supportedParameterSchema = z.enum([
   "include_reasoning",
   "max_tokens",
   "reasoning",
+  "response_format",
   "stop",
+  "structured_outputs",
   "temperature",
   "tool_choice",
   "tools",
@@ -946,28 +950,36 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
       });
   }
 
-  const imageBaseConditions =
-    value.image_dimension_quality_pricing?.some(({ style }) => style !== undefined) === true
-      ? { style: "default" }
-      : {};
+  const imageDimensions = {
+    operation:
+      value.image_dimension_quality_pricing?.some(({ operation }) => operation !== undefined) ===
+      true,
+    quality:
+      value.image_dimension_quality_pricing?.some(({ quality }) => quality !== undefined) === true,
+    resolution:
+      value.image_dimension_quality_pricing?.some(({ size }) => size !== undefined) === true,
+    style: value.image_dimension_quality_pricing?.some(({ style }) => style !== undefined) === true,
+  };
+  const imageConditions = (variant?: z.infer<typeof imagePriceSchema>) => ({
+    operation: imageDimensions.operation ? (variant?.operation ?? "default") : undefined,
+    quality: imageDimensions.quality ? (variant?.quality ?? "default") : undefined,
+    resolution: imageDimensions.resolution ? (variant?.size ?? "default") : undefined,
+    style: imageDimensions.style ? (variant?.style ?? "default") : undefined,
+  });
   if (value.image !== undefined)
     rates.push(
-      publishedRate(
-        "image_generation",
-        value.image,
-        "image",
-        sourceId,
-        "image",
-        imageBaseConditions,
-      ),
+      publishedRate("image_generation", value.image, "image", sourceId, "image", imageConditions()),
     );
   for (const variant of value.image_dimension_quality_pricing ?? [])
     rates.push(
-      publishedRate("image_generation", variant.cost, "image", sourceId, "image", {
-        operation: variant.operation,
-        resolution: variant.size,
-        style: variant.style,
-      }),
+      publishedRate(
+        "image_generation",
+        variant.cost,
+        "image",
+        sourceId,
+        "image",
+        imageConditions(variant),
+      ),
     );
   const hasVoiceControl =
     value.video_duration_pricing?.some(({ voice_control }) => voice_control !== undefined) === true;
@@ -1274,6 +1286,14 @@ function model(
           : item.reasoning_options !== undefined || reasoning === false
             ? false
             : "unknown",
+      structured_output:
+        tags.includes("structured-output") ||
+        parameters?.includes("response_format") === true ||
+        parameters?.includes("structured_outputs") === true
+          ? true
+          : parameters === undefined
+            ? "unknown"
+            : false,
     },
     limits: {
       context_tokens: positive(item.context_window),

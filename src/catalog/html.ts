@@ -38,8 +38,9 @@ function cell($: Document, selection: Selection): HtmlCell {
       .map((_index, element) => htmlText($(element).text()))
       .get()
       .filter(Boolean);
+  const paragraphs = values("p");
   return {
-    text: htmlText(selection.text()),
+    text: paragraphs.length > 1 ? paragraphs.join(" ") : htmlText(selection.text()),
     parts: values("code, p"),
     quotes: values("blockquote"),
   };

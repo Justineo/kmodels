@@ -18,11 +18,11 @@ Status: current
 
 ## Mapping
 
-- Structured model type is primary task evidence. Exact capability tags may add task semantics. A present `supported_parameters` list is explicit positive and negative evidence for reasoning and tool calling.
+- Structured model type is primary task evidence. Exact capability tags may add task semantics. A present `supported_parameters` list is explicit positive and negative evidence for reasoning, tool calling, and structured output; the official `structured-output` tag and `response_format` or `structured_outputs` parameters are equivalent positive structured-output evidence.
 - Realtime and WebSocket tags are positive realtime-delivery evidence. Bidirectional audio is `speech_to_speech`; realtime transcription remains `transcription`.
 - Top-level modalities remain authoritative except that video `input_limits` add explicit image, video, or audio inputs omitted by the summary modalities. Zero limits are omitted.
 - `released` is release date. An effective `deprecated_at` changes lifecycle. Catalog `created` is not an update date. `regions` publishes regional-inference availability, not account access.
-- Preserve every native token, cache, service-tier, region, fast, image, video, speech, transcription, realtime, and tool amount. Scale per-token decimals exactly and convert source-exclusive tier maxima to canonical inclusive bounds. Video-token price sets retain both the video-input selector and every explicit resolution tier; duplicate or unknown tier labels reject the source.
+- Preserve every native token, cache, service-tier, region, fast, image, video, speech, transcription, realtime, and tool amount. Scale per-token decimals exactly and convert source-exclusive tier maxima to canonical inclusive bounds. Image override rows form one applicability grid over every published `operation`, `size`, `quality`, and `style` dimension: an omitted dimension means its default value, so base, single-dimension, and combined overrides remain disjoint. Video-token price sets retain both the video-input selector and every explicit resolution tier; duplicate or unknown tier labels reject the source.
 - Source tier maxima are exclusive. When a current endpoint payload repeats the preceding exclusive
   maximum as the next tier's minimum minus one, normalize the next minimum to that exclusive
   boundary; this repairs the source's one-token overlap without changing either published amount.

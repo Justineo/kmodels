@@ -20,11 +20,7 @@ import {
   normalizeVercelEndpointResponse,
   normalizeVercelModelPage,
 } from "../src/catalog/fetch.ts";
-import {
-  applyGroups,
-  applySupplementGroups,
-  retainInventoryFacts,
-} from "../src/catalog/collector.ts";
+import { applyGroups, applySupplementGroups, retainSourceFacts } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import { baseModel } from "../src/catalog/model.ts";
 import { normalizeDeliveryModes } from "../src/catalog/delivery.ts";
@@ -1503,11 +1499,15 @@ async function mistralCatalog(
       overrides.endpoints,
     ],
     [
-      "https://docs.mistral.ai/studio-api/conversations/advanced/prompt-caching.md",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
       "prompt-caching.md",
       undefined,
     ],
-    ["https://docs.mistral.ai/studio-api/batch-processing.md", "batch-processing.md", undefined],
+    [
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/batch-processing/page.mdx",
+      "batch-processing.md",
+      undefined,
+    ],
     ["https://mistral.ai/pricing/api/", "pricing.html", overrides.pricing],
     [
       "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/openapi.yaml",
@@ -1535,32 +1535,32 @@ async function mistralCatalog(
       undefined,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/regional-inference/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/inference/regional-inference/page.mdx",
       "regional-inference.mdx",
       overrides.regional,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/page.mdx",
       "agent-tools.mdx",
       undefined,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/code_interpreter/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
       "code-interpreter.mdx",
       undefined,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/websearch/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/websearch/page.mdx",
       "web-search.mdx",
       undefined,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/image_generation/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/image_generation/page.mdx",
       "image-generation.mdx",
       undefined,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/libraries/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/libraries/page.mdx",
       "libraries.mdx",
       undefined,
     ],
@@ -2858,6 +2858,64 @@ describe("Mistral adapters", () => {
     expect(model).toMatchObject({ pricing_state: "free", price_facts: [] });
   });
 
+  it("lets the dedicated price page resolve a repository amount to Free", async () => {
+    const pricing = withoutMistralPublicMedium(await fixture("mistral/pricing.html")).replace(
+      "</main>",
+      `<mistral-block-card-model><p>Free</p><mistral-atom-button-copy-clipboard data-text="mistral-medium-latest"></mistral-atom-button-copy-clipboard></mistral-block-card-model></main>`,
+    );
+    const items: PricingReconciliationItem[] = [];
+    const model = (await mistralCatalog({ pricing }, 0.8, (item) => items.push(item))).find(
+      ({ model_id }) => model_id === "mistral-medium-3-5",
+    );
+    expect(model).toMatchObject({ pricing_state: "free", price_facts: [] });
+    expect(model?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        reason: "superseded_value",
+        resolution_policy: "mistral_public_price_page_over_repository",
+      }),
+    );
+    expect(items).toContainEqual({
+      disposition: "raw",
+      reason_code: "first_party_price_conflict_resolved",
+      sample: "mistral-medium-latest: Free",
+    });
+  });
+
+  it("preserves an explicitly published cached-input amount over a derived discount", async () => {
+    const input = `    <div>
+      <p>Input (/M tokens)</p>
+      <mistral-atom-text-price
+        data-prices='{"priceEur":1.25,"priceUsd":1.5,"prefix":null,"suffix":null}'
+        data-discounts='["batch","cache"]'
+      ></mistral-atom-text-price>
+    </div>`;
+    const cached = `    <div>
+      <p>Cached input (/M tokens)</p>
+      <mistral-atom-text-price
+        data-prices='{"priceEur":0.22,"priceUsd":0.26,"prefix":null,"suffix":null}'
+      ></mistral-atom-text-price>
+    </div>`;
+    const pricing = (await fixture("mistral/pricing.html")).replaceAll(
+      input,
+      `${input}\n${cached}`,
+    );
+    const items: PricingReconciliationItem[] = [];
+    const model = (await mistralCatalog({ pricing }, 0.9, (item) => items.push(item))).find(
+      ({ model_id }) => model_id === "mistral-medium-3-5",
+    );
+    expect(
+      model?.price_facts
+        .filter(({ meter }) => meter === "cache_read_text")
+        .map(({ currency, price }) => ({ currency, price })),
+    ).toEqual([
+      { currency: "USD", price: "0.26" },
+      { currency: "EUR", price: "0.22" },
+    ]);
+    expect(items).not.toContainEqual(
+      expect.objectContaining({ reason_code: "public_price_label_unsupported" }),
+    );
+  });
+
   it("accounts for every reviewed repository and public-page price observation", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await mistralCatalog({}, 0.9, (item) => items.push(item));
@@ -3020,7 +3078,7 @@ describe("Mistral adapters", () => {
     const models = await mistralCatalog(
       {
         omitDocument:
-          "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/code_interpreter/page.mdx",
+          "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
       },
       0.9,
       (item) => items.push(item),
@@ -3046,7 +3104,7 @@ describe("Mistral adapters", () => {
       expect.objectContaining({
         reason_code: "commercial_companion_missing",
         sample:
-          "/mistralai/platform-docs-public/main/src/content/en/docs/studio-api/agents/agent-tools/code_interpreter/page.mdx",
+          "/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
       }),
     );
   });
@@ -3321,11 +3379,13 @@ describe("Mistral adapters", () => {
             expect.objectContaining({ id: "model-endpoints" }),
             expect.objectContaining({
               id: "prompt-caching",
-              url: expect.stringMatching(/\.md$/),
+              url: expect.stringMatching(
+                /\/studio\/conversations\/advanced\/prompt-caching\/page\.mdx$/,
+              ),
             }),
             expect.objectContaining({
               id: "batch-processing",
-              url: expect.stringMatching(/\.md$/),
+              url: expect.stringMatching(/\/studio\/batch-processing\/page\.mdx$/),
             }),
             expect.objectContaining({ id: "public-pricing" }),
             expect.objectContaining({ id: "api-schema" }),
@@ -11103,13 +11163,14 @@ describe("Vercel adapter", () => {
       limits: model?.limits,
       capabilities: {
         reasoning: model?.capabilities.reasoning,
+        structuredOutput: model?.capabilities.structured_output,
         toolCall: model?.capabilities.tool_call,
       },
       release: model?.release_date,
       pricing: model?.pricing_state,
     }).toEqual({
       limits: { context_tokens: 32768, max_output_tokens: 4096 },
-      capabilities: { reasoning: false, toolCall: false },
+      capabilities: { reasoning: false, structuredOutput: false, toolCall: false },
       release: "2025-05-29",
       pricing: "not_published",
     });
@@ -11133,6 +11194,7 @@ describe("Vercel adapter", () => {
       tasks: model?.tasks,
       delivery: model?.delivery_modes,
       effort: model?.capabilities.effort_control,
+      structuredOutput: model?.capabilities.structured_output,
       services: model?.price_facts
         .filter((rate) => rate.conditions.service_tier === "flex")
         .map((rate) => ({
@@ -11158,6 +11220,7 @@ describe("Vercel adapter", () => {
       tasks: ["text_generation"],
       delivery: ["realtime"],
       effort: true,
+      structuredOutput: true,
       services: [
         { meter: "input_text", min: undefined, max: 200000 },
         { meter: "output_text", min: undefined, max: 200000 },
@@ -11315,9 +11378,11 @@ describe("Vercel adapter", () => {
       },
       image: {
         maxOutput: image?.limits.max_output_tokens,
-        rates: image?.price_facts.map((rate) => ({
-          price: rate.price,
-          conditions: rate.conditions,
+        rates: image?.price_facts.map(({ price, conditions }) => ({
+          price,
+          quality: conditions.quality,
+          resolution: conditions.resolution,
+          style: conditions.style,
         })),
       },
       video: {
@@ -11356,15 +11421,11 @@ describe("Vercel adapter", () => {
       image: {
         maxOutput: undefined,
         rates: [
-          { price: "0.04", conditions: { style: "default" } },
-          {
-            price: "0.08",
-            conditions: { operation: undefined, resolution: "4K", style: undefined },
-          },
-          {
-            price: "0.12",
-            conditions: { operation: undefined, resolution: undefined, style: "vector" },
-          },
+          { price: "0.04", quality: "default", resolution: "default", style: "default" },
+          { price: "0.08", quality: "default", resolution: "4K", style: "default" },
+          { price: "0.06", quality: "low", resolution: "default", style: "default" },
+          { price: "0.1", quality: "low", resolution: "4K", style: "default" },
+          { price: "0.12", quality: "default", resolution: "default", style: "vector" },
         ],
       },
       video: {
@@ -14033,20 +14094,29 @@ describe("DashScope adapters", () => {
     });
   }
 
+  function documentBundle(
+    configured: SourceManifest,
+    indexBody: string,
+    documents: { url: string; body: string }[],
+  ): string {
+    return JSON.stringify({ index: { url: configured.url, body: indexBody }, documents });
+  }
+
   async function pricingBundle(
     indexBody = fixture("dashscope/pricing.html"),
     overrides: Readonly<Record<string, string>> = {},
   ): Promise<string> {
     const pricingSource = source("dashscope-pricing");
-    return JSON.stringify({
-      index: { url: pricingSource.url, body: await indexBody },
-      documents: await Promise.all(
+    return documentBundle(
+      pricingSource,
+      await indexBody,
+      await Promise.all(
         pricingDocuments.map(async ([path, id, fixtureName]) => ({
           url: new URL(path, "https://www.alibabacloud.com/help/en/model-studio/").href,
           body: overrides[id] ?? (await fixture(`dashscope/${fixtureName}`)),
         })),
       ),
-    });
+    );
   }
 
   it("reads exact labeled IDs without a product-prefix allowlist", async () => {
@@ -14223,7 +14293,7 @@ describe("DashScope adapters", () => {
     expect(() =>
       parse(
         source("dashscope-recommended"),
-        body.replace("dashscope-us.aliyuncs.com", "example.com"),
+        body.replace("us-east-1.maas.aliyuncs.com", "example.com"),
       ),
     ).toThrow("Unsupported DashScope recommended-model endpoint");
   });
@@ -14480,6 +14550,24 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("normalizes block-separated modality headers from canonical HTML", async () => {
+    const body = `<section><h2>Multimodal</h2><table>
+      <tr><th rowspan="2">Model ID</th><th colspan="3">Input price (per 1 million tokens)</th></tr>
+      <tr>
+        <th><p>Text</p><p>Text-only input</p></th>
+        <th><p>Text</p><p>Multimodal input</p></th>
+        <th><p>Text + audio</p><p>Audio only billed</p></th>
+      </tr>
+      <tr><td>qwen-omni-html-labels</td><td>$0.1</td><td>$0.2</td><td>$0.3</td></tr>
+    </table></section>`;
+    const models = parse(source("dashscope-pricing"), await pricingBundle(Promise.resolve(body)));
+    expect(
+      models
+        .find(({ model_id }) => model_id === "qwen-omni-html-labels")
+        ?.price_facts.map(({ conditions }) => conditions.modality),
+    ).toEqual(["text text-only input", "text multimodal input", "text + audio audio only billed"]);
+  });
+
   it("does not synthesize published cache-rate exceptions", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = parse(
@@ -14599,16 +14687,92 @@ describe("DashScope adapters", () => {
   });
 
   it("takes the earliest exact model release across regional release tables", async () => {
-    const body = await fixture("dashscope/releases.html");
-    const models = parse(source("dashscope-releases"), body);
+    const releaseSource = source("dashscope-releases");
+    const page = await fixture("dashscope/releases.html");
+    const body = documentBundle(releaseSource, page, [
+      {
+        url: "https://help.aliyun.com/zh/model-studio/newly-released-models",
+        body: "<main>无更新</main>",
+      },
+    ]);
+    const models = parse(releaseSource, body);
     expect(models.map(({ model_id, release_date }) => ({ model_id, release_date }))).toEqual([
       { model_id: "qwen3-tts-flash-2025-11-27", release_date: "2025-11-27" },
       { model_id: "qwen3.7-plus", release_date: "2026-05-20" },
       { model_id: "qwen3.7-plus-2026-05-26", release_date: "2026-05-21" },
     ]);
-    expect(() =>
-      parse(source("dashscope-releases"), body.replace("2026-05-21", "May 21, 2026")),
-    ).toThrow("DashScope release date");
+    expect(() => parse(releaseSource, body.replace("2026-05-21", "May 21, 2026"))).toThrow(
+      "DashScope release date",
+    );
+  });
+
+  it("reads release dates from the fixed China update page", () => {
+    const body = JSON.stringify({
+      index: {
+        url: "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
+        body: "<main><h1>Model Studio release notes</h1></main>",
+      },
+      documents: [
+        {
+          url: "https://help.aliyun.com/zh/model-studio/newly-released-models",
+          body: `<table>
+            <tr><th>模型类型</th><th>时间</th><th>服务部署范围</th><th>模型 ID</th><th>功能说明</th></tr>
+            <tr><td>文本生成</td><td>2026-08-03</td><td>国际</td><td>qwen3.8-max</td><td>旗舰模型</td></tr>
+          </table>`,
+        },
+      ],
+    });
+    expect(parse(source("dashscope-releases"), body)).toEqual([
+      expect.objectContaining({ model_id: "qwen3.8-max", release_date: "2026-08-03" }),
+    ]);
+  });
+
+  it("unions the stable international and China lifecycle tables", async () => {
+    const body = JSON.stringify({
+      index: {
+        url: "https://www.alibabacloud.com/help/en/model-studio/model-depreciation",
+        body: await fixture("dashscope/lifecycle.html"),
+      },
+      documents: [
+        {
+          url: "https://help.aliyun.com/zh/model-studio/model-depreciation",
+          body: `<table>
+            <tr><th>模型类型</th><th>模型名称</th><th>下线时间</th><th>替代模型</th></tr>
+            <tr><td rowspan="2">语音合成</td><td>qwen-tts</td><td rowspan="2">2026 年 10 月 10 日</td><td rowspan="2">qwen3-tts</td></tr>
+            <tr><td>qwen-tts-realtime</td></tr>
+          </table>`,
+        },
+      ],
+    });
+    expect(
+      parse(source("dashscope-lifecycle", 3, 3), body).map(
+        ({ model_id, status, retired_at, replacement_model_ids }) => ({
+          model_id,
+          status,
+          retired_at,
+          replacement_model_ids,
+        }),
+      ),
+    ).toEqual([
+      {
+        model_id: "qwen-tts",
+        status: "deprecated",
+        retired_at: "2026-10-10",
+        replacement_model_ids: ["qwen3-tts"],
+      },
+      {
+        model_id: "qwen-tts-realtime",
+        status: "deprecated",
+        retired_at: "2026-10-10",
+        replacement_model_ids: ["qwen3-tts"],
+      },
+      {
+        model_id: "qwen3.7-plus",
+        status: "deprecated",
+        retired_at: "2026-10-10",
+        replacement_model_ids: ["qwen3.8-plus"],
+      },
+    ]);
   });
 
   it("keeps every source that observes the same exact model", async () => {
@@ -14620,7 +14784,15 @@ describe("DashScope adapters", () => {
     const catalog = parse(catalogSource, await fixture("dashscope/catalog.html"));
     const pricing = parse(pricingSource, await pricingBundle());
     const recommended = parse(recommendedSource, await fixture("dashscope/recommended.html"));
-    const lifecycle = parse(lifecycleSource, await fixture("dashscope/lifecycle.html"));
+    const lifecycle = parse(
+      lifecycleSource,
+      documentBundle(lifecycleSource, await fixture("dashscope/lifecycle.html"), [
+        {
+          url: "https://help.aliyun.com/zh/model-studio/model-depreciation",
+          body: "<main>暂无更多下线模型</main>",
+        },
+      ]),
+    );
     const inventory = parse(apiSource, await fixture("dashscope/api.json"));
     const models = applyGroups(
       applyGroups(
@@ -14711,18 +14883,48 @@ describe("DashScope adapters", () => {
     ).toHaveLength(101);
   });
 
-  it("uses current Markdown documents and bounded API pagination", () => {
+  it("uses canonical public documents and bounded API pagination", () => {
     const value = manifest("dashscope");
-    const publicSources = value.sources.filter(({ id }) => id !== "dashscope-deployable-api");
+    const htmlSources = new Set(["dashscope-pricing", "dashscope-lifecycle", "dashscope-releases"]);
+    const markdownSources = value.sources.filter(
+      ({ id }) => id !== "dashscope-deployable-api" && !htmlSources.has(id),
+    );
     expect(
-      publicSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
+      markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
     expect(source("dashscope-pricing")).toMatchObject({
-      extractorVersion: "dashscope-pricing-v7",
+      url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
+      format: "html",
+      extractorVersion: "dashscope-pricing-v8",
       linkedDocuments: {
         documents: expect.arrayContaining([
           expect.objectContaining({ url: expect.stringMatching(/\.md$/), optional: true }),
         ]),
+      },
+    });
+    expect(source("dashscope-lifecycle")).toMatchObject({
+      url: "https://www.alibabacloud.com/help/en/model-studio/model-depreciation",
+      format: "html",
+      extractorVersion: "dashscope-lifecycle-v3",
+      retainOmittedFacts: true,
+      linkedDocuments: {
+        documents: [
+          expect.objectContaining({
+            url: "https://help.aliyun.com/zh/model-studio/model-depreciation",
+          }),
+        ],
+      },
+    });
+    expect(source("dashscope-releases")).toMatchObject({
+      url: "https://www.alibabacloud.com/help/en/model-studio/model-release-notes",
+      format: "html",
+      extractorVersion: "dashscope-releases-v3",
+      linkedDocuments: {
+        documents: [
+          expect.objectContaining({
+            url: "https://help.aliyun.com/zh/model-studio/newly-released-models",
+          }),
+        ],
       },
     });
     expect(source("dashscope-deployable-api")).toMatchObject({
@@ -16258,7 +16460,7 @@ describe("provider drift validation", () => {
     expect(merged.delivery_modes).toEqual(["realtime", "async"]);
   });
 
-  it("retains known enrichment when an optional inventory cannot refresh", () => {
+  it("retains stale source facts only for models missing from a refresh", () => {
     const source = manifest("amazon-bedrock").sources.find(
       ({ id }) => id === "bedrock-api-us-east-1",
     );
@@ -16296,7 +16498,7 @@ describe("provider drift validation", () => {
       },
     } satisfies ProviderModel;
 
-    expect(retainInventoryFacts([current], [previous], source)).toEqual({
+    expect(retainSourceFacts([current], [previous], source)).toEqual({
       count: 1,
       models: [
         expect.objectContaining({
@@ -16313,6 +16515,10 @@ describe("provider drift validation", () => {
           source_refs: ["bedrock-models", source.id],
         }),
       ],
+    });
+    expect(retainSourceFacts([current], [previous], source, new Set([current.uid]))).toEqual({
+      count: 0,
+      models: [current],
     });
   });
 

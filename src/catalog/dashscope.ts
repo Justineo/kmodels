@@ -1,5 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
+import { linkedBundleSchema, type LinkedBundle } from "./bundle.ts";
 import {
   attachDashscopeWebSearchFacts,
   type DashscopeWebSearchRate,
@@ -37,12 +38,9 @@ interface ParseInput {
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
-const pricingBundleSchema = z.object({
-  index: z.object({ url: z.url(), body: z.string().min(1) }),
-  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })),
+const pricingBundleSchema = linkedBundleSchema.extend({
+  documents: z.array(linkedBundleSchema.shape.documents.element),
 });
-
-type PricingBundle = z.infer<typeof pricingBundleSchema>;
 
 interface CommercialEvidence {
   batchAccounting: boolean;
@@ -632,6 +630,7 @@ const recommendedWorkspaceRegions = new Map([
   ["ap-southeast-1", "Singapore"],
   ["ap-northeast-1", "Japan (Tokyo)"],
   ["eu-central-1", "Germany (Frankfurt)"],
+  ["us-east-1", "US (Virginia)"],
 ]);
 
 const recommendedBasePaths = new Set(["/compatible-mode/v1", "/apps/anthropic", "/api/v1"]);
@@ -958,7 +957,7 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
     ...(resolution === undefined ? {} : { resolution }),
     ...(subheading === undefined || !/^(?:Text|Audio|Image|Video|Image\/video)/i.test(subheading)
       ? {}
-      : { modality: subheading.toLowerCase() }),
+      : { modality: text(subheading).toLowerCase() }),
   };
 }
 
@@ -1232,7 +1231,7 @@ function priceModalities(
   return { input: unique(input), output: unique(output) };
 }
 
-function companion(input: ParseInput, bundle: PricingBundle, pathname: string): string | undefined {
+function companion(input: ParseInput, bundle: LinkedBundle, pathname: string): string | undefined {
   const normalized = (value: string): string => value.replace(/\.md$/, "").replace(/\/$/, "");
   const matches = bundle.documents.filter(
     ({ url }) => normalized(new URL(url).pathname) === normalized(pathname),
@@ -1276,7 +1275,7 @@ function markdownDocument(body: string): boolean {
   return /^#{1,6}\s+/m.test(body);
 }
 
-function commercialEvidence(input: ParseInput, bundle: PricingBundle): CommercialEvidence {
+function commercialEvidence(input: ParseInput, bundle: LinkedBundle): CommercialEvidence {
   hasClaims(
     input,
     bundle.index.body,
@@ -1922,20 +1921,31 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
 
 function lifecycleOperations(category: string, id: string): ModelTask[] {
   const evidence = `${category} ${id}`.toLowerCase();
-  if (/rerank/.test(evidence)) return ["reranking"];
-  if (/embedding/.test(evidence)) return ["embeddings"];
-  if (/image/.test(evidence)) return ["image_generation"];
-  if (/video/.test(evidence)) return ["video_generation"];
-  if (/tts|cosyvoice/.test(evidence)) return ["speech_synthesis"];
-  if (/asr|paraformer/.test(evidence)) return ["transcription"];
-  if (/livetranslate|translation/.test(evidence)) return ["translation"];
-  if (/speech[- ]to[- ]speech|(?:audio|omni).*realtime/.test(evidence)) return ["speech_to_speech"];
+  if (/rerank|重排序/.test(evidence)) return ["reranking"];
+  if (/embedding|向量/.test(evidence)) return ["embeddings"];
+  if (/image|图片|图像/.test(evidence)) return ["image_generation"];
+  if (/video|视频/.test(evidence)) return ["video_generation"];
+  if (/tts|cosyvoice|语音合成/.test(evidence)) return ["speech_synthesis"];
+  if (/asr|paraformer|语音识别/.test(evidence)) return ["transcription"];
+  if (/livetranslate|translation|翻译/.test(evidence)) return ["translation"];
+  if (/speech[- ]to[- ]speech|(?:audio|omni).*realtime|语音对话/.test(evidence))
+    return ["speech_to_speech"];
   if (/ocr/.test(evidence)) return ["ocr"];
   return ["text_generation"];
 }
 
 function modelDate(raw: string | undefined): string | undefined {
   if (raw === undefined) return undefined;
+  const exact = raw.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (exact?.[1] !== undefined && exact[2] !== undefined && exact[3] !== undefined) {
+    const candidate = `${exact[1]}-${exact[2]}-${exact[3]}`;
+    if (z.iso.date().safeParse(candidate).success) return candidate;
+  }
+  const chinese = raw.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+  if (chinese?.[1] !== undefined && chinese[2] !== undefined && chinese[3] !== undefined) {
+    const candidate = `${chinese[1]}-${chinese[2].padStart(2, "0")}-${chinese[3].padStart(2, "0")}`;
+    if (z.iso.date().safeParse(candidate).success) return candidate;
+  }
   const months = [
     "January",
     "February",
@@ -1954,7 +1964,13 @@ function modelDate(raw: string | undefined): string | undefined {
   if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined)
     return undefined;
   const month = months.findIndex((value) => value.toLowerCase() === match[1]?.toLowerCase()) + 1;
-  return `${match[3]}-${String(month).padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+  const candidate = `${match[3]}-${String(month).padStart(2, "0")}-${match[2].padStart(2, "0")}`;
+  return z.iso.date().safeParse(candidate).success ? candidate : undefined;
+}
+
+function documentBodies(body: string): string[] {
+  const bundle = linkedBundleSchema.parse(JSON.parse(body));
+  return [bundle.index.body, ...bundle.documents.map((document) => document.body)];
 }
 
 export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
@@ -1962,56 +1978,41 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
   if (extractor.kind !== "dashscope-lifecycle")
     throw new Error("Wrong DashScope lifecycle extractor");
   const models = new Map<string, ProviderModel>();
-  for (const table of tables(input.body)) {
-    const modelColumn = column(table.headers, /^Model name$/i);
-    const replacementColumn = column(table.headers, /^Replacement model$/i);
-    if (modelColumn === undefined) continue;
-    let category = "";
-    let retiredAt: string | undefined;
-    let replacements: string[] = [];
-    for (const row of table.rows) {
-      let modelCell: Cell | undefined;
-      if (row.length === table.headers.length) {
-        category = value(table, row, /^Category$/i) ?? "";
-        retiredAt = modelDate(value(table, row, /^Deprecation time$/i));
-        replacements = replacementColumn === undefined ? [] : cellIds(row[replacementColumn]);
-        modelCell = row[modelColumn];
-      } else if (table.headers.length === 4 && row.length === 3) {
-        category = row[0]?.text ?? "";
-        modelCell = row[1];
-        replacements = cellIds(row[2]);
-      } else if (table.headers.length === 4 && row.length === 2) {
-        modelCell = row[0];
-        replacements = cellIds(row[1]);
-      } else if (table.headers.length === 4 && row.length === 1) {
-        modelCell = row[0];
-      } else {
-        throw new Error("DashScope lifecycle row changed shape");
-      }
-      if (retiredAt === undefined)
-        throw new Error("DashScope lifecycle deprecation time changed shape");
-      const rowIds = cellIds(modelCell);
-      if (rowIds.length === 0) throw new Error("DashScope lifecycle model cell changed shape");
-      for (const id of rowIds) {
-        const model = baseModel({
-          providerId: input.provider.id,
-          id,
-          name: id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        });
-        add(models, {
-          ...model,
-          tasks: lifecycleOperations(category, id),
-          status:
-            retiredAt !== undefined && retiredAt <= input.observedAt.slice(0, 10)
-              ? "retired"
-              : "deprecated",
-          retired_at: retiredAt,
-          replacement_model_ids: replacements,
-          pricing_state: "unknown",
-          scope: "regional_catalog",
-        });
+  for (const body of documentBodies(input.body)) {
+    for (const table of tables(body)) {
+      const modelColumn = column(table.headers, /^(?:Model name|模型(?:名称| ?ID))$/i);
+      const replacementColumn = column(table.headers, /^(?:Replacement model|替代模型)$/i);
+      if (modelColumn === undefined) continue;
+      for (const row of table.rows) {
+        if (row.length !== table.headers.length)
+          throw new Error("DashScope lifecycle row changed shape");
+        const category = value(table, row, /^(?:Category|类别|模型类型)$/i) ?? "";
+        const retiredAt = modelDate(
+          value(table, row, /^(?:Deprecation time|Retirement date|下线(?:时间|日期))$/i),
+        );
+        if (retiredAt === undefined)
+          throw new Error("DashScope lifecycle deprecation time changed shape");
+        const ids = cellIds(row[modelColumn]);
+        if (ids.length === 0) throw new Error("DashScope lifecycle model cell changed shape");
+        const replacements = replacementColumn === undefined ? [] : cellIds(row[replacementColumn]);
+        for (const id of ids) {
+          const model = baseModel({
+            providerId: input.provider.id,
+            id,
+            name: id,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          });
+          add(models, {
+            ...model,
+            tasks: lifecycleOperations(category, id),
+            status: retiredAt <= input.observedAt.slice(0, 10) ? "retired" : "deprecated",
+            retired_at: retiredAt,
+            replacement_model_ids: replacements,
+            pricing_state: "unknown",
+            scope: "regional_catalog",
+          });
+        }
       }
     }
   }
@@ -2023,18 +2024,20 @@ export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
   if (extractor.kind !== "dashscope-releases")
     throw new Error("Wrong DashScope releases extractor");
   const dates = new Map<string, string>();
-  for (const table of tables(input.body)) {
-    const timeColumn = column(table.headers, /^(?:Time|Date)$/i);
-    const modelColumn = column(table.headers, /^(?:Model|Model ID)$/i);
-    if (timeColumn === undefined || modelColumn === undefined) continue;
-    for (const row of table.rows) {
-      const parsedDate = z.iso.date().safeParse(row[timeColumn]?.text);
-      if (!parsedDate.success) throw new Error("DashScope release date changed shape");
-      const rowIds = cellIds(row[modelColumn]);
-      if (rowIds.length === 0) throw new Error("DashScope release model cell changed shape");
-      for (const id of rowIds) {
-        const current = dates.get(id);
-        if (current === undefined || parsedDate.data < current) dates.set(id, parsedDate.data);
+  for (const body of documentBodies(input.body)) {
+    for (const table of tables(body)) {
+      const timeColumn = column(table.headers, /^(?:Time|Date|时间)$/i);
+      const modelColumn = column(table.headers, /^(?:Model|Model ID|模型 ?ID)$/i);
+      if (timeColumn === undefined || modelColumn === undefined) continue;
+      for (const row of table.rows) {
+        const parsedDate = z.iso.date().safeParse(row[timeColumn]?.text);
+        if (!parsedDate.success) throw new Error("DashScope release date changed shape");
+        const rowIds = cellIds(row[modelColumn]);
+        if (rowIds.length === 0) throw new Error("DashScope release model cell changed shape");
+        for (const id of rowIds) {
+          const current = dates.get(id);
+          if (current === undefined || parsedDate.data < current) dates.set(id, parsedDate.data);
+        }
       }
     }
   }
