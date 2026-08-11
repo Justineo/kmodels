@@ -107,6 +107,11 @@ Status: implemented
   root index request and keep their configured concurrency bound. Discovered documents still wait
   for the validated index and nested indexes. Output and dependency order remain canonical rather
   than completion-ordered.
+- A provider starts source transports together only when their reviewed allowed-host sets are
+  disjoint. Sources that could touch any shared host remain serialized, and each source keeps its
+  existing internal request-concurrency bound. Parsing, overlay application, reconciliation, and
+  diagnostics still follow manifest order, so transport overlap neither raises a host's request
+  concurrency nor changes deterministic provider semantics.
 - Keep raw bodies in process memory only. Never write them to the repository or local disk.
 - Source records retain reviewed URL, observation time, content hash, available validators, and extractor version.
 - Raw replay requires a separately configured external artifact system. The
@@ -280,12 +285,14 @@ The committed generated state is:
 - `data/quarantine.json`
 - `data/refresh-summary.json`
 
-Candidate preparation overlaps canonical serialization with work-conserving
-provider validation, then freezes the exact accepted candidate. One projection
-stage creates both packs without a redundant validation pass before the
-accepted-pair pointer advances. The atomic current pointer and its immutable
-pair snapshot remain authoritative during collection and recovery; canonical
-and derived mirrors are repaired from that pointer after interruption. Once
+Candidate preparation overlaps canonical serialization with largest-first,
+work-conserving provider validation, then freezes the exact accepted candidate.
+Checked-in mirror recovery uses the same single semantic-validation pass instead
+of validating the decoded pricing graph twice. One projection stage compresses
+independent entries and the UI/export profiles concurrently before the accepted-pair
+pointer advances. The atomic current pointer and its immutable pair snapshot
+remain authoritative during collection and recovery; canonical and derived
+mirrors are repaired from that pointer after interruption. Once
 those mirrors are durable, superseded local snapshots are removed. Git history
 retains published pairs, while ignored crash-recovery state stays bounded to
 the only pair it can recover. The

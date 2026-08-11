@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import { mapConcurrentByKey } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import {
   fetchSource,
@@ -95,6 +96,8 @@ interface ProviderResult {
   quarantine?: { provider_id: string; checked_at: string; reason: string };
   attempt: ProviderRefreshAttempt;
 }
+
+type SourceFetch = { sourceId: string; result: FetchResult } | { sourceId: string; error: unknown };
 
 interface CollectionOptions {
   now?: Date;
@@ -578,6 +581,20 @@ function credentialLabel(source: SourceManifest): string {
   return requiredEnvs(source).join(" and ") || "Credential";
 }
 
+async function fetchProviderSources(sources: readonly SourceManifest[]): Promise<SourceFetch[]> {
+  return mapConcurrentByKey(
+    sources.filter((source) => !missingCredential(source)),
+    ({ allowedHosts }) => allowedHosts,
+    async (source) => {
+      try {
+        return { sourceId: source.id, result: await fetchSource(source) };
+      } catch (error) {
+        return { sourceId: source.id, error };
+      }
+    },
+  );
+}
+
 function sourceWarning(
   code: string,
   providerId: string,
@@ -759,6 +776,9 @@ async function collectProvider(
   const collectedSources: SourceRecord[] = [];
 
   try {
+    const sourceFetches = new Map(
+      (await fetchProviderSources(manifest.sources)).map((fetch) => [fetch.sourceId, fetch]),
+    );
     const groups: SourceGroup[] = [];
     const supplements: SourceGroup[] = [];
     const overlays: SourceGroup[] = [];
@@ -792,10 +812,10 @@ async function collectProvider(
         throw new Error(`Missing credential for ${source.id}`);
       }
 
-      let result: Awaited<ReturnType<typeof fetchSource>>;
-      try {
-        result = await fetchSource(source);
-      } catch (error) {
+      const fetch = sourceFetches.get(source.id);
+      if (fetch === undefined) throw new Error(`Source fetch ${source.id} is missing`);
+      if ("error" in fetch) {
+        const { error } = fetch;
         const failureState = recordSourceFailure(state, source.id, observedAt);
         const evidence = contractEvidence(error);
         warnings.push(
@@ -820,6 +840,7 @@ async function collectProvider(
         providerFailure = evidence === undefined ? "source_unavailable" : "source_schema_changed";
         throw error;
       }
+      const { result } = fetch;
 
       let parsed: ParsedProviderModel[];
       let contractFinding: SourceContractEvidence | undefined;
@@ -1256,11 +1277,13 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
   for (const key of Object.keys(state.sources))
     if (!configuredSourceIds.some((sourceId) => key === sourceId || key.startsWith(`${sourceId}/`)))
       delete state.sources[key];
-  await writeJson(join(rootDirectory, "data/fetch-state.json"), state);
-  await writeJson(
-    join(rootDirectory, "data/quarantine.json"),
-    results.flatMap((result) => (result.quarantine === undefined ? [] : [result.quarantine])),
-  );
+  const stateWrites = [
+    writeJson(join(rootDirectory, "data/fetch-state.json"), state),
+    writeJson(
+      join(rootDirectory, "data/quarantine.json"),
+      results.flatMap((result) => (result.quarantine === undefined ? [] : [result.quarantine])),
+    ),
+  ];
   const pricingTransitions = new Map<string, ProviderPricingTransition>(
     results.map((result): [string, ProviderPricingTransition] => [
       result.provider.id,
@@ -1291,7 +1314,15 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       safety_findings: options.pricingSafetyFindings ?? [],
     },
   );
-  const candidate = await prepareCatalogPairInParallel(composed.catalog, composed.pricing);
+  const candidatePromise = prepareCatalogPairInParallel(composed.catalog, composed.pricing);
+  const summary = summarizeRefresh(
+    previous,
+    composed.catalog,
+    previous === undefined ? emptyPricingCatalog() : acceptedPricing,
+    composed.pricing,
+    results.map(({ attempt }) => attempt),
+  );
+  const [candidate] = await Promise.all([candidatePromise, ...stateWrites]);
   const pricingCompilation = createPricingCompilationSnapshot(
     candidate,
     pricingCompilationEntries(
@@ -1301,13 +1332,6 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
       explicitProviders,
       previousPricingCompilation,
     ),
-  );
-  const summary = summarizeRefresh(
-    previous,
-    composed.catalog,
-    previous === undefined ? emptyPricingCatalog() : acceptedPricing,
-    composed.pricing,
-    results.map(({ attempt }) => attempt),
   );
   const runReportPath = process.env.KMODELS_REFRESH_REPORT_PATH;
   if (runReportPath !== undefined && runReportPath.trim() !== "")

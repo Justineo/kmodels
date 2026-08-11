@@ -47,27 +47,31 @@ Status: implemented
 - Collection starts every provider concurrently because provider fetch, failure,
   validation, and publication boundaries are independent. Total collection time
   therefore approaches the slowest provider instead of accumulating behind a
-  shared provider-worker limit. Source order inside a provider stays deterministic
-  because overlays and inventories can depend on catalog output; multi-document
-  source transports retain their own reviewed concurrency limits.
+  shared provider-worker limit. Within one provider, source transports with disjoint
+  reviewed host sets may overlap; any shared host serializes them, and every
+  multi-document transport retains its own reviewed concurrency limit. Parsing and
+  application stay in manifest order because overlays and inventories can depend on
+  preceding catalog output.
 - Scheduled refresh validates only the generated catalog suite and production
   build. It does not rerun code-only unit and fixture tests when the checkout is
   unchanged. Push and pull-request CI runs those tests once. Generated-data
   assertions follow the boundary and volatility rules in [Testing](testing.md).
 - One non-isolated, single-worker generated-data test project shares one parsed
   catalog/pricing context. Pricing runs one whole-catalog topology and limit
-  pass, then validates provider partitions
-  through four work-conserving worker threads. Large providers therefore run
-  concurrently without parsing the 100+ MB resource more than once. Per-test
+  pass, then validates provider partitions through four largest-first,
+  work-conserving worker threads. Canonical pricing replay likewise assembles
+  independent provider partitions through a four-worker pool before one parallel
+  candidate-validation pass. Large providers therefore run concurrently without
+  parsing the 100+ MB resource more than once. Per-test
   timeouts remain an inner diagnostic; the 30-minute refresh job timeout is the
   outer safety cap.
 - The catalog and canonical pricing advance as one validated accepted pair. Collection
   overlaps provider validation with canonical serialization, then freezes and
-  brands the exact candidate object. Commit can therefore create both consumer
-  projections and stage the immutable pair without repeating semantic
+  brands the exact candidate object. Commit concurrently compresses deterministic
+  projection assets and stages the immutable pair without repeating semantic
   validation. It advances one atomic pointer and repairs durable mirrors after
-  interruption. Production verifies pair-bound projection manifests and
-  encoded entry hashes without parsing the canonical pair.
+  interruption. Production verifies pair-bound projection manifests and encoded
+  entry hashes without parsing the canonical pair.
 - The `compile:pricing` task also makes canonical pricing compilation available
   independently. It performs no fetch, validates the catalog-bound public
   parsed input, and republishes the accepted pair and projections. The

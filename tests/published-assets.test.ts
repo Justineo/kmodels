@@ -51,8 +51,8 @@ describe("published projection assets", () => {
   it("loads the UI profile without touching unavailable export assets", async () => {
     const paths = await projectionPaths();
     const candidate = prepareCatalogPair(catalog, pricing);
-    const projections = projectCatalogPair(candidate);
-    const repeated = projectCatalogPair(candidate);
+    const projections = await projectCatalogPair(candidate);
+    const repeated = await projectCatalogPair(candidate);
     expect(repeated.ui.manifestSource).toBe(projections.ui.manifestSource);
     expect(repeated.ui.pack).toEqual(projections.ui.pack);
     expect(repeated.exports.manifestSource).toBe(projections.exports.manifestSource);
@@ -73,7 +73,7 @@ describe("published projection assets", () => {
   it("validates and stream-materializes both profiles without canonical inputs", async () => {
     const paths = await projectionPaths();
     const candidate = prepareCatalogPair(catalog, pricing);
-    const projections = projectCatalogPair(candidate);
+    const projections = await projectCatalogPair(candidate);
     await Promise.all([
       writeFile(paths.uiManifest, projections.ui.manifestSource),
       writeFile(paths.uiPack, projections.ui.pack),
@@ -101,7 +101,7 @@ describe("published projection assets", () => {
 
   it("rejects a corrupted compressed profile before serving it", async () => {
     const paths = await projectionPaths();
-    const projections = projectCatalogPair(prepareCatalogPair(catalog, pricing));
+    const projections = await projectCatalogPair(prepareCatalogPair(catalog, pricing));
     const corrupted = projections.ui.pack.slice();
     corrupted[0] = (corrupted[0] ?? 0) ^ 0xff;
     await Promise.all([
@@ -116,7 +116,7 @@ describe("published projection assets", () => {
 
   it("rejects a decoded source that does not match its manifest", async () => {
     const paths = await projectionPaths();
-    const projections = projectCatalogPair(prepareCatalogPair(catalog, pricing));
+    const projections = await projectCatalogPair(prepareCatalogPair(catalog, pricing));
     const uiManifest = {
       ...projections.ui.manifest,
       assets: projections.ui.manifest.assets.map((entry, index) =>

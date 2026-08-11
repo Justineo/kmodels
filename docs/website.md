@@ -110,6 +110,10 @@ Status: implemented
   contribution, enrollment, settlement, raw-fact, and retained-snapshot
   semantics. Known raw facts may expose only concise source-native parameters
   that affect cost; observations, locators, and audit evidence remain excluded.
+  It renders conditional or validity-qualified offer states before rates while
+  leaving unconditional singletons in the summary. Applicability follows the
+  bounded pricing projection, with one link to the exact canonical audit.
+  Raw-only official rows stay separate from normalized resources.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -252,7 +256,9 @@ Status: implemented
   chunk zero; later resource chunks require an explicit “Load more” action.
   Resources carry lightweight offer summaries and grouped offer references.
   Expanding one offer requests only its shared-offer fragments, verifies stable
-  metadata, rejects duplicate rows, and mounts its detail DOM only while open.
+  metadata, rejects duplicate rows, verifies the merged offer's ID, title,
+  billing mode, and state summary against the selected summary, and mounts its
+  detail DOM only while open.
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.

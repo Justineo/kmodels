@@ -51,10 +51,10 @@ the website renderer and not executable only inside a source refresh. A
 collection writes `data/pricing-inputs.json.gz` with the minimal public parsed
 facts needed by provider pricing assembly whenever a complete public source
 bundle was parsed, including one whose assembled topology subsequently failed
-validation. `vp run
-compile:pricing` reads that input, reassembles every replayable provider,
-validates the complete canonical resource, advances the accepted pair, and
-regenerates its projections without network access.
+validation. `vp run compile:pricing` reads that input, reassembles replayable
+provider partitions through a bounded largest-first worker pool, validates the
+complete canonical resource, advances the accepted pair, and regenerates its
+projections without network access.
 
 The canonical compilation input is bound to the exact catalog core, and each
 replay source records its content hash and extractor version. Provider snapshot
@@ -745,9 +745,15 @@ conditional rate, allowance, contribution, enrollment state, and settlement
 row includes a human-readable applicability qualifier. Provider-owned meters
 and credits use reviewed vocabulary labels or native codes in visible copy;
 their namespace-qualified syntax remains audit-only. The provider inspector
-loads one resource chunk at a time and one offer only when expanded. It keeps
-at most 20 display-safe unnormalized facts per offer, reports the complete fact
-count, and links to the canonical audit for the remainder.
+loads one resource chunk at a time and one offer only when expanded. Conditional
+or validity-qualified offer states are rows in the inspector rather than only a
+count in the summary. Simple applicability remains exact display copy; large DNF
+is factored into a deterministic summary no longer than 180 characters while
+the structured scope remains exact. Books whose offers contain only raw terms,
+`not_published` states, and no normalized relations, enrollment, or settlement
+are displayed separately as unresolved official rows. The inspector links once
+to the canonical audit and keeps at most 20 display-safe unnormalized facts per
+offer while reporting the complete count.
 
 Provider-owned categorical values keep their exact canonical keys even when
 those keys are wire-protocol identifiers rather than suitable UI copy. A

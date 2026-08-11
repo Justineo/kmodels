@@ -7,14 +7,14 @@ import { compareUtf8 } from "./canonical-value.ts";
 import { atomicWrite, rootDirectory } from "./io.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
 import {
-  assembleParsedProviderPricing,
   isPricingSource,
   isRequiredPricingSource,
   type ParsedPricingSource,
+  type PublishedPricingModel,
 } from "./pricing-adapter.ts";
 import type { ProviderPricingPartition } from "./pricing-assembly.ts";
 import { pricingLimits } from "./pricing-constants.ts";
-import { prepareCatalogPair, type CatalogPairCandidate } from "./pricing-publication.ts";
+import { prepareCatalogPairInParallel, type CatalogPairCandidate } from "./pricing-publication.ts";
 import {
   emptyPricingCatalog,
   type PricingCatalog,
@@ -22,8 +22,8 @@ import {
 } from "./pricing-schema.ts";
 import { parsedPricingModel, parsedPricingModelSchema } from "./pricing-source.ts";
 import { providerPartition } from "./pricing-transition.ts";
-import { validatePricingCatalog } from "./pricing-validation.ts";
 import type { SourceRecord } from "./schema.ts";
+import { runWorkerPool } from "./worker-pool.ts";
 
 const hashSchema = z.string().regex(/^[0-9a-f]{64}$/);
 const pricingReplaySourceSchema = z.strictObject({
@@ -170,6 +170,18 @@ export interface PricingCompilationResult {
   preservedProviders: string[];
 }
 
+interface CompilationTask {
+  providerId: string;
+  snapshot: ProviderPricingSnapshot;
+  sources: ParsedPricingSource[];
+  models: PublishedPricingModel[];
+  categoricalLabels: ProviderManifest["pricingCategoricalLabels"];
+}
+
+type CompilationTaskResult =
+  | { providerId: string; partition: ProviderPricingPartition }
+  | { providerId: string; error: string };
+
 export const pricingCompilationPath = join(rootDirectory, "data/pricing-inputs.json.gz");
 
 function replayModels(models: ParsedPricingSource["models"]): PricingReplaySource["models"] {
@@ -306,11 +318,11 @@ export async function writePricingCompilationSnapshot(
   await atomicWrite(path, gzipSync(canonicalJsonBytes(parsed)));
 }
 
-export function compilePricingSnapshot(
+export async function compilePricingSnapshot(
   current: CatalogPairCandidate,
   snapshot: PricingCompilationSnapshot,
   providerManifests: readonly ProviderManifest[] = manifests,
-): PricingCompilationResult {
+): Promise<PricingCompilationResult> {
   validateCompilationBinding(snapshot, current);
   if (snapshot.providers.length === 0)
     return {
@@ -335,7 +347,8 @@ export function compilePricingSnapshot(
   const replayByProvider = new Map(
     snapshot.providers.map((provider) => [provider.provider_id, provider]),
   );
-  const partitions: ProviderPricingPartition[] = [];
+  const partitions = new Map<string, ProviderPricingPartition>();
+  const tasks: CompilationTask[] = [];
   const replayedProviders: string[] = [];
   const preservedProviders: string[] = [];
 
@@ -348,31 +361,94 @@ export function compilePricingSnapshot(
       const partition = providerPartition(current.pricing.data, providerId, modelProvider);
       if (partition === undefined)
         throw new Error(`Pricing provider ${providerId} has no accepted partition`);
-      partitions.push(partition);
+      partitions.set(providerId, partition);
       preservedProviders.push(providerId);
       continue;
     }
 
-    const partition = assembleParsedProviderPricing(
+    tasks.push({
       providerId,
-      providerSnapshot.observed_at,
-      replaySources(replay, manifest, providerSnapshot, current),
-      current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
-      manifest.pricingCategoricalLabels,
-    );
-    if (partition === undefined)
-      throw new Error(`Pricing replay for ${providerId} produced nothing`);
-    partitions.push({ ...partition, snapshot: providerSnapshot });
+      snapshot: providerSnapshot,
+      sources: replaySources(replay, manifest, providerSnapshot, current),
+      models: current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
+      categoricalLabels: manifest.pricingCategoricalLabels,
+    });
     replayedProviders.push(providerId);
   }
 
-  const pricing = pricingCatalogFromPartitions(partitions);
-  validatePricingCatalog(pricing, current.catalog);
+  for (const partition of await compileProviderPricing(
+    tasks
+      .map((task) => ({ task, weight: compilationWeight(task) }))
+      .sort((left, right) => right.weight - left.weight)
+      .map(({ task }) => task),
+  ))
+    partitions.set(partition.snapshot.provider_id, partition);
+
+  const pricing = pricingCatalogFromPartitions(
+    current.pricing.data.provider_snapshots.map(({ provider_id }) => {
+      const partition = partitions.get(provider_id);
+      if (partition === undefined)
+        throw new Error(`Pricing provider ${provider_id} has no compiled partition`);
+      return partition;
+    }),
+  );
   return {
-    candidate: prepareCatalogPair(current.catalog, pricing),
+    candidate: await prepareCatalogPairInParallel(current.catalog, pricing),
     replayedProviders,
     preservedProviders,
   };
+}
+
+function compilationWeight(task: CompilationTask): number {
+  return task.sources.reduce(
+    (weight, { models }) =>
+      weight +
+      models.reduce(
+        (modelWeight, model) =>
+          modelWeight +
+          1 +
+          model.price_facts.length +
+          model.raw_price_facts.length +
+          (model.commercial_facts?.reduce(
+            (commercialWeight, fact) =>
+              commercialWeight + 1 + fact.price_facts.length + fact.raw_price_facts.length,
+            0,
+          ) ?? 0),
+        0,
+      ),
+    task.models.length,
+  );
+}
+
+async function compileProviderPricing(
+  tasks: readonly CompilationTask[],
+): Promise<ProviderPricingPartition[]> {
+  return runWorkerPool(
+    tasks,
+    new URL("./pricing-compilation-worker.ts", import.meta.url),
+    compilationResult,
+  );
+}
+
+function compilationResult(message: unknown, task: CompilationTask): ProviderPricingPartition {
+  if (!isCompilationTaskResult(message) || message.providerId !== task.providerId)
+    throw new Error("Pricing compilation worker returned an invalid result");
+  if ("partition" in message) return message.partition;
+  throw new Error(message.error);
+}
+
+function isCompilationTaskResult(value: unknown): value is CompilationTaskResult {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    !("providerId" in value) ||
+    typeof value.providerId !== "string"
+  )
+    return false;
+  return (
+    ("partition" in value && value.partition !== null && typeof value.partition === "object") ||
+    ("error" in value && typeof value.error === "string")
+  );
 }
 
 function replayUsesCurrentExtractors(

@@ -62,6 +62,7 @@ import {
 
 export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 export const PROVIDER_UNNORMALIZED_PREVIEW_LIMIT = 20;
+export const WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH = 180;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
 type CategoricalLabelIndex = ReadonlyMap<string, string>;
 type ProviderAtomIndex = ReadonlyMap<string, ProviderAtomRegistryEntry>;
@@ -305,7 +306,7 @@ function websiteDeferredAssets(
         storedResources,
         (values, chunk) =>
           websiteProviderPricingChunkSchema.parse({
-            schema_version: 2,
+            schema_version: 3,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -569,7 +570,13 @@ function websiteProviderPricingResources(
   providerId: string,
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
-): Array<{ id: string; title: string; kind: string; offers: WebsitePricingOffer[] }> {
+): Array<{
+  id: string;
+  title: string;
+  kind: string;
+  raw_only: boolean;
+  offers: WebsitePricingOffer[];
+}> {
   const books = pricing.books.filter(({ provider_id }) => provider_id === providerId);
   return books
     .filter(({ scope }) => scope.kind === "provider_resource" && scope.model_refs.length === 0)
@@ -583,13 +590,32 @@ function websiteProviderPricingResources(
           book.scope.resource_kind.namespace === "kmodels"
             ? formatSentenceCase(book.scope.resource_kind.value)
             : formatSentenceCase(book.scope.resource_kind.value.replaceAll("-", "_")),
+        raw_only: isRawOnlyResource(book),
         offers: book.offers.map((offer) =>
           websiteOffer(books, offer, "standalone", undefined, labels, atoms, {
             unnormalizedLimit: PROVIDER_UNNORMALIZED_PREVIEW_LIMIT,
           }),
         ),
       };
-    });
+    })
+    .sort(
+      (left, right) =>
+        Number(left.raw_only) - Number(right.raw_only) ||
+        compareUtf8(left.title, right.title) ||
+        compareUtf8(left.id, right.id),
+    );
+}
+
+function isRawOnlyResource(book: PricingBook): boolean {
+  return book.offers.every(
+    (offer) =>
+      offer.terms.length > 0 &&
+      offer.terms.every(({ kind }) => kind === "raw") &&
+      offer.states.every(({ state }) => state === "not_published") &&
+      offer.relations.length === 0 &&
+      offer.enrollment.length === 0 &&
+      offer.settlement.length === 0,
+  );
 }
 
 function websiteSnapshot(snapshot: ProviderPricingSnapshot | undefined) {
@@ -637,9 +663,7 @@ function websiteOffer(
     key: `state:${index}`,
     state: state.state,
     label: stateLabel(state.state),
-    applicability: state.applicability,
-    applicability_label: applicabilityLabel(state.applicability, labels),
-    ...(state.validity === undefined ? {} : { validity: state.validity }),
+    ...scopeFields(state, labels),
   }));
   const rates: WebsitePricingOffer["rates"] = [];
   const allowances: WebsitePricingOffer["allowances"] = [];
@@ -661,9 +685,7 @@ function websiteOffer(
           ...(variant.charge_binding === undefined
             ? {}
             : { driver: chargeDriver(variant.charge_binding, atoms) }),
-          applicability: variant.applicability,
-          applicability_label: applicabilityLabel(variant.applicability, labels),
-          ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+          ...scopeFields(variant, labels),
         });
       });
     } else if (term.kind === "allowance") {
@@ -673,9 +695,7 @@ function websiteOffer(
           value: formatAllowanceBenefit(variant.benefit),
           target: allowanceTarget(variant.target, offer, atoms),
           reset: resetLabel(variant.reset),
-          applicability: variant.applicability,
-          applicability_label: applicabilityLabel(variant.applicability, labels),
-          ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+          ...scopeFields(variant, labels),
         });
       });
     } else if (term.kind === "contribution") {
@@ -685,9 +705,7 @@ function websiteOffer(
           label: formatSentenceCase(term.term_key.replaceAll("-", "_")),
           target: contributionTarget(books, variant.target_rate_refs, atoms),
           drivers: variant.charge_bindings.map((binding) => chargeDriver(binding, atoms)),
-          applicability: variant.applicability,
-          applicability_label: applicabilityLabel(variant.applicability, labels),
-          ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+          ...scopeFields(variant, labels),
         });
       });
     }
@@ -728,24 +746,31 @@ function websiteOffer(
     enrollment: offer.enrollment.map((variant, index) => ({
       key: `enrollment:${index}`,
       label: enrollmentLabel(variant.state),
-      applicability: variant.applicability,
-      applicability_label: applicabilityLabel(variant.applicability, labels),
-      ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+      ...scopeFields(variant, labels),
     })),
     settlement: offer.settlement.map((variant, index) => ({
       key: `settlement:${index}`,
       channel: formatSentenceCase(variant.channel),
       biller: variant.biller,
       payment_sources: variant.payment_sources.map((source) => formatSentenceCase(source)),
-      applicability: variant.applicability,
-      applicability_label: applicabilityLabel(variant.applicability, labels),
-      ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+      ...scopeFields(variant, labels),
     })),
     unnormalized_count: unnormalized.length,
     unnormalized:
       options.unnormalizedLimit === undefined
         ? unnormalized
         : unnormalized.slice(0, options.unnormalizedLimit),
+  };
+}
+
+function scopeFields(
+  value: Pick<PricingOffer["states"][number], "applicability" | "validity">,
+  labels: CategoricalLabelIndex,
+) {
+  return {
+    applicability: value.applicability,
+    applicability_label: applicabilityLabel(value.applicability, labels),
+    ...(value.validity === undefined ? {} : { validity: value.validity }),
   };
 }
 
@@ -770,14 +795,7 @@ function pricingSelectors(
   const cache = selectorCache.get(offer);
   const cached = cache?.get(labels);
   if (cached !== undefined) return cached;
-  const byDimension = new Map<string, PriceCondition[]>();
-  for (const condition of offerConditions(offer)) {
-    if (isModelDimension(condition.dimension)) continue;
-    const key = canonicalJsonKey(condition.dimension);
-    const current = byDimension.get(key);
-    if (current === undefined) byDimension.set(key, [condition]);
-    else current.push(condition);
-  }
+  const byDimension = conditionsByDimension(offerConditions(offer));
   const selectors = [...byDimension.entries()]
     .map(([key, conditions]) => pricingSelector(key, conditions, labels))
     .sort((left, right) => compareUtf8(left.label, right.label));
@@ -785,6 +803,20 @@ function pricingSelectors(
   created.set(labels, selectors);
   if (cache === undefined) selectorCache.set(offer, created);
   return selectors;
+}
+
+function conditionsByDimension(
+  conditions: Iterable<PriceCondition>,
+): Map<string, PriceCondition[]> {
+  const grouped = new Map<string, PriceCondition[]>();
+  for (const condition of conditions) {
+    if (isModelDimension(condition.dimension)) continue;
+    const key = canonicalJsonKey(condition.dimension);
+    const current = grouped.get(key);
+    if (current === undefined) grouped.set(key, [condition]);
+    else current.push(condition);
+  }
+  return grouped;
 }
 
 function pricingSelector(
@@ -924,34 +956,95 @@ function categoricalLabel(
   return formatCategoricalValue(value);
 }
 
-function applicabilityLabel(
+export function applicabilityLabel(
   applicability: PricingOffer["states"][number]["applicability"],
   labels: CategoricalLabelIndex,
 ): string {
   const clauses = applicability.any_of.map(({ all_of }) =>
-    all_of
-      .filter(({ dimension }) => !isModelDimension(dimension))
-      .map((condition) => {
-        const label = dimensionLabel(condition.dimension);
-        if (condition.kind === "categorical")
-          return `${label}: ${condition.values
-            .map((value) => categoricalLabel(labels, condition.dimension, value))
-            .join(", ")}`;
-        if (condition.kind === "boolean")
-          return condition.value ? label : `No ${label.toLowerCase()}`;
-        const bounds = [
-          condition.lower === undefined
-            ? undefined
-            : `${condition.lower.inclusive ? "≥" : ">"} ${condition.lower.value}`,
-          condition.upper === undefined
-            ? undefined
-            : `${condition.upper.inclusive ? "≤" : "<"} ${condition.upper.value}`,
-        ].filter((value): value is string => value !== undefined);
-        return `${label}: ${bounds.join(" · ")} ${formatUnitExpression(condition.unit)}`;
-      }),
+    all_of.filter(({ dimension }) => !isModelDimension(dimension)),
   );
-  if (clauses.some((conditions) => conditions.length === 0)) return "All contexts";
-  return clauses.map((conditions) => conditions.join(" · ")).join(" or ");
+  const first = clauses[0];
+  if (first === undefined || clauses.some((conditions) => conditions.length === 0))
+    return "All contexts";
+
+  const exact = clauses
+    .map((conditions) =>
+      conditions.map((condition) => conditionLabel(condition, labels)).join(" · "),
+    )
+    .join(" or ");
+  if (exact.length <= WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH) return exact;
+
+  const common = new Set(first.map(canonicalJsonKey));
+  for (const conditions of clauses.slice(1)) {
+    const keys = new Set(conditions.map(canonicalJsonKey));
+    for (const key of common) if (!keys.has(key)) common.delete(key);
+  }
+  const commonConditions = first.filter((condition) => common.has(canonicalJsonKey(condition)));
+  const byDimension = conditionsByDimension(
+    clauses.flatMap((conditions) =>
+      conditions.filter((condition) => !common.has(canonicalJsonKey(condition))),
+    ),
+  );
+  const variable = [...byDimension.values()]
+    .map((conditions) => dimensionConditionSummary(conditions, labels))
+    .sort(compareUtf8);
+  const summary = [
+    ...commonConditions.map((condition) => conditionLabel(condition, labels)),
+    ...variable,
+    ...(clauses.length === 1 ? [] : [`${clauses.length} combinations`]),
+  ].join(" · ");
+  if (summary.length <= WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH) return summary;
+
+  const dimensions = new Set(
+    clauses.flatMap((conditions) => conditions.map(({ dimension }) => canonicalJsonKey(dimension))),
+  ).size;
+  return `Conditional pricing · ${clauses.length} combination${clauses.length === 1 ? "" : "s"} across ${dimensions} dimension${dimensions === 1 ? "" : "s"}`;
+}
+
+function conditionLabel(condition: PriceCondition, labels: CategoricalLabelIndex): string {
+  const label = dimensionLabel(condition.dimension);
+  if (condition.kind === "categorical")
+    return `${label}: ${condition.values
+      .map((value) => categoricalLabel(labels, condition.dimension, value))
+      .join(", ")}`;
+  if (condition.kind === "boolean") return condition.value ? label : `No ${label.toLowerCase()}`;
+  const bounds = [
+    condition.lower === undefined
+      ? undefined
+      : `${condition.lower.inclusive ? "≥" : ">"} ${condition.lower.value}`,
+    condition.upper === undefined
+      ? undefined
+      : `${condition.upper.inclusive ? "≤" : "<"} ${condition.upper.value}`,
+  ].filter((value): value is string => value !== undefined);
+  return `${label}: ${bounds.join(" · ")} ${formatUnitExpression(condition.unit)}`;
+}
+
+function dimensionConditionSummary(
+  conditions: PriceCondition[],
+  labels: CategoricalLabelIndex,
+): string {
+  const first = conditions[0];
+  if (first === undefined) throw new Error("Cannot summarize an empty pricing dimension");
+  const label = dimensionLabel(first.dimension);
+  if (conditions.every((condition) => condition.kind === "categorical")) {
+    const values = [
+      ...new Map(
+        conditions.flatMap((condition) =>
+          condition.kind === "categorical"
+            ? condition.values.map((value) => [canonicalJsonKey(value), value] as const)
+            : [],
+        ),
+      ).values(),
+    ];
+    return values.length <= 3
+      ? `${label}: ${values
+          .map((value) => categoricalLabel(labels, first.dimension, value))
+          .join(", ")}`
+      : `${label}: ${values.length} values`;
+  }
+  if (conditions.every((condition) => condition.kind === "boolean")) return `${label}: yes or no`;
+  const variants = new Set(conditions.map(canonicalJsonKey)).size;
+  return `${label}: ${variants} ${conditions.every((condition) => condition.kind === "decimal_range") ? "ranges" : "conditions"}`;
 }
 
 function dimensionLabel(dimension: PriceDimension): string {

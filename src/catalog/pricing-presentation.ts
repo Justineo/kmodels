@@ -788,7 +788,7 @@ function isCompatibleWithMechanism(
   return (
     offer.relations.some(
       ({ kind, target }) =>
-        (kind === "compatible_with" || kind === "requires") &&
+        (kind === "compatible_with" || kind === "requires" || kind === "incurs") &&
         target.offer_refs.some((ref) => mechanismIds.has(ref)),
     ) ||
     mechanisms.some(({ relations }) =>

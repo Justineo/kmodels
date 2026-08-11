@@ -10,7 +10,7 @@ if (pair === undefined) throw new Error("No accepted catalog pair is available")
 const input = await readPricingCompilationSnapshot(pair);
 if (input === undefined) throw new Error("No pricing compilation input is available");
 
-const result = compilePricingSnapshot(pair, input);
+const result = await compilePricingSnapshot(pair, input);
 if (result.replayedProviders.length > 0) await commitCatalogPair(result.candidate);
 console.log(
   [

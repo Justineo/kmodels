@@ -82,7 +82,7 @@ function providerPricingChunk(
   references: [number, number][] = [[0, 0]],
 ): WebsiteProviderPricingChunk {
   return {
-    schema_version: 2,
+    schema_version: 3,
     data_version: dataVersion,
     provider_id: provider.id,
     chunk,
@@ -91,6 +91,7 @@ function providerPricingChunk(
         id: (chunk === 0 ? "a" : "d").repeat(64),
         title,
         kind: "Service",
+        raw_only: false,
         offers: [
           {
             id: "b".repeat(64),
@@ -300,6 +301,24 @@ describe("website detail loading", () => {
     });
     expect(requestedUrls.filter((url) => url.startsWith("/ui/offers/"))).toHaveLength(1);
     expect(requestedUrls.filter((url) => url.startsWith("/ui/providers/"))).toHaveLength(2);
+  });
+
+  it("rejects deferred offer details that disagree with their summary", async () => {
+    const dataVersion = "6".repeat(64);
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(offerChunk(dataVersion))));
+    const summary = providerPricingChunk(dataVersion).resources[0]?.offers[0];
+    if (summary === undefined) throw new Error("Missing provider offer summary");
+
+    const mismatches = [
+      { ...summary, id: "c".repeat(64) },
+      { ...summary, title: "Other usage" },
+      { ...summary, billing_mode: { label: "Capacity" } },
+      { ...summary, state_summary: "Free" },
+    ];
+    for (const mismatch of mismatches)
+      await expect(
+        loadWebsiteProviderPricingOffer(dataVersion, provider.id, mismatch),
+      ).rejects.toThrow("does not match its summary");
   });
 
   it("evicts invalid provider pricing so a later request can recover", async () => {

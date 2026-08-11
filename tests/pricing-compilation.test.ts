@@ -184,7 +184,7 @@ function replaySource(price: string): PricingReplaySource {
 }
 
 describe("local canonical pricing compilation", () => {
-  it("reassembles pricing from bounded parsed inputs without fetching", () => {
+  it("reassembles pricing from bounded parsed inputs without fetching", async () => {
     const current = candidate("1");
     const snapshot = createPricingCompilationSnapshot(current, [
       {
@@ -193,7 +193,7 @@ describe("local canonical pricing compilation", () => {
       },
     ]);
 
-    const compiled = compilePricingSnapshot(current, snapshot, [providerManifest]);
+    const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
 
     expect(compiled.replayedProviders).toEqual([providerId]);
     expect(compiled.preservedProviders).toEqual([]);
@@ -207,18 +207,18 @@ describe("local canonical pricing compilation", () => {
     });
   });
 
-  it("preserves a provider partition without replay input", () => {
+  it("preserves a provider partition without replay input", async () => {
     const current = candidate("1");
     const snapshot = createPricingCompilationSnapshot(current, []);
 
-    const compiled = compilePricingSnapshot(current, snapshot, [providerManifest]);
+    const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
 
     expect(compiled.replayedProviders).toEqual([]);
     expect(compiled.preservedProviders).toEqual([providerId]);
     expect(compiled.candidate.pricing).toEqual(current.pricing);
   });
 
-  it("preserves accepted pricing when replay input uses an obsolete extractor", () => {
+  it("preserves accepted pricing when replay input uses an obsolete extractor", async () => {
     const current = candidate("1");
     const snapshot = createPricingCompilationSnapshot(current, [
       {
@@ -227,39 +227,39 @@ describe("local canonical pricing compilation", () => {
       },
     ]);
 
-    const compiled = compilePricingSnapshot(current, snapshot, [providerManifest]);
+    const compiled = await compilePricingSnapshot(current, snapshot, [providerManifest]);
     expect(compiled.replayedProviders).toEqual([]);
     expect(compiled.preservedProviders).toEqual([providerId]);
     expect(compiled.candidate.pricing).toEqual(current.pricing);
   });
 
-  it("rejects replay input bound to another catalog core", () => {
+  it("rejects replay input bound to another catalog core", async () => {
     const current = candidate("1");
     const snapshot = {
       ...createPricingCompilationSnapshot(current, []),
       core_data_sha256: "0".repeat(64),
     };
 
-    expect(() => compilePricingSnapshot(current, snapshot, [providerManifest])).toThrow(
+    await expect(compilePricingSnapshot(current, snapshot, [providerManifest])).rejects.toThrow(
       "does not match the accepted catalog core",
     );
   });
 
-  it("requires every configured pricing source", () => {
+  it("requires every configured pricing source", async () => {
     const current = candidate("1");
     const snapshot = createPricingCompilationSnapshot(current, [
       { provider_id: providerId, sources: [replaySource("1")] },
     ]);
     const requiredSource = { ...sourceManifest, id: `${sourceId}-required` };
 
-    expect(() =>
+    await expect(
       compilePricingSnapshot(current, snapshot, [
         { ...providerManifest, sources: [sourceManifest, requiredSource] },
       ]),
-    ).toThrow(`missing required source ${requiredSource.id}`);
+    ).rejects.toThrow(`missing required source ${requiredSource.id}`);
   });
 
-  it("replays retained inputs even when a failed refresh observed new source bytes", () => {
+  it("replays retained inputs even when a failed refresh observed new source bytes", async () => {
     const accepted = candidate("1");
     const attemptedAt = "2026-07-30T01:00:00.000Z";
     const current = prepareCatalogPair(
@@ -298,7 +298,9 @@ describe("local canonical pricing compilation", () => {
       },
     ]);
 
-    expect(() => compilePricingSnapshot(current, snapshot, [providerManifest])).not.toThrow();
+    await expect(
+      compilePricingSnapshot(current, snapshot, [providerManifest]),
+    ).resolves.toBeDefined();
   });
 
   it("round-trips a catalog-bound canonical gzip snapshot", async () => {
