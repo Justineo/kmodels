@@ -1,10 +1,16 @@
 <script setup lang="ts" vapor>
-import { nextTick, ref, useTemplateRef, watch } from "vue";
+import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
 import { formatSnapshotAt } from "../catalog/presentation.ts";
+import {
+  loadWebsiteProviderPricingChunk,
+  loadWebsiteProviderPricingOffer,
+} from "../catalog/website-loader.ts";
 import type {
+  WebsitePricingOffer,
   WebsitePricingSelector,
   WebsiteProvider,
   WebsiteProviderPricingDetail,
+  WebsiteProviderPricingOffer,
 } from "../catalog/website-schema.ts";
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
@@ -21,6 +27,17 @@ const dialog = useTemplateRef<HTMLDialogElement>("dialog");
 const scrollHost = useTemplateRef<HTMLDivElement>("scrollHost");
 const scrollViewport = useTemplateRef<HTMLDivElement>("scrollViewport");
 const closing = ref(false);
+const resources = ref<WebsiteProviderPricingDetail["resources"]>([]);
+const nextChunk = ref(1);
+const loadingMore = ref(false);
+const chunkError = ref<string>();
+const openOfferIds = ref<string[]>([]);
+const offerLoads = ref<
+  Record<string, { offer?: WebsitePricingOffer; loading: boolean; error?: string }>
+>({});
+const hasMoreChunks = computed(
+  () => nextChunk.value < (props.provider?.pricing_coverage.detail_chunks ?? 0),
+);
 const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
   viewport: scrollViewport.value,
@@ -40,6 +57,19 @@ watch(
       element.close();
     }
     updateScrollbars();
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.detail,
+  (detail) => {
+    resources.value = detail?.resources ?? [];
+    nextChunk.value = 1;
+    loadingMore.value = false;
+    chunkError.value = undefined;
+    openOfferIds.value = [];
+    offerLoads.value = {};
   },
   { immediate: true },
 );
@@ -66,6 +96,70 @@ function summarize(values: string[]): string {
   return values.length <= 3
     ? values.join(", ")
     : `${values.slice(0, 3).join(", ")} +${values.length - 3}`;
+}
+
+function loadedOffer(offerId: string): WebsitePricingOffer[] {
+  const offer = offerLoads.value[offerId]?.offer;
+  return offer === undefined ? [] : [offer];
+}
+
+function offerLoading(offerId: string): boolean {
+  return offerLoads.value[offerId]?.loading === true;
+}
+
+function offerError(offerId: string): string | undefined {
+  return offerLoads.value[offerId]?.error;
+}
+
+function offerOpen(offerId: string): boolean {
+  return openOfferIds.value.includes(offerId);
+}
+
+async function toggleOffer(summary: WebsiteProviderPricingOffer, event: Event): Promise<void> {
+  if (!(event.currentTarget instanceof HTMLDetailsElement)) return;
+  const open = event.currentTarget.open;
+  openOfferIds.value = open
+    ? [...new Set([...openOfferIds.value, summary.id])]
+    : openOfferIds.value.filter((id) => id !== summary.id);
+  if (!open || offerLoads.value[summary.id]?.offer !== undefined) return;
+  const detail = props.detail;
+  if (detail === undefined || offerLoads.value[summary.id]?.loading === true) return;
+  offerLoads.value = { ...offerLoads.value, [summary.id]: { loading: true } };
+  try {
+    const offer = await loadWebsiteProviderPricingOffer(
+      detail.data_version,
+      detail.provider_id,
+      summary,
+    );
+    offerLoads.value = { ...offerLoads.value, [summary.id]: { offer, loading: false } };
+  } catch {
+    offerLoads.value = {
+      ...offerLoads.value,
+      [summary.id]: { loading: false, error: "Offer details are temporarily unavailable." },
+    };
+  }
+  updateScrollbars();
+}
+
+async function loadMoreResources(): Promise<void> {
+  const detail = props.detail;
+  if (detail === undefined || !hasMoreChunks.value || loadingMore.value) return;
+  loadingMore.value = true;
+  chunkError.value = undefined;
+  try {
+    const chunk = await loadWebsiteProviderPricingChunk(
+      detail.data_version,
+      detail.provider_id,
+      nextChunk.value,
+    );
+    resources.value = [...resources.value, ...chunk.resources];
+    nextChunk.value += 1;
+  } catch {
+    chunkError.value = "More resources are temporarily unavailable.";
+  } finally {
+    loadingMore.value = false;
+  }
+  updateScrollbars();
 }
 </script>
 
@@ -121,11 +215,7 @@ function summarize(values: string[]): string {
                 >: {{ detail.snapshot.refresh_failure.message }}
               </p>
 
-              <section
-                v-for="resource in detail.resources"
-                :key="resource.id"
-                class="provider-resource"
-              >
+              <section v-for="resource in resources" :key="resource.id" class="provider-resource">
                 <header>
                   <div>
                     <span class="provider-resource-kind">{{ resource.kind }}</span>
@@ -138,86 +228,143 @@ function summarize(values: string[]): string {
                   >
                 </header>
 
-                <article v-for="offer in resource.offers" :key="offer.id" class="provider-offer">
-                  <header>
+                <details
+                  v-for="summary in resource.offers"
+                  :key="summary.id"
+                  class="provider-offer"
+                  @toggle="toggleOffer(summary, $event)"
+                >
+                  <summary class="provider-offer-summary">
                     <div>
-                      <h4>{{ offer.title }}</h4>
-                      <small>{{ offer.billing_mode.label }} · {{ offer.state_summary }}</small>
+                      <h4>{{ summary.title }}</h4>
+                      <small>{{ summary.billing_mode.label }} · {{ summary.state_summary }}</small>
                     </div>
-                  </header>
-                  <p v-if="offer.composition">{{ offer.composition }}</p>
+                  </summary>
 
-                  <dl v-if="offer.selectors.length > 0" class="provider-context-list">
-                    <div v-for="selector in offer.selectors" :key="selector.key">
-                      <dt>{{ selector.label }}</dt>
-                      <dd>{{ selectorSummary(selector) }}</dd>
-                    </div>
-                  </dl>
+                  <template v-if="offerOpen(summary.id)">
+                    <p v-if="offerLoading(summary.id)" class="provider-pricing-status">
+                      Loading offer details…
+                    </p>
+                    <p v-else-if="offerError(summary.id)" class="unknown-note" role="alert">
+                      {{ offerError(summary.id) }}
+                    </p>
+                  </template>
 
-                  <div v-if="offer.rates.length > 0" class="provider-rate-list">
-                    <div v-for="rate in offer.rates" :key="rate.key">
-                      <div>
-                        <strong>{{ rate.label }}</strong>
-                        <small v-if="rate.validity">Validity-qualified</small>
+                  <template
+                    v-for="offer in offerOpen(summary.id) ? loadedOffer(summary.id) : []"
+                    :key="offer.id"
+                  >
+                    <div class="provider-offer-body">
+                      <p v-if="offer.composition">{{ offer.composition }}</p>
+
+                      <dl v-if="offer.selectors.length > 0" class="provider-context-list">
+                        <div v-for="selector in offer.selectors" :key="selector.key">
+                          <dt>{{ selector.label }}</dt>
+                          <dd>{{ selectorSummary(selector) }}</dd>
+                        </div>
+                      </dl>
+
+                      <div v-if="offer.rates.length > 0" class="provider-rate-list">
+                        <div v-for="rate in offer.rates" :key="rate.key">
+                          <div>
+                            <strong>{{ rate.label }}</strong>
+                            <small v-if="rate.applicability_label !== 'All contexts'">
+                              {{ rate.applicability_label }}
+                            </small>
+                            <small v-if="rate.validity">Validity-qualified</small>
+                          </div>
+                          <div class="provider-rate-value" :aria-label="rate.accessible_text">
+                            <strong>{{ rate.amount }}</strong>
+                            <small>{{ rate.unit }}</small>
+                          </div>
+                          <details v-if="rate.driver">
+                            <summary>{{ rate.driver.label }}</summary>
+                            <small>{{ rate.driver.definition }}</small>
+                            <small>
+                              {{ rate.driver.aggregation }} · {{ rate.driver.resolution_phase }}
+                            </small>
+                          </details>
+                          <small v-else class="provider-binding-status">
+                            Usage binding unavailable
+                          </small>
+                        </div>
                       </div>
-                      <div class="provider-rate-value" :aria-label="rate.accessible_text">
-                        <strong>{{ rate.amount }}</strong>
-                        <small>{{ rate.unit }}</small>
-                      </div>
-                      <details v-if="rate.driver">
-                        <summary>{{ rate.driver.label }}</summary>
-                        <small>{{ rate.driver.definition }}</small>
-                        <small
-                          >{{ rate.driver.aggregation }} · {{ rate.driver.resolution_phase }}</small
+
+                      <ul v-if="offer.allowances.length > 0" class="provider-fact-list">
+                        <li v-for="allowance in offer.allowances" :key="allowance.key">
+                          Allowance: {{ allowance.value }} · {{ allowance.target }} ·
+                          {{ allowance.reset }}
+                          <small v-if="allowance.applicability_label !== 'All contexts'">
+                            {{ allowance.applicability_label }}
+                          </small>
+                        </li>
+                      </ul>
+                      <ul v-if="offer.contributions.length > 0" class="provider-fact-list">
+                        <li v-for="entry in offer.contributions" :key="entry.key">
+                          {{ entry.label }} → {{ entry.target }}
+                          <small v-if="entry.applicability_label !== 'All contexts'">
+                            {{ entry.applicability_label }}
+                          </small>
+                          <small v-for="driver in entry.drivers" :key="driver.label">
+                            {{ driver.label }} · {{ driver.aggregation }} ·
+                            {{ driver.resolution_phase }}
+                          </small>
+                        </li>
+                      </ul>
+                      <ul v-if="offer.enrollment.length > 0" class="provider-fact-list">
+                        <li v-for="entry in offer.enrollment" :key="entry.key">
+                          {{ entry.label }}
+                          <small v-if="entry.applicability_label !== 'All contexts'">
+                            {{ entry.applicability_label }}
+                          </small>
+                        </li>
+                      </ul>
+                      <ul v-if="offer.settlement.length > 0" class="provider-fact-list">
+                        <li v-for="entry in offer.settlement" :key="entry.key">
+                          {{ entry.channel }} · {{ entry.biller }} ·
+                          {{ entry.payment_sources.join(" → ") }}
+                          <small v-if="entry.applicability_label !== 'All contexts'">
+                            {{ entry.applicability_label }}
+                          </small>
+                        </li>
+                      </ul>
+                      <details v-if="offer.unnormalized_count > 0">
+                        <summary>
+                          {{ offer.unnormalized_count }} unnormalized official fact{{
+                            offer.unnormalized_count === 1 ? "" : "s"
+                          }}
+                        </summary>
+                        <ul class="provider-fact-list">
+                          <li v-for="fact in offer.unnormalized" :key="fact.key">
+                            <strong>{{ fact.label }}</strong> · {{ fact.reason }}
+                            <small v-for="factDetail in fact.details ?? []" :key="factDetail">
+                              {{ factDetail }}
+                            </small>
+                          </li>
+                        </ul>
+                        <p
+                          v-if="offer.unnormalized_count > offer.unnormalized.length"
+                          class="provider-pricing-status"
                         >
+                          Showing {{ offer.unnormalized.length }} representative facts.
+                          <a href="/pricing/index.json">Download the canonical pricing audit.</a>
+                        </p>
                       </details>
-                      <small v-else class="provider-binding-status"
-                        >Usage binding unavailable</small
-                      >
                     </div>
-                  </div>
-
-                  <ul v-if="offer.allowances.length > 0" class="provider-fact-list">
-                    <li v-for="allowance in offer.allowances" :key="allowance.key">
-                      Allowance: {{ allowance.value }} · {{ allowance.target }} ·
-                      {{ allowance.reset }}
-                    </li>
-                  </ul>
-                  <ul v-if="offer.contributions.length > 0" class="provider-fact-list">
-                    <li v-for="entry in offer.contributions" :key="entry.key">
-                      {{ entry.label }} → {{ entry.target }}
-                      <small v-for="driver in entry.drivers" :key="driver.label">
-                        {{ driver.label }} · {{ driver.aggregation }} ·
-                        {{ driver.resolution_phase }}
-                      </small>
-                    </li>
-                  </ul>
-                  <ul v-if="offer.enrollment.length > 0" class="provider-fact-list">
-                    <li v-for="entry in offer.enrollment" :key="entry.key">{{ entry.label }}</li>
-                  </ul>
-                  <ul v-if="offer.settlement.length > 0" class="provider-fact-list">
-                    <li v-for="entry in offer.settlement" :key="entry.key">
-                      {{ entry.channel }} · {{ entry.biller }} ·
-                      {{ entry.payment_sources.join(" → ") }}
-                    </li>
-                  </ul>
-                  <details v-if="offer.unnormalized.length > 0">
-                    <summary>
-                      {{ offer.unnormalized.length }} unnormalized official fact{{
-                        offer.unnormalized.length === 1 ? "" : "s"
-                      }}
-                    </summary>
-                    <ul class="provider-fact-list">
-                      <li v-for="fact in offer.unnormalized" :key="fact.key">
-                        <strong>{{ fact.label }}</strong> · {{ fact.reason }}
-                        <small v-for="detail in fact.details ?? []" :key="detail">{{
-                          detail
-                        }}</small>
-                      </li>
-                    </ul>
-                  </details>
-                </article>
+                  </template>
+                </details>
               </section>
+
+              <p v-if="chunkError" class="unknown-note" role="alert">{{ chunkError }}</p>
+              <button
+                v-if="hasMoreChunks"
+                class="provider-load-more"
+                type="button"
+                :disabled="loadingMore"
+                @click="loadMoreResources"
+              >
+                {{ loadingMore ? "Loading…" : "Load more resources" }}
+              </button>
             </template>
           </div>
         </div>
@@ -229,7 +376,7 @@ function summarize(values: string[]): string {
 <style scoped>
 .provider-pricing-content,
 .provider-resource,
-.provider-offer,
+.provider-offer-body,
 .provider-context-list,
 .provider-rate-list {
   display: grid;
@@ -251,7 +398,7 @@ function summarize(values: string[]): string {
 }
 
 .provider-resource > header,
-.provider-offer > header,
+.provider-offer-summary,
 .provider-rate-list > div {
   display: flex;
   align-items: flex-start;
@@ -275,10 +422,18 @@ function summarize(values: string[]): string {
 }
 
 .provider-offer {
-  padding: var(--space-3);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-md);
   background: var(--color-surface-subtle);
+}
+
+.provider-offer-summary {
+  padding: var(--space-3);
+  cursor: pointer;
+}
+
+.provider-offer-body {
+  padding: 0 var(--space-3) var(--space-3);
 }
 
 .provider-context-list {
@@ -329,5 +484,9 @@ function summarize(values: string[]): string {
 .provider-fact-list li,
 .provider-fact-list small {
   display: block;
+}
+
+.provider-load-more {
+  justify-self: start;
 }
 </style>

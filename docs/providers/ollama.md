@@ -102,8 +102,9 @@
 
 ## Commercial topology audit
 
-Design status: implemented. Library rows carry exact per-model local-execution offers with operator
-settlement; Cloud rows carry the plan, included-allowance, extra-balance, Web Search, Web Fetch, and
+Design status: implemented. Library rows share one provider-wide local-execution offer with operator
+settlement because the commercial mechanism and external-cost boundary are identical for every
+admitted local model; Cloud rows carry the plan, included-allowance, extra-balance, Web Search, Web Fetch, and
 model-inference books described below. Team uses the exact seat-month denominator. A model card that
 publishes a Pro/Max extra-usage gate receives two cumulative `requires` relationships: Pro and Max
 are alternatives in one relationship, and the personal extra-usage balance is the second

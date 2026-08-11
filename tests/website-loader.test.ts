@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   loadWebsiteModelDetail,
   loadWebsiteProviderPricing,
+  loadWebsiteProviderPricingChunk,
+  loadWebsiteProviderPricingOffer,
 } from "../src/catalog/website-loader.ts";
 import type {
   WebsiteDetailChunk,
@@ -68,6 +70,7 @@ function pricingOffer(id = "b"): WebsitePricingOffer {
     contributions: [],
     enrollment: [],
     settlement: [],
+    unnormalized_count: 0,
     unnormalized: [],
   };
 }
@@ -79,7 +82,7 @@ function providerPricingChunk(
   references: [number, number][] = [[0, 0]],
 ): WebsiteProviderPricingChunk {
   return {
-    schema_version: 1,
+    schema_version: 2,
     data_version: dataVersion,
     provider_id: provider.id,
     chunk,
@@ -88,7 +91,15 @@ function providerPricingChunk(
         id: (chunk === 0 ? "a" : "d").repeat(64),
         title,
         kind: "Service",
-        offer_refs: [references],
+        offers: [
+          {
+            id: "b".repeat(64),
+            title: "Usage",
+            billing_mode: { label: "Usage" },
+            state_summary: "Price not published",
+            offer_refs: references,
+          },
+        ],
       },
     ],
   };
@@ -114,7 +125,7 @@ function detailChunk(dataVersion: string, description: string): WebsiteDetailChu
 
 function offerChunk(dataVersion: string, values = [pricingOffer()]): WebsiteOfferChunk {
   return {
-    schema_version: 1,
+    schema_version: 2,
     data_version: dataVersion,
     provider_id: model.provider_id,
     chunk: 0,
@@ -207,32 +218,31 @@ describe("website detail loading", () => {
     ]);
   });
 
-  it("loads provider pricing by provider and data version", async () => {
+  it("loads only the first provider resource chunk until an offer is expanded", async () => {
     const dataVersion = "f".repeat(64);
     const requestedUrls: string[] = [];
     vi.stubGlobal("fetch", async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       requestedUrls.push(url);
-      return new Response(
-        JSON.stringify(
-          url.startsWith("/ui/offers/")
-            ? offerChunk(dataVersion)
-            : providerPricingChunk(dataVersion),
-        ),
-      );
+      return new Response(JSON.stringify(providerPricingChunk(dataVersion)));
     });
 
-    await expect(loadWebsiteProviderPricing(dataVersion, provider)).resolves.toMatchObject({
+    const detail = await loadWebsiteProviderPricing(dataVersion, provider);
+    expect(detail).toMatchObject({
       provider_id: provider.id,
       resources: [{ title: "Search" }],
     });
-    expect(requestedUrls).toEqual([
-      `/ui/providers/test/pricing/0.json?v=${dataVersion}`,
-      `/ui/offers/test/0.json?v=${dataVersion}`,
-    ]);
+    expect(requestedUrls).toEqual([`/ui/providers/test/pricing/0.json?v=${dataVersion}`]);
+
+    const summary = detail.resources[0]?.offers[0];
+    if (summary === undefined) throw new Error("Missing provider offer summary");
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify(offerChunk(dataVersion))));
+    await expect(
+      loadWebsiteProviderPricingOffer(dataVersion, provider.id, summary),
+    ).resolves.toMatchObject({ title: "Usage" });
   });
 
-  it("hydrates every provider chunk from the shared offer dictionary", async () => {
+  it("loads additional provider chunks and offer fragments only when requested", async () => {
     const dataVersion = "e".repeat(64);
     const chunkedProvider = {
       ...provider,
@@ -245,8 +255,10 @@ describe("website detail loading", () => {
         state: "numeric",
         label: "Numeric",
         applicability: { any_of: [{ all_of: [] }] },
+        applicability_label: "All contexts",
       },
     ];
+    stateFragment.unnormalized_count = 1;
     const rawFragment = pricingOffer();
     rawFragment.unnormalized = [
       {
@@ -256,6 +268,7 @@ describe("website detail loading", () => {
         reason: "Requires usage aggregation",
       },
     ];
+    rawFragment.unnormalized_count = 1;
     const requestedUrls: string[] = [];
     vi.stubGlobal("fetch", async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -273,19 +286,20 @@ describe("website detail loading", () => {
       );
     });
 
-    await expect(loadWebsiteProviderPricing(dataVersion, chunkedProvider)).resolves.toMatchObject({
-      resources: [
-        {
-          title: "Search",
-          offers: [{ states: [{ key: "state:0" }], unnormalized: [{ key: "raw:0" }] }],
-        },
-        {
-          title: "Storage",
-          offers: [{ states: [{ key: "state:0" }], unnormalized: [{ key: "raw:0" }] }],
-        },
-      ],
+    const first = await loadWebsiteProviderPricing(dataVersion, chunkedProvider);
+    expect(first.resources.map(({ title }) => title)).toEqual(["Search"]);
+    const second = await loadWebsiteProviderPricingChunk(dataVersion, provider.id, 1);
+    expect(second.resources.map(({ title }) => title)).toEqual(["Storage"]);
+    const summary = second.resources[0]?.offers[0];
+    if (summary === undefined) throw new Error("Missing provider offer summary");
+    await expect(
+      loadWebsiteProviderPricingOffer(dataVersion, provider.id, summary),
+    ).resolves.toMatchObject({
+      states: [{ key: "state:0" }],
+      unnormalized: [{ key: "raw:0" }],
     });
     expect(requestedUrls.filter((url) => url.startsWith("/ui/offers/"))).toHaveLength(1);
+    expect(requestedUrls.filter((url) => url.startsWith("/ui/providers/"))).toHaveLength(2);
   });
 
   it("evicts invalid provider pricing so a later request can recover", async () => {

@@ -480,6 +480,7 @@ const pricingOfferBaseShape = {
   id: hash,
   offer_key: nonEmptyString,
   name: nonEmptyString.optional(),
+  model_refs: z.array(nonEmptyString).min(1).optional(),
   billing_mode: billingModeSchema,
   states: z.array(priceStateVariantSchema),
   enrollment: z.array(priceEnrollmentVariantSchema),

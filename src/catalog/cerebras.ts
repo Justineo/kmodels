@@ -355,7 +355,9 @@ function publicModel(input: Input, item: PublicItem): ProviderModel {
           architectureInputs(modality),
         ) ?? []);
   const capabilities = publicCapabilitiesSchema.safeParse(item.capabilities);
-  const capability = (field: keyof z.infer<typeof publicCapabilitiesSchema>): boolean | undefined =>
+  const capability = (
+    field: keyof z.infer<typeof publicCapabilitiesSchema>,
+  ): boolean | undefined =>
     capabilities.success
       ? value("public_capability_claim_drift", `capabilities.${field}`, () =>
           z.boolean().parse(capabilities.data[field]),

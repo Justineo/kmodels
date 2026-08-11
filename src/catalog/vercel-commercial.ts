@@ -234,6 +234,9 @@ function nativeBooks(
           return {
             offer_key: selectedOffer.modelRefs.join("+") || selectedOffer.sourceBook.book_key,
             name: `${kind === "web-search" ? "Web search" : "Maps search"} for ${selectedOffer.modelRefs.join(", ")}`,
+            ...(selectedOffer.modelRefs.length === 0
+              ? {}
+              : { model_refs: selectedOffer.modelRefs }),
             billing_mode: { namespace: "kmodels", value: "usage" },
             states: statesForTerms(selectedOffer.sourceOffer, selectedOffer.terms),
             terms: selectedOffer.terms.map((term) => bindNativeServiceTerm(term, input)),

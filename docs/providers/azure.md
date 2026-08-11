@@ -35,6 +35,10 @@ Status: current
   version groups that the Retail SKU vocabulary cannot bind. The audited target below admits the
   fine-tuning, shared managed-compute, router, and built-in-tool sections through separate commercial
   grammars instead of either discarding them or flattening them into base inference.
+  Generic Agent, Content Safety, Evaluation, managed-compute, plan, and unresolved commercial rows
+  have an empty model projection because those pages do not establish exact model compatibility;
+  they remain available in provider pricing. Only model-labeled PTU reservation and fine-tuning rows
+  receive exact model refs and may appear in a model detail.
 - Collect Claude-in-Foundry rates from Anthropic's official pricing page. Its dedicated Microsoft
   Foundry section says Azure Marketplace CCU conversion uses the same public per-model and
   per-feature rates, with the same 1.1x US Data Zone multiplier. This is a delegated first-party

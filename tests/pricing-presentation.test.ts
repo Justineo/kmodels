@@ -360,6 +360,19 @@ describe("canonical pricing presentation", () => {
       accessibleText: "USD 0.025 per GiB·day",
     });
     expect(
+      displayUnitPrice({
+        value: { numerator: "3", denominator: "2" },
+        denomination: { kind: "provider_credit", provider_id: "test", code: "DBU" },
+        per: {
+          factors: [{ unit: { namespace: "kmodels", value: "request" }, power: 1 }],
+        },
+      }),
+    ).toEqual({
+      amount: "DBU 1.5",
+      displayUnit: "request",
+      accessibleText: "DBU 1.5 per request",
+    });
+    expect(
       displayUnitPrice(
         {
           value: { numerator: "1", denominator: "864000000000000" },
@@ -666,28 +679,38 @@ describe("canonical pricing presentation", () => {
 
   it("classifies a provider service that requires the model as an optional add-on", () => {
     const data = catalog([term("input", "input_text", tokenPrice)]);
+    const otherBookId = pricingBookId(providerId, "other-model");
+    const otherOfferId = pricingOfferId(otherBookId, "usage");
+    const otherBook = structuredClone(data.books[0]);
+    if (otherBook === undefined) throw new Error("Missing model pricing book");
+    otherBook.id = otherBookId;
+    otherBook.book_key = "other-model";
+    otherBook.scope = { kind: "models", model_refs: ["test/other-model"] };
+    otherBook.offers[0] = {
+      ...otherBook.offers[0]!,
+      id: otherOfferId,
+    };
+    data.books.push(otherBook);
     const resourceBookId = pricingBookId(providerId, "service:search");
     const resourceOfferId = pricingOfferId(resourceBookId, "built-in");
+    const otherResourceOfferId = pricingOfferId(resourceBookId, "other-model");
+    const unrelatedResourceOfferId = pricingOfferId(resourceBookId, "other-standalone");
+    const resourceScope = {
+      kind: "provider_resource" as const,
+      resource_kind: { namespace: "kmodels" as const, value: "service" as const },
+      resource_key: "search",
+      model_refs: [modelRef, "test/other-model"],
+    };
     data.books.push({
       id: resourceBookId,
       provider_id: providerId,
       book_key: "service:search",
-      scope: {
-        kind: "provider_resource",
-        resource_kind: { namespace: "kmodels", value: "service" },
-        resource_key: "search",
-        model_refs: [modelRef],
-      },
+      scope: resourceScope,
       scope_observations: [
         {
           source_ref: sourceRef,
           locator: { kind: "table", value: "service" },
-          establishes: {
-            kind: "provider_resource",
-            resource_kind: { namespace: "kmodels", value: "service" },
-            resource_key: "search",
-            model_refs: [modelRef],
-          },
+          establishes: resourceScope,
           raw: { label: "Search" },
         },
       ],
@@ -722,6 +745,57 @@ describe("canonical pricing presentation", () => {
               ],
             },
           ],
+          settlement: [],
+          source_refs: [sourceRef],
+        },
+        {
+          id: otherResourceOfferId,
+          offer_key: "other-model",
+          model_refs: ["test/other-model"],
+          billing_mode: { namespace: "kmodels", value: "usage" },
+          states: [
+            {
+              state: "free",
+              applicability: unconditionalApplicability,
+              observations: [source],
+            },
+          ],
+          enrollment: [],
+          terms: [],
+          relations: [
+            {
+              kind: "requires",
+              target: { kind: "offers", offer_refs: [otherOfferId] },
+              applicability: unconditionalApplicability,
+              observations: [
+                {
+                  source_ref: sourceRef,
+                  locator: { kind: "table", value: "other service" },
+                  establishes_offer_refs: [otherOfferId],
+                  establishes_book_refs: [],
+                  raw: { label: "Search requires the other model" },
+                },
+              ],
+            },
+          ],
+          settlement: [],
+          source_refs: [sourceRef],
+        },
+        {
+          id: unrelatedResourceOfferId,
+          offer_key: "other-standalone",
+          model_refs: ["test/other-model"],
+          billing_mode: { namespace: "kmodels", value: "usage" },
+          states: [
+            {
+              state: "free",
+              applicability: unconditionalApplicability,
+              observations: [source],
+            },
+          ],
+          enrollment: [],
+          terms: [],
+          relations: [],
           settlement: [],
           source_refs: [sourceRef],
         },

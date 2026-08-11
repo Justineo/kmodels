@@ -7,6 +7,7 @@ import type {
   WebsitePricingOffer,
   WebsiteProvider,
   WebsiteProviderPricingDetail,
+  WebsiteProviderPricingOffer,
   WebsiteStoredModelDetail,
 } from "./website-schema.ts";
 
@@ -19,7 +20,7 @@ const parsedDetailChunks = new Map<string, Promise<WebsiteDetailChunk>>();
 const storedDetailsByModel = new Map<string, WebsiteStoredModelDetail>();
 const modelDetails = new Map<string, Promise<WebsiteModelDetail>>();
 const offerChunks = new Map<string, Promise<WebsiteOfferChunk>>();
-const providerPricing = new Map<string, Promise<WebsiteProviderPricingDetail>>();
+const providerPricingChunks = new Map<string, Promise<WebsiteProviderPricingDetail>>();
 let schemaModule: Promise<typeof import("./website-schema.ts")> | undefined;
 
 function websiteSchemas(): Promise<typeof import("./website-schema.ts")> {
@@ -173,46 +174,45 @@ export function loadWebsiteProviderPricing(
   dataVersion: string,
   provider: WebsiteProvider,
 ): Promise<WebsiteProviderPricingDetail> {
-  const key = `${dataVersion}/${provider.id}`;
-  return cachedRequest(providerPricing, key, async () => {
+  if (provider.pricing_coverage.detail_chunks === 0)
+    return Promise.reject(new Error("Provider pricing has no detail chunks"));
+  return loadWebsiteProviderPricingChunk(dataVersion, provider.id, 0);
+}
+
+export function loadWebsiteProviderPricingChunk(
+  dataVersion: string,
+  providerId: string,
+  chunk: number,
+): Promise<WebsiteProviderPricingDetail> {
+  const key = `${dataVersion}/${providerId}/${chunk}`;
+  return cachedRequest(providerPricingChunks, key, async () => {
     const { websiteProviderPricingChunkSchema } = await websiteSchemas();
-    const chunks = await Promise.all(
-      Array.from({ length: provider.pricing_coverage.detail_chunks }, async (_, chunk) => {
-        const response = await fetch(providerPricingUrl(dataVersion, provider.id, chunk), {
-          cache: "no-cache",
-          headers: { Accept: "application/json" },
-        });
-        const value: unknown = JSON.parse(await responseSource(response));
-        const detail = websiteProviderPricingChunkSchema.parse(value);
-        if (
-          detail.data_version !== dataVersion ||
-          detail.provider_id !== provider.id ||
-          detail.chunk !== chunk
-        )
-          throw new Error("Provider pricing does not match the catalog");
-        return detail;
-      }),
-    );
-    const first = chunks[0];
-    if (first === undefined) throw new Error("Provider pricing has no detail chunks");
-    const resources = await Promise.all(
-      chunks.flatMap(({ resources }) =>
-        resources.map(async ({ offer_refs, ...resource }) => ({
-          ...resource,
-          offers: await Promise.all(
-            offer_refs.map(async (references) =>
-              mergeProviderOffer(
-                await Promise.all(
-                  references.map((reference) => loadOffer(dataVersion, provider.id, reference)),
-                ),
-              ),
-            ),
-          ),
-        })),
-      ),
-    );
-    return { ...first, resources };
+    const response = await fetch(providerPricingUrl(dataVersion, providerId, chunk), {
+      cache: "no-cache",
+      headers: { Accept: "application/json" },
+    });
+    const value: unknown = JSON.parse(await responseSource(response));
+    const detail = websiteProviderPricingChunkSchema.parse(value);
+    if (
+      detail.data_version !== dataVersion ||
+      detail.provider_id !== providerId ||
+      detail.chunk !== chunk
+    )
+      throw new Error("Provider pricing does not match the catalog");
+    return detail;
   });
+}
+
+export async function loadWebsiteProviderPricingOffer(
+  dataVersion: string,
+  providerId: string,
+  offer: WebsiteProviderPricingOffer,
+): Promise<WebsitePricingOffer> {
+  return mergeProviderOffer(
+    await Promise.all(
+      offer.offer_refs.map((reference) => loadOffer(dataVersion, providerId, reference)),
+    ),
+  );
 }
 
 function mergeProviderOffer(fragments: WebsitePricingOffer[]): WebsitePricingOffer {
@@ -225,6 +225,7 @@ function mergeProviderOffer(fragments: WebsitePricingOffer[]): WebsitePricingOff
       current.group !== fragment.group ||
       current.composition !== fragment.composition ||
       current.state_summary !== fragment.state_summary ||
+      current.unnormalized_count !== fragment.unnormalized_count ||
       JSON.stringify(current.billing_mode) !== JSON.stringify(fragment.billing_mode)
     )
       throw new Error("Provider pricing offer fragments disagree");

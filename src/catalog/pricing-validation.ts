@@ -345,6 +345,16 @@ function validateOffer(
   if (context.offers.has(offer.id)) fail(path, "duplicate offer ID");
   context.offers.set(offer.id, offer);
   assertSourceRefs(offer.source_refs, context, path);
+  if (offer.model_refs !== undefined) {
+    assertSortedUnique(offer.model_refs, (modelRef) => [modelRef], `${path} model refs`);
+    if (canonicalJson(offer.model_refs) === canonicalJson(book.scope.model_refs))
+      fail(path, "offer repeats its complete book model scope");
+    for (const modelRef of offer.model_refs) {
+      assertSemantic(modelRef, `${path} model ref`);
+      if (!book.scope.model_refs.includes(modelRef))
+        fail(path, "offer references a model outside its book scope");
+    }
+  }
   validateOwnedAtom("billing_mode", offer.billing_mode, undefined, context, path);
   assertSortedUnique(
     offer.states,

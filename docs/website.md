@@ -132,9 +132,9 @@ Status: implemented
   the exact value; source padding such as trailing fractional zeroes remains
   audit evidence and is not presentation. Render USD amounts with `$` while
   preserving the currency code in accessible copy. Provider-owned units and
-  credits retain namespace-qualified canonical copy so equal source spellings
-  cannot make distinct atoms equivalent. Visible provider-unit labels use the
-  reviewed native shorthand in their provider-scoped row. Exact token rates may
+  credits remain namespace-qualified in canonical audit data so equal source
+  spellings cannot make distinct atoms equivalent. Public copy uses the reviewed
+  native unit label or credit code. Exact token rates may
   use the same bounded per-million display scaling in the table and detail
   matrix; overflow falls back to the canonical per-token rational.
 - Right-align numeric headings and cells with a shared sort-control gutter.
@@ -248,10 +248,14 @@ Status: implemented
 - Provider pricing detail uses
   `/ui/providers/<provider>/pricing/<chunk>.json`. It is requested on demand,
   split into deterministic whole-resource chunks capped at 2 MiB uncompressed,
-  validated as one versioned provider detail, and cached by provider plus data
-  version. Resources carry grouped offer references. A large offer may span
-  several shared-offer fragments; the loader verifies stable metadata and
-  rejects duplicate rows while reassembling that one offer.
+  and cached by provider plus data version. Opening the inspector requests only
+  chunk zero; later resource chunks require an explicit “Load more” action.
+  Resources carry lightweight offer summaries and grouped offer references.
+  Expanding one offer requests only its shared-offer fragments, verifies stable
+  metadata, rejects duplicate rows, and mounts its detail DOM only while open.
+  Provider projections retain the complete unnormalized-fact count but include
+  at most 20 display-safe preview rows per offer; the canonical pricing audit
+  remains the complete download.
 - Use one `data_version` derived from the accepted catalog/pricing pair on the
   catalog, pricing-summary, model-detail, shared-offer, and provider-detail
   projections. Reject mismatched core

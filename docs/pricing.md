@@ -295,7 +295,13 @@ A book has:
 
 `scope.model_refs` is the current exact model projection used by the website.
 Scope observations collectively cover that projection and cannot widen beyond
-their observed subjects.
+their observed subjects. A provider-resource offer may additionally carry
+`model_refs`, which must be a sorted strict subset of the book scope. This preserves
+offer-level ownership when several model-specific offers share one resource
+book. Canonical assembly omits a redundant full-book subset; omission means the
+offer covers the complete book projection. An empty
+book projection keeps the resource provider-level rather than attaching it to
+every model.
 
 Identity granularity follows the admitted source rather than a universal
 version requirement. Version-labeled evidence creates an exact model/version
@@ -312,6 +318,7 @@ sibling versions.
 An offer represents one selectable billing mechanism. It has:
 
 - a stable key and derived ID within its book;
+- an optional exact model subset when it is narrower than the book;
 - one exact billing mode;
 - applicability-qualified states;
 - logical pricing terms;
@@ -732,6 +739,15 @@ Source-native display strings are derived while the
 validated observations are available and then emitted without their locators,
 raw fields, or evidence arrays. Equal observations remain one row rather than
 being expanded back into the source's flattened layout.
+
+Provider pricing uses the same display rows but remains read-only: every
+conditional rate, allowance, contribution, enrollment state, and settlement
+row includes a human-readable applicability qualifier. Provider-owned meters
+and credits use reviewed vocabulary labels or native codes in visible copy;
+their namespace-qualified syntax remains audit-only. The provider inspector
+loads one resource chunk at a time and one offer only when expanded. It keeps
+at most 20 display-safe unnormalized facts per offer, reports the complete fact
+count, and links to the canonical audit for the remainder.
 
 Provider-owned categorical values keep their exact canonical keys even when
 those keys are wire-protocol identifiers rather than suitable UI copy. A

@@ -202,6 +202,16 @@ describe("pricing commercial projection", () => {
     expect(commercialPricingProjection(first)).not.toEqual(commercialPricingProjection(second));
   });
 
+  it("includes offer-level model ownership in commercial equality", () => {
+    const first = catalog();
+    const second = structuredClone(first);
+    first.books[0]!.scope.model_refs.push("test/other");
+    second.books[0]!.scope.model_refs.push("test/other");
+    first.books[0]!.offers[0]!.model_refs = ["test/model"];
+    second.books[0]!.offers[0]!.model_refs = ["test/other"];
+    expect(commercialPricingProjection(first)).not.toEqual(commercialPricingProjection(second));
+  });
+
   it("omits informational-only raw terms", () => {
     const value = catalog();
     value.books[0]!.offers[0]!.terms.push({

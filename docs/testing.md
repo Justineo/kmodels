@@ -30,6 +30,10 @@ requires adding it to that list.
   named, documented calibration range instead of today's count.
 - Test provider-specific parsing and presentation examples against fixtures or synthetic pricing.
   Generated-data tests should apply the same invariant to every applicable provider or model.
+- Treat projection closure and interaction budgets as behavior: shared resource books must not leak
+  sibling-model offers, every provider pricing row must expose readable applicability, model-detail
+  offer counts stay bounded, provider loading is chunk/offer-lazy, and raw-fact previews never exceed
+  their documented limit even when the canonical audit contains more facts.
 - Require the subject to exist before asserting that one of its optional fields is absent; optional
   chaining must not allow a missing subject to satisfy the assertion accidentally.
 - Prefer explicit structural assertions over large snapshots. A failure should identify the model,
