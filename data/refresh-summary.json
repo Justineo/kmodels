@@ -1,8 +1,8 @@
 {
-  "catalog_version": "65a307a5d9bdf26ee2eb465fe20b2bdc8096eac46ceb12fe0dec6b397731eb7a",
-  "generated_at": "2026-08-11T05:23:04.493Z",
+  "catalog_version": "bc13dfb19fd43778545c4b48aa163e24f3085fa311febf8f3141e39aaff7f429",
+  "generated_at": "2026-08-11T06:16:36.082Z",
   "outcome": "evidence_only",
-  "previous_catalog_version": "c1247acb9ca86e744c6cbf5fa4b78dace9405e66675c65537f837baee4d8f7d0",
+  "previous_catalog_version": "65a307a5d9bdf26ee2eb465fe20b2bdc8096eac46ceb12fe0dec6b397731eb7a",
   "providers": [
     {
       "attempt": {
@@ -18,7 +18,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 21,
+            "consecutive_failures": 22,
             "last_success_at": "2026-08-10T08:30:38.934Z",
             "message": "Linked documents exceeded aggregate byte limit",
             "outcome": "fetch_failed",
@@ -501,28 +501,78 @@
             "source_id": "azure-claude-pricing"
           },
           {
-            "consecutive_failures": 6,
-            "contract_finding": {
-              "diagnostic_count": 1,
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 171,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 171,
+              "normalized_facts": 1,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 1,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 170
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 18744,
               "diagnostics": [
                 {
-                  "affected_items": 1,
-                  "expected": "string",
-                  "fingerprint": "3c96c3abeb5d6d3b",
-                  "kind": "type_mismatch",
-                  "observed": "null",
-                  "path": "/model/capabilities/_H_x-ms-mai-supported-file-extensions",
-                  "sample_model_ids": [
-                    "MAI-Thinking-1"
-                  ]
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "arm_meter_missing"
                 }
               ],
-              "disposition": "reject",
-              "observed_items": 234
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 5318,
+                "explicit_non_numeric": 0,
+                "normalized": 4,
+                "raw": 0,
+                "unbound": 18744,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 24066,
+              "reason_counts": {
+                "arm_direct_meter_bound": 4,
+                "arm_meter_missing": 18690,
+                "non_base_arm_cost_component": 5318,
+                "retail_meter_missing": 54
+              },
+              "unit": "reviewed source pricing item"
             },
-            "last_success_at": "2026-08-10T23:11:06.254Z",
-            "message": "Azure API model (australiaeast) contract mismatch: type_mismatch at /model/capabilities/_H_x-ms-mai-supported-file-extensions (expected string, observed null)",
-            "outcome": "parse_failed",
             "source_id": "azure-api"
           }
         ]
@@ -582,10 +632,7 @@
       "pricing_publication": "retained",
       "provider_id": "azure",
       "publication": "accepted",
-      "signals": [
-        "breaking_contract_mismatch",
-        "persistent_source_failure"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -599,10 +646,10 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "inventory_fallback": 1,
+        "catalog_api_set_mismatch": 1,
         "missing_field": 3,
         "pricing_invalid": 1,
-        "source_parse_failed": 1
+        "scope_limited": 1
       }
     },
     {
@@ -1013,7 +1060,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 28,
+            "consecutive_failures": 29,
             "last_success_at": "2026-08-10T01:31:11.546Z",
             "message": "DashScope recommended-model card ID drifted",
             "outcome": "parse_failed",
@@ -1276,7 +1323,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 4,
+            "consecutive_failures": 5,
             "last_success_at": "2026-08-11T01:30:40.164Z",
             "message": "DeepSeek model table not found or ambiguous",
             "outcome": "parse_failed",
@@ -1352,7 +1399,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 21,
+            "consecutive_failures": 22,
             "last_success_at": "2026-08-10T08:30:38.934Z",
             "message": "Gemini commercial composition contract drifted",
             "outcome": "parse_failed",
@@ -1431,22 +1478,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1521,
+            "parsed_models": 1520,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1521,
+              "model_records": 1520,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1521
+              "unknown_models": 1520
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1737,
+              "diagnostic_count": 1735,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1495,16 +1542,16 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1737,
+                "unbound": 1735,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 14625,
+              "observed_items": 14623,
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 23,
                 "hf_inference_compute_price_unbound": 1398,
-                "partner_route_price_not_published": 339,
+                "partner_route_price_not_published": 337,
                 "single_partner_inventory_without_product_evidence": 12864
               },
               "unit": "reviewed source pricing item"
@@ -1636,7 +1683,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 2,
-                "excluded": 21625,
+                "excluded": 21622,
                 "explicit_non_numeric": 0,
                 "normalized": 68,
                 "raw": 0,
@@ -1644,9 +1691,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 21695,
+              "observed_items": 21692,
               "reason_counts": {
-                "featherless_model_not_hf_route": 21624,
+                "featherless_model_not_hf_route": 21621,
                 "featherless_price_normalized": 68,
                 "featherless_price_unit_conflict": 2,
                 "invalid_featherless_model_id": 1
@@ -2660,7 +2707,7 @@
             "source_id": "openai-data-residency"
           },
           {
-            "consecutive_failures": 13,
+            "consecutive_failures": 14,
             "last_success_at": "2026-08-10T16:16:04.258Z",
             "message": "OpenAI pricing table has no reviewed section",
             "outcome": "parse_failed",
@@ -2882,7 +2929,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 21,
+            "consecutive_failures": 22,
             "last_success_at": "2026-08-10T08:30:38.934Z",
             "message": "Linked document vertex-google-models/agent-search-pricing failed: Transient transport failure (ERR_CHILD_PROCESS_STDIO_MAXBUFFER)",
             "outcome": "fetch_failed",
