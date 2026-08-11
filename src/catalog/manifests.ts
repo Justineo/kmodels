@@ -311,6 +311,12 @@ function fixedDocuments(
   }));
 }
 
+function optionalFixedDocuments(
+  entries: readonly FixedDocument[],
+): NonNullable<LinkedDocuments["documents"]> {
+  return fixedDocuments(entries).map((document) => ({ ...document, optional: true }));
+}
+
 type StandardPriceDimension = Extract<PriceDimension, { namespace: "kmodels" }>["value"];
 
 function pricingLabels(
@@ -2868,7 +2874,7 @@ export const manifests = [
         format: "mixed",
         stability: "documented",
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
-        extractorVersion: "llama-catalog-v5",
+        extractorVersion: "llama-catalog-v6",
         pricingEvidence: firstPartyPricing("commercial_terms", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -3015,11 +3021,32 @@ export const manifests = [
               url: "https://ai.meta.com/blog/llamacon-llama-news/",
               maxResponseBytes: mebibytes(1),
             },
-            {
-              id: "llama-4-license",
-              url: "https://raw.githubusercontent.com/meta-llama/llama-models/main/models/llama4/LICENSE",
+            ...(
+              [
+                ["llama-2", "llama2"],
+                ["llama-3", "llama3"],
+                ["llama-3-1", "llama3_1"],
+                ["llama-3-2", "llama3_2"],
+                ["llama-3-3", "llama3_3"],
+                ["llama-4", "llama4"],
+              ] as const
+            ).map(([id, path]) => ({
+              id: `${id}-license`,
+              url: `https://raw.githubusercontent.com/meta-llama/llama-models/main/models/${path}/LICENSE`,
               maxResponseBytes: mebibytes(1),
-            },
+              optional: true,
+            })),
+            ...(
+              [
+                ["llama-3-2", "llama3_2"],
+                ["llama-4", "llama4"],
+              ] as const
+            ).map(([id, path]) => ({
+              id: `${id}-use-policy`,
+              url: `https://raw.githubusercontent.com/meta-llama/llama-models/main/models/${path}/USE_POLICY.md`,
+              maxResponseBytes: mebibytes(1),
+              optional: true,
+            })),
           ],
         },
       },
@@ -3055,14 +3082,7 @@ export const manifests = [
       catalog_scope: "global",
     },
     pricingCategoricalLabels: pricingLabels("operation", {
-      attachment_search: "File attachments",
-      code_execution: "Code execution",
-      code_interpreter: "Code interpreter",
-      collections_search: "Collections search",
       "conversation.item.create": "Text input",
-      file_search: "File search",
-      web_search: "Web search",
-      x_search: "X search",
     }),
     sources: [
       {
@@ -3073,7 +3093,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v8",
+        extractorVersion: "xai-catalog-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3170,7 +3190,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "huggingface-router", minModels: 1, maxModels: 10_000 },
-        extractorVersion: "huggingface-router-v7",
+        extractorVersion: "huggingface-router-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
         fields: [
           "tasks",
@@ -3191,7 +3211,7 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: fixedDocuments([
+          documents: optionalFixedDocuments([
             [
               "pricing",
               "https://huggingface.co/docs/inference-providers/en/pricing.md",
@@ -3241,6 +3261,29 @@ export const manifests = [
               "markdown",
             ],
             ["hub-billing", "https://huggingface.co/docs/hub/en/billing.md", 1, "markdown"],
+            [
+              "endpoint-pricing",
+              "https://huggingface.co/docs/inference-endpoints/en/support/pricing.md",
+              2,
+              "markdown",
+            ],
+            ["spaces-hardware", "https://huggingface.co/docs/hub/en/spaces-gpus.md", 1, "markdown"],
+            [
+              "spaces-zerogpu",
+              "https://huggingface.co/docs/hub/en/spaces-zerogpu.md",
+              1,
+              "markdown",
+            ],
+            ["jobs-pricing", "https://huggingface.co/docs/hub/en/jobs-pricing.md", 1, "markdown"],
+            ["jobs-hardware", "https://huggingface.co/api/jobs/hardware", 1, "json"],
+            [
+              "storage-limits",
+              "https://huggingface.co/docs/hub/en/storage-limits.md",
+              1,
+              "markdown",
+            ],
+            ["pricing-page", "https://huggingface.co/pricing", 4, "html"],
+            ["enterprise-page", "https://huggingface.co/enterprise", 4, "html"],
           ]),
         },
       },
@@ -3393,7 +3436,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v6",
+        extractorVersion: "dashscope-pricing-v7",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3416,7 +3459,7 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: fixedDocuments([
+          documents: optionalFixedDocuments([
             [
               "context-cache",
               "https://www.alibabacloud.com/help/en/model-studio/context-cache.md",
@@ -3441,23 +3484,6 @@ export const manifests = [
             [
               "billing",
               "https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management.md",
-              2,
-            ],
-            [
-              "model-usage",
-              "https://www.alibabacloud.com/help/en/model-studio/model-usage-statistics.md",
-              2,
-            ],
-            [
-              "savings-plans",
-              "https://www.alibabacloud.com/help/en/model-studio/savings-plan-and-resource-package.md",
-              2,
-            ],
-            ["billing-plans", "https://www.alibabacloud.com/help/en/model-studio/more-tools.md", 2],
-            ["base-url", "https://www.alibabacloud.com/help/en/model-studio/base-url.md", 2],
-            [
-              "billing-api",
-              "https://www.alibabacloud.com/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill.md",
               2,
             ],
           ]),
@@ -3550,8 +3576,8 @@ export const manifests = [
         access: "public",
         format: "markdown",
         stability: "semi_structured",
-        extractor: { kind: "cerebras-catalog", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-catalog-v8",
+        extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
+        extractorVersion: "cerebras-catalog-v9",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -3576,8 +3602,8 @@ export const manifests = [
           indexFormat: "markdown",
           path: /^\/models\/[a-z0-9-]+$/,
           requestSuffix: ".md",
-          minDocuments: 2,
-          maxDocuments: 20,
+          minDocuments: 1,
+          maxDocuments: 100,
           concurrency: 6,
           maxDocumentBytes: mebibytes(1),
           documents: [
@@ -3594,6 +3620,7 @@ export const manifests = [
                 ["predicted-outputs", "/dedicated/predicted-outputs.md"],
                 ["tool-use", "/capabilities/tool-use.md"],
                 ["batch", "/capabilities/batch.md"],
+                ["batch-file", "/api-reference/file/upload-file.md"],
                 ["account-billing", "/console/account-billing.md"],
                 ["console-overview", "/console/overview.md"],
                 ["usage-monitoring", "/console/usage-monitoring.md"],
@@ -3609,17 +3636,20 @@ export const manifests = [
               id,
               url: `https://inference-docs.cerebras.ai${path}`,
               maxResponseBytes: mebibytes(1),
+              optional: true,
             })),
             {
               id: "openapi",
               url: "https://inference-docs.cerebras.ai/api-reference/openapi.yaml",
               maxResponseBytes: mebibytes(1),
+              optional: true,
             },
             {
               id: "pricing",
               url: "https://inference-docs.cerebras.ai/support/pricing.md",
               format: "html",
               maxResponseBytes: mebibytes(4),
+              optional: true,
             },
           ],
         },
@@ -3631,8 +3661,8 @@ export const manifests = [
         access: "public",
         format: "json",
         stability: "documented",
-        extractor: { kind: "cerebras-public", minModels: 2, maxModels: 20 },
-        extractorVersion: "cerebras-public-v2",
+        extractor: { kind: "cerebras-public", minModels: 1, maxModels: 100 },
+        extractorVersion: "cerebras-public-v3",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -3655,7 +3685,7 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 3,
-          documents: fixedDocuments([
+          documents: optionalFixedDocuments([
             ["openrouter", "https://api.cerebras.ai/public/v1/models?format=openrouter", 1, "json"],
             [
               "huggingface",
@@ -3679,8 +3709,8 @@ export const manifests = [
         access: "public",
         format: "markdown",
         stability: "semi_structured",
-        extractor: { kind: "cerebras-lifecycle", minModels: 10, maxModels: 30 },
-        extractorVersion: "cerebras-lifecycle-v2",
+        extractor: { kind: "cerebras-lifecycle", minModels: 0, maxModels: 100 },
+        extractorVersion: "cerebras-lifecycle-v3",
         fields: [
           "model_id",
           "tasks",
@@ -3701,9 +3731,9 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 2,
-          documents: fixedDocuments([
-            ["model-catalog", "https://inference-docs.cerebras.ai/models/overview.md"],
-            ["change-log", "https://inference-docs.cerebras.ai/support/change-log.md"],
+          documents: optionalFixedDocuments([
+            ["model-catalog", "https://inference-docs.cerebras.ai/models/overview.md", 1],
+            ["change-log", "https://inference-docs.cerebras.ai/support/change-log.md", 1],
           ]),
         },
       },
@@ -3714,8 +3744,8 @@ export const manifests = [
         access: "public",
         format: "markdown",
         stability: "semi_structured",
-        extractor: { kind: "cerebras-releases", minModels: 10, maxModels: 30 },
-        extractorVersion: "cerebras-releases-v1",
+        extractor: { kind: "cerebras-releases", minModels: 0, maxModels: 100 },
+        extractorVersion: "cerebras-releases-v2",
         fields: ["release_date"],
         allowedHosts: ["inference-docs.cerebras.ai"],
         maxResponseBytes: mebibytes(1),
@@ -3730,8 +3760,8 @@ export const manifests = [
         access: "authenticated",
         format: "json",
         stability: "documented",
-        extractor: { kind: "cerebras-api", minModels: 1, maxModels: 20 },
-        extractorVersion: "cerebras-api-v2",
+        extractor: { kind: "cerebras-api", minModels: 0, maxModels: 100 },
+        extractorVersion: "cerebras-api-v3",
         fields: ["model_id"],
         allowedHosts: ["api.cerebras.ai"],
         maxResponseBytes: mebibytes(1),
@@ -3766,7 +3796,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "ollama-library", minModels: 200, maxModels: 350 },
-        extractorVersion: "ollama-library-v3",
+        extractorVersion: "ollama-library-v4",
         pricingEvidence: firstPartyPricing("commercial_terms", "exact_id"),
         fields: [
           "model_id",
@@ -3795,7 +3825,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "ollama-cloud", minModels: 15, maxModels: 30 },
-        extractorVersion: "ollama-cloud-v5",
+        extractorVersion: "ollama-cloud-v6",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3868,6 +3898,7 @@ export const manifests = [
             url,
             format,
             maxResponseBytes: mebibytes(1),
+            optional: true,
           })),
         },
       },
@@ -3895,8 +3926,8 @@ export const manifests = [
         access: "public",
         format: "html",
         stability: "semi_structured",
-        extractor: { kind: "deepseek-catalog", minModels: 2, maxModels: 10 },
-        extractorVersion: "deepseek-catalog-v9",
+        extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
+        extractorVersion: "deepseek-catalog-v10",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3923,17 +3954,25 @@ export const manifests = [
           minDocuments: 0,
           maxDocuments: 0,
           concurrency: 4,
-          documents: fixedDocuments([
-            ["chat-completions", "https://api-docs.deepseek.com/api/create-chat-completion"],
+          documents: optionalFixedDocuments([
+            ["chat-completions", "https://api-docs.deepseek.com/api/create-chat-completion", 1],
             ["responses", "https://api-docs.deepseek.com/api/create-response"],
-            ["model-inventory", "https://api-docs.deepseek.com/api/list-models"],
-            ["token-usage", "https://api-docs.deepseek.com/quick_start/token_usage/"],
+            ["fim-completion", "https://api-docs.deepseek.com/api/create-completion", 1],
+            ["model-inventory", "https://api-docs.deepseek.com/api/list-models", 1],
+            ["token-usage", "https://api-docs.deepseek.com/quick_start/token_usage/", 1],
             ["context-cache", "https://api-docs.deepseek.com/guides/kv_cache/"],
             ["balance", "https://api-docs.deepseek.com/api/get-user-balance"],
-            ["rate-limit", "https://api-docs.deepseek.com/quick_start/rate_limit/"],
-            ["error-codes", "https://api-docs.deepseek.com/quick_start/error_codes/"],
-            ["responses-guide", "https://api-docs.deepseek.com/guides/responses_api/"],
-            ["anthropic-guide", "https://api-docs.deepseek.com/guides/anthropic_api/"],
+            ["rate-limit", "https://api-docs.deepseek.com/quick_start/rate_limit/", 1],
+            ["error-codes", "https://api-docs.deepseek.com/quick_start/error_codes/", 1],
+            ["responses-guide", "https://api-docs.deepseek.com/guides/responses_api/", 1],
+            ["anthropic-guide", "https://api-docs.deepseek.com/guides/anthropic_api/", 1],
+            ["cny-pricing", "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/", 1],
+            [
+              "claude-code",
+              "https://api-docs.deepseek.com/quick_start/agent_integrations/claude_code/",
+              1,
+            ],
+            ["faq", "https://api-docs.deepseek.com/faq"],
           ]),
         },
       },
@@ -3944,7 +3983,7 @@ export const manifests = [
         access: "public",
         format: "html",
         stability: "semi_structured",
-        extractor: { kind: "deepseek-updates", minModels: 4, maxModels: 10 },
+        extractor: { kind: "deepseek-updates", minModels: 1, maxModels: 100 },
         extractorVersion: "deepseek-updates-v3",
         fields: ["release_date", "updated_date", "release_stage"],
         allowedHosts: ["api-docs.deepseek.com"],
@@ -3960,7 +3999,7 @@ export const manifests = [
         access: "authenticated",
         format: "json",
         stability: "documented",
-        extractor: { kind: "deepseek-api", minModels: 1, maxModels: 20 },
+        extractor: { kind: "deepseek-api", minModels: 1, maxModels: 100 },
         extractorVersion: "deepseek-api-v3",
         fields: ["model_id"],
         allowedHosts: ["api.deepseek.com"],

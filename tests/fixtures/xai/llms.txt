@@ -97,6 +97,37 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 | `grok-voice-think-fast-2.0` | Flagship voice model |
 | `grok-voice-think-fast-1.0` | Previous-generation voice model |
 
+The Voice API supports `file_search`, `web_search`, `x_search`, and `mcp` server-side tools.
+
+
+===/developers/model-capabilities/audio/custom-voices===
+# Custom Voices
+
+Get started in the console and create up to 30 custom voices for free. `POST /v1/custom-voices` is gated to
+teams on an Enterprise plan. Custom voices work with `POST /v1/tts` and
+`wss://api.x.ai/v1/realtime`.
+
+
+===/developers/advanced-api-usage/context-compaction===
+# Context Compaction
+
+Call `POST /v1/responses/compact` with `"model": "grok-4.5"`. The response reports
+`usage.input_tokens` and `usage.output_tokens`.
+
+
+===/developers/tools/image-generation===
+# Image Generation Tool
+
+The Responses `image_generation` tool uses `grok-imagine-image-quality` and returns an
+`image_generation_call`. The tool takes no size or format parameters.
+
+
+===/developers/faq/security===
+# Security
+
+API requests and responses are retained for 30 days by default. Zero Data Retention disables
+Stateful Responses, Files, Collections, Batch, deferred completions, and stored media output.
+
 
 ===/developers/models===
 # Models
@@ -181,6 +212,10 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 | File Attachments | `attachment_search` | Search attachments | $10 |
 | Collections Search | `collections_search`, `file_search` | Search collections | $2.50 |
 
+Image Search is part of Web Search and is billed at the standard Web Search rate.
+For Remote MCP tools, you will not be charged for the tool invocation.
+For the view image and view x video tools, you will not be charged for the tool invocation.
+
 ## Batch API Pricing
 
 **20% off standard rates**
@@ -208,6 +243,7 @@ The 2x multiplier applies to all token types.
 | File storage | $0.025 / GiB / day |
 | Collection storage | $0.10 / GiB / day |
 | File downloads | $0.20 / GiB downloaded |
+| Collection downloads | $0.20 / GiB downloaded |
 
 ## Usage Guidelines Violation Fee
 

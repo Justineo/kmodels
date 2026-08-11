@@ -8,7 +8,7 @@ Production uses only Alibaba Cloud first-party material. The public source graph
 
 The nine task pages remain independent, non-exhaustive regional catalogs. Only exact IDs in labeled model columns under Recommended, All, or Legacy sections create rows. Specification tables, full-width labels, prose family names, and similar identifiers never create a model. Exact rows are unioned across sources and retain every source reference; distinct published IDs such as a regional suffix or publisher-qualified ID are not collapsed by family similarity.
 
-Alibaba's Markdown preserves headings and table cells but omits some HTML section wrappers, row spans, and column spans. The adapter deterministically rebuilds nested heading context, recognizes only reviewed modality subheaders, expands price columns, and reconstructs sparse rows from typed anchors such as token range, resolution, mode, scope, price, and quota. A missing base row, unknown subheader, impossible cell/header alignment, unsupported unit, or unparsed price rejects the refresh. This recovers the provider's current Markdown without an LLM and without guessing from neighboring model families.
+Alibaba's Markdown preserves headings and table cells but omits some HTML section wrappers, row spans, and column spans. The adapter deterministically rebuilds nested heading context, recognizes only reviewed modality subheaders, expands price columns, and reconstructs sparse rows from typed anchors such as token range, resolution, mode, scope, price, and quota. Systemic table/header drift and impossible sparse-row reconstruction still reject the source. An unrecognized model cell, price cell, unit, or explicit non-numeric disposition suppresses only that row or rate and emits reconciliation evidence; valid sibling rows and meters survive. Cardinality bounds remain the final systemic guard. This recovers the provider's current Markdown without an LLM and without guessing from neighboring model families.
 
 The recommended page is a bounded non-creating overlay. Each Markdown card must publish one consistent ID, an exact region list, and one or more reviewed Base or Request URLs. Direct DashScope hosts and workspace hosts are mapped independently to their region; protocol and path must match the reviewed OpenAI, Anthropic, DashScope, embeddings, rerank, image, video, ASR, or realtime route. The set of route-derived regions must equal the card's region list, preventing a host/region Cartesian product.
 
@@ -18,23 +18,23 @@ Alibaba also publishes the [Model Studio CLI](https://github.com/modelstudioai/c
 
 ## First-party commercial source graph
 
-The current price collector fetches one atomic first-party bundle. Its index is the Markdown price book; reviewed companions cover [context cache](https://www.alibabacloud.com/help/en/model-studio/context-cache.md), [batch inference](https://www.alibabacloud.com/help/en/model-studio/batch-inference.md), [Chat Completions usage](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md), [Responses usage](https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api.md), [web search](https://www.alibabacloud.com/help/en/model-studio/web-search.md), [billing and cost management](https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management.md), [usage statistics](https://www.alibabacloud.com/help/en/model-studio/model-usage-statistics.md), [savings plans](https://www.alibabacloud.com/help/en/model-studio/savings-plan-and-resource-package.md), [billing plans](https://www.alibabacloud.com/help/en/model-studio/more-tools.md), [billing-plan endpoints](https://www.alibabacloud.com/help/en/model-studio/base-url.md), and the customer-billing [`DescribeInstanceBill` API](https://www.alibabacloud.com/help/en/user-center/developer-reference/api-bssopenapi-2017-12-14-describeinstancebill.md). Every companion is an exact reviewed URL with contract assertions for the accounting claims used by normalization. Missing documents or changed claims currently fail the provider; the audited target below replaces this provider-wide failure boundary with claim-local refresh. No third-party price book is a fallback.
+The price collector uses the Markdown price book as the only required public price source. Six exact first-party companions are optional claim groups: [context cache](https://www.alibabacloud.com/help/en/model-studio/context-cache.md), [batch inference](https://www.alibabacloud.com/help/en/model-studio/batch-inference.md), [Chat Completions usage](https://www.alibabacloud.com/help/en/model-studio/qwen-api-via-openai-chat-completions.md), [Responses usage](https://www.alibabacloud.com/help/en/model-studio/compatibility-with-openai-responses-api.md), [web search](https://www.alibabacloud.com/help/en/model-studio/web-search.md), and [billing and cost management](https://www.alibabacloud.com/help/en/model-studio/bill-query-and-cost-management.md). Missing or changed companions suppress only their cache derivation, automatic charge binding, service offer, or settlement claim. They cannot erase price-book rows. Usage statistics, savings plans, billing-plan routes, and `DescribeInstanceBill` remain reviewed audit authorities below, but the runtime does not fetch them until their richer plan, allowance, or account-settlement atoms are normalized. No third-party price book is a fallback.
 
 The public price book is standard pay-as-you-go pricing. Every amount retains exact ID, physical region, deployment scope, thinking mode, total-input context tier, modality, resolution, operation, promotion, account eligibility, and native unit. When same-level Markdown headings lose the enclosing physical-region section, the row's reviewed deployment scope recovers the corresponding region (`International` to Singapore, `Chinese mainland` to China (Beijing), and the exact EU, Japan, or US scopes to their published regions); `Global` does not imply a physical region. Availability is the union of every exact region observed across a model's rates, not the first rate only. Input and output image prices are separate meters; sparse resolution rows retain shared input price while binding the changed output price to the new resolution. Invitational-preview labels are metadata, not part of the ID.
 
 The Omni task catalog itself establishes text generation and transcription for its exact rows; a WebSocket or realtime API additionally establishes Speech to Speech and realtime delivery. Preserve the published Type value when present, otherwise preserve the row's HTTP/WebSocket API label as `raw_type`. Omni task and delivery evidence therefore do not depend on whether the separate ASR or recommended-model page happens to repeat the same ID.
 
-Total input tokens in one request select a tier and that tier applies to every token in the request. Batch input and output are 50% of successful real-time inference rates; thinking tokens are output tokens. Batch and context-cache discounts cannot be combined. Explicit-cache writes are 125% of standard input and reads are 10%; ordinary implicit reads are 20%. Explicit and implicit modes are mutually exclusive. `deepseek-v4-pro` explicitly does not use the public 20% implicit-cache rule, so its implicit cache price remains unbound rather than synthesized.
+Total input tokens in one request select a tier and that tier applies to every token in the request. Batch input and output are 50% of successful real-time inference rates; thinking tokens are output tokens. Batch and context-cache discounts cannot be combined. Explicit-cache writes are 125% of standard input and ordinary reads are 10%; ordinary implicit reads are 20%. Explicit and implicit modes are mutually exclusive. Exception identities and the affected percentage are extracted from the current cache guide rather than hardcoded: an exact “not 10%” or “not 20%” claim suppresses only that derived read rate while preserving the model, cache capability, write rate, and sibling region rates.
 
 The currently normalized web-search document publishes USD 10 per 1,000 calls for Singapore and USD 0.573411 per 1,000 calls for China (Beijing). Rates bind only to exact IDs and dated snapshots in the two current support sections. Search content also contributes ordinary input tokens. The limited-time web-extractor promotion remains unbound because its complete strategy conditions are not a model rate. Free trials and limited-time-free cells are promotional numeric zeroes only when the billing unit is published or uniquely inherited from the reviewed table; published discontinuations are retired and not applicable. Subscription allowance, free quota, savings plan, coupon, and invoice discount are never flattened into model rates.
 
 ## Commercial topology audit
 
-Design status: audited; implementation pending. This section is the Alibaba Cloud
-Model Studio disposition for the provider-wide commercial-topology review. It
-describes the intended resources, books, offers, relationships, meters, accounting
-bindings, and evidence boundaries; it does not claim that the current collector,
-schema, generated data, or UI already represents them.
+Design status: implemented for public PAYG model inference, Batch, cache, built-in
+web search, charge reconstruction, and direct settlement. The broader plan,
+allowance, training, deployment-capacity, marketplace, and account-settlement atoms
+below remain the audited boundary for later normalization; they are not flattened
+into the implemented model book in the meantime.
 
 ### Public commercial source graph
 
@@ -73,9 +73,9 @@ not establish Alibaba product presence, rate applicability, or account settlemen
   are 125% and hits 10% of the eligible input rate; ordinary implicit creation is
   standard input and hits are 20%. Explicit and implicit cache are mutually
   exclusive. Minimum size, TTL, marker, model, and mode requirements remain
-  applicability. `deepseek-v4-pro` stays unbound because its exact implicit-hit price
-  is console-only. PTU cache and long-input factors belong to the PTU book and must
-  not reuse PAYG cache derivation.
+  applicability. Any exact model-specific “not 10%” or “not 20%” claim stays
+  unbound because its amount is console-only. PTU cache and long-input factors
+  belong to the PTU book and must not reuse PAYG cache derivation.
 - Web search, text-to-image search, and image search are provider-service usage
   offers with exact regional per-call rates. They require an eligible inference
   request and add ordinary model tokens for inserted or processed content. Billing
@@ -268,14 +268,12 @@ deployable base-model capability may be shown as relationships; account custom
 models, endpoints, knowledge bases, and capacity prices remain detached until an
 exact resource binds them to the model.
 
-The calculator composes only realized compatible atoms. Realtime usage selects one
-tier and one settlement route; cache or Batch follows its exclusive path; executed
-paid tools and their inserted model tokens add to inference; PTU overflow adds PAYG
-only when observed. It must not add requested-but-unexecuted tools, both base and
-promotion, explicit and implicit cache, Batch and realtime, two plans, external MCP
-fees, or shared capacity unrelated to the request. Partial cost coverage is expected:
-show an unbound console price, opaque Credit coefficient, capacity resource, external
-seller charge, promotion validity, or delayed account settlement instead of rejecting
+Rate details preserve the mutually exclusive realtime, cache, Batch, promotion, and
+settlement paths, and show paid-tool meters independently from inserted model-token
+usage. They never combine base and promotion, explicit and implicit cache, Batch and
+realtime, two plans, external MCP fees, or unrelated shared capacity. Partial cost
+coverage is expected: show an unbound console price, opaque Credit coefficient,
+capacity resource, external seller charge, promotion validity, or delayed account settlement instead of rejecting
 the offer or inventing a complete total.
 
 ## Request usage, account cost, and gateway decision

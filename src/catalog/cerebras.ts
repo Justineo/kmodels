@@ -1,12 +1,28 @@
+import { load } from "cheerio";
 import { z } from "zod";
-import { linkedBundleSchema } from "./bundle.ts";
+import {
+  attachCerebrasCommercialFacts,
+  type CerebrasCodePlan,
+  type CerebrasCommercialEvidence,
+} from "./cerebras-commercial-source.ts";
+import { htmlText } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
+import {
+  assertItemCount,
+  recognizeItems,
+  zodContractEvidence,
+  type SourceContractEvidence,
+  type ZodContractObservation,
+} from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -18,51 +34,59 @@ interface Input {
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
+const bundleSchema = z.object({
+  index: z.object({ url: z.url(), body: z.string().min(1) }),
+  documents: z.array(z.object({ url: z.url(), body: z.string().min(1) })),
+});
+
+type Bundle = z.infer<typeof bundleSchema>;
+
 const decimalSchema = z.string().regex(/^(?:0|[1-9]\d*)(?:\.\d+)?$/);
 const publicItemSchema = z.object({
   id: modelIdSchema,
   object: z.literal("model"),
-  created: z.number().int().nonnegative(),
-  owned_by: z.string().min(1),
-  name: z.string().min(1),
-  description: z.string().min(1),
-  hugging_face_id: z.string().min(1),
-  pricing: z.strictObject({ prompt: decimalSchema, completion: decimalSchema }),
-  capabilities: z.strictObject({
-    streaming: z.boolean(),
-    function_calling: z.boolean(),
-    structured_outputs: z.boolean(),
-    vision: z.boolean(),
-    json_mode: z.boolean(),
-    tools: z.boolean(),
-    tool_choice: z.boolean(),
-    parallel_tool_calls: z.boolean(),
-    response_format: z.boolean(),
-    reasoning: z.boolean(),
-  }),
-  supported_parameters: z.record(z.string(), z.boolean()),
-  architecture: z.strictObject({
-    modality: z.string().min(1),
-    tokenizer: z.string().min(1),
-    instruct_type: z.string().min(1),
-  }),
-  limits: z.strictObject({
-    max_context_length: z.number().int().positive(),
-    max_completion_tokens: z.number().int().positive(),
-    requests_per_minute: z.number().int().positive().nullable(),
-    tokens_per_minute: z.number().int().positive().nullable(),
-  }),
-  datacenter_locations: z.array(z.string().min(1)).optional(),
-  deprecated: z.boolean(),
-  preview: z.boolean(),
-  quantization: z.string().nullable(),
+  created: z.unknown().optional(),
+  owned_by: z.unknown().optional(),
+  name: z.unknown().optional(),
+  description: z.unknown().optional(),
+  hugging_face_id: z.unknown().optional(),
+  pricing: z.unknown().optional(),
+  capabilities: z.unknown().optional(),
+  supported_parameters: z.unknown().optional(),
+  architecture: z.unknown().optional(),
+  limits: z.unknown().optional(),
+  datacenter_locations: z.unknown().optional(),
+  deprecated: z.unknown().optional(),
+  preview: z.unknown().optional(),
+  quantization: z.unknown().optional(),
 });
-const publicSchema = z.strictObject({
+const publicSchema = z.object({
   object: z.literal("list"),
   data: z.array(z.unknown()).min(1),
 });
+const publicPricingSchema = z.object({
+  prompt: z.unknown().optional(),
+  completion: z.unknown().optional(),
+});
+const publicCapabilitiesSchema = z.object({
+  streaming: z.unknown().optional(),
+  function_calling: z.unknown().optional(),
+  structured_outputs: z.unknown().optional(),
+  vision: z.unknown().optional(),
+  json_mode: z.unknown().optional(),
+  tools: z.unknown().optional(),
+  tool_choice: z.unknown().optional(),
+  parallel_tool_calls: z.unknown().optional(),
+  response_format: z.unknown().optional(),
+  reasoning: z.unknown().optional(),
+});
+const publicArchitectureSchema = z.object({ modality: z.unknown().optional() });
+const publicLimitsSchema = z.object({
+  max_context_length: z.unknown().optional(),
+  max_completion_tokens: z.unknown().optional(),
+});
 const openRouterFeatureSchema = z.enum(["tools", "json_mode", "structured_outputs", "reasoning"]);
-const openRouterItemSchema = z.strictObject({
+const openRouterItemSchema = z.object({
   id: modelIdSchema,
   hugging_face_id: z.string().min(1),
   name: z.string().min(1),
@@ -72,7 +96,7 @@ const openRouterItemSchema = z.strictObject({
   quantization: z.string().min(1).nullable(),
   context_length: z.number().int().positive(),
   max_output_length: z.number().int().positive(),
-  pricing: z.strictObject({
+  pricing: z.object({
     prompt: decimalSchema,
     completion: decimalSchema,
     request: z.literal("0"),
@@ -83,41 +107,41 @@ const openRouterItemSchema = z.strictObject({
   supported_sampling_parameters: z.array(z.string().min(1)),
   supported_features: z.array(openRouterFeatureSchema),
   description: z.string().min(1),
-  openrouter: z.strictObject({ slug: z.string().min(1) }),
+  openrouter: z.object({ slug: z.string().min(1) }),
   datacenters: z.array(z.string().min(1)),
 });
-const openRouterSchema = z.strictObject({ data: z.array(openRouterItemSchema).min(1) });
-const huggingFaceItemSchema = z.strictObject({
+const openRouterSchema = z.object({ data: z.array(z.unknown()) });
+const huggingFaceItemSchema = z.object({
   id: modelIdSchema,
   hugging_face_id: z.string().min(1),
   object: z.literal("model"),
   created: z.number().int().nonnegative(),
   owned_by: z.string().min(1),
   context_length: z.number().int().positive(),
-  pricing: z.strictObject({
+  pricing: z.object({
     input: z.number().nonnegative(),
     output: z.number().nonnegative(),
   }),
-  capabilities: z.strictObject({
+  capabilities: z.object({
     streaming: z.boolean(),
     function_calling: z.boolean(),
     structured_outputs: z.boolean(),
     vision: z.boolean(),
   }),
 });
-const huggingFaceSchema = z.strictObject({
+const huggingFaceSchema = z.object({
   object: z.literal("list"),
-  data: z.array(huggingFaceItemSchema).min(1),
+  data: z.array(z.unknown()),
 });
 const inventoryItemSchema = z.object({
   id: modelIdSchema,
   object: z.literal("model"),
-  created: z.number().int().nonnegative(),
-  owned_by: z.string().min(1),
+  created: z.unknown().optional(),
+  owned_by: z.unknown().optional(),
 });
-const inventorySchema = z.strictObject({
+const inventorySchema = z.object({
   object: z.literal("list"),
-  data: z.array(z.unknown()).min(1),
+  data: z.array(z.unknown()),
 });
 
 type CerebrasExtractor =
@@ -143,6 +167,64 @@ function bounded(input: Input, kind: CerebrasExtractor, models: ProviderModel[])
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 
+function diagnostic(
+  input: Input,
+  disposition: PricingReconciliationItem["disposition"],
+  reason_code: string,
+  sample?: string,
+): void {
+  input.onPricingReconciliation?.({
+    disposition,
+    reason_code,
+    ...(sample === undefined ? {} : { sample: sample.slice(0, 256) }),
+  });
+}
+
+function claim<T>(input: Input, reasonCode: string, sample: string, parse: () => T): T | undefined {
+  try {
+    return parse();
+  } catch (error) {
+    diagnostic(
+      input,
+      "unsupported",
+      reasonCode,
+      `${sample}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function usableRows(
+  input: Input,
+  items: readonly unknown[],
+  schema: z.ZodType<unknown>,
+  reasonCode: string,
+): unknown[] {
+  const valid: unknown[] = [];
+  const invalid: ZodContractObservation[] = [];
+  for (const [itemIndex, item] of items.entries()) {
+    const parsed = schema.safeParse(item);
+    if (parsed.success) {
+      valid.push(item);
+      continue;
+    }
+    const id =
+      item !== null && typeof item === "object" && typeof Reflect.get(item, "id") === "string"
+        ? String(Reflect.get(item, "id"))
+        : undefined;
+    invalid.push({
+      error: parsed.error,
+      input: item,
+      itemIndex,
+      ...(id === undefined ? {} : { modelId: id }),
+    });
+  }
+  if (invalid.length > 0) {
+    input.onContractFinding?.(zodContractEvidence(invalid, items.length, "accept_with_signal"));
+    diagnostic(input, "unsupported", reasonCode, `${invalid.length}/${items.length}`);
+  }
+  return valid;
+}
+
 function scaledRate(
   meter: "input_text" | "output_text",
   price: string,
@@ -165,14 +247,22 @@ function architectureInputs(value: string): Modality[] {
 }
 
 function bundleDocument(
-  bundle: z.infer<typeof linkedBundleSchema>,
+  input: Input,
+  bundle: Bundle,
   label: string,
   predicate: (url: URL) => boolean,
-): string {
+): string | undefined {
   const matches = bundle.documents.filter(({ url }) => predicate(new URL(url)));
   const [item] = matches;
-  if (matches.length !== 1 || item === undefined)
-    throw new Error(`Cerebras source bundle omitted or duplicated ${label}`);
+  if (matches.length !== 1 || item === undefined) {
+    diagnostic(
+      input,
+      matches.length === 0 ? "unbound" : "unsupported",
+      matches.length === 0 ? "companion_missing" : "companion_duplicate",
+      label,
+    );
+    return;
+  }
   return item.body;
 }
 
@@ -195,144 +285,305 @@ function assertPublicFormatContract(body: string): void {
     throw new Error("Cerebras public-model format contract drift");
 }
 
-function formatEvidence(input: Input, models: readonly ProviderModel[], reasonCode: string): void {
-  for (const model of models)
-    for (const meter of ["input_text", "output_text"] as const)
-      input.onPricingReconciliation?.({
-        disposition: "normalized",
-        reason_code: reasonCode,
-        sample: `${model.model_id}:${meter}`,
-      });
-}
-
 export function parseCerebrasPublic(input: Input): ProviderModel[] {
-  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const bundle = bundleSchema.parse(JSON.parse(input.body));
   const list = publicSchema.parse(JSON.parse(bundle.index.body));
   const items = recognizeItems({
     label: "Cerebras public model",
-    items: list.data,
+    items: usableRows(input, list.data, publicItemSchema, "public_model_identity_drift"),
     schema: publicItemSchema,
     modelId: "id",
     rootKeys: Object.keys(publicItemSchema.shape),
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
-  const models = items.map((item): ProviderModel => {
-    const modalities = architectureInputs(item.architecture.modality);
-    if (modalities.includes("image") !== item.capabilities.vision)
-      throw new Error(`Cerebras modality and vision flag disagree for ${item.id}`);
-    if (item.capabilities.function_calling !== item.capabilities.tools)
-      throw new Error(`Cerebras tool flags disagree for ${item.id}`);
-    return {
-      ...baseModel({
-        providerId: input.provider.id,
-        id: item.id,
-        name: item.name,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      description: item.description,
-      tasks: ["text_generation"],
-      modalities: { input: modalities, output: ["text"] },
-      capabilities: {
-        ...unknownCapabilities(),
-        reasoning: item.capabilities.reasoning,
-        tool_call: item.capabilities.function_calling,
-        structured_output: item.capabilities.structured_outputs,
-        streaming: item.capabilities.streaming,
-      },
-      limits: {
-        context_tokens: item.limits.max_context_length,
-        max_output_tokens: item.limits.max_completion_tokens,
-      },
-      status: item.deprecated ? "deprecated" : "active",
-      release_stage: item.preview ? "preview" : "stable",
-      pricing_state: "numeric",
-      price_facts: [
-        scaledRate("input_text", item.pricing.prompt, input.source.id),
-        scaledRate("output_text", item.pricing.completion, input.source.id),
-      ],
-    };
-  });
+  const models = items.map((item) => publicModel(input, item));
   const result = bounded(input, "cerebras-public", models);
-  const openRouter = openRouterSchema.parse(
-    JSON.parse(
-      bundleDocument(
-        bundle,
-        "OpenRouter compatibility response",
-        (url) => url.searchParams.get("format") === "openrouter",
-      ),
+  const openRouter = compatibilityItems(
+    input,
+    bundleDocument(
+      input,
+      bundle,
+      "OpenRouter compatibility response",
+      (url) => url.searchParams.get("format") === "openrouter",
     ),
-  ).data;
-  const huggingFace = huggingFaceSchema.parse(
-    JSON.parse(
-      bundleDocument(
-        bundle,
-        "HuggingFace compatibility response",
-        (url) => url.searchParams.get("format") === "huggingface",
-      ),
+    "openrouter",
+  );
+  const huggingFace = compatibilityItems(
+    input,
+    bundleDocument(
+      input,
+      bundle,
+      "HuggingFace compatibility response",
+      (url) => url.searchParams.get("format") === "huggingface",
     ),
-  ).data;
-  assertPublicFormatContract(
-    bundleDocument(bundle, "public-model format contract", (url) =>
-      url.pathname.endsWith("/api-reference/models/public-models.md"),
+    "huggingface",
+  );
+  const contract = bundleDocument(input, bundle, "public-model format contract", (url) =>
+    url.pathname.endsWith("/api-reference/models/public-models.md"),
+  );
+  if (contract !== undefined)
+    claim(input, "public_format_contract_drift", "public model formats", () =>
+      assertPublicFormatContract(contract),
+    );
+  reconcileCompatibility(input, result, items, openRouter, huggingFace);
+  reconcileRates(input, result);
+  diagnostic(input, "excluded", "compatibility_zero_placeholders_not_native_rates");
+  return result;
+}
+
+type PublicItem = z.infer<typeof publicItemSchema>;
+type OpenRouterItem = z.infer<typeof openRouterItemSchema>;
+type HuggingFaceItem = z.infer<typeof huggingFaceItemSchema>;
+
+function publicModel(input: Input, item: PublicItem): ProviderModel {
+  const value = <T>(reason: string, field: string, parse: () => T): T | undefined =>
+    claim(input, reason, `${item.id}:${field}`, parse);
+  const name = value("public_name_claim_drift", "name", () => z.string().min(1).parse(item.name));
+  const description = value("public_description_claim_drift", "description", () =>
+    z.string().min(1).parse(item.description),
+  );
+  const architecture = publicArchitectureSchema.safeParse(item.architecture);
+  const modality = architecture.success
+    ? value("public_modality_claim_drift", "architecture.modality", () =>
+        z.string().min(1).parse(architecture.data.modality),
+      )
+    : undefined;
+  const modalities =
+    modality === undefined
+      ? []
+      : (value("public_modality_claim_drift", "architecture.modality", () =>
+          architectureInputs(modality),
+        ) ?? []);
+  const capabilities = publicCapabilitiesSchema.safeParse(item.capabilities);
+  const capability = (field: keyof z.infer<typeof publicCapabilitiesSchema>): boolean | undefined =>
+    capabilities.success
+      ? value("public_capability_claim_drift", `capabilities.${field}`, () =>
+          z.boolean().parse(capabilities.data[field]),
+        )
+      : undefined;
+  const vision = capability("vision");
+  if (vision !== undefined && modalities.length > 0 && modalities.includes("image") !== vision)
+    diagnostic(input, "unbound", "public_modality_capability_conflict", item.id);
+  const functionCalling = capability("function_calling");
+  const tools = capability("tools");
+  const reasoning = capability("reasoning");
+  const structuredOutput = capability("structured_outputs");
+  const streaming = capability("streaming");
+  if (functionCalling !== undefined && tools !== undefined && functionCalling !== tools)
+    diagnostic(input, "unbound", "public_tool_capability_conflict", item.id);
+  const limits = publicLimitsSchema.safeParse(item.limits);
+  const limit = (field: keyof z.infer<typeof publicLimitsSchema>): number | undefined =>
+    limits.success
+      ? value("public_limit_claim_drift", `limits.${field}`, () =>
+          z.number().int().positive().parse(limits.data[field]),
+        )
+      : undefined;
+  const contextTokens = limit("max_context_length");
+  const maxOutputTokens = limit("max_completion_tokens");
+  const pricing = publicPricingSchema.safeParse(item.pricing);
+  const priceFacts = (
+    [
+      ["input_text", "prompt"],
+      ["output_text", "completion"],
+    ] as const
+  ).flatMap(([meter, field]): SourcePriceFact[] => {
+    const amount = pricing.success
+      ? value("public_price_claim_drift", `pricing.${field}`, () =>
+          decimalSchema.parse(pricing.data[field]),
+        )
+      : undefined;
+    return amount === undefined ? [] : [scaledRate(meter, amount, input.source.id)];
+  });
+  const deprecated = value("public_lifecycle_claim_drift", "deprecated", () =>
+    z.boolean().parse(item.deprecated),
+  );
+  const preview = value("public_release_stage_claim_drift", "preview", () =>
+    z.boolean().parse(item.preview),
+  );
+  return {
+    ...baseModel({
+      providerId: input.provider.id,
+      id: item.id,
+      name: name ?? item.id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
+    ...(description === undefined ? {} : { description }),
+    tasks: ["text_generation"],
+    modalities: { input: modalities, output: ["text"] },
+    capabilities: {
+      ...unknownCapabilities(),
+      ...(reasoning === undefined ? {} : { reasoning }),
+      ...(functionCalling === undefined ? {} : { tool_call: functionCalling }),
+      ...(structuredOutput === undefined ? {} : { structured_output: structuredOutput }),
+      ...(streaming === undefined ? {} : { streaming }),
+    },
+    limits: {
+      ...(contextTokens === undefined ? {} : { context_tokens: contextTokens }),
+      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
+    },
+    status: deprecated === undefined ? "unknown" : deprecated ? "deprecated" : "active",
+    release_stage: preview === undefined ? "unknown" : preview ? "preview" : "stable",
+    pricing_state: priceFacts.length === 0 ? "unknown" : "numeric",
+    price_facts: priceFacts,
+  };
+}
+
+function compatibilityItems(
+  input: Input,
+  body: string | undefined,
+  format: "huggingface" | "openrouter",
+): Array<HuggingFaceItem | OpenRouterItem> {
+  if (body === undefined) return [];
+  const envelope = claim(input, `${format}_format_envelope_drift`, format, () => {
+    const parsed: unknown = JSON.parse(body);
+    return format === "openrouter"
+      ? openRouterSchema.parse(parsed).data
+      : huggingFaceSchema.parse(parsed).data;
+  });
+  if (envelope === undefined) return [];
+  return envelope.flatMap((item, index) => {
+    const parsed =
+      format === "openrouter"
+        ? openRouterItemSchema.safeParse(item)
+        : huggingFaceItemSchema.safeParse(item);
+    if (parsed.success) return [parsed.data];
+    diagnostic(input, "unsupported", `${format}_format_item_drift`, String(index));
+    return [];
+  });
+}
+
+function reconcileCompatibility(
+  input: Input,
+  models: ProviderModel[],
+  nativeItems: PublicItem[],
+  openRouterItems: Array<HuggingFaceItem | OpenRouterItem>,
+  huggingFaceItems: Array<HuggingFaceItem | OpenRouterItem>,
+): void {
+  const native = new Map(nativeItems.map((item) => [item.id, item]));
+  const routers = new Map(
+    openRouterItems.flatMap((item) =>
+      "supported_features" in item ? [[item.id, item] as const] : [],
     ),
   );
-  const ids = result.map(({ model_id }) => model_id);
-  if (
-    !sameStrings(
-      ids,
-      openRouter.map(({ id }) => id),
-    ) ||
-    !sameStrings(
-      ids,
-      huggingFace.map(({ id }) => id),
-    )
-  )
-    throw new Error("Cerebras public-model formats disagree on exact model IDs");
-  const nativeById = new Map(items.map((item) => [item.id, item]));
-  const openRouterById = new Map(openRouter.map((item) => [item.id, item]));
-  const huggingFaceById = new Map(huggingFace.map((item) => [item.id, item]));
-  for (const id of ids) {
-    const native = nativeById.get(id);
-    const router = openRouterById.get(id);
-    const hub = huggingFaceById.get(id);
-    if (native === undefined || router === undefined || hub === undefined)
-      throw new Error(`Cerebras public-model format omitted ${id}`);
-    const nativeInputs = architectureInputs(native.architecture.modality);
-    const routerFeatures = new Set(router.supported_features);
-    if (
-      native.hugging_face_id !== router.hugging_face_id ||
-      native.hugging_face_id !== hub.hugging_face_id ||
-      native.name !== router.name ||
-      native.description !== router.description ||
-      native.created !== router.created ||
-      native.created !== hub.created ||
-      native.owned_by !== hub.owned_by ||
-      native.limits.max_context_length !== router.context_length ||
-      native.limits.max_context_length !== hub.context_length ||
-      native.limits.max_completion_tokens !== router.max_output_length ||
-      !sameStrings(nativeInputs, router.input_modalities) ||
-      !sameStrings(["text"], router.output_modalities) ||
-      !sameStrings(native.datacenter_locations ?? [], router.datacenters) ||
-      !decimalsEqual(native.pricing.prompt, router.pricing.prompt) ||
-      !decimalsEqual(native.pricing.completion, router.pricing.completion) ||
-      !decimalsEqual(scaleDecimal(native.pricing.prompt, 6), String(hub.pricing.input)) ||
-      !decimalsEqual(scaleDecimal(native.pricing.completion, 6), String(hub.pricing.output)) ||
-      native.capabilities.function_calling !== routerFeatures.has("tools") ||
-      native.capabilities.json_mode !== routerFeatures.has("json_mode") ||
-      native.capabilities.structured_outputs !== routerFeatures.has("structured_outputs") ||
-      native.capabilities.reasoning !== routerFeatures.has("reasoning") ||
-      native.capabilities.streaming !== hub.capabilities.streaming ||
-      native.capabilities.function_calling !== hub.capabilities.function_calling ||
-      native.capabilities.structured_outputs !== hub.capabilities.structured_outputs ||
-      native.capabilities.vision !== hub.capabilities.vision
-    )
-      throw new Error(`Cerebras public-model formats disagree for ${id}`);
+  const hubs = new Map(
+    huggingFaceItems.flatMap((item) => ("object" in item ? [[item.id, item] as const] : [])),
+  );
+  const ids = models.map(({ model_id }) => model_id);
+  if (!sameStrings(ids, [...routers.keys()]))
+    diagnostic(input, "unbound", "openrouter_format_inventory_disagreement");
+  if (!sameStrings(ids, [...hubs.keys()]))
+    diagnostic(input, "unbound", "huggingface_format_inventory_disagreement");
+  for (const model of models) {
+    const source = native.get(model.model_id);
+    const router = routers.get(model.model_id);
+    const hub = hubs.get(model.model_id);
+    if (router === undefined)
+      diagnostic(input, "unbound", "openrouter_format_model_missing", model.model_id);
+    else reconcileOpenRouter(input, model, source, router);
+    if (hub === undefined)
+      diagnostic(input, "unbound", "huggingface_format_model_missing", model.model_id);
+    else reconcileHuggingFace(input, model, source, hub);
   }
-  reconcileRates(input, result);
-  formatEvidence(input, result, "openrouter_format_rate_corroborated");
-  formatEvidence(input, result, "huggingface_format_rate_corroborated");
-  return result;
+}
+
+function reconcileOpenRouter(
+  input: Input,
+  model: ProviderModel,
+  native: PublicItem | undefined,
+  item: OpenRouterItem,
+): void {
+  corroborateRate(input, model, "input_text", scaleDecimal(item.pricing.prompt, 6), "openrouter");
+  corroborateRate(
+    input,
+    model,
+    "output_text",
+    scaleDecimal(item.pricing.completion, 6),
+    "openrouter",
+  );
+  const features = new Set(item.supported_features);
+  const claims = [
+    ["name", model.name === item.name],
+    ["description", model.description === item.description],
+    ["context_length", model.limits.context_tokens === item.context_length],
+    ["max_output_length", model.limits.max_output_tokens === item.max_output_length],
+    ["input_modalities", sameStrings(model.modalities.input, item.input_modalities)],
+    ["output_modalities", sameStrings(model.modalities.output, item.output_modalities)],
+    ["tools", model.capabilities.tool_call === features.has("tools")],
+    [
+      "structured_outputs",
+      model.capabilities.structured_output === features.has("structured_outputs"),
+    ],
+    ["reasoning", model.capabilities.reasoning === features.has("reasoning")],
+  ] as const;
+  for (const [field, agrees] of claims)
+    if (!agrees)
+      diagnostic(
+        input,
+        "unbound",
+        "openrouter_format_claim_conflict",
+        `${model.model_id}:${field}`,
+      );
+  const nativeHuggingFaceId = z.string().safeParse(native?.hugging_face_id);
+  if (nativeHuggingFaceId.success && nativeHuggingFaceId.data !== item.hugging_face_id)
+    diagnostic(
+      input,
+      "unbound",
+      "openrouter_format_claim_conflict",
+      `${model.model_id}:hugging_face_id`,
+    );
+}
+
+function reconcileHuggingFace(
+  input: Input,
+  model: ProviderModel,
+  native: PublicItem | undefined,
+  item: HuggingFaceItem,
+): void {
+  corroborateRate(input, model, "input_text", String(item.pricing.input), "huggingface");
+  corroborateRate(input, model, "output_text", String(item.pricing.output), "huggingface");
+  const claims = [
+    ["context_length", model.limits.context_tokens === item.context_length],
+    ["streaming", model.capabilities.streaming === item.capabilities.streaming],
+    ["function_calling", model.capabilities.tool_call === item.capabilities.function_calling],
+    [
+      "structured_outputs",
+      model.capabilities.structured_output === item.capabilities.structured_outputs,
+    ],
+    ["vision", model.modalities.input.includes("image") === item.capabilities.vision],
+  ] as const;
+  for (const [field, agrees] of claims)
+    if (!agrees)
+      diagnostic(
+        input,
+        "unbound",
+        "huggingface_format_claim_conflict",
+        `${model.model_id}:${field}`,
+      );
+  const nativeHuggingFaceId = z.string().safeParse(native?.hugging_face_id);
+  if (nativeHuggingFaceId.success && nativeHuggingFaceId.data !== item.hugging_face_id)
+    diagnostic(
+      input,
+      "unbound",
+      "huggingface_format_claim_conflict",
+      `${model.model_id}:hugging_face_id`,
+    );
+}
+
+function corroborateRate(
+  input: Input,
+  model: ProviderModel,
+  meter: TextMeter,
+  observed: string,
+  format: "huggingface" | "openrouter",
+): void {
+  const normalized = model.price_facts.find((rate) => rate.meter === meter)?.price;
+  diagnostic(
+    input,
+    normalized !== undefined && decimalsEqual(normalized, observed) ? "normalized" : "unbound",
+    `${format}_format_rate_${normalized !== undefined && decimalsEqual(normalized, observed) ? "corroborated" : "conflict"}`,
+    `${model.model_id}:${meter}`,
+  );
 }
 
 interface MarkdownTable {
@@ -368,8 +619,7 @@ function tables(body: string): MarkdownTable[] {
       index += 1;
     }
     index -= 1;
-    if (rows.some((row) => row.length !== headers.length))
-      throw new Error("Cerebras Markdown table has inconsistent columns");
+    if (rows.some((row) => row.length !== headers.length)) continue;
     result.push({ section, headers, rows });
   }
   return result;
@@ -414,17 +664,24 @@ function englishDate(value: string): string {
   return `${match[3]}-${month}-${match[2].padStart(2, "0")}`;
 }
 
-function scheduledDates(body: string): Map<string, string> {
+function scheduledDates(input: Input, body: string): Map<string, string> {
   const result = new Map<string, string>();
+  const conflicts = new Set<string>();
   for (const match of body.matchAll(
     /\*\*([^*]+)\*\* is scheduled for deprecation on ([A-Z][a-z]+ \d{1,2}, \d{4})\./g,
   )) {
     if (match[1] === undefined || match[2] === undefined) continue;
     const name = text(match[1]);
-    const date = englishDate(match[2]);
+    const rawDate = match[2];
+    const date = claim(input, "scheduled_date_claim_drift", name, () => englishDate(rawDate));
+    if (date === undefined || conflicts.has(name)) continue;
     const current = result.get(name);
-    if (current !== undefined && current !== date)
-      throw new Error(`Cerebras scheduled dates disagree for ${name}`);
+    if (current !== undefined && current !== date) {
+      result.delete(name);
+      conflicts.add(name);
+      diagnostic(input, "unbound", "scheduled_date_conflict", name);
+      continue;
+    }
     result.set(name, date);
   }
   return result;
@@ -444,12 +701,15 @@ function arrayBlock(body: string, name: string): string[] {
   );
 }
 
-function modelEndpoints(body: string): ApiEndpoint[] {
-  return arrayBlock(body, "endpoints")
-    .map((name) => {
+function modelEndpoints(input: Input, id: string, body: string): ApiEndpoint[] {
+  const names = claim(input, "model_endpoint_block_drift", id, () => arrayBlock(body, "endpoints"));
+  if (names === undefined) return [];
+  return names
+    .flatMap((name): ApiEndpoint[] => {
       const endpoint = apiEndpoints.get(name);
-      if (endpoint === undefined) throw new Error(`Unsupported Cerebras model endpoint: ${name}`);
-      return endpoint;
+      if (endpoint !== undefined) return [endpoint];
+      diagnostic(input, "unsupported", "model_endpoint_unrecognized", `${id}:${name}`);
+      return [];
     })
     .sort((left, right) => apiEndpointKey(left).localeCompare(apiEndpointKey(right)));
 }
@@ -478,12 +738,17 @@ function tokenCount(value: string): number {
   return result;
 }
 
-function largestTokenCount(block: string): number {
+function largestTokenCount(input: Input, id: string, field: string, block: string): number {
   const counts = [
     ...new Set([...stringField(block, "freeTier"), ...stringField(block, "paidTiers")]),
   ]
     .filter((value) => value !== "N/A")
-    .map(tokenCount);
+    .flatMap((value): number[] => {
+      const parsed = claim(input, "model_limit_value_drift", `${id}:${field}:${value}`, () =>
+        tokenCount(value),
+      );
+      return parsed === undefined ? [] : [parsed];
+    });
   if (counts.length === 0) throw new Error("Cerebras model card omitted a token limit");
   return Math.max(...counts);
 }
@@ -500,10 +765,23 @@ function cardPrice(body: string, field: "inputPrice" | "outputPrice"): string {
   return match[1];
 }
 
-function cardModalities(body: string, field: "inputFormats" | "outputFormats"): Modality[] {
-  return arrayField(objectBlock(body, "inputOutput"), field).map((value) =>
-    modalitySchema.parse(value.toLowerCase()),
+function cardModalities(
+  input: Input,
+  id: string,
+  body: string,
+  field: "inputFormats" | "outputFormats",
+): Modality[] | undefined {
+  const values = claim(input, "model_modality_block_drift", `${id}:${field}`, () =>
+    arrayField(objectBlock(body, "inputOutput"), field),
   );
+  if (values === undefined) return;
+  const parsed = values.flatMap((value): Modality[] => {
+    const modality = modalitySchema.safeParse(value.toLowerCase());
+    if (modality.success) return [modality.data];
+    diagnostic(input, "unsupported", "model_modality_value_drift", `${id}:${field}:${value}`);
+    return [];
+  });
+  return parsed.length === 0 ? undefined : parsed;
 }
 
 interface CatalogRow {
@@ -523,8 +801,8 @@ function modelLink(value: string): { name: string; path: string } {
   };
 }
 
-function catalogRows(body: string): CatalogRow[] {
-  return tables(body).flatMap((table) => {
+function catalogRows(input: Input, body: string): CatalogRow[] {
+  const rows = tables(body).flatMap((table) => {
     const releaseStage =
       table.section === "Production Models"
         ? "stable"
@@ -534,68 +812,47 @@ function catalogRows(body: string): CatalogRow[] {
     if (releaseStage === undefined) return [];
     const nameIndex = table.headers.indexOf("Model Name");
     const idIndex = table.headers.indexOf("Model ID");
-    if (nameIndex < 0 || idIndex < 0) throw new Error("Cerebras model table schema drift");
-    return table.rows.map((row) => {
+    if (nameIndex < 0 || idIndex < 0) {
+      diagnostic(input, "unsupported", "catalog_table_schema_drift", table.section);
+      return [];
+    }
+    return table.rows.flatMap((row, index): CatalogRow[] => {
       const rawName = row[nameIndex];
       const rawId = row[idIndex];
-      if (rawName === undefined || rawId === undefined)
-        throw new Error("Cerebras model table omitted a value");
-      return { id: exactCode(rawId), ...modelLink(rawName), releaseStage };
+      const parsed = claim(
+        input,
+        "catalog_row_claim_drift",
+        `${table.section}:${index}`,
+        (): CatalogRow => {
+          if (rawName === undefined || rawId === undefined)
+            throw new Error("model table omitted a value");
+          return { id: exactCode(rawId), ...modelLink(rawName), releaseStage };
+        },
+      );
+      return parsed === undefined ? [] : [parsed];
     });
   });
+  const unique = new Map<string, CatalogRow>();
+  for (const row of rows) {
+    if (unique.has(row.id)) {
+      diagnostic(input, "unsupported", "catalog_model_id_duplicate", row.id);
+      continue;
+    }
+    unique.set(row.id, row);
+  }
+  return [...unique.values()];
 }
 
 function catalogCard(
   input: Input,
   row: CatalogRow,
-  body: string,
-  cachePolicy: string,
+  body: string | undefined,
+  cachePolicy: string | undefined,
   scheduled: Map<string, string>,
 ): ProviderModel {
-  const id = body.match(/\bmodelId="([^"]+)"/)?.[1];
-  const title = body.match(/^#\s+(.+)$/m)?.[1];
-  const description = body.match(/^>\s+(.+)$/m)?.[1];
-  if (id === undefined || title === undefined || description === undefined)
-    throw new Error(`Cerebras model card schema drift for ${row.id}`);
-  if (modelIdSchema.parse(id) !== row.id || text(title) !== row.name)
-    throw new Error(`Cerebras model card disagrees with the catalog for ${row.id}`);
-  const endpoints = modelEndpoints(body);
-  if (endpoints.length === 0)
-    throw new Error(`Cerebras model card omitted a generation endpoint for ${row.id}`);
-  const features = new Set(arrayBlock(body, "features"));
-  const inputPrice = cardPrice(body, "inputPrice");
-  const rates: SourcePriceFact[] = [
-    publishedRate("input_text", inputPrice, "million_tokens", input.source.id, "million tokens"),
-    publishedRate(
-      "output_text",
-      cardPrice(body, "outputPrice"),
-      "million_tokens",
-      input.source.id,
-      "million tokens",
-    ),
-  ];
-  if (features.has("Prompt Caching")) {
-    if (
-      !/Input tokens, whether served from the cache or processed fresh, are billed at the standard input token rate/.test(
-        cachePolicy,
-      )
-    )
-      throw new Error("Cerebras cache pricing policy changed");
-    rates.push({
-      ...publishedRate(
-        "cache_read_text",
-        inputPrice,
-        "million_tokens",
-        input.source.id,
-        "standard input token rate",
-      ),
-      derived: true,
-      derivation: "cached input is billed at the published standard input rate",
-    });
-  }
   const deprecatedAt = scheduled.get(row.name);
   const deprecated = deprecatedAt !== undefined && deprecatedAt <= input.observedAt.slice(0, 10);
-  return {
+  const base: ProviderModel = {
     ...baseModel({
       providerId: input.provider.id,
       id: row.id,
@@ -603,53 +860,163 @@ function catalogCard(
       sourceId: input.source.id,
       observedAt: input.observedAt,
     }),
-    description: text(description),
     tasks: ["text_generation"],
-    api_endpoints: endpoints,
-    modalities: {
-      input: cardModalities(body, "inputFormats"),
-      output: cardModalities(body, "outputFormats"),
-    },
-    capabilities: {
-      ...unknownCapabilities(),
-      reasoning: features.has("Reasoning"),
-      tool_call: features.has("Tool Calling"),
-      structured_output: features.has("Structured Outputs"),
-      streaming: features.has("Streaming"),
-      prompt_cache: features.has("Prompt Caching"),
-      effort_control: /\breasoning_effort\b/.test(body) ? true : "unknown",
-    },
-    limits: {
-      context_tokens: largestTokenCount(objectBlock(body, "contextLength")),
-      max_output_tokens: largestTokenCount(objectBlock(body, "maxOutput")),
-    },
     deprecated_at: deprecatedAt,
     status: deprecated ? "deprecated" : "active",
     release_stage: row.releaseStage,
-    pricing_state: "numeric",
+  };
+  if (body === undefined) {
+    diagnostic(input, "unbound", "model_card_missing", row.id);
+    return base;
+  }
+  const identity = claim(input, "model_card_identity_drift", row.id, () => {
+    const id = body.match(/\bmodelId="([^"]+)"/)?.[1];
+    const title = body.match(/^#\s+(.+)$/m)?.[1];
+    if (id === undefined || title === undefined) throw new Error("model ID or title missing");
+    return { id: modelIdSchema.parse(id), title: text(title) };
+  });
+  if (identity === undefined || identity.id !== row.id || identity.title !== row.name) {
+    if (identity !== undefined)
+      diagnostic(input, "unbound", "model_card_catalog_disagreement", row.id);
+    return base;
+  }
+  const description = body.match(/^>\s+(.+)$/m)?.[1];
+  if (description === undefined)
+    diagnostic(input, "unbound", "model_description_claim_drift", row.id);
+  const endpoints = modelEndpoints(input, row.id, body);
+  if (endpoints.length === 0) diagnostic(input, "unbound", "model_endpoint_claim_missing", row.id);
+  const featureValues = claim(input, "model_feature_block_drift", row.id, () =>
+    arrayBlock(body, "features"),
+  );
+  const features = featureValues === undefined ? undefined : new Set(featureValues);
+  const inputPrice = claim(input, "model_card_input_price_drift", row.id, () =>
+    cardPrice(body, "inputPrice"),
+  );
+  const outputPrice = claim(input, "model_card_output_price_drift", row.id, () =>
+    cardPrice(body, "outputPrice"),
+  );
+  const rates: SourcePriceFact[] = [
+    ...(inputPrice === undefined
+      ? []
+      : [
+          publishedRate(
+            "input_text",
+            inputPrice,
+            "million_tokens",
+            input.source.id,
+            "million tokens",
+          ),
+        ]),
+    ...(outputPrice === undefined
+      ? []
+      : [
+          publishedRate(
+            "output_text",
+            outputPrice,
+            "million_tokens",
+            input.source.id,
+            "million tokens",
+          ),
+        ]),
+  ];
+  const cacheAccounting =
+    cachePolicy !== undefined &&
+    /Input tokens, whether served from the cache or processed fresh, are billed at the standard input token rate/.test(
+      cachePolicy,
+    );
+  if (features?.has("Prompt Caching") && inputPrice !== undefined) {
+    if (cacheAccounting)
+      rates.push({
+        ...publishedRate(
+          "cache_read_text",
+          inputPrice,
+          "million_tokens",
+          input.source.id,
+          "standard input token rate",
+        ),
+        derived: true,
+        derivation: "cached input is billed at the published standard input rate",
+      });
+    else diagnostic(input, "unbound", "cache_pricing_policy_drift", row.id);
+  }
+  const contextBlock = claim(input, "model_context_block_drift", row.id, () =>
+    objectBlock(body, "contextLength"),
+  );
+  const outputBlock = claim(input, "model_output_block_drift", row.id, () =>
+    objectBlock(body, "maxOutput"),
+  );
+  const contextTokens =
+    contextBlock === undefined
+      ? undefined
+      : claim(input, "model_context_limit_drift", row.id, () =>
+          largestTokenCount(input, row.id, "contextLength", contextBlock),
+        );
+  const maxOutputTokens =
+    outputBlock === undefined
+      ? undefined
+      : claim(input, "model_output_limit_drift", row.id, () =>
+          largestTokenCount(input, row.id, "maxOutput", outputBlock),
+        );
+  const inputModalities = cardModalities(input, row.id, body, "inputFormats");
+  const outputModalities = cardModalities(input, row.id, body, "outputFormats");
+  return {
+    ...base,
+    ...(description === undefined ? {} : { description: text(description) }),
+    ...(endpoints.length === 0 ? {} : { api_endpoints: endpoints }),
+    modalities: {
+      input: inputModalities ?? [],
+      output: outputModalities ?? [],
+    },
+    capabilities:
+      features === undefined
+        ? unknownCapabilities()
+        : {
+            ...unknownCapabilities(),
+            reasoning: features.has("Reasoning"),
+            tool_call: features.has("Tool Calling"),
+            structured_output: features.has("Structured Outputs"),
+            streaming: features.has("Streaming"),
+            prompt_cache: features.has("Prompt Caching"),
+            effort_control: /\breasoning_effort\b/.test(body) ? true : "unknown",
+          },
+    limits: {
+      ...(contextTokens === undefined ? {} : { context_tokens: contextTokens }),
+      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
+    },
+    pricing_state: rates.length === 0 ? "unknown" : "numeric",
     price_facts: rates,
   };
 }
 
-function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): string {
+function document(input: Input, bundle: Bundle, suffix: string): string | undefined {
   const matches = bundle.documents.filter(({ url }) => new URL(url).pathname.endsWith(suffix));
   const [item] = matches;
-  if (matches.length !== 1 || item === undefined)
-    throw new Error(`Cerebras source bundle omitted or duplicated ${suffix}`);
+  if (matches.length !== 1 || item === undefined) {
+    diagnostic(
+      input,
+      matches.length === 0 ? "unbound" : "unsupported",
+      matches.length === 0 ? "commercial_companion_missing" : "commercial_companion_duplicate",
+      suffix,
+    );
+    return;
+  }
   return item.body;
 }
 
-function requireClaims(
-  bundle: z.infer<typeof linkedBundleSchema>,
+function hasClaims(
+  input: Input,
+  bundle: Bundle,
   suffix: string,
   claims: readonly RegExp[],
-  label: string,
-): string {
-  const body = document(bundle, suffix);
+  reasonCode: string,
+): boolean {
+  const body = document(input, bundle, suffix);
+  if (body === undefined) return false;
   const normalized = body.replace(/\\([_$*])/g, "$1").replace(/\s+/g, " ");
-  if (claims.some((claim) => !claim.test(normalized)))
-    throw new Error(`Cerebras ${label} contract drift`);
-  return body;
+  const missing = claims.filter((pattern) => !pattern.test(body) && !pattern.test(normalized));
+  if (missing.length === 0) return true;
+  diagnostic(input, "unbound", reasonCode, suffix);
+  return false;
 }
 
 const commercialPaths = new Set([
@@ -683,8 +1050,9 @@ function commercialIndexEntry(path: string, line: string): boolean {
   return /\b(?:billing|costs?|credits?|meters?|pricing|spend|subscriptions?|usage)\b/i.test(line);
 }
 
-function validateCommercialIndex(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const body = document(bundle, "/llms.txt");
+function validateCommercialIndex(input: Input, bundle: Bundle): void {
+  const body = document(input, bundle, "/llms.txt");
+  if (body === undefined) return;
   const indexed = new Set(
     [...body.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\).*$/gm)].flatMap((match) => {
       const href = match[1];
@@ -697,17 +1065,17 @@ function validateCommercialIndex(bundle: z.infer<typeof linkedBundleSchema>): vo
         : [];
     }),
   );
-  if (indexed.size === 0) throw new Error("Cerebras documentation index omitted commercial pages");
+  if (indexed.size === 0) {
+    diagnostic(input, "unbound", "commercial_index_drift");
+    return;
+  }
   const selected = new Set(
     [bundle.index, ...bundle.documents].map(({ url }) =>
       new URL(url).pathname.replace(/\.md$/, ""),
     ),
   );
   const missing = [...indexed].filter((path) => !selected.has(path)).sort();
-  if (missing.length > 0)
-    throw new Error(
-      `Cerebras documentation index has unreviewed commercial pages: ${missing.join(", ")}`,
-    );
+  for (const path of missing) diagnostic(input, "unbound", "commercial_page_pending_review", path);
 }
 
 interface PagePrice {
@@ -727,8 +1095,9 @@ function pricePageRows(body: string): PagePrice[] {
       ? []
       : [{ label: match[1], input: match[2], output: match[3] }],
   );
-  if (rows.length === 0) throw new Error("Cerebras pricing page omitted model price rows");
-  return rows;
+  return [
+    ...new Map(rows.map((row) => [`${row.label}\0${row.input}\0${row.output}`, row])).values(),
+  ];
 }
 
 function identity(value: string): string {
@@ -744,97 +1113,125 @@ function observedRateEvidence(
   source: "model_card_prose" | "pricing_page",
 ): PricingReconciliationItem {
   const normalized = model.price_facts.find((rate) => rate.meter === meter)?.price;
-  if (normalized === undefined)
-    throw new Error(`Cerebras ${source} model omitted ${meter}: ${model.model_id}`);
-  const corroborated = decimalsEqual(normalized, observed);
+  const corroborated = normalized !== undefined && decimalsEqual(normalized, observed);
   return {
     disposition: corroborated ? "normalized" : "unbound",
-    reason_code: `${source}_rate_${corroborated ? "corroborated" : "conflict"}`,
+    reason_code: `${source}_rate_${
+      normalized === undefined ? "unbound" : corroborated ? "corroborated" : "conflict"
+    }`,
     sample: `${model.model_id}:${meter}`,
   };
 }
 
-function cardProseEvidence(body: string, model: ProviderModel): PricingReconciliationItem[] {
+function cardProseEvidence(
+  input: Input,
+  body: string,
+  model: ProviderModel,
+): PricingReconciliationItem[] {
   const matches = [
     ...body.matchAll(
       /\bPricing:\s*\$((?:0|[1-9]\d*)(?:\.\d+)?) per million input tokens,\s*\$((?:0|[1-9]\d*)(?:\.\d+)?) per million output tokens\./g,
     ),
   ];
   const [match] = matches;
-  if (matches.length !== 1 || match?.[1] === undefined || match[2] === undefined)
-    throw new Error(`Cerebras model card prose pricing drift for ${model.model_id}`);
+  if (matches.length !== 1 || match?.[1] === undefined || match[2] === undefined) {
+    diagnostic(input, "unbound", "model_card_prose_pricing_drift", model.model_id);
+    return [];
+  }
   return [
     observedRateEvidence(model, "input_text", match[1], "model_card_prose"),
     observedRateEvidence(model, "output_text", match[2], "model_card_prose"),
   ];
 }
 
-function pricePageEvidence(body: string, models: ProviderModel[]): PricingReconciliationItem[] {
-  if (
-    !/Get started with \$5 in free credits after making an account/.test(body) ||
-    !/Self-serve payment starting at just \$10/.test(body) ||
-    !/10x higher rate limits than free tier/.test(body) ||
-    !/Developer Tier Pricing/.test(body)
-  )
-    throw new Error("Cerebras pricing-plan contract drift");
+function pricePageEvidence(
+  input: Input,
+  body: string,
+  models: ProviderModel[],
+): PricingReconciliationItem[] {
+  if (!/Developer Tier Pricing/.test(body))
+    diagnostic(input, "unbound", "pricing_plan_contract_drift");
   const rows = pricePageRows(body);
-  if (rows.length !== models.length) throw new Error("Cerebras pricing-page model count drift");
+  if (rows.length === 0) diagnostic(input, "unbound", "pricing_page_rows_missing");
   const evidence: PricingReconciliationItem[] = [];
+  const matched = new Set<string>();
   for (const row of rows) {
     const matches = models.filter(({ model_id }) =>
       identity(row.label).includes(identity(model_id)),
     );
     const [model] = matches;
-    if (matches.length !== 1 || model === undefined)
-      throw new Error(`Cerebras pricing-page identity drift: ${row.label}`);
+    if (matches.length !== 1 || model === undefined) {
+      diagnostic(input, "unbound", "pricing_page_identity_drift", row.label);
+      continue;
+    }
+    matched.add(model.model_id);
     evidence.push(
       observedRateEvidence(model, "input_text", row.input, "pricing_page"),
       observedRateEvidence(model, "output_text", row.output, "pricing_page"),
     );
   }
+  for (const model of models)
+    if (!matched.has(model.model_id))
+      diagnostic(input, "unbound", "pricing_page_model_missing", model.model_id);
   return evidence;
 }
 
+function codePlans(input: Input, body: string): CerebrasCodePlan[] {
+  const searchable = htmlText(
+    load(body.replaceAll('\\"', '"').replaceAll("\\n", "\n").replaceAll("$$", "$")).root().text(),
+  );
+  const configurations = [
+    ["pro", "Cerebras Code Pro", "50", "24 million"],
+    ["max", "Cerebras Code Max", "200", "120m"],
+  ] as const;
+  return configurations.flatMap(([key, name, monthlyPrice, dailyTokens]) => {
+    const plan = new RegExp(
+      `${key}\\s+\\$${monthlyPrice}\\/month[\\s\\S]{0,2500}?Send up to ${dailyTokens} tokens\\/day[\\s\\S]{0,2500}?sold out`,
+      "i",
+    );
+    if (plan.test(searchable)) return [{ key, name, monthlyPrice, dailyTokens, closedToNew: true }];
+    diagnostic(input, "unbound", "cerebras_code_plan_drift", key);
+    return [];
+  });
+}
+
+interface CatalogCommercialEvidence {
+  chatAccounting: boolean;
+  completionsAccounting: boolean;
+  cacheAccounting: boolean;
+  settlement: boolean;
+  commercial: CerebrasCommercialEvidence;
+}
+
 function commercialEvidence(
-  bundle: z.infer<typeof linkedBundleSchema>,
+  input: Input,
+  bundle: Bundle,
   models: ProviderModel[],
-): PricingReconciliationItem[] {
-  validateCommercialIndex(bundle);
-  requireClaims(
+): CatalogCommercialEvidence {
+  validateCommercialIndex(input, bundle);
+  const chatAccounting = hasClaims(
+    input,
     bundle,
     "/api-reference/chat-completions.md",
-    [
-      /prompt_tokens:/,
-      /completion_tokens:/,
-      /total_tokens:/,
-      /image_tokens:/,
-      /cached_tokens:/,
-      /reasoning_tokens:/,
-      /rejected_prediction_tokens:/,
-      /service_tier_used:/,
-      /object: chat\.completion\.chunk[\s\S]*?usage:/,
-    ],
-    "Chat usage",
+    [/prompt_tokens:/, /completion_tokens:/, /total_tokens:/],
+    "chat_usage_contract_drift",
   );
-  requireClaims(
+  const completionsAccounting = hasClaims(
+    input,
     bundle,
     "/api-reference/completions.md",
     [/prompt_tokens/, /completion_tokens/, /total_tokens/, /cached_tokens/],
-    "Completions usage",
+    "completions_usage_contract_drift",
   );
-  requireClaims(
+  hasClaims(
+    input,
     bundle,
     "/api-reference/models/public-models.md",
-    [
-      /Pricing per token in USD/,
-      /Cost per prompt token/,
-      /Cost per completion token/,
-      /input_cache_read/,
-      /typically `"0"`/,
-    ],
-    "public-model pricing schema",
+    [/Pricing per token in USD/, /Cost per prompt token/, /Cost per completion token/],
+    "public_model_pricing_schema_drift",
   );
-  requireClaims(
+  const cacheAccounting = hasClaims(
+    input,
     bundle,
     "/capabilities/prompt-caching.md",
     [
@@ -843,27 +1240,31 @@ function commercialEvidence(
       /billed at the standard input token rate/,
       /does not (?:affect|change) billing/,
     ],
-    "cache accounting",
+    "cache_accounting_contract_drift",
   );
-  requireClaims(
+  hasClaims(
+    input,
     bundle,
     "/capabilities/service-tiers.md",
     [/service_tier/, /service_tier_used/, /all service tiers are billed equally/],
-    "service-tier pricing",
+    "service_tier_pricing_contract_drift",
   );
-  requireClaims(
+  hasClaims(
+    input,
     bundle,
     "/capabilities/image-inputs.md",
     [/usage\.image_tokens/, /prompt_tokens` includes text tokens, image tokens/],
-    "image-token accounting",
+    "image_token_accounting_contract_drift",
   );
-  requireClaims(
+  hasClaims(
+    input,
     bundle,
     "/capabilities/reasoning.md",
     [/reasoning tokens are still generated and counted toward total\s+completion tokens/i],
-    "reasoning-token accounting",
+    "reasoning_token_accounting_contract_drift",
   );
-  requireClaims(
+  hasClaims(
+    input,
     bundle,
     "/dedicated/predicted-outputs.md",
     [
@@ -871,15 +1272,17 @@ function commercialEvidence(
       /billed at the output token\s+rate/,
       /dedicated endpoints are not affected by rejected-token pricing/,
     ],
-    "predicted-output accounting",
+    "predicted_output_accounting_contract_drift",
   );
-  requireClaims(
+  const clientTools = hasClaims(
+    input,
     bundle,
     "/capabilities/tool-use.md",
     [/client application receives the model's tool call request, executes the specified tool/i],
-    "tool-execution",
+    "tool_execution_contract_drift",
   );
-  requireClaims(
+  const batch = hasClaims(
+    input,
     bundle,
     "/capabilities/batch.md",
     [
@@ -888,31 +1291,43 @@ function commercialEvidence(
       /prompt_tokens/,
       /completion_tokens/,
     ],
-    "Batch accounting",
+    "batch_accounting_contract_drift",
   );
-  requireClaims(
+  const batchFiles = hasClaims(
+    input,
+    bundle,
+    "/api-reference/file/upload-file.md",
+    [/purpose=batch/, /expire after 7 days by default/, /JSONL/],
+    "batch_file_contract_drift",
+  );
+  const freeTrial = hasClaims(
+    input,
     bundle,
     "/console/account-billing.md",
     [
       /\$5 in free credits/,
-      /Credits expire 30 days/,
-      /credit grant history/,
-      /Auto-recharge is off by default/,
-      /inference plans on a per-model basis/,
-      /multiple tiers at different\s+monthly rates/,
+      /expire 30 days/,
+      /verified payment method/,
+      /across all public models/,
     ],
-    "account billing",
+    "free_trial_contract_drift",
   );
-  requireClaims(
+  const settlement = hasClaims(
+    input,
     bundle,
-    "/console/overview.md",
-    [
-      /usage, billing, and team access/,
-      /Manage credits, payment methods, subscriptions, and invoices/,
-    ],
-    "console billing",
+    "/console/account-billing.md",
+    [/credit grant history/, /Auto-recharge is off by default/, /Pay as you go/],
+    "direct_settlement_contract_drift",
   );
-  requireClaims(
+  const accountSubscriptions = hasClaims(
+    input,
+    bundle,
+    "/console/account-billing.md",
+    [/inference plans on a per-model basis/, /multiple tiers at different\s+monthly rates/],
+    "account_subscription_contract_drift",
+  );
+  const costReporting = hasClaims(
+    input,
     bundle,
     "/console/usage-monitoring.md",
     [
@@ -921,48 +1336,54 @@ function commercialEvidence(
       /active monthly subscription\s+are excluded from usage-based billing/,
       /Download Report.*CSV/,
     ],
-    "usage and cost reporting",
+    "cost_reporting_contract_drift",
   );
-  requireClaims(
+  const projectQuotas = hasClaims(
+    input,
     bundle,
     "/console/projects.md",
     [
       /two-level quota model/,
       /billing is always aggregated and invoiced at the organization level/,
     ],
-    "project billing",
+    "project_quota_contract_drift",
   );
-  requireClaims(
+  hasClaims(
+    input,
     bundle,
     "/support/rate-limits.md",
     [/organization level, not the user level/, /precise, up-to-date rate limit\s+information/],
-    "account limits",
+    "account_limit_contract_drift",
   );
-  requireClaims(
-    bundle,
-    "/capabilities/metrics.md",
-    [/dedicated Cerebras inference endpoint/, /Track input and output tokens for cost analysis/],
-    "metrics availability",
-  );
-  requireClaims(
-    bundle,
-    "/api-reference/metrics/retrieve-metrics.md",
-    [
-      /available on an opt-in basis/,
-      /input_tokens_total/,
-      /output_tokens_total/,
-      /cache_reads_total/,
-      /last complete minute/,
-    ],
-    "metrics aggregation",
-  );
-  requireClaims(
+  const metrics =
+    hasClaims(
+      input,
+      bundle,
+      "/capabilities/metrics.md",
+      [/dedicated Cerebras inference endpoint/, /Track input and output tokens for cost analysis/],
+      "metrics_availability_contract_drift",
+    ) &&
+    hasClaims(
+      input,
+      bundle,
+      "/api-reference/metrics/retrieve-metrics.md",
+      [
+        /available on an opt-in basis/,
+        /input_tokens_total/,
+        /output_tokens_total/,
+        /last complete minute/,
+      ],
+      "metrics_aggregation_contract_drift",
+    );
+  const dedicated = hasClaims(
+    input,
     bundle,
     "/dedicated/overview.md",
     [/reserved exclusively for your organization/, /available to enterprise customers/],
-    "dedicated endpoint",
+    "dedicated_endpoint_contract_drift",
   );
-  requireClaims(
+  const marketplace = hasClaims(
+    input,
     bundle,
     "/integrations/aws-marketplace.md",
     [
@@ -971,29 +1392,77 @@ function commercialEvidence(
       /\$0\.01 SKU/,
       /allow 24-48 hours for charges to appear/,
     ],
-    "AWS Marketplace billing",
+    "aws_marketplace_contract_drift",
   );
-  const pageEvidence = pricePageEvidence(document(bundle, "/support/pricing.md"), models);
-  return [
-    { disposition: "excluded", reason_code: "free_trial_credit_allowance_out_of_catalog" },
-    { disposition: "excluded", reason_code: "credit_balance_recharge_out_of_catalog" },
-    { disposition: "excluded", reason_code: "account_tier_capacity_out_of_catalog" },
-    { disposition: "excluded", reason_code: "monthly_subscription_out_of_catalog" },
-    { disposition: "excluded", reason_code: "console_cost_reporting_out_of_catalog" },
-    { disposition: "excluded", reason_code: "console_cost_delay_out_of_catalog" },
-    { disposition: "excluded", reason_code: "project_quota_out_of_catalog" },
-    { disposition: "excluded", reason_code: "metrics_api_operational_out_of_catalog" },
-    { disposition: "excluded", reason_code: "dedicated_endpoint_contract_out_of_catalog" },
-    { disposition: "excluded", reason_code: "aws_marketplace_billing_out_of_catalog" },
-    { disposition: "excluded", reason_code: "aws_billing_delay_out_of_catalog" },
-    { disposition: "excluded", reason_code: "cerebras_code_subscription_out_of_catalog" },
-    { disposition: "excluded", reason_code: "client_executed_tools_out_of_catalog" },
-    { disposition: "unbound", reason_code: "usage_cost_api_not_documented" },
-    { disposition: "unbound", reason_code: "monthly_subscription_rates_not_public" },
-    { disposition: "unbound", reason_code: "enterprise_dedicated_terms_not_public" },
-    { disposition: "unbound", reason_code: "batch_rate_not_published" },
-    ...pageEvidence,
-  ];
+  const pricing = pricingDocument(input, bundle);
+  if (pricing !== undefined)
+    for (const item of pricePageEvidence(input, pricing, models))
+      input.onPricingReconciliation?.(item);
+  const plans = pricing === undefined ? [] : codePlans(input, pricing);
+  const training =
+    pricing !== undefined &&
+    /(?:fine-tun(?:ed|ing) models?|model fine-tuning)/i.test(pricing) &&
+    /(?:custom model training|training services?)/i.test(pricing);
+  if (pricing !== undefined && !training)
+    diagnostic(input, "unbound", "enterprise_training_contract_drift");
+
+  diagnostic(input, "unbound", "usage_cost_api_not_documented");
+  if (clientTools) diagnostic(input, "excluded", "client_executed_tools_not_provider_meter");
+  if (batch) diagnostic(input, "explicit_non_numeric", "batch_rate_not_published");
+  if (accountSubscriptions)
+    diagnostic(input, "explicit_non_numeric", "monthly_subscription_rates_account_scoped");
+  if (dedicated) diagnostic(input, "explicit_non_numeric", "dedicated_terms_custom_quote");
+  if (freeTrial) diagnostic(input, "raw", "free_trial_credit_preserved");
+  if (costReporting) diagnostic(input, "raw", "console_cost_reporting_preserved");
+  if (projectQuotas) diagnostic(input, "raw", "project_quota_preserved");
+  if (metrics) diagnostic(input, "raw", "dedicated_metrics_preserved");
+  if (marketplace) diagnostic(input, "raw", "aws_marketplace_settlement_preserved");
+  if (plans.length > 0) diagnostic(input, "normalized", "cerebras_code_plans_normalized");
+
+  return {
+    chatAccounting,
+    completionsAccounting,
+    cacheAccounting,
+    settlement,
+    commercial: {
+      accountSubscriptions,
+      batch,
+      batchFiles,
+      codePlans: plans,
+      costReporting,
+      dedicated,
+      freeTrial,
+      marketplace,
+      metrics,
+      projectQuotas,
+      training,
+    },
+  };
+}
+
+function pricingDocument(input: Input, bundle: Bundle): string | undefined {
+  const matches = bundle.documents.filter(({ url }) => {
+    const path = new URL(url).pathname;
+    return path === "/pricing" || path.endsWith("/support/pricing.md");
+  });
+  const [item] = matches;
+  if (matches.length === 1 && item !== undefined) return item.body;
+  diagnostic(
+    input,
+    matches.length === 0 ? "unbound" : "unsupported",
+    matches.length === 0 ? "commercial_companion_missing" : "commercial_companion_duplicate",
+    "pricing",
+  );
+}
+
+function rawGap(sourceRef: string, key: string, fragment: string): SourceRawPricingFact {
+  return rawPricingFact(
+    sourceRef,
+    `accounting_binding_unavailable:${key}`,
+    "informational",
+    "requires_usage_aggregation",
+    fragment,
+  );
 }
 
 function reconcileRates(input: Input, models: ProviderModel[]): void {
@@ -1007,125 +1476,118 @@ function reconcileRates(input: Input, models: ProviderModel[]): void {
       });
 }
 
-function validateApiReferences(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const chat = document(bundle, "/api-reference/chat-completions.md");
-  if (
-    !/^# Chat Completions$/m.test(chat) ||
-    !/^\s*\/v1\/chat\/completions:\s*$/m.test(chat) ||
-    !/^\s*operationId: createChatCompletion\s*$/m.test(chat)
-  )
-    throw new Error("Cerebras Chat Completions API reference drift");
-  const completions = document(bundle, "/api-reference/completions.md");
-  if (
-    !/^# Completions$/m.test(completions) ||
-    !/^\s*curl -X POST https:\/\/api\.cerebras\.ai\/v1\/completions(?:\s+\\)?\s*$/m.test(
-      completions,
-    )
-  )
-    throw new Error("Cerebras Completions API reference drift");
-}
-
-function validateServiceTierPricing(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const body = document(bundle, "/capabilities/service-tiers.md");
-  if (
-    !/Are priority, flex, or auto billed differently than default\?/.test(body) ||
-    !/No, during the preview launch all service tiers are billed equally\./.test(body)
-  )
-    throw new Error("Cerebras service-tier pricing policy drift");
-}
-
-function validateOpenApi(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const body = document(bundle, "/api-reference/openapi.yaml");
-  const paths = [...body.matchAll(/^  (\/[^:]+):\s*$/gm)].flatMap((match) =>
-    match[1] === undefined ? [] : [match[1]],
+function validateApiContracts(input: Input, bundle: Bundle): void {
+  hasClaims(
+    input,
+    bundle,
+    "/api-reference/chat-completions.md",
+    [
+      /^# Chat Completions$/m,
+      /^\s*\/v1\/chat\/completions:\s*$/m,
+      /operationId: createChatCompletion/,
+    ],
+    "chat_operation_contract_drift",
   );
-  const operations = [...body.matchAll(/^    (get|post|put|patch|delete):\s*$/gm)].flatMap(
-    (match) => (match[1] === undefined ? [] : [match[1]]),
+  hasClaims(
+    input,
+    bundle,
+    "/api-reference/completions.md",
+    [/^# Completions$/m, /curl -X POST https:\/\/api\.cerebras\.ai\/v1\/completions/],
+    "completions_operation_contract_drift",
   );
-  const claims = [
-    /^openapi: 3\.1\.0$/m,
-    /^  - url: https:\/\/api\.cerebras\.ai$/m,
-    /^  - BearerAuth: \[\]$/m,
-    /^      operationId: createChatCompletion$/m,
-    /application\/vnd\.msgpack/,
-    /name: Content-Encoding[\s\S]*?gzip/,
-    /name: queue_threshold[\s\S]*?Private Preview/,
-    /#\/components\/schemas\/ChatCompletionRequest/,
-    /#\/components\/schemas\/ChatCompletionResponse/,
-    /^        prompt_cache_key:$/m,
-    /^        reasoning_effort:$/m,
-    /^        service_tier:$/m,
-    /^        tool_choice:$/m,
-    /^        service_tier_used:$/m,
-    /^            image_tokens:$/m,
-    /^                cached_tokens:$/m,
-    /^                rejected_prediction_tokens:$/m,
-    /^                reasoning_tokens:$/m,
-    /^    BearerAuth:$/m,
-    /type: http[\s\S]*?scheme: bearer/,
-  ];
-  if (
-    !sameStrings(paths, ["/v1/chat/completions"]) ||
-    !sameStrings(operations, ["post"]) ||
-    claims.some((claim) => !claim.test(body))
-  )
-    throw new Error("Cerebras raw OpenAPI contract drift");
-}
-
-function validateApiVersioning(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const body = document(bundle, "/api-reference/versions.md").replace(/\s+/g, " ");
-  if (
-    !/Version 2 is now the default for API requests\./.test(body) ||
-    !/New optional request parameters may be added/.test(body) ||
-    !/New fields may be added to responses/.test(body) ||
-    !/Breaking changes only happen in new API versions/.test(body) ||
-    !/X-Cerebras-Version-Patch/.test(body)
-  )
-    throw new Error("Cerebras API-version contract drift");
+  hasClaims(
+    input,
+    bundle,
+    "/api-reference/openapi.yaml",
+    [
+      /^openapi: 3\.1\.0$/m,
+      /^  \/v1\/chat\/completions:\s*$/m,
+      /operationId: createChatCompletion/,
+      /#\/components\/schemas\/ChatCompletionRequest/,
+      /#\/components\/schemas\/ChatCompletionResponse/,
+      /^        prompt_cache_key:$/m,
+      /^        reasoning_effort:$/m,
+      /^        service_tier:$/m,
+      /^        tool_choice:$/m,
+      /^    BearerAuth:$/m,
+      /type: http[\s\S]*?scheme: bearer/,
+    ],
+    "openapi_contract_drift",
+  );
+  hasClaims(
+    input,
+    bundle,
+    "/api-reference/versions.md",
+    [
+      /Version 2 is now the default for API requests/,
+      /New optional request parameters may be added/,
+      /New fields may be added to responses/,
+      /Breaking changes only happen in new API versions/,
+      /X-Cerebras-Version-Patch/,
+    ],
+    "api_version_contract_drift",
+  );
 }
 
 export function parseCerebrasCatalog(input: Input): ProviderModel[] {
-  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  validateApiReferences(bundle);
-  validateServiceTierPricing(bundle);
-  validateOpenApi(bundle);
-  validateApiVersioning(bundle);
-  const rows = catalogRows(bundle.index.body);
+  const bundle = bundleSchema.parse(JSON.parse(input.body));
+  validateApiContracts(input, bundle);
+  const rows = catalogRows(input, bundle.index.body);
   const cardPaths = new Set(rows.map(({ path }) => path));
   const nonCardModelPaths = new Set(["/models/choose-a-model"]);
-  const cardEntries = bundle.documents.flatMap((item) => {
+  const cards = new Map<string, string>();
+  for (const item of bundle.documents) {
     const pathname = new URL(item.url).pathname.replace(/\.md$/, "");
-    if (!pathname.startsWith("/models/")) return [];
+    if (!pathname.startsWith("/models/")) continue;
     if (!cardPaths.has(pathname)) {
-      if (nonCardModelPaths.has(pathname)) return [];
-      throw new Error(`Cerebras source included an unreviewed model page: ${pathname}`);
+      if (!nonCardModelPaths.has(pathname))
+        diagnostic(input, "unbound", "model_page_pending_review", pathname);
+      continue;
     }
-    const id = item.body.match(/\bmodelId="([^"]+)"/)?.[1];
-    if (id === undefined) throw new Error(`Cerebras model page ${pathname} omitted its Model ID`);
-    return [[modelIdSchema.parse(id), item.body] as const];
-  });
-  const cards = new Map(cardEntries);
-  if (cards.size !== cardEntries.length)
-    throw new Error("Cerebras model pages returned duplicate model IDs");
-  if (cards.size !== rows.length)
-    throw new Error("Cerebras model-page count disagrees with catalog");
-  const cachePolicy = document(bundle, "/capabilities/prompt-caching.md");
-  const scheduled = scheduledDates([bundle.index.body, ...cards.values()].join("\n"));
-  const models = rows.map((row) => {
-    const card = cards.get(row.id);
-    if (card === undefined) throw new Error(`Cerebras catalog omitted model page for ${row.id}`);
-    return catalogCard(input, row, card, cachePolicy, scheduled);
-  });
+    if (cards.has(pathname)) {
+      diagnostic(input, "unsupported", "model_page_duplicate", pathname);
+      continue;
+    }
+    cards.set(pathname, item.body);
+  }
+  const cachePolicy = document(input, bundle, "/capabilities/prompt-caching.md");
+  const scheduled = scheduledDates(input, [bundle.index.body, ...cards.values()].join("\n"));
+  const models = rows.map((row) =>
+    catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled),
+  );
   const modelsById = new Map(models.map((model) => [model.model_id, model]));
-  const cardEvidence = [...cards].flatMap(([id, body]) => {
-    const model = modelsById.get(id);
-    if (model === undefined) throw new Error(`Cerebras card pricing omitted catalog model ${id}`);
-    return cardProseEvidence(body, model);
+  const cardEvidence = rows.flatMap((row) => {
+    const body = cards.get(row.path);
+    const model = modelsById.get(row.id);
+    return body === undefined || model === undefined ? [] : cardProseEvidence(input, body, model);
   });
-  const evidence = [...commercialEvidence(bundle, models), ...cardEvidence];
+  const commercial = commercialEvidence(input, bundle, models);
+  for (const model of models) {
+    const paths = model.api_endpoints?.map(({ path }) => path) ?? [];
+    if (paths.some((path) => path.endsWith("/chat/completions")) && !commercial.chatAccounting)
+      model.raw_price_facts.push(
+        rawGap(input.source.id, "chat", "Chat Completions usage contract is unavailable"),
+      );
+    if (
+      paths.some((path) => /(?:^|\/)v1\/completions$/.test(path)) &&
+      !commercial.completionsAccounting
+    )
+      model.raw_price_facts.push(
+        rawGap(input.source.id, "completions", "Completions usage contract is unavailable"),
+      );
+    if (model.capabilities.prompt_cache === true && !commercial.cacheAccounting)
+      model.raw_price_facts.push(
+        rawGap(input.source.id, "cache", "Cached-token accounting contract is unavailable"),
+      );
+    if (!commercial.settlement)
+      model.raw_price_facts.push(
+        rawGap(input.source.id, "settlement", "Direct account settlement contract is unavailable"),
+      );
+  }
   const result = bounded(input, "cerebras-catalog", models);
   reconcileRates(input, result);
-  for (const item of evidence) input.onPricingReconciliation?.(item);
+  for (const item of cardEvidence) input.onPricingReconciliation?.(item);
+  attachCerebrasCommercialFacts(result, input.source.id, commercial.commercial);
   return result;
 }
 
@@ -1141,36 +1603,48 @@ function updates(body: string): Update[] {
   );
 }
 
-function deprecatedIds(body: string): string[] {
+function deprecatedIds(input: Input, body: string): string[] {
   const heading = body.match(/\*\*Deprecated ([^*]+)\*\*/)?.[1];
   if (heading !== undefined)
     return [...heading.matchAll(/`([^`]+)`/g)].flatMap((match) =>
-      match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
+      validModelId(input, match[1], "deprecated_model_id_drift"),
     );
   const sentence = body.match(/The `([^`]+)` model has been deprecated\./)?.[1];
-  return sentence === undefined ? [] : [modelIdSchema.parse(sentence)];
+  return validModelId(input, sentence, "deprecated_model_id_drift");
 }
 
-function bind(map: Map<string, string>, key: string, id: string): void {
+function validModelId(input: Input, value: string | undefined, reasonCode: string): string[] {
+  const parsed = modelIdSchema.safeParse(value);
+  if (parsed.success) return [parsed.data];
+  diagnostic(input, "unsupported", reasonCode, value);
+  return [];
+}
+
+function bind(input: Input, map: Map<string, string>, key: string, id: string): void {
   const current = map.get(key);
-  if (current !== undefined && current !== id)
-    throw new Error(`Cerebras model reference ${key} maps to multiple IDs`);
+  if (current !== undefined && current !== id) {
+    map.delete(key);
+    diagnostic(input, "unbound", "model_reference_conflict", key);
+    return;
+  }
   map.set(key, id);
 }
 
-function namedReleaseIds(body: string): Map<string, string> {
+function namedReleaseIds(input: Input, body: string): Map<string, string> {
   const result = new Map<string, string>();
   for (const match of body.matchAll(
     /Added (?:(?:preview|production) )?support for ([^:\n]{1,160}):\s*`([^`]+)`/gi,
   )) {
     if (match[1] === undefined || match[2] === undefined) continue;
-    bind(result, text(match[1]), modelIdSchema.parse(match[2]));
+    const [id] = validModelId(input, match[2], "release_model_id_drift");
+    if (id !== undefined) bind(input, result, text(match[1]), id);
   }
   for (const match of body.matchAll(
     /\[([^\]]+)]\(\/models\/[a-z0-9-]+\)\s+\(`([^`]+)`\) is now available in preview/gi,
   )) {
     if (match[1] === undefined || match[2] === undefined) continue;
-    bind(result, text(match[1]), modelIdSchema.parse(match[2]));
+    const [id] = validModelId(input, match[2], "release_model_id_drift");
+    if (id !== undefined) bind(input, result, text(match[1]), id);
   }
   const heading = body.match(/\*\*Support for ([^*\n]+)\*\*/)?.[1];
   if (heading !== undefined) {
@@ -1178,30 +1652,34 @@ function namedReleaseIds(body: string): Map<string, string> {
       const parsed = modelIdSchema.safeParse(match[1]);
       return parsed.success ? [parsed.data] : [];
     });
-    if (ids.length !== 1) throw new Error("Cerebras model-support release has ambiguous IDs");
+    if (ids.length !== 1) {
+      diagnostic(input, "unbound", "release_model_id_ambiguous", text(heading));
+      return result;
+    }
     const id = ids[0];
-    if (id === undefined) throw new Error("Cerebras model-support release omitted its ID");
-    bind(result, text(heading), id);
+    if (id !== undefined) bind(input, result, text(heading), id);
   }
   return result;
 }
 
 function modelReferences(
-  catalog: string,
-  releases: string,
+  input: Input,
+  catalog: string | undefined,
+  releases: string | undefined,
 ): { names: Map<string, string>; paths: Map<string, string> } {
   const names = new Map<string, string>();
   const paths = new Map<string, string>();
-  for (const row of catalogRows(catalog)) {
-    bind(names, row.name, row.id);
-    bind(paths, row.path, row.id);
+  for (const row of catalog === undefined ? [] : catalogRows(input, catalog)) {
+    bind(input, names, row.name, row.id);
+    bind(input, paths, row.path, row.id);
   }
-  for (const update of updates(releases))
-    for (const [name, id] of namedReleaseIds(update.body)) bind(names, name, id);
+  for (const update of releases === undefined ? [] : updates(releases))
+    for (const [name, id] of namedReleaseIds(input, update.body)) bind(input, names, name, id);
   return { names, paths };
 }
 
 function replacements(
+  input: Input,
   body: string,
   deprecated: string[],
   references: ReturnType<typeof modelReferences>,
@@ -1214,10 +1692,15 @@ function replacements(
     const path = match[2];
     const pathId = references.paths.get(path);
     const nameId = references.names.get(text(match[1]));
-    if (pathId !== undefined && nameId !== undefined && pathId !== nameId)
-      throw new Error(`Cerebras replacement link ${path} has conflicting model IDs`);
+    if (pathId !== undefined && nameId !== undefined && pathId !== nameId) {
+      diagnostic(input, "unbound", "replacement_model_conflict", path);
+      continue;
+    }
     const id = pathId ?? nameId;
-    if (id === undefined) throw new Error(`Unresolved Cerebras replacement model link: ${path}`);
+    if (id === undefined) {
+      diagnostic(input, "unbound", "replacement_model_unresolved", path);
+      continue;
+    }
     result.push(id);
   }
   for (const match of recommendation.matchAll(/`([^`]+)`/g)) {
@@ -1225,21 +1708,21 @@ function replacements(
     if (parsed.success) result.push(parsed.data);
   }
   const unique = [...new Set(result.filter((id) => !deprecated.includes(id)))];
-  if (unique.length === 0)
-    throw new Error("Cerebras model recommendation omitted a replacement ID");
+  if (unique.length === 0) diagnostic(input, "unbound", "replacement_model_missing");
   return unique;
 }
 
 export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
-  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const bundle = bundleSchema.parse(JSON.parse(input.body));
   const references = modelReferences(
-    document(bundle, "/models/overview.md"),
-    document(bundle, "/support/change-log.md"),
+    input,
+    document(input, bundle, "/models/overview.md"),
+    document(input, bundle, "/support/change-log.md"),
   );
   const models = updates(bundle.index.body).flatMap((update): ProviderModel[] => {
-    const ids = deprecatedIds(update.body);
+    const ids = deprecatedIds(input, update.body);
     if (ids.length === 0) return [];
-    const replacementIds = replacements(update.body, ids, references);
+    const replacementIds = replacements(input, update.body, ids, references);
     return ids.map(
       (id): ProviderModel => ({
         ...baseModel({
@@ -1259,24 +1742,26 @@ export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
   });
   const known = new Set([...models.map(({ model_id }) => model_id), ...references.paths.values()]);
   for (const model of models)
-    for (const replacement of model.replacement_model_ids)
-      if (!known.has(replacement))
-        throw new Error(`Unknown Cerebras replacement model ID: ${replacement}`);
+    model.replacement_model_ids = model.replacement_model_ids.filter((replacement) => {
+      if (known.has(replacement)) return true;
+      diagnostic(input, "unbound", "replacement_model_unknown", replacement);
+      return false;
+    });
   return bounded(input, "cerebras-lifecycle", models);
 }
 
-function releaseIds(body: string): string[] {
+function releaseIds(input: Input, body: string): string[] {
   const ids = [...body.matchAll(/\(`([^`]+)`\) is now available in preview/gi)].flatMap((match) =>
-    match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
+    validModelId(input, match[1], "release_model_id_drift"),
   );
-  ids.push(...namedReleaseIds(body).values());
+  ids.push(...namedReleaseIds(input, body).values());
   return [...new Set(ids)];
 }
 
 export function parseCerebrasReleases(input: Input): ProviderModel[] {
   const dates = new Map<string, string>();
   for (const update of updates(input.body))
-    for (const id of releaseIds(update.body)) {
+    for (const id of releaseIds(input, update.body)) {
       const current = dates.get(id);
       dates.set(id, current === undefined || update.date < current ? update.date : current);
     }
@@ -1300,7 +1785,7 @@ export function parseCerebrasApi(input: Input): ProviderModel[] {
   const list = inventorySchema.parse(JSON.parse(input.body));
   const items = recognizeItems({
     label: "Cerebras API model",
-    items: list.data,
+    items: usableRows(input, list.data, inventoryItemSchema, "api_model_identity_drift"),
     schema: inventoryItemSchema,
     modelId: "id",
     rootKeys: Object.keys(inventoryItemSchema.shape),

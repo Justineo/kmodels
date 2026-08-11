@@ -87,6 +87,8 @@ const visibleStates = computed(() => matchingRows(activeOffer.value?.states ?? [
 const visibleRates = computed(() => matchingRows(activeOffer.value?.rates ?? []));
 const visibleAllowances = computed(() => matchingRows(activeOffer.value?.allowances ?? []));
 const visibleContributions = computed(() => matchingRows(activeOffer.value?.contributions ?? []));
+const visibleEnrollment = computed(() => matchingRows(activeOffer.value?.enrollment ?? []));
+const visibleSettlement = computed(() => matchingRows(activeOffer.value?.settlement ?? []));
 const unresolvedRateDimensions = computed(() => {
   const keys = new Set(
     (activeOffer.value?.rates ?? []).flatMap(({ applicability }) => {
@@ -372,6 +374,25 @@ function joinLabels(labels: string[]): string {
 function formatSnapshotAt(value: string): string {
   return `${value.slice(0, 10)} ${value.slice(11, 16)} UTC`;
 }
+
+type ChargeDriver = NonNullable<WebsitePricingOffer["rates"][number]["driver"]>;
+
+function driverContext(driver: ChargeDriver): string {
+  return `${driver.aggregation} boundary · ${resolutionPhaseLabel(driver.resolution_phase)}`;
+}
+
+function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
+  switch (phase) {
+    case "publication":
+      return "fixed by publication";
+    case "request":
+      return "known from the request";
+    case "outcome":
+      return "known after the outcome";
+    case "account":
+      return "known from account data";
+  }
+}
 </script>
 
 <template>
@@ -520,7 +541,7 @@ function formatSnapshotAt(value: string): string {
         aria-labelledby="context-heading"
       >
         <header class="pricing-subheading">
-          <h4 id="context-heading">Price calculator</h4>
+          <h4 id="context-heading">Pricing context</h4>
           <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
         </header>
         <div v-if="fixedSelectors.length > 0" class="fixed-context-list">
@@ -605,6 +626,30 @@ function formatSnapshotAt(value: string): string {
           >
         </div>
 
+        <section class="offer-section">
+          <header class="pricing-subheading">
+            <h5>Billing method</h5>
+          </header>
+          <div class="billing-fact-list">
+            <div>
+              <span class="billing-fact-value">{{ activeOffer.billing_mode.label }}</span>
+              <small v-if="activeOffer.billing_mode.description">
+                {{ activeOffer.billing_mode.description }}
+              </small>
+            </div>
+            <div v-for="entry in visibleEnrollment" :key="entry.key">
+              <span class="billing-fact-value">{{ entry.label }}</span>
+              <small>Enrollment</small>
+              <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
+            </div>
+            <div v-for="entry in visibleSettlement" :key="entry.key">
+              <span class="billing-fact-value">{{ entry.channel }} · {{ entry.biller }}</span>
+              <small>{{ entry.payment_sources.join(" → ") }}</small>
+              <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
+            </div>
+          </div>
+        </section>
+
         <section v-if="showOfferStates" class="offer-section">
           <header class="pricing-subheading">
             <h5>Offer state</h5>
@@ -638,6 +683,7 @@ function formatSnapshotAt(value: string): string {
                 <tr>
                   <th scope="col">Meter</th>
                   <th scope="col">Exact rate</th>
+                  <th scope="col">Cost driver</th>
                 </tr>
               </thead>
               <tbody>
@@ -649,6 +695,22 @@ function formatSnapshotAt(value: string): string {
                   <td class="numeric" :aria-label="rate.accessible_text">
                     <span class="exact-rate">{{ rate.amount }}</span>
                     <small>{{ rate.unit }}</small>
+                  </td>
+                  <td class="driver-cell">
+                    <template v-if="rate.driver">
+                      <span class="cost-driver-name">{{ rate.driver.label }}</span>
+                      <small>{{ rate.driver.definition }}</small>
+                      <small>{{ driverContext(rate.driver) }}</small>
+                      <small v-if="rate.driver.aggregation_definition">
+                        {{ rate.driver.aggregation_definition }}
+                      </small>
+                    </template>
+                    <template v-else>
+                      <span class="cost-driver-name">No observable usage signal</span>
+                      <small
+                        >The rate is known, but no exact public quantity signal is bound.</small
+                      >
+                    </template>
                   </td>
                 </tr>
               </tbody>
@@ -683,6 +745,16 @@ function formatSnapshotAt(value: string): string {
               <div>
                 <span class="allowance-value">{{ contribution.label }}</span>
                 <small>{{ contribution.target }}</small>
+                <template v-if="contribution.drivers.length > 0">
+                  <template
+                    v-for="(driver, index) in contribution.drivers"
+                    :key="`${driver.label}:${driver.aggregation}:${index}`"
+                  >
+                    <small>{{ driver.label }} · {{ driverContext(driver) }}</small>
+                    <small>{{ driver.definition }}</small>
+                  </template>
+                </template>
+                <small v-else>No exact public quantity signal is bound.</small>
                 <small v-if="contribution.qualifier">{{ contribution.qualifier }}</small>
               </div>
             </div>
@@ -714,6 +786,7 @@ function formatSnapshotAt(value: string): string {
 .pricing-section-header,
 .pricing-subheading,
 .state-row,
+.billing-fact-list > div,
 .allowance-list > div,
 .pricing-disclosure > summary,
 .raw-fact-list header {
@@ -878,9 +951,11 @@ function formatSnapshotAt(value: string): string {
 
 .offer-title,
 .state-label,
+.billing-fact-value,
 .allowance-value,
 .rate-name,
-.exact-rate {
+.exact-rate,
+.cost-driver-name {
   color: var(--color-text-primary);
   font-weight: var(--font-weight-medium);
 }
@@ -891,6 +966,7 @@ function formatSnapshotAt(value: string): string {
 }
 
 .state-row small,
+.billing-fact-list small,
 .allowance-list small,
 .raw-fact-list small {
   color: var(--color-text-muted);
@@ -1003,6 +1079,7 @@ function formatSnapshotAt(value: string): string {
 }
 
 .state-list,
+.billing-fact-list,
 .allowance-list,
 .raw-fact-list {
   display: grid;
@@ -1011,6 +1088,7 @@ function formatSnapshotAt(value: string): string {
 }
 
 .state-row,
+.billing-fact-list > div,
 .allowance-list > div,
 .raw-fact-list > div {
   gap: var(--space-3);
@@ -1020,6 +1098,7 @@ function formatSnapshotAt(value: string): string {
 }
 
 .state-row > div,
+.billing-fact-list > div,
 .allowance-list > div > div {
   display: grid;
   flex: 1;
@@ -1046,12 +1125,16 @@ function formatSnapshotAt(value: string): string {
 }
 
 .pricing-matrix thead th:first-child {
-  width: 68%;
+  width: 28%;
+}
+
+.pricing-matrix thead th:nth-child(2) {
+  width: 26%;
+  text-align: right;
 }
 
 .pricing-matrix thead th:last-child {
-  width: 32%;
-  text-align: right;
+  width: 46%;
 }
 
 .pricing-matrix th,
@@ -1102,6 +1185,11 @@ function formatSnapshotAt(value: string): string {
 .pricing-matrix td {
   text-align: right;
   white-space: nowrap;
+}
+
+.pricing-matrix .driver-cell {
+  text-align: left;
+  white-space: normal;
 }
 
 .pricing-disclosure {

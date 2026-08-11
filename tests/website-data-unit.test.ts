@@ -7,9 +7,11 @@ import {
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
 import type {
+  ChargeBinding,
   PriceApplicability,
   PriceCondition,
   PricingCatalog,
+  PricingOffer,
   ProviderAtomRegistryEntry,
   UnitExpression,
 } from "../src/catalog/pricing-schema.ts";
@@ -26,6 +28,23 @@ const durationDimension = { namespace: "kmodels" as const, value: "duration_seco
 const secondUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }],
 };
+
+function normalizedObservation(establishes: PriceApplicability) {
+  return {
+    source_ref: sourceId,
+    locator: { kind: "table" as const, value: "row" },
+    raw: { label: "Price" },
+    establishes_applicability: establishes,
+  };
+}
+
+function bindingObservation() {
+  return {
+    source_ref: sourceId,
+    locator: { kind: "table" as const, value: "usage" },
+    raw: { label: "Usage" },
+  };
+}
 
 type DecimalCondition = Extract<PriceCondition, { kind: "decimal_range" }>;
 
@@ -44,15 +63,14 @@ function numericDetail(ranges: Array<Omit<DecimalCondition, "dimension" | "kind"
 function detail(
   conditions: PriceCondition[],
   atoms: ProviderAtomRegistryEntry[] = [],
-  includeContribution = false,
+  options: {
+    rateBinding?: ChargeBinding;
+    contributionBindings?: ChargeBinding[];
+    enrollment?: PricingOffer["enrollment"];
+    settlement?: PricingOffer["settlement"];
+  } = {},
 ) {
   const applicability = conditions.map((condition) => ({ any_of: [{ all_of: [condition] }] }));
-  const observation = (establishes: PriceApplicability) => ({
-    source_ref: sourceId,
-    locator: { kind: "table" as const, value: "row" },
-    raw: { label: "Price" },
-    establishes_applicability: establishes,
-  });
   const pricing: PricingCatalog = {
     provider_vocabularies: [{ provider_id: providerId, atoms }],
     provider_snapshots: [
@@ -83,10 +101,9 @@ function detail(
               {
                 state: "numeric",
                 applicability: unconditionalApplicability,
-                observations: [observation(unconditionalApplicability)],
+                observations: [normalizedObservation(unconditionalApplicability)],
               },
             ],
-            enrollment: [],
             terms: [
               {
                 id: pricingTermId(offerId, "rate", "input"),
@@ -101,12 +118,16 @@ function detail(
                     per: secondUnit,
                   },
                   applicability: scope,
-                  observations: [observation(scope)],
+                  ...(options.rateBinding === undefined
+                    ? {}
+                    : { charge_binding: options.rateBinding }),
+                  observations: [normalizedObservation(scope)],
                 })),
                 raw_variants: [],
               },
-              ...(includeContribution
-                ? [
+              ...(options.contributionBindings === undefined
+                ? []
+                : [
                     {
                       id: pricingTermId(offerId, "contribution", "additional-input"),
                       term_key: "additional-input",
@@ -116,17 +137,17 @@ function detail(
                         {
                           target_rate_refs: [pricingTermId(offerId, "rate", "input")],
                           applicability: unconditionalApplicability,
-                          charge_bindings: [],
-                          observations: [observation(unconditionalApplicability)],
+                          charge_bindings: options.contributionBindings,
+                          observations: [normalizedObservation(unconditionalApplicability)],
                         },
                       ],
                       raw_variants: [],
                     },
-                  ]
-                : []),
+                  ]),
             ],
             relations: [],
-            settlement: [],
+            enrollment: options.enrollment ?? [],
+            settlement: options.settlement ?? [],
             source_refs: [sourceId],
           },
         ],
@@ -148,12 +169,139 @@ function detail(
 
 describe("website data projection", () => {
   it("projects additional usage without copying its target rate", () => {
-    expect(detail([], [], true).pricing?.offers[0]?.contributions).toEqual([
+    expect(detail([], [], { contributionBindings: [] }).pricing?.offers[0]?.contributions).toEqual([
       expect.objectContaining({
         label: "Additional input",
         target: "Priced by Usage · Input text",
+        drivers: [],
       }),
     ]);
+  });
+
+  it("projects billing context and standard cost drivers without calculating usage", () => {
+    const condition: DecimalCondition = {
+      kind: "decimal_range",
+      dimension: durationDimension,
+      unit: secondUnit,
+      lower: { value: "0", inclusive: true },
+    };
+    const binding: ChargeBinding = {
+      signal: { namespace: "kmodels", value: "active_seconds" },
+      aggregation: "session",
+      observations: [bindingObservation()],
+    };
+    const settlementApplicability: PriceApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "categorical",
+              dimension: { namespace: "kmodels", value: "billing_currency" },
+              values: [{ namespace: "kmodels", value: "USD" }],
+            },
+          ],
+        },
+      ],
+    };
+    const projected = detail([condition], [], {
+      rateBinding: binding,
+      contributionBindings: [binding],
+      enrollment: [
+        {
+          state: "private_preview",
+          applicability: unconditionalApplicability,
+          observations: [normalizedObservation(unconditionalApplicability)],
+        },
+      ],
+      settlement: [
+        {
+          channel: "marketplace",
+          biller: "Example Marketplace",
+          payment_sources: ["allowance", "marketplace_commitment"],
+          applicability: settlementApplicability,
+          observations: [normalizedObservation(settlementApplicability)],
+        },
+      ],
+    }).pricing?.offers[0];
+
+    expect(projected?.selectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Billing currency",
+          kind: "categorical",
+        }),
+      ]),
+    );
+    expect(projected).toMatchObject({
+      billing_mode: { label: "Usage-based" },
+      enrollment: [{ label: "Private preview" }],
+      settlement: [
+        {
+          channel: "Marketplace",
+          biller: "Example Marketplace",
+          payment_sources: ["Allowance", "Marketplace commitment"],
+        },
+      ],
+      rates: [
+        {
+          driver: {
+            label: "Active runtime",
+            definition: "Provider-reported active runtime",
+            aggregation: "Session",
+            resolution_phase: "outcome",
+          },
+        },
+      ],
+      contributions: [
+        {
+          drivers: [
+            {
+              label: "Active runtime",
+              aggregation: "Session",
+              resolution_phase: "outcome",
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("uses reviewed provider definitions for provider-owned cost drivers", () => {
+    const condition: DecimalCondition = {
+      kind: "decimal_range",
+      dimension: durationDimension,
+      unit: secondUnit,
+      lower: { value: "0", inclusive: true },
+    };
+    const atoms: ProviderAtomRegistryEntry[] = [
+      {
+        kind: "usage_signal",
+        key: "billed_runtime",
+        definition: "Runtime recorded by the provider billing ledger",
+        unit: secondUnit,
+        resolution_phase: "account",
+      },
+      {
+        kind: "aggregation",
+        key: "workspace",
+        definition: "Usage aggregated for one workspace",
+      },
+    ];
+    const projected = detail([condition], atoms, {
+      rateBinding: {
+        signal: { namespace: "provider", provider_id: providerId, value: "billed_runtime" },
+        aggregation: { namespace: "provider", provider_id: providerId, value: "workspace" },
+        observations: [bindingObservation()],
+      },
+    }).pricing?.offers[0]?.rates[0]?.driver;
+
+    expect(projected).toEqual({
+      label: "Billed runtime",
+      definition: "Runtime recorded by the provider billing ledger",
+      aggregation: "Workspace",
+      aggregation_definition: "Usage aggregated for one workspace",
+      resolution_phase: "account",
+    });
   });
 
   it("uses reviewed provider vocabulary labels and keeps a generic fallback", () => {

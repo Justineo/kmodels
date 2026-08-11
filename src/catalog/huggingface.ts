@@ -1,12 +1,17 @@
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { extractHuggingFaceCommercialFacts } from "./huggingface-commercial-source.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
 import { huggingFacePartnerIds, type SourceManifest } from "./manifests.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { orderedTasks, providerTasks } from "./task.ts";
 import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
-import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  ParsedProviderModel as ProviderModel,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 import { assertItemCount } from "./source-contract.ts";
 import {
   modalitySchema,
@@ -394,7 +399,7 @@ function availability(values: (boolean | undefined)[]): boolean | "unknown" {
 
 interface RouteRateFacts {
   rates: SourcePriceFact[];
-  priceConflict: boolean;
+  rawFacts: SourceRawPricingFact[];
   invalidPrice: boolean;
 }
 
@@ -423,23 +428,11 @@ function routePrices(raw: unknown): {
 }
 
 function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): RouteRateFacts {
-  const conditions = { route_provider: route.provider };
+  const conditions = {
+    route_provider: route.provider,
+    ...(route.is_free === true ? { promotion: false } : {}),
+  };
   const prices = routePrices(route.pricing);
-  const hasNonzeroPrice = [prices.input, prices.output].some(
-    (price) => price !== undefined && !/^0(?:\.0+)?$/.test(price),
-  );
-  if (route.is_free === true && !hasNonzeroPrice) {
-    return {
-      rates: (["input_text", "output_text"] as const).map((meter) =>
-        publishedRate(meter, "0", "million_tokens", sourceId, "currently free route", {
-          ...conditions,
-          promotion: true,
-        }),
-      ),
-      priceConflict: false,
-      invalidPrice: prices.invalid,
-    };
-  }
   const rates: SourcePriceFact[] = [];
   if (prices.input !== undefined)
     rates.push(
@@ -463,9 +456,38 @@ function routeRates(route: z.infer<typeof routeSchema>, sourceId: string): Route
         conditions,
       ),
     );
+  const rawFacts: SourceRawPricingFact[] = [];
+  if (route.is_free === true)
+    rawFacts.push({
+      term_key: "route_promotional_free",
+      impact: "base_price",
+      reason: "unknown_amount",
+      conditions: { route_provider: route.provider, promotion: true },
+      source_ref: sourceId,
+      raw: {
+        label:
+          "The route is currently free; its published list rates remain separate from the temporary promotion",
+      },
+    });
+  if (prices.input === undefined || prices.output === undefined)
+    rawFacts.push({
+      term_key: "route_price_not_published",
+      impact: "base_price",
+      reason: "unknown_amount",
+      conditions,
+      source_ref: sourceId,
+      raw: {
+        label:
+          prices.input === undefined && prices.output === undefined
+            ? "Input and output route prices are not published"
+            : prices.input === undefined
+              ? "Input route price is not published"
+              : "Output route price is not published",
+      },
+    });
   return {
     rates,
-    priceConflict: route.is_free === true && hasNonzeroPrice,
+    rawFacts,
     invalidPrice:
       prices.invalid || (route.is_free !== undefined && typeof route.is_free !== "boolean"),
   };
@@ -492,21 +514,31 @@ function requireClaims(body: string, claims: readonly string[], message: string)
   if (claims.some((claim) => !body.includes(claim))) throw new Error(message);
 }
 
-function inventoryExtensions(
-  actual: string[],
-  required: readonly string[],
-  message: string,
-): string[] {
-  const values = new Set(actual);
-  if (required.some((value) => !values.has(value))) throw new Error(message);
-  const requiredValues = new Set(required);
-  return unique(actual.filter((value) => !requiredValues.has(value)));
+function reviewedCompanion(
+  input: Input,
+  bundle: z.infer<typeof linkedBundleSchema>,
+  pathname: string,
+  claims: readonly string[],
+  reasonCode: string,
+): string | undefined {
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === pathname);
+  const body = matches[0]?.body;
+  if (matches.length !== 1 || body === undefined || claims.some((claim) => !body.includes(claim))) {
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: reasonCode,
+      sample: pathname,
+    });
+    return;
+  }
+  return body;
 }
 
 function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSchema>): void {
-  const pricing = companion(bundle, "/docs/inference-providers/en/pricing.md");
-  requireClaims(
-    pricing,
+  reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/pricing.md",
     [
       "with no markup from Hugging Face",
       "$0.10, subject to change",
@@ -520,12 +552,13 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
       "set a spending limit",
       "disable a set of Inference Providers",
     ],
-    "Hugging Face pricing and account-billing reference drifted",
+    "pricing_account_billing_contract_drift",
   );
 
-  const overview = companion(bundle, "/docs/inference-providers/en/index.md");
-  requireClaims(
-    overview,
+  const overview = reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/index.md",
     [
       ":cheapest` for the most cost-efficient provider (lowest price per output token)",
       ":preferred` to follow your preference order",
@@ -536,66 +569,101 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
       "serverless inference",
       "single Hugging Face token",
     ],
-    "Hugging Face provider-selection reference drifted",
+    "provider_selection_contract_drift",
   );
-  const documentedPartners = unique(
-    [...overview.matchAll(/\]\(\.\/providers\/([a-z0-9-]+)\)/g)].flatMap((match) =>
-      match[1] === undefined ? [] : [match[1]],
-    ),
-  );
-  const documentedExtensions = inventoryExtensions(
-    documentedPartners,
-    huggingFacePartnerIds,
-    "A configured Hugging Face partner disappeared from the official overview",
-  );
-  for (const provider of documentedExtensions)
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "documented_partner_not_collected",
-      sample: provider,
-    });
-  const providerRegistry = companion(
+  if (overview !== undefined) {
+    const documented = new Set(
+      unique(
+        [...overview.matchAll(/\]\(\.\/providers\/([a-z0-9-]+)\)/g)].flatMap((match) =>
+          match[1] === undefined ? [] : [match[1]],
+        ),
+      ),
+    );
+    for (const provider of huggingFacePartnerIds)
+      if (!documented.has(provider))
+        input.onPricingReconciliation?.({
+          disposition: "unbound",
+          reason_code: "documented_partner_missing",
+          sample: provider,
+        });
+    for (const provider of documented)
+      if (!huggingFacePartnerIds.includes(provider as (typeof huggingFacePartnerIds)[number]))
+        input.onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "documented_partner_not_collected",
+          sample: provider,
+        });
+  }
+
+  const providerRegistry = reviewedCompanion(
+    input,
     bundle,
     "/huggingface/huggingface_hub/main/src/huggingface_hub/inference/_providers/__init__.py",
+    ["PROVIDER_T", "Literal["],
+    "sdk_provider_registry_drift",
   );
-  const providerLiteral = providerRegistry.match(/PROVIDER_T\s*=\s*Literal\[([\s\S]*?)\n\]/)?.[1];
-  if (providerLiteral === undefined)
-    throw new Error("Hugging Face SDK provider registry disappeared");
-  const sdkProviders = [...providerLiteral.matchAll(/^\s*"([a-z0-9-]+)",?\s*$/gm)].flatMap(
-    (match) => (match[1] === undefined ? [] : [match[1]]),
-  );
-  const sdkExtensions = inventoryExtensions(
-    sdkProviders,
-    [...huggingFacePartnerIds, "openai"],
-    "A configured Hugging Face partner disappeared from the SDK registry",
-  );
-  for (const provider of sdkExtensions)
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "sdk_provider_not_collected",
-      sample: provider,
-    });
-  const sdk = companion(bundle, "/docs/huggingface_hub/en/guides/inference.md");
-  const overviewUsesFastest = overview.includes(
-    "automatically selects the fastest available provider for the specified model",
-  );
-  const sdkUsesPreference = sdk
-    .replace(/\s+/g, " ")
-    .includes(
-      'default value is "auto" which will select the first of the providers available for the model, sorted by the user\'s order',
-    );
-  const autoPolicyConflict = overviewUsesFastest && sdkUsesPreference;
-  if (!overviewUsesFastest && !sdkUsesPreference)
-    throw new Error("Hugging Face automatic provider-selection evidence drifted");
-  input.onPricingReconciliation?.({
-    disposition: autoPolicyConflict ? "ambiguous" : "excluded",
-    reason_code: autoPolicyConflict
-      ? "auto_routing_policy_conflict"
-      : "auto_routing_policy_not_price_fact",
-  });
+  if (providerRegistry !== undefined) {
+    const providerLiteral = providerRegistry.match(/PROVIDER_T\s*=\s*Literal\[([\s\S]*?)\n\]/)?.[1];
+    if (providerLiteral === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "sdk_provider_registry_drift",
+      });
+    } else {
+      const sdkProviders = new Set(
+        [...providerLiteral.matchAll(/^\s*"([a-z0-9-]+)",?\s*$/gm)].flatMap((match) =>
+          match[1] === undefined ? [] : [match[1]],
+        ),
+      );
+      for (const provider of [...huggingFacePartnerIds, "openai"])
+        if (!sdkProviders.has(provider))
+          input.onPricingReconciliation?.({
+            disposition: "unbound",
+            reason_code: "sdk_provider_missing",
+            sample: provider,
+          });
+      for (const provider of sdkProviders)
+        if (![...huggingFacePartnerIds, "openai"].includes(provider))
+          input.onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "sdk_provider_not_collected",
+            sample: provider,
+          });
+    }
+  }
 
-  requireClaims(
-    companion(bundle, "/docs/inference-providers/en/hub-api.md"),
+  const sdk = reviewedCompanion(
+    input,
+    bundle,
+    "/docs/huggingface_hub/en/guides/inference.md",
+    [],
+    "sdk_inference_contract_drift",
+  );
+  const overviewUsesFastest =
+    overview?.includes(
+      "automatically selects the fastest available provider for the specified model",
+    ) === true;
+  const sdkUsesPreference =
+    sdk
+      ?.replace(/\s+/g, " ")
+      .includes(
+        'default value is "auto" which will select the first of the providers available for the model, sorted by the user\'s order',
+      ) === true;
+  const autoPolicyConflict = overviewUsesFastest && sdkUsesPreference;
+  if (overview !== undefined || sdk !== undefined)
+    input.onPricingReconciliation?.({
+      disposition: autoPolicyConflict ? "ambiguous" : "excluded",
+      reason_code: autoPolicyConflict
+        ? "auto_routing_policy_conflict"
+        : overviewUsesFastest || sdkUsesPreference
+          ? "auto_routing_policy_not_price_fact"
+          : "auto_routing_policy_unresolved",
+    });
+
+  reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/hub-api.md",
     [
       "inference_provider=all",
       "inferenceProviderMapping",
@@ -608,21 +676,26 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
       "temporary promo",
       "Output throughput in tokens per second",
     ],
-    "Hugging Face Hub routing API reference drifted",
+    "hub_routing_api_contract_drift",
   );
-  const chat = companion(bundle, "/docs/inference-providers/en/tasks/chat-completion.md");
-  requireClaims(
-    chat,
+  const chat = reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/tasks/chat-completion.md",
     ["reasoning_effort", "include_usage", "completion_tokens", "prompt_tokens", "total_tokens"],
-    "Hugging Face response-usage reference drifted",
+    "response_usage_contract_drift",
   );
-  requireClaims(
-    companion(bundle, "/docs/inference-providers/en/guides/responses-api.md"),
+  reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/guides/responses-api.md",
     ["All Inference Providers chat completion models", "/v1/responses"],
-    "Hugging Face Responses API reference drifted",
+    "responses_api_contract_drift",
   );
-  requireClaims(
-    companion(bundle, "/docs/inference-providers/en/register-as-a-provider.md"),
+  reviewedCompanion(
+    input,
+    bundle,
+    "/docs/inference-providers/en/register-as-a-provider.md",
     [
       "GET /api/partners/{provider}/models?status=staging|live",
       "namespace/model-name",
@@ -643,12 +716,14 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
       "`Inference-Id`",
       "Price in US dollars per million input tokens",
     ],
-    "Hugging Face provider-cost reconciliation reference drifted",
+    "provider_cost_reconciliation_contract_drift",
   );
-  requireClaims(
-    companion(bundle, "/docs/hub/en/billing.md"),
+  reviewedCompanion(
+    input,
+    bundle,
+    "/docs/hub/en/billing.md",
     ["monitor your usage at any time from your billing dashboard", "beginning of each month"],
-    "Hugging Face billing-history reference drifted",
+    "billing_history_contract_drift",
   );
 
   for (const reason_code of [
@@ -659,15 +734,17 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "provider_cost_api_not_user_accessible",
   ])
     input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
-  const responseReturnsCost = ["costNanoUsd", "cost_in_usd", "exact_cost"].some((field) =>
-    chat.includes(field),
-  );
-  input.onPricingReconciliation?.({
-    disposition: responseReturnsCost ? "unsupported" : "excluded",
-    reason_code: responseReturnsCost
-      ? "response_exact_cost_unmodeled"
-      : "response_exact_cost_not_documented",
-  });
+  if (chat !== undefined) {
+    const responseReturnsCost = ["costNanoUsd", "cost_in_usd", "exact_cost"].some((field) =>
+      chat.includes(field),
+    );
+    input.onPricingReconciliation?.({
+      disposition: responseReturnsCost ? "unsupported" : "excluded",
+      reason_code: responseReturnsCost
+        ? "response_exact_cost_unmodeled"
+        : "response_exact_cost_not_documented",
+    });
+  }
 }
 
 export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
@@ -675,7 +752,6 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   if (config.kind !== "huggingface-router")
     throw new Error("Invalid Hugging Face router extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  commercialEvidence(input, bundle);
   const items = routerSchema.parse(JSON.parse(bundle.index.body)).data;
   const ids = new Set<string>();
   const models: ProviderModel[] = [];
@@ -742,9 +818,9 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       route,
       ...(route.status === "live"
         ? routeRates(route, input.source.id)
-        : { rates: [], priceConflict: false, invalidPrice: false }),
+        : { rates: [], rawFacts: [], invalidPrice: false }),
     }));
-    for (const { route, rates, priceConflict, invalidPrice } of routeFacts) {
+    for (const { route, rates, rawFacts, invalidPrice } of routeFacts) {
       const sample = diagnosticSample(item.id, route.provider);
       if (route.status === "error") {
         input.onPricingReconciliation?.({
@@ -752,35 +828,37 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
           reason_code: "route_not_live",
           sample,
         });
-      } else if (priceConflict) {
+        continue;
+      }
+      if (rawFacts.some(({ term_key }) => term_key === "route_promotional_free"))
         input.onPricingReconciliation?.({
-          disposition: "ambiguous",
-          reason_code: "route_free_price_conflict",
+          disposition: "explicit_non_numeric",
+          reason_code: "route_promotional_free",
           sample,
         });
-      } else if (invalidPrice) {
+      if (invalidPrice)
         input.onPricingReconciliation?.({
           disposition: "ambiguous",
           reason_code: "route_price_field_invalid",
           sample,
         });
-      } else if (rates.length === 0) {
+      if (rawFacts.some(({ term_key }) => term_key === "route_price_not_published"))
         input.onPricingReconciliation?.({
           disposition: "unbound",
           reason_code: "route_price_not_published",
           sample,
         });
-      } else {
+      if (rates.length > 0)
         input.onPricingReconciliation?.({
           disposition: "normalized",
           reason_code: "route_price_normalized",
           sample,
         });
-      }
     }
     const routes = routeFacts.filter(({ route }) => route.status === "live");
     if (routes.length === 0) continue;
     const pricing = routes.flatMap(({ rates }) => rates);
+    const rawPricing = routes.flatMap(({ rawFacts }) => rawFacts);
     const contexts = routes.flatMap((route) => {
       const context = positiveInteger(route.route.context_length);
       return context === undefined ? [] : [context];
@@ -816,12 +894,22 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
       limits: {
         context_tokens: contexts.length === 0 ? undefined : Math.max(...contexts),
       },
-      pricing_state: pricing.length === 0 ? "unknown" : "numeric",
+      pricing_state: pricing.length > 0 ? "numeric" : "unknown",
       price_facts: pricing,
+      raw_price_facts: rawPricing,
       status: "active",
     });
   }
   assertItemCount("Hugging Face router models", models.length, config.minModels, config.maxModels);
+  commercialEvidence(input, bundle);
+  extractHuggingFaceCommercialFacts({
+    bundle,
+    models,
+    sourceId: input.source.id,
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { report: input.onPricingReconciliation }),
+  });
   return models;
 }
 

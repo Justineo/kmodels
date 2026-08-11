@@ -1,13 +1,11 @@
 # Commercial topology
 
-Status: implemented shared contract; OpenAI, Anthropic, Amazon Bedrock, Databricks, Vercel, Microsoft Foundry, Gemini API, Vertex AI, Kimi, Cohere, and Mistral AI migrated
+Status: implemented shared contract; all 18 providers migrated
 
 This document is the provider-wide commercial design produced from the
 first-party audits of all 18 providers in [the decision index](../design.md).
-[Pricing](pricing.md) defines the implemented wire contract. The shared cutover and the OpenAI,
-Anthropic, Amazon Bedrock, Databricks, Vercel, Microsoft Foundry, Gemini API, Vertex AI, Kimi, Cohere, and Mistral AI
-topologies are current; every other provider is projected without a second public schema and is
-enriched only in its own migration turn.
+[Pricing](pricing.md) defines the implemented wire contract. The shared cutover and every provider
+topology are current; there is no second public schema or legacy presentation path.
 
 The design has one purpose: preserve enough official commercial structure to
 answer which offers exist, which components compose, and which public usage can
@@ -531,6 +529,14 @@ Automatic components are displayed but not user-selectable. A row uses the
 precise meter and source denominator, such as “Web search · USD 0.005 per
 billable search event,” never “Tool call per request.”
 
+Rate details also expose the bound usage signal, its reviewed billable trigger,
+aggregation boundary, and earliest resolution phase. A numeric rate remains
+displayable when that signal is unavailable, with the missing binding stated
+locally. Billing mode, enrollment, settlement channel, biller, ordered payment
+sources, allowances, and contribution drivers remain read-only context. The UI
+explains every known parameter that can affect cost but never asks for usage,
+multiplies quantities, allocates commitments, or presents a total.
+
 Kimi K3 therefore displays its regional cache/input/output rates plus an
 optional Kimi web-search service. The built-in `$web_search` route is charged
 for each exact emitted billable call, while the Formula route is charged on its
@@ -656,22 +662,8 @@ objects are not retained as hidden catalog or price objects.
 ## Migration program
 
 Foundation design, all 18 provider audits, cross-provider convergence, the
-single shared wire cutover, and the OpenAI, Anthropic, Amazon Bedrock, Databricks, Vercel,
-Microsoft Foundry, Gemini API, Vertex AI, Kimi, Cohere, and Mistral AI migrations are complete. The cutover
-mechanically preserves every still-unmigrated provider's exact legacy facts and keeps ambiguous
-legacy atoms bounded raw; there is no compatibility schema or dual UI path.
-
-Implementation continues one provider per turn in this order:
-
-1. Meta Llama
-2. xAI
-3. Hugging Face
-4. Alibaba Cloud Model Studio
-5. DeepSeek
-6. Cerebras
-7. Ollama
-
-Every provider migration must:
+single shared wire cutover, and all 18 provider migrations are complete. There is no compatibility
+schema or dual UI path. The completed migrations each:
 
 1. implement its audited resource, offer, relationship, accounting, allowance,
    enrollment, settlement, and authority decisions without widening them;
@@ -685,6 +677,5 @@ Every provider migration must:
 7. pass `vp check`, `vp test --run`, `vp run collect:fixtures`, and
    `vp run build`.
 
-Provider adoption is complete only after all 18 migrations and a final
-requirement-by-requirement audit of canonical data, generated resources, diffs,
-and presentation.
+Future provider changes retain the same requirement-by-requirement audit of canonical data,
+generated resources, diffs, and presentation.

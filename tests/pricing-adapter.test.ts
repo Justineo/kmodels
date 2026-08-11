@@ -2745,4 +2745,135 @@ describe("parsed-source canonical pricing adapter", () => {
       partition?.books.find(({ book_key }) => book_key === `base-model:${modelRef}`)?.scope,
     ).toEqual({ kind: "models", model_refs: [sibling.uid] });
   });
+
+  it("publishes DashScope realtime, Batch, cache, and web-search mechanisms separately", () => {
+    const provider = manifests.find(({ provider }) => provider.id === "dashscope");
+    const pricingSource = provider?.sources.find(({ id }) => id === "dashscope-pricing");
+    if (pricingSource === undefined) throw new Error("DashScope pricing manifest is missing");
+    const sourceId = pricingSource.id;
+    const modelRef = "dashscope/qwen-test";
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      price: string,
+      conditions: SourcePriceFact["conditions"],
+    ): SourcePriceFact => ({
+      meter,
+      price,
+      currency: "USD",
+      unit: meter === "web_search" ? "thousand_requests" : "million_tokens",
+      conditions,
+      source_ref: sourceId,
+      derived: false,
+    });
+    const parsed: ParsedProviderModel = {
+      ...model(),
+      provider_id: "dashscope",
+      model_id: "qwen-test",
+      uid: modelRef,
+      source_refs: [sourceId],
+      price_facts: [
+        rate("input_text", "2", { region: "Singapore" }),
+        rate("output_text", "8", { region: "Singapore" }),
+        rate("cache_write_text", "2.5", {
+          region: "Singapore",
+          operation: "explicit_cache",
+        }),
+        rate("cache_read_text", "0.2", {
+          region: "Singapore",
+          operation: "explicit_cache",
+        }),
+        rate("input_text", "1", { region: "Singapore", service_tier: "batch" }),
+        rate("output_text", "4", { region: "Singapore", service_tier: "batch" }),
+      ],
+      raw_price_facts: [],
+      commercial_facts: [
+        {
+          source_ref: sourceId,
+          book_key: "service:web-search",
+          book_name: "Model Studio built-in web search",
+          resource_kind: "service",
+          resource_key: "web-search",
+          model_refs: [modelRef],
+          offer_key: `built-in:${modelRef}:singapore`,
+          offer_name: "Built-in web search",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [rate("web_search", "10", { region: "Singapore" })],
+          raw_price_facts: [],
+        },
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "dashscope",
+      observedAt,
+      [{ source: pricingSource, models: [parsed] }],
+      [parsed],
+      provider?.pricingCategoricalLabels,
+    );
+    const modelBook = partition?.books.find(({ book_key }) => book_key === `model:${modelRef}`);
+    const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    expect(modelBook?.offers.map(({ offer_key }) => offer_key).sort()).toEqual(["batch", "sync"]);
+    expect(sync?.relations).toContainEqual(
+      expect.objectContaining({
+        kind: "exclusive_with",
+        target: { kind: "offers", offer_refs: [batch?.id] },
+      }),
+    );
+    expect(
+      sync?.terms.find((term) => term.kind === "rate" && term.meter.value === "cache_write_text"),
+    ).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          charge_binding: {
+            signal: { namespace: "kmodels", value: "cache_write_tokens" },
+            aggregation: "request",
+          },
+        },
+      ],
+    });
+    const batchInput = batch?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_text",
+    );
+    expect(batchInput).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          charge_binding: {
+            signal: { namespace: "kmodels", value: "input_tokens" },
+            aggregation: "result_item",
+          },
+        },
+      ],
+    });
+    expect(
+      batchInput?.kind === "rate"
+        ? JSON.stringify(batchInput.variants[0]?.applicability)
+        : "service_tier",
+    ).not.toContain("service_tier");
+    const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    expect(search?.offers[0]).toMatchObject({
+      relations: [
+        expect.objectContaining({
+          kind: "requires",
+          target: { kind: "offers", offer_refs: [sync?.id] },
+        }),
+      ],
+      terms: [
+        {
+          kind: "rate",
+          variants: [
+            {
+              charge_binding: {
+                signal: { namespace: "kmodels", value: "successful_web_searches" },
+                aggregation: "request",
+              },
+            },
+          ],
+        },
+      ],
+      settlement: [expect.objectContaining({ biller: "Alibaba Cloud" })],
+    });
+  });
 });

@@ -35,7 +35,7 @@ const capabilities: WebsiteModelDetail["capabilities"] = {
 
 function detailChunk(dataVersion: string, description: string): WebsiteDetailChunk {
   return {
-    schema_version: 3,
+    schema_version: 4,
     data_version: dataVersion,
     provider_id: model.provider_id,
     chunk: model.detail_chunk,

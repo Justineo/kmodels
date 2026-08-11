@@ -102,10 +102,13 @@
 
 ## Commercial topology audit
 
-Design status: audited; implementation pending. This section is the Ollama disposition for the
-provider-wide commercial-topology review. It describes the intended resources, books, offers,
-relationships, meters, accounting bindings, and evidence boundaries; it does not claim that the
-current collector, schema, generated data, or UI already represents them.
+Design status: implemented. Library rows carry exact per-model local-execution offers with operator
+settlement; Cloud rows carry the plan, included-allowance, extra-balance, Web Search, Web Fetch, and
+model-inference books described below. Team uses the exact seat-month denominator. A model card that
+publishes a Pro/Max extra-usage gate receives two cumulative `requires` relationships: Pro and Max
+are alternatives in one relationship, and the personal extra-usage balance is the second
+requirement. Native `eval_count` binds only the output component; input and cache-read rates remain
+unbound when the response has no authoritative split.
 
 ### Public commercial source graph
 
@@ -330,10 +333,10 @@ usage class, and extra-usage price state. A `$0` Free plan is not a `$0` model. 
 allowances are reusable account mechanisms and should not be copied into every model rate table.
 
 Kimi K3 should explicitly compose an active Pro or existing Max subscription with its three
-extra-credit token rates. The calculator can price output and any input whose cached partition is
-known, but must show incomplete coverage when only total prompt tokens are returned. It must not
-allocate the recurring subscription fee to one request, consume included allowance first, import a
-Moonshot tool-call fee, or call the account invoice exact.
+extra-credit token rates. Rate details bind output and any input whose cached partition is known,
+and show incomplete coverage when only total prompt tokens are returned. They do not allocate the
+recurring subscription fee to one request, consume included allowance, import a Moonshot tool-call
+fee, or call the account invoice exact.
 
 For other Cloud models, show the ordinal usage level and plan allowance uncertainty without guessing
 token or dollar rates. Web Search and Web Fetch remain standalone Ollama provider services with
