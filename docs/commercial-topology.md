@@ -49,8 +49,8 @@ The shared design therefore has these invariants:
   copies the amount.
 - Price, enrollment, route lifecycle, allowance, and settlement remain
   independent facts.
-- Collection and retention are claim-local; publication of the accepted
-  catalog/pricing pair remains crash-atomic.
+- Extraction and normalization inside a complete source bundle are fact-local;
+  cross-refresh pricing retention and publication are provider-atomic.
 - Every refresh decision is deterministic and requires no LLM.
 
 The model catalog remains the sole authority for model admission. Pricing,
@@ -61,18 +61,18 @@ or public model rows.
 
 The 18 provider audits established the following shared needs:
 
-| Shared need                         | Independently observed examples                                                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Separately owned provider services  | Search, grounding, code execution, storage, reporting, content safety, evaluation, and managed runtime across many providers         |
-| Required commercial entitlement     | Ollama Kimi K3 plan gate, provisioned-capacity coverage, subscription packs, and deployment prerequisites                            |
-| Automatic billed composition        | Model routers, advisor/evaluator models, RAG pipelines, managed agents, and orchestration that invokes separately priced components  |
-| Explicitly selected composition     | Kimi web search, Mistral tools, Azure built-in services, and independently callable services used alongside model inference          |
-| Mutually exclusive realization      | Synchronous versus Batch, PAYG versus covered subscription requests, HF billing versus custom keys, and alternative deployment paths |
-| Outcome-qualified price             | Served Priority/Fast tiers, fallbacks, completed Batch items, successful grounding, and generated media outcomes                     |
-| Account-resource templates          | Fine-tuned models, deployments, endpoints, files, vector stores, containers, sessions, custom voices, and collections                |
-| Multiple allowance semantics        | Included quantities, monetary credits, complete coverage, and Anthropic-style rate-class substitution                                |
-| Public settlement topology          | Direct billing, marketplaces, reseller channels, BYOK, prepaid balances, postpaid invoices, and published deduction order            |
-| Claim-local resilience and conflict | Every provider has independently useful rows or fields that must survive sibling drift, omission, or disagreement                    |
+| Shared need                        | Independently observed examples                                                                                                      |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Separately owned provider services | Search, grounding, code execution, storage, reporting, content safety, evaluation, and managed runtime across many providers         |
+| Required commercial entitlement    | Ollama Kimi K3 plan gate, provisioned-capacity coverage, subscription packs, and deployment prerequisites                            |
+| Automatic billed composition       | Model routers, advisor/evaluator models, RAG pipelines, managed agents, and orchestration that invokes separately priced components  |
+| Explicitly selected composition    | Kimi web search, Mistral tools, Azure built-in services, and independently callable services used alongside model inference          |
+| Mutually exclusive realization     | Synchronous versus Batch, PAYG versus covered subscription requests, HF billing versus custom keys, and alternative deployment paths |
+| Outcome-qualified price            | Served Priority/Fast tiers, fallbacks, completed Batch items, successful grounding, and generated media outcomes                     |
+| Account-resource templates         | Fine-tuned models, deployments, endpoints, files, vector stores, containers, sessions, custom voices, and collections                |
+| Multiple allowance semantics       | Included quantities, monetary credits, complete coverage, and Anthropic-style rate-class substitution                                |
+| Public settlement topology         | Direct billing, marketplaces, reseller channels, BYOK, prepaid balances, postpaid invoices, and published deduction order            |
+| Fact-local resilience and conflict | Every provider has independently useful rows or fields that must survive sibling drift, omission, or disagreement                    |
 
 The audits also rejected a universal `tool_call` price. Web search, maps
 grounding, file retrieval, code execution, Formula Fibers, caller functions,
@@ -580,9 +580,10 @@ bounded conflict. Do not invent a winner merely to keep a calculator cell.
 Account-effective evidence may supersede public list price only for the exact
 account/SKU/scope; it does not rewrite the public snapshot.
 
-### Claim-local freshness and resilience
+### Fact-local extraction and provider-atomic retention
 
-Transport and parsing are source- and claim-local:
+Parsing and reconciliation inside a successfully acquired source bundle are
+fact-local:
 
 - validate independent inventories, pages, tables, rows, cells, relationships,
   and usage bindings independently;
@@ -592,14 +593,16 @@ Transport and parsing are source- and claim-local:
   diagnostics rather than rejecting a model or provider;
 - remove a prior fact only when fresh evidence is exhaustive for that exact
   claim and scope;
-- retain a compatible prior claim with its original observation, source hash,
-  and visible stale state after non-exhaustive failure;
 - never let a pricing or service failure erase catalog identity established by
   a fresh authoritative inventory.
 
-Fresh and retained observations may coexist in one accepted provider
-partition. Claim freshness is derived from supporting source observations; it
-is not restamped from one provider-wide success flag. The final catalog/pricing
+Cross-refresh retention is deliberately coarser. A missing required pricing
+source, unavailable optional commercial companion, systemic parse failure, or
+invalid assembled graph retains the complete previously accepted provider
+pricing partition with its original verification time. Fresh and retained
+observations do not coexist inside one provider partition. A fresh compatible
+catalog slice may still advance, and a complete valid pricing bundle may
+advance against a retained compatible catalog slice. The final catalog/pricing
 pair is published only after all references, identities, units, conflicts, and
 graph invariants validate, and the pair is replaced atomically.
 
@@ -669,13 +672,23 @@ schema or dual UI path. The completed migrations each:
    enrollment, settlement, and authority decisions without widening them;
 2. dispose every reviewed first-party commercial atom;
 3. bind only exact, dimensionally compatible official usage signals;
-4. prove row/field-level drift cannot erase valid sibling facts;
+4. prove row/field-level drift inside a valid bundle cannot erase valid sibling
+   facts, while incomplete or invalid bundles retain the provider partition;
 5. test selected-offer closure and model-detail grouping, including optional
    services versus automatic and exclusive components;
 6. refresh only the intended provider's substantive topology and prove every
    untouched provider has no unexpected semantic change; and
 7. pass `vp check`, `vp test --run`, `vp run collect:fixtures`, and
    `vp run build`.
+
+Adoption is checked against the committed artifacts, not inferred from source
+code alone. Every provider must retain its audited standalone resources,
+resource edges, commercial relationships, accounting bindings and terms,
+settlement, and model dispositions; every captured public
+replay input must compile with the current extractor versions. A provider with
+an unavailable current bundle may be explicitly preserved, but its accepted
+partition must already pass the same topology checks and its retained status
+must remain visible.
 
 Future provider changes retain the same requirement-by-requirement audit of canonical data,
 generated resources, diffs, and presentation.

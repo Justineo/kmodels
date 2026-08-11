@@ -339,7 +339,7 @@ select an upstream before the request runs.
 | ZDR and default retention                                                        | Preserve enrollment and route/resource applicability. Neither is a price or a free storage allowance.                                                                                        |
 | Azure, OCI, and Vertex routes                                                    | Preserve exact route compatibility only. Price and settlement belong to the cloud seller's first-party book.                                                                                 |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific rather than one total source order:
 

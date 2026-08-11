@@ -8,6 +8,7 @@ import type {
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import { addAtom } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
@@ -15,7 +16,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -448,15 +448,6 @@ function usageObservation(rate: NormalizedPriceObservation, locator: string): Ra
     locator: { kind: "provider_key", value: locator },
     raw: { fragment: locator },
   };
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  if (
-    !input.vocabulary.atoms.some(
-      (candidate) => candidate.kind === atom.kind && candidate.key === atom.key,
-    )
-  )
-    input.vocabulary.atoms.push(atom);
 }
 
 function addServiceCompatibility(books: AtomicPricingBook[]): void {

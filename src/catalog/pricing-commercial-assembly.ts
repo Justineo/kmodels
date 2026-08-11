@@ -85,3 +85,9 @@ export function isStandardUnit(unit: UnitExpression, value: string): boolean {
     unit.factors[0].unit.value === value
   );
 }
+
+export function unitIdentityKey(unit: UnitExpression): string {
+  return unit.factors
+    .map(({ unit: factor, power }) => [factor.namespace, factor.value, `p${power}`].join("_"))
+    .join("_");
+}

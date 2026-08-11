@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import { afterFirstPaint } from "./after-first-paint.ts";
 import { modelLifecycles, modelReleaseStages } from "./catalog/catalog-vocabulary.ts";
-import { loadWebsiteModelDetail, preloadWebsiteDetails } from "./catalog/website-loader.ts";
+import { loadWebsiteModelDetail, loadWebsiteProviderPricing } from "./catalog/website-loader.ts";
 import {
   groupModels,
   modelGroupKey,
@@ -66,6 +66,7 @@ const tableViewportSize = ref(0);
 let tableResizeObserver: ResizeObserver | undefined;
 const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
+let providerPricingRequest = "";
 let applyingRoute = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
 const updateFilterScrollbars = useOverlayScrollbars(() => ({
@@ -85,6 +86,9 @@ const updateTableVerticalScrollbar = useOverlayScrollbars(() => ({
 }));
 
 const providerNames = new Map(providers.map((provider) => [provider.id, provider.name]));
+const selectedProviderRecord = computed(() =>
+  providers.find(({ id }) => id === selectedProvider.value),
+);
 const selectedModel = computed(() => {
   const uid = selectedModelUid.value;
   return uid === undefined ? undefined : models.value.find((model) => model.uid === uid);
@@ -149,6 +153,19 @@ const generatedAtLabel = new Intl.DateTimeFormat("en", {
 const resultCountLabel = computed(() => {
   const count = filteredModelGroups.value.length;
   return `${formatCount(count)} ${count === 1 ? "result" : "results"}`;
+});
+const providerCoverageLabel = computed(() => {
+  const coverage = selectedProviderRecord.value?.pricing_coverage;
+  if (coverage === undefined) return "";
+  const moreOffers = Math.max(0, coverage.offer_models - coverage.representative_models);
+  return [
+    `${formatCount(coverage.representative_models)} representative`,
+    `${formatCount(moreOffers)} more with offers`,
+    `${formatCount(coverage.unknown_models)} unknown`,
+    ...(coverage.not_applicable_models === 0
+      ? []
+      : [`${formatCount(coverage.not_applicable_models)} without a public offer`]),
+  ].join(" · ");
 });
 const themeToggleLabel = computed(() =>
   theme.value === "dark" ? "Switch to light mode" : "Switch to dark mode",
@@ -411,6 +428,34 @@ function selectModelPricing(model: WebsiteModel): void {
   selectedModelUid.value = model.uid;
 }
 
+function closeProviderPricing(): void {
+  providerPricingRequest = "";
+  detailsState.provider = undefined;
+  detailsState.providerPricing = undefined;
+}
+
+async function openProviderPricing(): Promise<void> {
+  const provider = selectedProviderRecord.value;
+  if (provider === undefined || provider.pricing_coverage.standalone_resources === 0) return;
+  selectedModelUid.value = undefined;
+  detailRequest = "";
+  await nextTick();
+  detailsState.provider = provider;
+  detailsState.error = undefined;
+  providerPricingRequest = provider.id;
+  detailsState.loading = true;
+  try {
+    const detail = await loadWebsiteProviderPricing(props.catalog.data_version, provider);
+    if (providerPricingRequest === provider.id) detailsState.providerPricing = detail;
+  } catch (error) {
+    console.error("Failed to load provider pricing", error);
+    if (providerPricingRequest === provider.id)
+      detailsState.error = "Provider pricing is temporarily unavailable.";
+  } finally {
+    if (providerPricingRequest === provider.id) detailsState.loading = false;
+  }
+}
+
 async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
   detailRequest = model?.uid ?? "";
   detailsState.detail = undefined;
@@ -433,14 +478,16 @@ async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
     detailCache.set(reference, detail);
     if (detailRequest === reference) detailsState.detail = detail;
   } catch (error) {
+    console.error("Failed to load model details", error);
     if (detailRequest === reference)
-      detailsState.error = error instanceof Error ? error.message : "Model details unavailable";
+      detailsState.error = "Model details are temporarily unavailable.";
   } finally {
     if (detailRequest === reference) detailsState.loading = false;
   }
 }
 
 detailsState.close = () => {
+  closeProviderPricing();
   selectedModelUid.value = undefined;
 };
 detailsState.navigate = selectRelativeModel;
@@ -448,6 +495,9 @@ detailsState.navigate = selectRelativeModel;
 watch(
   selectedModel,
   (model) => {
+    if (model !== undefined) {
+      closeProviderPricing();
+    }
     if (detailsState.pricingTarget !== model?.uid) detailsState.pricingTarget = undefined;
     detailsState.model = model;
     detailsState.providerName = model === undefined ? "" : providerName(model.provider_id);
@@ -455,6 +505,11 @@ watch(
   },
   { immediate: true },
 );
+watch(selectedProvider, (providerId) => {
+  if (detailsState.provider?.id !== undefined && detailsState.provider.id !== providerId) {
+    closeProviderPricing();
+  }
+});
 watch(
   [selectedModel, filteredModelGroups],
   ([model]) => {
@@ -481,7 +536,6 @@ onMounted(() => {
     void import("./details-app.ts")
       .then(({ mountDetailsApp }) => mountDetailsApp())
       .catch((error: unknown) => console.error(error));
-    preloadWebsiteDetails(props.catalog.data_version, models.value);
   });
 });
 
@@ -573,6 +627,18 @@ onUnmounted(() => {
         </button>
 
         <output class="result-count" aria-live="polite">{{ resultCountLabel }}</output>
+
+        <div v-if="selectedProviderRecord" class="provider-coverage-bar">
+          <span> Pricing coverage: {{ providerCoverageLabel }} </span>
+          <button
+            v-if="selectedProviderRecord.pricing_coverage.standalone_resources > 0"
+            type="button"
+            @click="void openProviderPricing()"
+          >
+            Pricing &amp; services
+            <strong>{{ selectedProviderRecord.pricing_coverage.standalone_resources }}</strong>
+          </button>
+        </div>
 
         <dialog
           id="catalog-filters"

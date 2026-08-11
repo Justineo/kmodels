@@ -746,7 +746,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing", minModels: 30, maxModels: 100 },
-        extractorVersion: "openai-pricing-v3",
+        extractorVersion: "openai-pricing-v4",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -1040,7 +1040,7 @@ export const manifests = [
           "retired_at",
         ],
         allowedHosts: ["aws.amazon.com", "docs.aws.amazon.com", "pricing.us-east-1.amazonaws.com"],
-        maxResponseBytes: mebibytes(32),
+        maxResponseBytes: mebibytes(64),
         scope: "global",
         exhaustive: true,
         role: "catalog",
@@ -1883,7 +1883,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "azure-api" },
-        extractorVersion: "azure-api-v3",
+        extractorVersion: "azure-api-v4",
         pricingEvidence: firstPartyPricing("scoped_meter_inventory", "meter_id", "scoped_current"),
         fields: [
           "model_id",
@@ -1952,7 +1952,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-catalog", minModels: 50, maxModels: 160 },
-        extractorVersion: "gemini-catalog-v7",
+        extractorVersion: "gemini-catalog-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2255,7 +2255,7 @@ export const manifests = [
             [
               "agent-search-pricing",
               "https://cloud.google.com/generative-ai-app-builder/pricing",
-              2,
+              8,
             ],
           ]),
         },
@@ -2468,9 +2468,6 @@ export const manifests = [
       docs_url: "https://docs.cohere.com/docs/models",
       catalog_scope: "global",
     },
-    pricingCategoricalLabels: pricingLabels("capacity", {
-      "starting rate": "Starting rate",
-    }),
     sources: [
       {
         id: "cohere-models",
@@ -3190,7 +3187,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "huggingface-router", minModels: 1, maxModels: 10_000 },
-        extractorVersion: "huggingface-router-v8",
+        extractorVersion: "huggingface-router-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
         fields: [
           "tasks",
@@ -3411,7 +3408,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "dashscope-recommended", minModels: 15, maxModels: 60 },
-        extractorVersion: "dashscope-recommended-v2",
+        extractorVersion: "dashscope-recommended-v3",
         fields: ["api_endpoints", "availability"],
         allowedHosts: ["www.alibabacloud.com"],
         maxResponseBytes: mebibytes(1),
@@ -3796,7 +3793,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "ollama-library", minModels: 200, maxModels: 350 },
-        extractorVersion: "ollama-library-v4",
+        extractorVersion: "ollama-library-v5",
         pricingEvidence: firstPartyPricing("commercial_terms", "exact_id"),
         fields: [
           "model_id",
@@ -3921,13 +3918,13 @@ export const manifests = [
     sources: [
       {
         id: "deepseek-catalog",
-        url: "https://api-docs.deepseek.com/quick_start/pricing",
+        url: "https://api-docs.deepseek.com/quick_start/pricing/",
         type: "website",
         access: "public",
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v10",
+        extractorVersion: "deepseek-catalog-v11",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

@@ -158,7 +158,7 @@ const azureModelSchema = z.object({
     name: modelIdSchema,
     version: z.string().min(1).optional(),
     format: z.string().optional(),
-    capabilities: z.record(z.string(), z.string()).optional(),
+    capabilities: z.record(z.string(), z.string().nullable()).optional(),
     deprecation: z
       .object({ fineTune: z.string().optional(), inference: z.string().optional() })
       .optional(),
@@ -2837,10 +2837,9 @@ export function parseAzureApi(input: Input): ProviderModel[] {
     );
     return regionModels.map((item) => {
       const raw = new Map(
-        Object.entries(item.model.capabilities ?? {}).map(([key, value]) => [
-          key.toLowerCase(),
-          value,
-        ]),
+        Object.entries(item.model.capabilities ?? {}).flatMap(([key, value]) =>
+          value === null ? [] : [[key.toLowerCase(), value]],
+        ),
       );
       const supports = (keys: string[]): boolean => booleanCapability(raw, keys) === true;
       const tasks: ModelTask[] = [];

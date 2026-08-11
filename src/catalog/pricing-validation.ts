@@ -228,7 +228,6 @@ function validateVocabulary(
     "vocabulary atoms",
   );
   const atoms = new Map<string, ProviderAtomRegistryEntry>();
-  const definitions = new Set<string>();
   for (const atom of vocabulary.atoms) {
     assertNormalizedSemantic(atom.key, "provider atom key");
     assertReviewedText(atom.definition, "provider atom definition");
@@ -242,11 +241,8 @@ function validateVocabulary(
       fail("vocabulary", "categorical atom dimension belongs to another provider");
     const dimension = atom.kind === "categorical_value" ? atom.dimension : undefined;
     const key = atomIdentity(vocabulary.provider_id, atom.kind, dimension, atom.key);
-    const definition = atomIdentity(vocabulary.provider_id, atom.kind, dimension, atom.definition);
     if (atoms.has(key)) fail("vocabulary", "duplicate provider atom key");
-    if (definitions.has(definition)) fail("vocabulary", "duplicate provider atom definition");
     atoms.set(key, atom);
-    definitions.add(definition);
   }
   return atoms;
 }

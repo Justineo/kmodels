@@ -200,29 +200,49 @@ function modelBinding(
             ? "output_tokens"
             : meter.value === "input_text"
               ? hasCache && mechanism === "sync"
-                ? "uncached_input_tokens"
+                ? undefined
                 : "input_tokens"
               : undefined;
   if (signal === undefined) return;
   return {
     signal: { namespace: "kmodels", value: signal },
     aggregation: mechanism === "batch" ? "result_item" : "request",
-    observations: [
-      {
-        ...rawEvidence(variant.observation),
-        locator: {
-          kind: "provider_key",
-          value: `${mechanism}:${usageField(signal)}`,
-        },
+    observations: usageFields(signal, mechanism).map((field) => ({
+      ...rawEvidence(variant.observation),
+      locator: {
+        kind: "provider_key",
+        value: field,
       },
-    ],
+    })),
   };
+}
+
+function usageFields(
+  signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
+  mechanism: Mechanism,
+): string[] {
+  if (mechanism === "batch") return [`batch-result:usage.${usageField(signal)}`];
+  switch (signal) {
+    case "cache_write_tokens":
+      return ["responses:usage.cache_creation_input_tokens"];
+    case "cached_input_tokens":
+      return [
+        "chat:usage.prompt_tokens_details.cached_tokens",
+        "responses:usage.input_tokens_details.cached_tokens",
+      ];
+    case "input_tokens":
+      return ["chat:usage.prompt_tokens", "responses:usage.input_tokens"];
+    case "output_tokens":
+      return ["chat:usage.completion_tokens", "responses:usage.output_tokens"];
+    default:
+      return [];
+  }
 }
 
 function usageField(signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"]): string {
   if (signal === "cache_write_tokens") return "cache_creation_input_tokens";
   if (signal === "cached_input_tokens") return "cached_tokens";
-  if (signal === "uncached_input_tokens" || signal === "input_tokens") return "input_tokens";
+  if (signal === "input_tokens") return "input_tokens";
   return "output_tokens";
 }
 

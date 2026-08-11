@@ -12,7 +12,8 @@ Status: current
   sorting, web search, fast mode, service tiers, regional inference, BYOK, REST usage/cost APIs,
   reporting, both allowlists, ZDR, trace drains, budgets, controls, and the documentation sitemap.
   Operational contract markers remain source-wide guards. Commercial claims are parsed
-  independently so one changed feature page suppresses only its dependent facts.
+  independently inside a complete bundle. An unavailable companion retains the
+  previously accepted provider pricing partition.
 - Require 250–600 valid catalog items, one endpoint document per item, one page per empty catalog price, exact owner/ID agreement, and reviewed semantic/pricing vocabularies. Extended model fields outside owned semantics are stripped with a contract signal; nested pricing and endpoint objects fail closed.
 
 ## Mapping
@@ -193,7 +194,7 @@ not create a priced service. Reconciliation always follows the realized executio
 | `gateway.cost`, `marketCost`, generation totals, reports, logs, and trace cost fields       | Reconciliation evidence                                                   | They report realized or aggregated cost; they are not current list-price authority.                                                                      |
 | Credits, invoices, AWS Marketplace, BYOK provider invoice, payment fees, tax, and discounts | Settlement facts                                                          | Public routes are in scope; account-specific amounts and balances are not.                                                                               |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific:
 
@@ -228,13 +229,13 @@ corroborated `$5 / 30 days` amount and reset interval. The losing eligibility st
 visible raw conflict rather than widening the allowance to the full catalog.
 
 Refresh must enumerate every model, route, page-only price cell, free-tier marker, recognized
-commercial companion, and commercial atom. Missing or malformed one-page evidence suppresses only
-the dependent amount, binding, relationship, or policy fact. It does not reject the model catalog,
-route prices, unrelated services, or the provider snapshot. A newly discovered official service is
+commercial companion, and commercial atom. Malformed fact-level evidence suppresses only
+the dependent amount, binding, relationship, or policy fact. An unavailable companion retains the
+complete provider pricing partition and does not reject the model catalog. A newly discovered official service is
 retained as raw evidence and surfaced for review; an unknown pricing key is never silently dropped
 or guessed. Source removal retires a claim only when the source is exhaustive for that exact claim;
-temporary partial failure may retain the prior claim with visible staleness. Publication remains
-crash-atomic after claim-local reconciliation.
+temporary bundle failure retains the prior partition with visible staleness. Publication remains
+crash-atomic after fact-local reconciliation.
 
 ### Model-detail composition and cost coverage
 
@@ -271,7 +272,7 @@ sum without making omitted line-item allocation or external BYOK cost exact.
 
 ## Extraction and reconciliation
 
-- The refresh is deterministic and non-LLM: bounded JSON schemas own API semantics; exact URL/ID joins own route documents; compact DOM extraction owns only reviewed page facts; a sitemap-driven recognized/ignored companion ledger owns commercial-policy assertions. Migration replaces whole-provider companion strictness with claim-local validation while retaining crash-atomic publication.
+- The refresh is deterministic and non-LLM: bounded JSON schemas own API semantics; exact URL/ID joins own route documents; compact DOM extraction owns only reviewed page facts; a sitemap-driven recognized/ignored companion ledger owns commercial-policy assertions. Fact-level normalization stays local inside a complete bundle, while incomplete commercial bundles retain the provider pricing partition and publication remains crash-atomic.
 - Specialized zero placeholders never repair a missing amount by themselves. Page values whose
   `+N more` presentation hides applicability remain raw rather than guessed.
 - models.dev fetches the same Vercel API but preserves hand-maintained enrichment and only the first

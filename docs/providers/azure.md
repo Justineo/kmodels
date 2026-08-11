@@ -94,6 +94,9 @@ Status: current
   modalities, prices, and exact `{region, deployment_type}` pairs are additive. A scalar observed in
   only one region may fill an unknown, but conflicting descriptions, limits, lifecycle stages, or
   capabilities collapse to unknown instead of letting region order choose a global value.
+- ARM may publish `null` for an individual capability property. Treat that property as absent and
+  keep the model with an unknown canonical capability; a nullable hint must not reject the regional
+  inventory or erase independent model, SKU, availability, and pricing facts.
 - A positive row in the current Assistants availability matrix establishes active support for that exact tuple. The retired-model archive takes precedence when the overview still carries a stale availability column.
 - Retail SKU parsing is a reviewed fallback grammar, not fuzzy matching. Azure OpenAI product
   families bind only to Azure OpenAI catalog rows. Reviewed partner and sold-by-Azure product
@@ -157,6 +160,9 @@ Status: current
 - Canonical rate observations use the public Retail `meterId` as a source-native `meter` locator.
   Reconciliation retains complete reason counts, including direct-meter, missing-meter,
   missing-Retail-meter, unsupported-component, and semantic-conflict outcomes.
+- Provider-owned usage-signal identities include their exact canonical unit.
+  The same Microsoft meter name observed with token and page denominators therefore
+  creates two distinct signal atoms instead of silently reusing the first unit.
 
 ## Commercial topology
 
@@ -168,9 +174,12 @@ token row.
 The public-pricing source follows the bounded model-family index and a fixed reviewed bundle for
 Azure OpenAI, fine-tuning and managed compute, Foundry Agent Service, Content Safety, AI
 Evaluations, and Microsoft Foundry plans. Numeric amounts come from each page's embedded regional
-decimal map. Known table semantics normalize claim-locally; an unrecognized commercial row is
+decimal map. Known table semantics normalize fact-locally; an unrecognized commercial row is
 retained as a source-labelled raw provider-resource term, so sibling rows continue to refresh
 without an LLM and without silently losing a separately published price.
+If any document in that official commercial bundle is unavailable, the complete
+previously accepted Azure pricing partition is retained; current and retained
+commercial observations are never mixed into a partial fresh partition.
 
 ### Public commercial source graph
 
@@ -364,7 +373,7 @@ eligibility and application are observed.
 | Pricing calculator estimates, percentage savings claims, and examples                         | Consistency/estimate evidence only                                                                   | They cannot synthesize a missing exact row or account charge.                                                                                                                            |
 | Cost Analysis, Cost Details, Marketplace usage, and invoice lines                             | Reconciliation/settlement evidence                                                                   | They can make account cost exact but never change catalog identity or retroactively manufacture a public rate.                                                                           |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific:
 
@@ -411,12 +420,12 @@ surfaced for review. Exact IDs, direct meter IDs, documented aliases, and review
 vocabularies are the only joins; fuzzy matching, family inheritance, amount similarity, and an LLM
 are never fallbacks.
 
-Collection and reconciliation are claim-local. A malformed Agent price cell suppresses only that
+Extraction and reconciliation inside a complete source bundle are fact-local. A malformed Agent price cell suppresses only that
 service amount; an ambiguous router target suppresses only that edge; a missing Content Safety
 counter leaves only its quantity binding unresolved; a failed optional account API cannot erase the
-public book. Source removal retires a fact only when that source is exhaustive for the exact claim;
-temporary partial failure may retain the prior accepted claim with visible staleness. Publication
-remains crash-atomic after all claim-local dispositions and conflicts are validated.
+public book. A missing public commercial companion instead retains the whole
+accepted pricing partition with visible staleness. Publication remains
+crash-atomic after all fact-local dispositions and conflicts are validated.
 
 ### Model-detail composition and cost coverage
 

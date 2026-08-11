@@ -237,7 +237,7 @@ multiplied by a DBU factor again.
 | Quotas, ITPM/OTPM/QPH limits, budget thresholds, and concurrency                   | Capacity/control facts                                                                               | They are not charges or allowances unless an exact commercial term says so.                                                                                            |
 | Private prices, committed-use discounts, credits, taxes, refunds, and invoices     | Account settlement only                                                                              | Public refresh cannot derive them.                                                                                                                                     |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific:
 

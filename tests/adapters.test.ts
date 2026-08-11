@@ -3001,7 +3001,7 @@ describe("Mistral adapters", () => {
         ({ book_key }) => book_key === "distribution:mistral/mistral-large-2512@25.12",
       )?.offers[0],
     ).toMatchObject({
-      states: [expect.objectContaining({ state: "not_published" })],
+      states: [expect.objectContaining({ state: "externally_billed" })],
       settlement: [],
       terms: [
         expect.objectContaining({
@@ -5190,6 +5190,18 @@ describe("Azure adapters", () => {
     });
   });
 
+  it("treats null ARM capabilities as unknown without dropping the model", async () => {
+    const body = (await fixture("azure/api.json")).replace(
+      '"streaming": "true"',
+      '"streaming": null',
+    );
+    const model = azureApiModels(body)[0];
+    expect(model).toMatchObject({
+      uid: "azure/gpt-multi@2026-01-01",
+      capabilities: { streaming: "unknown", structured_output: true },
+    });
+  });
+
   it("normalizes the live ARM embedding TotalToken meter shape", () => {
     const model = azureApiModels(
       JSON.stringify({
@@ -6002,7 +6014,7 @@ describe("Gemini adapters", () => {
         offerKey: "indexing",
         pricingState: "numeric",
         modelRefs: [],
-        rawReason: "target_rate_not_normalized",
+        rawReason: "requires_usage_aggregation",
       },
       {
         offerKey: "query-embedding",
@@ -6017,7 +6029,7 @@ describe("Gemini adapters", () => {
           "gemini/gemini-test-preview",
           "gemini/gemini-3-test-preview",
         ]),
-        rawReason: "target_rate_not_normalized",
+        rawReason: "requires_usage_aggregation",
       },
       {
         offerKey: "storage",
@@ -12297,7 +12309,7 @@ describe("Hugging Face adapter", () => {
         },
       ],
     });
-    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v8");
+    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v9");
     expect(sources[2]).toMatchObject({
       extractorVersion: "huggingface-featherless-v1",
       optional: true,
@@ -12997,6 +13009,7 @@ describe("Hugging Face adapter", () => {
       expect.objectContaining({
         term_key: "endpoint_monthly_example",
         reason: "superseded_value",
+        resolution_policy: "exact_capacity_table_over_monthly_example",
       }),
     );
     expect(items).toContainEqual({
@@ -14186,6 +14199,12 @@ describe("DashScope adapters", () => {
       api_endpoints: [{ name: "Realtime", path: "/api-ws/v1/realtime" }],
       availability: [{ region: "Singapore", deployment_type: "model_api" }],
     });
+    expect(
+      parse(
+        source("dashscope-recommended"),
+        body.replace("qwen3.8-max]", "qwen3.8-max Third-party]"),
+      ).some(({ model_id }) => model_id === "qwen3.8-max"),
+    ).toBe(true);
     expect(() =>
       parse(
         source("dashscope-recommended"),
@@ -14260,12 +14279,12 @@ describe("DashScope adapters", () => {
           scope: conditions.deployment_scope,
         })),
     ).toEqual([
-      { meter: "web_search", price: "10", unit: "thousand_requests", scope: "International" },
-      { meter: "web_search", price: "0.573411", unit: "thousand_requests", scope: "Global" },
+      { meter: "web_search", price: "10", unit: "thousand_events", scope: "International" },
+      { meter: "web_search", price: "0.573411", unit: "thousand_events", scope: "Global" },
       {
         meter: "web_search",
         price: "0.573411",
-        unit: "thousand_requests",
+        unit: "thousand_events",
         scope: "Chinese mainland",
       },
     ]);
@@ -15578,12 +15597,12 @@ describe("Ollama adapters", () => {
       modalities: { input: ["text", "image", "audio"], output: ["text"] },
       capabilities: { reasoning: true, tool_call: true },
       updated_date: "2026-06-30",
-      pricing_state: "not_applicable",
+      pricing_state: "unknown",
     });
     expect(models.find(({ model_id }) => model_id === "nomic-embed-text")).toMatchObject({
       tasks: ["embeddings"],
       modalities: { input: ["text"], output: ["embedding"] },
-      pricing_state: "not_applicable",
+      pricing_state: "unknown",
     });
     expect(models.find(({ model_id }) => model_id === "glm-ocr")?.tasks).toEqual([
       "text_generation",

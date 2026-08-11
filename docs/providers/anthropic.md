@@ -148,7 +148,7 @@ The submitted selector never silently substitutes for a documented realized sign
 
 The code-execution allowance has a first-party conflict. The current `claude.com/pricing` card publishes 50 free container-hours per organization per day, while the detailed pricing and execution guides publish 1,550 hours per organization per month. These reset periods are not equivalent. Because the detailed guide explicitly delegates current prices to `claude.com/pricing`, the adapter selects the daily allowance as the current claim and retains the monthly observation as superseded evidence. If the concise card temporarily omits the daily claim, the monthly allowance remains usable instead of disappearing. The independently agreeing USD 0.05 hourly rate and five-minute minimum remain valid.
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific, not one total ordering of documents:
 

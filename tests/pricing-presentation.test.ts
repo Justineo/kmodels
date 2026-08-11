@@ -534,7 +534,7 @@ describe("canonical pricing presentation", () => {
     ).toMatchObject({
       amount: "$0.198",
       displayUnit: "1K TPM·hr",
-      accessibleText: 'input_text: USD 0.198 per provider-unit("test","1k_tpm_hour")',
+      accessibleText: "input_text: USD 0.198 per 1K TPM·hr",
       showTooltip: true,
     });
     expect(
@@ -550,7 +550,7 @@ describe("canonical pricing presentation", () => {
       }),
     ).toMatchObject({
       amount: "$0.333333333333…",
-      accessibleText: 'approximately USD 0.333333333333 per provider-unit("test","1k_tpm_hour")',
+      accessibleText: "approximately USD 0.333333333333 per 1K TPM·hr",
     });
   });
 

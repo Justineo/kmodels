@@ -837,7 +837,9 @@ function sourceModel(
     replacement_model_ids: replacementId === undefined ? [] : [replacementId],
     pricing_state:
       draft.status === "retired"
-        ? "not_applicable"
+        ? draft.weights.length === 0
+          ? "not_applicable"
+          : "unknown"
         : rates.length > 0
           ? "numeric"
           : draft.pricing.free
@@ -856,7 +858,7 @@ function sourceModel(
       offer_key: `download:${index + 1}`,
       offer_name: "Published model weights",
       billing_mode: "one_time" as const,
-      pricing_state: "not_published" as const,
+      pricing_state: "externally_billed" as const,
       price_facts: [],
       raw_price_facts: [
         {
@@ -1156,8 +1158,9 @@ function selectPublicRate(
       ...model.raw_price_facts,
       ...superseded.map((old) => ({
         term_key: `repository_price_superseded:${old.meter}:${old.currency}`,
-        impact: "base_price" as const,
+        impact: "informational" as const,
         reason: "superseded_value" as const,
+        resolution_policy: "mistral_public_price_page_over_repository",
         conditions: old.conditions,
         source_ref: sourceId,
         raw: {

@@ -140,14 +140,17 @@ function addGroundingRate(
 
 function groundingAllowance(model: ParsedProviderModel, operation: string): MutableFact {
   const search = operation === "google_search";
-  return resource({
-    bookKey: `service:${operation.replaceAll("_", "-")}`,
-    bookName: search ? "Grounding with Google Search" : "Grounding with Google Maps",
-    resourceKey: operation.replaceAll("_", "-"),
-    model,
-    offerKey: "shared-allowance",
-    offerName: `${search ? "Search" : "Maps"} grounding allowance`,
-  });
+  return {
+    ...resource({
+      bookKey: `service:${operation.replaceAll("_", "-")}`,
+      bookName: search ? "Grounding with Google Search" : "Grounding with Google Maps",
+      resourceKey: operation.replaceAll("_", "-"),
+      model,
+      offerKey: "shared-allowance",
+      offerName: `${search ? "Search" : "Maps"} grounding allowance`,
+    }),
+    pricing_state: "included",
+  };
 }
 
 function addFileSearchFacts(
@@ -197,7 +200,7 @@ function addFileSearchFacts(
     policyRaw(
       "file-search-indexing",
       "base_price",
-      "target_rate_not_normalized",
+      "requires_usage_aggregation",
       "charged for embeddings at indexing time based on existing embeddings pricing",
       sourceId,
     ),
@@ -220,7 +223,7 @@ function addFileSearchFacts(
     policyRaw(
       "file-search-retrieved-tokens",
       "base_price",
-      "target_rate_not_normalized",
+      "requires_usage_aggregation",
       "Retrieved document tokens are charged as regular context tokens",
       sourceId,
     ),

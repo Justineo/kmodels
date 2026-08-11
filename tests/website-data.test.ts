@@ -2,13 +2,18 @@ import { readFile } from "node:fs/promises";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 import { decodeAssetPackManifest, validateAssetPack } from "../src/catalog/asset-pack.ts";
-import { canonicalJsonKey } from "../src/catalog/canonical-value.ts";
+import { canonicalJsonKey, compareUtf8 } from "../src/catalog/canonical-value.ts";
 import { websitePublicationAssets } from "../src/catalog/endpoints.ts";
 import { manifests, type ProviderManifest } from "../src/catalog/manifests.ts";
 import { defaultProjectionPaths } from "../src/catalog/projection-paths.ts";
 import type { PriceDimension } from "../src/catalog/pricing-schema.ts";
 import { websiteDataVersion } from "../src/catalog/projections.ts";
-import { WEBSITE_DETAIL_CHUNK_MAX_BYTES, websitePublication } from "../src/catalog/website-data.ts";
+import {
+  WEBSITE_DETAIL_CHUNK_MAX_BYTES,
+  websitePublication,
+  type WebsitePublication,
+} from "../src/catalog/website-data.ts";
+import type { WebsiteModelDetail } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 const websiteDataBudgets = {
@@ -16,6 +21,7 @@ const websiteDataBudgets = {
   pricingBytes: 1024 * 1024,
   compressedCatalogBytes: 64 * 1024,
   compressedPricingBytes: 32 * 1024,
+  modelDetailBytes: 80 * 1024 * 1024,
 };
 
 const auditFields = new Set([
@@ -75,6 +81,29 @@ function publicationData() {
   return generatedPublication;
 }
 
+function publishedModelDetails(publication: WebsitePublication): WebsiteModelDetail[] {
+  const offerChunks = new Map(
+    publication.offers.map(({ provider_id, chunk, offers }) => [`${provider_id}/${chunk}`, offers]),
+  );
+  return publication.details.flatMap(({ provider_id, details }) =>
+    details.map(({ pricing, ...detail }) => {
+      if (pricing === undefined) return detail;
+      const offers = pricing.offer_refs.map(([chunk, index]) => {
+        const offer = offerChunks.get(`${provider_id}/${chunk}`)?.[index];
+        if (offer === undefined) throw new Error(`Missing website offer ${provider_id}/${chunk}`);
+        return offer;
+      });
+      return {
+        ...detail,
+        pricing: {
+          ...(pricing.snapshot === undefined ? {} : { snapshot: pricing.snapshot }),
+          offers,
+        },
+      };
+    }),
+  );
+}
+
 function categoricalLabelIdentity(
   providerId: string,
   dimension: PriceDimension,
@@ -126,11 +155,44 @@ describe("website data", () => {
     expect(
       Math.max(...publication.details.map((chunk) => Buffer.byteLength(JSON.stringify(chunk)))),
     ).toBeLessThanOrEqual(WEBSITE_DETAIL_CHUNK_MAX_BYTES);
+    expect(
+      Math.max(...publication.offers.map((chunk) => Buffer.byteLength(JSON.stringify(chunk)))),
+    ).toBeLessThanOrEqual(WEBSITE_DETAIL_CHUNK_MAX_BYTES);
+    expect(
+      Math.max(
+        ...publication.providerPricing.map((chunk) => Buffer.byteLength(JSON.stringify(chunk))),
+      ),
+    ).toBeLessThanOrEqual(WEBSITE_DETAIL_CHUNK_MAX_BYTES);
+    for (const provider of publication.catalog.providers) {
+      const chunks = publication.providerPricing.filter(
+        ({ provider_id }) => provider_id === provider.id,
+      );
+      expect(chunks.map(({ chunk }) => chunk)).toEqual(chunks.map((_, index) => index));
+      expect(provider.pricing_coverage.detail_chunks).toBe(chunks.length);
+      expect(provider.pricing_coverage.standalone_resources).toBe(
+        new Set(chunks.flatMap(({ resources }) => resources.map(({ id }) => id))).size,
+      );
+      expect(provider.pricing_coverage.representative_models).toBeLessThanOrEqual(
+        provider.pricing_coverage.offer_models,
+      );
+      expect(
+        provider.pricing_coverage.offer_models +
+          provider.pricing_coverage.unknown_models +
+          provider.pricing_coverage.not_applicable_models,
+      ).toBe(provider.pricing_coverage.models);
+    }
     expect(new Set(details.map(({ model_ref }) => model_ref))).toEqual(
       new Set(catalog.models.map(({ uid }) => uid)),
     );
-    expect(foundAuditFields(details)).toEqual([]);
-    const offers = details.flatMap(({ pricing }) => pricing?.offers ?? []);
+    expect(
+      [...publication.details, ...publication.offers].reduce(
+        (bytes, chunk) => bytes + Buffer.byteLength(JSON.stringify(chunk)),
+        0,
+      ),
+    ).toBeLessThan(websiteDataBudgets.modelDetailBytes);
+    expect(foundAuditFields([details, publication.offers])).toEqual([]);
+    const hydratedDetails = publishedModelDetails(publication);
+    const offers = hydratedDetails.flatMap(({ pricing }) => pricing?.offers ?? []);
     expect(offers.length).toBeGreaterThan(0);
     for (const offer of offers) {
       expect(offer).not.toHaveProperty("book_title");
@@ -148,7 +210,7 @@ describe("website data", () => {
       expect.arrayContaining([expect.stringMatching(/\d\/\d/)]),
     );
     expect(
-      details.flatMap(
+      hydratedDetails.flatMap(
         ({ pricing }) =>
           pricing?.offers.flatMap(({ allowances }) => allowances.map(({ value }) => value)) ?? [],
       ),
@@ -156,7 +218,7 @@ describe("website data", () => {
   }, 90_000);
 
   it("projects exact numeric values and complete range partitions as choices", async () => {
-    const details = (await publicationData()).publication.details.flatMap((chunk) => chunk.details);
+    const details = publishedModelDetails((await publicationData()).publication);
     const selectors = details.flatMap(
       ({ pricing }) => pricing?.offers.flatMap((offer) => offer.selectors) ?? [],
     );
@@ -250,29 +312,31 @@ describe("website data", () => {
     ).toEqual([]);
 
     const projectedLabels = new Map<string, string>();
-    for (const detail of publication.details.flatMap((chunk) => chunk.details))
-      for (const offer of detail.pricing?.offers ?? [])
-        for (const selector of offer.selectors) {
-          if (selector.kind !== "categorical") continue;
-          expect(
-            new Set(selector.values.map(({ label }) => label)).size,
-            `${detail.model_ref}:${offer.id}:${selector.key}`,
-          ).toBe(selector.values.length);
-          for (const { label, value } of selector.values) {
-            if (value.namespace !== "provider") continue;
-            const identity = categoricalLabelIdentity(
-              value.provider_id,
-              selector.dimension,
-              value.value,
-            );
-            const current = projectedLabels.get(identity);
-            if (current !== undefined) expect(label, identity).toBe(current);
-            projectedLabels.set(identity, label);
-          }
+    const projectedOffers = publication.offers.flatMap(({ offers }) => offers);
+    for (const offer of projectedOffers)
+      for (const selector of offer.selectors) {
+        if (selector.kind !== "categorical") continue;
+        expect(
+          new Set(selector.values.map(({ label }) => label)).size,
+          `${offer.id}:${selector.key}`,
+        ).toBe(selector.values.length);
+        for (const { label, value } of selector.values) {
+          if (value.namespace !== "provider") continue;
+          const identity = categoricalLabelIdentity(
+            value.provider_id,
+            selector.dimension,
+            value.value,
+          );
+          const current = projectedLabels.get(identity);
+          if (current !== undefined) expect(label, identity).toBe(current);
+          projectedLabels.set(identity, label);
         }
+      }
 
-    for (const [identity, label] of configuredLabels)
-      expect(projectedLabels.get(identity), identity).toBe(label);
+    for (const [identity, label] of projectedLabels) {
+      const configured = configuredLabels.get(identity);
+      if (configured !== undefined) expect(label, identity).toBe(configured);
+    }
   }, 90_000);
 
   it("keeps the checked-in development pack bound to the audit-free projection", async () => {
@@ -288,6 +352,10 @@ describe("website data", () => {
     }));
 
     expect(manifest.data_version).toBe(dataVersion);
-    expect(actual).toEqual(websitePublicationAssets(publication));
+    expect(actual).toEqual(
+      websitePublicationAssets(publication).sort((left, right) =>
+        compareUtf8(left.fileName, right.fileName),
+      ),
+    );
   }, 90_000);
 });

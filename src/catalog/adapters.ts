@@ -485,6 +485,7 @@ interface OpenAiPricingTable {
 
 const openAiPricingSections = new Set([
   "Flagship models",
+  "Cyber models",
   "Realtime and audio generation models",
   "Image generation models",
   "Video generation models",
@@ -958,7 +959,10 @@ function addUniqueModelIndex<T extends { model_id: string }>(
   );
 }
 
-type OpenAiCommercialModel = Pick<ProviderModel, "api_endpoints" | "capabilities" | "uid">;
+type OpenAiCommercialModel = Pick<
+  ProviderModel,
+  "api_endpoints" | "capabilities" | "pricing_state" | "uid"
+>;
 
 function openAiToolCommercialFacts(
   table: OpenAiPricingTable,
@@ -969,8 +973,10 @@ function openAiToolCommercialFacts(
   const tool = row[table.headers.indexOf("Tool")] ?? row[0] ?? "";
   const details = row[table.headers.indexOf("Details")] ?? "";
   const published = row[table.headers.indexOf("Pricing")] ?? row.at(-1) ?? "";
-  const responseModels = models.filter(({ api_endpoints }) =>
-    api_endpoints?.some(({ path }) => path === "v1/responses"),
+  const responseModels = models.filter(
+    ({ api_endpoints, pricing_state }) =>
+      pricing_state !== "not_applicable" &&
+      api_endpoints?.some(({ path }) => path === "v1/responses"),
   );
   const responseRefs = responseModels.map(({ uid }) => uid);
   const fact = (

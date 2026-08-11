@@ -194,12 +194,22 @@ export function modelPricingViewFromIndex(
     plansAndCapacity: [],
     standaloneOffers: [],
   };
-  if (index.dispositions.has(model.uid))
-    return { outcome: "not_applicable", ...empty, ...metadata };
-
   const projectedBooks = (index.books.get(model.uid) ?? []).filter(
     ({ provider_id }) => provider_id === model.provider_id,
   );
+  const hasExternalExecution = projectedBooks.some(
+    (book) =>
+      book.scope.kind === "provider_resource" &&
+      book.offers.some((offer) =>
+        offer.states.some(
+          ({ state, applicability }) =>
+            state === "externally_billed" &&
+            evaluateModelApplicability(applicability, model.uid, selections).state !== "false",
+        ),
+      ),
+  );
+  if (index.dispositions.has(model.uid) && !hasExternalExecution)
+    return { outcome: "not_applicable", ...empty, ...metadata };
   if (projectedBooks.length === 0) return { outcome: "unknown", ...empty, ...metadata };
 
   const context = withModelSelection(selections, model.uid);
@@ -511,7 +521,7 @@ function displayUnits(value: UnitExpression): DisplayUnit[] {
   const base = {
     scale: unitScale("1"),
     display: displayUnitExpression(value),
-    accessible: formatUnitExpression(value),
+    accessible: displayUnitExpression(value),
   };
   const scaled = (scale: string, display: string): DisplayUnit => ({
     scale: unitScale(scale),

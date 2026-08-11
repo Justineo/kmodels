@@ -706,6 +706,24 @@ describe("parsed-source canonical pricing adapter", () => {
       tokenRate("4", { service_tier: "priority" }),
       tokenRate("1", { service_tier: "batch" }),
       {
+        meter: "input_image",
+        price: "3",
+        currency: "USD",
+        unit: "million_tokens",
+        conditions: { operation: "vision" },
+        source_ref: sourceRef,
+        derived: false,
+      },
+      {
+        meter: "input_image",
+        price: "0.001",
+        currency: "USD",
+        unit: "page",
+        conditions: { operation: "document_ocr" },
+        source_ref: sourceRef,
+        derived: false,
+      },
+      {
         meter: "provisioned_throughput",
         price: "10",
         currency: "USD",
@@ -762,7 +780,11 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(batchInput?.kind === "rate" ? batchInput.variants[0] : undefined).toMatchObject({
       charge_binding: {
         aggregation: "result_item",
-        signal: { namespace: "provider", provider_id: "azure", value: "batch_result_input_text" },
+        signal: {
+          namespace: "provider",
+          provider_id: "azure",
+          value: "batch_result_input_text_kmodels_token_p1",
+        },
       },
     });
     expect(
@@ -773,6 +795,14 @@ describe("parsed-source canonical pricing adapter", () => {
         : true,
     ).toBe(false);
     expect(sync?.settlement[0]).toMatchObject({ channel: "direct", biller: "Microsoft" });
+    const imageInput = sync?.terms.find(({ term_key }) => term_key === "input_image");
+    expect(
+      imageInput?.kind === "rate"
+        ? imageInput.variants
+            .map(({ charge_binding }) => charge_binding?.signal.value)
+            .sort((left, right) => (left ?? "").localeCompare(right ?? ""))
+        : [],
+    ).toEqual(["response_input_image_kmodels_page_p1", "response_input_image_kmodels_token_p1"]);
 
     const capacity = books.find(
       ({ scope }) =>
@@ -811,7 +841,7 @@ describe("parsed-source canonical pricing adapter", () => {
             signal: {
               namespace: "provider",
               provider_id: "azure",
-              value: "router_input_tokens",
+              value: "router_input_kmodels_token_p1",
             },
           }),
         }),
@@ -1329,7 +1359,9 @@ describe("parsed-source canonical pricing adapter", () => {
             expect.objectContaining({
               charge_binding: expect.objectContaining({
                 aggregation: "resource",
-                signal: expect.objectContaining({ value: "provisioned_gsu_commitment" }),
+                signal: expect.objectContaining({
+                  value: expect.stringMatching(/^provisioned_gsu_commitment_/),
+                }),
               }),
             }),
           ],
@@ -2820,6 +2852,25 @@ describe("parsed-source canonical pricing adapter", () => {
         target: { kind: "offers", offer_refs: [batch?.id] },
       }),
     );
+    const syncInput = sync?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_text",
+    );
+    expect(
+      syncInput?.kind === "rate"
+        ? syncInput.variants.every(({ charge_binding }) => charge_binding === undefined)
+        : false,
+    ).toBe(true);
+    const cacheRead = sync?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "cache_read_text",
+    );
+    expect(
+      cacheRead?.kind === "rate"
+        ? cacheRead.variants[0]?.charge_binding?.observations.map(({ locator }) => locator.value)
+        : [],
+    ).toEqual([
+      "chat:usage.prompt_tokens_details.cached_tokens",
+      "responses:usage.input_tokens_details.cached_tokens",
+    ]);
     expect(
       sync?.terms.find((term) => term.kind === "rate" && term.meter.value === "cache_write_text"),
     ).toMatchObject({

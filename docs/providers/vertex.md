@@ -296,7 +296,7 @@ become charge quantities merely because their units resemble a commercial meter.
 | `N/A`, unsupported cells, no-endpoint-cost statements, and explicit no-fee operations                                       | Exact non-numeric, exclusion, or no-separate-charge policy according to wording. Absence/dash never becomes numeric zero; no endpoint fee does not make tuned inference free.                             |
 | Unknown identity, amount, unit, new tool/agent, SKU relationship, or allowance scope                                        | Retain a safely identified atom bounded raw with a coverage warning; withhold only the unresolved claim. Never erase recognized siblings, model identity, or independent sources.                         |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 - Exact pricing cells own public list amounts. Model cards and capability guides own identity,
   route, model compatibility, and lifecycle. Mechanism guides own requested/realized semantics and

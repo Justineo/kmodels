@@ -7,6 +7,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
@@ -15,7 +16,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -542,10 +542,6 @@ function normalized(
   return { ...rawEvidence(observation), establishes_applicability: applicability };
 }
 
-function rawEvidence(observation: RawPriceObservation): RawPriceObservation {
-  return { source_ref: observation.source_ref, locator: observation.locator, raw: observation.raw };
-}
-
 function isUnit(unit: UnitExpression, value: string): boolean {
   const factor = unit.factors.length === 1 ? unit.factors[0] : undefined;
   return factor?.power === 1 && factor.unit.namespace === "kmodels" && factor.unit.value === value;
@@ -553,13 +549,4 @@ function isUnit(unit: UnitExpression, value: string): boolean {
 
 function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {
   return offer !== undefined && (offer.states.length > 0 || offer.terms.length > 0);
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) => candidate.kind === atom.kind && candidate.key === atom.key,
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
-  else if (JSON.stringify(current) !== JSON.stringify(atom))
-    throw new Error(`Mistral provider atom ${atom.kind}:${atom.key} conflicts`);
 }

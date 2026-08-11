@@ -240,7 +240,7 @@ masquerade as Meta invoice quantities.
 | Meta AI consumer application                                               | Exclude from the Llama API price book and catalog route graph. A free consumer experience is not a developer API price.                                                    |
 | Meta Model API, Muse models, launch credits, and built-in services         | Exclude from this provider surface. Audit them as a separate Meta closed-model/API provider if admitted later.                                                             |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is fact-local:
 

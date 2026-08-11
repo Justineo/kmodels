@@ -7,6 +7,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom, rawEvidence, unitIdentityKey } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
@@ -15,7 +16,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -312,7 +312,7 @@ function resourceBinding(
   input: AtomicProviderPricing,
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels") return;
-  const key =
+  const baseKey =
     resourceKey === "explicit-cache-storage" && meter.value === "storage"
       ? "explicit_cache_stored_token_time"
       : resourceKey === "provisioned-throughput" && meter.value === "provisioned_capacity"
@@ -331,7 +331,7 @@ function resourceBinding(
                     ? "claude_server_tool_use_web_search_requests"
                     : resourceKey === "google-image-search"
                       ? "grounding_metadata_image_search_queries"
-                      : resourceKey === "google-maps"
+                      : resourceKey === "google-maps" && isRequestUnit(variant.price.per)
                         ? "grounding_metadata_maps_queries"
                         : resourceKey === "grounded-generation"
                           ? "grounded_generation_billable_requests"
@@ -341,7 +341,11 @@ function resourceBinding(
                               ? "grounding_metadata_successful_grounded_prompts"
                               : "grounding_metadata_web_search_queries"
                             : undefined;
-  if (key === undefined) return;
+  if (baseKey === undefined) return;
+  const key =
+    baseKey === "provisioned_gsu_commitment"
+      ? `${baseKey}_${unitIdentityKey(variant.price.per)}`
+      : baseKey;
   const storage = resourceKey === "explicit-cache-storage";
   const capacity = resourceKey === "provisioned-throughput";
   const training = resourceKey === "model-tuning";
@@ -353,7 +357,7 @@ function resourceBinding(
     key,
     storage
       ? "Explicit cache token count integrated over its retained lifetime"
-      : `Billable ${resourceKey.replaceAll("-", " ")} outcome count`,
+      : `Billable ${key.replaceAll("_", " ")}`,
     variant.price.per,
     storage || capacity
       ? "resource"
@@ -513,33 +517,11 @@ function offerEvidence(offer: AtomicPricingOffer): RawPriceObservation {
   return evidence;
 }
 
-function rawEvidence(observation: RawPriceObservation): RawPriceObservation {
-  return {
-    source_ref: observation.source_ref,
-    locator: observation.locator,
-    raw: observation.raw,
-  };
-}
-
 function normalized(
   observation: NormalizedPriceObservation,
   applicability: PriceApplicability,
 ): NormalizedPriceObservation {
   return { ...observation, establishes_applicability: applicability };
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) =>
-      candidate.kind === atom.kind &&
-      candidate.key === atom.key &&
-      (!("dimension" in candidate) ||
-        !("dimension" in atom) ||
-        JSON.stringify(candidate.dimension) === JSON.stringify(atom.dimension)),
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
-  else if (JSON.stringify(current) !== JSON.stringify(atom))
-    throw new Error(`Vertex pricing atom ${atom.key} changed definition`);
 }
 
 function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {

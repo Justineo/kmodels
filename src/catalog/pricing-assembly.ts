@@ -286,11 +286,24 @@ function assembleOffer(prepared: PreparedOffer): PricingOffer {
     states: sortStates(states),
     enrollment: sortByCanonicalKey(input.enrollment ?? [], (variant) => variant),
     terms,
-    relations: sortByCanonicalKey(input.relations.map(canonicalRelation), (relation) => relation),
+    relations: input.relations.map(canonicalRelation).sort(compareRelations),
     settlement: sortByCanonicalKey(input.settlement ?? [], (variant) => variant),
     source_refs: sortUniqueStrings(input.source_refs),
   };
   return base;
+}
+
+function compareRelations(left: OfferRelation, right: OfferRelation): number {
+  return compareUtf8Sequences(relationKey(left), relationKey(right));
+}
+
+function relationKey(relation: OfferRelation): string[] {
+  return [
+    relation.kind,
+    canonicalJson(relation.target),
+    ...optionalValue(relation.validity).map(canonicalJson),
+    canonicalJson(relation.applicability),
+  ];
 }
 
 function assembleStates(states: AtomicPriceState[]): {

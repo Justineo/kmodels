@@ -172,6 +172,7 @@ export const sourceRawPricingFactSchema = z.strictObject({
   conditions: sourcePriceConditionsSchema,
   source_ref: z.string().min(1),
   raw: rawPriceFactSchema,
+  resolution_policy: resolutionPolicySchema.optional(),
 });
 
 export const sourceCommercialPricingFactSchema = z.strictObject({
@@ -237,7 +238,7 @@ export function sourcePriceFactKey(fact: SourcePriceFact): string {
 }
 
 export function sourceRawPricingFactKey(fact: SourceRawPricingFact): string {
-  return `${fact.term_key}\0${JSON.stringify(fact.conditions)}\0${JSON.stringify(fact.raw)}`;
+  return `${fact.term_key}\0${fact.impact}\0${fact.reason}\0${fact.resolution_policy ?? ""}\0${JSON.stringify(fact.conditions)}\0${JSON.stringify(fact.raw)}`;
 }
 
 function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {

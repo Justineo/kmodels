@@ -60,10 +60,11 @@ not capacity. Consequently the K2.7 HighSpeed catalog description no longer prod
 authenticated inventory evidence.
 
 Restricted and retired notices are parsed structurally. Identity-bearing catalog and OpenAPI
-contradictions still fail their source. Commercial extraction is claim-local: an invalid price row
-or pricing document is rejected with a bounded reconciliation item while valid sibling rows remain;
-a changed accounting or ancillary companion claim suppresses only the dependent service or charge
-binding. It never erases independently parsed model prices. Source references are additive:
+contradictions still fail their source. Commercial extraction inside a complete bundle is
+fact-local: an invalid price row is rejected with a bounded reconciliation item while valid sibling
+rows remain; a changed accounting or ancillary companion claim suppresses only the dependent
+service or charge binding. An unavailable companion retains the complete accepted pricing
+partition rather than mixing current model prices with partial commercial evidence. Source references are additive:
 independent agreement from both regions is preserved instead of discarded after the first match.
 
 ## First-party commercial source graph
@@ -284,7 +285,7 @@ happen to produce the same total for a one-call example.
 | Products absent from the bounded direct API                  | Emit no speculative training, embeddings, provisioned throughput, deployment, reserved capacity, or media price. Reconsider only from exact first-party commercial evidence.                                   |
 | Missing, malformed, conflicting, or temporarily absent claim | Suppress only the affected claim, retain compatible prior evidence with freshness, and keep sibling models, rates, routes, free states, relationships, and account facts.                                      |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is specific to each claim:
 

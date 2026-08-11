@@ -7,6 +7,7 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
@@ -15,7 +16,6 @@ import type {
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
   UsageSignal,
@@ -367,28 +367,11 @@ function offerEvidence(offer: AtomicPricingOffer): RawPriceObservation {
   return evidence;
 }
 
-function rawEvidence(observation: RawPriceObservation): RawPriceObservation {
-  return {
-    source_ref: observation.source_ref,
-    locator: observation.locator,
-    raw: observation.raw,
-  };
-}
-
 function normalized(
   observation: NormalizedPriceObservation,
   applicability: PriceApplicability,
 ): NormalizedPriceObservation {
   return { ...observation, establishes_applicability: applicability };
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) => candidate.kind === atom.kind && candidate.key === atom.key,
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
-  else if (JSON.stringify(current) !== JSON.stringify(atom))
-    throw new Error(`Kimi pricing atom ${atom.key} changed definition`);
 }
 
 function isTokenUnit(unit: UnitExpression): boolean {

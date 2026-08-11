@@ -156,13 +156,22 @@ const websiteCatalogIndexModelSchema = z.strictObject({
 });
 
 export const websiteCatalogIndexSchema = z.strictObject({
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
   data_version: hash,
   generated_at: z.string().min(1),
   providers: z.array(
     z.strictObject({
       id: z.string().min(1),
       name: z.string().min(1),
+      pricing_coverage: z.strictObject({
+        models: z.number().int().nonnegative(),
+        representative_models: z.number().int().nonnegative(),
+        offer_models: z.number().int().nonnegative(),
+        unknown_models: z.number().int().nonnegative(),
+        not_applicable_models: z.number().int().nonnegative(),
+        standalone_resources: z.number().int().nonnegative(),
+        detail_chunks: z.number().int().nonnegative(),
+      }),
     }),
   ),
   models: z.array(websiteCatalogIndexModelSchema),
@@ -301,6 +310,7 @@ const websiteUnnormalizedRowSchema = z.strictObject({
   label: z.string().min(1),
   impact: z.enum(rawPricingImpacts),
   reason: z.string().min(1),
+  details: z.array(nonEmpty).min(1).optional(),
   possible_scope: priceApplicabilitySchema.optional(),
   validity: publishedValiditySchema.optional(),
 });
@@ -336,7 +346,40 @@ export const websitePricingDetailSchema = z.strictObject({
   offers: z.array(websitePricingOfferSchema),
 });
 
-export const websiteModelDetailSchema = z.strictObject({
+const websiteOfferReferenceSchema = z.tuple([
+  z.number().int().nonnegative(),
+  z.number().int().nonnegative(),
+]);
+
+export const websiteOfferChunkSchema = z.strictObject({
+  schema_version: z.literal(1),
+  data_version: hash,
+  provider_id: nonEmpty,
+  chunk: z.number().int().nonnegative(),
+  offers: z.array(websitePricingOfferSchema).min(1),
+});
+
+const websiteProviderPricingResourceShape = {
+  id: hash,
+  title: nonEmpty,
+  kind: nonEmpty,
+};
+
+export const websiteProviderPricingChunkSchema = z.strictObject({
+  schema_version: z.literal(1),
+  data_version: hash,
+  provider_id: nonEmpty,
+  chunk: z.number().int().nonnegative(),
+  snapshot: websitePricingSnapshotSchema.optional(),
+  resources: z.array(
+    z.strictObject({
+      ...websiteProviderPricingResourceShape,
+      offer_refs: z.array(z.array(websiteOfferReferenceSchema).min(1)).min(1),
+    }),
+  ),
+});
+
+const websiteModelDetailShape = {
   model_ref: nonEmpty,
   updated_date: modelDate.optional(),
   description: z.string().optional(),
@@ -370,15 +413,29 @@ export const websiteModelDetailSchema = z.strictObject({
   max_output_tokens: z.number().int().nonnegative().optional(),
   scope: z.enum(modelScopes),
   availability_count: z.number().int().nonnegative().optional(),
+};
+
+export const websiteModelDetailSchema = z.strictObject({
+  ...websiteModelDetailShape,
   pricing: websitePricingDetailSchema.optional(),
 });
 
+const websiteStoredModelDetailSchema = z.strictObject({
+  ...websiteModelDetailShape,
+  pricing: z
+    .strictObject({
+      snapshot: websitePricingSnapshotSchema.optional(),
+      offer_refs: z.array(websiteOfferReferenceSchema),
+    })
+    .optional(),
+});
+
 export const websiteDetailChunkSchema = z.strictObject({
-  schema_version: z.literal(4),
+  schema_version: z.literal(5),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
-  details: z.array(websiteModelDetailSchema),
+  details: z.array(websiteStoredModelDetailSchema),
 });
 
 export type WebsiteCatalogIndex = z.infer<typeof websiteCatalogIndexSchema>;
@@ -386,6 +443,8 @@ export type WebsiteCatalogIndexModel = z.infer<typeof websiteCatalogIndexModelSc
 export type WebsitePricingSummaries = z.infer<typeof websitePricingSummariesSchema>;
 export type WebsitePricingSummary = z.infer<typeof websitePricingSummarySchema>;
 export type WebsiteDetailChunk = z.infer<typeof websiteDetailChunkSchema>;
+export type WebsiteOfferChunk = z.infer<typeof websiteOfferChunkSchema>;
+export type WebsiteOfferReference = z.infer<typeof websiteOfferReferenceSchema>;
 export type WebsiteModel = WebsiteCatalogIndexModel & {
   uid: string;
   pricing: WebsitePricingSummary;
@@ -394,7 +453,18 @@ export type WebsiteCatalog = Omit<WebsiteCatalogIndex, "models"> & {
   models: WebsiteModel[];
 };
 export type WebsiteModelDetail = z.infer<typeof websiteModelDetailSchema>;
+export type WebsiteStoredModelDetail = z.infer<typeof websiteStoredModelDetailSchema>;
 export type WebsitePricingDetail = z.infer<typeof websitePricingDetailSchema>;
+export type WebsiteProviderPricingChunk = z.infer<typeof websiteProviderPricingChunkSchema>;
+export type WebsiteProviderPricingDetail = Omit<WebsiteProviderPricingChunk, "resources"> & {
+  resources: Array<{
+    id: string;
+    title: string;
+    kind: string;
+    offers: WebsitePricingOffer[];
+  }>;
+};
+export type WebsiteProvider = WebsiteCatalogIndex["providers"][number];
 export type WebsitePricingOffer = z.infer<typeof websitePricingOfferSchema>;
 export type WebsitePricingSelector = z.infer<typeof websitePricingSelectorSchema>;
 export type WebsitePriceApplicability = z.infer<typeof priceApplicabilitySchema>;

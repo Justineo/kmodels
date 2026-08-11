@@ -256,9 +256,9 @@ or an invoice.
 | AWS Marketplace                             | Preserve alternate biller/procurement, routing header, lag, cancellation, and external allowance boundary without duplicating Cerebras rates.                                             |
 | Projects, rate limits, and Metrics          | Preserve quota/enrollment and aggregate observability. Do not turn capacity counters into commercial meters or request-cost facts.                                                        |
 | Compatibility serializer zeroes             | Retain as format evidence only. Never normalize request, image, cache-read, or cache-write zero-price terms from placeholders.                                                            |
-| Missing, malformed, or conflicting claims   | Suppress only the affected claim and retain current models, sibling rates, commercial facts, raw evidence, and compatible prior claims with freshness state.                              |
+| Missing, malformed, or conflicting claims   | Suppress only a malformed fact inside a complete bundle; an incomplete bundle retains the accepted provider pricing partition with visible staleness.                                     |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is specific to each claim:
 
@@ -294,9 +294,9 @@ Refresh remains deterministic and non-LLM. Inventory representations, each model
 component, current website plans, usage subsets, caching, image, reasoning, prediction, tiers, caller
 tools, Batch/Files, Dedicated resources, console/account facts, Marketplace, Code, and lifecycle are
 independent claim groups. Validate exhaustiveness only inside a source's proven scope. A new
-commercial-looking page becomes pending/unbound; a missing page, malformed row, stale example,
-unknown authenticated field, or unresolved replacement suppresses its dependent claim or retains a
-compatible prior claim as stale. None may erase valid inventory, another price component, another
+commercial-looking page becomes pending/unbound; a malformed row, stale example,
+unknown authenticated field, or unresolved replacement suppresses its dependent claim. A missing
+commercial page retains the accepted provider pricing partition. None may erase valid inventory, another price component, another
 offer, or the provider snapshot. Every recognized atom receives a normalized, included,
 externally billed, account-only, custom-quote, not-published, superseded, conflicting, ambiguous, or
 pending disposition.

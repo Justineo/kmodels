@@ -613,6 +613,9 @@ function fact(
   spec: CardSpec,
   sourceRef: string,
   rawPriceFacts: SourceRawPricingFact[],
+  pricingState: SourceCommercialPricingFact["pricing_state"] = rawPriceFacts.length > 0
+    ? "numeric"
+    : "not_published",
 ): SourceCommercialPricingFact {
   return {
     source_ref: sourceRef,
@@ -624,7 +627,7 @@ function fact(
     offer_key: spec.offerKey,
     offer_name: spec.offerName,
     billing_mode: spec.billingMode,
-    pricing_state: rawPriceFacts.length > 0 ? "numeric" : "not_published",
+    pricing_state: pricingState,
     price_facts: [],
     raw_price_facts: rawPriceFacts,
   };
@@ -663,16 +666,28 @@ function extraFacts(bundle: LinkedBundle, sourceRef: string): SourceCommercialPr
     spec: CardSpec,
     term: SourceRawPricingFact,
     billingMode: SourceCommercialPricingFact["billing_mode"] = spec.billingMode,
-  ) => result.push(fact({ ...spec, billingMode }, sourceRef, [term]));
-  const addInformation = (spec: CardSpec, key: string, label: string, fragment: string) =>
-    add(spec, {
-      term_key: key,
-      impact: "informational",
-      reason: "requires_usage_aggregation",
-      conditions: {},
-      source_ref: sourceRef,
-      raw: { label, fragment: plain(fragment) },
-    });
+    pricingState?: SourceCommercialPricingFact["pricing_state"],
+  ) => result.push(fact({ ...spec, billingMode }, sourceRef, [term], pricingState));
+  const addInformation = (
+    spec: CardSpec,
+    key: string,
+    label: string,
+    fragment: string,
+    pricingState?: SourceCommercialPricingFact["pricing_state"],
+  ) =>
+    add(
+      spec,
+      {
+        term_key: key,
+        impact: "informational",
+        reason: "requires_usage_aggregation",
+        conditions: {},
+        source_ref: sourceRef,
+        raw: { label, fragment: plain(fragment) },
+      },
+      spec.billingMode,
+      pricingState,
+    );
 
   const agentBricks = document(bundle, `${pagePrefix}agent-bricks/page-data.json`);
   if (agentBricks !== undefined) {
@@ -706,6 +721,7 @@ function extraFacts(bundle: LinkedBundle, sourceRef: string): SourceCommercialPr
         "workload_estimates",
         "Complexity-dependent AI Functions estimates",
         estimate,
+        "not_published",
       );
   }
 
@@ -873,6 +889,7 @@ function extraFacts(bundle: LinkedBundle, sourceRef: string): SourceCommercialPr
             raw: { label: "Shared named-user Genie LLM allowance", amount: "150", unit: "DBU" },
           },
           "hybrid",
+          "included",
         );
     }
     const compute = pageFragments(genie).find((value) =>

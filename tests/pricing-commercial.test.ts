@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import { commercialPricingProjection } from "../src/catalog/pricing-commercial.ts";
 import { unconditionalApplicability } from "../src/catalog/pricing-canonical.ts";
+import { addAtom } from "../src/catalog/pricing-commercial-assembly.ts";
+import type { AtomicProviderPricing } from "../src/catalog/pricing-assembly.ts";
 import {
   pricingBookId,
   pricingOfferId,
@@ -12,6 +14,38 @@ const providerId = "test";
 const bookId = pricingBookId(providerId, "public");
 const offerId = pricingOfferId(bookId, "usage");
 const termId = pricingTermId(offerId, "rate", "input");
+
+it("rejects a provider atom identity with conflicting semantics", () => {
+  const pricing: AtomicProviderPricing = {
+    provider_id: providerId,
+    observed_at: "2026-07-28T00:00:00.000Z",
+    vocabulary: { provider_id: providerId, atoms: [] },
+    dispositions: [],
+    books: [],
+  };
+  const signal = {
+    kind: "usage_signal" as const,
+    key: "input_image",
+    definition: "Billable image input tokens",
+    unit: {
+      factors: [{ unit: { namespace: "kmodels" as const, value: "token" as const }, power: 1 }],
+    },
+    resolution_phase: "outcome" as const,
+  };
+
+  addAtom(pricing, signal);
+  addAtom(pricing, signal);
+  expect(pricing.vocabulary.atoms).toEqual([signal]);
+  expect(() =>
+    addAtom(pricing, {
+      ...signal,
+      definition: "Billable input document pages",
+      unit: {
+        factors: [{ unit: { namespace: "kmodels", value: "page" }, power: 1 }],
+      },
+    }),
+  ).toThrow("test pricing atom input_image changed definition");
+});
 
 function catalog(raw = false): PricingCatalog {
   return {

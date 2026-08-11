@@ -290,7 +290,7 @@ billable quantity by itself.
 | Cloud-partner routes                                                      | Preserve exact model-route compatibility. Price and settlement belong to the partner provider; no copied Mistral-direct amount.                                             |
 | Admin usage `prices`, consumption, and cost                               | Account-effective reconciliation only, qualified by period/workspace/zone/metric. Never publish private rates as global list.                                               |
 
-### Authority, conflicts, and claim-local refresh
+### Authority and conflicts
 
 Authority is claim-specific rather than one total source order:
 
@@ -313,13 +313,14 @@ Authority is claim-specific rather than one total source order:
    withhold only the disputed amount, unit, signal binding, relationship, or allowance.
    Keep the model, service, sibling terms, and provider snapshot.
 
-Refresh remains deterministic and non-LLM. Each source item receives one disposition:
+Refresh remains deterministic and non-LLM. Each source item in a complete bundle receives one disposition:
 normalized, derived from an exact public multiplier, superseded/conflicting, duplicate,
 historical, externally billed, account-only, unsupported, ambiguous, or pending an exact
 join. A missing tool join suppresses only that projection; a malformed Library signal
 leaves only its request-level quantity unresolved; a plan conflict withholds only the
 cross-product allowance; a failed optional account inventory cannot erase the public
-catalog. Publication stays crash-atomic after claim-local validation.
+catalog. An incomplete public commercial bundle retains the accepted provider pricing
+partition. Publication stays crash-atomic after fact-local validation.
 
 ### Model-detail composition and cost coverage
 
@@ -409,7 +410,7 @@ rejecting the model or inventing a total.
   so additions and retirements require no hand-maintained model allowlist or LLM
   interpretation. Identity schema, callable count, and bundle-size guards stop
   publication when the model inventory mechanism changes shape; pricing and accounting
-  claims remain best-effort and claim-local.
+  claims remain best-effort and fact-local inside the complete source bundle.
 - Live ambiguities are retained as upstream disagreements, not treated as missing parser mappings.
   The repository publishes Voxtral Small output at `$0.30/M` while the pricing page
   publishes `$0.40/M`; the target selects the dedicated page amount and retains the

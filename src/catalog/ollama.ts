@@ -264,7 +264,7 @@ function libraryModel(input: ParseInput, item: LibraryItem): ProviderModel {
       observedAt: input.observedAt,
     }),
     ...facts(item),
-    pricing_state: "not_applicable",
+    pricing_state: "unknown",
     status: "active",
   };
 }
@@ -280,7 +280,7 @@ export function parseOllamaLibrary(input: ParseInput): ProviderModel[] {
   for (const model of models)
     input.onPricingReconciliation?.({
       disposition: "explicit_non_numeric",
-      reason_code: "not_applicable",
+      reason_code: "external_execution",
       sample: model.model_id,
     });
   return models;

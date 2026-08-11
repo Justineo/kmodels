@@ -132,6 +132,36 @@ kbd {
   white-space: nowrap;
 }
 
+.provider-coverage-bar {
+  display: flex;
+  min-height: var(--control-height-comfortable);
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-label);
+}
+
+.provider-coverage-bar button {
+  display: flex;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  gap: var(--space-1-5);
+  padding-inline: var(--space-2);
+  border: var(--stroke-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface-subtle);
+  font: inherit;
+}
+
+.provider-coverage-bar button:hover {
+  background: var(--color-surface-hover);
+}
+
 .catalog-summary {
   gap: var(--space-1);
 }

@@ -6,13 +6,13 @@ import type {
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
+import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
   NormalizedPriceObservation,
   OfferRelation,
   PriceMeter,
-  ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
@@ -481,24 +481,7 @@ function normalized(
   return { ...rawEvidence(observation), establishes_applicability: applicability };
 }
 
-function rawEvidence(observation: RawPriceObservation): RawPriceObservation {
-  return {
-    source_ref: observation.source_ref,
-    locator: observation.locator,
-    raw: observation.raw,
-  };
-}
-
 function isUnit(unit: UnitExpression, value: string): boolean {
   const factor = unit.factors.length === 1 ? unit.factors[0] : undefined;
   return factor?.power === 1 && factor.unit.namespace === "provider" && factor.unit.value === value;
-}
-
-function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {
-  const current = input.vocabulary.atoms.find(
-    (candidate) => candidate.kind === atom.kind && candidate.key === atom.key,
-  );
-  if (current === undefined) input.vocabulary.atoms.push(atom);
-  else if (JSON.stringify(current) !== JSON.stringify(atom))
-    throw new Error(`Cohere provider atom ${atom.kind}:${atom.key} conflicts`);
 }
