@@ -692,17 +692,33 @@ function unequalOverlapIndexes<
   },
 >(variants: T[], payload: (variant: T) => string): Set<number> {
   const conflicts = new Set<number>();
-  for (let left = 0; left < variants.length; left++) {
-    for (let right = left + 1; right < variants.length; right++) {
-      const leftVariant = variants[left]!;
-      const rightVariant = variants[right]!;
-      if (
-        payload(leftVariant) !== payload(rightVariant) &&
-        applicabilitiesOverlap(leftVariant.applicability, rightVariant.applicability) &&
-        publishedValiditiesOverlap(leftVariant.validity, rightVariant.validity)
-      ) {
-        conflicts.add(left);
-        conflicts.add(right);
+  const variantsByPayload = new Map<string, { index: number; variant: T }[]>();
+  for (const [index, variant] of variants.entries()) {
+    const key = payload(variant);
+    const group = variantsByPayload.get(key);
+    if (group === undefined) variantsByPayload.set(key, [{ index, variant }]);
+    else group.push({ index, variant });
+  }
+
+  const groups = [...variantsByPayload.values()];
+  for (const [leftGroupIndex, leftGroup] of groups.entries()) {
+    for (
+      let rightGroupIndex = leftGroupIndex + 1;
+      rightGroupIndex < groups.length;
+      rightGroupIndex++
+    ) {
+      const rightGroup = groups[rightGroupIndex];
+      if (rightGroup === undefined) continue;
+      for (const left of leftGroup) {
+        for (const right of rightGroup) {
+          if (
+            applicabilitiesOverlap(left.variant.applicability, right.variant.applicability) &&
+            publishedValiditiesOverlap(left.variant.validity, right.variant.validity)
+          ) {
+            conflicts.add(left.index);
+            conflicts.add(right.index);
+          }
+        }
       }
     }
   }
