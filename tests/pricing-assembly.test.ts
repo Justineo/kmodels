@@ -50,6 +50,27 @@ function region(value: "EU" | "US"): PriceApplicability {
   };
 }
 
+function inputTokens(value: number): PriceApplicability {
+  const exact = String(value);
+  return {
+    any_of: [
+      {
+        all_of: [
+          {
+            kind: "decimal_range",
+            dimension: { namespace: "kmodels", value: "input_tokens" },
+            unit: {
+              factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+            },
+            lower: { value: exact, inclusive: true },
+            upper: { value: exact, inclusive: true },
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function observation(
   applicability: PriceApplicability,
   locator: string,
@@ -164,6 +185,21 @@ describe("canonical pricing canonical assembly", () => {
     expect(term.variants).toHaveLength(1);
     expect(term.variants[0]!.applicability.any_of).toHaveLength(2);
     expect(term.variants[0]!.observations).toHaveLength(2);
+  });
+
+  it("shards an oversized equal-value applicability instead of downgrading it", () => {
+    const rates = Array.from({ length: 1_025 }, (_, index) =>
+      rate(inputTokens(index), `tokens-${index}`),
+    );
+    const term = assemble(input(rates)).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+
+    expect(term.variants).toHaveLength(2);
+    expect(term.variants.every(({ applicability }) => applicability.any_of.length <= 1_024)).toBe(
+      true,
+    );
+    expect(term.variants.flatMap(({ observations }) => observations)).toHaveLength(1_025);
+    expect(term.raw_variants).toEqual([]);
   });
 
   it("downgrades every value involved in an unequal overlap", () => {

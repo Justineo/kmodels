@@ -62,16 +62,19 @@ Status: implemented
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `offer → context → commercial structure`. It never
-  flattens books into one rate list or chooses a provider default. Base offers
-  and add-ons are stable parent choices; a sole base offer is fixed and shown as
-  a summary rather than a one-item selector. Offer choices show one reviewed
-  title; they omit generated book labels, a second billing-mode paraphrase,
-  repeated default `Metered pricing` copy, and `Incomplete`, which belongs to
-  the selected offer's warning. They also omit explanatory prose already
-  implied by the control. Multiple offer choices form a compact wrapping radio
-  group; its native keyboard behavior owns arrow keys and must not navigate
-  between models. Fresh pricing shows its verification time. A retained partition
+- The detail flow is `rate answer → price-changing options → related costs → audit detail`.
+  It never flattens books into one rate list. Model execution mechanisms remain
+  explicit, but the first mechanism in stable presentation order is opened as
+  the initial browsing focus so a multi-offer model no longer starts blank. This
+  focus is navigation, not a provider default, recommendation, or cheapest-offer
+  choice. A sole mechanism is shown as a summary rather than a one-item selector.
+  Optional services, automatic components, plans, capacity, and standalone
+  resources move behind one related-cost disclosure instead of preceding the
+  base-rate answer. Offer choices show one reviewed title; they omit generated
+  book labels, repeated default `Metered pricing` copy, and explanatory prose
+  already implied by the control. Multiple mechanism choices form a compact
+  wrapping radio group; its native keyboard behavior owns arrow keys and must
+  not navigate between models. Fresh pricing shows its verification time. A retained partition
   instead shows one provider-level status note with both the preserved
   verification time and the latest rejected-attempt time plus a reviewed
   explanation. For an unknown model it says that the last verified provider
@@ -81,11 +84,18 @@ Status: implemented
   hides or reorders the choices above it. Context controls use the shared
   customizable-select component. Configurable controls in the same grid row
   stay top-aligned when one control includes guidance or validation text. A
-  categorical dimension with one possible value is resolved and shown as
-  compact fixed context instead of rendered as a control. A rate appears only
-  when the current partial context proves that it applies; unresolved
-  alternatives stay hidden behind a prompt for their missing dimensions. The
-  pricing-context controls resolve exact applicable rates but do not estimate
+  categorical dimension or exact decimal selector with one possible value is
+  resolved and shown as compact fixed context instead of rendered as a control. Price-query controls
+  contain only dimensions that can change a rate or leave its numeric state only
+  partially covered. When every still-possible variant of one rate has the same
+  amount, denomination, unit, driver, and validity and together covers the
+  complete remaining numeric offer-state scope, that invariant rate appears
+  immediately with a concise scope note. The user is not required to select a
+  region or other dimension that cannot change the answer. Unresolved unequal or
+  partial alternatives remain hidden behind a prompt for only their missing
+  dimensions. Selectors that affect enrollment, settlement, allowances, or other
+  commercial structure remain available under advanced billing details. The
+  controls resolve exact applicable rates but do not estimate
   usage, consume allowances, or calculate a total. Selected applicability is not
   repeated on each resolved rate, allowance, or state; validity qualifications
   remain visible. Its reset action appears only after a configurable selection
@@ -96,11 +106,12 @@ Status: implemented
   choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
   operators. Ranges with gaps or overlaps continue to accept an exact value and
   reject invalid or non-integral count/TTL input.
-- Each resolved rate retains its display-ready charge binding. The rate matrix
-  shows the official cost driver, its reviewed billable-trigger definition,
-  aggregation boundary, and earliest resolution phase. A known rate without an
-  exact public quantity signal stays visible and says that its usage binding is
-  unavailable; the UI never treats that as a missing rate. Contribution rows
+- Each resolved rate retains its display-ready charge binding. The primary rate
+  matrix keeps meter and numeric rate scannable; each row discloses the official
+  cost driver, its reviewed billable-trigger definition, aggregation boundary,
+  and earliest resolution phase on demand. A known rate without an exact public
+  quantity signal stays visible; the UI never treats that as a missing rate.
+  Contribution rows
   expose the same driver metadata without copying the target rate. Billing mode,
   enrollment, settlement channel, biller, and ordered payment-source classes
   appear as read-only commercial context. These facts explain what affects cost
@@ -114,6 +125,9 @@ Status: implemented
   leaving unconditional singletons in the summary. Applicability follows the
   bounded pricing projection, with one link to the exact canonical audit.
   Raw-only official rows stay separate from normalized resources.
+  The provider inspector has a literal resource/offer search. Entering a query
+  loads the remaining bounded resource chunks before filtering so results are
+  provider-complete rather than limited to the initially loaded page.
 - A representative preview requires one validity-free normalized fiat value
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
@@ -258,7 +272,9 @@ Status: implemented
   Expanding one offer requests only its shared-offer fragments, verifies stable
   metadata, rejects duplicate rows, verifies the merged offer's ID, title,
   billing mode, and state summary against the selected summary, and mounts its
-  detail DOM only while open.
+  detail DOM only while open. An explicit “Load more” action remains available
+  during browsing; entering a provider-pricing search loads all remaining chunks
+  before applying the literal filter.
   Provider projections retain the complete unnormalized-fact count but include
   at most 20 display-safe preview rows per offer; the canonical pricing audit
   remains the complete download.

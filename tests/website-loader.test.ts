@@ -126,7 +126,7 @@ function detailChunk(dataVersion: string, description: string): WebsiteDetailChu
 
 function offerChunk(dataVersion: string, values = [pricingOffer()]): WebsiteOfferChunk {
   return {
-    schema_version: 2,
+    schema_version: 3,
     data_version: dataVersion,
     provider_id: model.provider_id,
     chunk: 0,

@@ -30,7 +30,9 @@ const closing = ref(false);
 const resources = ref<WebsiteProviderPricingDetail["resources"]>([]);
 const nextChunk = ref(1);
 const loadingMore = ref(false);
+const loadingAll = ref(false);
 const chunkError = ref<string>();
+const query = ref("");
 const openOfferIds = ref<string[]>([]);
 const offerLoads = ref<
   Record<string, { offer?: WebsitePricingOffer; loading: boolean; error?: string }>
@@ -38,6 +40,24 @@ const offerLoads = ref<
 const hasMoreChunks = computed(
   () => nextChunk.value < (props.provider?.pricing_coverage.detail_chunks ?? 0),
 );
+const filteredResources = computed(() => {
+  const normalized = query.value.trim().toLocaleLowerCase();
+  if (normalized === "") return resources.value;
+  return resources.value.filter((resource) =>
+    [
+      resource.title,
+      resource.kind,
+      ...resource.offers.flatMap((offer) => [
+        offer.title,
+        offer.billing_mode.label,
+        offer.state_summary,
+      ]),
+    ]
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(normalized),
+  );
+});
 const resourceGroups = computed(() =>
   [
     {
@@ -55,7 +75,7 @@ const resourceGroups = computed(() =>
   ]
     .map((group) => ({
       ...group,
-      resources: resources.value.filter(({ raw_only }) => raw_only === group.rawOnly),
+      resources: filteredResources.value.filter(({ raw_only }) => raw_only === group.rawOnly),
     }))
     .filter(({ resources: groupedResources }) => groupedResources.length > 0),
 );
@@ -88,12 +108,24 @@ watch(
     resources.value = detail?.resources ?? [];
     nextChunk.value = 1;
     loadingMore.value = false;
+    loadingAll.value = false;
     chunkError.value = undefined;
+    query.value = "";
     openOfferIds.value = [];
     offerLoads.value = {};
   },
   { immediate: true },
 );
+
+watch([query, loadingMore], async ([value, alreadyLoading]) => {
+  if (value.trim() === "" || alreadyLoading || loadingAll.value) return;
+  loadingAll.value = true;
+  try {
+    while (hasMoreChunks.value && chunkError.value === undefined) await loadMoreResources();
+  } finally {
+    loadingAll.value = false;
+  }
+});
 
 function requestClose(): void {
   if (props.provider === undefined || closing.value) return;
@@ -221,6 +253,23 @@ async function loadMoreResources(): Promise<void> {
                 >: {{ detail.snapshot.refresh_failure.message }}
               </p>
 
+              <label class="provider-resource-search">
+                <span>Find a resource or offer</span>
+                <input v-model="query" type="search" placeholder="Search pricing…" />
+              </label>
+              <p v-if="query.trim() !== ''" class="provider-pricing-status" aria-live="polite">
+                {{ filteredResources.length }} matching resource{{
+                  filteredResources.length === 1 ? "" : "s"
+                }}
+              </p>
+
+              <p
+                v-if="query.trim() !== '' && filteredResources.length === 0 && !loadingMore"
+                class="unknown-note"
+              >
+                No loaded pricing resource matches this search.
+              </p>
+
               <section
                 v-for="group in resourceGroups"
                 :key="group.id"
@@ -316,6 +365,29 @@ async function loadMoreResources(): Promise<void> {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-body);
+}
+
+.provider-resource-search {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-micro);
+}
+
+.provider-resource-search input {
+  height: var(--control-height-comfortable);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font: inherit;
+}
+
+.provider-resource-search input:focus-visible {
+  border-color: var(--color-accent);
+  outline: var(--stroke-focus) solid var(--color-accent);
+  outline-offset: calc(var(--stroke-focus) * -1);
 }
 
 .provider-resource-group {

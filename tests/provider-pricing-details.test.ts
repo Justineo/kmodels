@@ -135,6 +135,8 @@ describe("provider pricing details", () => {
     );
 
     expect(html).toContain("Normalized resources");
+    expect(html).toContain("Find a resource or offer");
+    expect(html).toContain('type="search"');
     expect(html).toContain("Reviewed service");
     expect(html).toContain("Unresolved official rows");
     expect(html).toContain("Unmapped source row");

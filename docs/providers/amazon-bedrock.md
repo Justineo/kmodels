@@ -44,6 +44,10 @@ Status: current
   dimension. AWS can fall an optimized request back to standard latency and exposes the served
   configuration in the response, so gateways must price the resolved value. Recognize both
   `long-context` and Price List's `long-ctx` spelling as the `context_tokens >= 200001` tier.
+- Execution topology removes the `batch` tier only after moving it into the dedicated Batch offer.
+  On-demand tiers such as standard, priority, and flex remain applicability conditions inside the
+  On-demand offer. They can carry unequal rates and must not be collapsed into an artificial
+  same-scope conflict.
 - The four AWS Price List sources use `current/index.json`, which AWS defines as the latest service
   price-list version. Treat their returned terms as the current snapshot and retain each term's
   `effectiveDate` as raw audit evidence, not as a historical-only applicability qualifier. Unequal
@@ -86,7 +90,7 @@ Status: current
   `price_product_absent_from_current_catalog` and excluded: AWS's current feeds contain both
   billing-leading and retained stale products, and neither supplies a callable ID. A reviewed public
   page row absent the card catalog remains unbound because it is a narrower current signal.
-- Bedrock's provider-wide applicability budget is 64 MiB, matching the provider partition budget.
+- Bedrock's provider-wide applicability budget is 128 MiB, matching the provider partition budget.
   This leaves room for the complete price book while the independent partition, selector-work,
   variant, and observation limits remain enforced.
 - A catalog model remains `unknown` when no current price product binds uniquely. Do not transfer prices from a similarly named generation, preview, or Stability utility operation.

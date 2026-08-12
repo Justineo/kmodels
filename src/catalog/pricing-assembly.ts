@@ -330,18 +330,15 @@ function assembleStates(states: AtomicPriceState[]): {
   const result: PriceStateVariant[] = [];
   for (const group of grouped.values()) {
     const first = group[0]!;
-    const observations = sortUnique(
-      group.map(({ observation }) => observation),
-      normalizedObservationKey,
-    );
-    const applicability = groupedApplicability(observations);
-    if (applicability === undefined) return { states: [], fallbackReason: "selector_limit" };
-    result.push({
-      state: first.state,
-      applicability,
-      ...optional("validity", first.validity),
-      observations,
-    });
+    const chunks = groupedApplicabilityChunks(group);
+    if (chunks === undefined) return { states: [], fallbackReason: "selector_limit" };
+    for (const { applicability, observations } of chunks)
+      result.push({
+        state: first.state,
+        applicability,
+        ...optional("validity", first.validity),
+        observations,
+      });
   }
   return { states: result };
 }
@@ -415,12 +412,8 @@ function assembleContributionVariants(variants: AtomicContributionVariant[]): {
   const result: PriceContributionVariant[] = [];
   for (const group of grouped.values()) {
     const first = group[0]!;
-    const observations = sortUnique(
-      group.map(({ observation }) => observation),
-      normalizedObservationKey,
-    );
-    const applicability = groupedApplicability(observations);
-    if (applicability === undefined) {
+    const chunks = groupedApplicabilityChunks(group);
+    if (chunks === undefined) {
       raw.push(
         ...group.map((variant) =>
           toRawAtomic(variant, "base_price", "selector_limit", variant.applicability),
@@ -428,13 +421,14 @@ function assembleContributionVariants(variants: AtomicContributionVariant[]): {
       );
       continue;
     }
-    result.push({
-      target_rate_refs: first.target_rate_refs,
-      applicability,
-      ...optional("validity", first.validity),
-      charge_bindings: first.charge_bindings,
-      observations,
-    });
+    for (const { applicability, observations } of chunks)
+      result.push({
+        target_rate_refs: first.target_rate_refs,
+        applicability,
+        ...optional("validity", first.validity),
+        charge_bindings: first.charge_bindings,
+        observations,
+      });
   }
   return { variants: result, raw };
 }
@@ -469,12 +463,8 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
   const result: PriceRateVariant[] = [];
   for (const group of grouped.values()) {
     const first = group[0]!;
-    const observations = sortUnique(
-      group.map(({ observation }) => observation),
-      normalizedObservationKey,
-    );
-    const applicability = groupedApplicability(observations);
-    if (applicability === undefined) {
+    const chunks = groupedApplicabilityChunks(group);
+    if (chunks === undefined) {
       raw.push(
         ...group.map((variant) =>
           toRawAtomic(variant, "base_price", "selector_limit", variant.applicability),
@@ -482,13 +472,14 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
       );
       continue;
     }
-    result.push({
-      price: first.price,
-      applicability,
-      ...optional("validity", first.validity),
-      ...optional("charge_binding", mergedChargeBinding(group)),
-      observations,
-    });
+    for (const { items, applicability, observations } of chunks)
+      result.push({
+        price: first.price,
+        applicability,
+        ...optional("validity", first.validity),
+        ...optional("charge_binding", mergedChargeBinding(items)),
+        observations,
+      });
   }
   return { variants: result, raw };
 }
@@ -609,12 +600,8 @@ function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
   const result: PriceAllowanceVariant[] = [];
   for (const group of grouped.values()) {
     const first = group[0]!;
-    const observations = sortUnique(
-      group.map(({ observation }) => observation),
-      normalizedObservationKey,
-    );
-    const applicability = groupedApplicability(observations);
-    if (applicability === undefined) {
+    const chunks = groupedApplicabilityChunks(group);
+    if (chunks === undefined) {
       raw.push(
         ...group.map((variant) =>
           toRawAtomic(variant, "allowance", "selector_limit", variant.applicability),
@@ -622,14 +609,15 @@ function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
       );
       continue;
     }
-    result.push({
-      benefit: first.benefit,
-      target: first.target,
-      reset: first.reset,
-      applicability,
-      ...optional("validity", first.validity),
-      observations,
-    });
+    for (const { applicability, observations } of chunks)
+      result.push({
+        benefit: first.benefit,
+        target: first.target,
+        reset: first.reset,
+        applicability,
+        ...optional("validity", first.validity),
+        observations,
+      });
   }
   return { variants: result, raw };
 }
@@ -904,6 +892,38 @@ function groupedApplicability(
     if (isSelectorLimit(error)) return undefined;
     throw error;
   }
+}
+
+interface ApplicabilityChunk<T> {
+  items: T[];
+  applicability: PriceApplicability;
+  observations: NormalizedPriceObservation[];
+}
+
+function groupedApplicabilityChunks<T extends { observation: NormalizedPriceObservation }>(
+  items: T[],
+): ApplicabilityChunk<T>[] | undefined {
+  const sorted = items
+    .map((item) => ({ item, key: normalizedObservationKey(item.observation) }))
+    .sort((left, right) => compareUtf8(left.key, right.key))
+    .map(({ item }) => item);
+  return compactApplicabilityChunk(sorted);
+}
+
+function compactApplicabilityChunk<T extends { observation: NormalizedPriceObservation }>(
+  items: T[],
+): ApplicabilityChunk<T>[] | undefined {
+  const observations = sortUnique(
+    items.map(({ observation }) => observation),
+    normalizedObservationKey,
+  );
+  const applicability = groupedApplicability(observations);
+  if (applicability !== undefined) return [{ items, applicability, observations }];
+  if (items.length < 2) return;
+  const middle = Math.ceil(items.length / 2);
+  const left = compactApplicabilityChunk(items.slice(0, middle));
+  const right = compactApplicabilityChunk(items.slice(middle));
+  return left === undefined || right === undefined ? undefined : [...left, ...right];
 }
 
 function boundedApplicability(value: PriceApplicability): PriceApplicability | undefined {

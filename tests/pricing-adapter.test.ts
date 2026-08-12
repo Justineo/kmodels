@@ -1459,6 +1459,7 @@ describe("parsed-source canonical pricing adapter", () => {
       uid: "amazon-bedrock/test-model",
       price_facts: [
         tokenRate("1", { region: "us-east-1", service_tier: "standard" }),
+        tokenRate("2", { region: "us-east-1", service_tier: "priority" }),
         tokenRate("0.5", { region: "us-east-1", service_tier: "batch" }),
         {
           meter: "provisioned_throughput",
@@ -1511,11 +1512,17 @@ describe("parsed-source canonical pricing adapter", () => {
           value: "runtime_input_tokens",
         },
       });
-      expect(
-        input.variants[0]?.applicability.any_of[0]?.all_of.some(
-          ({ dimension }) => dimension.value === "service_tier",
+      const tiers = input.variants.flatMap(({ applicability }) =>
+        applicability.any_of.flatMap(({ all_of }) =>
+          all_of.flatMap((condition) =>
+            condition.kind === "categorical" && condition.dimension.value === "service_tier"
+              ? condition.values.map(({ value }) => value)
+              : [],
+          ),
         ),
-      ).toBe(false);
+      );
+      expect(tiers.sort()).toEqual(offer.offer_key === "batch" ? [] : ["priority", "standard"]);
+      expect(input.raw_variants).toEqual([]);
     }
 
     const capacity = books.find(

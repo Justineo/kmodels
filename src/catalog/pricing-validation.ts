@@ -365,7 +365,7 @@ function validateOffer(
     ],
     `${path} states`,
   );
-  assertUniqueBy(
+  assertBoundedApplicabilityGroups(
     offer.states,
     (state) => canonicalJson([state.state, ...optionalComponent(state.validity)]),
     `${path} state grouping key`,
@@ -428,10 +428,11 @@ function validateOffer(
     );
   for (let left = 0; left < offer.states.length; left += 1)
     for (let right = left + 1; right < offer.states.length; right += 1)
-      context.relationPairs.push([
-        offer.states[left]!.applicability,
-        offer.states[right]!.applicability,
-      ]);
+      if (offer.states[left]!.state !== offer.states[right]!.state)
+        context.relationPairs.push([
+          offer.states[left]!.applicability,
+          offer.states[right]!.applicability,
+        ]);
 
   validateOfferSemantics(offer, context, path);
   validateOfferRelations(offer, book, context, path);
@@ -464,7 +465,7 @@ function validateTerm(
       ],
       `${path} variants`,
     );
-    assertUniqueBy(
+    assertBoundedApplicabilityGroups(
       term.variants,
       (variant) => canonicalJson([variant.price, ...optionalComponent(variant.validity)]),
       `${path} variant grouping key`,
@@ -482,7 +483,7 @@ function validateTerm(
       ],
       `${path} variants`,
     );
-    assertUniqueBy(
+    assertBoundedApplicabilityGroups(
       term.variants,
       (variant) =>
         canonicalJson([
@@ -548,7 +549,7 @@ function validateRateTerm(
     validateRawVariant(variant, book, context, path);
   });
   validateVariantConflicts(term.variants, (variant) => canonicalJson(variant.price), path);
-  validateTermRelationPairs(term.variants, context);
+  validateTermRelationPairs(term.variants, (variant) => canonicalJson(variant.price), context);
   validateConflictFallback(term.variants, term.raw_variants, path);
 }
 
@@ -589,7 +590,11 @@ function validateAllowanceTerm(
     (variant) => canonicalJson([variant.benefit, variant.target, variant.reset]),
     path,
   );
-  validateTermRelationPairs(term.variants, context);
+  validateTermRelationPairs(
+    term.variants,
+    (variant) => canonicalJson([variant.benefit, variant.target, variant.reset]),
+    context,
+  );
   validateConflictFallback(term.variants, term.raw_variants, path);
   if (
     term.raw_variants.some(({ reason }) => reason === "target_rate_not_normalized") &&
@@ -727,7 +732,8 @@ function validateOfferSemantics(
   }
   for (const state of offer.states) {
     for (const rate of rates) {
-      context.relationPairs.push([state.applicability, rate.applicability]);
+      if (state.state === "free")
+        context.relationPairs.push([state.applicability, rate.applicability]);
       if (
         state.state === "free" &&
         applicabilitiesOverlap(state.applicability, rate.applicability) &&
@@ -1157,11 +1163,14 @@ function validateVariantConflicts<
 
 function validateTermRelationPairs<T extends { applicability: PriceApplicability }>(
   variants: T[],
+  payload: (variant: T) => string,
   context: ProviderValidation,
 ): void {
+  const payloads = variants.map(payload);
   for (let left = 0; left < variants.length; left += 1)
     for (let right = left + 1; right < variants.length; right += 1)
-      context.relationPairs.push([variants[left]!.applicability, variants[right]!.applicability]);
+      if (payloads[left] !== payloads[right])
+        context.relationPairs.push([variants[left]!.applicability, variants[right]!.applicability]);
 }
 
 function validateProviderTotals(
@@ -1389,6 +1398,34 @@ function assertUniqueBy<T>(values: T[], key: (value: T) => string, path: string)
     if (seen.has(identity)) fail(path, "contains a duplicate");
     seen.add(identity);
   }
+}
+
+function assertBoundedApplicabilityGroups<T extends { applicability: PriceApplicability }>(
+  values: T[],
+  key: (value: T) => string,
+  path: string,
+): void {
+  const groups = new Map<string, T[]>();
+  for (const value of values) {
+    const identity = key(value);
+    const group = groups.get(identity);
+    if (group === undefined) groups.set(identity, [value]);
+    else group.push(value);
+  }
+  for (const group of groups.values())
+    for (let left = 0; left < group.length; left += 1)
+      for (let right = left + 1; right < group.length; right += 1) {
+        try {
+          const applicability = unionApplicabilities([
+            group[left]!.applicability,
+            group[right]!.applicability,
+          ]);
+          if (jsonByteLength(applicability) <= pricingLimits.applicabilityBytes)
+            fail(path, "contains compactable variants");
+        } catch (error) {
+          if (!(error instanceof Error && /limit exceeded/.test(error.message))) throw error;
+        }
+      }
 }
 
 function uniqueMap<T>(values: T[], key: (value: T) => string, path: string): Map<string, T> {
