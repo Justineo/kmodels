@@ -268,6 +268,7 @@ const websiteChargeDriverSchema = z.strictObject({
 
 const websiteRateRowSchema = z.strictObject({
   key: z.string().min(1),
+  term_ref: hash,
   label: z.string().min(1),
   amount: z.string().min(1),
   unit: z.string().min(1),
@@ -356,7 +357,7 @@ const websiteOfferReferenceSchema = z.tuple([
 ]);
 
 export const websiteOfferChunkSchema = z.strictObject({
-  schema_version: z.literal(2),
+  schema_version: z.literal(3),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),

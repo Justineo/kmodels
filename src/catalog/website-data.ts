@@ -246,7 +246,7 @@ function websiteDeferredAssets(
       uniqueOffers,
       (values, chunk) =>
         websiteOfferChunkSchema.parse({
-          schema_version: 2,
+          schema_version: 3,
           data_version: dataVersion,
           provider_id: provider.id,
           chunk,
@@ -678,6 +678,7 @@ function websiteOffer(
         });
         rates.push({
           key: `${term.id}:rate:${index}`,
+          term_ref: term.id,
           label: meterLabel(term.meter, atoms),
           amount: price.amount,
           unit: `per ${price.displayUnit}`,

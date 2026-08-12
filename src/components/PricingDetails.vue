@@ -13,6 +13,7 @@ import {
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
 import { formatSentenceCase, formatSnapshotAt } from "../catalog/presentation.ts";
+import { projectWebsiteRateQuery } from "../catalog/website-pricing-query.ts";
 import type {
   WebsiteModel,
   WebsitePriceApplicability,
@@ -34,7 +35,6 @@ const props = defineProps<{
 interface OfferGroup {
   key: Exclude<WebsitePricingOffer["group"], "model_mechanism">;
   title: string;
-  selection: "multiple" | "informational";
   offers: WebsitePricingOffer[];
 }
 
@@ -46,7 +46,6 @@ interface ScopeCopy {
 const inputs = ref<Record<string, string>>({});
 const selectedOfferId = ref("");
 const selectedMechanismId = ref("");
-const selectedOptionalIds = ref<string[]>([]);
 const offers = computed(() => props.detail?.offers ?? []);
 const modelMechanisms = computed(() =>
   offers.value.filter(({ group }) => group === "model_mechanism"),
@@ -56,54 +55,81 @@ const soleModelMechanism = computed(() =>
 );
 const offerGroups = computed<OfferGroup[]>(() => {
   const groups: OfferGroup[] = [];
-  const add = (key: OfferGroup["key"], title: string, selection: OfferGroup["selection"]) => {
+  const add = (key: OfferGroup["key"], title: string) => {
     const matches = offers.value.filter(({ group }) => group === key);
-    if (matches.length > 0) groups.push({ key, title, selection, offers: matches });
+    if (matches.length > 0) groups.push({ key, title, offers: matches });
   };
-  add("optional_service", "Optional services", "multiple");
-  add("automatic_component", "Automatic components", "informational");
-  add("plan_capacity", "Plans and capacity", "informational");
-  add("standalone", "Related standalone offers", "informational");
+  add("optional_service", "Optional services");
+  add("automatic_component", "Automatic components");
+  add("plan_capacity", "Plans and capacity");
+  add("standalone", "Standalone offers");
   return groups;
 });
 const activeOffer = computed(
-  () => offers.value.find(({ id }) => id === selectedOfferId.value) ?? soleModelMechanism.value,
+  () =>
+    offers.value.find(({ id }) => id === selectedOfferId.value) ??
+    modelMechanisms.value[0] ??
+    offers.value[0],
+);
+const activeMechanismId = computed(
+  () => selectedMechanismId.value || modelMechanisms.value[0]?.id || "",
 );
 const selectors = computed(() => activeOffer.value?.selectors ?? []);
-type CategoricalSelector = Extract<WebsitePricingSelector, { kind: "categorical" }>;
+type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
 const fixedSelectors = computed(() => selectors.value.filter(isFixedSelector));
 const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
 );
+const fixedSelectionValues = computed(() => fixedSelectors.value.map(fixedSelection));
 const selectionValues = computed(() => [
   ...selectors.value.flatMap((selector) => {
     const value = selection(selector);
     return value === undefined ? [] : [value];
   }),
-  ...fixedSelectors.value.map(fixedSelection),
+  ...fixedSelectionValues.value,
 ]);
 const hasSelections = computed(() => Object.keys(inputs.value).length > 0);
 const visibleStates = computed(() => matchingRows(activeOffer.value?.states ?? []));
-const visibleRates = computed(() => matchingRows(activeOffer.value?.rates ?? []));
-const hasVisibleRateDrivers = computed(() => visibleRates.value.some(({ driver }) => driver));
+const rateProjection = computed(() =>
+  activeOffer.value === undefined
+    ? { rates: [], unresolved_dimensions: [] }
+    : projectWebsiteRateQuery(activeOffer.value, props.model.uid, selectionValues.value),
+);
+const baseRateProjection = computed(() =>
+  activeOffer.value === undefined
+    ? { rates: [], unresolved_dimensions: [] }
+    : projectWebsiteRateQuery(activeOffer.value, props.model.uid, fixedSelectionValues.value),
+);
+const rateSelectorKeys = computed(
+  () => new Set(baseRateProjection.value.unresolved_dimensions.map(canonicalJson)),
+);
+const querySelectors = computed(() =>
+  configurableSelectors.value.filter(({ key }) => rateSelectorKeys.value.has(key)),
+);
+const advancedSelectors = computed(() =>
+  configurableSelectors.value.filter(({ key }) => !rateSelectorKeys.value.has(key)),
+);
+const visibleRates = computed(() =>
+  rateProjection.value.rates.map(({ row, invariant_dimensions }) => ({
+    ...row,
+    qualifier: [
+      invariant_dimensions.length === 0
+        ? undefined
+        : `Same across available ${joinLabels(invariant_dimensions.map(formatDimension))} options`,
+      row.validity === undefined ? undefined : validityNote(row.validity),
+    ]
+      .filter((value): value is string => value !== undefined)
+      .join(" · "),
+  })),
+);
 const visibleAllowances = computed(() => matchingRows(activeOffer.value?.allowances ?? []));
 const visibleContributions = computed(() => matchingRows(activeOffer.value?.contributions ?? []));
 const visibleEnrollment = computed(() => matchingRows(activeOffer.value?.enrollment ?? []));
 const visibleSettlement = computed(() => matchingRows(activeOffer.value?.settlement ?? []));
-const unresolvedRateDimensions = computed(() => {
-  const keys = new Set(
-    (activeOffer.value?.rates ?? []).flatMap(({ applicability }) => {
-      const result = evaluate(applicability);
-      return result.state === "missing" ? result.missing_dimensions.map(canonicalJson) : [];
-    }),
-  );
-  return selectors.value.filter(({ key }) => keys.has(key));
-});
+const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
 const contextPrompt = computed(() => {
-  const labels = joinLabels(unresolvedRateDimensions.value.map(({ label }) => label));
-  return `Choose ${labels} to ${
-    visibleRates.value.length === 0 ? "see exact rates" : "resolve the remaining rates"
-  }.`;
+  const labels = joinLabels(unresolvedRateDimensions.value.map(formatDimension));
+  return `Choose ${labels} to ${visibleRates.value.length === 0 ? "see rates" : "resolve the remaining rates"}.`;
 });
 const visibleUnnormalized = computed(() =>
   (activeOffer.value?.unnormalized ?? [])
@@ -119,6 +145,12 @@ const visibleUnnormalized = computed(() =>
 const incomplete = computed(() =>
   visibleUnnormalized.value.some(({ impact }) => impact === "base_price"),
 );
+const incompleteCount = computed(
+  () => visibleUnnormalized.value.filter(({ impact }) => impact === "base_price").length,
+);
+const relatedOfferCount = computed(() =>
+  offerGroups.value.reduce((count, group) => count + group.offers.length, 0),
+);
 const showOfferStates = computed(
   () => visibleStates.value.length > 0 && (activeOffer.value?.states.length ?? 0) > 1,
 );
@@ -133,7 +165,6 @@ watch(
     inputs.value = {};
     selectedOfferId.value = "";
     selectedMechanismId.value = "";
-    selectedOptionalIds.value = [];
   },
 );
 
@@ -142,7 +173,6 @@ watch(offers, (current) => {
   if (selectedOfferId.value !== "" && !ids.has(selectedOfferId.value)) selectedOfferId.value = "";
   if (selectedMechanismId.value !== "" && !ids.has(selectedMechanismId.value))
     selectedMechanismId.value = "";
-  selectedOptionalIds.value = selectedOptionalIds.value.filter((id) => ids.has(id));
 });
 
 function applies(applicability: WebsitePriceApplicability): boolean {
@@ -236,16 +266,6 @@ function selectMechanism(offerId: string): void {
   focusOffer(offerId);
 }
 
-function toggleOptional(offerId: string, event: Event): void {
-  const selected = event.target instanceof HTMLInputElement && event.target.checked;
-  selectedOptionalIds.value = selected
-    ? [...new Set([...selectedOptionalIds.value, offerId])]
-    : selectedOptionalIds.value.filter((id) => id !== offerId);
-  if (selected) focusOffer(offerId);
-  else if (selectedOfferId.value === offerId)
-    selectedOfferId.value = selectedMechanismId.value || soleModelMechanism.value?.id || "";
-}
-
 function clearSelections(): void {
   inputs.value = {};
 }
@@ -255,20 +275,30 @@ function offerState(offer: WebsitePricingOffer): string | undefined {
   return summary === "Metered pricing" || summary === "Incomplete" ? undefined : summary;
 }
 
-function isFixedSelector(selector: WebsitePricingSelector): selector is CategoricalSelector {
-  return selector.kind === "categorical" && selector.values.length === 1;
+function isFixedSelector(selector: WebsitePricingSelector): selector is FixedSelector {
+  return (
+    (selector.kind === "categorical" || selector.kind === "decimal_values") &&
+    selector.values.length === 1
+  );
 }
 
-function fixedSelection(selector: CategoricalSelector): PricingSelection {
-  return {
-    dimension: selector.dimension,
-    kind: "categorical",
-    value: selector.values[0]!.value,
-  };
+function fixedSelection(selector: FixedSelector): PricingSelection {
+  return selector.kind === "categorical"
+    ? {
+        dimension: selector.dimension,
+        kind: "categorical",
+        value: selector.values[0]!.value,
+      }
+    : {
+        dimension: selector.dimension,
+        kind: "decimal",
+        value: selector.values[0]!,
+        unit: selector.unit,
+      };
 }
 
-function fixedSelectorValue(selector: CategoricalSelector): string {
-  return selector.values[0]!.label;
+function fixedSelectorValue(selector: FixedSelector): string {
+  return selector.kind === "categorical" ? selector.values[0]!.label : selector.values[0]!;
 }
 
 type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
@@ -453,13 +483,13 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
         aria-labelledby="model-mechanism-heading"
       >
         <header class="pricing-subheading">
-          <h4 id="model-mechanism-heading">Model mechanism</h4>
+          <h4 id="model-mechanism-heading">Run mode</h4>
           <button
             v-if="activeOffer?.id !== soleModelMechanism.id"
             type="button"
             @click="focusOffer(soleModelMechanism.id)"
           >
-            View mechanism
+            Return to rates
           </button>
         </header>
         <div class="offer-summary">
@@ -471,14 +501,14 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
       </section>
 
       <fieldset v-if="modelMechanisms.length > 1" class="pricing-offer-group">
-        <legend>Model mechanisms</legend>
+        <legend>Run mode</legend>
         <div class="offer-list">
           <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
             <input
               type="radio"
               :name="`pricing-mechanism-${model.uid}`"
               :value="offer.id"
-              :checked="selectedMechanismId === offer.id"
+              :checked="activeMechanismId === offer.id && activeOffer?.group === 'model_mechanism'"
               @change="selectMechanism(offer.id)"
             />
             <span>
@@ -491,64 +521,17 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
         </div>
       </fieldset>
 
-      <fieldset v-for="group in offerGroups" :key="group.key" class="pricing-offer-group">
-        <legend>{{ group.title }}</legend>
-        <div v-if="group.selection === 'multiple'" class="offer-list">
-          <label v-for="offer in group.offers" :key="offer.id" class="offer-choice">
-            <input
-              type="checkbox"
-              :value="offer.id"
-              :checked="selectedOptionalIds.includes(offer.id)"
-              @change="toggleOptional(offer.id, $event)"
-            />
-            <span>
-              <span class="offer-title">{{ offer.title }}</span>
-              <small v-if="offerState(offer)" class="offer-state">
-                {{ offerState(offer) }}
-              </small>
-            </span>
-          </label>
-        </div>
-        <div v-else class="offer-list">
-          <button
-            v-for="offer in group.offers"
-            :key="offer.id"
-            type="button"
-            class="offer-choice offer-button"
-            :aria-pressed="activeOffer?.id === offer.id"
-            @click="focusOffer(offer.id)"
-          >
-            <span>
-              <span class="offer-title">{{ offer.title }}</span>
-              <small v-if="offerState(offer)" class="offer-state">
-                {{ offerState(offer) }}
-              </small>
-            </span>
-          </button>
-        </div>
-      </fieldset>
-
-      <p v-if="activeOffer === undefined && offers.length > 0" class="context-prompt offer-prompt">
-        Choose an offer to view its pricing.
-      </p>
-
       <section
-        v-if="activeOffer && selectors.length > 0"
+        v-if="activeOffer && querySelectors.length > 0"
         class="pricing-context"
         aria-labelledby="context-heading"
       >
         <header class="pricing-subheading">
-          <h4 id="context-heading">Pricing context</h4>
+          <h4 id="context-heading">Price options</h4>
           <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
         </header>
-        <div v-if="fixedSelectors.length > 0" class="fixed-context-list">
-          <span v-for="selector in fixedSelectors" :key="selector.key">
-            <small>{{ selector.label }}</small>
-            <span>{{ fixedSelectorValue(selector) }}</span>
-          </span>
-        </div>
-        <div v-if="configurableSelectors.length > 0" class="pricing-selector-grid">
-          <label v-for="selector in configurableSelectors" :key="selector.key">
+        <div class="pricing-selector-grid">
+          <label v-for="selector in querySelectors" :key="selector.key">
             <span>
               {{ selector.label }}
               <template v-if="'unit' in selector">
@@ -611,80 +594,29 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
       </section>
 
       <article v-if="activeOffer" :key="activeOffer.id" class="pricing-offer-view">
-        <p v-if="activeOffer.composition" class="offer-composition">
-          {{ activeOffer.composition }}
-        </p>
-
-        <div v-if="incomplete" class="pricing-warning" role="status">
-          <strong>Pricing details incomplete</strong>
-          <span
-            >Some official pricing cannot be represented exactly. Shown rates may be
-            incomplete.</span
-          >
-        </div>
-
-        <section class="offer-section">
-          <header class="pricing-subheading">
-            <h5>Billing method</h5>
-          </header>
-          <div class="billing-fact-list">
-            <div>
-              <span class="billing-fact-value">{{ activeOffer.billing_mode.label }}</span>
-              <small v-if="activeOffer.billing_mode.description">
-                {{ activeOffer.billing_mode.description }}
-              </small>
-            </div>
-            <div v-for="entry in visibleEnrollment" :key="entry.key">
-              <span class="billing-fact-value">{{ entry.label }}</span>
-              <small>Enrollment</small>
-              <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
-            </div>
-            <div v-for="entry in visibleSettlement" :key="entry.key">
-              <span class="billing-fact-value">{{ entry.channel }} · {{ entry.biller }}</span>
-              <small>{{ entry.payment_sources.join(" → ") }}</small>
-              <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
-            </div>
+        <header class="active-offer-heading">
+          <div>
+            <h4>{{ activeOffer.title }}</h4>
+            <p>
+              {{ activeOffer.billing_mode.label }}
+              <template v-if="offerState(activeOffer)"> · {{ offerState(activeOffer) }} </template>
+            </p>
           </div>
-        </section>
-
-        <section v-if="showOfferStates" class="offer-section">
-          <header class="pricing-subheading">
-            <h5>Offer state</h5>
-          </header>
-          <div class="state-list">
-            <div
-              v-for="state in visibleStates"
-              :key="state.key"
-              class="state-row"
-              :data-state="state.state"
-            >
-              <span class="state-marker"></span>
-              <div>
-                <span class="state-label">{{ state.label }}</span>
-                <small v-if="state.qualifier">{{ state.qualifier }}</small>
-              </div>
-            </div>
-          </div>
-        </section>
+        </header>
 
         <section v-if="activeOffer.rates.length > 0" class="offer-section">
           <header class="pricing-subheading">
-            <h5>Rates</h5>
+            <h5>Published rates</h5>
           </header>
           <p v-if="unresolvedRateDimensions.length > 0" class="context-prompt">
             {{ contextPrompt }}
           </p>
-          <div
-            v-if="visibleRates.length > 0"
-            class="pricing-matrix"
-            :class="{ 'has-drivers': hasVisibleRateDrivers }"
-          >
+          <div v-if="visibleRates.length > 0" class="pricing-matrix">
             <table>
               <thead>
                 <tr>
                   <th scope="col">Meter</th>
-                  <th scope="col">Exact rate</th>
-                  <th v-if="hasVisibleRateDrivers" scope="col">Cost driver</th>
+                  <th scope="col">Rate</th>
                 </tr>
               </thead>
               <tbody>
@@ -692,25 +624,18 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
                   <th scope="row">
                     <span class="rate-name">{{ rate.label }}</span>
                     <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
-                    <small v-if="!rate.driver">Usage binding unavailable</small>
+                    <details v-if="rate.driver" class="rate-driver">
+                      <summary>How usage is counted</summary>
+                      <small>{{ rate.driver.label }} · {{ driverContext(rate.driver) }}</small>
+                      <small>{{ rate.driver.definition }}</small>
+                      <small v-if="rate.driver.aggregation_definition">
+                        {{ rate.driver.aggregation_definition }}
+                      </small>
+                    </details>
                   </th>
                   <td class="numeric" :aria-label="rate.accessible_text">
                     <span class="exact-rate">{{ rate.amount }}</span>
                     <small>{{ rate.unit }}</small>
-                  </td>
-                  <td v-if="hasVisibleRateDrivers" class="driver-cell">
-                    <template v-if="rate.driver">
-                      <span class="cost-driver-name">{{ rate.driver.label }}</span>
-                      <small>{{ rate.driver.definition }}</small>
-                      <small>{{ driverContext(rate.driver) }}</small>
-                      <small v-if="rate.driver.aggregation_definition">
-                        {{ rate.driver.aggregation_definition }}
-                      </small>
-                    </template>
-                    <template v-else>
-                      <span class="cost-driver-name">Unbound</span>
-                      <small>No exact public quantity signal is bound.</small>
-                    </template>
                   </td>
                 </tr>
               </tbody>
@@ -720,6 +645,18 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
             No rates match the selected context.
           </p>
         </section>
+
+        <div v-if="incomplete" class="pricing-warning" role="status">
+          <strong
+            >{{ incompleteCount }} published rate exception{{
+              incompleteCount === 1 ? "" : "s"
+            }}</strong
+          >
+          <span
+            >Available exact rates are shown above. Source exceptions remain available for
+            audit.</span
+          >
+        </div>
 
         <section v-if="visibleAllowances.length > 0" class="offer-section">
           <header class="pricing-subheading">
@@ -761,9 +698,125 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
           </div>
         </section>
 
+        <details class="pricing-disclosure">
+          <summary>
+            <span><UiIcon name="chevron-right" />Advanced billing details</span>
+          </summary>
+          <div class="advanced-details">
+            <p v-if="activeOffer.composition" class="offer-composition">
+              {{ activeOffer.composition }}
+            </p>
+
+            <div v-if="fixedSelectors.length > 0" class="fixed-context-list">
+              <span v-for="selector in fixedSelectors" :key="selector.key">
+                <small>{{ selector.label }}</small>
+                <span>{{ fixedSelectorValue(selector) }}</span>
+              </span>
+            </div>
+
+            <section v-if="advancedSelectors.length > 0" class="advanced-selector-section">
+              <header class="pricing-subheading">
+                <h5>Additional conditions</h5>
+                <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
+              </header>
+              <div class="pricing-selector-grid">
+                <label v-for="selector in advancedSelectors" :key="selector.key">
+                  <span>
+                    {{ selector.label }}
+                    <template v-if="'unit' in selector">
+                      ({{ formatUnitExpression(selector.unit) }})
+                    </template>
+                  </span>
+                  <UiSelect
+                    v-if="selector.kind === 'categorical'"
+                    :model-value="inputValue(selector.key)"
+                    :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
+                    placeholder="Choose…"
+                    @update:model-value="setInput(selector.key, $event)"
+                  />
+                  <UiSelect
+                    v-else-if="selector.kind === 'boolean'"
+                    :model-value="inputValue(selector.key)"
+                    :options="booleanOptions"
+                    placeholder="Choose…"
+                    @update:model-value="setInput(selector.key, $event)"
+                  />
+                  <UiSelect
+                    v-else-if="selector.kind === 'decimal_values'"
+                    :model-value="inputValue(selector.key)"
+                    :options="selector.values.map((value) => ({ value, label: value }))"
+                    placeholder="Choose…"
+                    @update:model-value="setInput(selector.key, $event)"
+                  />
+                  <UiSelect
+                    v-else-if="selector.kind === 'decimal_buckets'"
+                    :model-value="inputValue(selector.key)"
+                    :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
+                    placeholder="Choose…"
+                    @update:model-value="setInput(selector.key, $event)"
+                  />
+                  <input
+                    v-else
+                    :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
+                    :value="inputValue(selector.key)"
+                    :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
+                    :aria-describedby="`${selector.key}-advanced-range-guidance`"
+                    placeholder="Enter value"
+                    @input="setDecimalInput(selector.key, $event)"
+                  />
+                  <small
+                    v-if="selector.kind === 'decimal_range'"
+                    :id="`${selector.key}-advanced-range-guidance`"
+                    :class="
+                      decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'
+                    "
+                  >
+                    {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
+                  </small>
+                </label>
+              </div>
+            </section>
+
+            <div class="billing-fact-list">
+              <div>
+                <span class="billing-fact-value">{{ activeOffer.billing_mode.label }}</span>
+                <small>Billing method</small>
+                <small v-if="activeOffer.billing_mode.description">
+                  {{ activeOffer.billing_mode.description }}
+                </small>
+              </div>
+              <div v-for="entry in visibleEnrollment" :key="entry.key">
+                <span class="billing-fact-value">{{ entry.label }}</span>
+                <small>Enrollment</small>
+                <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
+              </div>
+              <div v-for="entry in visibleSettlement" :key="entry.key">
+                <span class="billing-fact-value">{{ entry.channel }} · {{ entry.biller }}</span>
+                <small>{{ entry.payment_sources.join(" → ") }}</small>
+                <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
+              </div>
+            </div>
+
+            <div v-if="showOfferStates" class="state-list">
+              <div
+                v-for="state in visibleStates"
+                :key="state.key"
+                class="state-row"
+                :data-state="state.state"
+              >
+                <span class="state-marker"></span>
+                <div>
+                  <span class="state-label">{{ state.label }}</span>
+                  <small v-if="state.qualifier">{{ state.qualifier }}</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </details>
+
         <details v-if="visibleUnnormalized.length > 0" class="pricing-disclosure">
           <summary>
-            <span><UiIcon name="chevron-right" />Unnormalized facts</span>
+            <span><UiIcon name="chevron-right" />Source exceptions</span>
             <strong>{{ visibleUnnormalized.length }}</strong>
           </summary>
           <div class="raw-fact-list">
@@ -779,6 +832,35 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
           </div>
         </details>
       </article>
+
+      <details v-if="relatedOfferCount > 0" class="pricing-disclosure related-offers">
+        <summary>
+          <span><UiIcon name="chevron-right" />Related costs and commercial options</span>
+          <strong>{{ relatedOfferCount }}</strong>
+        </summary>
+        <div class="related-offer-groups">
+          <fieldset v-for="group in offerGroups" :key="group.key" class="pricing-offer-group">
+            <legend>{{ group.title }}</legend>
+            <div class="offer-list">
+              <button
+                v-for="offer in group.offers"
+                :key="offer.id"
+                type="button"
+                class="offer-choice offer-button"
+                :aria-pressed="activeOffer?.id === offer.id"
+                @click="focusOffer(offer.id)"
+              >
+                <span>
+                  <span class="offer-title">{{ offer.title }}</span>
+                  <small v-if="offerState(offer)" class="offer-state">
+                    {{ offerState(offer) }}
+                  </small>
+                </span>
+              </button>
+            </div>
+          </fieldset>
+        </div>
+      </details>
     </template>
   </section>
 </template>
@@ -786,6 +868,7 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
 <style scoped>
 .pricing-section-header,
 .pricing-subheading,
+.active-offer-heading,
 .state-row,
 .billing-fact-list > div,
 .allowance-list > div,
@@ -873,6 +956,27 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
 .pricing-subheading h5 {
   margin: 0;
   font-size: var(--font-size-body);
+}
+
+.active-offer-heading {
+  min-height: var(--control-height-comfortable);
+  gap: var(--space-3);
+}
+
+.active-offer-heading h4,
+.active-offer-heading p {
+  margin: 0;
+}
+
+.active-offer-heading h4 {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-brand);
+}
+
+.active-offer-heading p {
+  margin-top: var(--space-0-5);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-micro);
 }
 
 .pricing-subheading button {
@@ -1063,16 +1167,13 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
 }
 
 .offer-composition {
-  padding-bottom: var(--space-3);
-  border-bottom: 1px solid var(--color-border-subtle);
-}
-
-.offer-composition + .pricing-warning {
-  margin-top: var(--space-3);
+  padding: var(--space-2-5) var(--space-3);
+  border-left: var(--stroke-focus) solid var(--color-border-default);
+  background: var(--color-surface-subtle);
 }
 
 .pricing-offer-view > .pricing-warning {
-  margin-bottom: var(--space-4);
+  margin-top: var(--space-4);
 }
 
 .offer-section {
@@ -1125,24 +1226,11 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
   border-collapse: collapse;
 }
 
-.pricing-matrix.has-drivers thead th:first-child {
-  width: 28%;
-}
-
-.pricing-matrix.has-drivers thead th:nth-child(2) {
-  width: 26%;
-  text-align: right;
-}
-
-.pricing-matrix.has-drivers thead th:last-child {
-  width: 46%;
-}
-
-.pricing-matrix:not(.has-drivers) thead th:first-child {
+.pricing-matrix thead th:first-child {
   width: 60%;
 }
 
-.pricing-matrix:not(.has-drivers) thead th:last-child {
+.pricing-matrix thead th:last-child {
   width: 40%;
   text-align: right;
 }
@@ -1197,9 +1285,19 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
   white-space: nowrap;
 }
 
-.pricing-matrix .driver-cell {
-  text-align: left;
-  white-space: normal;
+.rate-driver {
+  margin-top: var(--space-1);
+}
+
+.rate-driver summary {
+  width: max-content;
+  color: var(--color-accent);
+  font-size: var(--font-size-micro);
+  cursor: pointer;
+}
+
+.rate-driver small {
+  display: block;
 }
 
 .pricing-disclosure {
@@ -1229,6 +1327,25 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
 
 .pricing-disclosure[open] > summary .ui-icon {
   transform: rotate(90deg);
+}
+
+.advanced-details,
+.related-offer-groups {
+  display: grid;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+
+.advanced-selector-section {
+  min-width: 0;
+}
+
+.related-offers {
+  margin-top: var(--space-4);
+}
+
+.related-offers .pricing-offer-group {
+  margin-top: 0;
 }
 
 .raw-fact-list header {

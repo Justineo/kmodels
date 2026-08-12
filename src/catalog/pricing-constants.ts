@@ -1,7 +1,7 @@
 export const pricingLimits = {
   applicabilityClauses: 1_024,
   applicabilityBytes: 1_048_576,
-  providerApplicabilityBytes: 67_108_864,
+  providerApplicabilityBytes: 134_217_728,
   providerSelectorWork: 268_435_456,
   conditionsPerClause: 32,
   categoricalValuesPerCondition: 4_096,
@@ -19,7 +19,7 @@ export const pricingLimits = {
   coreInputBytes: 134_217_728,
   pricingInputBytes: 335_544_320,
   providerPrecompactionBytes: 134_217_728,
-  providerPricingBytes: 67_108_864,
+  providerPricingBytes: 134_217_728,
   pricingCatalogBytes: 268_435_456,
 } as const;
 

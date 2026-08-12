@@ -211,7 +211,14 @@ function mechanismApplicability(
     if (value?.startsWith("reserved_") === true || value?.startsWith("provisioned_") === true)
       return [];
     if ((mechanism === "batch") !== (value === "batch")) return [];
-    return [{ all_of: tier === undefined ? all_of : all_of.filter((item) => item !== tier) }];
+    return [
+      {
+        all_of:
+          mechanism === "batch" && tier !== undefined
+            ? all_of.filter((item) => item !== tier)
+            : all_of,
+      },
+    ];
   });
   return any_of.length === 0 ? undefined : canonicalizeApplicability({ any_of });
 }

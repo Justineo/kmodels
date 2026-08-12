@@ -564,7 +564,12 @@ derived from those changing fields.
 
 Compaction groups equal semantic values and unions their applicability while
 retaining all observations. Canonical output must be maximally compact for the
-declared grouping keys. Unequal overlapping normalized values are not allowed;
+declared grouping keys. When the union itself exceeds one applicability's clause
+or byte budget, assembly deterministically shards the equal-value group into the
+fewest recursively bounded applicability variants it can publish; it does not
+downgrade otherwise normalized rates or states merely because their selector
+domain is large. Two shards with the same grouping key are valid only when
+combining them would exceed an applicability bound. Unequal overlapping normalized values are not allowed;
 only the connected affected component falls back to raw, while disjoint
 variants in the same logical term remain normalized. Equivalent source
 grouping therefore does not cause ID churn or duplicate UI rows.
@@ -576,6 +581,12 @@ promotion false versus true. This is a source-schema normalization rule, not a
 provider recommendation or a choice of cheapest offer. Without that exact
 evidence, the dimension remains missing and overlapping unequal values fall
 back to raw.
+
+Offer partitioning follows the same best-effort rule. Moving one selector value
+into a dedicated offer may remove that value from applicability, but sibling
+values that still distinguish unequal prices remain on the retained offer.
+Topology therefore cannot erase a reviewed price dimension and manufacture a
+conflict that was not present in the source facts.
 
 ### Reviewed per-fact precedence
 

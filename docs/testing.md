@@ -30,12 +30,20 @@ requires adding it to that list.
   named, documented calibration range instead of today's count.
 - Test provider-specific parsing and presentation examples against fixtures or synthetic pricing.
   Generated-data tests should apply the same invariant to every applicable provider or model.
+- Exercise applicability budgets on both sides of the boundary. Equal-value claims that exceed one
+  applicability must remain normalized as deterministic bounded shards with complete observations;
+  a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.
 - Treat projection closure and interaction budgets as behavior: shared resource books must not leak
   sibling-model offers, every provider pricing row must expose readable applicability, model-detail
   offer counts stay bounded, provider loading is chunk/offer-lazy, deferred offers match their
   summaries, conditional states remain visible, applicability labels stay within their display
   budget, raw-only resources remain distinct, and raw-fact previews never exceed their documented
   limit even when the canonical audit contains more facts.
+- Test pricing query projection separately from component markup. Equal rate variants may bypass a
+  selector only when their combined applicability covers the remaining numeric state; unequal or
+  partial-scope variants must keep the selector unresolved. Component SSR tests cover the visible
+  consequence: invariant rates render immediately, while price-changing context produces a focused
+  prompt and no premature numeric answer.
 - Require the subject to exist before asserting that one of its optional fields is absent; optional
   chaining must not allow a missing subject to satisfy the assertion accidentally.
 - Prefer explicit structural assertions over large snapshots. A failure should identify the model,
