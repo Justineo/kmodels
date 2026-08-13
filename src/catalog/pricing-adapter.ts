@@ -44,7 +44,6 @@ import { applyDeepseekCommercialTopology } from "./deepseek-commercial.ts";
 import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
 import { applyHuggingFaceCommercialTopology } from "./huggingface-commercial.ts";
 import { applyKimiCommercialTopology } from "./kimi-commercial.ts";
-import { applyLlamaCommercialTopology } from "./llama-commercial.ts";
 import { applyMistralCommercialTopology } from "./mistral-commercial.ts";
 import { applyOpenAiCommercialTopology } from "./openai-commercial.ts";
 import { applyOllamaCommercialTopology } from "./ollama-commercial.ts";
@@ -59,6 +58,7 @@ import {
   type SourceRawPricingFact,
   type SourceCommercialPricingFact,
 } from "./pricing-source.ts";
+import { unknownCapabilities } from "./schema.ts";
 
 export interface ParsedPricingSource {
   source: SourceManifest;
@@ -210,24 +210,51 @@ export function assembleParsedProviderPricing(
     dispositions,
     books,
   } satisfies AtomicProviderPricing;
-  const openai = applyOpenAiCommercialTopology(input, publishedModels);
-  const anthropic = applyAnthropicCommercialTopology(openai);
-  const bedrock = applyBedrockCommercialTopology(anthropic);
-  const azure = applyAzureCommercialTopology(bedrock, publishedModels);
-  const vercel = applyVercelCommercialTopology(azure);
-  const databricks = applyDatabricksCommercialTopology(vercel);
-  const gemini = applyGeminiCommercialTopology(databricks);
-  const vertex = applyVertexCommercialTopology(gemini, publishedModels);
-  const kimi = applyKimiCommercialTopology(vertex);
-  const cohere = applyCohereCommercialTopology(kimi, publishedModels);
-  const mistral = applyMistralCommercialTopology(cohere);
-  const llama = applyLlamaCommercialTopology(mistral);
-  const huggingFace = applyHuggingFaceCommercialTopology(llama);
-  const dashscope = applyDashscopeCommercialTopology(huggingFace);
-  const deepseek = applyDeepseekCommercialTopology(dashscope, publishedModels);
-  const cerebras = applyCerebrasCommercialTopology(deepseek, publishedModels);
-  const ollama = applyOllamaCommercialTopology(cerebras, publishedModels);
-  return assembleProviderPricing(applyXaiCommercialTopology(ollama, publishedModels));
+  return assembleProviderPricing(applyCommercialTopology(input, publishedModels));
+}
+
+function applyCommercialTopology(
+  input: AtomicProviderPricing,
+  publishedModels: readonly PublishedPricingModel[],
+): AtomicProviderPricing {
+  switch (input.provider_id) {
+    case "amazon-bedrock":
+      return applyBedrockCommercialTopology(input);
+    case "anthropic":
+      return applyAnthropicCommercialTopology(input);
+    case "azure":
+      return applyAzureCommercialTopology(input, publishedModels);
+    case "cerebras":
+      return applyCerebrasCommercialTopology(input, publishedModels);
+    case "cohere":
+      return applyCohereCommercialTopology(input, publishedModels);
+    case "dashscope":
+      return applyDashscopeCommercialTopology(input);
+    case "databricks":
+      return applyDatabricksCommercialTopology(input);
+    case "deepseek":
+      return applyDeepseekCommercialTopology(input, publishedModels);
+    case "gemini":
+      return applyGeminiCommercialTopology(input);
+    case "huggingface":
+      return applyHuggingFaceCommercialTopology(input);
+    case "kimi":
+      return applyKimiCommercialTopology(input);
+    case "mistral":
+      return applyMistralCommercialTopology(input);
+    case "ollama":
+      return applyOllamaCommercialTopology(input, publishedModels);
+    case "openai":
+      return applyOpenAiCommercialTopology(input, publishedModels);
+    case "vercel":
+      return applyVercelCommercialTopology(input);
+    case "vertex":
+      return applyVertexCommercialTopology(input, publishedModels);
+    case "xai":
+      return applyXaiCommercialTopology(input, publishedModels);
+    default:
+      return input;
+  }
 }
 
 function pricingEvidencePriority(source: SourceManifest): number {
@@ -413,6 +440,9 @@ function commercialPricingBooks(
       provider_id: providerId,
       model_id: `resource:${fact.resource_key}`,
       uid: `${providerId}/resource:${fact.resource_key}`,
+      tasks: [],
+      capabilities: unknownCapabilities(),
+      status: "active" as const,
       pricing_state:
         fact.pricing_state === "included" || fact.pricing_state === "externally_billed"
           ? ("unknown" as const)

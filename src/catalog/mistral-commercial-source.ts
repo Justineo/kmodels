@@ -129,8 +129,6 @@ export function extractMistralCommercialFacts(
     .map(({ uid }) => uid)
     .sort();
   for (const card of cards) addCard(input, facts, card, agentModels, bindingEvidence);
-  addVibePlans(input, facts);
-  addEnterpriseServices(input, facts);
   const carrier = [...input.models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && facts.length > 0)
     carrier.commercial_facts = [...(carrier.commercial_facts ?? []), ...facts];
@@ -145,86 +143,13 @@ function addCard(
 ): void {
   const title = card.title || card.id;
   if (card.id !== "" && !card.id.startsWith("Classifier API model")) return;
-  if (title === "Enterprise APIs") {
-    const uplift = card.text.match(/([0-9]+(?:\.[0-9]+)?)% above list pricing/i)?.[1];
-    if (uplift === undefined) unresolved(input, "Enterprise API uplift");
-    facts.push(
-      fact(
-        input.sourceId,
-        "service:enterprise-api",
-        "Enterprise API",
-        "service",
-        "enterprise-api",
-        [],
-        "enterprise",
-        "Enterprise API",
-        "usage",
-        "custom_quote",
-        [],
-        uplift === undefined
-          ? []
-          : [
-              raw(
-                input.sourceId,
-                "select_api_uplift",
-                "informational",
-                "unknown_applicability",
-                `Enterprise APIs are available for ${uplift}% above list pricing on select APIs`,
-              ),
-            ],
-      ),
-    );
-    input.reconcile?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "provider_service_custom_quote",
-      sample: "Enterprise API",
-    });
-    if (uplift !== undefined)
-      input.reconcile?.({ disposition: "raw", reason_code: "enterprise_api_selective_uplift" });
+  if (
+    title === "Enterprise APIs" ||
+    title === "Agent API" ||
+    title === "Data capture" ||
+    title.startsWith("Classifier API model")
+  )
     return;
-  }
-  if (title === "Agent API") {
-    const composition = /model cost per M token\s*\+\s*tool call/i.test(card.text);
-    if (!composition) unresolved(input, "Agent API composition");
-    facts.push(
-      fact(
-        input.sourceId,
-        "account:agent",
-        "Agent",
-        "account_resource_template",
-        "agent",
-        agentModels,
-        "execution",
-        "Agent execution",
-        "usage",
-        "not_published",
-        [],
-        composition
-          ? [
-              raw(
-                input.sourceId,
-                "agent_price_formula",
-                "informational",
-                "unknown_applicability",
-                "Agent API price is model cost plus exact built-in tool charges; no generic orchestration surcharge is published",
-              ),
-            ]
-          : [],
-      ),
-    );
-    input.reconcile?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "price_not_published",
-      sample: "Agent API",
-    });
-    if (composition)
-      input.reconcile?.({ disposition: "raw", reason_code: "agent_api_composition" });
-    return;
-  }
-  if (title.startsWith("Classifier API model")) {
-    addClassifier(input, facts, card, title);
-    return;
-  }
   const simple = serviceDefinition(title);
   if (simple !== undefined) {
     const row = card.rows[0];
@@ -240,22 +165,20 @@ function addCard(
         simple.name,
         "service",
         simple.key,
-        simple.projected ? agentModels : [],
+        agentModels,
         "usage",
         simple.name,
         "usage",
         "numeric",
         rates,
-        simple.projected && !bindingEvidence.has(simple.key)
-          ? [bindingUnavailable(input.sourceId, simple.key)]
-          : [],
+        bindingEvidence.has(simple.key) ? [] : [bindingUnavailable(input.sourceId, simple.key)],
       ),
     );
     normalized(input, rates.length);
     return;
   }
   if (title === "Libraries")
-    addLibraries(input, facts, card, agentModels, bindingEvidence.has("library"));
+    addLibraryRetrieval(input, facts, card, agentModels, bindingEvidence.has("library"));
   else if (card.id === "")
     unresolved(input, title || card.text.slice(0, 128), "unknown_public_pricing_card");
 }
@@ -266,7 +189,6 @@ interface ServiceDefinition {
   meter: SourcePriceFact["meter"];
   unit: SourcePriceFact["unit"];
   expected: RegExp;
-  projected: boolean;
   operation?: string;
 }
 
@@ -278,7 +200,6 @@ function serviceDefinition(title: string): ServiceDefinition | undefined {
       meter: "code_execution",
       unit: "thousand_requests",
       expected: /1K calls/i,
-      projected: true,
     };
   if (title === "Web search")
     return {
@@ -287,7 +208,6 @@ function serviceDefinition(title: string): ServiceDefinition | undefined {
       meter: "web_search",
       unit: "thousand_requests",
       expected: /1K calls/i,
-      projected: true,
       operation: "web_search",
     };
   if (title === "Premium news")
@@ -297,7 +217,6 @@ function serviceDefinition(title: string): ServiceDefinition | undefined {
       meter: "web_search",
       unit: "thousand_requests",
       expected: /1K calls/i,
-      projected: true,
       operation: "web_search_premium",
     };
   if (title === "Images")
@@ -307,17 +226,7 @@ function serviceDefinition(title: string): ServiceDefinition | undefined {
       meter: "image_generation",
       unit: "thousand_items",
       expected: /1K images/i,
-      projected: true,
       operation: "image_generation",
-    };
-  if (title === "Data capture")
-    return {
-      key: "data-capture",
-      name: title,
-      meter: "custom_reporting",
-      unit: "million_tokens",
-      expected: /M tokens/i,
-      projected: false,
     };
 }
 
@@ -336,230 +245,37 @@ function serviceRates(
   );
 }
 
-function addLibraries(
+function addLibraryRetrieval(
   input: Input,
   facts: SourceCommercialPricingFact[],
   card: MistralPricingCard,
   modelRefs: string[],
   bindingAvailable: boolean,
 ): void {
-  const definitions = [
-    ["ocr", "Library document OCR", "input_image", "thousand_pages", /OCR.*1K pages/i],
-    ["indexing", "Library document indexing", "retrieval", "million_tokens", /Indexing.*M tokens/i],
-    ["retrieval", "Document Library retrieval", "retrieval", "request", /Call.*call/i],
-  ] as const;
-  for (const [key, name, meter, unit, expected] of definitions) {
-    const row = card.rows.find((candidate) =>
-      expected.test(`${candidate.label} ${candidate.suffix ?? ""}`),
-    );
-    if (row === undefined || row.prefix !== null) {
-      unresolved(input, `Libraries: ${key}`);
-      continue;
-    }
-    facts.push(
-      fact(
-        input.sourceId,
-        "account:library",
-        "Library",
-        "account_resource_template",
-        "library",
-        key === "retrieval" ? modelRefs : [],
-        key,
-        name,
-        "usage",
-        "numeric",
-        rowRates(input.sourceId, row, meter, unit, { operation: key }),
-        key === "retrieval" && !bindingAvailable
-          ? [bindingUnavailable(input.sourceId, "library")]
-          : [],
-      ),
-    );
-    normalized(input, 2);
-  }
-}
-
-function addClassifier(
-  input: Input,
-  facts: SourceCommercialPricingFact[],
-  card: MistralPricingCard,
-  title: string,
-): void {
-  const size = title.match(/\b(3B|8B)\b/i)?.[1]?.toLowerCase();
-  if (size === undefined) {
-    unresolved(input, title);
+  const row = card.rows.find((candidate) =>
+    /Call.*call/i.test(`${candidate.label} ${candidate.suffix ?? ""}`),
+  );
+  if (row === undefined || row.prefix !== null) {
+    unresolved(input, "Libraries: retrieval");
     return;
   }
-  const minimum = card.text.match(
-    /minimum fee per fine-tuning job of \$([0-9]+(?:\.[0-9]+)?)/i,
-  )?.[1];
-  if (minimum === undefined) unresolved(input, `${title}: minimum job charge`);
-  const definitions = [
-    ["training", "Classifier training", "training_input", "million_tokens", /Training.*M tokens/i],
-    ["storage", "Classifier model storage", "storage", "unit_month", /Storage.*month.*model/i],
-    ["input", "Classifier inference input", "input_text", "million_tokens", /Input.*M tokens/i],
-    ["output", "Classifier inference output", "output_text", "million_tokens", /Output.*M tokens/i],
-  ] as const;
-  for (const [key, name, meter, unit, expected] of definitions) {
-    const row = card.rows.find((candidate) =>
-      expected.test(`${candidate.label} ${candidate.suffix ?? ""}`),
-    );
-    if (row === undefined || row.prefix !== null) {
-      unresolved(input, `${title}: ${key}`);
-      continue;
-    }
-    facts.push(
-      fact(
-        input.sourceId,
-        `account:classifier-${size}`,
-        `${title} fine-tuned model`,
-        "account_resource_template",
-        `classifier-${size}`,
-        [],
-        key,
-        `${name} (${size.toUpperCase()})`,
-        key === "storage" ? "subscription" : key === "training" ? "one_time" : "usage",
-        "numeric",
-        rowRates(input.sourceId, row, meter, unit),
-        key === "training" && minimum !== undefined
-          ? [
-              raw(
-                input.sourceId,
-                "minimum_job_charge",
-                "base_price",
-                "requires_usage_aggregation",
-                `Minimum fee per fine-tuning job is USD ${minimum}`,
-              ),
-            ]
-          : [],
-      ),
-    );
-    normalized(input, 2);
-    if (key === "training" && minimum !== undefined)
-      input.reconcile?.({
-        disposition: "raw",
-        reason_code: "minimum_job_charge_requires_aggregation",
-        sample: title,
-      });
-  }
-}
-
-function addVibePlans(input: Input, facts: SourceCommercialPricingFact[]): void {
-  const body = companion(input, "/pricing/", [
-    /Vibe/i,
-    /Pro/i,
-    /Team/i,
-    /Enterprise/i,
-    /Education/i,
-    /Free/i,
-  ]);
-  if (body === undefined) return;
-  const $ = load(body);
-  const prices = [
-    ["pro", "Vibe Pro", "Pro"],
-    ["team", "Vibe Team", "Team"],
-    ["education", "Vibe Education", "Education plan"],
-  ] as const;
-  for (const [key, name, heading] of prices) {
-    const plan = planPrice($, heading);
-    if (plan === undefined) {
-      unresolved(input, name, "commercial_companion_drift");
-      continue;
-    }
-    facts.push(
-      fact(
-        input.sourceId,
-        `plan:vibe-${key}`,
-        name,
-        "plan",
-        `vibe-${key}`,
-        [],
-        "subscription",
-        name,
-        "subscription",
-        "numeric",
-        rowRates(
-          input.sourceId,
-          { ...plan, label: key === "team" ? "user / month" : "month" },
-          "subscription",
-          "unit_month",
-        ),
-        key === "team" && plan.minimumSeats !== undefined
-          ? [
-              raw(
-                input.sourceId,
-                "team_minimum",
-                "informational",
-                "requires_usage_aggregation",
-                `The displayed Team minimum uses ${plan.minimumSeats} seats`,
-              ),
-            ]
-          : [],
-      ),
-    );
-    normalized(input, 2, "normalized_plan_price");
-    if (key === "team" && plan.minimumSeats !== undefined)
-      input.reconcile?.({
-        disposition: "raw",
-        reason_code: "plan_minimum_requires_aggregation",
-        sample: name,
-      });
-  }
-  for (const [key, name, state] of [
-    ["free", "Vibe Free", "free"],
-    ["enterprise", "Vibe Enterprise", "custom_quote"],
-  ] as const)
-    facts.push(
-      fact(
-        input.sourceId,
-        `plan:vibe-${key}`,
-        name,
-        "plan",
-        `vibe-${key}`,
-        [],
-        "subscription",
-        name,
-        "subscription",
-        state,
-        [],
-        [],
-      ),
-    );
-  for (const [name, reason_code] of [
-    ["Vibe Free", "free"],
-    ["Vibe Enterprise", "provider_service_custom_quote"],
-  ] as const)
-    input.reconcile?.({ disposition: "explicit_non_numeric", reason_code, sample: name });
-}
-
-function planPrice(
-  $: ReturnType<typeof load>,
-  heading: string,
-): (MistralPricingRow & { minimumSeats?: number }) | undefined {
-  const title = $("h1,h2,h3,h4,h5,h6,p")
-    .toArray()
-    .find((element) => compact($(element).text()) === heading);
-  if (title === undefined) return;
-  let container = $(title).parent();
-  for (let depth = 0; depth < 8 && container.length > 0; depth += 1) {
-    const prices = container.find("mistral-atom-text-price");
-    const parsed = parseJson(prices.first().attr("data-prices"), priceSchema);
-    if (parsed !== undefined) {
-      const multipliers = prices.toArray().flatMap((element) => {
-        const value = Number($(element).attr("data-multiplier"));
-        return Number.isSafeInteger(value) && value > 1 ? [value] : [];
-      });
-      const minimumSeats = multipliers.length === 0 ? undefined : Math.max(...multipliers);
-      return {
-        label: heading,
-        priceEur: decimal(parsed.priceEur),
-        priceUsd: decimal(parsed.priceUsd),
-        prefix: parsed.prefix,
-        suffix: parsed.suffix,
-        ...(minimumSeats === undefined ? {} : { minimumSeats }),
-      };
-    }
-    container = container.parent();
-  }
+  facts.push(
+    fact(
+      input.sourceId,
+      "service:library-retrieval",
+      "Document Library retrieval",
+      "service",
+      "library-retrieval",
+      modelRefs,
+      "usage",
+      "Document Library retrieval",
+      "usage",
+      "numeric",
+      rowRates(input.sourceId, row, "retrieval", "request"),
+      bindingAvailable ? [] : [bindingUnavailable(input.sourceId, "library")],
+    ),
+  );
+  normalized(input, 2);
 }
 
 function rowRates(
@@ -580,53 +296,6 @@ function rowRates(
       raw_price: price,
     };
   });
-}
-
-function addEnterpriseServices(input: Input, facts: SourceCommercialPricingFact[]): void {
-  const services = [
-    [
-      "/products/forge/",
-      "forge",
-      "Mistral Forge",
-      [/Train, align, and evaluate custom AI models/i, /Talk to an expert/i],
-    ],
-    [
-      "/products/compute/",
-      "compute",
-      "Mistral Compute",
-      [/Reserve AI compute capacity/i, /dedicated compute/i, /Slurm/i],
-    ],
-    [
-      "/services/",
-      "private-deployment",
-      "Private deployment services",
-      [/private cloud/i, /on-prem/i],
-    ],
-  ] as const;
-  for (const [path, key, name, markers] of services) {
-    if (companion(input, path, markers) === undefined) continue;
-    facts.push(
-      fact(
-        input.sourceId,
-        `service:${key}`,
-        name,
-        key === "compute" ? "capacity" : "service",
-        key,
-        [],
-        "custom",
-        name,
-        key === "compute" ? "capacity" : "one_time",
-        "custom_quote",
-        [],
-        [],
-      ),
-    );
-    input.reconcile?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "provider_service_custom_quote",
-      sample: name,
-    });
-  }
 }
 
 function commercialBindingEvidence(input: Input): Set<string> {
@@ -665,13 +334,14 @@ function commercialBindingEvidence(input: Input): Set<string> {
 }
 
 function bindingUnavailable(sourceRef: string, key: string): SourceRawPricingFact {
-  return raw(
-    sourceRef,
-    "charge_binding_unavailable",
-    "informational",
-    "unknown_applicability",
-    `The ${key} execution-counter companion is missing or drifted; its price remains published without an automatic charge binding`,
-  );
+  return {
+    source_ref: sourceRef,
+    term_key: "charge_binding_unavailable",
+    impact: "informational",
+    reason: "unknown_applicability",
+    conditions: {},
+    raw: { label: `${key} usage counter was not verified` },
+  };
 }
 
 function fact(
@@ -702,16 +372,6 @@ function fact(
     price_facts,
     raw_price_facts,
   };
-}
-
-function raw(
-  source_ref: string,
-  term_key: string,
-  impact: SourceRawPricingFact["impact"],
-  reason: SourceRawPricingFact["reason"],
-  fragment: string,
-): SourceRawPricingFact {
-  return { source_ref, term_key, impact, reason, conditions: {}, raw: { fragment } };
 }
 
 function companion(input: Input, pathname: string, markers: readonly RegExp[]): string | undefined {
@@ -750,12 +410,11 @@ function compact(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function normalized(
-  input: Input,
-  count: number,
-  reason_code = "normalized_provider_service_price",
-): void {
-  reconcileMany(input.reconcile, count, { disposition: "normalized", reason_code });
+function normalized(input: Input, count: number): void {
+  reconcileMany(input.reconcile, count, {
+    disposition: "normalized",
+    reason_code: "normalized_provider_service_price",
+  });
 }
 
 function unresolved(

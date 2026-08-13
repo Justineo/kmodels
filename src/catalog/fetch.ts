@@ -191,6 +191,7 @@ export type FetchObservation = Omit<FetchPayload, "body"> & { key: string };
 export interface FetchResult extends FetchPayload {
   dependencies: FetchObservation[];
   omittedOptionalDependencies?: string[];
+  omittedOptionalDocuments?: string[];
 }
 
 class TransientFetchError extends Error {
@@ -1610,6 +1611,7 @@ interface DocumentEntry {
   format: SourceManifest["format"];
   maxResponseBytes: number;
   optional?: boolean;
+  claimLocal?: boolean;
 }
 
 async function fetchDocumentEntry(
@@ -1631,10 +1633,45 @@ async function fetchDocumentEntry(
   }
 }
 
+function documentEntry(
+  source: SourceManifest,
+  document: NonNullable<NonNullable<SourceManifest["linkedDocuments"]>["documents"]>[number],
+): DocumentEntry {
+  const url = checkedUrl(document.url, source);
+  return {
+    key: `${source.id}/${document.id}`,
+    url,
+    format: document.format ?? source.format,
+    maxResponseBytes: document.maxResponseBytes,
+    ...(document.optional === undefined ? {} : { optional: document.optional }),
+    ...(document.claimLocal === undefined ? {} : { claimLocal: document.claimLocal }),
+  };
+}
+
+function omittedDocuments(
+  entries: readonly DocumentEntry[],
+  documents: readonly (FetchedDocument | undefined)[],
+): Pick<FetchResult, "omittedOptionalDependencies" | "omittedOptionalDocuments"> {
+  const omittedOptionalDependencies = entries.flatMap((entry, index) =>
+    documents[index] === undefined && entry.claimLocal !== true ? [entry.key] : [],
+  );
+  const omittedOptionalDocuments = entries.flatMap((entry, index) =>
+    documents[index] === undefined && entry.claimLocal === true ? [entry.key] : [],
+  );
+  return {
+    ...(omittedOptionalDependencies.length === 0 ? {} : { omittedOptionalDependencies }),
+    ...(omittedOptionalDocuments.length === 0 ? {} : { omittedOptionalDocuments }),
+  };
+}
+
 async function fetchConfiguredDocuments(
   source: SourceManifest,
   label: string,
-): Promise<{ documents: FetchedDocument[]; omitted: string[] }> {
+): Promise<{
+  documents: FetchedDocument[];
+  omittedDependencies: string[];
+  omittedDocuments: string[];
+}> {
   const crawl = source.linkedDocuments;
   if (
     crawl === undefined ||
@@ -1643,21 +1680,19 @@ async function fetchConfiguredDocuments(
     crawl.maxDocuments !== 0
   )
     throw new Error(`${label} documentation bundle is not reviewed`);
-  const documents = await mapConcurrent(crawl.documents ?? [], crawl.concurrency, (document) =>
-    fetchDocumentEntry(source, {
-      key: `${source.id}/${document.id}`,
-      url: checkedUrl(document.url, source),
-      format: document.format ?? source.format,
-      maxResponseBytes: document.maxResponseBytes,
-      ...(document.optional === undefined ? {} : { optional: document.optional }),
-    }),
+  const entries = (crawl.documents ?? []).map((document) => documentEntry(source, document));
+  const documents = await mapConcurrent(entries, crawl.concurrency, (entry) =>
+    fetchDocumentEntry(source, entry),
   );
+  const omitted = omittedDocuments(entries, documents);
   return {
     documents: documents.filter((document): document is FetchedDocument => document !== undefined),
-    omitted: documents.flatMap((document, index) => {
-      const id = crawl.documents?.[index]?.id;
-      return document === undefined && id !== undefined ? [id] : [];
-    }),
+    omittedDependencies: (omitted.omittedOptionalDependencies ?? []).map((key) =>
+      key.slice(`${source.id}/`.length),
+    ),
+    omittedDocuments: (omitted.omittedOptionalDocuments ?? []).map((key) =>
+      key.slice(`${source.id}/`.length),
+    ),
   };
 }
 
@@ -1703,12 +1738,16 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     const url = checkedUrl(`${source.url}/${id}/endpoints`, source);
     if (url.hostname !== "ai-gateway.vercel.sh" || url.pathname !== `/v1/models/${id}/endpoints`)
       throw new Error("Vercel endpoint URL left the reviewed API path");
-    const raw = await fetchPayload(
-      requestSource(source, key, url, "json", transport.maxEndpointBytes),
-    );
-    const body = normalizeVercelEndpointResponse(raw.body);
-    const payload = { ...raw, body, contentHash: sha256(body) };
-    return { key, url: url.href, payload };
+    try {
+      const raw = await fetchPayload(
+        requestSource(source, key, url, "json", transport.maxEndpointBytes),
+      );
+      const body = normalizeVercelEndpointResponse(raw.body);
+      const payload = { ...raw, body, contentHash: sha256(body) };
+      return { key, url: url.href, payload };
+    } catch {
+      return { omitted: key } as const;
+    }
   });
 
   const modelPageBase = checkedUrl(transport.modelPageBaseUrl, source);
@@ -1728,15 +1767,24 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     const url = checkedUrl(new URL(slug, modelPageBase).href, source);
     if (url.hostname !== "vercel.com" || url.pathname !== `/ai-gateway/models/${slug}`)
       throw new Error("Vercel model page left the reviewed path");
-    const raw = await fetchPayload(
-      requestSource(source, key, url, "html", transport.maxModelPageBytes),
-    );
-    const body = normalizeVercelModelPage(raw.body);
-    const payload = { ...raw, body, contentHash: sha256(body) };
-    return { key, url: url.href, payload };
+    try {
+      const raw = await fetchPayload(
+        requestSource(source, key, url, "html", transport.maxModelPageBytes),
+      );
+      const body = normalizeVercelModelPage(raw.body);
+      const payload = { ...raw, body, contentHash: sha256(body) };
+      return { key, url: url.href, payload };
+    } catch {
+      return { omitted: key } as const;
+    }
   });
 
-  const documents = [...endpointDocuments, ...modelPages, ...documentation.documents];
+  const fetched = [...endpointDocuments, ...modelPages];
+  const omitted = fetched.flatMap((document) => ("omitted" in document ? [document.omitted] : []));
+  const documents = [
+    ...fetched.flatMap((document) => ("omitted" in document ? [] : [document])),
+    ...documentation.documents,
+  ];
   const body = JSON.stringify({
     index: { url: source.url, body: index.body },
     documents: documents.map(({ url, payload }) => ({ url, body: payload.body })),
@@ -1752,9 +1800,12 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       observation(indexKey, index),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
-    ...(documentation.omitted.length === 0
+    ...(documentation.omittedDependencies.length === 0
       ? {}
-      : { omittedOptionalDependencies: documentation.omitted }),
+      : { omittedOptionalDependencies: documentation.omittedDependencies }),
+    ...(documentation.omittedDocuments.length + omitted.length === 0
+      ? {}
+      : { omittedOptionalDocuments: [...documentation.omittedDocuments, ...omitted].sort() }),
   };
 }
 
@@ -1933,7 +1984,6 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
   const input = amount("input");
   const cached = amount("cached");
   const output = amount("output");
-  const gated = /requires a Pro or Max subscription, and consumes extra usage credits/i.test(page);
   return JSON.stringify({
     model: family,
     ...(title === "" ? {} : { title }),
@@ -1946,7 +1996,6 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
             ...(cached === undefined ? {} : { cached }),
             ...(output === undefined ? {} : { output }),
             unit: "1M tokens",
-            ...(gated ? { accountEligibility: "extra_usage_balance", plans: ["Pro", "Max"] } : {}),
           },
         }),
   });
@@ -2079,9 +2128,12 @@ async function fetchOllamaCloud(source: SourceManifest): Promise<FetchResult> {
       ...details.map(({ key, payload }) => observation(key, payload)),
       ...documents.map(({ key, payload }) => observation(key, payload)),
     ],
-    ...(documentation.omitted.length === 0
+    ...(documentation.omittedDependencies.length === 0
       ? {}
-      : { omittedOptionalDependencies: documentation.omitted }),
+      : { omittedOptionalDependencies: documentation.omittedDependencies }),
+    ...(documentation.omittedDocuments.length === 0
+      ? {}
+      : { omittedOptionalDocuments: documentation.omittedDocuments }),
   };
 }
 
@@ -2130,18 +2182,13 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
 
   const indexKey = `${source.id}/index`;
   const indexSource = linkedSource(source, indexKey, new URL(source.url));
-  const configured = (crawl.documents ?? []).map((document): DocumentEntry => {
-    const url = checkedUrl(document.url, source);
-    if (url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "")
-      throw new Error("Reviewed companion URL contained unsupported URL components");
-    return {
-      key: `${source.id}/${document.id}`,
-      url,
-      format: document.format ?? source.format,
-      maxResponseBytes: document.maxResponseBytes,
-      ...(document.optional === undefined ? {} : { optional: document.optional }),
-    };
-  });
+  const configured = (crawl.documents ?? []).map((document) => documentEntry(source, document));
+  if (
+    configured.some(
+      ({ url }) => url.port !== "" || url.username !== "" || url.password !== "" || url.hash !== "",
+    )
+  )
+    throw new Error("Reviewed companion URL contained unsupported URL components");
   if (new Set(configured.map(({ key }) => key)).size !== configured.length)
     throw new Error("Linked document keys must be unique");
   const configuredPromise = mapConcurrent(configured, crawl.concurrency, (entry) =>
@@ -2207,6 +2254,7 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       url,
       format: source.format,
       maxResponseBytes: crawl.maxDocumentBytes ?? source.maxResponseBytes,
+      ...(crawl.optionalDocuments === true ? { optional: true } : {}),
     };
   });
   const entries = [...discovered, ...configured];
@@ -2227,9 +2275,10 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
   });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
     throw new Error("Linked documents exceeded aggregate byte limit");
-  const omitted = configured.flatMap((entry, index) =>
-    configuredDocuments[index] === undefined ? [entry.key] : [],
+  const omittedDiscovered = discovered.flatMap((entry, index) =>
+    discoveredDocuments[index] === undefined ? [entry.key] : [],
   );
+  const configuredOmissions = omittedDocuments(configured, configuredDocuments);
   return {
     body,
     contentHash: sha256(body),
@@ -2240,6 +2289,14 @@ export async function fetchSource(source: SourceManifest): Promise<FetchResult> 
       ...nestedIndexes.map((document) => observation(document.key, document.payload)),
       ...documents.map((document) => observation(document.key, document.payload)),
     ],
-    ...(omitted.length === 0 ? {} : { omittedOptionalDependencies: omitted }),
+    ...configuredOmissions,
+    ...(omittedDiscovered.length === 0
+      ? {}
+      : {
+          omittedOptionalDocuments: [
+            ...omittedDiscovered,
+            ...(configuredOmissions.omittedOptionalDocuments ?? []),
+          ],
+        }),
   };
 }

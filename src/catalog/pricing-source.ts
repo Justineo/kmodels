@@ -33,6 +33,7 @@ export const sourcePriceMeters = [
   "video_generation",
   "embedding",
   "rerank_request",
+  "speech_generation",
   "tool_call",
   "realtime_client_message",
   "realtime_session_duration",
@@ -212,7 +213,17 @@ export const parsedPricingStateSchema = z.enum([
   "unknown",
 ]);
 export const parsedPricingModelSchema = providerModelSchema
-  .pick({ provider_id: true, model_id: true, version: true, uid: true })
+  .pick({
+    provider_id: true,
+    model_id: true,
+    version: true,
+    uid: true,
+    api_endpoints: true,
+    capabilities: true,
+    service_families: true,
+    status: true,
+    tasks: true,
+  })
   .extend({
     pricing_state: parsedPricingStateSchema,
     price_facts: z.array(sourcePriceFactSchema),
@@ -268,6 +279,11 @@ export function parsedPricingModel(model: ParsedPricingModel): ParsedPricingMode
     model_id: model.model_id,
     ...(model.version === undefined ? {} : { version: model.version }),
     uid: model.uid,
+    ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
+    capabilities: model.capabilities,
+    ...(model.service_families === undefined ? {} : { service_families: model.service_families }),
+    status: model.status,
+    tasks: model.tasks,
     pricing_state: model.pricing_state,
     price_facts: model.price_facts.map(parsedPriceFact),
     raw_price_facts: model.raw_price_facts.map((fact) => sourceRawPricingFactSchema.parse(fact)),

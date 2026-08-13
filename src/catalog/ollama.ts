@@ -1,20 +1,11 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import {
-  attachOllamaCloudCommercialFacts,
-  attachOllamaLocalCommercialFacts,
-  type OllamaCommercialEvidence,
-} from "./ollama-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type {
-  ParsedProviderModel as ProviderModel,
-  SourcePriceFact,
-  SourceRawPricingFact,
-} from "./pricing-source.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   assertItemCount,
   contractExtensionEvidence,
@@ -115,7 +106,6 @@ interface Retirement {
 
 interface PagePricing {
   rates: SourcePriceFact[];
-  raw: SourceRawPricingFact[];
 }
 
 const cloudFamily = "Ollama Cloud";
@@ -275,15 +265,7 @@ export function parseOllamaLibrary(input: ParseInput): ProviderModel[] {
   const items = libraryItems(input.body, input);
   const { minModels, maxModels } = input.source.extractor;
   assertItemCount("Ollama library models", items.length, minModels, maxModels);
-  const models = items.map((item) => libraryModel(input, item));
-  attachOllamaLocalCommercialFacts(models, input.source.id);
-  for (const model of models)
-    input.onPricingReconciliation?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "external_execution",
-      sample: model.model_id,
-    });
-  return models;
+  return items.map((item) => libraryModel(input, item));
 }
 
 function validDateTime(value: unknown): string | undefined {
@@ -439,25 +421,6 @@ function cloudModel(
       : []),
     ...(capabilities.has("embedding") ? [{ name: "Embed", path: "/api/embed" }] : []),
   ];
-  const routeRetirement: SourceRawPricingFact[] =
-    currentLibrary && retirementDate !== undefined
-      ? [
-          {
-            term_key: "ollama_cloud_route_retirement",
-            impact: "informational",
-            reason: "unsupported_structure",
-            conditions: {},
-            source_ref: input.source.id,
-            raw: {
-              fragment: `Ollama Cloud route retires on ${retirementDate}${
-                retirement?.replacement === undefined
-                  ? ""
-                  : ` with ${retirement.replacement} as the recommended alternative`
-              }; local Library availability is unaffected`,
-            },
-          },
-        ]
-      : [];
   const updatedDate = latestDate(show?.modified, listed?.modified, library?.updated);
   return {
     ...baseModel({
@@ -501,30 +464,14 @@ function cloudModel(
     ...(currentLibrary || retirement?.replacement === undefined
       ? {}
       : { replacement_model_ids: [retirement.replacement] }),
-    pricing_state: "not_published",
-    raw_price_facts: routeRetirement,
+    pricing_state: "unknown",
   };
-}
-
-function usageLevel(value: unknown): number | undefined {
-  switch (value) {
-    case "low":
-      return 1;
-    case "medium":
-      return 2;
-    case "high":
-      return 3;
-    case "extra high":
-      return 4;
-    default:
-      return;
-  }
 }
 
 function pricingFor(result: Map<string, PagePricing>, id: string): PagePricing {
   const current = result.get(id);
   if (current !== undefined) return current;
-  const created = { rates: [], raw: [] };
+  const created = { rates: [] };
   result.set(id, created);
   return created;
 }
@@ -561,22 +508,6 @@ function pagePricing(
           continue;
         }
         pageModels.add(parsedId.data);
-        const level = usageLevel(Reflect.get(tag, "label"));
-        if (Reflect.get(tag, "label") !== undefined && level === undefined)
-          diagnostic(input, "/pages/tags/label");
-        if (level !== undefined)
-          pricingFor(pricing, parsedId.data).raw.push({
-            term_key: "ollama_cloud_usage_level",
-            impact: "allowance",
-            reason: "requires_usage_aggregation",
-            conditions: { account_eligibility: "included_plan_allowance" },
-            source_ref: input.source.id,
-            raw: {
-              label: `${String(Reflect.get(tag, "label"))} usage`,
-              amount: String(level),
-              unit: "usage level",
-            },
-          });
       }
     else if (tags !== undefined) diagnostic(input, "/pages/tags");
     const cost = Reflect.get(page.body, "cost");
@@ -586,11 +517,6 @@ function pagePricing(
       continue;
     }
     const value = pricingFor(pricing, page.model);
-    const eligibility = Reflect.get(cost, "accountEligibility");
-    const conditions =
-      eligibility === "extra_usage_balance" ? { account_eligibility: "extra_usage_balance" } : {};
-    if (eligibility !== undefined && eligibility !== "extra_usage_balance")
-      diagnostic(input, "/pages/cost/accountEligibility");
     for (const [field, meter] of [
       ["input", "input_text"],
       ["cached", "cache_read_text"],
@@ -599,27 +525,10 @@ function pagePricing(
       const amount = Reflect.get(cost, field);
       if (typeof amount === "string" && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount))
         value.rates.push(
-          publishedRate(meter, amount, "million_tokens", input.source.id, "1M tokens", conditions),
+          publishedRate(meter, amount, "million_tokens", input.source.id, "1M tokens", {}),
         );
       else if (amount !== undefined) diagnostic(input, `/pages/cost/${field}`);
     }
-    const plans = Reflect.get(cost, "plans");
-    const gate =
-      Array.isArray(plans) &&
-      plans.length === 2 &&
-      new Set(plans).size === 2 &&
-      plans.includes("Pro") &&
-      plans.includes("Max");
-    if (gate)
-      value.raw.push({
-        term_key: "ollama_cloud_plan_gate",
-        impact: "informational",
-        reason: "unsupported_structure",
-        conditions: {},
-        source_ref: input.source.id,
-        raw: { fragment: `Requires ${plans.join(" or ")} and consumes extra usage credits` },
-      });
-    else if (plans !== undefined) diagnostic(input, "/pages/cost/plans");
   }
   return { pricing, pageModels };
 }
@@ -628,9 +537,8 @@ function applyPagePricing(model: ProviderModel, pricing: PagePricing | undefined
   if (pricing === undefined) return model;
   return {
     ...model,
-    pricing_state: pricing.rates.length > 0 ? "numeric" : "not_published",
+    pricing_state: pricing.rates.length > 0 ? "numeric" : "unknown",
     price_facts: [...model.price_facts, ...pricing.rates],
-    raw_price_facts: [...model.raw_price_facts, ...pricing.raw],
   };
 }
 
@@ -653,313 +561,35 @@ function normalized(body: string): string {
     .trim();
 }
 
-function claim(
-  input: ParseInput,
+function hasClaim(
   docs: ReadonlyMap<string, string>,
   url: string,
   patterns: readonly RegExp[],
-  reasonCode: string,
 ): boolean {
   const body = docs.get(url);
-  if (body !== undefined && patterns.every((pattern) => pattern.test(normalized(body))))
-    return true;
-  input.onPricingReconciliation?.({ disposition: "unbound", reason_code: reasonCode, sample: url });
-  return false;
+  return body !== undefined && patterns.every((pattern) => pattern.test(normalized(body)));
 }
 
-const docsCommercialPaths = new Set([
-  "/api/anthropic-compatibility",
-  "/api/authentication",
-  "/api/openai-compatibility",
-  "/api/usage",
-  "/capabilities/thinking",
-  "/capabilities/tool-calling",
-  "/capabilities/vision",
-  "/capabilities/web-search",
-  "/cloud",
-  "/openapi.yaml",
-]);
-
-function commercialIndexEntry(path: string, line: string): boolean {
-  const normalizedPath = path.replace(/\.md$/, "");
-  if (docsCommercialPaths.has(normalizedPath)) return true;
-  if (normalizedPath.startsWith("/integrations/")) return false;
-  return /\b(?:batch|billing|cache|costs?|credits?|meters?|pricing|quotas?|rates?|subscriptions?|usage)\b/i.test(
-    line,
-  );
-}
-
-function indexedCommercialUrls(body: string, origin: string): Set<string> {
-  return new Set(
-    [...body.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\).*$/gm)].flatMap((match) => {
-      const href = match[1];
-      const line = match[0];
-      if (href === undefined || line === undefined) return [];
-      const url = new URL(href);
-      return url.origin === origin && commercialIndexEntry(url.pathname, line)
-        ? [`${url.origin}${url.pathname.replace(/\.md$/, "")}`]
-        : [];
-    }),
-  );
-}
-
-function auditIndexes(input: ParseInput, docs: ReadonlyMap<string, string>): void {
-  const selected = new Set(
-    [...docs.keys()].map((url) => {
-      const value = new URL(url);
-      return `${value.origin}${value.pathname.replace(/\.md$/, "")}`;
-    }),
-  );
-  const docsIndex = docs.get("https://docs.ollama.com/llms.txt");
-  const siteIndex = docs.get("https://ollama.com/llms.txt");
-  if (docsIndex === undefined || siteIndex === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "commercial_index_unavailable",
-    });
-  const indexed = new Set([
-    ...indexedCommercialUrls(docsIndex ?? "", "https://docs.ollama.com"),
-    ...indexedCommercialUrls(siteIndex ?? "", "https://ollama.com"),
+function usageAccounting(input: ParseInput, docs: ReadonlyMap<string, string>): boolean {
+  const nativeUsage = hasClaim(docs, "https://docs.ollama.com/api/usage.md", [
+    /prompt_eval_count.*input tokens/,
+    /eval_count.*output tokens/,
+    /final chunk.*done.*true/,
   ]);
-  if (indexed.size === 0)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "commercial_index_unrecognized",
-    });
-  for (const url of indexed)
-    if (!selected.has(url))
-      input.onPricingReconciliation?.({
-        disposition: "unbound",
-        reason_code: "commercial_page_pending_review",
-        sample: url,
-      });
-}
-
-function commercialEvidence(
-  input: ParseInput,
-  docs: ReadonlyMap<string, string>,
-): OllamaCommercialEvidence {
-  auditIndexes(input, docs);
-  const pricing = docs.get("https://ollama.com/pricing");
-  const pricingText = pricing === undefined ? "" : normalized(pricing);
-  const terms = docs.get("https://ollama.com/terms");
-  const termsText = terms === undefined ? "" : normalized(terms);
-  const decimal = "((?:0|[1-9]\\d*)(?:\\.\\d+)?)";
-  const pro = pricingText.match(
-    new RegExp(`Pro.*?\\$${decimal} / mo.*?\\$${decimal}/yr billed annually`, "i"),
-  );
-  const max = pricingText.match(new RegExp(`Max.*?\\$${decimal} / mo`, "i"));
-  const team = pricingText.match(new RegExp(`Team.*?\\$${decimal} / seat / mo`, "i"));
-  const free = /Free.*\$0/i.test(pricingText);
-  const enterprise = /Enterprise.*Custom.*Volume pricing and custom terms/i.test(pricingText);
-  const allowance =
-    /session limits that reset every 5 hours and weekly limits that reset every 7 days/i.test(
-      pricingText,
-    );
-  const extraUsage = /Pro and Max users can add extra usage balance/i.test(pricingText);
-  const teamExtraUsage = /For teams, each member's usage.*shared extra usage balance/i.test(
-    pricingText,
-  );
-  const teamAutomaticBilling =
-    /automatic usage billing can be disabled|turn off automatic usage billing/i.test(pricingText);
-  const concurrency = (plan: string): number | undefined => {
-    const match = pricingText.match(new RegExp(`${plan}\\s+(\\d+)`, "i"));
-    return match?.[1] === undefined ? undefined : Number(match[1]);
-  };
-  const webSearch = claim(
-    input,
-    docs,
-    "https://docs.ollama.com/capabilities/web-search.md",
-    [/POST https:\/\/ollama\.com\/api\/web_search/, /A free Ollama account is required/],
-    "web_search_claim_unavailable",
-  );
-  const webFetch = /POST https:\/\/ollama\.com\/api\/web_fetch/.test(
-    docs.get("https://docs.ollama.com/capabilities/web-search.md") ?? "",
-  );
-  if (!webFetch)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "web_fetch_claim_unavailable",
-    });
-  claim(
-    input,
-    docs,
-    "https://docs.ollama.com/api/usage.md",
-    [/prompt_eval_count.*input tokens/, /eval_count.*output tokens/, /final chunk.*done.*true/],
-    "native_usage_claim_unavailable",
-  );
-  const openapi = docs.get("https://docs.ollama.com/openapi.yaml") ?? "";
-  const cacheCounter = /cached_tokens|cache_read/i.test(openapi);
-  if (!cacheCounter)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "cached_token_count_not_returned",
-    });
-  for (const [url, patterns, reasonCode] of [
-    [
-      "https://docs.ollama.com/api/introduction.md",
-      [/http:\/\/localhost:11434\/api/, /https:\/\/ollama\.com\/api/, /backwards compatible/i],
-      "api_introduction_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/api/tags.md",
-      [
-        /\/api\/tags/,
-        /operationId: list/,
-        /ListResponse/,
-        /ModelSummary/,
-        /name:.*model:.*remote_model:.*remote_host:.*modified_at:.*size:.*digest:.*details:/,
-      ],
-      "list_contract_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/api-reference/show-model-details.md",
-      [
-        /\/api\/show/,
-        /operationId: show/,
-        /ShowRequest/,
-        /ShowResponse/,
-        /parameters:.*license:.*modified_at:.*details:.*template:.*capabilities:.*model_info:/,
-      ],
-      "show_contract_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/openapi.yaml",
-      [
-        /openapi: 3\.1\.0/,
-        /version: 0\.1\.0/,
-        /url: http:\/\/localhost:11434/,
-        /bearerAuth:.*type: http.*scheme: bearer.*bearerFormat: API Key/,
-        /\/api\/generate:/,
-        /\/api\/chat:/,
-        /\/api\/embed:/,
-        /\/api\/tags:.*operationId: list/,
-        /\/api\/show:.*operationId: show/,
-        /prompt_eval_count:/,
-        /eval_count:/,
-      ],
-      "openapi_contract_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/api/openai-compatibility.md",
-      [/include_usage/, /reasoning_effort/],
-      "openai_compatibility_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/api/anthropic-compatibility.md",
-      [/input_tokens/, /output_tokens/, /approximations/i],
-      "anthropic_compatibility_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/api/authentication.md",
-      [/No authentication is required.*locally/i, /API keys/i],
-      "authentication_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/capabilities/tool-calling.md",
-      [/appropriate tool/i, /follow-up request/i],
-      "tool_execution_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/capabilities/thinking.md",
-      [/thinking/i, /reasoning trace/i],
-      "thinking_claim_unavailable",
-    ],
-    [
-      "https://docs.ollama.com/capabilities/vision.md",
-      [/accept images alongside text/i, /base64-encoded image data/i],
-      "vision_claim_unavailable",
-    ],
-  ] as const)
-    claim(input, docs, url, patterns, reasonCode);
-  if (
-    !claim(
-      input,
-      docs,
-      "https://docs.ollama.com/cloud.md",
-      [
-        /cloud models require an account/i,
-        /curl https:\/\/ollama\.com\/api\/tags/,
-        /retire older cloud models/i,
-      ],
-      "cloud_route_claim_unavailable",
-    )
-  )
-    diagnostic(input, "/documents/cloud");
-  if (!free)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "free_plan_claim_unavailable",
-    });
-  if (pro?.[1] === undefined || pro[2] === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "pro_plan_claim_unavailable",
-    });
-  if (max?.[1] === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "max_plan_claim_unavailable",
-    });
-  if (team?.[1] === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "team_plan_claim_unavailable",
-    });
-  if (!enterprise)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "enterprise_claim_unavailable",
-    });
-  const freeConcurrency = concurrency("Free");
-  const proConcurrency = concurrency("Pro");
-  const maxConcurrency = concurrency("Max");
-  const minimumSeats = /5-seat minimum/i.test(pricingText) ? 5 : undefined;
-  return {
-    free,
-    ...(freeConcurrency === undefined ? {} : { freeConcurrency }),
-    ...(pro?.[1] === undefined || pro[2] === undefined
-      ? {}
-      : {
-          pro: {
-            monthly: pro[1],
-            annual: pro[2],
-            ...(/50x more(?: cloud usage)? than Free|50 times Free/i.test(pricingText)
-              ? { usageMultiple: 50 }
-              : {}),
-            ...(proConcurrency === undefined ? {} : { concurrency: proConcurrency }),
-          },
-        }),
-    ...(max?.[1] === undefined
-      ? {}
-      : {
-          max: {
-            monthly: max[1],
-            closedToNew: /New sign-ups paused/i.test(pricingText),
-            ...(/5x more(?: usage)? than Pro|5 times Pro/i.test(pricingText)
-              ? { usageMultiple: 5 }
-              : {}),
-            ...(maxConcurrency === undefined ? {} : { concurrency: maxConcurrency }),
-          },
-        }),
-    ...(team?.[1] === undefined
-      ? {}
-      : {
-          team: {
-            seatMonthly: team[1],
-            ...(minimumSeats === undefined ? {} : { minimumSeats }),
-            waitlist: /Join waitlist|waitlist/i.test(pricingText),
-          },
-        }),
-    enterprise,
-    allowance,
-    extraUsage,
-    teamExtraUsage,
-    teamAutomaticBilling,
-    creditExpiry: /Purchased extra usage credits expire one year/i.test(termsText),
-    webSearch,
-    webFetch,
-  };
+  const openapiUsage = hasClaim(docs, "https://docs.ollama.com/openapi.yaml", [
+    /\/api\/generate:/,
+    /\/api\/chat:/,
+    /prompt_eval_count:/,
+    /eval_count:/,
+    /description: Number of input tokens in the prompt/,
+    /description: Number of output tokens generated in the response/,
+  ]);
+  if (nativeUsage || openapiUsage) return true;
+  input.onPricingReconciliation?.({
+    disposition: "unbound",
+    reason_code: "native_usage_contract_unavailable",
+  });
+  return false;
 }
 
 function retirementRows(body: string): Map<string, Retirement> {
@@ -1076,18 +706,22 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
             reason_code: "model_token_rate_card",
             sample: model.model_id,
           }
-        : model.raw_price_facts.length > 0
-          ? {
-              disposition: "raw",
-              reason_code: "cloud_usage_level_preserved",
-              sample: model.model_id,
-            }
-          : {
-              disposition: "explicit_non_numeric",
-              reason_code: "not_published",
-              sample: model.model_id,
-            },
+        : {
+            disposition: "unbound",
+            reason_code: "public_model_rate_unavailable",
+            sample: model.model_id,
+          },
     );
-  attachOllamaCloudCommercialFacts(result, input.source.id, commercialEvidence(input, docs));
+  if (!usageAccounting(input, docs))
+    for (const model of result)
+      if (model.price_facts.length > 0)
+        model.raw_price_facts.push({
+          term_key: "accounting_binding_unavailable:tokens",
+          impact: "informational",
+          reason: "requires_usage_aggregation",
+          conditions: {},
+          source_ref: input.source.id,
+          raw: { fragment: "Native request token counters are unavailable" },
+        });
   return result;
 }

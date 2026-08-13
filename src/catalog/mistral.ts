@@ -18,7 +18,12 @@ import {
   type SourceRawPricingFact,
   sourcePriceFactKey,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import {
+  assertItemCount,
+  contractExtensionEvidence,
+  recognizeItems,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 import { yamlBlock } from "./yaml.ts";
 
@@ -27,6 +32,21 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  catalogModels?: readonly Pick<
+    ProviderModel,
+    | "aliases"
+    | "api_endpoints"
+    | "capabilities"
+    | "model_id"
+    | "name"
+    | "price_facts"
+    | "pricing_state"
+    | "status"
+    | "tasks"
+    | "uid"
+    | "version"
+  >[];
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -41,6 +61,7 @@ interface SourcePrice {
 interface SourcePricing {
   free: boolean;
   prices: SourcePrice[];
+  valid: boolean;
 }
 
 interface Draft {
@@ -50,7 +71,7 @@ interface Draft {
   releaseDate?: string;
   version?: string;
   catalogType: string;
-  status: "active" | "preview" | "deprecated" | "retired";
+  status: "active" | "preview" | "deprecated" | "retired" | "unknown";
   apiNames: string[];
   input: string[];
   output: string[];
@@ -61,14 +82,6 @@ interface Draft {
   deprecatedAt?: string;
   retiredAt?: string;
   replacement?: string;
-  weights: Weight[];
-  weightsDrifted: boolean;
-}
-
-interface Weight {
-  url: string;
-  license?: string;
-  licenseUrl?: string;
 }
 
 type Reconcile = Input["onPricingReconciliation"];
@@ -91,98 +104,22 @@ const publicPriceSuffixes = new Map<string, string | null>([
   ["Text Input (per min / per M tok)", ""],
 ]);
 
-const accountingReferences: readonly {
-  path: string;
-  markers: readonly RegExp[];
-  message: string;
-}[] = [
-  {
-    path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/admin-api/usage-metrics/page.mdx",
-    markers: [
-      /Billing usage.*cost and consumption for your Organization over a billing period/is,
-      /\/v1\/admin\/usage\?month=5&year=2026/,
-      /month.*,.*year.*,.*workspace_id.*optional/is,
-      /chat.*completion.*ocr.*audio.*connectors.*libraries_api.*fine_tuning.*vibe_usage/is,
-    ],
-    message: "Mistral Admin usage guide drifted",
-  },
-  {
-    path: "/mistralai/platform-docs-public/main/src/content/en/api/endpoint/beta/admin/billing/page.mdx",
-    markers: [
-      /GET<\/b><\/Pill> \/v1\/admin\/usage/,
-      /Get usage and cost data for the Organization/,
-      /api_zone[\s\S]*global[\s\S]*us[\s\S]*eu/,
-      /Prices used to calculate usage amounts/,
-      /Billing metric this price applies to/,
-      /Unit price for the billing metric/,
-    ],
-    message: "Mistral Admin billing API reference drifted",
-  },
-  {
-    path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/billing/page.mdx",
-    markers: [
-      /credits.*pending pay-as-you-go usage/is,
-      /current API usage for the ongoing month/i,
-      /Invoices.*invoice ID.*amount.*payment status/is,
-    ],
-    message: "Mistral account billing guide drifted",
-  },
-  {
-    path: "/mistralai/platform-docs-public/main/src/content/en/docs/admin/billing-usage/subscriptions/page.mdx",
-    markers: [
-      /included monthly usage.*shared across Studio, the API, and Vibe Code/is,
-      /pay-as-you-go is enabled.*billed per token/is,
-      /Free mode.*Pro.*Education.*Team.*Enterprise/is,
-    ],
-    message: "Mistral account plan guide drifted",
-  },
-  {
-    path: "/mistralai/platform-docs-public/main/src/content/en/docs/inference/regional-inference/page.mdx",
-    markers: [
-      /Regional inference is billed at \*\*1\.1× standard list pricing\*\*/,
-      /input tokens, output tokens, cached reads, and cache writes/,
-      /Regional endpoints only serve models hosted in that region/,
-      /Stateful features[^.]*Agents[^.]*Batch[^.]*Files API[^.]*not available/is,
-    ],
-    message: "Mistral regional pricing guide drifted",
-  },
-];
-
-const apiCapabilityNames = [
-  "completion_chat",
-  "function_calling",
-  "reasoning",
-  "completion_fim",
-  "fine_tuning",
-  "vision",
-  "ocr",
-  "classification",
-  "moderation",
-  "audio",
-  "audio_transcription",
-  "audio_transcription_realtime",
-  "audio_speech",
-  "unified_resources",
-] as const;
-
-const apiCapabilitiesSchema = z
-  .object({
-    completion_chat: z.boolean().optional(),
-    function_calling: z.boolean().optional(),
-    reasoning: z.boolean().optional(),
-    completion_fim: z.boolean().optional(),
-    fine_tuning: z.boolean().optional(),
-    vision: z.boolean().optional(),
-    ocr: z.boolean().optional(),
-    classification: z.boolean().optional(),
-    moderation: z.boolean().optional(),
-    audio: z.boolean().optional(),
-    audio_transcription: z.boolean().optional(),
-    audio_transcription_realtime: z.boolean().optional(),
-    audio_speech: z.boolean().optional(),
-    unified_resources: z.boolean().optional(),
-  })
-  .strict();
+const apiCapabilitiesSchema = z.object({
+  completion_chat: z.boolean().optional(),
+  function_calling: z.boolean().optional(),
+  reasoning: z.boolean().optional(),
+  completion_fim: z.boolean().optional(),
+  fine_tuning: z.boolean().optional(),
+  vision: z.boolean().optional(),
+  ocr: z.boolean().optional(),
+  classification: z.boolean().optional(),
+  moderation: z.boolean().optional(),
+  audio: z.boolean().optional(),
+  audio_transcription: z.boolean().optional(),
+  audio_transcription_realtime: z.boolean().optional(),
+  audio_speech: z.boolean().optional(),
+  unified_resources: z.boolean().optional(),
+});
 const apiDateSchema = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
 const apiCommonShape = {
   id: modelIdSchema,
@@ -198,28 +135,24 @@ const apiCommonShape = {
   deprecation_replacement_model: modelIdSchema.nullable().optional(),
   default_model_temperature: z.number().finite().nullable().optional(),
 };
-const apiBaseSchema = z
-  .object({
-    ...apiCommonShape,
-    type: z.literal("base").default("base"),
-  })
-  .strict();
-const apiFineTunedSchema = z
-  .object({
-    ...apiCommonShape,
-    type: z.literal("fine-tuned").default("fine-tuned"),
-    job: z.string().min(1),
-    root: z.string().min(1),
-    archived: z.boolean().optional(),
-  })
-  .strict();
+const apiBaseSchema = z.object({
+  ...apiCommonShape,
+  type: z.literal("base").default("base"),
+});
+const apiFineTunedSchema = z.object({
+  ...apiCommonShape,
+  type: z.literal("fine-tuned").default("fine-tuned"),
+  job: z.string().min(1),
+  root: z.string().min(1),
+  archived: z.boolean().optional(),
+});
 const apiItemSchema = z.union([apiFineTunedSchema, apiBaseSchema]);
-const apiListSchema = z
-  .object({
-    object: z.literal("list").optional(),
-    data: z.array(z.unknown()).min(1),
-  })
-  .strict();
+const apiListSchema = z.object({
+  object: z.literal("list").optional(),
+  data: z.array(z.unknown()).min(1),
+});
+const apiRootKeys = new Set(["object", "data"]);
+const apiCapabilityKeys = new Set(Object.keys(apiCapabilitiesSchema.shape));
 
 const monthNumbers = new Map(
   [
@@ -364,81 +297,59 @@ function description(object: ts.ObjectLiteralExpression): string | undefined {
 }
 
 function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
-  const pricing = objectValue(property(object, "pricing"), "pricing");
-  const type = requiredString(pricing, "type");
-  const free = booleanValue(property(pricing, "free"), "pricing.free");
-  const result = (prices: SourcePrice[]): SourcePricing => {
-    if (free && prices.some(({ price }) => price !== "0"))
-      throw new Error("Mistral marked non-zero model pricing as free");
-    return { free, prices };
-  };
-  if (type === "flat")
-    return result([
-      {
-        direction: "input",
-        price: numberText(property(pricing, "price"), "pricing.price"),
-        denominator: requiredString(pricing, "denominator"),
-      },
-    ]);
-  if (type === "range")
-    return result(
-      (["input", "output"] as const).map((direction) => ({
-        direction,
-        price: numberText(property(pricing, direction), `pricing.${direction}`),
-        denominator: requiredString(pricing, "denominator"),
-      })),
-    );
-  if (type !== "custom") throw new Error(`Mistral published an unknown pricing type: ${type}`);
-  return result(
-    (["input", "output"] as const).flatMap((direction) => {
-      const expression = property(pricing, direction);
-      const value = expression === undefined ? undefined : unwrap(expression);
-      if (!value || !ts.isArrayLiteralExpression(value))
-        throw new Error(`Mistral pricing.${direction} was not an array`);
-      return value.elements.map((item) => {
-        const rate = objectValue(item, `pricing.${direction} rate`);
-        const rateType = requiredString(rate, "type");
-        if (rateType !== "flat" && rateType !== "range")
-          throw new Error(`Mistral published an unknown price rate type: ${rateType}`);
-        return {
+  try {
+    const pricing = objectValue(property(object, "pricing"), "pricing");
+    const type = requiredString(pricing, "type");
+    const free = booleanValue(property(pricing, "free"), "pricing.free");
+    const result = (prices: SourcePrice[]): SourcePricing => ({
+      free,
+      prices,
+      valid: !free || prices.every(({ price }) => price === "0"),
+    });
+    if (type === "flat")
+      return result([
+        {
+          direction: "input",
+          price: numberText(property(pricing, "price"), "pricing.price"),
+          denominator: requiredString(pricing, "denominator"),
+        },
+      ]);
+    if (type === "range")
+      return result(
+        (["input", "output"] as const).map((direction) => ({
           direction,
-          price: numberText(property(rate, "price"), "pricing rate price"),
-          denominator: requiredString(rate, "denominator"),
-        };
-      });
-    }),
-  );
-}
-
-function weights(object: ts.ObjectLiteralExpression): { values: Weight[]; drifted: boolean } {
-  const expression = property(object, "weights");
-  if (expression === undefined) return { values: [], drifted: false };
-  const value = unwrap(expression);
-  if (!ts.isArrayLiteralExpression(value)) return { values: [], drifted: true };
-  let drifted = false;
-  const values = value.elements.flatMap((element): Weight[] => {
-    const candidate = unwrap(element);
-    if (!ts.isObjectLiteralExpression(candidate)) {
-      drifted = true;
-      return [];
-    }
-    const item = candidate;
-    const url = stringValue(property(item, "url"));
-    if (url === undefined || !/^https:\/\/[^\s]+$/.test(url)) {
-      drifted = true;
-      return [];
-    }
-    const license = stringValue(property(item, "license"));
-    const licenseUrl = stringValue(property(item, "licenseUrl"));
-    return [
-      {
-        url,
-        ...(license === undefined ? {} : { license }),
-        ...(licenseUrl === undefined ? {} : { licenseUrl }),
-      },
-    ];
-  });
-  return { values, drifted };
+          price: numberText(property(pricing, direction), `pricing.${direction}`),
+          denominator: requiredString(pricing, "denominator"),
+        })),
+      );
+    if (type !== "custom") return { free: false, prices: [], valid: false };
+    return result(
+      (["input", "output"] as const).flatMap((direction) => {
+        const expression = property(pricing, direction);
+        const value = expression === undefined ? undefined : unwrap(expression);
+        if (!value || !ts.isArrayLiteralExpression(value))
+          throw new Error(`Mistral pricing.${direction} was not an array`);
+        return value.elements.flatMap((item) => {
+          try {
+            const rate = objectValue(item, `pricing.${direction} rate`);
+            const rateType = requiredString(rate, "type");
+            if (rateType !== "flat" && rateType !== "range") return [];
+            return [
+              {
+                direction,
+                price: numberText(property(rate, "price"), "pricing rate price"),
+                denominator: requiredString(rate, "denominator"),
+              },
+            ];
+          } catch {
+            return [];
+          }
+        });
+      }),
+    );
+  } catch {
+    return { free: false, prices: [], valid: false };
+  }
 }
 
 function parseDraft(sourceSlug: string, body: string): Draft {
@@ -472,7 +383,7 @@ function parseDraft(sourceSlug: string, body: string): Draft {
       status = "retired";
       break;
     default:
-      throw new Error(`Mistral published an unknown lifecycle status: ${rawStatus}`);
+      status = "unknown";
   }
   const identifiers = objectValue(property(object, "identifiers"), "identifiers");
   const capabilities = objectValue(property(object, "capabilities"), "capabilities");
@@ -489,7 +400,6 @@ function parseDraft(sourceSlug: string, body: string): Draft {
   const retiredAt = normalizeDate(stringValue(property(metadata, "retirementDate")));
   const replacement = stringValue(property(metadata, "replacement"));
   const pricing = sourcePricing(object);
-  const distribution = weights(object);
   return {
     sourceSlug,
     name: requiredString(object, "name"),
@@ -508,8 +418,6 @@ function parseDraft(sourceSlug: string, body: string): Draft {
     ...(deprecatedAt === undefined ? {} : { deprecatedAt }),
     ...(retiredAt === undefined ? {} : { retiredAt }),
     ...(replacement === undefined ? {} : { replacement }),
-    weights: distribution.values,
-    weightsDrifted: distribution.drifted,
   };
 }
 
@@ -583,41 +491,51 @@ function objectEntries(
 
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 
-function featureEndpoints(schemaBody: string, endpointsBody: string): Map<string, ApiEndpoint[]> {
-  const endpoints = new Map(
-    objectEntries(
-      exportedObject(endpointsBody, "endpoints.ts", "AVAILABLE_ENDPOINTS"),
-      "AVAILABLE_ENDPOINTS",
-    ).map(([key, value]): [string, ApiEndpoint] => {
+function featureEndpoints(
+  schemaBody: string,
+  endpointsBody: string,
+  signal: (path: string) => void,
+): Map<string, ApiEndpoint[]> {
+  const endpoints = new Map<string, ApiEndpoint>();
+  for (const [key, value] of objectEntries(
+    exportedObject(endpointsBody, "endpoints.ts", "AVAILABLE_ENDPOINTS"),
+    "AVAILABLE_ENDPOINTS",
+  )) {
+    try {
       const name = requiredString(value, "name");
       const path = requiredString(value, "path");
-      if (!/^\/(?!\/)[^?#\s]+$/.test(path))
-        throw new Error(`Mistral endpoint ${key} had an invalid relative path`);
-      return [key, { name, path }];
-    }),
-  );
-  return new Map(
-    objectEntries(
-      exportedObject(schemaBody, "schema.ts", "AVAILABLE_FEATURES"),
-      "AVAILABLE_FEATURES",
-    ).map(([feature, value]) => {
+      if (!/^\/(?!\/)[^?#\s]+$/.test(path)) throw new Error("invalid path");
+      endpoints.set(key, { name, path });
+    } catch {
+      signal(`/available_endpoints/${key}`);
+    }
+  }
+  const features = new Map<string, ApiEndpoint[]>();
+  for (const [feature, value] of objectEntries(
+    exportedObject(schemaBody, "schema.ts", "AVAILABLE_FEATURES"),
+    "AVAILABLE_FEATURES",
+  )) {
+    try {
       const keys = stringArray(property(value, "endpoints"), `${feature}.endpoints`);
       if (keys.length === 0 || unique(keys).length !== keys.length)
-        throw new Error(`Mistral feature ${feature} had invalid endpoint references`);
-      return [
-        feature,
-        keys.map((key) => {
-          const endpoint = endpoints.get(key);
-          if (endpoint === undefined)
-            throw new Error(`Mistral feature ${feature} referenced unknown endpoint ${key}`);
-          return endpoint;
-        }),
-      ];
-    }),
-  );
+        throw new Error("invalid references");
+      const resolved = keys.flatMap((key) => {
+        const endpoint = endpoints.get(key);
+        if (endpoint === undefined) {
+          signal(`/available_features/${feature}/endpoints/${key}`);
+          return [];
+        }
+        return [endpoint];
+      });
+      features.set(feature, resolved);
+    } catch {
+      signal(`/available_features/${feature}`);
+    }
+  }
+  return features;
 }
 
-function modalities(draft: Draft): ProviderModel["modalities"] {
+function modalities(draft: Draft, signal: (path: string) => void): ProviderModel["modalities"] {
   const map = (value: string): Modality[] => {
     if (value === "text") return ["text"];
     if (value === "image" || value === "vision") return ["image"];
@@ -625,7 +543,8 @@ function modalities(draft: Draft): ProviderModel["modalities"] {
     if (value === "document") return ["pdf"];
     if (value === "embeddings") return ["embedding"];
     if (value === "reasoning" || value === "scores") return [];
-    throw new Error(`Mistral published an unknown modality: ${value}`);
+    signal(`/models/*/capabilities/modalities/${value}`);
+    return [];
   };
   return {
     input: unique(draft.input.flatMap(map)),
@@ -656,14 +575,21 @@ const featureOperations = new Map<string, ModelTask[]>([
   ["batching", []],
 ]);
 
-function tasks(draft: Draft, observedModalities: ProviderModel["modalities"]): ModelTask[] {
+function tasks(
+  draft: Draft,
+  observedModalities: ProviderModel["modalities"],
+  signal: (path: string) => void,
+): ModelTask[] {
   const result: ModelTask[] = [];
   const fallback: ModelTask | undefined = observedModalities.output.includes("text")
     ? "text_generation"
     : undefined;
   for (const feature of draft.features) {
     const observed = featureOperations.get(feature);
-    if (observed === undefined) throw new Error(`Mistral published an unknown feature: ${feature}`);
+    if (observed === undefined) {
+      signal(`/models/*/capabilities/features/${feature}`);
+      continue;
+    }
     result.push(...observed);
   }
   result.push(
@@ -681,11 +607,15 @@ function tasks(draft: Draft, observedModalities: ProviderModel["modalities"]): M
 function modelEndpoints(
   draft: Draft,
   endpointsByFeature: Map<string, ApiEndpoint[]>,
+  signal: (path: string) => void,
 ): ApiEndpoint[] {
   const endpoints = new Map<string, ApiEndpoint>();
   for (const feature of draft.features) {
     const observed = endpointsByFeature.get(feature);
-    if (observed === undefined) throw new Error(`Mistral feature was not declared: ${feature}`);
+    if (observed === undefined) {
+      signal(`/models/*/capabilities/features/${feature}`);
+      continue;
+    }
     for (const endpoint of observed) endpoints.set(apiEndpointKey(endpoint), endpoint);
   }
   return [...endpoints.values()].sort((left, right) =>
@@ -773,9 +703,21 @@ function pricing(
   modelTasks: ModelTask[],
   sourceId: string,
   discounts: DiscountPolicy,
+  signal: (path: string) => void,
 ): SourcePriceFact[] {
   if (draft.status === "retired") return [];
-  const direct = draft.pricing.prices.map((price) => directRate(price, modelTasks, sourceId));
+  if (!draft.pricing.valid) {
+    signal(`/models/${draft.sourceSlug}/pricing`);
+    return [];
+  }
+  const direct = draft.pricing.prices.flatMap((price) => {
+    try {
+      return [directRate(price, modelTasks, sourceId)];
+    } catch {
+      signal(`/models/${draft.sourceSlug}/pricing/${price.denominator}`);
+      return [];
+    }
+  });
   return [
     ...direct,
     ...derivedPricing(
@@ -793,13 +735,14 @@ function sourceModel(
   replacementId: string | undefined,
   endpointsByFeature: Map<string, ApiEndpoint[]>,
   discounts: DiscountPolicy,
+  signal: (path: string) => void,
 ): ProviderModel | undefined {
   const id = draft.apiNames[0];
   if (id === undefined) return undefined;
-  const observedModalities = modalities(draft);
-  const modelTasks = tasks(draft, observedModalities);
-  const apiEndpoints = modelEndpoints(draft, endpointsByFeature);
-  const rates = pricing(draft, modelTasks, input.source.id, discounts);
+  const observedModalities = modalities(draft, signal);
+  const modelTasks = tasks(draft, observedModalities, signal);
+  const apiEndpoints = modelEndpoints(draft, endpointsByFeature, signal);
+  const rates = pricing(draft, modelTasks, input.source.id, discounts, signal);
   const active = draft.status === "active" || draft.status === "preview";
   const feature = (name: string): boolean | "unknown" =>
     draft.features.includes(name) ? true : active ? false : "unknown";
@@ -839,45 +782,14 @@ function sourceModel(
     replacement_model_ids: replacementId === undefined ? [] : [replacementId],
     pricing_state:
       draft.status === "retired"
-        ? draft.weights.length === 0
-          ? "not_applicable"
-          : "unknown"
+        ? "not_applicable"
         : rates.length > 0
           ? "numeric"
-          : draft.pricing.free
+          : draft.pricing.valid && draft.pricing.free
             ? "free"
             : "not_published",
     price_facts: rates,
   } satisfies ProviderModel;
-  if (draft.weights.length > 0)
-    model.commercial_facts = draft.weights.map((weight, index) => ({
-      source_ref: input.source.id,
-      book_key: `distribution:${model.uid}`,
-      book_name: `${model.name} model weights`,
-      resource_kind: "distribution" as const,
-      resource_key: `weights:${model.uid}`,
-      model_refs: [model.uid],
-      offer_key: `download:${index + 1}`,
-      offer_name: "Published model weights",
-      billing_mode: "one_time" as const,
-      pricing_state: "externally_billed" as const,
-      price_facts: [],
-      raw_price_facts: [
-        {
-          term_key: "distribution_terms",
-          impact: "informational" as const,
-          reason: "unknown_amount" as const,
-          conditions: {},
-          source_ref: input.source.id,
-          raw: {
-            label: weight.license ?? "Published weights",
-            fragment: [weight.url, weight.licenseUrl]
-              .filter((value) => value !== undefined)
-              .join(" "),
-          },
-        },
-      ],
-    }));
   return model;
 }
 
@@ -954,16 +866,6 @@ function reconcileMany(reconcile: Reconcile, count: number, item: PricingReconci
 
 function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
   for (const draft of drafts) {
-    if (draft.weightsDrifted)
-      reconcile?.({
-        disposition: "unsupported",
-        reason_code: "weight_distribution_drift",
-        sample: draft.sourceSlug,
-      });
-    reconcileMany(reconcile, draft.weights.length, {
-      disposition: "normalized",
-      reason_code: "normalized_weight_distribution",
-    });
     if (draft.apiNames.length === 0) {
       reconcile?.({
         disposition: "excluded",
@@ -980,6 +882,14 @@ function reconcileDrafts(drafts: readonly Draft[], reconcile: Reconcile): void {
       reconcile?.({
         disposition: "explicit_non_numeric",
         reason_code: "not_applicable",
+      });
+      continue;
+    }
+    if (!draft.pricing.valid) {
+      reconcile?.({
+        disposition: "unsupported",
+        reason_code: "repository_price_shape_unsupported",
+        sample: draft.sourceSlug,
       });
       continue;
     }
@@ -1002,6 +912,7 @@ function publicPricing(
   models: ProviderModel[],
   cards: readonly MistralPricingCard[],
   discounts: DiscountPolicy,
+  observedModels: Set<string>,
 ): void {
   for (const { id, rows, free } of cards) {
     if (id === "" || id.startsWith("Classifier API model")) continue;
@@ -1055,6 +966,7 @@ function publicPricing(
           reason_code: "free",
         });
       }
+      if (target !== undefined) observedModels.add(target.uid);
       continue;
     }
 
@@ -1123,6 +1035,7 @@ function publicPricing(
           discounts,
         );
       models[candidate.index] = merged;
+      observedModels.add(candidate.model.uid);
       reconcileMany(input.onPricingReconciliation, 2, {
         disposition: "normalized",
         reason_code: "normalized_public_currency_price",
@@ -1142,12 +1055,12 @@ function selectPublicRate(
   const current = model.price_facts.find(
     (candidate) => sourcePriceFactKey(candidate) === sourcePriceFactKey(rate),
   );
-  if (current !== undefined && decimalsEqual(current.price, rate.price)) return model;
-  const superseded = current === undefined ? [] : [current];
+  const sameAmount = current !== undefined && decimalsEqual(current.price, rate.price);
+  const superseded = current === undefined || sameAmount ? [] : [current];
   const remaining = model.price_facts.filter(
     (candidate) => !relatedRate(candidate, rate) || candidate.currency !== rate.currency,
   );
-  const selected = {
+  const selected: SourcePriceFact = {
     ...rate,
     ...(superseded.length === 0
       ? {}
@@ -1257,61 +1170,14 @@ function validateOpenApi(
     matches.length !== 1 ||
     document === undefined ||
     !/^openapi:\s+3\.1\.\d+\s*$/m.test(document.body)
-  )
-    throw new Error("Mistral OpenAPI reference drifted: document");
-
-  requireYamlBlock(document.body, "/v1/models", 2, [
-    /^ {4}get:\s*$/m,
-    /^ {6}operationId: list_models_v1_models_get\s*$/m,
-    /^ {16}\$ref: ["']#\/components\/schemas\/ModelList["']\s*$/m,
-  ]);
-  requireYamlBlock(document.body, "BaseModelCard", 4, [
-    /^ {8}id:\s*$/m,
-    /^ {8}capabilities:\s*\n {10}\$ref: ["']#\/components\/schemas\/ModelCapabilities["']\s*$/m,
-    /^ {8}aliases:\s*$/m,
-    /^ {8}deprecation:\s*$/m,
-    /^ {8}deprecation_replacement_model:\s*$/m,
-    /^ {8}type:\s*[\s\S]*^ {10}const: base\s*$/m,
-    /^ {6}required:\s*$/m,
-    /^ {6,8}- id\s*$/m,
-    /^ {6,8}- capabilities\s*$/m,
-  ]);
-  requireYamlBlock(document.body, "FTModelCard", 4, [
-    /^ {8}type:\s*[\s\S]*^ {10}const: fine-tuned\s*$/m,
-    /^ {8}job:\s*$/m,
-    /^ {8}root:\s*$/m,
-    /^ {6}required:\s*$/m,
-    /^ {6,8}- id\s*$/m,
-    /^ {6,8}- capabilities\s*$/m,
-    /^ {6,8}- job\s*$/m,
-    /^ {6,8}- root\s*$/m,
-  ]);
-  const capabilityBlock = requireYamlBlock(document.body, "ModelCapabilities", 4, [
-    /^ {6}properties:\s*$/m,
-    /^ {8}completion_chat:\s*$/m,
-    /^ {8}function_calling:\s*$/m,
-    /^ {8}completion_fim:\s*$/m,
-    /^ {8}fine_tuning:\s*$/m,
-    /^ {8}vision:\s*$/m,
-    /^ {8}ocr:\s*$/m,
-    /^ {8}classification:\s*$/m,
-    /^ {8}moderation:\s*$/m,
-    /^ {8}audio:\s*$/m,
-    /^ {8}audio_transcription:\s*$/m,
-  ]);
-  const documentedCapabilities = capabilityBlock
-    .split(/\r?\n/)
-    .flatMap((line) => line.match(/^ {8}([a-z][a-z0-9_]*):\s*$/)?.[1] ?? []);
-  if (documentedCapabilities.some((name) => !apiCapabilityNames.some((known) => known === name)))
-    throw new Error("Mistral OpenAPI reference drifted: ModelCapabilities");
-  requireYamlBlock(document.body, "ModelList", 4, [
-    /^ {8}object:\s*$/m,
-    /^ {8}data:\s*$/m,
-    /^ {12}oneOf:\s*$/m,
-    /^ {12,14}- \$ref: ["']#\/components\/schemas\/BaseModelCard["']\s*$/m,
-    /^ {12,14}- \$ref: ["']#\/components\/schemas\/FTModelCard["']\s*$/m,
-    /^ {12}discriminator:\s*\n {14}propertyName: type\s*$/m,
-  ]);
+  ) {
+    reconcile?.({
+      disposition: "unbound",
+      reason_code: "accounting_contract_drift",
+      sample: "Mistral OpenAPI reference drifted: document",
+    });
+    return new Set();
+  }
 
   const valid = new Set<AccountingClaim>();
   claim(
@@ -1410,68 +1276,24 @@ function claim(
   }
 }
 
-function validateAccountingReferences(
-  documents: readonly { url: string; body: string }[],
-  reconcile: Reconcile,
-): void {
-  for (const reference of accountingReferences) {
-    const matches = documents.filter(
-      (document) => new URL(document.url).pathname === reference.path,
-    );
-    const document = matches[0];
-    if (
-      matches.length !== 1 ||
-      document === undefined ||
-      reference.markers.some((marker) => !marker.test(document.body))
-    )
-      reconcile?.({
-        disposition: "unbound",
-        reason_code: "accounting_contract_drift",
-        sample: reference.message,
-      });
-  }
-}
-
-function validatePricingCoverage(
-  models: ProviderModel[],
-  minimum: number,
-  reconcile: Reconcile,
-): void {
-  if (minimum < 0 || minimum > 1) throw new Error("Invalid Mistral pricing coverage threshold");
-  const current = new Map<string, boolean>();
-  for (const model of models)
-    if (model.status !== "retired")
-      current.set(
-        model.uid,
-        (current.get(model.uid) ?? false) ||
-          model.pricing_state === "free" ||
-          model.price_facts.length > 0,
-      );
-  const priced = [...current.values()].filter(Boolean).length;
-  if (current.size > 0 && priced / current.size < minimum)
-    reconcile?.({
-      disposition: "unbound",
-      reason_code: "pricing_coverage_below_reviewed_floor",
-      sample: `${priced}/${current.size} current models`,
-    });
-}
-
 export function parseMistralCatalog(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "mistral-catalog")
     throw new Error("Wrong Mistral catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const expected = indexSlugs(bundle.index.body);
-  const drafts = bundle.documents.flatMap((document): Draft[] => {
+  const modelDocuments = bundle.documents.flatMap((document) => {
     const match = new URL(document.url).pathname.match(
       /^\/mistralai\/platform-docs-public\/main\/src\/schema\/models\/models\/([a-z0-9-]+)\.ts$/,
     );
-    return match?.[1] === undefined ? [] : [parseDraft(match[1], document.body)];
+    return match?.[1] === undefined ? [] : [{ slug: match[1], body: document.body }];
   });
-  const observed = new Set(drafts.map((draft) => draft.sourceSlug));
-  if (drafts.length !== expected.size || [...expected].some((slug) => !observed.has(slug)))
+  const observed = new Set(modelDocuments.map(({ slug }) => slug));
+  if (
+    modelDocuments.length !== expected.size ||
+    observed.size !== modelDocuments.length ||
+    [...expected].some((slug) => !observed.has(slug))
+  )
     throw new Error("Mistral index and model documents disagree");
-  const accounting = validateOpenApi(bundle.documents, input.onPricingReconciliation);
-  validateAccountingReferences(bundle.documents, input.onPricingReconciliation);
   const document = (path: string): string =>
     linkedDocumentBody(bundle, path, `Mistral bundle did not contain exactly one ${path}`);
   const optionalDocument = (path: string): string | undefined => {
@@ -1479,9 +1301,22 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     if (matches.length > 1) throw new Error(`Mistral bundle contained repeated ${path}`);
     return matches[0]?.body;
   };
+  const extensions = new Set<string>();
+  const signal = (path: string): void => {
+    extensions.add(path);
+  };
+  const drafts = modelDocuments.flatMap(({ slug, body }): Draft[] => {
+    try {
+      return [parseDraft(slug, body)];
+    } catch {
+      signal(`/models/${slug}`);
+      return [];
+    }
+  });
   const endpointsByFeature = featureEndpoints(
     document("/mistralai/platform-docs-public/main/src/schema/models/schema.ts"),
     document("/mistralai/platform-docs-public/main/src/schema/models/endpoints.ts"),
+    signal,
   );
   const companion = (path: string): string => (optionalDocument(path) ?? "").replace(/\s+/g, " ");
   const discounts = {
@@ -1505,15 +1340,6 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
         reason_code: "discount_policy_drift",
         sample: key,
       });
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "regional_model_availability_required",
-  });
-  input.onPricingReconciliation?.({
-    disposition: "excluded",
-    reason_code: "account_plan_allowance_unscoped",
-  });
-
   const currentByName = new Map<string, string | null>();
   for (const draft of drafts) {
     const id = draft.apiNames[0];
@@ -1524,25 +1350,100 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
   const models = drafts.flatMap((draft): ProviderModel[] => {
     const replacement =
       draft.replacement === undefined ? undefined : currentByName.get(draft.replacement);
-    if (replacement === null)
-      throw new Error(`Mistral replacement was ambiguous: ${draft.replacement ?? "unknown"}`);
-    const model = sourceModel(input, draft, replacement, endpointsByFeature, discounts);
+    if (replacement === null) signal(`/models/${draft.sourceSlug}/metadata/replacement`);
+    const model = sourceModel(
+      input,
+      draft,
+      replacement ?? undefined,
+      endpointsByFeature,
+      discounts,
+      signal,
+    );
     return model === undefined ? [] : [model];
   });
   reconcileDrafts(drafts, input.onPricingReconciliation);
-  const pricingBody = optionalDocument("/pricing/api/");
-  const cards =
-    pricingBody === undefined
-      ? []
-      : parseMistralPricingCards(pricingBody, input.onPricingReconciliation);
-  if (pricingBody === undefined)
-    input.onPricingReconciliation?.({
-      disposition: "unbound",
-      reason_code: "commercial_companion_missing",
-      sample: "/pricing/api/",
-    });
-  publicPricing(input, models, cards, discounts);
-  addAccountingGaps(models, accounting, input.source.id);
+  if (extensions.size > 0) input.onContractFinding?.(contractExtensionEvidence([...extensions]));
+  const modelCount = new Set(models.map((model) => model.uid)).size;
+  assertItemCount(
+    "Mistral model definitions",
+    modelDocuments.length,
+    input.source.extractor.minModels,
+    input.source.extractor.maxModels,
+  );
+  if (modelCount === 0) throw new Error("Mistral catalog contained no callable models");
+  return models.sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+function pricingModel(
+  input: Input,
+  target: NonNullable<Input["catalogModels"]>[number],
+): ProviderModel {
+  return {
+    ...baseModel({
+      providerId: input.provider.id,
+      id: target.model_id,
+      ...(target.version === undefined ? {} : { version: target.version }),
+      name: target.name,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
+    }),
+    aliases: [...target.aliases],
+    tasks: [...target.tasks],
+    api_endpoints: target.api_endpoints,
+    capabilities: { ...target.capabilities },
+    status: target.status,
+  };
+}
+
+function catalogRates(target: NonNullable<Input["catalogModels"]>[number]): SourcePriceFact[] {
+  return target.price_facts.map((rate) => ({ ...rate }));
+}
+
+function catalogDiscountPolicy(models: readonly ProviderModel[]): DiscountPolicy {
+  return {
+    cache: models.some(({ price_facts }) =>
+      price_facts.some(({ meter }) => meter === "cache_read_text"),
+    ),
+    batch: models.some(({ price_facts }) =>
+      price_facts.some(({ conditions }) => conditions.service_tier === "batch"),
+    ),
+  };
+}
+
+export function parseMistralPricing(input: Input): ProviderModel[] {
+  if (input.source.extractor.kind !== "mistral-pricing")
+    throw new Error("Wrong Mistral pricing extractor");
+  if (input.catalogModels === undefined) throw new Error("Mistral pricing requires the catalog");
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  const cards = parseMistralPricingCards(bundle.index.body, input.onPricingReconciliation);
+  assertItemCount(
+    "Mistral pricing cards",
+    cards.length,
+    input.source.extractor.minCards,
+    input.source.extractor.maxCards,
+  );
+  const models = input.catalogModels.map((target) => {
+    const model = pricingModel(input, target);
+    model.pricing_state = target.pricing_state;
+    model.price_facts = catalogRates(target);
+    return model;
+  });
+  const observedModels = new Set<string>();
+  publicPricing(input, models, cards, catalogDiscountPolicy(models), observedModels);
+  for (const model of models) {
+    model.price_facts = model.price_facts.filter(
+      ({ source_ref }) => source_ref === input.source.id,
+    );
+    model.raw_price_facts = model.raw_price_facts.filter(
+      ({ source_ref }) => source_ref === input.source.id,
+    );
+    if (!observedModels.has(model.uid)) model.pricing_state = "unknown";
+  }
+  addAccountingGaps(
+    models,
+    validateOpenApi(bundle.documents, input.onPricingReconciliation),
+    input.source.id,
+  );
   extractMistralCommercialFacts(
     {
       documents: bundle.documents,
@@ -1554,19 +1455,15 @@ export function parseMistralCatalog(input: Input): ProviderModel[] {
     },
     cards,
   );
-  const modelCount = new Set(models.map((model) => model.uid)).size;
-  assertItemCount(
-    "Mistral callable models",
-    modelCount,
-    input.source.extractor.minModels,
-    input.source.extractor.maxModels,
-  );
-  validatePricingCoverage(
-    models,
-    input.source.extractor.minPricingCoverage,
-    input.onPricingReconciliation,
-  );
-  return models.sort((left, right) => left.uid.localeCompare(right.uid));
+  return models
+    .filter(
+      ({ pricing_state, price_facts, raw_price_facts, commercial_facts }) =>
+        pricing_state !== "unknown" ||
+        price_facts.length > 0 ||
+        raw_price_facts.length > 0 ||
+        (commercial_facts?.length ?? 0) > 0,
+    )
+    .sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
 function addAccountingGaps(
@@ -1651,12 +1548,33 @@ function flag(value: boolean | undefined): boolean | "unknown" {
 }
 
 export function parseMistralApi(input: Input): ProviderModel[] {
-  const list = apiListSchema.parse(JSON.parse(input.body));
+  const raw: unknown = JSON.parse(input.body);
+  const list = apiListSchema.parse(raw);
+  const extensions = new Set<string>();
+  if (raw !== null && typeof raw === "object")
+    for (const key of Object.keys(raw)) if (!apiRootKeys.has(key)) extensions.add(`/${key}`);
+  for (const item of list.data) {
+    if (item === null || typeof item !== "object") continue;
+    const capabilities = Reflect.get(item, "capabilities");
+    if (capabilities === null || typeof capabilities !== "object") continue;
+    for (const key of Object.keys(capabilities))
+      if (!apiCapabilityKeys.has(key)) extensions.add(`/models/*/capabilities/${key}`);
+  }
+  if (extensions.size > 0) input.onContractFinding?.(contractExtensionEvidence([...extensions]));
   const items = recognizeItems({
     label: "Mistral API model",
     items: list.data,
     schema: apiItemSchema,
     modelId: "id",
+    rootKeys: [
+      ...Object.keys(apiCommonShape),
+      "type",
+      ...(input.source.extractor.kind === "mistral-api"
+        ? (input.source.extractor.knownFields ?? [])
+        : []),
+    ],
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   const models = items.flatMap((value): ProviderModel[] => {
     if (value.type !== "base") return [];
@@ -1694,6 +1612,5 @@ export function parseMistralApi(input: Input): ProviderModel[] {
       },
     ];
   });
-  if (models.length === 0) throw new Error("Mistral model API returned no base models");
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }

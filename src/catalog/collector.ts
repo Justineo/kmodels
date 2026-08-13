@@ -52,7 +52,11 @@ import {
   providerPartitionSourceRefs,
   type ProviderPricingTransition,
 } from "./pricing-transition.ts";
-import { assembleParsedProviderPricing, isRequiredPricingSource } from "./pricing-adapter.ts";
+import {
+  assembleParsedProviderPricing,
+  isPricingSource,
+  isRequiredPricingSource,
+} from "./pricing-adapter.ts";
 import {
   publishedModel,
   type ParsedProviderModel,
@@ -789,7 +793,9 @@ async function collectProvider(
     const retainedOmissions: { source: SourceManifest; observed: Set<string> }[] = [];
     function recordOptionalOmission(source: SourceManifest, role: SourceRecord["role"]): void {
       if (role === "inventory") unavailableInventories.push(source);
-      if (source.fields.includes("pricing")) omittedPricingDependencies.add(source.id);
+      else if (source.retainOmittedFacts === true)
+        retainedOmissions.push({ source, observed: new Set() });
+      if (isPricingSource(source)) omittedPricingDependencies.add(source.id);
     }
     for (const source of manifest.sources) {
       const role = source.role ?? "catalog";
@@ -845,6 +851,16 @@ async function collectProvider(
       }
       const { result } = fetch;
 
+      if ((result.omittedOptionalDocuments?.length ?? 0) > 0)
+        warnings.push(
+          sourceWarning(
+            "source_partial",
+            manifest.provider.id,
+            source.id,
+            `${result.omittedOptionalDocuments?.length ?? 0} discovered documents were unavailable; independently observed facts were refreshed.`,
+          ),
+        );
+
       let parsed: ParsedProviderModel[];
       let contractFinding: SourceContractEvidence | undefined;
       const pricingReconciliationItems: PricingReconciliationItem[] = [];
@@ -894,7 +910,14 @@ async function collectProvider(
       const contentChanged = oldSource?.content_hash !== result.contentHash;
       const extractorChanged = oldSource?.extractor_version !== source.extractorVersion;
       if (source.retainOmittedFacts === true && !extractorChanged)
-        retainedOmissions.push({ source, observed: new Set(parsed.map(({ uid }) => uid)) });
+        retainedOmissions.push({
+          source,
+          observed:
+            (result.omittedOptionalDependencies?.length ?? 0) === 0 &&
+            (result.omittedOptionalDocuments?.length ?? 0) === 0
+              ? new Set(parsed.map(({ uid }) => uid))
+              : new Set(),
+        });
       sourceAttempts.push({
         source_id: source.id,
         outcome: contentChanged || extractorChanged ? "changed" : "unchanged",

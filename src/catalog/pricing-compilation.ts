@@ -370,7 +370,10 @@ export async function compilePricingSnapshot(
       providerId,
       snapshot: providerSnapshot,
       sources: replaySources(replay, manifest, providerSnapshot, current),
-      models: current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
+      models: replayPublishedModels(
+        replay,
+        current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
+      ),
       categoricalLabels: manifest.pricingCategoricalLabels,
     });
     replayedProviders.push(providerId);
@@ -397,6 +400,32 @@ export async function compilePricingSnapshot(
     replayedProviders,
     preservedProviders,
   };
+}
+
+function replayPublishedModels(
+  replay: PricingReplayProvider,
+  catalogModels: readonly PublishedPricingModel[],
+): PublishedPricingModel[] {
+  const models = new Map(catalogModels.map((model) => [model.uid, model]));
+  for (const source of replay.sources)
+    for (const model of source.models) {
+      const current = models.get(model.uid);
+      if (current === undefined) continue;
+      models.set(model.uid, {
+        model_id: model.model_id,
+        uid: model.uid,
+        name: current.name,
+        ...(model.version === undefined ? {} : { version: model.version }),
+        ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
+        capabilities: model.capabilities,
+        ...(model.service_families === undefined
+          ? {}
+          : { service_families: model.service_families }),
+        status: model.status,
+        tasks: model.tasks,
+      });
+    }
+  return [...models.values()].sort((left, right) => compareUtf8(left.uid, right.uid));
 }
 
 function compilationWeight(task: CompilationTask): number {

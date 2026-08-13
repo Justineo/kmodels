@@ -72,6 +72,7 @@ interface ItemRecognitionOptions<T> {
   schema: z.ZodType<T>;
   modelId?: string | ((item: unknown) => string | undefined);
   rootKeys?: readonly string[];
+  skipInvalidItems?: boolean;
   onFinding?: (evidence: SourceContractEvidence) => void;
 }
 
@@ -369,11 +370,15 @@ export function recognizeItems<T>(options: ItemRecognitionOptions<T>): T[] {
       }
     }
   }
-  if (invalid.length > 0)
-    throw new SourceContractError(
-      options.label,
-      zodContractEvidence(invalid, options.items.length),
+  if (invalid.length > 0) {
+    const evidence = zodContractEvidence(
+      invalid,
+      options.items.length,
+      options.skipInvalidItems === true ? "accept_with_signal" : "reject",
     );
+    if (options.skipInvalidItems !== true) throw new SourceContractError(options.label, evidence);
+    options.onFinding?.(evidence);
+  }
   if (extensions.length > 0)
     options.onFinding?.(aggregateEvidence(extensions, options.items.length, "accept_with_signal"));
   return parsed;

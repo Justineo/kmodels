@@ -10,7 +10,13 @@ import {
   type SourcePriceFact,
   type SourceRawPricingFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
+import {
+  assertItemCount,
+  contractExtensionEvidence,
+  recognizeItems,
+  zodContractEvidence,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import {
   modalitySchema,
   type ModelRoute,
@@ -38,7 +44,7 @@ const tierSchema = z
     min: z.number().int().nonnegative().optional(),
     max: z.number().int().positive().optional(),
   })
-  .strict()
+  .strip()
   .refine(({ min = 0, max }) => max === undefined || min < max, "Tier range is empty");
 
 const servicePriceSchema = z
@@ -48,7 +54,7 @@ const servicePriceSchema = z
     input_cache_read: decimal.optional(),
     input_cache_write: decimal.optional(),
   })
-  .strict();
+  .strip();
 
 const tokenPriceSchema = servicePriceSchema.extend({
   input_tiers: z.array(tierSchema).optional(),
@@ -64,7 +70,7 @@ const regionalPriceSchema = tokenPriceSchema.extend({
 const serviceTierSchema = servicePriceSchema.extend({
   long_context: servicePriceSchema
     .extend({ threshold: z.number().int().positive() })
-    .strict()
+    .strip()
     .optional(),
 });
 
@@ -76,7 +82,7 @@ const imagePriceSchema = z
     size: z.string().min(1).optional(),
     style: z.string().min(1).optional(),
   })
-  .strict();
+  .strip();
 
 const videoPriceSchema = z
   .object({
@@ -86,26 +92,22 @@ const videoPriceSchema = z
     audio: z.boolean().optional(),
     voice_control: z.boolean().optional(),
   })
-  .strict();
+  .strip();
 
-const videoTokenTierSchema = z.object({ cost_per_million_tokens: decimal }).strict();
+const videoTokenTierSchema = z.object({ cost_per_million_tokens: decimal }).strip();
 const videoTokenPairSchema = z
   .object({
     no_video_input: videoTokenTierSchema,
     with_video_input: videoTokenTierSchema,
   })
-  .strict();
+  .strip();
 const videoTokenPricingSchema = z
   .union([
-    videoTokenPairSchema.extend({ notes: z.string().min(1) }).strict(),
+    videoTokenPairSchema.extend({ notes: z.string().min(1) }).strip(),
     z
       .object({
         tiers: z
-          .array(
-            videoTokenPairSchema
-              .extend({ resolution: z.enum(["480p", "720p", "1080p", "4k"]) })
-              .strict(),
-          )
+          .array(videoTokenPairSchema.extend({ resolution: z.string().min(1) }).strip())
           .min(1)
           .refine(
             (tiers) => new Set(tiers.map(({ resolution }) => resolution)).size === tiers.length,
@@ -113,7 +115,7 @@ const videoTokenPricingSchema = z
           ),
         notes: z.string().min(1),
       })
-      .strict(),
+      .strip(),
   ])
   .transform((value) =>
     "tiers" in value
@@ -126,7 +128,7 @@ const pricingSchema = tokenPriceSchema
     audio_input_token_cost: decimal.optional(),
     audio_output_token_cost: decimal.optional(),
     fast: servicePriceSchema.optional(),
-    regional: z.partialRecord(z.enum(["eu", "us"]), regionalPriceSchema).optional(),
+    regional: z.record(z.string().min(1), regionalPriceSchema).optional(),
     service_tiers: z.record(z.string().min(1), serviceTierSchema).optional(),
     image: decimal.optional(),
     image_dimension_quality_pricing: z.array(imagePriceSchema).optional(),
@@ -139,36 +141,26 @@ const pricingSchema = tokenPriceSchema
     web_search: decimal.optional(),
     maps_search: decimal.optional(),
   })
-  .strict();
+  .strip();
 
 const reasoningOptionSchema = z
   .object({
-    type: z.enum(["toggle", "effort", "budget_tokens"]),
+    type: z.string().min(1),
     values: z.array(z.string().min(1)).optional(),
     min: z.number().int().nonnegative().optional(),
     max: z.number().int().nonnegative().optional(),
   })
-  .strict();
-
-const videoOperationSchema = z.enum([
-  "text-to-video",
-  "image-to-video",
-  "first-last-frame",
-  "reference-to-video",
-  "extend-video",
-  "motion-control",
-  "video-editing",
-]);
+  .strip();
 
 const videoInputLimitSchema = z.record(z.string(), z.unknown());
 
 const videoCapabilitiesSchema = z
   .object({
-    supported_operations: z.array(videoOperationSchema).min(1),
+    supported_operations: z.array(z.string().min(1)).min(1),
     supported_resolutions: z.array(z.string().min(1)).min(1),
     supported_aspect_ratios: z.array(z.string().min(1)).min(1),
     supported_durations_seconds: z.array(z.number().positive()).min(1),
-    generate_audio: z.boolean().optional(),
+    generate_audio: z.unknown().optional(),
     supported_fps: z.array(z.number().positive()).min(1),
     max_sample_count: z.number().int().positive().optional(),
     input_limits: z
@@ -179,38 +171,9 @@ const videoCapabilitiesSchema = z
         audio: videoInputLimitSchema.optional(),
         max_total_inputs: z.number().int().positive().optional(),
       })
-      .strict(),
+      .strip(),
   })
-  .strict();
-
-const tagSchema = z.enum([
-  "explicit-caching",
-  "fast",
-  "file-input",
-  "free",
-  "image-generation",
-  "implicit-caching",
-  "reasoning",
-  "structured-output",
-  "tool-use",
-  "video-generation",
-  "vision",
-  "web-search",
-  "websocket-realtime",
-  "websocket-transcription",
-]);
-
-const supportedParameterSchema = z.enum([
-  "include_reasoning",
-  "max_tokens",
-  "reasoning",
-  "response_format",
-  "stop",
-  "structured_outputs",
-  "temperature",
-  "tool_choice",
-  "tools",
-]);
+  .strip();
 
 const itemSchema = z.object({
   id: modelIdSchema.refine((value) => value.split("/").length === 2),
@@ -222,25 +185,16 @@ const itemSchema = z.object({
   description: z.string(),
   context_window: z.number().int().nonnegative().optional(),
   max_tokens: z.number().int().nonnegative().optional(),
-  type: z.enum([
-    "language",
-    "embedding",
-    "image",
-    "video",
-    "realtime",
-    "reranking",
-    "speech",
-    "transcription",
-  ]),
-  tags: z.array(tagSchema).optional(),
+  type: z.string().min(1),
+  tags: z.array(z.string().min(1)).optional(),
   modalities: z
     .object({
       input: z.array(modalitySchema),
       output: z.array(modalitySchema),
     })
-    .strict(),
-  supported_parameters: z.array(supportedParameterSchema).optional(),
-  supported_specifications: z.array(z.enum(["v2", "v3", "v4"])).min(1),
+    .strip(),
+  supported_parameters: z.array(z.string().min(1)).optional(),
+  supported_specifications: z.array(z.string().min(1)).min(1),
   deprecated_at: z.number().int().nonnegative().optional(),
   interleaved: z.boolean().optional(),
   knowledge: z
@@ -248,10 +202,7 @@ const itemSchema = z.object({
     .regex(/^\d{4}(?:-\d{2}(?:-\d{2})?)?$/)
     .optional(),
   reasoning_options: z.array(reasoningOptionSchema).optional(),
-  regions: z
-    .array(z.enum(["eu", "us"]))
-    .min(1)
-    .optional(),
+  regions: z.array(z.string().min(1)).min(1).optional(),
   temperature: z.boolean().optional(),
   video_capabilities: videoCapabilitiesSchema.optional(),
   pricing: pricingSchema,
@@ -266,7 +217,7 @@ const endpointServicePriceSchema = z
     input_cache_read: decimal.optional(),
     input_cache_write: decimal.optional(),
   })
-  .strict();
+  .strip();
 
 const endpointTokenPriceSchema = endpointServicePriceSchema.extend({
   prompt_tiers: z.array(tierSchema).optional(),
@@ -278,7 +229,7 @@ const endpointTokenPriceSchema = endpointServicePriceSchema.extend({
 const endpointServiceTierSchema = endpointServicePriceSchema.extend({
   long_context: endpointServicePriceSchema
     .extend({ threshold: z.number().int().positive() })
-    .strict()
+    .strip()
     .optional(),
 });
 
@@ -300,16 +251,16 @@ const endpointPricingSchema = endpointTokenPriceSchema
     realtime_client_message_cost: decimal.optional(),
     realtime_session_duration_cost_per_second: decimal.optional(),
   })
-  .strict();
+  .strip();
 
 const endpointRegionSchema = z
   .object({
     scope: z.enum(["specific", "zone"]),
-    geo_region: z.enum(["eu", "us"]),
+    geo_region: z.string().min(1),
     provider_region: z.string().min(1).optional(),
     pricing: endpointTokenPriceSchema.optional(),
   })
-  .strict()
+  .strip()
   .superRefine(({ scope, provider_region: providerRegion }, context) => {
     if ((scope === "specific") !== (providerRegion !== undefined))
       context.addIssue({ code: "custom", message: "Provider region must match specific scope" });
@@ -322,17 +273,17 @@ const endpointSchema = z
     context_length: z.number().int().nonnegative().optional(),
     pricing: endpointPricingSchema,
     provider_name: z.string().min(1),
-    tags: z.array(tagSchema).optional(),
+    tags: z.array(z.string().min(1)).optional(),
     inference_regions: z.array(endpointRegionSchema).optional(),
     quantization: z.null(),
     max_completion_tokens: z.number().int().nonnegative().optional(),
     max_prompt_tokens: z.number().int().nonnegative().nullable().optional(),
-    supported_parameters: z.array(supportedParameterSchema).optional(),
+    supported_parameters: z.array(z.string().min(1)).optional(),
     status: z.literal(0),
     supports_implicit_caching: z.boolean(),
     deprecated_at: z.number().int().nonnegative().optional(),
   })
-  .strict();
+  .strip();
 
 const endpointDocumentSchema = z
   .object({
@@ -348,9 +299,9 @@ const endpointDocumentSchema = z
         capabilities: z.unknown().optional(),
         endpoints: z.array(endpointSchema).min(1),
       })
-      .strict(),
+      .strip(),
   })
-  .strict();
+  .strip();
 
 const modelPageDocumentSchema = z
   .object({
@@ -381,6 +332,9 @@ type TokenPrice = z.infer<typeof tokenPriceSchema>;
 type Endpoint = z.infer<typeof endpointSchema>;
 type EndpointPrice = z.infer<typeof endpointTokenPriceSchema>;
 type ModelPageDocument = z.infer<typeof modelPageDocumentSchema>;
+
+const pricingKeys = new Set(Object.keys(pricingSchema.shape));
+const endpointPricingKeys = new Set(Object.keys(endpointPricingSchema.shape));
 
 function date(timestamp: number | undefined, milliseconds = false): string | undefined {
   if (timestamp === undefined) return undefined;
@@ -1055,100 +1009,6 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
   return rates;
 }
 
-function validateDocumentation(documents: ReadonlyMap<string, string>): void {
-  const requirements = new Map<string, string[]>([
-    [
-      "/docs/ai-gateway/models-and-providers.md",
-      [
-        "https://ai-gateway.vercel.sh/v1/models",
-        "This endpoint requires no authentication",
-        "GET /v1/models/{creator}/{model}/endpoints",
-        "returns per-provider pricing, supported parameters, uptime, throughput, and latency",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/models-and-providers/provider-options.md",
-      ["`order`, `only`, and `sort`", "sort: 'cost'", "caching: 'auto'"],
-    ],
-    [
-      "/docs/ai-gateway/models-and-providers/provider-filtering-and-ordering.md",
-      [
-        "The `gateway.cost` value is the inference cost for this request",
-        "does not include other charges that may apply",
-        "`'cost'`",
-        "`'ttft'`",
-        "`'tps'`",
-        "providers are always sorted last, regardless",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/models-and-providers/fast-mode.md",
-      [
-        "higher per-token cost",
-        "falls back to the base model",
-        "not merely routed to a fast variant slug",
-        "weren't billed at the fast rate",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/models-and-providers/service-tiers.md",
-      [
-        "best-effort routing hint, not a hard guarantee",
-        "billed at the default rate",
-        "bills the request at the tier the provider actually served",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/security-and-compliance/regional-inference.md",
-      [
-        "Pinning a region can raise what a request costs.",
-        "passes the provider's regional price straight through",
-        "adds no AI Gateway markup",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/authentication-and-byok/byok.md",
-      [
-        "fallback usage is billed against your credits balance",
-        "Spend through your own credentials isn't counted in",
-        "your actual costs may vary",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/sdks-and-apis/rest-api.md",
-      [
-        "GET /v1/models/{creator}/{model}/endpoints",
-        "GET /v1/generation?id={generation_id}",
-        "Usage events are ingested asynchronously",
-        "Allow a few seconds",
-        "`total_cost`",
-        "`upstream_inference_cost`",
-        "`native_tokens_cached`",
-        "`native_tokens_cache_creation`",
-      ],
-    ],
-    [
-      "/docs/ai-gateway/observability-and-spend/logs.md",
-      ["refreshing every 5 seconds", "about 90 seconds", "Fallback Path", "Cache Write"],
-    ],
-    [
-      "/docs/ai-gateway/observability-and-spend/usage.md",
-      [
-        "`GET /v1/credits`",
-        "remaining credit balance and lifetime spend",
-        "`GET /v1/generation`",
-        "cost, latency, finish reason, and token usage",
-      ],
-    ],
-  ]);
-  for (const [path, markers] of requirements) {
-    const body = documents.get(path);
-    if (body === undefined) throw new Error(`Vercel bundle omitted ${path}`);
-    for (const marker of markers)
-      if (!body.includes(marker)) throw new Error(`Vercel policy changed at ${path}: ${marker}`);
-  }
-}
-
 function model(
   item: Item,
   input: Input,
@@ -1180,14 +1040,6 @@ function model(
       ? { rates: [], raw: [], free: false }
       : modelPageRates(item, page, input.source.id);
   const explicitlyFree = tags.includes("free");
-  if (
-    explicitlyFree &&
-    (catalogRates.length > 0 ||
-      routeRates.length > 0 ||
-      pagePricing.rates.length > 0 ||
-      pagePricing.raw.length > 0)
-  )
-    throw new Error(`Vercel free pricing conflicted with a paid offer for ${item.id}`);
   input.onPricingReconciliation?.(
     catalogRates.length === 0
       ? {
@@ -1310,13 +1162,14 @@ function model(
       region,
       deployment_type: "regional_inference",
     })),
-    pricing_state: explicitlyFree
-      ? "free"
-      : rates.length > 0
+    pricing_state:
+      rates.length > 0
         ? "numeric"
-        : pagePricing.raw.length > 0
-          ? "unknown"
-          : "not_published",
+        : explicitlyFree
+          ? "free"
+          : pagePricing.raw.length > 0
+            ? "unknown"
+            : "not_published",
     price_facts: rates,
     raw_price_facts: pagePricing.raw,
   };
@@ -1343,8 +1196,10 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     schema: itemSchema,
     modelId: "id",
     rootKeys: Object.keys(itemSchema.shape),
+    skipInvalidItems: true,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
+  reportPricingExtensions(list.data, pricingKeys, input);
   if (!bundled.success) return parsed.map((item) => model(item, input, [], undefined));
   if (bundled.data.index.url !== input.source.url)
     throw new Error("Vercel bundle index URL changed");
@@ -1358,31 +1213,51 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     if (url.hostname === "ai-gateway.vercel.sh" && endpointMatch?.[1] !== undefined) {
       const id = endpointMatch[1];
       const item = byId.get(id);
-      if (item === undefined) throw new Error(`Vercel endpoint document had unknown model ${id}`);
-      if (endpoints.has(id)) throw new Error(`Vercel endpoint document was duplicated for ${id}`);
-      const parsedDocument = endpointDocumentSchema.parse(JSON.parse(document.body));
-      if (parsedDocument.data.id !== id)
-        throw new Error(`Vercel endpoint identity disagreed for ${id}`);
+      if (item === undefined || endpoints.has(id)) continue;
+      const endpointValue: unknown = JSON.parse(document.body);
+      reportEndpointPricingExtensions(endpointValue, input);
+      const parsedDocument = endpointDocumentSchema.safeParse(endpointValue);
+      if (!parsedDocument.success) {
+        input.onContractFinding?.(
+          zodContractEvidence(
+            [
+              {
+                error: parsedDocument.error,
+                input: JSON.parse(document.body),
+                itemIndex: 0,
+                modelId: id,
+              },
+            ],
+            1,
+            "accept_with_signal",
+          ),
+        );
+        continue;
+      }
+      const endpointDocument = parsedDocument.data;
+      if (endpointDocument.data.id !== id) continue;
       if (
         new Set(
-          parsedDocument.data.endpoints.map(({ provider_name: providerName }) => providerName),
-        ).size !== parsedDocument.data.endpoints.length
+          endpointDocument.data.endpoints.map(({ provider_name: providerName }) => providerName),
+        ).size !== endpointDocument.data.endpoints.length
       )
-        throw new Error(`Vercel route provider was duplicated for ${id}`);
-      for (const endpoint of parsedDocument.data.endpoints)
-        if (
-          endpoint.name !== `${endpoint.provider_name} | ${id}` ||
-          endpoint.model_name !== parsedDocument.data.name
+        continue;
+      if (
+        endpointDocument.data.endpoints.some(
+          (endpoint) =>
+            endpoint.name !== `${endpoint.provider_name} | ${id}` ||
+            endpoint.model_name !== endpointDocument.data.name,
         )
-          throw new Error(`Vercel route identity disagreed for ${id}`);
-      endpoints.set(id, parsedDocument.data.endpoints);
+      )
+        continue;
+      endpoints.set(id, endpointDocument.data.endpoints);
       continue;
     }
     const pageMatch = url.pathname.match(/^\/ai-gateway\/models\/([^/]+)$/);
     if (url.hostname === "vercel.com" && pageMatch?.[1] !== undefined) {
       const slug = pageMatch[1];
-      if (pages.has(slug)) throw new Error(`Vercel model page was duplicated for ${slug}`);
-      pages.set(slug, modelPageDocumentSchema.parse(JSON.parse(document.body)));
+      const page = modelPageDocumentSchema.safeParse(JSON.parse(document.body));
+      if (!pages.has(slug) && page.success) pages.set(slug, page.data);
       continue;
     }
     if (
@@ -1391,30 +1266,10 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
         url.pathname === "/ai-gateway/models" ||
         url.pathname === "/crawled-sitemap.xml")
     ) {
-      if (documentation.has(url.pathname))
-        throw new Error(`Vercel documentation was duplicated at ${url.pathname}`);
-      documentation.set(url.pathname, document.body);
+      if (!documentation.has(url.pathname)) documentation.set(url.pathname, document.body);
       continue;
     }
-    throw new Error(`Vercel bundle contained an unreviewed document ${document.url}`);
   }
-  if (endpoints.size !== parsed.length)
-    throw new Error(`Vercel bundle had ${endpoints.size}/${parsed.length} endpoint documents`);
-  const missing = parsed.filter(({ pricing: value }) => Object.keys(value).length === 0);
-  if (pages.size !== missing.length)
-    throw new Error(`Vercel bundle had ${pages.size}/${missing.length} missing-price model pages`);
-  for (const item of missing) {
-    const slug = item.id.split("/")[1];
-    if (slug === undefined || !pages.has(slug))
-      throw new Error(`Vercel bundle omitted the pricing page for ${item.id}`);
-  }
-  validateDocumentation(documentation);
-  for (const path of documentation.keys())
-    input.onPricingReconciliation?.({
-      disposition: "excluded",
-      reason_code: "account_or_service_policy",
-      sample: path,
-    });
   const result = parsed.map((item) => {
     const slug = item.id.split("/")[1];
     return model(
@@ -1428,7 +1283,6 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     documents: documentation,
     sourceId: input.source.id,
     modelRefs: result.map(({ uid }) => uid),
-    modelRefById: new Map(result.map(({ model_id: id, uid }) => [id, uid])),
     ...(input.onPricingReconciliation === undefined
       ? {}
       : { onPricingReconciliation: input.onPricingReconciliation }),
@@ -1437,4 +1291,36 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
   if (carrier !== undefined && commercialFacts.length > 0)
     carrier.commercial_facts = commercialFacts;
   return result;
+}
+
+function reportPricingExtensions(
+  items: readonly unknown[],
+  known: ReadonlySet<string>,
+  input: Input,
+): void {
+  const paths = new Set<string>();
+  for (const item of items) {
+    if (item === null || typeof item !== "object") continue;
+    const pricing: unknown = Reflect.get(item, "pricing");
+    if (pricing === null || typeof pricing !== "object" || Array.isArray(pricing)) continue;
+    for (const key of Object.keys(pricing)) if (!known.has(key)) paths.add(`/pricing/${key}`);
+  }
+  if (paths.size > 0) input.onContractFinding?.(contractExtensionEvidence([...paths]));
+}
+
+function reportEndpointPricingExtensions(value: unknown, input: Input): void {
+  if (value === null || typeof value !== "object") return;
+  const data: unknown = Reflect.get(value, "data");
+  if (data === null || typeof data !== "object") return;
+  const endpoints: unknown = Reflect.get(data, "endpoints");
+  if (!Array.isArray(endpoints)) return;
+  const paths = new Set<string>();
+  for (const endpoint of endpoints) {
+    if (endpoint === null || typeof endpoint !== "object") continue;
+    const pricing: unknown = Reflect.get(endpoint, "pricing");
+    if (pricing === null || typeof pricing !== "object" || Array.isArray(pricing)) continue;
+    for (const key of Object.keys(pricing))
+      if (!endpointPricingKeys.has(key)) paths.add(`/endpoints/pricing/${key}`);
+  }
+  if (paths.size > 0) input.onContractFinding?.(contractExtensionEvidence([...paths]));
 }

@@ -17,14 +17,15 @@ import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { orderedTasks } from "./task.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { multiplyDecimal, publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
+import { multiplyDecimal, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type {
-  ParsedProviderModel as ProviderModel,
-  SourcePriceFact,
-  SourceRawPricingFact,
-} from "./pricing-source.ts";
-import { assertItemCount } from "./source-contract.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import {
+  assertItemCount,
+  contractExtensionEvidence,
+  recognizeItems,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider } from "./schema.ts";
 
 type TriState = ProviderModel["capabilities"]["reasoning"];
@@ -35,6 +36,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -43,43 +45,29 @@ const pricingBundleSchema = linkedBundleSchema.extend({
 });
 
 interface CommercialEvidence {
-  batchAccounting: boolean;
   cacheBody?: string;
-  cacheAccounting: boolean;
   cacheRates: boolean;
-  settlement: boolean;
-  tokenAccounting: boolean;
   webSearchBody?: string;
-  webSearchAccounting: boolean;
 }
 
-const deploymentPlanSchema = z
-  .object({
-    plan: z.enum(["mu", "cu", "ptu", "ptu_v2", "lora"]),
-    templates: z.array(z.unknown()).optional(),
-  })
-  .strict();
+const deploymentPlanSchema = z.object({
+  plan: z.enum(["mu", "cu", "ptu", "ptu_v2", "lora"]),
+});
 
-const deploymentModelSchema = z
-  .object({
-    model_name: modelIdSchema,
-    plans: z.array(deploymentPlanSchema),
-  })
-  .strict();
+const deploymentModelSchema = z.object({
+  model_name: modelIdSchema,
+  plans: z.array(z.unknown()),
+});
 
-const deploymentPageSchema = z
-  .object({
-    request_id: z.string().min(1).optional(),
-    output: z
-      .object({
-        page_no: z.literal(1),
-        page_size: z.number().int().min(1),
-        total: z.number().int().nonnegative(),
-        models: z.array(deploymentModelSchema),
-      })
-      .strict(),
-  })
-  .strict();
+const deploymentPageSchema = z.object({
+  request_id: z.string().min(1).optional(),
+  output: z.object({
+    page_no: z.literal(1),
+    page_size: z.number().int().min(1),
+    total: z.number().int().nonnegative(),
+    models: z.array(z.unknown()),
+  }),
+});
 
 function markdownSections(body: string): string {
   const open: number[] = [];
@@ -187,68 +175,90 @@ function pricingHeaderMatches(header: string, kind: ReturnType<typeof pricingCel
   return /type/i.test(header);
 }
 
-function normalizePricingRows(headers: string[], rows: Cell[][]): Cell[][] {
-  const result: Cell[][] = [];
-  let previous: Cell[] | undefined;
-  for (const rawRow of rows) {
-    const row = rawRow.map(markdownCell);
-    if (row.length > headers.length)
-      throw new Error("DashScope pricing row exceeded its expanded header");
-    if (row.length === headers.length) {
-      const discontinued = row.find((cell) =>
-        /\bDiscontinued\b|^(?:Free|Free trial|Limited-time free)$/i.test(cell.text),
-      );
-      const normalized =
-        discontinued === undefined
-          ? row
-          : row.map((cell, index) => (/price/i.test(headers[index] ?? "") ? discontinued : cell));
-      result.push(normalized);
-      previous = normalized;
-      continue;
-    }
-    if (previous === undefined)
-      throw new Error("DashScope pricing sparse row omitted its base row");
-    const normalized = [...previous];
-    let after = -1;
-    for (const [cellIndex, cell] of row.entries()) {
-      const kind = pricingCellKind(cell);
-      const remainingPrices = row
-        .slice(cellIndex)
-        .filter((candidate) => pricingCellKind(candidate) === "price").length;
-      const candidates = headers.flatMap((header, index) =>
-        index > after && pricingHeaderMatches(header, kind) ? [index] : [],
-      );
-      const target =
-        kind === "price" && candidates.length >= remainingPrices
-          ? candidates.at(-remainingPrices)
-          : candidates[0];
-      if (target === undefined)
-        throw new Error(`DashScope pricing sparse ${kind} cell changed shape: ${cell.text}`);
-      normalized[target] = cell;
-      after = target;
-    }
+function normalizePricingRow(headers: string[], rawRow: Cell[], previous?: Cell[]): Cell[] {
+  const row = rawRow.map(markdownCell);
+  if (row.length > headers.length)
+    throw new Error("DashScope pricing row exceeded its expanded header");
+  if (row.length === headers.length) {
     const discontinued = row.find((cell) =>
       /\bDiscontinued\b|^(?:Free|Free trial|Limited-time free)$/i.test(cell.text),
     );
-    if (discontinued !== undefined)
-      for (const [index, header] of headers.entries())
-        if (/price/i.test(header)) normalized[index] = discontinued;
-    result.push(normalized);
-    previous = normalized;
+    return discontinued === undefined
+      ? row
+      : row.map((cell, index) => (/price/i.test(headers[index] ?? "") ? discontinued : cell));
+  }
+  if (previous === undefined) throw new Error("DashScope pricing sparse row omitted its base row");
+  const normalized = [...previous];
+  let after = -1;
+  for (const [cellIndex, cell] of row.entries()) {
+    const kind = pricingCellKind(cell);
+    const remainingPrices = row
+      .slice(cellIndex)
+      .filter((candidate) => pricingCellKind(candidate) === "price").length;
+    const candidates = headers.flatMap((header, index) =>
+      index > after && pricingHeaderMatches(header, kind) ? [index] : [],
+    );
+    const target =
+      kind === "price" && candidates.length >= remainingPrices
+        ? candidates.at(-remainingPrices)
+        : candidates[0];
+    if (target === undefined)
+      throw new Error(`DashScope pricing sparse ${kind} cell changed shape: ${cell.text}`);
+    normalized[target] = cell;
+    after = target;
+  }
+  const discontinued = row.find((cell) =>
+    /\bDiscontinued\b|^(?:Free|Free trial|Limited-time free)$/i.test(cell.text),
+  );
+  if (discontinued !== undefined)
+    for (const [index, header] of headers.entries())
+      if (/price/i.test(header)) normalized[index] = discontinued;
+  return normalized;
+}
+
+function normalizePricingRows(
+  headers: string[],
+  rows: Cell[][],
+  onFinding: (row: number) => void,
+): Cell[][] {
+  const result: Cell[][] = [];
+  let previous: Cell[] | undefined;
+  for (const [index, row] of rows.entries()) {
+    try {
+      previous = normalizePricingRow(headers, row, previous);
+      result.push(previous);
+    } catch {
+      onFinding(index);
+    }
   }
   return result;
 }
 
-function pricingTables(body: string): Table[] {
+function pricingTables(body: string, onFinding: (path: string) => void): Table[] {
   const parsed = tables(body);
   if (!markdownDocument(body)) return parsed;
-  return parsed.map((table) => {
-    const first = table.rows[0];
-    const subheaders = first === undefined ? undefined : pricingSubheaders(first);
-    const headers =
-      subheaders === undefined ? table.headers : expandedPricingHeaders(table.headers, subheaders);
-    const rows = subheaders === undefined ? table.rows : table.rows.slice(1);
-    return { ...table, headers, rows: normalizePricingRows(headers, rows) };
+  return parsed.flatMap((table, tableIndex) => {
+    try {
+      const first = table.rows[0];
+      const subheaders = first === undefined ? undefined : pricingSubheaders(first);
+      const headers =
+        subheaders === undefined
+          ? table.headers
+          : expandedPricingHeaders(table.headers, subheaders);
+      const rows = subheaders === undefined ? table.rows : table.rows.slice(1);
+      return [
+        {
+          ...table,
+          headers,
+          rows: normalizePricingRows(headers, rows, (row) =>
+            onFinding(`/tables/${tableIndex}/rows/${row}`),
+          ),
+        },
+      ];
+    } catch {
+      onFinding(`/tables/${tableIndex}`);
+      return [];
+    }
   });
 }
 
@@ -386,10 +396,17 @@ function dimensions(raw: string | undefined): ProviderModel["limits"] {
   };
 }
 
-function mergeState(current: TriState, incoming: TriState): TriState {
+function mergeState(
+  current: TriState,
+  incoming: TriState,
+  field: string,
+  onConflict?: (field: string) => void,
+): TriState {
   if (incoming === "unknown") return current;
-  if (current !== "unknown" && current !== incoming)
-    throw new Error("Conflicting capability facts");
+  if (current !== "unknown" && current !== incoming) {
+    onConflict?.(field);
+    return "unknown";
+  }
   return incoming;
 }
 
@@ -409,14 +426,20 @@ function mergedPricingState(
   left: ProviderModel["pricing_state"],
   right: ProviderModel["pricing_state"],
   hasRates: boolean,
+  onConflict?: (field: string) => void,
 ): ProviderModel["pricing_state"] {
   if (hasRates) return "numeric";
   if (left === "unknown") return right;
   if (right === "unknown" || left === right) return left;
-  throw new Error(`Conflicting DashScope pricing states: ${left} and ${right}`);
+  onConflict?.("pricing_state");
+  return "unknown";
 }
 
-function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
+function merge(
+  left: ProviderModel,
+  right: ProviderModel,
+  onConflict?: (field: string) => void,
+): ProviderModel {
   const pricing = new Map(left.price_facts.map((item) => [rateKey(item), item]));
   for (const item of right.price_facts) pricing.set(rateKey(item), item);
   const endpoints = new Map(
@@ -448,30 +471,78 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
       output: unique([...left.modalities.output, ...right.modalities.output]),
     },
     capabilities: {
-      reasoning: mergeState(left.capabilities.reasoning, right.capabilities.reasoning),
-      tool_call: mergeState(left.capabilities.tool_call, right.capabilities.tool_call),
+      reasoning: mergeState(
+        left.capabilities.reasoning,
+        right.capabilities.reasoning,
+        "capabilities.reasoning",
+        onConflict,
+      ),
+      tool_call: mergeState(
+        left.capabilities.tool_call,
+        right.capabilities.tool_call,
+        "capabilities.tool_call",
+        onConflict,
+      ),
       structured_output: mergeState(
         left.capabilities.structured_output,
         right.capabilities.structured_output,
+        "capabilities.structured_output",
+        onConflict,
       ),
-      streaming: mergeState(left.capabilities.streaming, right.capabilities.streaming),
-      batch: mergeState(left.capabilities.batch, right.capabilities.batch),
-      prompt_cache: mergeState(left.capabilities.prompt_cache, right.capabilities.prompt_cache),
-      fine_tuning: mergeState(left.capabilities.fine_tuning, right.capabilities.fine_tuning),
-      citations: mergeState(left.capabilities.citations, right.capabilities.citations),
+      streaming: mergeState(
+        left.capabilities.streaming,
+        right.capabilities.streaming,
+        "capabilities.streaming",
+        onConflict,
+      ),
+      batch: mergeState(
+        left.capabilities.batch,
+        right.capabilities.batch,
+        "capabilities.batch",
+        onConflict,
+      ),
+      prompt_cache: mergeState(
+        left.capabilities.prompt_cache,
+        right.capabilities.prompt_cache,
+        "capabilities.prompt_cache",
+        onConflict,
+      ),
+      fine_tuning: mergeState(
+        left.capabilities.fine_tuning,
+        right.capabilities.fine_tuning,
+        "capabilities.fine_tuning",
+        onConflict,
+      ),
+      citations: mergeState(
+        left.capabilities.citations,
+        right.capabilities.citations,
+        "capabilities.citations",
+        onConflict,
+      ),
       code_execution: mergeState(
         left.capabilities.code_execution,
         right.capabilities.code_execution,
+        "capabilities.code_execution",
+        onConflict,
       ),
       context_management: mergeState(
         left.capabilities.context_management,
         right.capabilities.context_management,
+        "capabilities.context_management",
+        onConflict,
       ),
       effort_control: mergeState(
         left.capabilities.effort_control,
         right.capabilities.effort_control,
+        "capabilities.effort_control",
+        onConflict,
       ),
-      computer_use: mergeState(left.capabilities.computer_use, right.capabilities.computer_use),
+      computer_use: mergeState(
+        left.capabilities.computer_use,
+        right.capabilities.computer_use,
+        "capabilities.computer_use",
+        onConflict,
+      ),
     },
     limits: {
       ...left.limits,
@@ -485,15 +556,24 @@ function merge(left: ProviderModel, right: ProviderModel): ProviderModel {
     status: statusRank[right.status] > statusRank[left.status] ? right.status : left.status,
     release_stage: right.release_stage === "unknown" ? left.release_stage : right.release_stage,
     replacement_model_ids: unique([...left.replacement_model_ids, ...right.replacement_model_ids]),
-    pricing_state: mergedPricingState(left.pricing_state, right.pricing_state, pricing.size > 0),
+    pricing_state: mergedPricingState(
+      left.pricing_state,
+      right.pricing_state,
+      pricing.size > 0,
+      onConflict,
+    ),
     price_facts: [...pricing.values()],
     availability: availability.size === 0 ? undefined : [...availability.values()],
   };
 }
 
-function add(models: Map<string, ProviderModel>, model: ProviderModel): void {
+function add(
+  models: Map<string, ProviderModel>,
+  model: ProviderModel,
+  onConflict?: (field: string) => void,
+): void {
   const current = models.get(model.model_id);
-  models.set(model.model_id, current === undefined ? model : merge(current, model));
+  models.set(model.model_id, current === undefined ? model : merge(current, model, onConflict));
 }
 
 function bounded(
@@ -510,7 +590,8 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-catalog") throw new Error("Wrong DashScope catalog extractor");
   const models = new Map<string, ProviderModel>();
-  for (const table of tables(input.body)) {
+  const findings: string[] = [];
+  for (const [tableIndex, table] of tables(input.body).entries()) {
     if (
       !table.headings.some((heading) =>
         /^(?:Recommended models|All models|Legacy models)$/.test(heading),
@@ -519,13 +600,15 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
       continue;
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
     if (idIndex === undefined) continue;
-    for (const row of table.rows) {
+    for (const [rowIndex, row] of table.rows.entries()) {
       if (row.every((cell) => cell === row[0])) continue;
       const rawType = value(table, row, /^(?:Type|Mode)(?:$| \/)/i);
       const api = value(table, row, /^API(?:$| \/)/i);
       const rowIds = cellIds(row[idIndex]);
-      if (rowIds.length === 0)
-        throw new Error(`DashScope ${extractor.category} model cell changed shape`);
+      if (rowIds.length === 0) {
+        findings.push(`/tables/${tableIndex}/rows/${rowIndex}/model`);
+        continue;
+      }
       for (const id of rowIds) {
         const realtime = /WebSocket|realtime/i.test(api ?? "");
         const context = tokenCount(value(table, row, /^Context(?:$| \/)/i));
@@ -539,48 +622,53 @@ export function parseDashscopeCatalog(input: ParseInput): ProviderModel[] {
           sourceId: input.source.id,
           observedAt: input.observedAt,
         });
-        add(models, {
-          ...model,
-          description: value(table, row, /^(?:Description|Use case|Use cases)(?:$| \/)/i),
-          tasks: rowOperations(extractor.category, id, rawType, api, table.headings),
-          raw_type: rawType ?? api,
-          delivery_modes: realtime ? ["realtime"] : undefined,
-          delivery_mode_evidence:
-            !realtime || api === undefined
-              ? undefined
-              : [
-                  {
-                    mode: "realtime",
-                    source_ref: input.source.id,
-                    namespace: `${input.provider.id}.api`,
-                    raw_value: api,
-                    kind: "provider_type",
-                  },
-                ],
-          modalities: rowModalities(extractor.category, table, row, rawType),
-          capabilities: {
-            ...model.capabilities,
-            reasoning: support(value(table, row, /^Thinking mode(?:$| \/)/i)),
-            tool_call: support(value(table, row, /^Function (?:Calling|calling)(?:$| \/)/)),
-            structured_output: support(value(table, row, /^Structured output(?:$| \/)/i)),
-            streaming: /WebSocket/i.test(api ?? "") ? true : "unknown",
+        add(
+          models,
+          {
+            ...model,
+            description: value(table, row, /^(?:Description|Use case|Use cases)(?:$| \/)/i),
+            tasks: rowOperations(extractor.category, id, rawType, api, table.headings),
+            raw_type: rawType ?? api,
+            delivery_modes: realtime ? ["realtime"] : undefined,
+            delivery_mode_evidence:
+              !realtime || api === undefined
+                ? undefined
+                : [
+                    {
+                      mode: "realtime",
+                      source_ref: input.source.id,
+                      namespace: `${input.provider.id}.api`,
+                      raw_value: api,
+                      kind: "provider_type",
+                    },
+                  ],
+            modalities: rowModalities(extractor.category, table, row, rawType),
+            capabilities: {
+              ...model.capabilities,
+              reasoning: support(value(table, row, /^Thinking mode(?:$| \/)/i)),
+              tool_call: support(value(table, row, /^Function (?:Calling|calling)(?:$| \/)/)),
+              structured_output: support(value(table, row, /^Structured output(?:$| \/)/i)),
+              streaming: /WebSocket/i.test(api ?? "") ? true : "unknown",
+            },
+            limits: {
+              ...dimensionLimits,
+              ...(context === undefined ? {} : { context_tokens: context }),
+              ...(output === undefined ? {} : { max_output_tokens: output }),
+              ...(embeddingTokens === undefined ? {} : { max_input_tokens: embeddingTokens }),
+            },
+            status: "active",
+            release_stage: /preview/i.test(`${id} ${row[idIndex]?.text ?? ""}`)
+              ? "preview"
+              : "unknown",
+            pricing_state: "unknown",
+            scope: "regional_catalog",
           },
-          limits: {
-            ...dimensionLimits,
-            ...(context === undefined ? {} : { context_tokens: context }),
-            ...(output === undefined ? {} : { max_output_tokens: output }),
-            ...(embeddingTokens === undefined ? {} : { max_input_tokens: embeddingTokens }),
-          },
-          status: "active",
-          release_stage: /preview/i.test(`${id} ${row[idIndex]?.text ?? ""}`)
-            ? "preview"
-            : "unknown",
-          pricing_state: "unknown",
-          scope: "regional_catalog",
-        });
+          (field) => findings.push(`/tables/${tableIndex}/rows/${rowIndex}/${field}`),
+        );
       }
     }
   }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return bounded(
     models,
     extractor.minModels,
@@ -722,59 +810,63 @@ function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, Provi
     /^\[!\[\]\([^\n]+\) [^\n]+\]\([^\n]+\)\s*$/.test(line) ? [index] : [],
   );
   const models = new Map<string, ProviderModel>();
+  const findings: string[] = [];
   for (const [position, start] of starts.entries()) {
-    const firstLine = lines[start] ?? "";
-    const heading = firstLine.match(/^\[!\[\]\([^\n]+\) (.+)\]\(/)?.[1] ?? "";
-    const end = starts[position + 1] ?? lines.length;
-    const block = lines.slice(start, end).join("\n");
-    const publishedIds = unique(
-      [...block.matchAll(/Model ID\s*`([^`]+)`/g)].flatMap(
-        (match) => exactId(match[1] ?? "") ?? [],
-      ),
-    );
-    const id = publishedIds[0];
-    if (id === undefined || publishedIds.length !== 1 || !heading.startsWith(id))
-      throw new Error("DashScope recommended-model card ID drifted");
-    const regionLine = text(lines[start + 1] ?? "");
-    const regions = recommendedMarkdownRegions(regionLine);
-    const routeValues = [
-      ...block.matchAll(/(?:Base|Request) URL\s+(.+?)(?=\s+(?:API Key|Model ID)|$)/g),
-    ]
-      .map((match) => markdownInlineText(match[1] ?? ""))
-      .map((line) => line.match(/(?:https|wss):\/\/\S+/)?.[0])
-      .flatMap((route) => (route === undefined ? [] : [recommendedMarkdownRoute(route)]));
-    if (routeValues.length === 0)
-      throw new Error(`DashScope recommended-model card omitted routes for ${id}`);
-    const routeRegions = unique(routeValues.map(({ region }) => region));
-    if (
-      routeRegions.length !== regions.length ||
-      routeRegions.some((region) => !regions.includes(region))
-    )
-      throw new Error(`DashScope recommended-model route regions contradicted ${id}`);
-    const endpoints = new Map(
-      routeValues.flatMap(({ endpoint }) =>
-        endpoint === undefined ? [] : [[apiEndpointKey(endpoint), endpoint] as const],
-      ),
-    );
-    const model = baseModel({
-      providerId: input.provider.id,
-      id,
-      name: id,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    });
-    add(models, {
-      ...model,
-      api_endpoints:
-        endpoints.size === 0
-          ? undefined
-          : [...endpoints.values()].sort((left, right) =>
-              apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
-            ),
-      availability: regions.map((region) => ({ region, deployment_type: "model_api" })),
-      scope: "regional_catalog",
-    });
+    try {
+      const firstLine = lines[start] ?? "";
+      const heading = firstLine.match(/^\[!\[\]\([^\n]+\) (.+)\]\(/)?.[1] ?? "";
+      const end = starts[position + 1] ?? lines.length;
+      const block = lines.slice(start, end).join("\n");
+      const publishedIds = unique(
+        [...block.matchAll(/Model ID\s*`([^`]+)`/g)].flatMap(
+          (match) => exactId(match[1] ?? "") ?? [],
+        ),
+      );
+      const id = publishedIds[0];
+      if (id === undefined || publishedIds.length !== 1 || !heading.startsWith(id))
+        throw new Error("ID drift");
+      const regions = recommendedMarkdownRegions(text(lines[start + 1] ?? ""));
+      const routeValues = [
+        ...block.matchAll(/(?:Base|Request) URL\s+(.+?)(?=\s+(?:API Key|Model ID)|$)/g),
+      ]
+        .map((match) => markdownInlineText(match[1] ?? ""))
+        .map((line) => line.match(/(?:https|wss):\/\/\S+/)?.[0])
+        .flatMap((route) => (route === undefined ? [] : [recommendedMarkdownRoute(route)]));
+      if (routeValues.length === 0) throw new Error("Routes missing");
+      const routeRegions = unique(routeValues.map(({ region }) => region));
+      if (
+        routeRegions.length !== regions.length ||
+        routeRegions.some((region) => !regions.includes(region))
+      )
+        throw new Error("Route regions conflict");
+      const endpoints = new Map(
+        routeValues.flatMap(({ endpoint }) =>
+          endpoint === undefined ? [] : [[apiEndpointKey(endpoint), endpoint] as const],
+        ),
+      );
+      const model = baseModel({
+        providerId: input.provider.id,
+        id,
+        name: id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      });
+      add(models, {
+        ...model,
+        api_endpoints:
+          endpoints.size === 0
+            ? undefined
+            : [...endpoints.values()].sort((left, right) =>
+                apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+              ),
+        availability: regions.map((region) => ({ region, deployment_type: "model_api" })),
+        scope: "regional_catalog",
+      });
+    } catch {
+      findings.push(`/cards/${position}`);
+    }
   }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return models;
 }
 
@@ -787,67 +879,75 @@ export function parseDashscopeRecommended(input: ParseInput): ProviderModel[] {
     $(".bl-cardwrap").length === 0
       ? parseDashscopeRecommendedMarkdown(input)
       : new Map<string, ProviderModel>();
-  $(".bl-cardwrap").each((_index, element) => {
-    const card = $(element);
-    const names = unique(
-      card
-        .find(".bl-card-name")
-        .map((_nameIndex, name) => text($(name).text()))
-        .get()
-        .filter(Boolean),
-    );
-    const id = names.length === 1 ? exactId(names[0] ?? "") : undefined;
-    const publishedIds = unique(
-      card
-        .find(".bl-pop-row")
-        .filter((_rowIndex, row) => text($(row).find(".bl-pop-k").first().text()) === "Model ID")
-        .map((_rowIndex, row) => exactId(text($(row).find("code").first().text())) ?? "")
-        .get()
-        .filter(Boolean),
-    );
-    if (id === undefined || publishedIds.length !== 1 || publishedIds[0] !== id)
-      throw new Error("DashScope recommended-model card ID drifted");
-    const availability = unique(
-      card
-        .find(".bl-pop > .bl-tabs > label")
-        .map((_regionIndex, label) => text($(label).text()))
-        .get()
-        .filter(Boolean),
-    ).map((raw) => {
-      const region = recommendedRegions.get(raw);
-      if (region === undefined)
-        throw new Error(`Unsupported DashScope recommended-model region: ${raw}`);
-      return { region, deployment_type: "model_api" };
-    });
-    if (availability.length === 0)
-      throw new Error(`DashScope recommended-model card omitted regions for ${id}`);
-    const endpoints = new Map(
-      card
-        .find(".bl-pop-row")
-        .filter((_rowIndex, row) => text($(row).find(".bl-pop-k").first().text()) === "Request URL")
-        .map((_rowIndex, row) => recommendedEndpoint(text($(row).find("code").first().text())))
-        .get()
-        .map((endpoint) => [apiEndpointKey(endpoint), endpoint]),
-    );
-    const model = baseModel({
-      providerId: input.provider.id,
-      id,
-      name: id,
-      sourceId: input.source.id,
-      observedAt: input.observedAt,
-    });
-    add(models, {
-      ...model,
-      api_endpoints:
-        endpoints.size === 0
-          ? undefined
-          : [...endpoints.values()].sort((left, right) =>
-              apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
-            ),
-      availability,
-      scope: "regional_catalog",
-    });
+  const findings: string[] = [];
+  $(".bl-cardwrap").each((index, element) => {
+    try {
+      const card = $(element);
+      const names = unique(
+        card
+          .find(".bl-card-name")
+          .map((_nameIndex, name) => text($(name).text()))
+          .get()
+          .filter(Boolean),
+      );
+      const id = names.length === 1 ? exactId(names[0] ?? "") : undefined;
+      const publishedIds = unique(
+        card
+          .find(".bl-pop-row")
+          .filter((_rowIndex, row) => text($(row).find(".bl-pop-k").first().text()) === "Model ID")
+          .map((_rowIndex, row) => exactId(text($(row).find("code").first().text())) ?? "")
+          .get()
+          .filter(Boolean),
+      );
+      if (id === undefined || publishedIds.length !== 1 || publishedIds[0] !== id)
+        throw new Error("DashScope recommended-model card ID drifted");
+      const availability = unique(
+        card
+          .find(".bl-pop > .bl-tabs > label")
+          .map((_regionIndex, label) => text($(label).text()))
+          .get()
+          .filter(Boolean),
+      ).map((raw) => {
+        const region = recommendedRegions.get(raw);
+        if (region === undefined)
+          throw new Error(`Unsupported DashScope recommended-model region: ${raw}`);
+        return { region, deployment_type: "model_api" };
+      });
+      if (availability.length === 0)
+        throw new Error(`DashScope recommended-model card omitted regions for ${id}`);
+      const endpoints = new Map(
+        card
+          .find(".bl-pop-row")
+          .filter(
+            (_rowIndex, row) => text($(row).find(".bl-pop-k").first().text()) === "Request URL",
+          )
+          .map((_rowIndex, row) => recommendedEndpoint(text($(row).find("code").first().text())))
+          .get()
+          .map((endpoint) => [apiEndpointKey(endpoint), endpoint]),
+      );
+      const model = baseModel({
+        providerId: input.provider.id,
+        id,
+        name: id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      });
+      add(models, {
+        ...model,
+        api_endpoints:
+          endpoints.size === 0
+            ? undefined
+            : [...endpoints.values()].sort((left, right) =>
+                apiEndpointKey(left).localeCompare(apiEndpointKey(right)),
+              ),
+        availability,
+        scope: "regional_catalog",
+      });
+    } catch {
+      findings.push(`/cards/${index}`);
+    }
   });
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope recommended-model");
 }
 
@@ -890,7 +990,7 @@ function meter(
     return "input_image";
   if (rateUnit === "image" || tasks.includes("image_generation")) return "image_generation";
   if (tasks.includes("video_generation")) return "video_generation";
-  if (/voice clone/.test(evidence)) return "tool_call";
+  if (/voice clone/.test(evidence)) return "speech_generation";
   if (tasks.includes("speech_synthesis") || tasks.includes("audio_generation"))
     return direction === "output" ? "output_audio" : "input_text";
   if (tasks.includes("transcription")) return "input_audio";
@@ -1276,17 +1376,6 @@ function markdownDocument(body: string): boolean {
 }
 
 function commercialEvidence(input: ParseInput, bundle: LinkedBundle): CommercialEvidence {
-  hasClaims(
-    input,
-    bundle.index.body,
-    [
-      "only lists standard prices",
-      "unit price is determined by the total number of input tokens in a single request",
-      "All tokens in the request are billed at the unit price of the corresponding tier",
-      "These two discounts cannot apply simultaneously",
-    ],
-    "public_pricing_contract_drift",
-  );
   const cacheBody = companion(input, bundle, "/help/en/model-studio/context-cache");
   const cacheRates = hasClaims(
     input,
@@ -1298,92 +1387,11 @@ function commercialEvidence(input: ParseInput, bundle: LinkedBundle): Commercial
     ],
     "context_cache_rate_drift",
   );
-  hasClaims(
-    input,
-    cacheBody,
-    [
-      "Explicit cache and implicit cache are mutually exclusive",
-      "not eligible for cache discounts",
-    ],
-    "context_cache_exclusivity_drift",
-  );
-  const cacheAccounting = hasClaims(
-    input,
-    cacheBody,
-    ["cached_tokens", "cache_creation_input_tokens"],
-    "context_cache_accounting_drift",
-  );
-  const batchAccounting = hasClaims(
-    input,
-    companion(input, bundle, "/help/en/model-studio/batch-inference/"),
-    [
-      "50% of the real-time inference price",
-      "only for successfully executed requests",
-      "not eligible",
-      "context caching",
-      "thinking tokens",
-      "output token price",
-    ],
-    "batch_accounting_drift",
-  );
-  const chatAccounting = hasClaims(
-    input,
-    companion(input, bundle, "/help/en/model-studio/qwen-api-via-openai-chat-completions"),
-    [
-      "completion_tokens",
-      "prompt_tokens",
-      "total_tokens",
-      "prompt_tokens_details",
-      "cached_tokens",
-    ],
-    "chat_completions_accounting_drift",
-  );
-  const responsesAccounting = hasClaims(
-    input,
-    companion(input, bundle, "/help/en/model-studio/compatibility-with-openai-responses-api"),
-    [
-      "input_tokens",
-      "output_tokens",
-      "total_tokens",
-      "input_tokens_details",
-      "cached_tokens",
-      "output_tokens_details",
-      "reasoning_tokens",
-    ],
-    "responses_accounting_drift",
-  );
   const webSearchBody = companion(input, bundle, "/help/en/model-studio/web-search");
-  const webSearchAccounting = hasClaims(
-    input,
-    webSearchBody,
-    ["web_search", "count"],
-    "web_search_accounting_drift",
-  );
-  const settlement = hasClaims(
-    input,
-    companion(input, bundle, "/help/en/model-studio/bill-query-and-cost-management"),
-    [
-      "minute-level granularity",
-      "within 2 to 10 minutes",
-      "API Key ID",
-      "input/output type",
-      "Is pay-as-you-go billed in real time? No",
-      "web search fees are still incurred for each call",
-    ],
-    "billing_settlement_drift",
-  );
-
-  for (const reason_code of ["free_quota_account_entitlement", "response_exact_cost_not_returned"])
-    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
   return {
-    batchAccounting,
     ...(cacheBody === undefined ? {} : { cacheBody }),
-    cacheAccounting,
     cacheRates,
-    settlement,
-    tokenAccounting: chatAccounting || responsesAccounting,
     ...(webSearchBody === undefined ? {} : { webSearchBody }),
-    webSearchAccounting,
   };
 }
 
@@ -1686,52 +1694,6 @@ function cacheRate(
   };
 }
 
-function accountingGap(
-  sourceRef: string,
-  name: "batch" | "cache" | "settlement" | "tokens",
-): SourceRawPricingFact {
-  return rawPricingFact(
-    sourceRef,
-    `accounting_binding_unavailable:${name}`,
-    "informational",
-    "requires_usage_aggregation",
-    `The ${name} accounting contract drifted; published price facts remain usable without an exact automatic charge binding`,
-  );
-}
-
-function addAccountingGaps(
-  models: Map<string, ProviderModel>,
-  evidence: CommercialEvidence,
-  sourceRef: string,
-): void {
-  for (const [id, model] of models) {
-    const names = [
-      ...(!evidence.tokenAccounting &&
-      model.price_facts.some(({ meter }) =>
-        ["input_text", "output_text", "cache_read_text", "cache_write_text"].includes(meter),
-      )
-        ? (["tokens"] as const)
-        : []),
-      ...(!evidence.batchAccounting &&
-      model.price_facts.some(({ conditions }) => conditions.service_tier === "batch")
-        ? (["batch"] as const)
-        : []),
-      ...(!evidence.cacheAccounting && model.capabilities.prompt_cache === true
-        ? (["cache"] as const)
-        : []),
-      ...(!evidence.settlement && model.price_facts.length > 0 ? (["settlement"] as const) : []),
-    ];
-    if (names.length > 0)
-      models.set(id, {
-        ...model,
-        raw_price_facts: [
-          ...model.raw_price_facts,
-          ...names.map((name) => accountingGap(sourceRef, name)),
-        ],
-      });
-  }
-}
-
 export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "dashscope-pricing") throw new Error("Wrong DashScope pricing extractor");
@@ -1739,7 +1701,8 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
   const evidence = commercialEvidence(input, bundle);
   const cache = cacheModels(input, evidence.cacheBody);
   const models = new Map<string, ProviderModel>();
-  for (const table of pricingTables(bundle.index.body)) {
+  const findings: string[] = [];
+  for (const table of pricingTables(bundle.index.body, (path) => findings.push(path))) {
     const idIndex = column(table.headers, /^(?:Model ID|Model name|Model)$/i);
     if (idIndex === undefined) continue;
     for (const row of table.rows) {
@@ -1796,27 +1759,36 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
             conditions.region === undefined ? [] : [conditions.region],
           ),
         );
-        add(models, {
-          ...model,
-          aliases: equivalentIds(idCell),
-          tasks,
-          modalities: priceModalities(tasks, modelRates, table.headings),
-          status: discontinued ? "retired" : "active",
-          release_stage: /preview/i.test(`${id} ${idCell?.text ?? ""}`) ? "preview" : "unknown",
-          pricing_state: discontinued
-            ? "not_applicable"
-            : modelRates.length > 0
-              ? "numeric"
-              : customQuote
-                ? "custom_quote"
-                : "unknown",
-          price_facts: modelRates,
-          availability:
-            regions.length === 0
-              ? undefined
-              : regions.map((region) => ({ region, deployment_type: "model_api" })),
-          scope: "regional_catalog",
-        });
+        add(
+          models,
+          {
+            ...model,
+            aliases: equivalentIds(idCell),
+            tasks,
+            modalities: priceModalities(tasks, modelRates, table.headings),
+            status: discontinued ? "retired" : "active",
+            release_stage: /preview/i.test(`${id} ${idCell?.text ?? ""}`) ? "preview" : "unknown",
+            pricing_state: discontinued
+              ? "not_applicable"
+              : modelRates.length > 0
+                ? "numeric"
+                : customQuote
+                  ? "custom_quote"
+                  : "unknown",
+            price_facts: modelRates,
+            availability:
+              regions.length === 0
+                ? undefined
+                : regions.map((region) => ({ region, deployment_type: "model_api" })),
+            scope: "regional_catalog",
+          },
+          (field) =>
+            input.onPricingReconciliation?.({
+              disposition: "ambiguous",
+              reason_code: "pricing_claim_conflict",
+              sample: `${id}:${field}`,
+            }),
+        );
       }
     }
   }
@@ -1824,8 +1796,6 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     models,
     input.source.id,
     webSearchRates(input, evidence.webSearchBody, models),
-    evidence.webSearchAccounting,
-    evidence.settlement,
   );
   for (const [key, idsForRegion] of cache) {
     const [mode = "", region = ""] = key.split("\0");
@@ -1851,16 +1821,25 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
         sourceId: input.source.id,
         observedAt: input.observedAt,
       });
-      add(models, {
-        ...model,
-        tasks: current?.tasks ?? ["text_generation"],
-        modalities: current?.modalities ?? { input: ["text"], output: ["text"] },
-        capabilities: { ...model.capabilities, prompt_cache: true },
-        status: current?.status ?? "active",
-        release_stage: current?.release_stage ?? (/preview/i.test(id) ? "preview" : "unknown"),
-        availability: [{ region, deployment_type: "model_api" }],
-        scope: "regional_catalog",
-      });
+      add(
+        models,
+        {
+          ...model,
+          tasks: current?.tasks ?? ["text_generation"],
+          modalities: current?.modalities ?? { input: ["text"], output: ["text"] },
+          capabilities: { ...model.capabilities, prompt_cache: true },
+          status: current?.status ?? "active",
+          release_stage: current?.release_stage ?? (/preview/i.test(id) ? "preview" : "unknown"),
+          availability: [{ region, deployment_type: "model_api" }],
+          scope: "regional_catalog",
+        },
+        (field) =>
+          input.onPricingReconciliation?.({
+            disposition: "ambiguous",
+            reason_code: "pricing_claim_conflict",
+            sample: `${id}:${field}`,
+          }),
+      );
     }
   }
   const explicitExceptions = cacheExceptions(evidence.cacheBody, 10);
@@ -1915,7 +1894,7 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     if (derived.length > 0)
       models.set(id, merge(model, { ...model, pricing_state: "numeric", price_facts: derived }));
   }
-  addAccountingGaps(models, evidence, input.source.id);
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope pricing");
 }
 
@@ -1978,22 +1957,31 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
   if (extractor.kind !== "dashscope-lifecycle")
     throw new Error("Wrong DashScope lifecycle extractor");
   const models = new Map<string, ProviderModel>();
-  for (const body of documentBodies(input.body)) {
-    for (const table of tables(body)) {
+  const findings: string[] = [];
+  for (const [documentIndex, body] of documentBodies(input.body).entries()) {
+    for (const [tableIndex, table] of tables(body).entries()) {
       const modelColumn = column(table.headers, /^(?:Model name|模型(?:名称| ?ID))$/i);
       const replacementColumn = column(table.headers, /^(?:Replacement model|替代模型)$/i);
       if (modelColumn === undefined) continue;
-      for (const row of table.rows) {
-        if (row.length !== table.headers.length)
-          throw new Error("DashScope lifecycle row changed shape");
+      for (const [rowIndex, row] of table.rows.entries()) {
+        const path = `/documents/${documentIndex}/tables/${tableIndex}/rows/${rowIndex}`;
+        if (row.length !== table.headers.length) {
+          findings.push(path);
+          continue;
+        }
         const category = value(table, row, /^(?:Category|类别|模型类型)$/i) ?? "";
         const retiredAt = modelDate(
           value(table, row, /^(?:Deprecation time|Retirement date|下线(?:时间|日期))$/i),
         );
-        if (retiredAt === undefined)
-          throw new Error("DashScope lifecycle deprecation time changed shape");
+        if (retiredAt === undefined) {
+          findings.push(`${path}/retired_at`);
+          continue;
+        }
         const ids = cellIds(row[modelColumn]);
-        if (ids.length === 0) throw new Error("DashScope lifecycle model cell changed shape");
+        if (ids.length === 0) {
+          findings.push(`${path}/model`);
+          continue;
+        }
         const replacements = replacementColumn === undefined ? [] : cellIds(row[replacementColumn]);
         for (const id of ids) {
           const model = baseModel({
@@ -2016,6 +2004,7 @@ export function parseDashscopeLifecycle(input: ParseInput): ProviderModel[] {
       }
     }
   }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope lifecycle");
 }
 
@@ -2024,16 +2013,24 @@ export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
   if (extractor.kind !== "dashscope-releases")
     throw new Error("Wrong DashScope releases extractor");
   const dates = new Map<string, string>();
-  for (const body of documentBodies(input.body)) {
-    for (const table of tables(body)) {
+  const findings: string[] = [];
+  for (const [documentIndex, body] of documentBodies(input.body).entries()) {
+    for (const [tableIndex, table] of tables(body).entries()) {
       const timeColumn = column(table.headers, /^(?:Time|Date|时间)$/i);
       const modelColumn = column(table.headers, /^(?:Model|Model ID|模型 ?ID)$/i);
       if (timeColumn === undefined || modelColumn === undefined) continue;
-      for (const row of table.rows) {
+      for (const [rowIndex, row] of table.rows.entries()) {
+        const path = `/documents/${documentIndex}/tables/${tableIndex}/rows/${rowIndex}`;
         const parsedDate = z.iso.date().safeParse(row[timeColumn]?.text);
-        if (!parsedDate.success) throw new Error("DashScope release date changed shape");
+        if (!parsedDate.success) {
+          findings.push(`${path}/release_date`);
+          continue;
+        }
         const rowIds = cellIds(row[modelColumn]);
-        if (rowIds.length === 0) throw new Error("DashScope release model cell changed shape");
+        if (rowIds.length === 0) {
+          findings.push(`${path}/model`);
+          continue;
+        }
         for (const id of rowIds) {
           const current = dates.get(id);
           if (current === undefined || parsedDate.data < current) dates.set(id, parsedDate.data);
@@ -2041,6 +2038,7 @@ export function parseDashscopeReleases(input: ParseInput): ProviderModel[] {
       }
     }
   }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   const models = new Map<string, ProviderModel>();
   for (const [id, releaseDate] of dates) {
     const model = baseModel({
@@ -2065,8 +2063,24 @@ export function parseDashscopeApi(input: ParseInput): ProviderModel[] {
   const page = deploymentPageSchema.parse(JSON.parse(input.body)).output;
   if (page.total > page.page_size || page.models.length !== page.total)
     throw new Error("DashScope deployable-model pagination is incomplete");
+  const items = recognizeItems({
+    label: "DashScope deployable model",
+    items: page.models,
+    schema: deploymentModelSchema,
+    modelId: "model_name",
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
   const models = new Map<string, ProviderModel>();
-  for (const item of page.models) {
+  const findings: string[] = [];
+  for (const item of items) {
+    const plans = item.plans.flatMap((plan, index) => {
+      const parsed = deploymentPlanSchema.safeParse(plan);
+      if (parsed.success) return [parsed.data.plan];
+      findings.push(`/models/${item.model_name}/plans/${index}`);
+      return [];
+    });
+    if (plans.length === 0) continue;
     const model = baseModel({
       providerId: input.provider.id,
       id: item.model_name,
@@ -2076,12 +2090,13 @@ export function parseDashscopeApi(input: ParseInput): ProviderModel[] {
     });
     add(models, {
       ...model,
-      availability: unique(item.plans.map(({ plan }) => plan)).map((plan) => ({
+      availability: unique(plans).map((plan) => ({
         region: "Singapore",
         deployment_type: plan,
       })),
       scope: "runtime_observation",
     });
   }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope API");
 }

@@ -1,13 +1,16 @@
 import { canonicalJson } from "./canonical-json.ts";
 import type {
-  AtomicPricingOffer,
   AtomicPricingTerm,
+  AtomicPricingOffer,
   AtomicProviderPricing,
+  AtomicRateVariant,
 } from "./pricing-assembly.ts";
 import { unconditionalApplicability } from "./pricing-canonical.ts";
 import type {
   OfferRelation,
+  NormalizedPriceObservation,
   PriceApplicability,
+  PriceMeter,
   ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
@@ -52,6 +55,20 @@ export function rawEvidence(observation: RawPriceObservation): RawPriceObservati
   return { source_ref: observation.source_ref, locator: observation.locator, raw: observation.raw };
 }
 
+export function providerKeyEvidence(
+  observation: RawPriceObservation,
+  value: string,
+): RawPriceObservation {
+  return { ...rawEvidence(observation), locator: { kind: "provider_key", value } };
+}
+
+export function withApplicability(
+  observation: NormalizedPriceObservation,
+  applicability: PriceApplicability,
+): NormalizedPriceObservation {
+  return { ...observation, establishes_applicability: applicability };
+}
+
 export function accountingGaps(terms: readonly AtomicPricingTerm[]): Set<string> {
   const prefix = "accounting_binding_unavailable:";
   return new Set(
@@ -59,6 +76,24 @@ export function accountingGaps(terms: readonly AtomicPricingTerm[]): Set<string>
       term_key.startsWith(prefix) ? [term_key.slice(prefix.length)] : [],
     ),
   );
+}
+
+export function bindRateTerm(
+  term: AtomicPricingTerm,
+  binding: (meter: PriceMeter, variant: AtomicRateVariant) => AtomicRateVariant["charge_binding"],
+): AtomicPricingTerm {
+  if (term.kind !== "rate") return term;
+  return {
+    ...term,
+    variants: term.variants.map((variant) => {
+      const charge_binding = binding(term.meter, variant);
+      return charge_binding === undefined ? variant : { ...variant, charge_binding };
+    }),
+  };
+}
+
+export function stripAccountingGaps(terms: readonly AtomicPricingTerm[]): AtomicPricingTerm[] {
+  return terms.filter(({ term_key }) => !term_key.startsWith("accounting_binding_unavailable:"));
 }
 
 export function addAtom(input: AtomicProviderPricing, atom: ProviderAtomRegistryEntry): void {

@@ -1,7 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
-import { databricksCommercialFacts } from "./databricks-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
@@ -260,8 +259,14 @@ function parseModels(input: Input): ProviderModel[] {
   return models.sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function document(bundle: z.infer<typeof linkedBundleSchema>, path: string): string {
+function requiredDocument(bundle: z.infer<typeof linkedBundleSchema>, path: string): string {
   return linkedDocumentBody(bundle, path, `Databricks bundle expected one ${path} document`);
+}
+
+function document(bundle: z.infer<typeof linkedBundleSchema>, path: string): string | undefined {
+  const matches = bundle.documents.filter(({ url }) => new URL(url).pathname === path);
+  if (matches.length > 1) throw new Error(`Databricks bundle repeated ${path}`);
+  return matches[0]?.body;
 }
 
 function endpointIds($: Document, selection: Selection): string[] {
@@ -544,275 +549,6 @@ function rows($: Document, table: Selection): string[][] {
   return result;
 }
 
-function contractRows($: Document, headers: string): string[][] {
-  const result: string[][] = [];
-  $("main table").each((_tableIndex, table) => {
-    const actual = $(table)
-      .find("thead th")
-      .map((_index, element) => text($(element).text()))
-      .get()
-      .join("|");
-    if (actual !== headers) return;
-    $(table)
-      .find("tbody tr")
-      .each((_rowIndex, row) => {
-        result.push(
-          $(row)
-            .children("td")
-            .map((_index, cell) => text($(cell).text()))
-            .get(),
-        );
-      });
-  });
-  return result;
-}
-
-function requireFieldTable(
-  body: string,
-  label: string,
-  headers: string,
-  fields: readonly string[],
-): Document {
-  const $ = load(body);
-  const fieldSets: Set<string>[] = [];
-  $("main table").each((_tableIndex, table) => {
-    const actual = $(table)
-      .find("thead th")
-      .map((_index, element) => text($(element).text()))
-      .get()
-      .join("|");
-    if (actual !== headers) return;
-    fieldSets.push(
-      new Set(
-        $(table)
-          .find("tbody tr")
-          .map((_rowIndex, row) => text($(row).children("td").first().text()))
-          .get(),
-      ),
-    );
-  });
-  if (fieldSets.length === 0) throw new Error(`Databricks ${label} contract table changed shape`);
-  if (!fieldSets.some((names) => fields.every((field) => names.has(field)))) {
-    const observed = new Set(fieldSets.flatMap((names) => [...names]));
-    const missing = fields.filter((field) => !observed.has(field));
-    throw new Error(
-      `Databricks ${label} contract omitted fields: ${
-        missing.length > 0 ? missing.join(", ") : "required fields split across tables"
-      }`,
-    );
-  }
-  return $;
-}
-
-function requireContractRow(
-  $: Document,
-  label: string,
-  headers: string,
-  rowLabel: string,
-  patterns: readonly RegExp[],
-): void {
-  const candidates = contractRows($, headers).filter((row) => row[0]?.startsWith(rowLabel));
-  if (
-    candidates.length === 0 ||
-    !candidates.some((row) => patterns.every((pattern) => pattern.test(row.join(" | "))))
-  )
-    throw new Error(`Databricks ${label} contract changed for ${rowLabel}`);
-}
-
-function requireText(body: string, label: string, patterns: readonly RegExp[]): void {
-  const value = text(load(body)("main").text());
-  if (!patterns.every((pattern) => pattern.test(value)))
-    throw new Error(`Databricks ${label} contract changed`);
-}
-
-function validateOperationalContracts(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const systemsBody = document(bundle, "/aws/en/admin/system-tables");
-  const systems = load(systemsBody);
-  const systemHeaders =
-    "Table|Description|Supports streaming|Free retention period|Includes global or regional data";
-  for (const [label, patterns] of [
-    ["Billable usage", [/system\.billing\.usage/i, /365 days/i, /Global/i]],
-    ["AI Gateway usage (Beta)", [/system\.ai_gateway\.usage/i, /365 days/i, /Regional/i]],
-    [
-      "AI Gateway external model spend (Beta)",
-      [/system\.ai_gateway\.external_model_spend/i, /365 days/i, /Regional/i],
-    ],
-    [
-      "Model serving endpoint usage (Public Preview)",
-      [/system\.serving\.endpoint_usage/i, /90 days/i, /Regional/i],
-    ],
-    ["Pricing", [/system\.billing\.list_prices/i, /Indefinite/i, /Global/i]],
-  ] as const)
-    requireContractRow(systems, "system tables", systemHeaders, label, patterns);
-  requireText(systemsBody, "system-table freshness", [
-    /New columns may be added to existing system tables at any time/i,
-    /Existing columns will not change or be removed/i,
-    /No support for real-time monitoring\. Data is updated throughout the day/i,
-  ]);
-
-  const billingBody = document(bundle, "/aws/en/admin/system-tables/billing");
-  const billing = requireFieldTable(
-    billingBody,
-    "billing usage",
-    "Column name|Data type|Description|Example",
-    [
-      "record_id",
-      "account_id",
-      "workspace_id",
-      "sku_name",
-      "cloud",
-      "usage_start_time",
-      "usage_end_time",
-      "usage_date",
-      "custom_tags",
-      "usage_unit",
-      "usage_quantity",
-      "usage_metadata",
-      "identity_metadata",
-      "record_type",
-      "ingestion_date",
-      "billing_origin_product",
-      "product_features",
-    ],
-  );
-  requireContractRow(
-    billing,
-    "billing usage",
-    "Value|Description|Populated for (otherwise null)",
-    "endpoint_name",
-    [/model serving/i],
-  );
-  requireContractRow(billing, "billing usage", "Value|Description", "MODEL_SERVING", [
-    /Model Serving/i,
-  ]);
-  requireText(billingBody, "billing correction", [
-    /original, a retraction, or a restatement/i,
-    /system\.billing\.usage/i,
-  ]);
-
-  const pricingBody = document(bundle, "/aws/en/admin/system-tables/pricing");
-  requireFieldTable(pricingBody, "list pricing", "Column name|Data type|Description|Example", [
-    "price_start_time",
-    "price_end_time",
-    "account_id",
-    "sku_name",
-    "cloud",
-    "currency_code",
-    "usage_unit",
-    "pricing",
-  ]);
-  requireText(pricingBody, "list pricing", [
-    /published list price rate/i,
-    /key default will always return a single price/i,
-    /key promotional represents a temporary promotional price/i,
-    /key effective_list resolves list and promotional price/i,
-  ]);
-
-  const servingCostBody = document(bundle, "/aws/en/admin/system-tables/model-serving-cost");
-  const servingCost = requireFieldTable(
-    servingCostBody,
-    "model-serving billing",
-    "sku_name|Description",
-    [
-      "<tier>_SERVERLESS_REAL_TIME_INFERENCE_LAUNCH_<region>",
-      "<tier>_SERVERLESS_REAL_TIME_INFERENCE_<region>",
-    ],
-  );
-  requireContractRow(
-    servingCost,
-    "model-serving billing",
-    "sku_name|Description",
-    "<tier>_SERVERLESS_REAL_TIME_INFERENCE_<region>",
-    [/model serving costs/i],
-  );
-  requireText(servingCostBody, "model-serving billing", [
-    /system\.billing\.usage/i,
-    /billing_origin_product/i,
-    /BATCH_INFERENCE/i,
-  ]);
-
-  const legacyUsageBody = document(bundle, "/aws/en/ai-gateway/configure-ai-gateway-endpoints");
-  const legacyUsage = requireFieldTable(
-    legacyUsageBody,
-    "legacy endpoint usage",
-    "Column name|Description|Type",
-    [
-      "account_id",
-      "workspace_id",
-      "databricks_request_id",
-      "request_time",
-      "input_token_count",
-      "output_token_count",
-      "served_entity_id",
-    ],
-  );
-  requireContractRow(
-    legacyUsage,
-    "legacy endpoint usage",
-    "Column name|Description|Type",
-    "input_token_count",
-    [/token count of the input/i, /LONG/i],
-  );
-  requireText(legacyUsageBody, "legacy endpoint usage", [
-    /system\.serving\.endpoint_usage/i,
-    /system\.serving\.served_entities/i,
-    /token count are estimated as .*text_length.* if the token count is not returned by the model/i,
-  ]);
-
-  const gatewayUsageBody = document(bundle, "/aws/en/ai-gateway/usage-tracking");
-  const gatewayUsage = requireFieldTable(
-    gatewayUsageBody,
-    "AI Gateway usage",
-    "Column name|Type|Description|Example",
-    [
-      "account_id",
-      "workspace_id",
-      "request_id",
-      "invocation_id",
-      "endpoint_id",
-      "endpoint_name",
-      "event_time",
-      "destination_type",
-      "destination_name",
-      "destination_model",
-      "input_tokens",
-      "output_tokens",
-      "total_tokens",
-      "token_details",
-      "status_code",
-      "routing_information",
-    ],
-  );
-  requireContractRow(
-    gatewayUsage,
-    "AI Gateway usage",
-    "Column name|Type|Description|Example",
-    "token_details",
-    [/cache_read_input_tokens/i, /cache_creation_input_tokens/i, /output_reasoning_tokens/i],
-  );
-  requireText(gatewayUsageBody, "AI Gateway usage", [
-    /system\.ai_gateway\.usage/i,
-    /doesn't track token usage for non-streaming, non-embedding responses larger than 1 MiB/i,
-  ]);
-
-  const gatewayCostBody = document(bundle, "/aws/en/ai-gateway/cost-observability");
-  requireFieldTable(gatewayCostBody, "AI Gateway cost", "Field|Description", [
-    "usage_metadata.ai_gateway.endpoint_name",
-    "usage_metadata.ai_gateway.endpoint_id",
-    "usage_metadata.ai_gateway.destination_model",
-    "usage_metadata.ai_gateway.destination_id",
-    "identity_metadata.run_by",
-    "custom_tags",
-  ]);
-  requireText(gatewayCostBody, "AI Gateway cost", [
-    /system\.billing\.usage/i,
-    /system\.ai_gateway\.external_model_spend/i,
-    /estimated USD spend for each request from its token usage and the external provider's published prices/i,
-    /Spend is aggregated hourly/i,
-    /might not reflect your final provider invoice/i,
-  ]);
-}
-
 function decimal(value: string): string | undefined {
   const normalized = value.replace(/,/g, "").trim();
   if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(normalized)) return undefined;
@@ -928,23 +664,7 @@ function openPrices(
         "DBU / M cache read tokens",
         payPerTokenConditions,
       );
-      const entry = rate(
-        "provisioned_throughput",
-        values[4] ?? "",
-        "unit_hour",
-        sourceId,
-        "DBU / hour (entry capacity)",
-        { capacity: "entry" },
-      );
-      const scaling = rate(
-        "provisioned_throughput",
-        values[5] ?? "",
-        "unit_hour",
-        sourceId,
-        "DBU / hour (scaling capacity)",
-        { capacity: "scaling" },
-      );
-      for (const value of [input, output, cacheRead, entry, scaling])
+      for (const value of [input, output, cacheRead])
         if (value !== undefined) {
           add(rates, model.model_id, value);
           added += 1;
@@ -1211,10 +931,6 @@ function partnerPrices(
             "DBU / 1M Tokens",
             common,
           ),
-          rate("batch_inference", row[7] ?? "", "unit_hour", sourceId, "DBU / hour", {
-            ...common,
-            service_tier: "batch",
-          }),
         ].flatMap((value) => (value === undefined ? [] : [value]));
         for (const value of valuesToAdd) {
           add(rates, model.model_id, value);
@@ -1276,9 +992,6 @@ function priorityModels(
           service_tier: "priority",
           ...(/global endpoint only/i.test(note) ? { endpoint: "global" } : {}),
           ...(/ap-south-1 region/i.test(note) ? { region: "ap_south_1" } : {}),
-          ...(/account teams? for enablement/i.test(note)
-            ? { account_eligibility: "account_enablement" }
-            : {}),
         };
         const current = support.get(id);
         if (current !== undefined && JSON.stringify(current) !== JSON.stringify(conditions))
@@ -1533,84 +1246,81 @@ function applyReleases(models: ProviderModel[], body: string): void {
 
 export function parseDatabricksCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  validateOperationalContracts(bundle);
-  const apiReference = document(
+  const apiReference = requiredDocument(
     bundle,
     "/aws/en/machine-learning/foundation-model-apis/api-reference",
   );
   const models = parseModels({ ...input, body: bundle.index.body });
   applyApiSupport(
     models,
-    document(bundle, "/aws/en/machine-learning/model-serving/score-foundation-models"),
+    requiredDocument(bundle, "/aws/en/machine-learning/model-serving/score-foundation-models"),
     apiReference,
   );
-  applyBatch(
-    models,
-    document(bundle, "/aws/en/machine-learning/model-serving/foundation-model-overview"),
+  const overview = document(
+    bundle,
+    "/aws/en/machine-learning/model-serving/foundation-model-overview",
   );
-  applyLifecycle(
-    models,
-    document(bundle, "/aws/en/machine-learning/retired-models-policy"),
-    input.observedAt,
+  if (overview !== undefined) applyBatch(models, overview);
+  const lifecycle = document(bundle, "/aws/en/machine-learning/retired-models-policy");
+  if (lifecycle !== undefined) applyLifecycle(models, lifecycle, input.observedAt);
+  const limits = document(bundle, "/aws/en/machine-learning/foundation-model-apis/limits");
+  if (limits !== undefined) applyOutputLimits(models, limits);
+  const releases = document(bundle, "/aws/en/feed.xml");
+  if (releases !== undefined) applyReleases(models, releases);
+  const priorityBody = document(
+    bundle,
+    "/aws/en/machine-learning/foundation-model-apis/priority-mode",
   );
-  applyOutputLimits(
-    models,
-    document(bundle, "/aws/en/machine-learning/foundation-model-apis/limits"),
-  );
-  applyReleases(models, document(bundle, "/aws/en/feed.xml"));
-  const priority = priorityModels(
-    models,
-    document(bundle, "/aws/en/machine-learning/foundation-model-apis/priority-mode"),
-  );
+  const priority = priorityBody === undefined ? new Map() : priorityModels(models, priorityBody);
   const rates = new Map<string, Map<string, SourcePriceFact>>();
   let exactPriority = new Set<string>();
-  try {
-    exactPriority = openPrices(
-      models,
-      document(bundle, "/product/pricing/foundation-model-serving"),
-      input.source.id,
-      rates,
-      priority,
-      input.onPricingReconciliation,
-    );
-  } catch (error) {
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "open_model_pricing_rejected",
-      sample: error instanceof Error ? error.message : "Unknown open-model pricing error",
-    });
-  }
-  try {
-    partnerPrices(
-      models,
-      document(bundle, "/product/pricing/proprietary-foundation-model-serving"),
-      input.source.id,
-      rates,
-      input.onPricingReconciliation,
-    );
-  } catch (error) {
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "partner_model_pricing_rejected",
-      sample: error instanceof Error ? error.message : "Unknown partner-model pricing error",
-    });
-  }
-  try {
-    applyImagePassThroughPricing(
-      models,
-      bundle.index.body,
-      document(bundle, "/gemini-api/docs/pricing"),
-      input.source.id,
-      rates,
-      input.onPricingReconciliation,
-    );
-  } catch (error) {
-    input.onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "pass_through_pricing_rejected",
-      sample: error instanceof Error ? error.message : "Unknown pass-through pricing error",
-    });
-  }
+  const open = document(bundle, "/product/pricing/foundation-model-serving");
+  if (open !== undefined)
+    try {
+      exactPriority = openPrices(
+        models,
+        open,
+        input.source.id,
+        rates,
+        priority,
+        input.onPricingReconciliation,
+      );
+    } catch (error) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "open_model_pricing_rejected",
+        sample: error instanceof Error ? error.message : "Unknown open-model pricing error",
+      });
+    }
+  const partner = document(bundle, "/product/pricing/proprietary-foundation-model-serving");
+  if (partner !== undefined)
+    try {
+      partnerPrices(models, partner, input.source.id, rates, input.onPricingReconciliation);
+    } catch (error) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "partner_model_pricing_rejected",
+        sample: error instanceof Error ? error.message : "Unknown partner-model pricing error",
+      });
+    }
+  const google = document(bundle, "/gemini-api/docs/pricing");
+  if (google !== undefined)
+    try {
+      applyImagePassThroughPricing(
+        models,
+        bundle.index.body,
+        google,
+        input.source.id,
+        rates,
+        input.onPricingReconciliation,
+      );
+    } catch (error) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "pass_through_pricing_rejected",
+        sample: error instanceof Error ? error.message : "Unknown pass-through pricing error",
+      });
+    }
   applyPriorityPricing(
     models,
     priority,
@@ -1636,15 +1346,6 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
       price_facts: pricing,
     };
   });
-  const carrier = result[0];
-  if (carrier !== undefined) {
-    const commercial = databricksCommercialFacts(
-      bundle,
-      input.source.id,
-      input.onPricingReconciliation,
-    );
-    if (commercial.length > 0) carrier.commercial_facts = commercial;
-  }
   return result;
 }
 

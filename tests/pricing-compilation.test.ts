@@ -97,6 +97,9 @@ function parsed(price: string): ParsedPricingModel {
     provider_id: providerId,
     model_id: "test-model",
     uid: modelRef,
+    tasks: ["text_generation"],
+    capabilities: unknownCapabilities(),
+    status: "active",
     pricing_state: "numeric",
     price_facts: [
       {

@@ -17,7 +17,7 @@ import {
   parseCerebrasPublic,
   parseCerebrasReleases,
 } from "./cerebras.ts";
-import { parseCohereApi, parseCohereCatalog } from "./cohere.ts";
+import { parseCohereApi, parseCohereCatalog, parseCoherePricing } from "./cohere.ts";
 import { parseDatabricksApi, parseDatabricksCatalog } from "./databricks.ts";
 import { parseDeepseekApi, parseDeepseekCatalog, parseDeepseekUpdates } from "./deepseek.ts";
 import {
@@ -28,7 +28,7 @@ import {
   parseDashscopeRecommended,
   parseDashscopeReleases,
 } from "./dashscope.ts";
-import { parseGeminiApi, parseGeminiCatalog } from "./gemini.ts";
+import { parseGeminiApi, parseGeminiCatalog, parseGeminiPricing } from "./gemini.ts";
 import {
   parseHuggingFaceFeatherless,
   parseHuggingFaceHub,
@@ -43,9 +43,9 @@ import {
   parseKimiPricing,
   parseKimiReleases,
 } from "./kimi.ts";
-import { parseMistralApi, parseMistralCatalog } from "./mistral.ts";
+import { parseMistralApi, parseMistralCatalog, parseMistralPricing } from "./mistral.ts";
 import { parseOllamaCloud, parseOllamaLibrary } from "./ollama.ts";
-import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -56,6 +56,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourceCommercialPricingFact,
   type SourcePriceFact,
+  type SourceRawPricingFact,
 } from "./pricing-source.ts";
 import {
   assertItemCount,
@@ -68,7 +69,7 @@ import {
 } from "./source-contract.ts";
 import { classifyModelTasks } from "./task.ts";
 import { parseVercelCatalog } from "./vercel.ts";
-import { parseVertexApi, parseVertexCatalog } from "./vertex.ts";
+import { parseVertexApi, parseVertexCatalog, parseVertexPricing } from "./vertex.ts";
 import { parseXaiApi, parseXaiCatalog } from "./xai.ts";
 import {
   modalitySchema,
@@ -103,6 +104,7 @@ interface ParseInput {
     ProviderModel,
     | "aliases"
     | "api_endpoints"
+    | "availability"
     | "capabilities"
     | "model_id"
     | "name"
@@ -110,6 +112,7 @@ interface ParseInput {
     | "pricing_state"
     | "routes"
     | "service_families"
+    | "status"
     | "tasks"
     | "uid"
     | "version"
@@ -526,7 +529,7 @@ const openAiRegionalProcessingRegions = [
 const openAiRegionalProcessingRegionSet = new Set<string>(openAiRegionalProcessingRegions);
 
 function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
-  const expectedHeaders = [
+  const requiredHeaders = [
     "Endpoint or feature",
     "Service",
     "Storage regions",
@@ -540,21 +543,32 @@ function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
   let found = false;
   for (let index = 0; index < lines.length - 1; index += 1) {
     const headers = markdownCells(lines[index] ?? "");
-    if (headers.join("\0") !== expectedHeaders.join("\0")) continue;
+    if (!requiredHeaders.every((header) => headers.includes(header))) continue;
     const separators = markdownCells(lines[index + 1] ?? "");
     if (
       separators.length !== headers.length ||
       !separators.every((cell) => /^:?-{3,}:?$/.test(cell))
-    )
-      throw new Error("OpenAI data-residency table has invalid separators");
-    if (found) throw new Error("OpenAI data-residency model table is duplicated");
+    ) {
+      input.onContractFinding?.(contractExtensionEvidence(["/data-residency/table/separators"]));
+      continue;
+    }
+    if (found)
+      input.onContractFinding?.(contractExtensionEvidence(["/data-residency/table/duplicate"]));
+    if (headers.length !== requiredHeaders.length)
+      input.onContractFinding?.(contractExtensionEvidence(["/data-residency/table/columns"]));
     found = true;
+    const cell = (row: string[], header: string): string => row[headers.indexOf(header)] ?? "";
     index += 2;
     while (index < lines.length && normalizedText(lines[index] ?? "").startsWith("|")) {
       const row = markdownCells(lines[index] ?? "");
-      if (row.length !== headers.length)
-        throw new Error("OpenAI data-residency table contained an irregular row");
-      const endpointCell = row[0] ?? "";
+      if (row.length !== headers.length) {
+        input.onContractFinding?.(
+          contractExtensionEvidence([`/data-residency/table/row-${index}`]),
+        );
+        index += 1;
+        continue;
+      }
+      const endpointCell = cell(row, "Endpoint or feature");
       const endpointPaths = markdownCodeValues(endpointCell).flatMap((value) =>
         value.startsWith("/v1/") ? value.split(/,\s*/).map((path) => path.slice(1)) : [],
       );
@@ -562,7 +576,7 @@ function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
         index += 1;
         continue;
       }
-      const modelIds = markdownCodeValues(row[4] ?? "").filter(
+      const modelIds = markdownCodeValues(cell(row, "Supported models and snapshots")).filter(
         (id) => modelIdSchema.safeParse(id).success,
       );
       if (modelIds.length === 0) {
@@ -572,21 +586,43 @@ function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
       const endpointDefinitions = endpointPaths.flatMap((path) => {
         if (path === "v1/batches" || path === "v1/fine_tuning/jobs") return [];
         const definition = openAiEndpointDefinitions.get(path);
-        if (definition === undefined)
-          throw new Error(`Unsupported OpenAI data-residency endpoint: ${path}`);
+        if (definition === undefined) {
+          input.onContractFinding?.(
+            contractExtensionEvidence([`/data-residency/endpoints/${path}`]),
+          );
+          return [];
+        }
         return [{ path, ...definition }];
       });
-      const processingCell = row[3] ?? "";
-      const processingRegions =
+      const processingCell = cell(row, "Processing regions");
+      let processingRegions =
         processingCell === "None" ? [] : processingCell.split(", ").map(normalizedText);
-      if (processingRegions.some((region) => !openAiRegionalProcessingRegionSet.has(region)))
-        throw new Error(`Unsupported OpenAI regional-processing region: ${processingCell}`);
-      const exceptionCell = row[5] ?? "";
-      const exceptionIds = markdownCodeValues(exceptionCell);
-      if (exceptionCell !== "None" && !exceptionCell.startsWith("United Arab Emirates:"))
-        throw new Error(`Unsupported OpenAI regional-processing exception: ${exceptionCell}`);
-      if (exceptionIds.some((id) => !modelIds.includes(id)))
-        throw new Error("OpenAI regional-processing exception is outside its model row");
+      const unknownRegions = processingRegions.filter(
+        (region) => !openAiRegionalProcessingRegionSet.has(region),
+      );
+      if (unknownRegions.length > 0)
+        input.onContractFinding?.(
+          contractExtensionEvidence(
+            unknownRegions.map((region) => `/data-residency/regions/${region}`),
+          ),
+        );
+      processingRegions = processingRegions.filter((region) =>
+        openAiRegionalProcessingRegionSet.has(region),
+      );
+      const exceptionCell = cell(row, "Regional processing snapshot exceptions");
+      let exceptionIds = markdownCodeValues(exceptionCell).filter((id) => modelIds.includes(id));
+      const validException =
+        exceptionCell === "None" || exceptionCell.startsWith("United Arab Emirates:");
+      if (!validException) {
+        input.onContractFinding?.(
+          contractExtensionEvidence(["/data-residency/regional-processing-exception"]),
+        );
+        processingRegions = processingRegions.filter((region) => region !== "United Arab Emirates");
+        exceptionIds = [];
+      } else if (markdownCodeValues(exceptionCell).length !== exceptionIds.length)
+        input.onContractFinding?.(
+          contractExtensionEvidence(["/data-residency/regional-processing-exception/models"]),
+        );
       for (const modelId of modelIds) {
         const classifiedTasks = classifyModelTasks({
           modelId,
@@ -654,41 +690,49 @@ function parseOpenAiDataResidency(input: ParseInput): ProviderModel[] {
     index -= 1;
   }
   if (!found) throw new Error("OpenAI data-residency model table was not found");
-  const extractor = input.source.extractor;
-  if (extractor.kind !== "openai-data-residency")
+  if (input.source.extractor.kind !== "openai-data-residency")
     throw new Error("Invalid OpenAI data-residency extractor");
-  assertItemCount(
-    "OpenAI data-residency models",
-    models.size,
-    extractor.minModels,
-    extractor.maxModels,
-  );
+  if (models.size === 0) throw new Error("OpenAI data-residency table contained no model facts");
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }
 
-function openAiPricingTables(body: string): OpenAiPricingTable[] {
+function openAiPricingTables(
+  body: string,
+  onReconciliation: ParseInput["onPricingReconciliation"],
+): OpenAiPricingTable[] {
   const lines = body.split(/\r?\n/);
   const tables: OpenAiPricingTable[] = [];
   let section: string | undefined;
   let tier: OpenAiPricingTier | undefined;
+  let reviewedTier = true;
   for (let index = 0; index < lines.length - 1; index += 1) {
     const line = normalizedText(lines[index] ?? "");
     if (openAiPricingSections.has(line)) {
       section = line;
       tier = undefined;
+      reviewedTier = true;
       continue;
     }
     const observedTier = openAiPricingTiers.get(line);
     if (observedTier !== undefined) {
       tier = observedTier;
+      reviewedTier = true;
       continue;
     }
     if (line === "Our latest models" || line === "Multimodal models") continue;
-    if (/^(?:Standard|Batch|Flex|Fast|Priority)\b/.test(line))
-      throw new Error(`Unsupported OpenAI pricing tier: ${line}`);
+    if (/^(?:Standard|Batch|Flex|Fast|Priority)\b/.test(line)) {
+      reviewedTier = false;
+      onReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "unreviewed_pricing_tier",
+        sample: line,
+      });
+      continue;
+    }
     if (/^[A-Z][A-Za-z ]+ models$/.test(line)) {
       section = undefined;
       tier = undefined;
+      reviewedTier = true;
       continue;
     }
     if (!line.startsWith("|") || !normalizedText(lines[index + 1] ?? "").startsWith("|")) continue;
@@ -699,14 +743,25 @@ function openAiPricingTables(body: string): OpenAiPricingTable[] {
       !separators.every((cell) => /^:?-{3,}:?$/.test(cell))
     )
       continue;
-    if (section === undefined) throw new Error("OpenAI pricing table has no reviewed section");
+    if (section === undefined || !reviewedTier) {
+      onReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "unreviewed_pricing_table",
+        sample: headers.join(" | "),
+      });
+      continue;
+    }
     const rows: string[][] = [];
     index += 2;
     while (index < lines.length && normalizedText(lines[index] ?? "").startsWith("|")) {
       const row = markdownCells(lines[index] ?? "");
-      if (row.length !== headers.length)
-        throw new Error("OpenAI pricing table contained an irregular row");
-      rows.push(row);
+      if (row.length === headers.length) rows.push(row);
+      else
+        onReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "irregular_pricing_row",
+          sample: normalizedText(lines[index] ?? ""),
+        });
       index += 1;
     }
     index -= 1;
@@ -729,11 +784,18 @@ type OpenAiAmount =
   | "free"
   | undefined;
 
-function openAiAmount(value: string, defaultUnit: SourcePriceFact["unit"]): OpenAiAmount {
+function openAiAmount(
+  value: string,
+  defaultUnit: SourcePriceFact["unit"],
+  onUnsupported?: (sample: string) => void,
+): OpenAiAmount {
   if (value === "-") return undefined;
   if (value === "Free") return "free";
   const match = value.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)(?: \/ (minute|1M characters))?$/);
-  if (match?.[1] === undefined) throw new Error(`Unsupported OpenAI global price: ${value}`);
+  if (match?.[1] === undefined) {
+    onUnsupported?.(value);
+    return;
+  }
   const rawUnit = match[2] ?? (defaultUnit === "second" ? "second" : "1M tokens");
   return {
     price: match[1],
@@ -788,6 +850,7 @@ function openAiTokenTableRates(
   table: OpenAiPricingTable,
   row: string[],
   sourceId: string,
+  onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] {
   const hasLongContext = table.headers.some(
     (header, index) => header.startsWith("Long context") && row[index] !== "-",
@@ -799,7 +862,7 @@ function openAiTokenTableRates(
       /^(?:(Short|Long) context )?(input|cached input|cache writes|output)$/,
     );
     if (match?.[2] === undefined) return [];
-    const amount = openAiAmount(row[index] ?? "", "million_tokens");
+    const amount = openAiAmount(row[index] ?? "", "million_tokens", onUnsupported);
     if (amount === undefined || amount === "free") return [];
     const meter: SourcePriceFact["meter"] =
       match[2] === "input"
@@ -829,6 +892,7 @@ function openAiModalityTableRates(
   row: string[],
   tasks: ModelTask[],
   sourceId: string,
+  onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] {
   const modality = row[table.headers.indexOf("Modality")] ?? "";
   return table.headers.flatMap((header, index): SourcePriceFact[] => {
@@ -841,7 +905,7 @@ function openAiModalityTableRates(
             ? "output"
             : undefined;
     if (column === undefined) return [];
-    const amount = openAiAmount(row[index] ?? "", "million_tokens");
+    const amount = openAiAmount(row[index] ?? "", "million_tokens", onUnsupported);
     if (amount === undefined || amount === "free") return [];
     const meter =
       amount.unit === "minute"
@@ -851,8 +915,10 @@ function openAiModalityTableRates(
         : amount.unit === "million_characters"
           ? "output_audio"
           : openAiModalityMeter(modality, column);
-    if (meter === undefined)
-      throw new Error(`Unsupported OpenAI pricing modality: ${modality}/${header}`);
+    if (meter === undefined) {
+      onUnsupported(`${modality}/${header}`);
+      return [];
+    }
     return [openAiGlobalRate(meter, amount, sourceId, openAiTierConditions(table.tier))];
   });
 }
@@ -861,11 +927,19 @@ function openAiVideoTableRates(
   table: OpenAiPricingTable,
   row: string[],
   sourceId: string,
+  onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] {
-  const amount = openAiAmount(row[table.headers.indexOf("Price per second")] ?? "", "second");
+  const amount = openAiAmount(
+    row[table.headers.indexOf("Price per second")] ?? "",
+    "second",
+    onUnsupported,
+  );
   if (amount === undefined || amount === "free") return [];
   const resolution = row[table.headers.indexOf("Size")];
-  if (resolution === undefined) throw new Error("OpenAI video pricing omitted resolution");
+  if (resolution === undefined) {
+    onUnsupported("video resolution");
+    return [];
+  }
   return [
     openAiGlobalRate("video_generation", amount, sourceId, {
       ...openAiTierConditions(table.tier),
@@ -878,19 +952,28 @@ function openAiTranscriptionTableRates(
   table: OpenAiPricingTable,
   row: string[],
   sourceId: string,
+  onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] {
   const columns: Array<{ header: string; meter: SourcePriceFact["meter"] }> = [
     { header: "Input", meter: "input_audio" },
     { header: "Output", meter: "output_audio" },
   ];
   const tokenRates = columns.flatMap(({ header, meter }): SourcePriceFact[] => {
-    const amount = openAiAmount(row[table.headers.indexOf(header)] ?? "", "million_tokens");
+    const amount = openAiAmount(
+      row[table.headers.indexOf(header)] ?? "",
+      "million_tokens",
+      onUnsupported,
+    );
     return amount === undefined || amount === "free"
       ? []
       : [openAiGlobalRate(meter, amount, sourceId, openAiTierConditions(table.tier))];
   });
   if (tokenRates.length > 0) return tokenRates;
-  const amount = openAiAmount(row[table.headers.indexOf("Estimated cost")] ?? "", "minute");
+  const amount = openAiAmount(
+    row[table.headers.indexOf("Estimated cost")] ?? "",
+    "minute",
+    onUnsupported,
+  );
   return amount === undefined || amount === "free"
     ? []
     : [openAiGlobalRate("input_audio", amount, sourceId, openAiTierConditions(table.tier))];
@@ -900,6 +983,7 @@ function openAiSpecializedTableRates(
   table: OpenAiPricingTable,
   row: string[],
   sourceId: string,
+  onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] {
   const category = row[table.headers.indexOf("Category")];
   return table.headers.flatMap((header, index): SourcePriceFact[] => {
@@ -914,7 +998,7 @@ function openAiSpecializedTableRates(
               ? "output_text"
               : undefined;
     if (meter === undefined) return [];
-    const amount = openAiAmount(row[index] ?? "", "million_tokens");
+    const amount = openAiAmount(row[index] ?? "", "million_tokens", onUnsupported);
     return amount === undefined || amount === "free"
       ? []
       : [openAiGlobalRate(meter, amount, sourceId, openAiTierConditions(table.tier))];
@@ -926,21 +1010,22 @@ function openAiGlobalRates(
   row: string[],
   tasks: ModelTask[],
   sourceId: string,
+  onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] | undefined {
   const headers = table.headers.join("|");
   if (headers.startsWith("Model|Short context input|"))
-    return openAiTokenTableRates(table, row, sourceId);
+    return openAiTokenTableRates(table, row, sourceId, onUnsupported);
   if (
     headers === "Model|Modality|Input|Cached input|Output / cost" ||
     headers === "Model|Modality|Input|Cached input|Output"
   )
-    return openAiModalityTableRates(table, row, tasks, sourceId);
+    return openAiModalityTableRates(table, row, tasks, sourceId, onUnsupported);
   if (headers === "Model|Size|Portrait|Landscape|Price per second")
-    return openAiVideoTableRates(table, row, sourceId);
+    return openAiVideoTableRates(table, row, sourceId, onUnsupported);
   if (headers === "Model|Use case|Input|Output|Estimated cost")
-    return openAiTranscriptionTableRates(table, row, sourceId);
+    return openAiTranscriptionTableRates(table, row, sourceId, onUnsupported);
   if (headers === "Category|Model|Input|Cached input|Output")
-    return openAiSpecializedTableRates(table, row, sourceId);
+    return openAiSpecializedTableRates(table, row, sourceId, onUnsupported);
 }
 
 function addUniqueModelIndex<T extends { model_id: string }>(
@@ -969,6 +1054,7 @@ function openAiToolCommercialFacts(
   row: string[],
   sourceId: string,
   models: readonly OpenAiCommercialModel[],
+  containerBilling: string | undefined,
 ): SourceCommercialPricingFact[] {
   const tool = row[table.headers.indexOf("Tool")] ?? row[0] ?? "";
   const details = row[table.headers.indexOf("Details")] ?? "";
@@ -979,6 +1065,9 @@ function openAiToolCommercialFacts(
       api_endpoints?.some(({ path }) => path === "v1/responses"),
   );
   const responseRefs = responseModels.map(({ uid }) => uid);
+  const codeExecutionRefs = responseModels
+    .filter(({ capabilities }) => capabilities.code_execution === true)
+    .map(({ uid }) => uid);
   const fact = (
     key: string,
     name: string,
@@ -1042,37 +1131,6 @@ function openAiToolCommercialFacts(
       ]),
     ];
 
-  const storageAmount = published.match(
-    /^\$((?:0|[1-9]\d*)(?:\.\d+)?) \/ GB(?: per day|-day)(?: .*)?$/,
-  )?.[1];
-  if (tool === "File search" && details === "Storage" && storageAmount !== undefined)
-    return [
-      fact(
-        "vector-store-storage",
-        "Vector Store Storage",
-        "storage",
-        "Stored vector data",
-        [],
-        [publishedRate("storage", storageAmount, "gigabyte_day", sourceId, "per GB-day")],
-        [commercialRaw("free-storage", "allowance", published, sourceId)],
-      ),
-    ];
-  if (
-    tool === "Agent Kit" &&
-    details === "ChatKit file and image upload storage" &&
-    storageAmount !== undefined
-  )
-    return [
-      fact(
-        "chatkit-storage",
-        "ChatKit Storage",
-        "storage",
-        "ChatKit upload storage",
-        [],
-        [publishedRate("storage", storageAmount, "gigabyte_day", sourceId, "per GB-day")],
-        [commercialRaw("free-storage", "allowance", published, sourceId)],
-      ),
-    ];
   if (tool === "Containers" && details === "Hosted Shell and Code Interpreter") {
     const prices = [...published.matchAll(/(\d+) GB \$((?:0|[1-9]\d*)(?:\.\d+)?)/g)].flatMap(
       (match) => {
@@ -1097,12 +1155,14 @@ function openAiToolCommercialFacts(
       : [
           fact(
             "containers",
-            "Containers",
+            "Code execution containers",
             "runtime",
-            "Hosted container runtime",
-            responseRefs,
+            "Code execution runtime",
+            codeExecutionRefs,
             prices,
-            [commercialRaw("billing-granularity", "informational", published, sourceId)],
+            containerBilling === undefined
+              ? []
+              : [commercialRaw("billing-minimum", "base_price", containerBilling, sourceId)],
           ),
         ];
   }
@@ -1125,11 +1185,12 @@ function commercialRaw(
   };
 }
 
-function openAiFineTuningCommercialFacts(
+function openAiFineTunedInferenceFacts(
   table: OpenAiPricingTable,
   row: string[],
   sourceId: string,
   target: Pick<ProviderModel, "model_id" | "uid"> | undefined,
+  onUnsupported: (sample: string) => void,
 ): SourceCommercialPricingFact[] {
   const rawModelId = row[table.headers.indexOf("Model")] ?? "";
   const dataSharing = rawModelId.endsWith(" (data sharing)");
@@ -1140,26 +1201,17 @@ function openAiFineTuningCommercialFacts(
     ...(dataSharing ? { account_eligibility: "data_sharing" } : {}),
   };
   const amount = (header: string): Exclude<OpenAiAmount, "free" | undefined> | undefined => {
-    const value = openAiAmount(row[table.headers.indexOf(header)] ?? "", "million_tokens");
+    const value = openAiAmount(
+      row[table.headers.indexOf(header)] ?? "",
+      "million_tokens",
+      onUnsupported,
+    );
     return value === undefined || value === "free" ? undefined : value;
   };
   const rate = (
     meter: SourcePriceFact["meter"],
     value: Exclude<OpenAiAmount, "free" | undefined>,
   ) => openAiGlobalRate(meter, value, sourceId, conditions);
-  const trainingValue = row[table.headers.indexOf("Training")] ?? "";
-  const hourlyTraining = trainingValue.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \/ hour$/)?.[1];
-  const training =
-    hourlyTraining === undefined
-      ? amount("Training")
-      : publishedRate(
-          "training_compute",
-          hourlyTraining,
-          "unit_hour",
-          sourceId,
-          "per training hour",
-          conditions,
-        );
   const inference = [
     ["Input", "input_text"],
     ["Cached input", "cache_read_text"],
@@ -1168,44 +1220,80 @@ function openAiFineTuningCommercialFacts(
     const value = amount(header ?? "");
     return value === undefined ? [] : [rate(meter as SourcePriceFact["meter"], value)];
   });
-  return [
-    ...(training === undefined
-      ? []
-      : [
-          {
-            source_ref: sourceId,
-            book_key: `service:fine-tuning:${modelId}`,
-            book_name: `Fine-tuning ${modelId}`,
-            resource_kind: "service" as const,
-            resource_key: `fine-tuning:${modelId}`,
-            model_refs: modelRefs,
-            offer_key: "training",
-            offer_name: "Fine-tuning training",
-            billing_mode: "usage" as const,
-            pricing_state: "numeric" as const,
-            price_facts: ["meter" in training ? training : rate("training_input", training)],
-            raw_price_facts: [],
-          },
-        ]),
-    ...(inference.length === 0
-      ? []
-      : [
-          {
-            source_ref: sourceId,
-            book_key: `account-resource:fine-tuned-model:${modelId}`,
-            book_name: `Fine-tuned model derived from ${modelId}`,
-            resource_kind: "account_resource_template" as const,
-            resource_key: `fine-tuned-model:${modelId}`,
-            model_refs: modelRefs,
-            offer_key: "inference",
-            offer_name: "Fine-tuned model inference",
-            billing_mode: "usage" as const,
-            pricing_state: "numeric" as const,
-            price_facts: inference,
-            raw_price_facts: [],
-          },
-        ]),
-  ];
+  return inference.length === 0
+    ? []
+    : [
+        {
+          source_ref: sourceId,
+          book_key: `service:fine-tuned-inference:${modelId}`,
+          book_name: `Fine-tuned ${modelId} inference`,
+          resource_kind: "service",
+          resource_key: `fine-tuned-inference:${modelId}`,
+          model_refs: modelRefs,
+          offer_key: "inference",
+          offer_name: "Fine-tuned model inference",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: inference,
+          raw_price_facts: [],
+        },
+      ];
+}
+
+function openAiPricingAliases(body: string): Map<string, string> {
+  const aliases = new Map<string, string>();
+  const match = body.match(
+    /`([^`]+)` and `([^`]+)` are\s+aliases that currently point to `([^`]+)` and\s+`([^`]+)`, respectively\./,
+  );
+  if (match === null) return aliases;
+  const pairs = [
+    [match[1], match[3]],
+    [match[2], match[4]],
+  ] as const;
+  for (const [alias, target] of pairs)
+    if (
+      alias !== undefined &&
+      target !== undefined &&
+      modelIdSchema.safeParse(alias).success &&
+      modelIdSchema.safeParse(target).success
+    )
+      aliases.set(alias, target);
+  return aliases;
+}
+
+function openAiPriceConflict(
+  left: SourcePriceFact,
+  right: SourcePriceFact,
+  sourceId: string,
+): SourceRawPricingFact {
+  return {
+    term_key: `pricing-conflict:${left.meter}`,
+    impact: "base_price",
+    reason: "conflicting_values",
+    conditions: left.conditions,
+    source_ref: sourceId,
+    raw: {
+      label: "Conflicting values on the OpenAI pricing page",
+      amount: `${left.price} / ${right.price}`,
+      denomination: left.currency,
+      unit: left.raw_unit ?? left.unit,
+    },
+  };
+}
+
+function openAiRegionalProcessingUplift(sourceId: string): SourceRawPricingFact {
+  return {
+    term_key: "regional-processing-uplift",
+    impact: "base_price",
+    reason: "unsupported_structure",
+    conditions: { deployment_scope: "regional_processing" },
+    source_ref: sourceId,
+    raw: {
+      label: "Regional processing uplift for eligible models released on or after 2026-03-05",
+      amount: "10%",
+      unit: "published model rates",
+    },
+  };
 }
 
 function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
@@ -1249,16 +1337,44 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
     return model;
   };
   const rates = new Map<string, Map<string, SourcePriceFact>>();
+  const conflicts = new Map<string, Map<string, SourceRawPricingFact>>();
+  const conflictedRates = new Map<string, Set<string>>();
   const commercialFacts: SourceCommercialPricingFact[] = [];
-  for (const table of openAiPricingTables(input.body)) {
+  const pricingAliases = openAiPricingAliases(input.body);
+  const containerBilling = input.body.match(
+    /Eligible container sessions will be billed by the minute, with a 5-minute minimum per session\./,
+  )?.[0];
+  const unsupportedCell = (sample: string): void => {
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "unsupported_pricing_cell",
+      ...(sample === "" ? {} : { sample }),
+    });
+  };
+  for (const table of openAiPricingTables(input.body, input.onPricingReconciliation)) {
     if (table.section === "Tools") {
       for (const row of table.rows) {
-        const facts = openAiToolCommercialFacts(table, row, input.source.id, input.catalogModels);
+        const facts = openAiToolCommercialFacts(
+          table,
+          row,
+          input.source.id,
+          input.catalogModels,
+          containerBilling,
+        );
         commercialFacts.push(...facts);
+        const details = row[table.headers.indexOf("Details")] ?? "";
+        const outsideScope =
+          (row[0] === "File search" && details === "Storage") ||
+          (row[0] === "Agent Kit" && details === "ChatKit file and image upload storage");
         input.onPricingReconciliation?.({
-          disposition: facts.length === 0 ? "unsupported" : "normalized",
-          reason_code:
-            facts.length === 0
+          disposition: outsideScope
+            ? "excluded"
+            : facts.length === 0
+              ? "unsupported"
+              : "normalized",
+          reason_code: outsideScope
+            ? "commercial_fact_outside_invocation_scope"
+            : facts.length === 0
               ? "provider_service_pricing_unmodeled"
               : "provider_service_pricing_bound",
           ...(row[0] === undefined ? {} : { sample: row[0] }),
@@ -1270,19 +1386,28 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       for (const row of table.rows) {
         const modelId = row[table.headers.indexOf("Model")] ?? "";
         const target = findTarget(modelId.replace(/ \(data sharing\)$/, ""));
-        const facts = openAiFineTuningCommercialFacts(
+        const facts = openAiFineTunedInferenceFacts(
           table,
           row,
           input.source.id,
           target === null ? undefined : target,
+          unsupportedCell,
         );
         commercialFacts.push(...facts);
         input.onPricingReconciliation?.({
           disposition: facts.length === 0 ? "unsupported" : "normalized",
           reason_code:
-            facts.length === 0 ? "fine_tuning_pricing_unmodeled" : "fine_tuning_pricing_bound",
+            facts.length === 0
+              ? "fine_tuned_inference_pricing_unmodeled"
+              : "fine_tuned_inference_pricing_bound",
           ...(modelId === "" ? {} : { sample: modelId }),
         });
+        if (table.headers.includes("Training"))
+          input.onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "commercial_fact_outside_invocation_scope",
+            sample: `${modelId}: training`,
+          });
       }
       continue;
     }
@@ -1311,14 +1436,30 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         continue;
       }
       target ??= createTarget(rawId);
-      const candidates = openAiGlobalRates(table, row, target.tasks, input.source.id);
-      if (candidates === undefined)
-        throw new Error(`Unsupported OpenAI pricing table: ${table.headers.join("|")}`);
+      const candidates = openAiGlobalRates(
+        table,
+        row,
+        target.tasks,
+        input.source.id,
+        unsupportedCell,
+      );
+      if (candidates === undefined) {
+        input.onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "unreviewed_pricing_table",
+          sample: table.headers.join(" | "),
+        });
+        break;
+      }
       if (candidates.length === 0) {
         if (row.includes("Free")) {
-          if (target.price_facts.length > 0)
-            throw new Error(`OpenAI pricing sources disagree for ${target.model_id}`);
-          if (target.pricing_state === "free") {
+          if (target.price_facts.length > 0 || rates.has(target.model_id)) {
+            input.onPricingReconciliation?.({
+              disposition: "ambiguous",
+              reason_code: "pricing_state_conflict_retained",
+              sample: rawId,
+            });
+          } else if (target.pricing_state === "free") {
             input.onPricingReconciliation?.({
               disposition: "excluded",
               reason_code: "duplicate_catalog_price",
@@ -1341,52 +1482,108 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         continue;
       }
       const existing = new Map(target.price_facts.map((fact) => [sourcePriceFactKey(fact), fact]));
-      const supplemental = candidates.filter((fact) => {
+      const selected = candidates.map((fact) => {
         const current = existing.get(sourcePriceFactKey(fact));
-        if (current !== undefined && !decimalsEqual(current.price, fact.price))
-          throw new Error(
-            `OpenAI pricing sources disagree for ${target.model_id} at ${sourcePriceFactKey(fact)}: ${current.price} != ${fact.price}`,
-          );
-        if (
-          target.price_facts.length > 0 &&
-          (table.tier === undefined || table.tier === "standard")
-        )
-          return false;
-        return current === undefined;
-      });
-      if (supplemental.length === 0) {
+        if (current === undefined || decimalsEqual(current.price, fact.price)) return fact;
         input.onPricingReconciliation?.({
-          disposition: "excluded",
-          reason_code: "duplicate_catalog_price",
+          disposition: "raw",
+          reason_code: "first_party_price_conflict_resolved",
           sample: rawId,
         });
-        continue;
-      }
+        return { ...fact, resolution_policy: "openai_pricing_page_over_model_card" };
+      });
       const modelRates = rates.get(target.model_id) ?? new Map<string, SourcePriceFact>();
-      for (const fact of supplemental) {
+      const modelConflicts = conflictedRates.get(target.model_id) ?? new Set<string>();
+      const rawConflicts =
+        conflicts.get(target.model_id) ?? new Map<string, SourceRawPricingFact>();
+      for (const fact of selected) {
         const key = sourcePriceFactKey(fact);
+        if (modelConflicts.has(key)) continue;
         const current = modelRates.get(key);
-        if (current !== undefined && !decimalsEqual(current.price, fact.price))
-          throw new Error(`OpenAI pricing table conflicts for ${target.model_id}`);
+        if (current !== undefined && !decimalsEqual(current.price, fact.price)) {
+          modelRates.delete(key);
+          modelConflicts.add(key);
+          rawConflicts.set(key, openAiPriceConflict(current, fact, input.source.id));
+          input.onPricingReconciliation?.({
+            disposition: "ambiguous",
+            reason_code: "pricing_value_conflict",
+            sample: rawId,
+          });
+          continue;
+        }
         modelRates.set(key, fact);
       }
       rates.set(target.model_id, modelRates);
+      if (modelConflicts.size > 0) conflictedRates.set(target.model_id, modelConflicts);
+      if (rawConflicts.size > 0) conflicts.set(target.model_id, rawConflicts);
       input.onPricingReconciliation?.({
         disposition: "normalized",
         reason_code: "pricing_row_bound",
       });
     }
   }
-  const extractor = input.source.extractor;
-  if (extractor.kind !== "openai-pricing") throw new Error("Invalid OpenAI pricing extractor");
-  const { minModels, maxModels } = extractor;
-  assertItemCount("OpenAI pricing models", rates.size, minModels, maxModels);
-  const modelIds = new Set([...rates.keys(), ...states.keys(), ...created.keys()]);
+  if (input.source.extractor.kind !== "openai-pricing")
+    throw new Error("Invalid OpenAI pricing extractor");
+  for (const [aliasId, targetId] of pricingAliases) {
+    const alias = exact.get(aliasId);
+    const target = exact.get(targetId);
+    const targetRates = rates.get(targetId);
+    if (alias === undefined || target === undefined || targetRates === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "documented_alias_price_unbound",
+        sample: `${aliasId} -> ${targetId}`,
+      });
+      continue;
+    }
+    rates.set(
+      aliasId,
+      new Map(
+        [...targetRates].map(([key, fact]) => [
+          key,
+          {
+            ...fact,
+            derived: true,
+            derivation: `OpenAI pricing documents ${aliasId} as routing to ${targetId} with matching pricing`,
+            raw_price: undefined,
+            raw_unit: undefined,
+          },
+        ]),
+      ),
+    );
+    input.onPricingReconciliation?.({
+      disposition: "normalized",
+      reason_code: "documented_alias_price_bound",
+      sample: `${aliasId} -> ${targetId}`,
+    });
+  }
+  const hasRegionalUplift = /Regional processing .*10% uplift/i.test(input.body);
+  const modelIds = new Set([
+    ...rates.keys(),
+    ...states.keys(),
+    ...created.keys(),
+    ...conflicts.keys(),
+  ]);
+  if (commercialFacts.length > 0 && modelIds.size === 0) {
+    const carrier = [...input.catalogModels].sort((left, right) =>
+      left.uid.localeCompare(right.uid),
+    )[0];
+    if (carrier !== undefined) modelIds.add(carrier.model_id);
+  }
+  if (modelIds.size === 0) throw new Error("OpenAI pricing contained no admitted facts");
   const output = [...modelIds]
     .map((modelId): ProviderModel => {
       const target = exact.get(modelId);
       if (target === undefined) throw new Error("OpenAI pricing lost its catalog binding");
       const modelRates = rates.get(modelId);
+      const rawPriceFacts = [...(conflicts.get(modelId)?.values() ?? [])];
+      if (
+        hasRegionalUplift &&
+        target.availability?.some(
+          ({ deployment_type }) => deployment_type === "regional_processing",
+        )
+      )
+        rawPriceFacts.push(openAiRegionalProcessingUplift(input.source.id));
       return {
         ...baseModel({
           providerId: input.provider.id,
@@ -1397,8 +1594,12 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
           observedAt: input.observedAt,
         }),
         tasks: target.tasks,
-        pricing_state: modelRates === undefined ? (states.get(modelId) ?? "unknown") : "numeric",
+        pricing_state:
+          modelRates === undefined || modelRates.size === 0
+            ? (states.get(modelId) ?? "unknown")
+            : "numeric",
         price_facts: [...(modelRates?.values() ?? [])],
+        raw_price_facts: rawPriceFacts,
       };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
@@ -1410,127 +1611,25 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   return output;
 }
 
-function openAiBundleDocument(
-  bundle: z.infer<typeof linkedBundleSchema>,
-  pathname: string,
-): string {
-  return linkedDocumentBody(
-    bundle,
-    pathname,
-    `OpenAI source bundle omitted or duplicated ${pathname}`,
-  );
-}
-
-const openAiCommercialPaths = new Set([
-  "/api/docs/guides/batch",
-  "/api/docs/guides/cost-optimization",
-  "/api/docs/guides/fast-mode",
-  "/api/docs/guides/flex-processing",
-  "/api/docs/guides/prompt-caching",
-  "/api/docs/guides/rate-limits",
-  "/api/docs/guides/realtime-costs",
-  "/api/docs/guides/spend-limits",
-  "/api/docs/guides/terraform/rate-limits-and-spend",
-  "/api/docs/models/compare",
-  "/api/docs/pricing",
-]);
-
-function openAiCommercialIndexEntry(pathname: string): boolean {
-  const path = pathname.replace(/\.md$/, "");
-  return (
-    openAiCommercialPaths.has(path) ||
-    /\/(?:billing|cost|pricing|service-tier|spend|usage)(?:[-_][^/]*)?$/i.test(path)
-  );
-}
-
-function validateOpenAiDocumentation(
-  bundle: z.infer<typeof linkedBundleSchema>,
+function openAiModalitiesFromDetails(
+  details: string,
+  label: "Input" | "Output",
   onFinding: ParseInput["onContractFinding"],
-): void {
-  const findings: string[] = [];
-  const docsIndex = openAiBundleDocument(bundle, "/api/docs/llms.txt");
-  const indexed = new Set(
-    [...docsIndex.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\).*$/gm)].flatMap((match) => {
-      const href = match[1];
-      if (href === undefined) return [];
-      const url = new URL(href);
-      return url.origin === "https://developers.openai.com" &&
-        openAiCommercialIndexEntry(url.pathname)
-        ? [url.pathname.replace(/\.md$/, "")]
-        : [];
-    }),
-  );
-  if (indexed.size === 0) findings.push("/documentation/commercial-pages");
-  const selected = new Set(
-    [bundle.index, ...bundle.documents].map(({ url }) =>
-      new URL(url).pathname.replace(/\.md$/, ""),
-    ),
-  );
-  const missing = [...indexed].filter((path) => !selected.has(path)).sort();
-  findings.push(...missing.map((path) => `/documentation${path}`));
-
-  const referenceIndex = openAiBundleDocument(bundle, "/api/reference/llms.txt");
-  for (const path of [
-    "/api/reference/resources/models/methods/list.md",
-    "/api/reference/resources/responses/methods/create.md",
-  ])
-    if (!referenceIndex.includes(`https://developers.openai.com${path}`))
-      findings.push(`/reference${path}`);
-
-  const openapi = openAiBundleDocument(bundle, "/openai/openai-openapi/master/openapi.yaml");
-  const requiredOperations = new Map([
-    ["/models", "listModels"],
-    ["/chat/completions", "createChatCompletion"],
-    ["/responses", "createResponse"],
-    ["/organization/costs", "usage-costs"],
-    ["/organization/usage/completions", "usage-completions"],
-  ]);
-  for (const [path, operationId] of requiredOperations) {
-    const start = openapi.indexOf(`  ${path}:`);
-    const next = start < 0 ? -1 : openapi.indexOf("\n  /", start + path.length + 3);
-    const block = start < 0 ? "" : openapi.slice(start, next < 0 ? undefined : next);
-    if (!block.includes(`operationId: ${operationId}`)) findings.push(`/openapi${path}`);
-  }
-  const reviewedUsagePaths = new Set([
-    "/organization/usage/audio_speeches",
-    "/organization/usage/audio_transcriptions",
-    "/organization/usage/code_interpreter_sessions",
-    "/organization/usage/completions",
-    "/organization/usage/embeddings",
-    "/organization/usage/file_search_calls",
-    "/organization/usage/images",
-    "/organization/usage/moderations",
-    "/organization/usage/vector_stores",
-    "/organization/usage/web_search_calls",
-  ]);
-  const observedUsagePaths = new Set(
-    [...openapi.matchAll(/^  (\/organization\/usage\/[a-z_]+):$/gm)].flatMap((match) =>
-      match[1] === undefined ? [] : [match[1]],
-    ),
-  );
-  const changedUsagePaths = [...new Set([...reviewedUsagePaths, ...observedUsagePaths])].filter(
-    (path) => reviewedUsagePaths.has(path) !== observedUsagePaths.has(path),
-  );
-  findings.push(...changedUsagePaths.map((path) => `/openapi${path}`));
-  for (const claim of [
-    "input_cache_write_tokens",
-    "input_uncached_tokens",
-    "input_cached_audio_tokens",
-    "service_tier",
-    "input_tokens_details",
-    "output_tokens_details",
-  ])
-    if (!openapi.includes(claim)) findings.push(`/openapi/claims/${claim}`);
-  if (findings.length > 0) onFinding?.(contractExtensionEvidence(findings));
-}
-
-function openAiModalitiesFromDetails(details: string, label: "Input" | "Output"): Modality[] {
+): Modality[] {
   const match = details.match(new RegExp(`^- ${label} modalities: (.+)$`, "m"));
-  if (match?.[1] === undefined) throw new Error(`OpenAI model page omitted ${label} modalities`);
+  if (match?.[1] === undefined) {
+    onFinding?.(contractExtensionEvidence([`/models/modalities/${label.toLowerCase()}`]));
+    return [];
+  }
   const values = match[1].split(",").map((value) => value.trim());
-  const modalities = values.map((value) => modalitySchema.parse(value));
-  if (modalities.length === 0)
-    throw new Error(`OpenAI model page contained no ${label} modalities`);
+  const modalities = values.flatMap((value): Modality[] => {
+    const parsed = modalitySchema.safeParse(value);
+    if (parsed.success) return [parsed.data];
+    onFinding?.(
+      contractExtensionEvidence([`/models/modalities/${label.toLowerCase()}/${value || "empty"}`]),
+    );
+    return [];
+  });
   return unique(modalities);
 }
 
@@ -1552,10 +1651,14 @@ function openAiListSection(body: string, heading: string): Set<string> | undefin
   );
 }
 
-function openAiAliasesFromMarkdown(body: string, id: string): string[] {
+function openAiAliasesFromMarkdown(
+  body: string,
+  id: string,
+  onFinding: ParseInput["onContractFinding"],
+): string[] {
   const snapshots = markdownSection(body, "Snapshots");
-  if (snapshots === undefined) throw new Error(`OpenAI model page omitted Snapshots for ${id}`);
-  const aliases = markdownCodeValues(snapshots).filter(
+  if (snapshots === undefined) onFinding?.(contractExtensionEvidence([`/models/${id}/snapshots`]));
+  const aliases = markdownCodeValues(snapshots ?? "").filter(
     (value) => value !== id && modelIdSchema.safeParse(value).success,
   );
   for (const match of body.matchAll(/The `([^`]+)` alias routes requests to\b/g)) {
@@ -1595,14 +1698,16 @@ function openAiMarkdownModel(
   const idMatches = [...body.matchAll(/^Model ID: `([^`]+)`$/gm)];
   const id = idMatches.length === 1 ? idMatches[0]?.[1] : undefined;
   if (id !== expectedId) throw new Error(`OpenAI model page identity disagreed for ${expectedId}`);
-  const name = body.match(/^# (.+)$/m)?.[1]?.trim();
-  if (name === undefined || name === "")
-    throw new Error(`OpenAI model page omitted display name for ${expectedId}`);
-  const details = markdownSection(body, "Model details");
-  if (details === undefined) throw new Error(`OpenAI model page omitted Model details for ${id}`);
+  const observedName = body.match(/^# (.+)$/m)?.[1]?.trim();
+  const name = observedName === undefined || observedName === "" ? id : observedName;
+  if (name === id) input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/name`]));
+  const observedDetails = markdownSection(body, "Model details");
+  const details = observedDetails ?? "";
+  if (observedDetails === undefined)
+    input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/details`]));
   const observedModalities = {
-    input: openAiModalitiesFromDetails(details, "Input"),
-    output: openAiModalitiesFromDetails(details, "Output"),
+    input: openAiModalitiesFromDetails(details, "Input", input.onContractFinding),
+    output: openAiModalitiesFromDetails(details, "Output", input.onContractFinding),
   };
   const classifiedOperations = classifyModelTasks({
     modelId: id,
@@ -1643,13 +1748,14 @@ function openAiMarkdownModel(
       observedAt: input.observedAt,
     }),
     ...(description === undefined ? {} : { description: normalizedText(description) }),
-    aliases: openAiAliasesFromMarkdown(body, id),
+    aliases: openAiAliasesFromMarkdown(body, id, input.onContractFinding),
     tasks,
     api_endpoints: endpointEvidence.endpoints,
     modalities: modelModalities,
     capabilities: {
       ...unknownCapabilities(),
-      reasoning: details.includes("- Reasoning token support"),
+      reasoning:
+        observedDetails === undefined ? "unknown" : details.includes("- Reasoning token support"),
       tool_call: feature("function_calling"),
       structured_output: feature("structured_outputs"),
       streaming: feature("streaming"),
@@ -1681,24 +1787,41 @@ function openAiMarkdownModel(
 
 function parseOpenAiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(parseJson(input.body));
-  validateOpenAiDocumentation(bundle, input.onContractFinding);
   const statuses = openAiIndexStatuses(bundle.index.body);
-  const modelDocuments = bundle.documents.flatMap((document) => {
+  const documents = new Map<string, typeof bundle.documents>();
+  for (const document of bundle.documents) {
     const match = new URL(document.url).pathname.match(/^\/api\/docs\/models\/([a-z0-9._-]+)\.md$/);
-    return match?.[1] === undefined || match[1] === "compare"
-      ? []
-      : [{ ...document, id: match[1] }];
-  });
-  if (
-    modelDocuments.length !== statuses.size ||
-    new Set(modelDocuments.map(({ id }) => id)).size !== modelDocuments.length
-  )
-    throw new Error("OpenAI catalog index and model pages disagree");
-  return modelDocuments
-    .map(({ body, id }) => {
-      const lifecycle = statuses.get(id);
-      if (lifecycle === undefined) throw new Error(`OpenAI catalog omitted index entry for ${id}`);
-      return openAiMarkdownModel(input, body, id, lifecycle);
+    const id = match?.[1];
+    if (id === undefined || id === "compare") continue;
+    const current = documents.get(id) ?? [];
+    current.push(document);
+    documents.set(id, current);
+  }
+  const extra = [...documents.keys()].filter((id) => !statuses.has(id));
+  if (extra.length > 0)
+    input.onContractFinding?.(
+      contractExtensionEvidence(extra.map((id) => `/models/${id}/unindexed`)),
+    );
+  return [...statuses.entries()]
+    .map(([id, lifecycle]) => {
+      const matches = documents.get(id) ?? [];
+      if (matches.length === 1)
+        try {
+          return openAiMarkdownModel(input, matches[0]!.body, id, lifecycle);
+        } catch {
+          input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/card`]));
+        }
+      else input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/document`]));
+      return {
+        ...baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        ...lifecycle,
+      };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
 }
@@ -1716,43 +1839,66 @@ function parseOpenAiModelPricing(input: ParseInput): ProviderModel[] {
       ?.match(/^\/api\/docs\/models\/([a-z0-9._-]+)$/);
     if (match?.[1] !== undefined) indexed.add(match[1]);
   });
-  const documents = bundle.documents.map((document) => ({
-    ...document,
-    id: modelIdSchema.parse(new URL(document.url).pathname.split("/").at(-1)),
-  }));
-  if (
-    indexed.size !== documents.length ||
-    new Set(documents.map(({ id }) => id)).size !== documents.length
-  )
-    throw new Error("OpenAI pricing index and model pages disagree");
-  return documents
-    .map(({ body, id }): ProviderModel => {
-      if (!indexed.has(id)) throw new Error(`OpenAI pricing index omitted ${id}`);
+  const documents = new Map<string, typeof bundle.documents>();
+  for (const document of bundle.documents) {
+    const id = new URL(document.url).pathname.split("/").at(-1);
+    if (id === undefined || !modelIdSchema.safeParse(id).success || !indexed.has(id)) {
+      input.onContractFinding?.(
+        contractExtensionEvidence([`/models/${id ?? "unknown"}/pricing-document`]),
+      );
+      continue;
+    }
+    const current = documents.get(id) ?? [];
+    current.push(document);
+    documents.set(id, current);
+  }
+  return [...indexed]
+    .flatMap((id): ProviderModel[] => {
+      const matches = documents.get(id) ?? [];
+      if (matches.length !== 1) {
+        input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/pricing-document`]));
+        return [];
+      }
       const target = targets.get(id);
-      if (target === undefined) throw new Error(`OpenAI model-card pricing could not bind ${id}`);
-      const $ = load(body);
-      const rates = openAiPricing($, input.source.id, target.tasks);
+      if (target === undefined) {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "model_card_price_without_catalog_identity",
+          sample: id,
+        });
+        return [];
+      }
+      const $ = load(matches[0]!.body);
+      let rates: SourcePriceFact[];
+      try {
+        rates = openAiPricing($, input.source.id, target.tasks);
+      } catch {
+        input.onContractFinding?.(contractExtensionEvidence([`/models/${id}/pricing`]));
+        return [];
+      }
       const pageText = normalizedText($("main").text());
-      return {
-        ...baseModel({
-          providerId: input.provider.id,
-          id,
-          ...(target.version === undefined ? {} : { version: target.version }),
-          name: target.name,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        tasks: target.tasks,
-        pricing_state:
-          rates.length > 0
-            ? "numeric"
-            : pageText.includes("free models designed to detect harmful content")
-              ? "free"
-              : pageText.includes("open-weight model")
-                ? "not_applicable"
-                : "unknown",
-        price_facts: rates,
-      };
+      return [
+        {
+          ...baseModel({
+            providerId: input.provider.id,
+            id,
+            ...(target.version === undefined ? {} : { version: target.version }),
+            name: target.name,
+            sourceId: input.source.id,
+            observedAt: input.observedAt,
+          }),
+          tasks: target.tasks,
+          pricing_state:
+            rates.length > 0
+              ? "numeric"
+              : pageText.includes("free models designed to detect harmful content")
+                ? "free"
+                : pageText.includes("open-weight model")
+                  ? "not_applicable"
+                  : "unknown",
+          price_facts: rates,
+        },
+      ];
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
 }
@@ -1966,18 +2112,26 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseAzureApi(input);
     case "gemini-catalog":
       return parseGeminiCatalog(input);
+    case "gemini-pricing":
+      return parseGeminiPricing(input);
     case "gemini-api":
       return parseGeminiApi(input);
     case "vertex-catalog":
       return parseVertexCatalog(input);
+    case "vertex-pricing":
+      return parseVertexPricing(input);
     case "vertex-api":
       return parseVertexApi(input);
     case "cohere-catalog":
       return parseCohereCatalog(input);
+    case "cohere-pricing":
+      return parseCoherePricing(input);
     case "cohere-api":
       return parseCohereApi(input);
     case "mistral-catalog":
       return parseMistralCatalog(input);
+    case "mistral-pricing":
+      return parseMistralPricing(input);
     case "mistral-api":
       return parseMistralApi(input);
     case "llama-catalog":

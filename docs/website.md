@@ -1,6 +1,6 @@
 # Website
 
-Status: implemented
+Status: implemented core; provider pricing convergence is in progress
 
 ## Product shape
 
@@ -11,8 +11,7 @@ Status: implemented
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
 - When the selected provider has standalone commercial resources, show their
   count as an action that opens a provider-level pricing inspector. This is the
-  home for services, plans, capacity, distribution, and account-resource
-  templates that do not belong to one model row.
+  home for separately priced request services that do not belong to one model row.
 - One semantic table fills the remaining viewport. Model details open in a right-side inspector.
 - Unknown values stay explicit. Rows without a representative numeric price
   show a short model-level status with an explanatory tooltip.
@@ -62,15 +61,15 @@ Status: implemented
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `rate answer → price-changing options → related costs → audit detail`.
+- The detail flow is `rate answer → price-changing options → request components → audit detail`.
   It never flattens books into one rate list. Model execution mechanisms remain
   explicit, but the first mechanism in stable presentation order is opened as
   the initial browsing focus so a multi-offer model no longer starts blank. This
   focus is navigation, not a provider default, recommendation, or cheapest-offer
   choice. A sole mechanism is shown as a summary rather than a one-item selector.
-  Optional services, automatic components, plans, capacity, and standalone
-  resources move behind one related-cost disclosure instead of preceding the
-  base-rate answer. Offer choices show one reviewed title; they omit generated
+  Optional services, automatic components, and standalone request services move behind one
+  related-cost disclosure instead of preceding the base-rate answer. Offer choices show one reviewed
+  title; they omit generated
   book labels, repeated default `Metered pricing` copy, and explanatory prose
   already implied by the control. Multiple mechanism choices form a compact
   wrapping radio group; its native keyboard behavior owns arrow keys and must
@@ -93,9 +92,8 @@ Status: implemented
   immediately with a concise scope note. The user is not required to select a
   region or other dimension that cannot change the answer. Unresolved unequal or
   partial alternatives remain hidden behind a prompt for only their missing
-  dimensions. Selectors that affect enrollment, settlement, allowances, or other
-  commercial structure remain available under advanced billing details. The
-  controls resolve exact applicable rates but do not estimate
+  dimensions. Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
+  rate-book UI. The controls resolve exact applicable rates but do not estimate
   usage, consume allowances, or calculate a total. Selected applicability is not
   repeated on each resolved rate, allowance, or state; validity qualifications
   remain visible. Its reset action appears only after a configurable selection
@@ -111,15 +109,11 @@ Status: implemented
   cost driver, its reviewed billable-trigger definition, aggregation boundary,
   and earliest resolution phase on demand. A known rate without an exact public
   quantity signal stays visible; the UI never treats that as a missing rate.
-  Contribution rows
-  expose the same driver metadata without copying the target rate. Billing mode,
-  enrollment, settlement channel, biller, and ordered payment-source classes
-  appear as read-only commercial context. These facts explain what affects cost
-  without accepting usage input, multiplying quantities, consuming allowances,
-  allocating capacity, or presenting an account total.
-- The provider-level pricing inspector uses the same rate, driver, allowance,
-  contribution, enrollment, settlement, raw-fact, and retained-snapshot
-  semantics. Known raw facts may expose only concise source-native parameters
+  Contribution rows expose the same driver metadata without copying the target rate. Billing mode is
+  read-only invocation context. These facts explain what affects cost without accepting usage input,
+  multiplying quantities, or presenting an account total.
+- The provider-level pricing inspector uses the same rate, driver, contribution, raw-fact, and
+  retained-snapshot semantics. Known raw facts may expose only concise source-native parameters
   that affect cost; observations, locators, and audit evidence remain excluded.
   It renders conditional or validity-qualified offer states before rates while
   leaving unconditional singletons in the summary. Applicability follows the
@@ -306,8 +300,7 @@ Status: implemented
   metadata. Raw commercial facts may retain only display-safe structured
   parameters such as amount, denomination, unit, meter, validity, formula, and
   conditions. They retain displayed commercial semantics—including reviewed usage-signal
-  definitions, aggregation boundaries, resolution phases, enrollment, and
-  settlement context—and provider-snapshot freshness copy.
+  definitions, aggregation boundaries, resolution phases, and provider-snapshot freshness copy.
 - Build-time projection indexes snapshots, dispositions, and model-scoped
   books once. Each model reuses one pricing view for its summary and detail.
   Equal display-ready offers are stored once per provider and referenced by

@@ -6,17 +6,20 @@ import type {
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
-import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
-import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
+import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import {
+  addAtom,
+  isStandardUnit,
+  providerKeyEvidence,
+  relation,
+  withApplicability,
+} from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
-  NormalizedPriceObservation,
-  OfferRelation,
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
 
@@ -25,49 +28,30 @@ type Mechanism = "sync" | "batch";
 const servedTier = { namespace: "kmodels", value: "served_service_tier" } as const;
 
 export function applyGeminiCommercialTopology(input: AtomicProviderPricing): AtomicProviderPricing {
-  if (input.provider_id !== "gemini") return input;
   const modelOffers = new Map<string, string>();
   const books = input.books.map((book) => {
-    if (book.scope.kind !== "models") return bindResourceBook(book, input);
+    if (book.scope.kind !== "models") return bindGroundingBook(book, input);
     const migrated = splitModelBook(book, input);
-    const sync = migrated.offers.find(({ offer_key }) => offer_key === "sync");
-    if (sync !== undefined) {
-      const ref = pricingOfferId(pricingBookId(input.provider_id, book.book_key), sync.offer_key);
+    if (migrated.offers.some(({ offer_key }) => offer_key === "sync")) {
+      const ref = pricingOfferId(pricingBookId(input.provider_id, book.book_key), "sync");
       for (const modelRef of book.scope.model_refs) modelOffers.set(modelRef, ref);
     }
     return migrated;
   });
-  for (const book of books)
-    if (book.scope.kind === "provider_resource") bindResourceRelations(book, modelOffers);
+  for (const book of books) bindGroundingRelations(book, modelOffers);
   return { ...input, books };
 }
 
 function splitModelBook(book: AtomicPricingBook, input: AtomicProviderPricing): AtomicPricingBook {
-  const offers = book.offers.flatMap((offer) => {
-    if (offer.offer_key !== "usage") return [withSettlement(offer, "Gemini API usage")];
-    const sync = partitionOffer(offer, "sync", input);
-    const batch = partitionOffer(offer, "batch", input);
-    const result = [sync, batch].filter(hasCommercialContent);
-    if (sync !== undefined && batch !== undefined && result.length === 2) {
-      const bookId = pricingBookId(input.provider_id, book.book_key);
-      sync.relations.push(
-        exclusiveRelation(
-          sync,
-          pricingOfferId(bookId, "batch"),
-          "Synchronous and Batch execution are alternatives",
-        ),
-      );
-      batch.relations.push(
-        exclusiveRelation(
-          batch,
-          pricingOfferId(bookId, "sync"),
-          "Batch and synchronous execution are alternatives",
-        ),
-      );
-    }
-    return result;
-  });
-  return { ...book, offers };
+  return {
+    ...book,
+    offers: book.offers.flatMap((offer) => {
+      if (offer.offer_key !== "usage") return [offer];
+      return (["sync", "batch"] as const)
+        .map((mechanism) => partitionOffer(offer, mechanism, input))
+        .filter((candidate): candidate is AtomicPricingOffer => candidate !== undefined);
+    }),
+  };
 }
 
 function partitionOffer(
@@ -79,27 +63,35 @@ function partitionOffer(
     const applicability = mechanismApplicability(state.applicability, mechanism, input);
     return applicability === undefined
       ? []
-      : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
+      : [
+          {
+            ...state,
+            applicability,
+            observation: withApplicability(state.observation, applicability),
+          },
+        ];
   });
-  const terms = offer.terms.flatMap((term) => partitionTerm(term, mechanism, input));
-  if (states.length === 0 && terms.length === 0) return;
-  return withSettlement(
-    {
-      ...offer,
-      offer_key: mechanism,
-      name: mechanism === "batch" ? "Batch inference" : "Synchronous inference",
-      states,
-      terms,
-      relations: [],
-    },
-    mechanism === "batch" ? "Gemini API Batch usage" : "Gemini API synchronous usage",
+  const blocked = offer.terms.some(
+    (term) => term.kind === "raw" && term.term_key === "charge_binding_unavailable",
   );
+  const terms = offer.terms.flatMap((term) => partitionTerm(term, mechanism, input, blocked));
+  if (states.length === 0 && terms.length === 0) return;
+  return {
+    ...offer,
+    offer_key: mechanism,
+    name: mechanism === "batch" ? "Batch inference" : "Online inference",
+    states,
+    terms,
+    relations: [],
+    settlement: [],
+  };
 }
 
 function partitionTerm(
   term: AtomicPricingTerm,
   mechanism: Mechanism,
   input: AtomicProviderPricing,
+  blocked: boolean,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism, input));
@@ -109,8 +101,10 @@ function partitionTerm(
   const variants = term.variants.flatMap((variant) => {
     const applicability = mechanismApplicability(variant.applicability, mechanism, input);
     if (applicability === undefined) return [];
-    const observation = normalized(variant.observation, applicability);
-    const charge_binding = modelBinding(term.meter, variant, mechanism, input);
+    const observation = withApplicability(variant.observation, applicability);
+    const charge_binding = blocked
+      ? undefined
+      : modelBinding(term.meter, variant, mechanism, input);
     return [
       {
         ...variant,
@@ -158,7 +152,7 @@ function mechanismApplicability(
           key: value.value,
           dimension: servedTier,
           definition: `Gemini response-reported served service tier ${JSON.stringify(value.value)}`,
-          label: tierLabel(value.value),
+          label: value.value.charAt(0).toUpperCase() + value.value.slice(1),
         });
         return value;
       }),
@@ -176,10 +170,6 @@ function isServiceTier(condition: PriceCondition): boolean {
   );
 }
 
-function tierLabel(value: string): string {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
 function modelBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
@@ -188,236 +178,211 @@ function modelBinding(
 ): ChargeBinding | undefined {
   const signal = modelSignal(meter, variant.price.per);
   if (signal === undefined) return;
-  const key = `${mechanism === "batch" ? "batch_result" : "response"}_${signal}`;
-  return providerBinding(
-    input,
-    key,
-    `Billable ${signal.replaceAll("_", " ")} reported for one Gemini ${mechanism === "batch" ? "Batch result item" : "API attempt"}`,
-    variant.price.per,
-    mechanism === "batch" ? "result_item" : "attempt",
-    variant.observation,
-    `usage:${key}`,
+  const locators = signal.locators.filter(
+    ({ mechanisms }) => mechanisms === undefined || mechanisms.includes(mechanism),
   );
+  if (locators.length === 0) return;
+  const prefix = mechanism === "batch" ? "batch-result" : "response";
+  const aggregation = mechanism === "batch" ? "result_item" : "request";
+  if (signal.standard !== undefined)
+    return {
+      signal: { namespace: "kmodels", value: signal.standard },
+      aggregation,
+      observations: locators.map(({ value }) =>
+        providerKeyEvidence(variant.observation, `${prefix}:${value}`),
+      ),
+    };
+  addAtom(input, {
+    kind: "usage_signal",
+    key: signal.key,
+    definition: signal.definition,
+    unit: variant.price.per,
+    resolution_phase: "outcome",
+  });
+  return {
+    signal: { namespace: "provider", provider_id: input.provider_id, value: signal.key },
+    aggregation,
+    observations: locators.map(({ value }) =>
+      providerKeyEvidence(variant.observation, `${prefix}:${value}`),
+    ),
+  };
 }
 
-function modelSignal(meter: PriceMeter, unit: UnitExpression): string | undefined {
-  if (meter.namespace !== "kmodels") return;
-  const billedUnit = singleUnit(unit);
-  switch (meter.value) {
-    case "input_text":
-      return "uncached_input_tokens";
-    case "input_audio":
-      return `input_audio_${billedUnit}`;
-    case "input_image":
-      return `input_image_${billedUnit}`;
-    case "cache_read_text":
-      return "cached_input_tokens";
-    case "output_text":
-      return "output_tokens_including_thoughts";
-    case "output_audio":
-      return `output_audio_${billedUnit}`;
-    case "image_generation":
-      return `generated_image_${billedUnit}`;
-    case "video_generation":
-      return `generated_video_${billedUnit}`;
-    case "embedding":
-      return `embedding_input_${billedUnit}`;
-    default:
-      return `${meter.value}_${billedUnit}`;
-  }
+interface SignalLocator {
+  value: string;
+  mechanisms?: readonly Mechanism[];
 }
 
-function bindResourceBook(
+function modelSignal(
+  meter: PriceMeter,
+  unit: UnitExpression,
+):
+  | {
+      standard: "uncached_input_tokens" | "cached_input_tokens" | "output_tokens";
+      locators: SignalLocator[];
+      key?: never;
+      definition?: never;
+    }
+  | { key: string; definition: string; locators: SignalLocator[]; standard?: never }
+  | undefined {
+  if (meter.namespace !== "kmodels" || !isStandardUnit(unit, "token")) return;
+  const modality = meter.value.split("_").at(-1)?.toUpperCase();
+  if (meter.value.startsWith("input_") && modality !== undefined)
+    return {
+      key: `uncached_input_${modality.toLowerCase()}_tokens`,
+      definition: `Uncached Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
+      locators: [
+        {
+          value: `GenerateContentResponse.usageMetadata.promptTokensDetails[modality=${modality}].tokenCount - GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=${modality}].tokenCount`,
+        },
+        {
+          value: `Interaction.usage.input_tokens_by_modality[modality=${modality.toLowerCase()}].tokens - Interaction.usage.cached_tokens_by_modality[modality=${modality.toLowerCase()}].tokens`,
+          mechanisms: ["sync"],
+        },
+      ],
+    };
+  if (meter.value.startsWith("cache_read_") && modality !== undefined)
+    return {
+      key: `cached_input_${modality.toLowerCase()}_tokens`,
+      definition: `Cached Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
+      locators: [
+        {
+          value: `GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=${modality}].tokenCount`,
+        },
+        {
+          value: `Interaction.usage.cached_tokens_by_modality[modality=${modality.toLowerCase()}].tokens`,
+          mechanisms: ["sync"],
+        },
+      ],
+    };
+  if (meter.value === "output_text")
+    return {
+      standard: "output_tokens",
+      locators: [
+        {
+          value:
+            "GenerateContentResponse.usageMetadata.candidatesTokenCount + GenerateContentResponse.usageMetadata.thoughtsTokenCount",
+        },
+        {
+          value: "Interaction.usage.total_output_tokens + Interaction.usage.total_thought_tokens",
+          mechanisms: ["sync"],
+        },
+      ],
+    };
+  if (meter.value.startsWith("output_") && modality !== undefined)
+    return {
+      key: `output_${modality.toLowerCase()}_tokens`,
+      definition: `Gemini ${modality.toLowerCase()} output tokens reported by usage metadata`,
+      locators: [
+        {
+          value: `GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=${modality}].tokenCount`,
+        },
+        {
+          value: `Interaction.usage.output_tokens_by_modality[modality=${modality.toLowerCase()}].tokens`,
+          mechanisms: ["sync"],
+        },
+      ],
+    };
+  if (meter.value === "embedding")
+    return {
+      key: "embedding_input_tokens",
+      definition: "Gemini embedding input tokens reported by the embedding response",
+      locators: [{ value: "EmbedContentResponse.usageMetadata.promptTokenCount" }],
+    };
+}
+
+function bindGroundingBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
 ): AtomicPricingBook {
-  if (book.scope.kind !== "provider_resource") return book;
+  if (
+    book.scope.kind !== "provider_resource" ||
+    !["google-search", "google-maps"].includes(book.scope.resource_key)
+  )
+    return book;
   const resourceKey = book.scope.resource_key;
-  const offers = book.offers.map((offer) => {
-    const terms = offer.terms.map((term) => {
-      if (term.kind !== "rate") return term;
-      return {
-        ...term,
-        variants: term.variants.map((variant) => {
-          const binding = resourceBinding(resourceKey, term.meter, variant, input);
-          return binding === undefined ? variant : { ...variant, charge_binding: binding };
-        }),
-      };
-    });
-    return withSettlement({ ...offer, terms }, `Gemini API ${book.name ?? book.book_key}`);
-  });
-  return { ...book, offers };
+  return {
+    ...book,
+    resource_edges: [],
+    offers: book.offers.map((offer) => ({
+      ...offer,
+      enrollment: [],
+      settlement: [],
+      terms: offer.terms.map((term) => {
+        if (term.kind !== "rate") return term;
+        const blocked = offer.terms.some(
+          (candidate) =>
+            candidate.kind === "raw" && candidate.term_key === "charge_binding_unavailable",
+        );
+        return {
+          ...term,
+          variants: term.variants.map((variant) => ({
+            ...variant,
+            ...(blocked ? {} : { charge_binding: groundingBinding(resourceKey, variant, input) }),
+          })),
+        };
+      }),
+    })),
+  };
 }
 
-function resourceBinding(
+function groundingBinding(
   resourceKey: string,
-  meter: PriceMeter,
   variant: AtomicRateVariant,
   input: AtomicProviderPricing,
-): ChargeBinding | undefined {
-  const key =
-    resourceKey === "google-search"
-      ? searchSignal("search", variant.price.per)
-      : resourceKey === "google-maps"
-        ? searchSignal("maps", variant.price.per)
-        : resourceKey === "explicit-cache-storage" &&
-            meter.namespace === "kmodels" &&
-            meter.value === "storage"
-          ? "explicit_cache_stored_token_time"
-          : undefined;
-  if (key === undefined) return;
-  const storage = resourceKey === "explicit-cache-storage";
-  return providerBinding(
-    input,
-    key,
-    storage
-      ? "Explicit cache token count integrated over its retained lifetime"
-      : `Qualifying Gemini ${resourceKey === "google-search" ? "Search" : "Maps"} grounding executions`,
-    variant.price.per,
-    storage ? "resource" : "result_item",
-    variant.observation,
-    `usage:${key}`,
-    storage ? "account" : "outcome",
-  );
-}
-
-function searchSignal(kind: "search" | "maps", unit: UnitExpression): string {
-  const request =
-    unit.factors.length === 1 &&
-    unit.factors[0]?.unit.namespace === "kmodels" &&
-    unit.factors[0].unit.value === "request";
-  return request ? `${kind}_grounded_prompts` : `${kind}_executed_queries`;
-}
-
-function singleUnit(unit: UnitExpression): string {
-  const factor = unit.factors.length === 1 ? unit.factors[0] : undefined;
-  if (factor?.power !== 1) return "quantity";
-  return `${factor.unit.value}${factor.unit.value.endsWith("s") ? "" : "s"}`;
-}
-
-function bindResourceRelations(
-  book: AtomicPricingBook,
-  modelOffers: ReadonlyMap<string, string>,
-): void {
-  if (book.scope.kind !== "provider_resource") return;
-  for (const offer of book.offers) {
-    const modelRef = offerModelRef(offer.offer_key);
-    const target = modelRef === undefined ? undefined : modelOffers.get(modelRef);
-    if (target === undefined) continue;
-    const grounding = ["google-search", "google-maps"].includes(book.scope.resource_key);
-    offer.relations.push(
-      relation(
-        offer,
-        grounding ? "requires" : "compatible_with",
-        target,
-        grounding
-          ? "Grounding adds to the exact model's synchronous inference charge"
-          : "Explicit cache storage remains bound to its exact model identity",
-      ),
-    );
-  }
-}
-
-function offerModelRef(offerKey: string): string | undefined {
-  for (const prefix of ["grounding:", "storage:"])
-    if (offerKey.startsWith(prefix)) return offerKey.slice(prefix.length);
-}
-
-function providerBinding(
-  input: AtomicProviderPricing,
-  key: string,
-  definition: string,
-  unit: UnitExpression,
-  aggregation: ChargeBinding["aggregation"],
-  evidence: RawPriceObservation,
-  locator: string,
-  resolutionPhase: "outcome" | "account" = "outcome",
 ): ChargeBinding {
+  const maps = resourceKey === "google-maps";
+  const request = isStandardUnit(variant.price.per, "request");
+  const key = `${maps ? "maps" : "search"}_${request ? "grounded_prompts" : "executed_queries"}`;
   addAtom(input, {
     kind: "usage_signal",
     key,
-    definition,
-    unit,
-    resolution_phase: resolutionPhase,
+    definition: request
+      ? `Qualifying Gemini ${maps ? "Maps" : "Search"} grounded prompts reported by the interaction or generated result`
+      : `Gemini ${maps ? "Maps" : "Search"} queries reported by the interaction or generated result`,
+    unit: variant.price.per,
+    resolution_phase: "outcome",
   });
   return {
     signal: { namespace: "provider", provider_id: input.provider_id, value: key },
-    aggregation,
-    observations: [{ ...rawEvidence(evidence), locator: { kind: "provider_key", value: locator } }],
-  };
-}
-
-function withSettlement(offer: AtomicPricingOffer, label: string): AtomicPricingOffer {
-  const evidence = offerEvidence(offer);
-  return {
-    ...offer,
-    settlement: [
-      {
-        channel: "direct",
-        biller: "Google",
-        payment_sources: ["allowance", "prepaid_balance", "provider_credit", "postpaid_invoice"],
-        applicability: unconditionalApplicability,
-        observations: [
-          {
-            ...evidence,
-            raw: { label: `${label} settles directly through Google` },
-            establishes_applicability: unconditionalApplicability,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function relation(
-  offer: AtomicPricingOffer,
-  kind: OfferRelation["kind"],
-  target: string,
-  label: string,
-): OfferRelation {
-  const evidence = offerEvidence(offer);
-  return {
-    kind,
-    target: { kind: "offers", offer_refs: [target] },
-    applicability: unconditionalApplicability,
+    aggregation: "result_item",
     observations: [
-      {
-        ...rawEvidence(evidence),
-        raw: { label },
-        establishes_offer_refs: [target],
-        establishes_book_refs: [],
-      },
+      providerKeyEvidence(
+        variant.observation,
+        `Interaction.usage.grounding_tool_count[type=${maps ? "google_maps" : "google_search"}].count`,
+      ),
+      providerKeyEvidence(
+        variant.observation,
+        maps
+          ? "GenerateContentResponse.candidates[*].groundingMetadata.googleMapsWidgetContextToken (one grounded prompt)"
+          : "GenerateContentResponse.candidates[*].groundingMetadata.webSearchQueries.length",
+      ),
     ],
   };
 }
 
-function exclusiveRelation(
-  offer: AtomicPricingOffer,
-  target: string,
-  label: string,
-): OfferRelation {
-  return relation(offer, "exclusive_with", target, label);
-}
-
-function offerEvidence(offer: AtomicPricingOffer): RawPriceObservation {
-  const evidence =
-    offer.states[0]?.observation ??
-    offer.terms.flatMap((term) =>
-      term.kind === "raw"
-        ? term.variants.map(({ observation }) => observation)
-        : [...term.variants, ...term.raw_variants].map(({ observation }) => observation),
-    )[0];
-  if (evidence === undefined) throw new Error(`Gemini offer ${offer.offer_key} has no evidence`);
-  return evidence;
-}
-
-function normalized(
-  observation: NormalizedPriceObservation,
-  applicability: PriceApplicability,
-): NormalizedPriceObservation {
-  return { ...observation, establishes_applicability: applicability };
-}
-
-function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {
-  return offer !== undefined && (offer.states.length > 0 || offer.terms.length > 0);
+function bindGroundingRelations(
+  book: AtomicPricingBook,
+  modelOffers: ReadonlyMap<string, string>,
+): void {
+  if (
+    book.scope.kind !== "provider_resource" ||
+    !["google-search", "google-maps"].includes(book.scope.resource_key)
+  )
+    return;
+  for (const offer of book.offers) {
+    const modelRef = offer.offer_key.startsWith("grounding:")
+      ? offer.offer_key.slice("grounding:".length)
+      : undefined;
+    const target = modelRef === undefined ? undefined : modelOffers.get(modelRef);
+    if (target !== undefined)
+      offer.relations.push(
+        relation(
+          offer,
+          "compatible_with",
+          [target],
+          "Grounding is compatible with this model's online inference offer",
+        ),
+      );
+  }
 }
