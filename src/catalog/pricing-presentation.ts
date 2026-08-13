@@ -67,6 +67,7 @@ export interface ModelPricingView {
   outcome: "not_applicable" | "unknown" | "offers";
   books: PricingBook[];
   modelMechanisms: PricingOffer[];
+  mechanismRefsByRelatedOffer: ReadonlyMap<string, readonly string[]>;
   optionalServices: PricingOffer[];
   automaticComponents: PricingOffer[];
   plansAndCapacity: PricingOffer[];
@@ -209,6 +210,7 @@ export function modelPricingViewFromIndex(
   const empty = {
     books: [],
     modelMechanisms: [],
+    mechanismRefsByRelatedOffer: new Map<string, readonly string[]>(),
     optionalServices: [],
     automaticComponents: [],
     plansAndCapacity: [],
@@ -297,10 +299,28 @@ export function modelPricingViewFromIndex(
   const standaloneOffers = uniqueOffers(
     resources.flatMap(({ offer }) => (classified.has(offer.id) ? [] : [offer])),
   );
+  const relatedOffers = [
+    ...optionalServices,
+    ...automaticComponents,
+    ...plansAndCapacity,
+    ...standaloneOffers,
+  ];
+  const mechanismRefsByRelatedOffer = new Map(
+    relatedOffers.map((offer) => {
+      const mechanismRefs = modelMechanisms.flatMap((mechanism) =>
+        !index.mechanismScopedOffers.has(offer.id) ||
+        isRelatedToMechanism(offer, new Set([mechanism.id]), [mechanism])
+          ? [mechanism.id]
+          : [],
+      );
+      return [offer.id, mechanismRefs] as const;
+    }),
+  );
   return {
     outcome: "offers",
     books,
     modelMechanisms,
+    mechanismRefsByRelatedOffer,
     optionalServices,
     automaticComponents,
     plansAndCapacity,

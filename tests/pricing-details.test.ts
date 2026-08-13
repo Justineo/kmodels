@@ -43,11 +43,18 @@ function region(...values: string[]): WebsitePriceApplicability {
 
 function offer(
   prices: Array<{ amount: string; scope: WebsitePriceApplicability }>,
+  options: {
+    id?: string;
+    title?: string;
+    group?: WebsitePricingOffer["group"];
+    mechanismRefs?: string[];
+  } = {},
 ): WebsitePricingOffer {
   return {
-    id: "b".repeat(64),
-    title: "On-demand inference",
-    group: "model_mechanism",
+    id: options.id ?? "b".repeat(64),
+    title: options.title ?? "On-demand inference",
+    group: options.group ?? "model_mechanism",
+    ...(options.mechanismRefs === undefined ? {} : { mechanism_refs: options.mechanismRefs }),
     billing_mode: { label: "Usage" },
     state_summary: "Metered pricing",
     selectors: [
@@ -110,7 +117,7 @@ describe("model pricing details", () => {
     expect(html).toContain("Published rates");
     expect(html).toContain("$2");
     expect(html).toContain("Same across available Region options");
-    expect(html).not.toContain("Price options");
+    expect(html).not.toContain("Pricing context");
     expect(html).not.toContain("Choose an offer");
   });
 
@@ -122,10 +129,62 @@ describe("model pricing details", () => {
       ]),
     ]);
 
-    expect(html).toContain("Price options");
+    expect(html).toContain("Pricing context");
     expect(html).toContain("Choose Region to see rates");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("$3");
+  });
+
+  it("keeps optional services inside the request cost breakdown without replacing base rates", async () => {
+    const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    const service = offer([{ amount: "$10", scope: region("us", "eu") }], {
+      id: "c".repeat(64),
+      title: "Web Search",
+      group: "optional_service",
+      mechanismRefs: [mechanism.id],
+    });
+
+    const html = await render([mechanism, service]);
+
+    expect(html).toContain("Base model rates");
+    expect(html).toContain("$2");
+    expect(html).toContain("Additional request costs");
+    expect(html).toContain("Optional");
+    expect(html).toContain("Web Search");
+    expect(html).toContain("Charged separately only when this service is used.");
+    expect(html).not.toContain("Related costs and commercial options");
+    expect(html).not.toContain('type="checkbox"');
+  });
+
+  it("explains automatic components as unavoidable added charges", async () => {
+    const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    const component = offer([{ amount: "$0.10", scope: region("us", "eu") }], {
+      id: "d".repeat(64),
+      title: "Underlying agent execution",
+      group: "automatic_component",
+      mechanismRefs: [mechanism.id],
+    });
+
+    const html = await render([mechanism, component]);
+
+    expect(html).toContain("Automatic");
+    expect(html).toContain("Underlying agent execution");
+    expect(html).toContain("Added automatically when this run mode produces the billed usage.");
+  });
+
+  it("omits account-level plans and capacity from the model cost breakdown", async () => {
+    const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    const capacity = offer([], {
+      id: "e".repeat(64),
+      title: "Reserved throughput",
+      group: "plan_capacity",
+      mechanismRefs: [mechanism.id],
+    });
+
+    const html = await render([mechanism, capacity]);
+
+    expect(html).not.toContain("Reserved throughput");
+    expect(html).not.toContain("Plans and capacity");
   });
 
   it("explains a billing meter as plainly labeled facts", async () => {

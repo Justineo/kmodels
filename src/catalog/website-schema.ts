@@ -384,6 +384,7 @@ const websitePricingOfferSchema = z.strictObject({
     "plan_capacity",
     "standalone",
   ]),
+  mechanism_refs: z.array(hash).min(1).optional(),
   billing_mode: websiteBillingModeSchema,
   composition: z.string().min(1).optional(),
   state_summary: z.string().min(1),
