@@ -61,24 +61,16 @@ Status: implemented core; provider pricing convergence is in progress
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `Run mode → base model rates → additional request costs → billing detail`.
-  It never flattens books into one rate list. Model execution mechanisms remain
-  explicit, but the first mechanism in stable presentation order is opened as
-  the initial browsing focus so a multi-offer model no longer starts blank. This
-  focus is navigation, not a provider default, recommendation, or cheapest-offer
-  choice. A sole mechanism is shown as a summary rather than a one-item selector.
-  The selected mechanism remains the stable context for the entire cost breakdown. Its
-  price-changing selectors and base rates appear first. Related offers retain exact mechanism
-  references in the website projection so switching Run mode filters the cost composition without
-  relying on broad model compatibility. Optional services, automatic components, and separately
-  callable request services follow as individual disclosures under `Additional request costs`.
-  Their rates use separate meters and are not summed with base rates. Opening one never replaces the
-  selected mechanism or clears another offer's context; automatic charges are informational and
-  optional services are disclosures rather than request-configuration checkboxes. Account plans and
-  capacity are omitted from model details. Offer choices show one reviewed
-  title; they omit generated
-  book labels, repeated default `Metered pricing` copy, and explanatory prose
-  already implied by the control. Multiple mechanism choices form a compact
+- The detail flow is `[Run mode when selectable] → Rates → audit exceptions`. The first mechanism in
+  stable presentation order is the initial browsing focus, not a provider default,
+  recommendation, or cheapest-offer choice. A sole mechanism is named only by its base-rate block.
+  The selected mechanism remains the context for the entire cost breakdown; exact mechanism
+  references filter its related costs. One continuous rate sheet fully expands the base model,
+  optional services, automatic charges, and independently callable services in that order. Each
+  offer keeps its own heading, price-changing options, and meters; rates are billed separately and
+  never combined into a total. Account plans and capacity are omitted. Offer choices show one
+  reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
+  explanatory prose already implied by the control. Multiple mechanism choices form a compact
   wrapping radio group; its native keyboard behavior owns arrow keys and must
   not navigate between models. Fresh pricing shows its verification time. A retained partition
   instead shows one provider-level status note with both the preserved
@@ -91,14 +83,12 @@ Status: implemented core; provider pricing convergence is in progress
   context. Context controls use the shared
   customizable-select component. Configurable controls in the same grid row
   stay top-aligned when one control includes guidance or validation text. A
-  categorical dimension or exact decimal selector with one possible value is
-  resolved and shown as compact fixed context instead of rendered as a control. Price-query controls
-  contain only dimensions that can change a rate or leave its numeric state only
+  categorical dimension or exact decimal selector with one possible value resolves internally.
+  Price-query controls contain only dimensions that can change a rate or leave its numeric state
   partially covered. When every still-possible variant of one rate has the same
   amount, denomination, unit, driver, and validity and together covers the
   complete remaining numeric offer-state scope, that invariant rate appears
-  immediately with a concise scope note. The user is not required to select a
-  region or other dimension that cannot change the answer. Unresolved unequal or
+  immediately without repeating invariant dimensions. Unresolved unequal or
   partial alternatives remain hidden behind a prompt for only their missing
   dimensions. Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
   rate-book UI. The controls resolve exact applicable rates but do not estimate
@@ -119,9 +109,12 @@ Status: implemented core; provider pricing convergence is in progress
   Do not expose internal terms such as “aggregation boundary” or “resolution
   phase” in UI copy. A known rate without an exact public quantity signal stays
   visible; the UI never treats that as a missing rate.
-  Contribution rows expose the same driver metadata without copying the target rate. Billing mode is
-  read-only invocation context. These facts explain what affects cost without accepting usage input,
+  Contribution rows expose the same driver metadata without copying the target rate. Generic
+  usage-based billing is omitted because the meter, unit, and rate already express it. These rows
+  explain what affects cost without accepting usage input,
   multiplying quantities, or presenting an account total.
+  Information priority is meter, amount, and unit; then rate-changing choices; then meter definitions
+  and source exceptions on demand. Fixed metadata and invariant explanations are omitted.
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.
@@ -139,10 +132,10 @@ Status: implemented core; provider pricing convergence is in progress
   whose combined applicability covers the complete numeric offer-state scope
   after model binding and any categorical value required by every offer-state
   clause. An unresolved selector is allowed only when it cannot change the
-  exact denomination, amount, unit, or first applicable meter. Conditions stay
-  visible in details; the table collapses only their invariant result. An
-  offer-wide singleton is fixed context, not a user choice; this lets a single
-  fixed Batch offer expose its exact table rates. Reviewed provider-qualified
+  exact denomination, amount, unit, or first applicable meter. Conditions needed to resolve a rate
+  stay visible as controls; the table collapses only their invariant result. An offer-wide singleton
+  is resolved internally rather than presented as a user choice; this lets a single fixed Batch
+  offer expose its exact table rates. Reviewed provider-qualified
   units are eligible and retain their native label; the UI never converts or
   compares them with standard units. Qualified validity, partial scope
   coverage, ambiguous offers, applicable raw base-price facts, or bounded

@@ -7,7 +7,6 @@ import type {
   WebsitePricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
-import UiIcon from "./UiIcon.vue";
 
 const props = defineProps<{
   model: WebsiteModel;
@@ -28,30 +27,16 @@ const activeMechanism = computed(
     modelMechanisms.value.find(({ id }) => id === selectedMechanismId.value) ??
     modelMechanisms.value[0],
 );
-const relatedOffers = computed(() =>
-  offers.value.filter(
-    (offer) =>
-      offer.group !== "model_mechanism" &&
+const rateOffers = computed(() =>
+  offers.value.filter((offer) => {
+    if (offer.group === "model_mechanism") return offer.id === activeMechanism.value?.id;
+    return (
       offer.group !== "plan_capacity" &&
       (activeMechanism.value === undefined ||
         offer.mechanism_refs === undefined ||
-        offer.mechanism_refs.includes(activeMechanism.value.id)),
-  ),
-);
-const optionalServices = computed(() =>
-  relatedOffers.value.filter(({ group }) => group === "optional_service"),
-);
-const automaticComponents = computed(() =>
-  relatedOffers.value.filter(({ group }) => group === "automatic_component"),
-);
-const separateServices = computed(() =>
-  relatedOffers.value.filter(({ group }) => group === "standalone"),
-);
-const additionalCostCount = computed(
-  () =>
-    optionalServices.value.length +
-    automaticComponents.value.length +
-    separateServices.value.length,
+        offer.mechanism_refs.includes(activeMechanism.value.id))
+    );
+  }),
 );
 
 watch(
@@ -77,18 +62,11 @@ function offerState(offer: WebsitePricingOffer): string | undefined {
   return offer.state_summary === "Metered pricing" ? undefined : offer.state_summary;
 }
 
-function additionalCostKind(offer: WebsitePricingOffer): string {
+function offerKind(offer: WebsitePricingOffer): string {
+  if (offer.group === "model_mechanism") return "Base model";
   if (offer.group === "optional_service") return "Optional";
   if (offer.group === "automatic_component") return "Automatic";
-  return "Separate service";
-}
-
-function additionalCostDescription(offer: WebsitePricingOffer): string {
-  if (offer.group === "optional_service")
-    return "Charged separately only when this service is used.";
-  if (offer.group === "automatic_component")
-    return "Added automatically when this run mode produces the billed usage.";
-  return "A separately callable service that can contribute to this request's cost.";
+  return "Service";
 }
 </script>
 
@@ -154,28 +132,13 @@ function additionalCostDescription(offer: WebsitePricingOffer): string {
 
     <template v-else-if="detail">
       <section
-        v-if="modelMechanisms.length > 0"
+        v-if="modelMechanisms.length > 1"
         class="run-mode"
         aria-labelledby="run-mode-heading"
       >
-        <header class="section-introduction">
-          <div>
-            <h4 id="run-mode-heading">Run mode</h4>
-            <p>Select how the model is invoked. Each mode has its own base rates.</p>
-          </div>
-        </header>
+        <h4 id="run-mode-heading" class="section-heading">Run mode</h4>
 
-        <div v-if="modelMechanisms.length === 1" class="run-mode-summary">
-          <span>
-            <strong>{{ activeMechanism?.title }}</strong>
-            <small>{{ activeMechanism?.billing_mode.label }}</small>
-          </span>
-          <small v-if="activeMechanism && offerState(activeMechanism)" class="offer-state">
-            {{ offerState(activeMechanism) }}
-          </small>
-        </div>
-
-        <fieldset v-else class="run-mode-options">
+        <fieldset class="run-mode-options">
           <legend class="visually-hidden">Choose a run mode</legend>
           <div class="offer-list">
             <label v-for="offer in modelMechanisms" :key="offer.id" class="offer-choice">
@@ -186,81 +149,38 @@ function additionalCostDescription(offer: WebsitePricingOffer): string {
                 :checked="activeMechanism?.id === offer.id"
                 @change="selectMechanism(offer.id)"
               />
-              <span>
-                <strong>{{ offer.title }}</strong>
-                <small>{{ offer.billing_mode.label }}</small>
-              </span>
+              <strong>{{ offer.title }}</strong>
               <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
             </label>
           </div>
         </fieldset>
       </section>
 
-      <section v-if="activeMechanism" class="base-cost" aria-labelledby="base-rates-heading">
-        <header class="cost-section-heading">
-          <div>
-            <span class="section-index">01</span>
-            <div>
-              <h4 id="base-rates-heading">Base model rates</h4>
-              <p>{{ activeMechanism.title }} · {{ activeMechanism.billing_mode.label }}</p>
-            </div>
-          </div>
-          <span v-if="offerState(activeMechanism)" class="offer-state">
-            {{ offerState(activeMechanism) }}
-          </span>
-        </header>
-        <PricingOfferBreakdown
-          :key="activeMechanism.id"
-          :offer="activeMechanism"
-          :model-ref="model.uid"
-        />
-      </section>
-
-      <div v-else class="pricing-outcome no-base-offer">
-        <strong>No provider-priced model run mode</strong>
-        <span>Only related request services are published for this model.</span>
-      </div>
-
-      <section
-        v-if="additionalCostCount > 0"
-        class="additional-costs"
-        aria-labelledby="additional-costs-heading"
-      >
-        <header class="cost-section-heading">
-          <div>
-            <span class="section-index">{{ activeMechanism ? "02" : "01" }}</span>
-            <div>
-              <h4 id="additional-costs-heading">Additional request costs</h4>
-              <p>Separate meters shown alongside the base rates; no usage total is calculated.</p>
-            </div>
-          </div>
-          <strong class="cost-count">{{ additionalCostCount }}</strong>
+      <section v-if="rateOffers.length > 0" class="rate-sheet" aria-labelledby="rates-heading">
+        <header class="rate-sheet-heading">
+          <h4 id="rates-heading">Rates</h4>
+          <p>Each meter is billed separately.</p>
         </header>
 
-        <div class="additional-cost-list">
-          <details
-            v-for="offer in [...optionalServices, ...automaticComponents, ...separateServices]"
-            :key="offer.id"
-            class="additional-cost"
-          >
-            <summary>
-              <span class="cost-summary-main">
-                <small class="cost-kind">{{ additionalCostKind(offer) }}</small>
-                <span>
-                  <strong>{{ offer.title }}</strong>
-                  <small>{{ additionalCostDescription(offer) }}</small>
-                </span>
-              </span>
-              <span class="cost-summary-meta">
-                <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
-                <UiIcon name="chevron-right" />
-              </span>
-            </summary>
-            <div class="additional-cost-body">
-              <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
-            </div>
-          </details>
+        <div v-if="!activeMechanism" class="pricing-outcome no-base-offer">
+          <strong>No base model rate</strong>
         </div>
+
+        <article
+          v-for="offer in rateOffers"
+          :key="offer.id"
+          class="rate-offer"
+          :data-kind="offer.group"
+        >
+          <header class="rate-offer-heading">
+            <div>
+              <small class="rate-kind">{{ offerKind(offer) }}</small>
+              <h5>{{ offer.title }}</h5>
+            </div>
+            <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
+          </header>
+          <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
+        </article>
       </section>
     </template>
   </section>
@@ -334,59 +254,36 @@ function additionalCostDescription(offer: WebsitePricingOffer): string {
 }
 
 .run-mode,
-.base-cost,
-.additional-costs,
-.no-base-offer {
+.rate-sheet {
   margin-top: var(--space-5);
 }
 
-.section-introduction,
-.cost-section-heading,
-.run-mode-summary,
-.additional-cost > summary {
+.rate-offer-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
 
-.section-introduction h4,
-.section-introduction p,
-.cost-section-heading h4,
-.cost-section-heading p {
+.section-heading,
+.rate-sheet-heading h4,
+.rate-sheet-heading p,
+.rate-offer-heading h5 {
   margin: 0;
 }
 
-.section-introduction h4,
-.cost-section-heading h4 {
+.section-heading,
+.rate-sheet-heading h4 {
   color: var(--color-text-primary);
   font-size: var(--font-size-body);
 }
 
-.section-introduction p,
-.cost-section-heading p {
+.rate-sheet-heading p {
   margin-top: var(--space-0-5);
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);
 }
 
-.run-mode-summary {
-  gap: var(--space-3);
-  margin-top: var(--space-2);
-  padding-block: var(--space-2-5);
-  border-block: 1px solid var(--color-border-subtle);
-}
-
-.run-mode-summary > span:first-child,
-.offer-choice > span,
-.cost-summary-main > span {
-  display: grid;
-  gap: var(--space-0-5);
-}
-
-.run-mode-summary small,
-.offer-choice small,
-.cost-summary-main small,
-.cost-summary-meta small {
+.offer-choice small {
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);
 }
@@ -448,104 +345,48 @@ function additionalCostDescription(offer: WebsitePricingOffer): string {
   text-align: right;
 }
 
-.base-cost,
-.additional-costs {
+.rate-sheet {
   padding-top: var(--space-5);
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.cost-section-heading {
+.rate-sheet-heading,
+.rate-offer-heading {
   gap: var(--space-3);
 }
 
-.cost-section-heading > div {
-  display: flex;
+.rate-offer {
   min-width: 0;
-  align-items: flex-start;
-  gap: var(--space-2-5);
-}
-
-.section-index {
-  display: grid;
-  width: var(--control-height-default);
-  height: var(--control-height-default);
-  flex: none;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--color-text-muted);
-  background: var(--color-surface-subtle);
-  font-size: var(--font-size-micro);
-  font-variant-numeric: tabular-nums;
-}
-
-.cost-count {
-  min-width: var(--control-height-default);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-caption);
-  text-align: center;
-}
-
-.additional-cost-list {
-  margin-top: var(--space-3);
-  border-block: 1px solid var(--color-border-subtle);
-}
-
-.additional-cost + .additional-cost {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
 }
 
-.additional-cost > summary {
-  min-height: var(--control-height-comfortable);
-  gap: var(--space-3);
-  padding-block: var(--space-2-5);
-  list-style: none;
-  cursor: pointer;
-}
-
-.additional-cost > summary::-webkit-details-marker {
-  display: none;
-}
-
-.additional-cost > summary:hover strong {
-  color: var(--color-accent);
-}
-
-.cost-summary-main,
-.cost-summary-meta {
-  display: flex;
-  align-items: center;
-}
-
-.cost-summary-main {
+.rate-offer-heading > div {
+  display: grid;
   min-width: 0;
-  gap: var(--space-3);
+  gap: var(--space-0-5);
 }
 
-.cost-kind {
-  width: 5.5rem;
-  flex: none;
-  color: var(--color-accent) !important;
+.rate-offer-heading h5 {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-body);
+}
+
+.rate-kind {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-micro);
   font-weight: var(--font-weight-medium);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
 }
 
-.cost-summary-meta {
-  flex: none;
-  gap: var(--space-2);
+.rate-offer:not([data-kind="model_mechanism"]) .rate-kind {
+  color: var(--color-accent);
 }
 
-.cost-summary-meta .ui-icon {
-  transition: transform var(--duration-fast) var(--easing-standard);
-}
-
-.additional-cost[open] .cost-summary-meta .ui-icon {
-  transform: rotate(90deg);
-}
-
-.additional-cost-body {
-  margin-left: calc(5.5rem + var(--space-3));
-  padding: 0 0 var(--space-4);
+.no-base-offer {
+  margin-top: var(--space-4);
 }
 
 @media (max-width: 640px) {
@@ -555,23 +396,6 @@ function additionalCostDescription(offer: WebsitePricingOffer): string {
 
   .offer-choice {
     width: 100%;
-  }
-
-  .cost-summary-main {
-    align-items: flex-start;
-    gap: var(--space-2);
-  }
-
-  .cost-kind {
-    width: 4.75rem;
-  }
-
-  .cost-summary-main > span > small {
-    display: none;
-  }
-
-  .additional-cost-body {
-    margin-left: 0;
   }
 }
 </style>

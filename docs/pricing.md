@@ -696,44 +696,36 @@ representative number exists, unavailable sibling cells use an em dash.
 
 For a converged provider, the order is:
 
-1. one selected model invocation mechanism;
-2. that mechanism's price-changing context and base model rates;
-3. optional, automatic, and separately callable request costs related to that mechanism; and
-4. offer-local billing facts, contributed usage, and unnormalized warnings.
+1. Run mode, when more than one model invocation mechanism exists;
+2. one rate sheet with the selected mechanism first and its related request costs after it; and
+3. each offer's price-changing options and supporting commercial facts.
 
-Alternative model mechanisms use radio controls. A unique mechanism is fixed and summarized instead
-of rendered as a one-item selector; this is not inference of a provider default. The website
-projection retains the exact mechanism references for every related offer so changing Run mode can
-change the visible cost composition without guessing compatibility.
+The first mechanism in presentation order is the initial browsing focus, not a provider default.
+Alternative mechanisms use radio controls; a sole mechanism is named only by its base-rate block.
+The website projection emits offers in the presentation order above and retains exact mechanism
+references so changing Run mode also filters its related costs.
 
-Optional services remain separate offers and separate meters, but appear beside the base rates as
-part of one request-cost breakdown. They use disclosure controls rather than selection controls:
-Kmodels explains the available public rates but does not configure a request, accept quantities, or
-calculate a total. Automatic components are explicitly labeled as charges produced by the selected
-mechanism and likewise cannot be toggled. Opening either kind never replaces the model mechanism or
-resets its pricing context. Account plans and capacity procurement do not appear in model details.
+The rate sheet fully expands each offer without merging its meters. Headings distinguish the base
+model, optional services, automatic charges, and independently callable services. These are prices,
+not request controls: Kmodels does not configure a request, accept quantities, or calculate a total.
+Account plans and capacity procurement do not appear in model details.
 
 Each offer owns its pricing-context controls; a related offer never consumes or resets another
-offer's context. The controls filter applicability from explicit user selections. A
-categorical selector with one possible value is fixed automatically and shown
-as compact context rather than as a disabled selector. Exact
-rate or allowance rows appear only when the current partial context proves that
-they apply. Alternatives whose applicability is still unresolved remain hidden,
-and the rate section prompts for exactly those missing dimensions. Resolved
-rows do not repeat the chosen context. A single offer state stays in the offer
-summary, while offers with several possible states show the resolved state
-after context selection. The UI does not multiply usage, apply allowances,
-estimate a request, or calculate a total. Each resolved rate instead shows its
-known cost driver, reviewed trigger definition, aggregation boundary, and
-earliest resolution phase. An unbound rate remains visible with an explicit
-missing-signal note. Contribution bindings and billing mode are projected as read-only commercial
-facts. Possibly applicable
-raw base pricing marks the offer incomplete while normalized rows remain
-available after resolution. Exact offer relations are shown as composition
-context, and do not alter list-price selection. Small fully resolved target
-sets name their offers; broad or partially loaded sets show the exact target
-count instead of repeating placeholder labels. Raw allowance facts similarly
-make only the allowance summary incomplete.
+offer's context. Controls include only dimensions needed to resolve unequal or partially covered
+rates; single-value dimensions resolve internally because they are not user decisions. Exact rate or
+allowance rows appear only when the current partial context proves that they apply. Alternatives
+whose applicability is still unresolved remain hidden, and the rate section prompts for exactly
+those missing dimensions. Resolved rows do not repeat the chosen context. A single offer state stays
+in the offer summary, while offers with several possible states show the resolved state after
+context selection. The UI does not multiply usage, apply allowances, estimate a request, or
+calculate a total. Each resolved rate instead shows its known cost driver, reviewed trigger
+definition, aggregation boundary, and earliest resolution phase. An unbound rate remains visible
+with an explicit missing-signal note. Contribution bindings are read-only commercial facts. Generic
+usage-based billing is omitted from the model UI because the meter, unit, and rate already
+communicate it. Possibly applicable raw base pricing marks the offer incomplete while normalized
+rows remain available after resolution. Exact offer relations determine mechanism-scoped inclusion
+and offer labels without altering list-price selection. Raw allowance facts similarly make only the
+allowance summary incomplete.
 
 Numeric selectors preserve their canonical domain. Dimensions containing only
 inclusive singleton ranges become discrete choices. When the distinct range

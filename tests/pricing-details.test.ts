@@ -114,11 +114,10 @@ describe("model pricing details", () => {
   it("shows invariant regional rates without making the user choose a region", async () => {
     const html = await render([offer([{ amount: "$2", scope: region("us", "eu") }])]);
 
-    expect(html).toContain("Published rates");
+    expect(html).toContain("Rates");
     expect(html).toContain("$2");
-    expect(html).toContain("Same across available Region options");
-    expect(html).not.toContain("Pricing context");
-    expect(html).not.toContain("Choose an offer");
+    expect(html).not.toContain("Region");
+    expect(html).not.toContain("Run mode");
   });
 
   it("asks only for context that changes the price", async () => {
@@ -129,13 +128,12 @@ describe("model pricing details", () => {
       ]),
     ]);
 
-    expect(html).toContain("Pricing context");
-    expect(html).toContain("Choose Region to see rates");
+    expect(html).toContain("Select Region to see rates");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("$3");
   });
 
-  it("keeps optional services inside the request cost breakdown without replacing base rates", async () => {
+  it("expands optional services directly after the base model rates", async () => {
     const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
     const service = offer([{ amount: "$10", scope: region("us", "eu") }], {
       id: "c".repeat(64),
@@ -146,17 +144,17 @@ describe("model pricing details", () => {
 
     const html = await render([mechanism, service]);
 
-    expect(html).toContain("Base model rates");
+    expect(html).toContain("Base model");
     expect(html).toContain("$2");
-    expect(html).toContain("Additional request costs");
     expect(html).toContain("Optional");
     expect(html).toContain("Web Search");
-    expect(html).toContain("Charged separately only when this service is used.");
-    expect(html).not.toContain("Related costs and commercial options");
-    expect(html).not.toContain('type="checkbox"');
+    expect(html).toContain("$10");
+    expect(html.indexOf("$2")).toBeLessThan(html.indexOf("Web Search"));
+    expect(html.indexOf("Web Search")).toBeLessThan(html.indexOf("$10"));
+    expect(html).not.toContain("Additional request costs");
   });
 
-  it("explains automatic components as unavoidable added charges", async () => {
+  it("labels automatic components separately", async () => {
     const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
     const component = offer([{ amount: "$0.10", scope: region("us", "eu") }], {
       id: "d".repeat(64),
@@ -169,7 +167,47 @@ describe("model pricing details", () => {
 
     expect(html).toContain("Automatic");
     expect(html).toContain("Underlying agent execution");
-    expect(html).toContain("Added automatically when this run mode produces the billed usage.");
+    expect(html).toContain("$0.10");
+  });
+
+  it("shows only costs related to the selected run mode", async () => {
+    const interactive = offer([{ amount: "$2", scope: region("us", "eu") }], {
+      title: "Interactive",
+    });
+    const batch = offer([{ amount: "$1", scope: region("us", "eu") }], {
+      id: "c".repeat(64),
+      title: "Batch",
+    });
+    const service = offer([{ amount: "$9", scope: region("us", "eu") }], {
+      id: "d".repeat(64),
+      title: "Batch tools",
+      group: "optional_service",
+      mechanismRefs: [batch.id],
+    });
+
+    const html = await render([interactive, batch, service]);
+
+    expect(html).toContain("Run mode");
+    expect(html).toContain("Interactive");
+    expect(html).toContain("Batch");
+    expect(html).toContain("$2");
+    expect(html).not.toContain("$1");
+    expect(html).not.toContain("Batch tools");
+    expect(html).not.toContain("$9");
+  });
+
+  it("resolves fixed request context without surfacing non-actionable metadata", async () => {
+    const pricedOffer = offer([{ amount: "$2", scope: region("us") }]);
+    const selector = pricedOffer.selectors[0];
+    if (selector?.kind !== "categorical") throw new Error("Missing categorical test selector");
+    selector.values = selector.values.slice(1);
+
+    const html = await render([pricedOffer]);
+
+    expect(html).toContain("$2");
+    expect(html).not.toContain("Region");
+    expect(html).not.toContain("Billing details");
+    expect(html).not.toContain("Usage");
   });
 
   it("omits account-level plans and capacity from the model cost breakdown", async () => {
@@ -184,7 +222,6 @@ describe("model pricing details", () => {
     const html = await render([mechanism, capacity]);
 
     expect(html).not.toContain("Reserved throughput");
-    expect(html).not.toContain("Plans and capacity");
   });
 
   it("explains a billing meter as plainly labeled facts", async () => {
@@ -201,13 +238,12 @@ describe("model pricing details", () => {
 
     const html = await render([pricedOffer]);
 
-    expect(html).toContain("What this rate charges for");
+    expect(html).toContain("Meter details");
     expect(html).toContain("Charges for");
     expect(html).toContain("What counts");
     expect(html).toContain("Counted per");
     expect(html).toContain("When known");
     expect(html).toContain("After the result is known");
-    expect(html).not.toContain("How usage is counted");
     expect(html).not.toContain("aggregation boundary");
     expect(html).not.toContain("resolution phase");
   });
