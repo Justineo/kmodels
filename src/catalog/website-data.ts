@@ -628,15 +628,42 @@ function websitePricingDetail(
       ? undefined
       : websitePricingDetailSchema.parse({ snapshot, offers: [] });
   const offers = [
-    ...view.modelMechanisms.map((offer) => ({ offer, group: "model_mechanism" as const })),
-    ...view.optionalServices.map((offer) => ({ offer, group: "optional_service" as const })),
+    ...view.modelMechanisms.map((offer) => ({
+      offer,
+      group: "model_mechanism" as const,
+      mechanismRefs: undefined,
+    })),
+    ...view.optionalServices.map((offer) => ({
+      offer,
+      group: "optional_service" as const,
+      mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
+    })),
     ...view.automaticComponents.map((offer) => ({
       offer,
       group: "automatic_component" as const,
+      mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
     })),
-    ...view.plansAndCapacity.map((offer) => ({ offer, group: "plan_capacity" as const })),
-    ...view.standaloneOffers.map((offer) => ({ offer, group: "standalone" as const })),
-  ].map(({ offer, group }) => websiteOffer(view.books, offer, group, modelRef, labels, atoms));
+    ...view.plansAndCapacity.map((offer) => ({
+      offer,
+      group: "plan_capacity" as const,
+      mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
+    })),
+    ...view.standaloneOffers.map((offer) => ({
+      offer,
+      group: "standalone" as const,
+      mechanismRefs: view.mechanismRefsByRelatedOffer.get(offer.id),
+    })),
+  ].map(({ offer, group, mechanismRefs }) =>
+    websiteOffer(
+      view.books,
+      offer,
+      group,
+      modelRef,
+      labels,
+      atoms,
+      mechanismRefs === undefined || mechanismRefs.length === 0 ? {} : { mechanismRefs },
+    ),
+  );
   return websitePricingDetailSchema.parse({
     ...(snapshot === undefined ? {} : { snapshot }),
     offers,
@@ -735,7 +762,7 @@ function websiteOffer(
   modelRef: string | undefined,
   labels: CategoricalLabelIndex,
   atoms: ProviderAtomIndex,
-  options: { unnormalizedLimit?: number } = {},
+  options: { unnormalizedLimit?: number; mechanismRefs?: readonly string[] } = {},
 ): WebsitePricingOffer {
   const states = offer.states.map((state, index) => ({
     key: `state:${index}`,
@@ -814,6 +841,7 @@ function websiteOffer(
     id: offer.id,
     title: offer.name ?? formatSentenceCase(offer.offer_key),
     group,
+    ...(options.mechanismRefs === undefined ? {} : { mechanism_refs: [...options.mechanismRefs] }),
     billing_mode: billingMode(offer.billing_mode, atoms),
     ...(offer.relations.length === 0 ? {} : { composition: relationLabel(books, offer) }),
     state_summary: offerStateSummary(offer, modelRef),

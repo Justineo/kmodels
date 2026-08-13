@@ -61,14 +61,21 @@ Status: implemented core; provider pricing convergence is in progress
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `rate answer → price-changing options → request components → audit detail`.
+- The detail flow is `Run mode → base model rates → additional request costs → billing detail`.
   It never flattens books into one rate list. Model execution mechanisms remain
   explicit, but the first mechanism in stable presentation order is opened as
   the initial browsing focus so a multi-offer model no longer starts blank. This
   focus is navigation, not a provider default, recommendation, or cheapest-offer
   choice. A sole mechanism is shown as a summary rather than a one-item selector.
-  Optional services, automatic components, and standalone request services move behind one
-  related-cost disclosure instead of preceding the base-rate answer. Offer choices show one reviewed
+  The selected mechanism remains the stable context for the entire cost breakdown. Its
+  price-changing selectors and base rates appear first. Related offers retain exact mechanism
+  references in the website projection so switching Run mode filters the cost composition without
+  relying on broad model compatibility. Optional services, automatic components, and separately
+  callable request services follow as individual disclosures under `Additional request costs`.
+  Their rates use separate meters and are not summed with base rates. Opening one never replaces the
+  selected mechanism or clears another offer's context; automatic charges are informational and
+  optional services are disclosures rather than request-configuration checkboxes. Account plans and
+  capacity are omitted from model details. Offer choices show one reviewed
   title; they omit generated
   book labels, repeated default `Metered pricing` copy, and explanatory prose
   already implied by the control. Multiple mechanism choices form a compact
@@ -79,8 +86,9 @@ Status: implemented core; provider pricing convergence is in progress
   explanation. For an unknown model it says that the last verified provider
   snapshot contained no pricing; it never implies that the model previously had
   a price or that model-level validation failed.
-  Selecting another offer resets its child context, and context filtering never
-  hides or reorders the choices above it. Context controls use the shared
+  Selecting another Run mode resets only the outgoing mechanism's child context, and context
+  filtering never hides or reorders the choices above it. Each related offer owns independent child
+  context. Context controls use the shared
   customizable-select component. Configurable controls in the same grid row
   stay top-aligned when one control includes guidance or validation text. A
   categorical dimension or exact decimal selector with one possible value is

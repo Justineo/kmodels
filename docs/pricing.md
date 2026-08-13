@@ -696,20 +696,25 @@ representative number exists, unavailable sibling cells use an em dash.
 
 For a converged provider, the order is:
 
-1. alternative model mechanisms;
-2. independently selectable optional services;
-3. automatic request components and related standalone request services;
-4. the focused offer's context controls;
-5. states, rates, additional contributed usage, and unnormalized warnings.
+1. one selected model invocation mechanism;
+2. that mechanism's price-changing context and base model rates;
+3. optional, automatic, and separately callable request costs related to that mechanism; and
+4. offer-local billing facts, contributed usage, and unnormalized warnings.
 
-Offer selection is above its child controls. Alternative model mechanisms use
-radio controls; optional services use independent checkboxes and never replace
-the model mechanism. Informational groups focus their details without implying
-selection. Changing the focused offer resets its context. A unique model
-mechanism is fixed and summarized instead of rendered as a one-item selector;
-this is not inference of a provider default.
+Alternative model mechanisms use radio controls. A unique mechanism is fixed and summarized instead
+of rendered as a one-item selector; this is not inference of a provider default. The website
+projection retains the exact mechanism references for every related offer so changing Run mode can
+change the visible cost composition without guessing compatibility.
 
-The pricing-context controls filter applicability from explicit user selections. A
+Optional services remain separate offers and separate meters, but appear beside the base rates as
+part of one request-cost breakdown. They use disclosure controls rather than selection controls:
+Kmodels explains the available public rates but does not configure a request, accept quantities, or
+calculate a total. Automatic components are explicitly labeled as charges produced by the selected
+mechanism and likewise cannot be toggled. Opening either kind never replaces the model mechanism or
+resets its pricing context. Account plans and capacity procurement do not appear in model details.
+
+Each offer owns its pricing-context controls; a related offer never consumes or resets another
+offer's context. The controls filter applicability from explicit user selections. A
 categorical selector with one possible value is fixed automatically and shown
 as compact context rather than as a disabled selector. Exact
 rate or allowance rows appear only when the current partial context proves that

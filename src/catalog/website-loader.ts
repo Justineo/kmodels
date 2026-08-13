@@ -229,6 +229,7 @@ function mergeProviderOffer(fragments: WebsitePricingOffer[]): WebsitePricingOff
     if (
       !sameOfferSummary(current, fragment) ||
       current.group !== fragment.group ||
+      current.mechanism_refs?.join("\u0000") !== fragment.mechanism_refs?.join("\u0000") ||
       current.composition !== fragment.composition ||
       current.unnormalized_count !== fragment.unnormalized_count
     )

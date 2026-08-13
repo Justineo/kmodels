@@ -796,7 +796,8 @@ describe("canonical pricing presentation", () => {
       ],
     });
 
-    expect(modelPricingView(data, model())).toMatchObject({
+    const view = modelPricingView(data, model());
+    expect(view).toMatchObject({
       optionalServices: [
         expect.objectContaining({ id: incurringOfferId }),
         expect.objectContaining({ id: requiredOfferId }),
@@ -804,5 +805,8 @@ describe("canonical pricing presentation", () => {
       automaticComponents: [expect.objectContaining({ id: automaticOfferId })],
       standaloneOffers: [],
     });
+    expect(view.mechanismRefsByRelatedOffer.get(requiredOfferId)).toEqual([offerId]);
+    expect(view.mechanismRefsByRelatedOffer.get(incurringOfferId)).toEqual([offerId]);
+    expect(view.mechanismRefsByRelatedOffer.get(automaticOfferId)).toEqual([offerId]);
   });
 });
