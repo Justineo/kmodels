@@ -1,8 +1,8 @@
 {
-  "catalog_version": "71d1bcbc2724f6a84107d9bc437fe824d5b9ac849eebca26aea8ce1132294254",
-  "generated_at": "2026-08-13T00:15:37.870Z",
+  "catalog_version": "2de229bd826c16ed6b89e7f108b8266725f6bc9927d33eda4a86f3c16562454e",
+  "generated_at": "2026-08-13T01:31:16.132Z",
   "outcome": "changed",
-  "previous_catalog_version": "ccf2c1c151300f5630651488695c2cc761fcbd152828ea2a576ca14dd2312ae9",
+  "previous_catalog_version": "71d1bcbc2724f6a84107d9bc437fe824d5b9ac849eebca26aea8ce1132294254",
   "providers": [
     {
       "attempt": {
@@ -83,7 +83,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 8,
+            "consecutive_failures": 9,
             "last_success_at": "2026-08-12T16:17:50.411Z",
             "message": "Anthropic endpoint document drifted for v1/models",
             "outcome": "parse_failed",
@@ -345,7 +345,7 @@
             "source_id": "azure-public-pricing"
           },
           {
-            "consecutive_failures": 8,
+            "consecutive_failures": 9,
             "last_success_at": "2026-08-12T16:17:50.411Z",
             "message": "Azure Claude delegated-pricing contract drifted",
             "outcome": "parse_failed",
@@ -1547,22 +1547,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1519,
+            "parsed_models": 1520,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1519,
+              "model_records": 1520,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1519
+              "unknown_models": 1520
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1734,
+              "diagnostic_count": 1736,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1611,16 +1611,16 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1734,
+                "unbound": 1736,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 13867,
+              "observed_items": 13869,
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 23,
-                "hf_inference_compute_price_unbound": 1396,
-                "partner_route_price_not_published": 338,
+                "hf_inference_compute_price_unbound": 1397,
+                "partner_route_price_not_published": 339,
                 "single_partner_inventory_without_product_evidence": 12109
               },
               "unit": "reviewed source pricing item"
@@ -1775,24 +1775,103 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1396,
+            "parsed_models": 1397,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 1561,
-        "previous": 1562,
-        "removed": 1,
-        "removed_model_refs": [
+        "added": 1,
+        "added_model_refs": [
           "huggingface/facebook/xlm-v-base"
         ],
-        "unchanged": 1561
+        "changed": 4,
+        "changed_fields": {
+          "capabilities": 3,
+          "routes": 1
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen2.5-7B-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-Next-80B-A3B-Instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux/krea",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-krea-dev",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux/krea",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/black-forest-labs/FLUX.1-Krea-dev"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.tool_call",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/zai-org/GLM-4.7-FP8"
+          }
+        ],
+        "current": 1562,
+        "previous": 1561,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1557
       },
       "pricing": {
         "commercial_hash": "5a93f1b6acddcbdae334d485601c559b0c70b5637260fad47ba4c36aaac02a0a",
@@ -1800,10 +1879,10 @@
         "previous_commercial_hash": "5a93f1b6acddcbdae334d485601c559b0c70b5637260fad47ba4c36aaac02a0a"
       },
       "pricing_coverage": {
-        "current_models": 1561,
+        "current_models": 1562,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -1
+          "unknown_models": 1
         },
         "normalized_rate_models": 115,
         "not_applicable_models": 0,
@@ -1831,8 +1910,8 @@
           "huggingface/Ateeqq/nsfw-image-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1406,
-        "unknown_models": 1426
+        "unknown_model_refs_omitted": 1407,
+        "unknown_models": 1427
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -2939,7 +3018,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 27,
+            "consecutive_failures": 28,
             "last_success_at": "2026-08-11T21:16:30.116Z",
             "message": "Vercel free pricing conflicted with a paid offer for poolside/laguna-s-2.1-free",
             "outcome": "parse_failed",
@@ -3289,7 +3368,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 28,
+            "consecutive_failures": 29,
             "last_success_at": "2026-08-11T20:13:47.782Z",
             "message": "xAI public imageGenerationModels payload added fields: rateLimits",
             "outcome": "parse_failed",
@@ -3356,18 +3435,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 13,
-    "added_models": 0,
+    "added_models": 1,
     "added_sources": 0,
-    "changed_models": 0,
+    "changed_models": 4,
     "changed_sources": 17,
-    "models": 3447,
+    "models": 3448,
     "pricing_accepted": 12,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 6,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 5,
     "withheld": 0
