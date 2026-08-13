@@ -102,19 +102,15 @@ Status: implemented core; provider pricing convergence is in progress
   choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
   operators. Ranges with gaps or overlaps continue to accept an exact value and
   reject invalid or non-integral count/TTL input.
-- Each resolved rate retains its display-ready charge binding. The primary rate
-  matrix keeps meter and numeric rate scannable; each row discloses the official
-  cost driver on demand as four plainly labeled facts: what is measured, what
-  counts, what each total is grouped by, and when that quantity becomes known.
-  Do not expose internal terms such as “aggregation boundary” or “resolution
-  phase” in UI copy. A known rate without an exact public quantity signal stays
-  visible; the UI never treats that as a missing rate.
+- The model rate matrix shows only the meter, rate, unit, and validity qualification. Driver metadata
+  remains in the provider inspector and canonical audit; a missing driver never hides a rate.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,
   multiplying quantities, or presenting an account total.
-  Information priority is meter, amount, and unit; then rate-changing choices; then meter definitions
-  and source exceptions on demand. Fixed metadata and invariant explanations are omitted.
+  Information priority is meter, amount, and unit; then rate-changing choices; then source
+  exceptions on demand. Fixed metadata, driver definitions, and invariant explanations stay out of
+  model details.
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.

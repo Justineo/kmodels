@@ -161,9 +161,8 @@ back freshly verified model identity; staleness is visible in pricing snapshot m
 The model list shows compact representative inference rates. Details show:
 
 1. one selected invocation mechanism;
-2. its dimensions, published base meter/rate rows, and how usage is counted; and
-3. separately metered optional, automatic, or independently callable request costs attributable to
-   that mechanism.
+2. its base and related request-cost meter/rate rows; and
+3. only the request dimensions that can change those rates.
 
 The mechanism remains the stable presentation context. One fully expanded rate sheet presents it
 before its related services while keeping their meters separate. Optional services label charges
@@ -172,8 +171,8 @@ exact `exclusive_with` relation creates a mutually exclusive related-service cho
 
 The UI does not expose training, storage, capacity procurement, plan enrollment, or settlement
 topology. It does not ask for usage quantities or show a total. Known parameters that affect the
-rate remain visible; provider-owned labels are translated into concise shared concepts while exact
-source wording remains available as evidence.
+rate remain visible. Cost-driver definitions stay out of model details; exact source wording remains
+available as evidence.
 
 ## Validation and migration
 

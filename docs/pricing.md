@@ -718,9 +718,9 @@ whose applicability is still unresolved remain hidden, and the rate section prom
 those missing dimensions. Resolved rows do not repeat the chosen context. A single offer state stays
 in the offer summary, while offers with several possible states show the resolved state after
 context selection. The UI does not multiply usage, apply allowances, estimate a request, or
-calculate a total. Each resolved rate instead shows its known cost driver, reviewed trigger
-definition, aggregation boundary, and earliest resolution phase. An unbound rate remains visible
-with an explicit missing-signal note. Contribution bindings are read-only commercial facts. Generic
+calculate a total. The model rate table omits cost-driver metadata; it remains available in provider
+details and canonical pricing. An unbound rate remains visible. Contribution bindings are read-only
+commercial facts. Generic
 usage-based billing is omitted from the model UI because the meter, unit, and rate already
 communicate it. Possibly applicable raw base pricing marks the offer incomplete while normalized
 rows remain available after resolution. Exact offer relations determine mechanism-scoped inclusion
