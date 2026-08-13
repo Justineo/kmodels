@@ -5,7 +5,8 @@ import {
   versionBadgeModelUids,
 } from "../src/catalog/presentation.ts";
 import { type ModelTask, type ProviderModel, unknownCapabilities } from "../src/catalog/schema.ts";
-import { darkProviderSymbolId, providerSymbolId, spriteSymbols } from "../src/icons/sprite.ts";
+import { darkProviderSymbolId, providerSymbolId } from "../src/icons/manifest.ts";
+import { spriteSymbols } from "../src/icons/sprite.ts";
 import { svgSymbol } from "../src/icons/svg.ts";
 
 function model(tasks: ModelTask[]): ProviderModel {

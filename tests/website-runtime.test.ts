@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 
 const catalog = {
-  schema_version: 2,
+  schema_version: 3,
   data_version: "1".repeat(64),
   generated_at: "2026-07-29T00:00:00.000Z",
   providers: [
@@ -10,7 +10,6 @@ const catalog = {
       id: "test",
       name: "Test",
       pricing_coverage: {
-        models: 1,
         representative_models: 1,
         offer_models: 1,
         unknown_models: 0,
@@ -20,36 +19,14 @@ const catalog = {
       },
     },
   ],
-  models: [
-    {
-      provider_id: "test",
-      model_id: "model",
-      version: "v1",
-      name: "Model",
-      tasks: ["text_generation"],
-      release_date: "2026-07",
-      status: "active",
-      release_stage: "stable",
-      context_tokens: 128_000,
-      detail_chunk: 2,
-    },
-  ],
+  models: [[0, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2]],
 };
 const pricing = {
-  schema_version: 1,
+  schema_version: 2,
   data_version: catalog.data_version,
-  pricing: [
-    {
-      outcome: "offers",
-      input: {
-        meter: "input",
-        amount: "$1",
-        displayUnit: "/ 1M tokens",
-        accessibleText: "$1 per 1 million input tokens",
-        showTooltip: false,
-      },
-    },
-  ],
+  statuses: [],
+  cells: [["$1", "/ 1M tokens", "$1 per 1 million input tokens", 0]],
+  pricing: [[2, null, 0, null, null]],
 };
 
 describe("website runtime catalog parser", () => {
@@ -64,6 +41,12 @@ describe("website runtime catalog parser", () => {
         },
       },
     });
+    expect(
+      parseWebsiteCatalog(
+        { ...catalog, models: [[0, "model", "v1", null, [0], "2026-07", 0, 0, 128_000, 2]] },
+        pricing,
+      ).models[0]?.name,
+    ).toBe("model");
   });
 
   it("rejects unknown fields and unresolved provider references", () => {
@@ -74,7 +57,7 @@ describe("website runtime catalog parser", () => {
       parseWebsiteCatalog(
         {
           ...catalog,
-          models: [{ ...catalog.models[0], provider_id: "missing" }],
+          models: [[1, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2]],
         },
         pricing,
       ),
@@ -88,5 +71,17 @@ describe("website runtime catalog parser", () => {
         data_version: "2".repeat(64),
       }),
     ).toThrow("does not match");
+  });
+
+  it("rejects malformed compact rows and missing dictionary entries", () => {
+    expect(() => parseWebsiteCatalog({ ...catalog, models: [[0, "model"]] }, pricing)).toThrow(
+      "10-item array",
+    );
+    expect(() =>
+      parseWebsiteCatalog(catalog, {
+        ...pricing,
+        pricing: [[2, null, 1, null, null]],
+      }),
+    ).toThrow("does not exist");
   });
 });

@@ -1,6 +1,7 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
 import type { WebsitePricingOffer, WebsitePricingSelector } from "../catalog/website-schema.ts";
+import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 
 const props = defineProps<{ offer: WebsitePricingOffer }>();
 const showStates = computed(
@@ -66,9 +67,8 @@ function summarize(values: string[]): string {
           <small>{{ rate.unit }}</small>
         </div>
         <details v-if="rate.driver">
-          <summary>{{ rate.driver.label }}</summary>
-          <small>{{ rate.driver.definition }}</small>
-          <small> {{ rate.driver.aggregation }} · {{ rate.driver.resolution_phase }} </small>
+          <summary>What this rate charges for</summary>
+          <ChargeDriverFacts :driver="rate.driver" />
         </details>
         <small v-else class="provider-binding-status">Usage binding unavailable</small>
       </div>
@@ -88,9 +88,7 @@ function summarize(values: string[]): string {
         <small v-if="entry.applicability_label !== 'All contexts'">
           {{ entry.applicability_label }}
         </small>
-        <small v-for="driver in entry.drivers" :key="driver.label">
-          {{ driver.label }} · {{ driver.aggregation }} · {{ driver.resolution_phase }}
-        </small>
+        <ChargeDriverFacts v-for="(driver, index) in entry.drivers" :key="index" :driver="driver" />
       </li>
     </ul>
     <ul v-if="offer.enrollment.length > 0" class="provider-fact-list">

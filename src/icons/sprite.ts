@@ -29,6 +29,7 @@ import sun from "lucide-static/icons/sun.svg?raw";
 import x from "lucide-static/icons/x.svg?raw";
 import databricks from "../assets/provider-icons/databricks.svg?raw";
 import microsoftFoundry from "../assets/provider-icons/microsoft-foundry.svg?raw";
+import type { DarkProviderIconId, ProviderIconId, UiIconName } from "./manifest.ts";
 import { svgSymbol } from "./svg.ts";
 
 const uiSources = {
@@ -44,9 +45,9 @@ const uiSources = {
   search,
   sun,
   x,
-} as const;
+} as const satisfies Readonly<Record<UiIconName, string>>;
 
-const providerSources: Readonly<Record<string, string>> = {
+const providerSources = {
   "amazon-bedrock": bedrock,
   anthropic,
   azure: microsoftFoundry,
@@ -65,25 +66,11 @@ const providerSources: Readonly<Record<string, string>> = {
   vercel,
   vertex,
   xai,
-};
+} as const satisfies Readonly<Record<ProviderIconId, string>>;
 
-const darkProviderSources: Readonly<Record<string, string>> = {
+const darkProviderSources = {
   kimi: kimiColor,
-};
-
-export type UiIconName = keyof typeof uiSources;
-
-export function uiSymbolId(name: UiIconName): string {
-  return `ui-${name}`;
-}
-
-export function providerSymbolId(providerId: string): string | undefined {
-  return providerSources[providerId] === undefined ? undefined : `provider-${providerId}`;
-}
-
-export function darkProviderSymbolId(providerId: string): string | undefined {
-  return darkProviderSources[providerId] === undefined ? undefined : `provider-${providerId}-dark`;
-}
+} as const satisfies Readonly<Record<DarkProviderIconId, string>>;
 
 export const spriteSymbols = [
   ...Object.entries(uiSources).map(([name, source]) => svgSymbol(`ui-${name}`, source)),
@@ -92,3 +79,12 @@ export const spriteSymbols = [
     svgSymbol(`provider-${id}-dark`, source),
   ),
 ].join("");
+
+export function installIconSprite(): void {
+  const sprite = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  sprite.classList.add("icon-sprite");
+  sprite.setAttribute("aria-hidden", "true");
+  sprite.setAttribute("focusable", "false");
+  sprite.innerHTML = spriteSymbols;
+  document.body.prepend(sprite);
+}

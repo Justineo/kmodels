@@ -1,4 +1,5 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
+import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
 import { formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
@@ -56,6 +57,7 @@ import {
   type WebsitePricingDetail,
   type WebsitePricingOffer,
   type WebsitePricingSelector,
+  type WebsitePricingSummary,
   type WebsitePricingSummaries,
   type WebsiteStoredModelDetail,
 } from "./website-schema.ts";
@@ -105,10 +107,11 @@ export function websitePublication(
       chunkDetails.map((detail): [string, number] => [detail.model_ref, chunk]),
     ),
   );
+  const providerIndexes = new Map(catalog.providers.map(({ id }, index) => [id, index]));
 
   return {
     catalog: websiteCatalogIndexSchema.parse({
-      schema_version: 2,
+      schema_version: 3,
       data_version: dataVersion,
       generated_at: catalog.generated_at,
       providers: catalog.providers.map(({ id, name }) => ({
@@ -123,40 +126,101 @@ export function websitePublication(
         ),
       })),
       models: catalog.models.map((model) => {
+        const providerIndex = providerIndexes.get(model.provider_id);
+        if (providerIndex === undefined)
+          throw new Error(`Missing website provider ${model.provider_id}`);
         const detailChunk = detailChunkByModel.get(model.uid);
         if (detailChunk === undefined)
           throw new Error(`Missing website detail chunk for ${model.uid}`);
-        return {
-          provider_id: model.provider_id,
-          model_id: model.model_id,
-          ...(model.version === undefined ? {} : { version: model.version }),
-          name: model.name,
-          tasks: model.tasks,
-          ...(model.limits.context_tokens === undefined
-            ? {}
-            : { context_tokens: model.limits.context_tokens }),
-          ...(model.release_date === undefined ? {} : { release_date: model.release_date }),
-          status: model.status,
-          release_stage: model.release_stage,
-          detail_chunk: detailChunk,
-        };
+        return [
+          providerIndex,
+          model.model_id,
+          model.version ?? null,
+          model.name === model.model_id ? null : model.name,
+          model.tasks.map((task) => enumIndex(modelTasks, task, "model task")),
+          model.release_date ?? null,
+          enumIndex(modelLifecycles, model.status, "model lifecycle"),
+          enumIndex(modelReleaseStages, model.release_stage, "model release stage"),
+          model.limits.context_tokens ?? null,
+          detailChunk === 0 ? null : detailChunk,
+        ];
       }),
     }),
-    pricing: websitePricingSummariesSchema.parse({
-      schema_version: 1,
-      data_version: dataVersion,
-      pricing: summaries,
-    }),
+    pricing: compactPricingSummaries(summaries, dataVersion),
     details: deferred.details,
     offers: deferred.offers,
     providerPricing: deferred.providerPricing,
   };
 }
 
+function enumIndex<Value>(values: readonly Value[], value: Value, label: string): number {
+  const index = values.indexOf(value);
+  if (index === -1) throw new Error(`Unknown ${label}`);
+  return index;
+}
+
+function compactPricingSummaries(
+  summaries: readonly WebsitePricingSummary[],
+  dataVersion: string,
+): WebsitePricingSummaries {
+  type Status = NonNullable<WebsitePricingSummary["status"]>;
+  type Cell = NonNullable<WebsitePricingSummary["input"]>;
+  const statuses: Status[] = [];
+  const cells: Cell[] = [];
+  const statusIndexes = new Map<string, number>();
+  const cellIndexes = new Map<string, number>();
+
+  function intern<Value extends object>(
+    value: Value | undefined,
+    values: Value[],
+    indexes: Map<string, number>,
+  ): number | null {
+    if (value === undefined) return null;
+    const key = canonicalJsonKey(value);
+    const existing = indexes.get(key);
+    if (existing !== undefined) return existing;
+    const index = values.length;
+    values.push(value);
+    indexes.set(key, index);
+    return index;
+  }
+
+  const pricing = summaries.map((summary) => [
+    pricingOutcomeCode(summary.outcome),
+    intern(summary.status, statuses, statusIndexes),
+    intern(summary.input, cells, cellIndexes),
+    intern(summary.cache, cells, cellIndexes),
+    intern(summary.output, cells, cellIndexes),
+  ]);
+  return websitePricingSummariesSchema.parse({
+    schema_version: 2,
+    data_version: dataVersion,
+    statuses: statuses.map(({ label, description }) => [label, description]),
+    cells: cells.map(({ amount, displayUnit, accessibleText, showTooltip }) => [
+      amount,
+      displayUnit,
+      accessibleText,
+      showTooltip ? 1 : 0,
+    ]),
+    pricing,
+  });
+}
+
+function pricingOutcomeCode(outcome: WebsitePricingSummary["outcome"]): 0 | 1 | 2 {
+  switch (outcome) {
+    case "not_applicable":
+      return 0;
+    case "unknown":
+      return 1;
+    case "offers":
+      return 2;
+  }
+}
+
 function providerPricingCoverage(
   catalog: Catalog,
   pricing: PricingCatalog,
-  summaries: WebsitePricingSummaries["pricing"],
+  summaries: readonly WebsitePricingSummary[],
   providerId: string,
   detailChunks: number,
 ) {
@@ -164,7 +228,6 @@ function providerPricingCoverage(
     model.provider_id === providerId && summaries[index] !== undefined ? [summaries[index]] : [],
   );
   return {
-    models: providerModels.length,
     representative_models: providerModels.filter(
       (summary) =>
         summary.input !== undefined || summary.cache !== undefined || summary.output !== undefined,
@@ -412,9 +475,9 @@ function pricingSummary(
   model: ProviderModel,
   labels: CategoricalLabelIndex,
 ) {
-  const input = projectPricingTableCellFromView(view, model, "input");
-  const cache = projectPricingTableCellFromView(view, model, "cache");
-  const output = projectPricingTableCellFromView(view, model, "output");
+  const input = websitePricingCell(view, model, "input");
+  const cache = websitePricingCell(view, model, "cache");
+  const output = websitePricingCell(view, model, "output");
   const hasRepresentativeRate = input !== undefined || cache !== undefined || output !== undefined;
   return {
     outcome: view.outcome,
@@ -422,6 +485,21 @@ function pricingSummary(
     ...(input === undefined ? {} : { input }),
     ...(cache === undefined ? {} : { cache }),
     ...(output === undefined ? {} : { output }),
+  };
+}
+
+function websitePricingCell(
+  view: ModelPricingView,
+  model: ProviderModel,
+  meter: "input" | "cache" | "output",
+): WebsitePricingSummary["input"] {
+  const cell = projectPricingTableCellFromView(view, model, meter);
+  if (cell === undefined) return undefined;
+  return {
+    amount: cell.amount,
+    displayUnit: cell.displayUnit,
+    accessibleText: cell.accessibleText,
+    showTooltip: cell.showTooltip,
   };
 }
 

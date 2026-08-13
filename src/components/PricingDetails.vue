@@ -23,6 +23,7 @@ import type {
   WebsitePricingSelector,
   WebsitePublishedValidity,
 } from "../catalog/website-schema.ts";
+import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 import UiIcon from "./UiIcon.vue";
 import UiSelect from "./UiSelect.vue";
 
@@ -30,7 +31,10 @@ const props = defineProps<{
   model: WebsiteModel;
   detail: WebsitePricingDetail | undefined;
   loading: boolean;
+  error: string | undefined;
 }>();
+
+const emit = defineEmits<{ retry: [] }>();
 
 interface OfferGroup {
   key: Exclude<WebsitePricingOffer["group"], "model_mechanism">;
@@ -401,25 +405,6 @@ function joinLabels(labels: string[]): string {
   if (labels.length < 2) return labels[0] ?? "the required context";
   return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 }
-
-type ChargeDriver = NonNullable<WebsitePricingOffer["rates"][number]["driver"]>;
-
-function driverContext(driver: ChargeDriver): string {
-  return `${driver.aggregation} boundary · ${resolutionPhaseLabel(driver.resolution_phase)}`;
-}
-
-function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
-  switch (phase) {
-    case "publication":
-      return "fixed by publication";
-    case "request":
-      return "known from the request";
-    case "outcome":
-      return "known after the outcome";
-    case "account":
-      return "known from account data";
-  }
-}
 </script>
 
 <template>
@@ -474,6 +459,12 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
 
     <div v-else-if="loading" class="pricing-empty" aria-live="polite">
       <span>Loading pricing…</span>
+    </div>
+
+    <div v-else-if="error" class="pricing-outcome" role="alert">
+      <strong>Pricing unavailable</strong>
+      <span>{{ error }}</span>
+      <button type="button" @click="emit('retry')">Retry</button>
     </div>
 
     <template v-else-if="detail">
@@ -625,12 +616,8 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
                     <span class="rate-name">{{ rate.label }}</span>
                     <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
                     <details v-if="rate.driver" class="rate-driver">
-                      <summary>How usage is counted</summary>
-                      <small>{{ rate.driver.label }} · {{ driverContext(rate.driver) }}</small>
-                      <small>{{ rate.driver.definition }}</small>
-                      <small v-if="rate.driver.aggregation_definition">
-                        {{ rate.driver.aggregation_definition }}
-                      </small>
+                      <summary>What this rate charges for</summary>
+                      <ChargeDriverFacts :driver="rate.driver" />
                     </details>
                   </th>
                   <td class="numeric" :aria-label="rate.accessible_text">
@@ -683,13 +670,11 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
                 <span class="allowance-value">{{ contribution.label }}</span>
                 <small>{{ contribution.target }}</small>
                 <template v-if="contribution.drivers.length > 0">
-                  <template
+                  <ChargeDriverFacts
                     v-for="(driver, index) in contribution.drivers"
-                    :key="`${driver.label}:${driver.aggregation}:${index}`"
-                  >
-                    <small>{{ driver.label }} · {{ driverContext(driver) }}</small>
-                    <small>{{ driver.definition }}</small>
-                  </template>
+                    :key="index"
+                    :driver="driver"
+                  />
                 </template>
                 <small v-else>No exact public quantity signal is bound.</small>
                 <small v-if="contribution.qualifier">{{ contribution.qualifier }}</small>
@@ -927,6 +912,24 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
 
 .pricing-warning {
   border-color: var(--color-status-warning);
+}
+
+.pricing-outcome button {
+  width: max-content;
+  min-height: var(--control-height-default);
+  margin-top: var(--space-1);
+  padding-inline: var(--space-3);
+  border: var(--stroke-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
+}
+
+.pricing-outcome button:hover {
+  border-color: var(--color-border-interactive);
+  background: var(--color-surface-hover);
 }
 
 .pricing-offer-group,
@@ -1294,10 +1297,6 @@ function resolutionPhaseLabel(phase: ChargeDriver["resolution_phase"]): string {
   color: var(--color-accent);
   font-size: var(--font-size-micro);
   cursor: pointer;
-}
-
-.rate-driver small {
-  display: block;
 }
 
 .pricing-disclosure {

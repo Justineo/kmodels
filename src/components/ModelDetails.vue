@@ -25,6 +25,7 @@ const emit = defineEmits<{
   close: [];
   navigate: [offset: -1 | 1];
   pricingTargetReached: [];
+  retry: [];
 }>();
 
 const dialog = useTemplateRef<HTMLDialogElement>("dialog");
@@ -277,10 +278,11 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
             </section>
 
             <PricingDetails
-              v-if="!error"
               :model="model"
               :detail="detail?.pricing"
               :loading="loading"
+              :error="error"
+              @retry="emit('retry')"
             />
           </div>
         </div>

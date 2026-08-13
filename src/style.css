@@ -384,212 +384,6 @@ kbd {
   white-space: nowrap;
 }
 
-.filter-popover {
-  position: fixed;
-  top: calc(var(--layout-header-height) + var(--layout-toolbar-height) + 6px);
-  right: 166px;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: min(var(--layout-filter-popover-width), calc(100vw - var(--space-6)));
-  max-width: none;
-  max-height: min(
-    620px,
-    calc(100svh - var(--layout-header-height) - var(--layout-toolbar-height) - 18px)
-  );
-  padding: var(--space-0);
-  border: var(--stroke-hairline) solid var(--color-border-default);
-  border-radius: var(--floating-surface-radius);
-  margin: var(--space-0);
-  overflow: hidden;
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-  box-shadow: var(--shadow-filter);
-}
-
-.filter-scroll-host {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.filter-scroll-viewport {
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-.filter-popover:popover-open {
-  display: grid;
-  animation: reveal-filter-popover var(--duration-standard) var(--easing-enter);
-}
-
-.filter-popover::backdrop {
-  background: var(--color-transparent);
-}
-
-.filter-popover-header,
-.filter-popover-actions {
-  display: flex;
-  align-items: center;
-}
-
-.filter-popover-header {
-  min-height: var(--layout-filter-header-height);
-  justify-content: space-between;
-  gap: var(--space-6);
-  padding: var(--space-2-5) var(--space-3) var(--space-2-5) var(--space-3-5);
-  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
-}
-
-.filter-popover-header h2 {
-  font-size: var(--font-size-chrome);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-snug);
-}
-
-.filter-popover-header p {
-  margin-top: var(--space-0-5);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-label);
-}
-
-.filter-popover-actions {
-  gap: var(--space-1);
-}
-
-.filter-popover-actions > button {
-  min-height: var(--control-height-default);
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-caption);
-}
-
-.filter-popover-actions > button:hover:not(:disabled) {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.filter-popover-actions > button:disabled {
-  color: var(--color-border-default);
-}
-
-.filter-popover-actions > .filter-popover-close {
-  display: grid;
-  width: var(--control-height-default);
-  padding: var(--space-0);
-  place-items: center;
-}
-
-.filter-popover-close .ui-icon {
-  width: var(--icon-size-sm);
-  height: var(--icon-size-sm);
-}
-
-.filter-popover-body {
-  padding: var(--space-3) var(--space-3-5) var(--space-4);
-}
-
-.filter-group {
-  min-width: 0;
-  padding: var(--space-0);
-  border: 0;
-}
-
-.filter-group + .filter-group {
-  margin-top: var(--space-3-5);
-  padding-top: var(--space-3);
-  border-top: var(--stroke-hairline) solid var(--color-border-subtle);
-}
-
-.filter-group legend {
-  margin-bottom: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-label);
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-
-.filter-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-0-5) var(--space-2-5);
-}
-
-.filter-option {
-  display: flex;
-  min-width: 0;
-  min-height: var(--control-height-comfortable);
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-1-5);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: var(--font-size-caption);
-}
-
-.filter-option:hover {
-  color: var(--color-text-primary);
-  background: var(--color-surface-hover);
-}
-
-.filter-option:has(input:checked) {
-  color: var(--color-text-primary);
-  background: var(--color-accent-soft);
-}
-
-.filter-option input {
-  width: var(--icon-size-sm);
-  height: var(--icon-size-sm);
-  flex: 0 0 auto;
-  accent-color: var(--color-accent);
-}
-
-.filter-option > span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.filter-status-dot {
-  width: var(--status-dot-size);
-  height: var(--status-dot-size);
-  flex: 0 0 auto;
-  border-radius: var(--radius-full);
-  background: var(--color-text-muted);
-}
-
-.filter-status-dot[data-status="active"],
-.filter-status-dot[data-status="stable"] {
-  background: var(--color-status-positive);
-}
-
-.filter-status-dot[data-status="preview"] {
-  background: var(--color-accent);
-}
-
-.filter-status-dot[data-status="experimental"],
-.filter-status-dot[data-status="legacy"],
-.filter-status-dot[data-status="deprecated"] {
-  background: var(--color-status-warning);
-}
-
-.filter-status-dot[data-status="retired"] {
-  background: var(--color-status-danger);
-}
-
-.status-filter-label {
-  text-transform: capitalize;
-}
-
-@supports (position-area: bottom) {
-  .filter-popover {
-    inset: auto;
-    position-area: bottom span-left;
-    margin-top: var(--space-1-5);
-  }
-}
-
 .table-scroll-host {
   position: relative;
   min-width: 0;
@@ -1642,13 +1436,6 @@ button.table-status-trigger {
   }
 }
 
-@keyframes reveal-filter-popover {
-  from {
-    translate: 0 calc(var(--reveal-distance-compact) * -1);
-    opacity: var(--opacity-hidden);
-  }
-}
-
 @keyframes reveal-select-menu {
   from {
     translate: 0 calc(var(--radius-xs) * -1);
@@ -1705,19 +1492,6 @@ button.table-status-trigger {
     border-right: 0;
     border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
   }
-
-  .filter-popover {
-    top: calc(
-      var(--layout-header-height) + var(--layout-toolbar-height) + var(--layout-toolbar-height) +
-        6px
-    );
-  }
-
-  @supports (position-area: bottom) {
-    .filter-popover {
-      top: auto;
-    }
-  }
 }
 
 @media (width <= 580px) {
@@ -1749,17 +1523,6 @@ button.table-status-trigger {
     justify-content: flex-start;
     padding-inline: var(--space-2);
     border-top: var(--stroke-hairline) solid var(--color-border-subtle);
-  }
-
-  .filter-popover {
-    right: 8px;
-    width: calc(100vw - var(--space-4));
-  }
-
-  @supports (position-area: bottom) {
-    .filter-popover {
-      position-area: bottom;
-    }
   }
 
   .details-panel {

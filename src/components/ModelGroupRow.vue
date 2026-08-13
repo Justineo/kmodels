@@ -1,6 +1,5 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import { canonicalJson } from "../catalog/canonical-value.ts";
 import type { ModelGroup } from "../catalog/model-groups.ts";
 import {
   formatModelTask,
@@ -37,8 +36,7 @@ const emit = defineEmits<{
 }>();
 
 function equivalent(left: unknown, right: unknown): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  return canonicalJson(left) === canonicalJson(right);
+  return left === right || JSON.stringify(left) === JSON.stringify(right);
 }
 
 function sharedBy<T>(project: (model: WebsiteModel) => T): Shared<T> {

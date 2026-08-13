@@ -25,7 +25,8 @@ async function loadOverlayScrollbars(): Promise<typeof import("overlayscrollbars
 }
 
 export async function prepareOverlayScrollbars(): Promise<void> {
-  if (!prefersNativeScrollbars()) await loadOverlayScrollbars();
+  if (!prefersNativeScrollbars() || window.matchMedia(COARSE_TOUCH_QUERY).matches)
+    await loadOverlayScrollbars();
 }
 
 export function useOverlayScrollbars(elements: () => ScrollbarElements): () => void {

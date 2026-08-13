@@ -85,7 +85,6 @@ describe("provider pricing details", () => {
       id: "test",
       name: "Test",
       pricing_coverage: {
-        models: 0,
         representative_models: 0,
         offer_models: 0,
         unknown_models: 0,

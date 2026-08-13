@@ -19,6 +19,7 @@ try {
     json("/ui/catalog/index.json", "Catalog"),
     json("/ui/catalog/pricing.json", "Pricing summary"),
     prepareOverlayScrollbars(),
+    import("./icons/sprite.ts").then(({ installIconSprite }) => installIconSprite()),
   ]);
   const catalog = parseWebsiteCatalog(catalogValue, pricingValue);
   createVaporApp(App, { catalog }).mount("#app");

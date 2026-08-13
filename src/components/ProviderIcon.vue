@@ -1,6 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import { darkProviderSymbolId, providerSymbolId } from "../icons/sprite.ts";
+import { darkProviderSymbolId, providerSymbolId } from "../icons/manifest.ts";
 
 const props = defineProps<{
   providerId: string;
