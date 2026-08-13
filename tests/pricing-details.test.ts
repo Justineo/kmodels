@@ -224,7 +224,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("Reserved throughput");
   });
 
-  it("explains a billing meter as plainly labeled facts", async () => {
+  it("keeps driver metadata out of the primary rate table", async () => {
     const pricedOffer = offer([{ amount: "$2", scope: region("us", "eu") }]);
     const rate = pricedOffer.rates[0];
     if (rate === undefined) throw new Error("Missing test rate");
@@ -232,20 +232,14 @@ describe("model pricing details", () => {
       label: "Runtime input tokens",
       definition: "Input tokens reported for the completed request",
       aggregation: "Request",
-      aggregation_definition: "Retries are counted as separate requests.",
       resolution_phase: "outcome",
     };
 
     const html = await render([pricedOffer]);
 
-    expect(html).toContain("Meter details");
-    expect(html).toContain("Charges for");
-    expect(html).toContain("What counts");
-    expect(html).toContain("Counted per");
-    expect(html).toContain("When known");
-    expect(html).toContain("After the result is known");
-    expect(html).not.toContain("aggregation boundary");
-    expect(html).not.toContain("resolution phase");
+    expect(html).toContain("Input text");
+    expect(html).not.toContain("Meter details");
+    expect(html).not.toContain("Runtime input tokens");
   });
 
   it("keeps a retryable pricing state when detail loading fails", async () => {

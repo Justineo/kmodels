@@ -407,10 +407,6 @@ function joinLabels(labels: string[]): string {
               <th scope="row">
                 <span class="rate-name">{{ rate.label }}</span>
                 <small v-if="rate.validity">{{ validityNote(rate.validity) }}</small>
-                <details v-if="rate.driver" class="rate-driver">
-                  <summary>Meter details</summary>
-                  <ChargeDriverFacts :driver="rate.driver" />
-                </details>
               </th>
               <td class="numeric" :aria-label="rate.accessible_text">
                 <span class="exact-rate">{{ rate.amount }}</span>
@@ -741,17 +737,6 @@ function joinLabels(labels: string[]): string {
 .pricing-matrix td {
   text-align: right;
   white-space: nowrap;
-}
-
-.rate-driver {
-  margin-top: var(--space-1);
-}
-
-.rate-driver summary {
-  width: max-content;
-  color: var(--color-accent);
-  font-size: var(--font-size-micro);
-  cursor: pointer;
 }
 
 .pricing-disclosure {
