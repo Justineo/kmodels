@@ -1,12 +1,12 @@
 # Pricing
 
-Status: implemented
+Status: shared wire implemented; provider convergence is in progress
 
-This document is the current wire and presentation contract. The
-[commercial topology](commercial-topology.md) supplies its provider-wide
-semantics. The shared cutover and all 18 provider migrations are implemented.
-Generated artifacts must pass the provider topology and replay-adoption gates
-before a migration is considered current.
+This document is the current wire and presentation contract.
+[Commercial topology](commercial-topology.md) defines the narrower admission boundary for an AI
+Gateway rate book. The shared wire is implemented; providers are being re-reviewed against that
+boundary one at a time. Generated artifacts must pass topology and replay-adoption gates before a
+provider convergence pass is current.
 
 ## Decision
 
@@ -14,7 +14,8 @@ Kmodels publishes one canonical pricing resource. The model catalog does not
 contain a second flat-price projection, and the website never falls back to
 one.
 
-The resource models a provider's current public commercial snapshot as:
+The resource models the request-attributable part of a provider's current public pricing snapshot
+as:
 
 ```text
 provider snapshot
@@ -25,10 +26,11 @@ provider snapshot
                  └─ applicability-qualified variant
 ```
 
-This hierarchy is the minimum needed to preserve distinct offers, their exact
-relationships, billing modes, meters, billed usage signals, units, conditions,
-allowances, and unsupported public facts
-without expanding every observed combination into a model-local rate list.
+This hierarchy is the minimum needed to preserve distinct invocation offers, their exact
+relationships, meters, billed usage signals, units, conditions, and unsupported in-boundary facts
+without expanding every observed combination into a model-local rate list. The wire can represent
+broader commercial facts during provider convergence; that capacity does not admit them into newly
+reviewed partitions.
 
 The authoritative durable assets are:
 
@@ -70,10 +72,9 @@ partition is carried through unchanged. Binding, source, extractor, ownership,
 provenance, completeness, or validation failures abort the compilation rather
 than publishing a partial result.
 
-The generated-data gate replays every captured provider with the current
-extractor version and verifies that all accepted providers still expose their
-adopted resources, edges, relationships, accounting terms, settlement, and
-model dispositions. A provider may be
+The generated-data gate replays every captured provider with the current extractor version and
+verifies that accepted providers still expose their adopted in-boundary resources, relationships,
+accounting terms, and model dispositions. A provider may be
 carried through without a replay entry only when the current public source
 bundle was unavailable; that retained partition remains visibly stale and must
 already satisfy the topology gate.
@@ -116,6 +117,8 @@ The following are deliberately outside this contract:
 - execution of imprecise validity labels as a time query;
 - a provider default, cheapest offer, or automatic offer recommendation;
 - a lossless model for every possible commercial contract.
+- training, retained storage, capacity procurement, subscriptions, plans, and
+  account settlement that cannot be attributed to one proxied request or result item.
 
 An unsupported public fact remains visible as bounded raw pricing. A fact
 outside the public boundary is discarded or quarantined, never serialized as
@@ -205,26 +208,24 @@ never materialized in the build heap.
 
 ## Scope
 
-The current contract normalizes:
+Newly reviewed provider partitions normalize:
 
-- usage, capacity, subscription, one-time, and hybrid offer identities;
-- normalized rate terms with exact denomination and compound unit;
-- applicability over reviewed categorical, boolean, and bounded decimal
-  dimensions;
-- numeric, free, included, externally billed, custom-quote, and not-published
-  offer states, independently qualified from enrollment;
-- simple usage allowances and denomination credits with explicit targets and
-  reset semantics;
-- model-scoped books and provider-owned service, plan, capacity, distribution,
-  and public account-resource-template books;
-- evidence-backed `requires`, `incurs`, `compatible_with`, and
-  `exclusive_with` relationships between exact offers;
-- resource edges for exact prerequisites, products, and derivation;
-- rate, allowance, contribution, and raw terms;
-- optional dimensionally checked charge and contribution bindings;
-- applicability-qualified enrollment and settlement facts;
-- reviewed provider-owned commercial atoms;
-- exact adapter calculations whose result and provenance are bounded.
+- on-demand, Batch, realtime, and other directly callable inference offer identities;
+- request-attributable model and provider-service rates with exact denomination and compound unit;
+- applicability over reviewed request, outcome, and publication dimensions;
+- numeric, free, included, externally billed, custom-quote, and not-published states for admitted
+  operations;
+- evidence-backed `requires`, `incurs`, `compatible_with`, and `exclusive_with` relationships
+  between exact admitted offers;
+- rate, contribution, and bounded raw terms, plus allowances only when they apply directly to
+  admitted request usage;
+- optional dimensionally checked charge and contribution bindings; and
+- exact bounded adapter calculations whose result and provenance are first-party evidenced.
+
+Training, retained storage, capacity commitments, subscriptions, account-resource templates,
+settlement, invoices, private prices, and workload-amortization formulas are outside the publication
+boundary. The shared decoder retains its closed broader vocabulary while older provider partitions
+converge; provider adapters must not use those fields merely because they remain representable.
 
 The current contract keeps these raw:
 
@@ -693,14 +694,13 @@ representative number exists, unavailable sibling cells use an em dash.
 
 ### Model details
 
-The order is:
+For a converged provider, the order is:
 
 1. alternative model mechanisms;
 2. independently selectable optional services;
-3. automatic components, plans/capacity, and related standalone offers;
+3. automatic request components and related standalone request services;
 4. the focused offer's context controls;
-5. states, rates, allowances, additional contributed usage, and unnormalized
-   warnings.
+5. states, rates, additional contributed usage, and unnormalized warnings.
 
 Offer selection is above its child controls. Alternative model mechanisms use
 radio controls; optional services use independent checkboxes and never replace
@@ -721,8 +721,8 @@ after context selection. The UI does not multiply usage, apply allowances,
 estimate a request, or calculate a total. Each resolved rate instead shows its
 known cost driver, reviewed trigger definition, aggregation boundary, and
 earliest resolution phase. An unbound rate remains visible with an explicit
-missing-signal note. Contribution bindings, billing mode, enrollment, and
-settlement context are projected as read-only commercial facts. Possibly applicable
+missing-signal note. Contribution bindings and billing mode are projected as read-only commercial
+facts. Possibly applicable
 raw base pricing marks the offer incomplete while normalized rows remain
 available after resolution. Exact offer relations are shown as composition
 context, and do not alter list-price selection. Small fully resolved target
@@ -744,16 +744,16 @@ is contained in or disjoint from it, while a partial overlap stays unresolved.
 Ranges with a gap or overlap remain exact-value inputs and reject out-of-range
 values. The UI never widens an exact price condition into a neighboring interval.
 
-The compact detail and shared-offer payloads contain display-ready values,
-selectors, charge drivers, billing context, and settlement context, not audit observations.
+The compact detail and shared-offer payloads contain display-ready values, selectors, charge drivers,
+and invocation billing context, not audit observations.
 Source-native display strings are derived while the
 validated observations are available and then emitted without their locators,
 raw fields, or evidence arrays. Equal observations remain one row rather than
 being expanded back into the source's flattened layout.
 
 Provider pricing uses the same display rows but remains read-only: every
-conditional rate, allowance, contribution, enrollment state, and settlement
-row includes a human-readable applicability qualifier. Provider-owned meters
+conditional rate and contribution row includes a human-readable applicability qualifier.
+Provider-owned meters
 and credits use reviewed vocabulary labels or native codes in visible copy;
 their namespace-qualified syntax remains audit-only. The provider inspector
 loads one resource chunk at a time and one offer only when expanded. Conditional
@@ -761,7 +761,7 @@ or validity-qualified offer states are rows in the inspector rather than only a
 count in the summary. Simple applicability remains exact display copy; large DNF
 is factored into a deterministic summary no longer than 180 characters while
 the structured scope remains exact. Books whose offers contain only raw terms,
-`not_published` states, and no normalized relations, enrollment, or settlement
+`not_published` states, and no normalized relations
 are displayed separately as unresolved official rows. The inspector links once
 to the canonical audit and keeps at most 20 display-safe unnormalized facts per
 offer while reporting the complete count.
@@ -780,6 +780,10 @@ never contain provider- or value-specific label branches.
 Generated-data tests require every configured label to match a current
 vocabulary value and its UI projection, and reject duplicate labels inside a
 selector so distinct canonical choices remain distinguishable.
+
+The shared projection still decodes broader plan, capacity, enrollment, allowance, and settlement
+fields while older provider partitions converge. Newly reviewed adapters do not populate those
+groups, and the UI removes them provider by provider with the underlying data.
 
 ## Validation and bounded work
 

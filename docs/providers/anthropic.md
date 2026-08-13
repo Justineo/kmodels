@@ -2,182 +2,148 @@
 
 Status: current
 
-## Sources and identity
+## Boundary
 
-- The current exhaustive public bundle starts from the official model overview and fetches a reviewed, fixed set of pricing, lifecycle, identity/versioning, operation, feature-compatibility, geography, service-tier, and billing-reconciliation references. The official `llms.txt` inventory must still advertise every reviewed companion, so a removed or renamed first-party contract fails closed. Core model and capability disclosure never depends on credentials.
-- The current release-note parser fills public launch dates only when a dated entry explicitly says Anthropic launched a named model or exact API ID. It parses exact API IDs across the complete launch bullet so an `alongside` model is retained, but restricts display-name matching to the opening launch clause so later compatibility and migration mentions are not misclassified as launches. A release-note mention about retirement, feature support, or migration is not launch evidence. Conflicting public launch dates remain a provider-level failure because they contradict a core identity root; malformed supplemental lifecycle dates are isolated to the affected date claim.
-- IDs and aliases come only from labeled cells. The identity guide is also validated: every API ID is pinned, 4.6-and-later dateless IDs are canonical snapshots, and earlier dateless aliases are convenience pointers. A display-name join is allowed only when it resolves uniquely; never generate a callable ID from a display name.
-- The overview's explicit “shares specs and pricing” relation may copy only modalities, limits, and reasoning from the uniquely named source model. Pricing still needs its own published row. The fixed Fable/Mythos launch companion supplies its exact ID-bound names, descriptions, and shared date, which must agree with the release notes; it does not become a generic family template.
-- Retain current and historical official IDs. Keep lifecycle and release maturity independent.
-- The public List Models reference validates `GET /v1/models`, the documented 1–1000 page size, cursor semantics, and the structured capability surface. Authenticated `GET /v1/models?limit=1000` is a one-page account inventory. `has_more`, an empty response, or schema drift fails it because the generic collector does not silently truncate or invent cursor requests. It may fill missing fields on matching public rows, but account-scoped values never override known global facts, create rows, or retain raw data.
-- Enable the optional inventory with `ANTHROPIC_API_KEY`.
+The Anthropic partition describes rates that an AI Gateway can attribute to direct Claude API
+generation requests. It uses the shared canonical price model; Anthropic-specific behavior is
+expressed only through dimensions, applicability, and usage signals.
 
-## Mapping
+Included:
 
-- Messages applies to active, preview, and not-yet-retired deprecated Claude API rows.
-- Merge the lifecycle table with labeled inline lifecycle statements; both use exact API IDs, and a newer inline status may cover a limited-access model omitted from the main table.
-- The Messages operation contract proves streaming and client tool calling for every callable row. Message Batches applies only to active rows; non-active callable rows are explicitly non-batch, and retired rows get no current endpoint.
-- Parse universal active-model support for citations, PDF input, prompt caching, and batches directly from the corresponding guides. Parse context editing and the absence of fine-tuning from their provider-wide contracts.
-- Parse structured output, code execution, computer use, effort, thinking, and tool use from their current compatibility statements or tables. Explicit `Supported models` ID lists are exhaustive for callable rows and therefore support both positive and negative facts; computer-use notes may additionally retain named older-header models. An inclusive statement supports only the models it names.
-- The shared generated SDK model enum is not an operation matrix and never proves legacy `/v1/complete` support.
-- Keep direct, batch, fast-mode, cache-write, and cache-read prices in published units and conditions. `speed` is independent of `service_tier`: Fast is selected and reported as request speed, while Standard, Priority, and Batch are service-tier outcomes. Never encode Fast as a service tier.
-- Parse cache and US-inference multipliers from the current pricing page, rather than keeping them as parser constants. Parse the `4.6 and later` eligibility threshold independently from both pricing and data-residency contracts and require agreement. Apply that threshold to the numeric generation in any official `claude-<family>-<major>-<minor?>[-<date>]` ID, so a new family such as Haiku 4.6 is eligible without a family allowlist. Validate the published base cache columns against the cache multipliers, then derive Batch, Fast, and US-inference combinations with decimal-string arithmetic while retaining the multiplier as evidence.
-- A fast-mode row may name one model or an explicit combined model list; every named model receives the same published rate. When a model has an unequal US-only inference alternative, an otherwise unqualified rate is the reviewed global base. Consecutive promotion and standard validity intervals remain distinct normalized variants.
-- Invitation-only availability does not imply custom pricing. Keep pricing unknown when Anthropic documents a callable model but publishes no rate.
-- The current refresh has exactly one such unresolved row: deprecated preview
-  `claude-mythos-preview`. Its catalog and lifecycle evidence remains useful, but the current
-  Anthropic price book publishes no exact offer; neither Mythos 5 nor another Claude family's rate
-  may be inherited.
-- Reconcile the pricing source by reviewed source claim: every base, Batch, Fast, cache-multiplier, inference-geography, provider-service, allowance, capacity, settlement, and usage-binding claim is accounted for. Model token rates, Web Search, Web Fetch, standalone and covered code execution, Advisor, Managed Agents runtime, fallback credit, exact-model Priority resources, and the AWS settlement route use the shared commercial topology. Tool prompt overhead remains excluded because Anthropic includes it in returned input usage. Negotiated amounts and account objects remain outside the public book. An output-model count is never a substitute for the source denominator.
-- Third-party pricing registries are comparison inputs only. They never create a model or rate and never repair a failed Anthropic refresh.
+- Messages model input, prompt-cache write/read, and output rates;
+- Message Batches as an alternative execution mechanism;
+- request-selected Fast mode and inference geography;
+- Web Search as a separately metered server-side request service;
+- standalone Code Execution runtime, its minimum duration and public organization allowance, plus
+  the included state when a qualifying web tool is present.
 
-## Commercial topology
+Excluded:
 
-Design status: implemented. This section describes the current Anthropic commercial topology under
-the converged shared design.
+- training, storage, capacity commitments, subscriptions, credits, invoices, marketplace
+  settlement, private discounts, and other account administration;
+- free management or preflight APIs such as Files and token counting, because they do not add a
+  generation-request charge;
+- Managed Agents session runtime, because it is a separate agent/session product rather than a
+  direct model generation request.
 
-### Public commercial source graph
+Web Fetch has no marginal service rate beyond returned model tokens, so it does not need a separate
+price book. Client tools and remote MCP servers likewise have no Anthropic price unless Anthropic
+publishes a separately metered provider service.
 
-The refresh starts from Anthropic's official [`llms.txt`](https://platform.claude.com/llms.txt) inventory and fetches a fixed reviewed set of pricing, billing, cost, usage, model, Batch, Fast, service-tier, fallback-credit, Managed Agents, and provider-tool contracts. A missing reviewed document or newly indexed commercial page is a bounded review warning, not a reason to reject unrelated model or price facts. Exact model identity still comes from the model and lifecycle contracts described above.
+## Official sources
 
-The reviewed commercial graph is:
+The public catalog root is the official [model overview](https://platform.claude.com/docs/en/about-claude/models/overview).
+The collector follows a fixed set of first-party documents rather than discovering commercial pages
+from `llms.txt` or scraping the dynamic `claude.com/pricing` application.
+Model-specific launch announcements are not refresh dependencies: maintained overview and release
+notes own current identity, descriptions, and release dates.
 
-- [`claude.com/pricing`](https://claude.com/pricing) is the current concise API price card. The detailed [Claude Platform pricing guide](https://platform.claude.com/docs/en/about-claude/pricing.md) explicitly points to it for the most current prices and supplies the complete rate matrix, composition rules, tool semantics, marketplace routes, and contractual boundaries.
-- The [Batch](https://platform.claude.com/docs/en/build-with-claude/batch-processing.md), [Fast](https://platform.claude.com/docs/en/build-with-claude/fast-mode.md), [service tier](https://platform.claude.com/docs/en/api/service-tiers.md), [data residency](https://platform.claude.com/docs/en/build-with-claude/data-residency.md), [fallback](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback.md), and [fallback credit](https://platform.claude.com/docs/en/build-with-claude/fallback-credit.md) guides own their current selectors, compatibility, outcomes, and eligibility rules.
-- The current [Messages API](https://platform.claude.com/docs/en/api/messages/create.md) and beta Messages contract own response usage. The [Advisor](https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool.md) and [compaction](https://platform.claude.com/docs/en/build-with-claude/compaction.md) guides establish additional billed inference iterations that top-level usage does not contain.
-- The [web-search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool.md), [web-fetch](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool.md), [code-execution](https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool.md), [token-counting](https://platform.claude.com/docs/en/build-with-claude/token-counting.md), and [Files](https://platform.claude.com/docs/en/build-with-claude/files.md) guides own provider-service triggers and billable outcomes. The collected Managed Agents overview, Create Agent reference, and session-event contract own exact model scope, session runtime, and aggregate list-cost semantics; the detailed pricing guide owns token-rate reuse, web-search composition, and covered code execution.
-- The organization [Usage and Cost API](https://platform.claude.com/docs/en/manage-claude/usage-cost-api.md), usage-report, and cost-report references own delayed account reconciliation. They do not override request- or session-level usage.
+The main pricing and accounting sources are:
 
-Every normalized fact keeps its exact source. Release notes remain historical evidence and never override a current feature guide. Third-party catalogs are excluded from this graph.
+- [detailed pricing](https://platform.claude.com/docs/en/about-claude/pricing) for model, Batch,
+  Fast, cache, geography, and published tool rates;
+- [Web Search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) for the
+  successful-search rate and `usage.server_tool_use.web_search_requests`;
+- [Code Execution](https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool)
+  for compatible model IDs, container-hour rate, minimum duration, allowance, and the qualifying
+  web-tool condition;
+- [Messages](https://platform.claude.com/docs/en/api/messages/create),
+  [Advisor](https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool),
+  [compaction](https://platform.claude.com/docs/en/build-with-claude/compaction), and
+  [fallback credit](https://platform.claude.com/docs/en/build-with-claude/fallback-credit) for
+  request outcome accounting;
+- [model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations), model
+  ID/version guidance, release notes, and feature guides for identity, lifecycle, and capability
+  facts.
 
-### Resources, books, and offer boundaries
+Every companion is optional at transport time. A missing companion does not reject the root model
+catalog. When any companion is omitted, the collector retains the last verified facts owned by this
+source and marks the pricing refresh incomplete rather than publishing unknown regressions or a
+partially rebuilt price book. Duplicate documents remain invalid because their provenance is
+ambiguous. Malformed rows and individual claims are skipped or reported without rejecting
+independent rows.
 
-| Resource or book                   | Current offers                                                                                 | Boundary                                                                                                                                                                                                                                                                                                                          |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Exact Claude model                 | Synchronous PAYG inference and asynchronous Message Batches                                    | Batch is a separate offer because it is a distinct asynchronous API mechanism. Cache class, realized Fast speed, inference geography, and a dated promotion are amount variants of an inference offer, not offers. Current 1M-context models use standard token rates; the retired long-context premium is not a current variant. |
-| Existing Priority capacity         | One account capacity offer per exact eligible model and commitment                             | It has input- and output-TPM commitments, weighted cache/geography quota consumption, a term, and model binding. New commitments are closed; the public payment amount and its composition with token charges are not published.                                                                                                  |
-| `anthropic.web-search`             | Usage-priced successful-search service                                                         | The separately owned search charge composes with the exact model inference that generated it. Search-result content also contributes normal model input usage.                                                                                                                                                                    |
-| `anthropic.web-fetch`              | Included fetch service                                                                         | Anthropic publishes no marginal fetch-service charge. Fetched content still contributes normal model input usage, so `included` is not `free`.                                                                                                                                                                                    |
-| `anthropic.code-execution`         | Standalone numeric runtime, organization allowance, and web- or Managed-Agents-covered runtime | Standalone Messages or Batch execution is container-time priced with a minimum and organization allowance. Execution attached to qualifying web-search or web-fetch versions is included, as is execution covered by Managed Agents runtime.                                                                                      |
-| `anthropic.advisor`                | Included orchestration service                                                                 | Advisor has no separate orchestration fee, but it `incurs` both executor-model and exact advisor-model usage. The advisor sub-inference is billed at that model's ordinary rates through contribution terms.                                                                                                                      |
-| `anthropic.managed-agents-runtime` | Usage-priced running-session service                                                           | Runtime is a distinct provider service. It `incurs` observed model inference, covers code-execution runtime, and can compose with separately charged web search. Fast, cache, and geography still modify underlying model use; Batch is unavailable.                                                                              |
-| `anthropic.token-counting`         | Free preflight service                                                                         | The API is explicitly free and returns an estimate, not a charge signal. Model compatibility scopes the service but does not require buying an inference offer.                                                                                                                                                                   |
-| `anthropic.files`                  | Free file-management service                                                                   | Upload, download, list, metadata, and delete are free. File content used by Messages is normal model input; preloading a file into code execution can activate the execution charge.                                                                                                                                              |
+The optional authenticated `GET /v1/models?limit=1000` inventory can fill otherwise unknown public
+fields on matching rows. Enable it with `ANTHROPIC_API_KEY`; it never creates public catalog rows or
+overrides known first-party facts. Additive response fields are accepted with a contract signal, and
+one malformed inventory item is skipped without rejecting recognized sibling rows.
 
-Ordinary client functions, tool definitions, Bash, text editor, computer use, tool search, and MCP do not create Anthropic service prices. Their provider-added prompts, images, or tool results contribute to the model usage returned by Anthropic. Client-side or third-party execution costs remain outside the Anthropic price book.
+## Identity and catalog mapping
 
-Claude API direct billing and Anthropic-operated [Claude Platform on AWS](https://platform.claude.com/docs/en/build-with-claude/claude-platform-on-aws.md) are settlement routes over Anthropic offers. The latter applies the public Anthropic calculation, then any account discount, then AWS Marketplace consumption in fixed Claude Credit Units: 100 CCUs equal USD 1, with hourly marketplace metering and monthly postpaid invoicing. The route does not copy model rates into another book. Partner-operated Amazon Bedrock and Google Vertex AI publish independent rates and belong to their own provider partitions. Claude in Microsoft Foundry belongs to the Azure partition, even when an Anthropic page is delegated first-party evidence for it.
+- IDs and aliases come from labeled official cells or exact API values. A display-name join is used
+  only when it resolves to one known ID.
+- Current and historical official IDs remain in the catalog. Lifecycle state and release maturity
+  are independent.
+- Messages applies to active and not-yet-retired callable IDs. Batches applies to active IDs when
+  the Batch contract says all active models are supported.
+- Capability claims are taken from their specific first-party compatibility lists or universal
+  statements. A missing or changed statement leaves that fact unknown; it does not turn absence
+  into `false`.
+- A newly published model is admitted mechanically from official IDs. Family names are not an
+  allowlist.
 
-### Relationship matrix
+## Model rates and dimensions
 
-| Source                               | Relationship     | Exact target or rule                                                                                                                                    |
-| ------------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Synchronous model inference          | `exclusive_with` | Batch inference for the same execution.                                                                                                                 |
-| Web search                           | `requires`       | One exact compatible synchronous or Batch model execution; a Managed Agents session selects the same search service alongside its runtime.              |
-| Web fetch                            | `requires`       | One exact compatible model execution.                                                                                                                   |
-| Standalone code execution            | `requires`       | One exact compatible synchronous or Batch model execution.                                                                                              |
-| Web-assisted included code execution | `requires`       | A qualifying web-search or web-fetch service and its exact model execution.                                                                             |
-| Managed Agents runtime               | `incurs`         | Every exact model inference actually used by the session. It covers code-execution runtime; web search remains a separately selected service when used. |
-| Advisor orchestration                | `incurs`         | The exact executor-model offer and exact advisor-model offer. Priority eligibility is evaluated independently for both.                                 |
+Each exact model has two offers when supported:
 
-Batch compatibility, Fast incompatibility, tool-version support, exact model pairs, and Managed Agents route support qualify these edges; they are never family-wide guesses. Token counting and Files have compatibility projections but no price relationship. Client tools and remote MCP servers have no Anthropic commercial edge.
+- `sync`: ordinary Messages inference;
+- `batch`: Message Batches.
 
-Managed Agents is a shared-design stress case: one session can realize several executor, advisor, or subagent models even though each uses an ordinary model rate. The runtime offer therefore has model-qualified `incurs` edges to exact synchronous model offers and never copies their rates into a parallel Managed Agents model book. Aggregate session token counters are not duplicated as one contribution per compatible model; the authoritative whole-session `list_cost` remains bounded reconciliation evidence when per-model attribution is unavailable.
+Cache TTL, Fast speed, inference geography, and dated validity are shared rate dimensions rather
+than separate provider-specific schemas. Batch is an offer because it is a distinct asynchronous
+execution mechanism; separate offers already express the caller's choice, so no redundant
+exclusivity relation is emitted. The US-only inference multiplier is applied only when the
+generation threshold in pricing agrees with the data-residency contract.
 
-Server-side fallback is not an alias, an alternative static offer, or a relationship edge. One request can execute several model attempts, and every billable iteration selects its own exact model offer. A pre-output refusal is unbilled even when usage is reported; a mid-stream refusal bills the work already performed. Sticky routing and an unpublished default fallback mapping do not create catalog identity or topology.
+Published cache columns are checked against the published multipliers. Conflicting facts are
+reported and the directly published row remains authoritative. A model without an exact published
+row stays price-unknown; rates are never inherited from a family or replacement model.
 
-### Meters, denominators, signals, and resolution phase
+## Request services
 
-| Commercial atom           | Published denominator                                       | Charge or reconciliation signal                                                                                     | Earliest reliable phase |
-| ------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------- |
-| Uncached model input      | input tokens                                                | `usage.input_tokens`, or the corresponding billed `usage.iterations` entries                                        | Outcome                 |
-| Five-minute cache write   | cache-creation input tokens                                 | `cache_creation.ephemeral_5m_input_tokens`                                                                          | Outcome                 |
-| One-hour cache write      | cache-creation input tokens                                 | `cache_creation.ephemeral_1h_input_tokens`                                                                          | Outcome                 |
-| Cache read/refresh        | cache-read input tokens                                     | `usage.cache_read_input_tokens`                                                                                     | Outcome                 |
-| Model output              | output tokens                                               | `usage.output_tokens`; thinking is already included                                                                 | Outcome                 |
-| Compaction inference      | input, cache, and output tokens                             | `usage.iterations[type=compaction]`; top-level usage excludes it                                                    | Outcome                 |
-| Advisor inference         | input, cache, and output tokens for the named advisor model | `usage.iterations[type=advisor_message]`; top-level usage excludes it                                               | Outcome                 |
-| Fallback attempts         | each attempt's model-token usage                            | Every billable `usage.iterations` entry, subject to refusal eligibility                                             | Outcome                 |
-| Batch inference           | successful result-item token usage                          | Each succeeded result's message usage; errored, canceled, or expired items are not billed                           | Result item             |
-| Web search                | successful searches                                         | `server_tool_use.web_search_requests`; search errors are not billed                                                 | Outcome                 |
-| Web fetch                 | no service denominator                                      | No service charge; fetched content appears in model input usage                                                     | Outcome                 |
-| Standalone code execution | container-hours, with a five-minute minimum                 | No response duration signal. `code_execution_requests` is an event count and is dimensionally invalid for this rate | Account reconciliation  |
-| Managed Agents runtime    | running session-hours                                       | Cumulative, deduplicated `usage.active_seconds` while at least one thread is running                                | Session outcome         |
-| Managed Agents list cost  | whole USD cents                                             | Session `usage.list_cost`, which includes public model, search, and runtime rates and is independently rounded      | Session outcome         |
-| Priority capacity         | weighted input and output TPM                               | Account quota consumption using the published cache and geography weights                                           | Account                 |
-| Marketplace settlement    | CCUs, where 100 CCUs = USD 1                                | Discounted account usage converted to marketplace consumption                                                       | Account                 |
-| Organization settlement   | daily USD-cent amount                                       | Cost API token, web-search, code-execution, and session-usage line items                                            | Account reconciliation  |
-| Token counting            | estimated tokens                                            | Token-counting response; explicitly not final billed usage                                                          | Request/preflight       |
+### Web Search
 
-For beta features that expose `usage.iterations`, cost reconstruction sums every billable iteration instead of adding top-level usage to the iteration totals. An ordinary serving iteration may inherit the top-level model only where the API contract makes that association exact. Do not infer a per-iteration Fast, service-tier, or geography outcome when it is absent; preserve the partial attribution and reconcile later.
+One service offer publishes USD 10 per 1,000 successful searches. The same rate applies in Messages
+and Batches, so duplicating it into sync and Batch offers would add no information. The charge binds
+to `usage.server_tool_use.web_search_requests`; failed searches are not billed. Search-result tokens
+remain ordinary model input usage.
 
-### Requested, realized, allowance, and settlement facts
+### Code Execution
 
-Publication facts select validity or enrollment: the Sonnet 5 introductory interval, current Fast model list, model/tool compatibility, and Priority being closed to new commitments. Request facts select endpoint, model, cache TTL, `speed`, `service_tier`, `inference_geo`, tools, fallback candidates, advisor model, and Managed Agents configuration. Outcome facts select actually served models, billable attempts, cache classes, `usage.speed`, `usage.service_tier`, `usage.inference_geo`, successful searches, Batch item status, refusal eligibility, and running time. Account facts supply Priority commitments, remaining code-execution allowance, negotiated discounts, marketplace conversion, credits, invoices, and Cost API reconciliation.
+Two service states are sufficient:
 
-The submitted selector never silently substitutes for a documented realized signal. In particular, `service_tier=auto` may realize Priority or Standard; older models can ignore or reject Fast differently; and server fallback can serve another model without a primary attempt. Account defaults such as `default_inference_geo` are explicit account inputs, not catalog defaults.
+- `standalone`: USD 0.05 per container-hour, a five-minute minimum, and 1,550 free
+  container-hours per organization per month;
+- `web-assisted`: included when the request contains a qualifying Web Search or Web Fetch tool
+  version.
 
-### Commercial-atom disposition ledger
+The public Messages outcome reports code-execution request count, not billable container duration.
+The rate and known total-cost parameters therefore remain visible, but the runtime rate has no false
+per-request charge binding. Exact cost needs provider accounting or another authoritative duration
+signal.
 
-| First-party atom                                                                                     | Current disposition                                                      | Rationale                                                                                                                                                                                             |
-| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Base input/output, five-minute and one-hour cache writes, and cache reads                            | Normalize                                                                | Exact model rates and returned quantities exist.                                                                                                                                                      |
-| Message Batches                                                                                      | Separate model offer                                                     | Distinct asynchronous mechanism with exact 50% rates and per-result billing.                                                                                                                          |
-| Fast mode                                                                                            | Realized amount variant                                                  | Same model and API mechanism; `speed` changes price and capacity. Current support is limited to the exact models named by the current guide.                                                          |
-| US inference geography                                                                               | Realized amount variant                                                  | A 1.1 multiplier applies to all token categories for eligible current models and composes with cache and Fast.                                                                                        |
-| Dated model promotion                                                                                | Publication-qualified amount variant                                     | The introductory and standard intervals are exact; the current date selects them without a request flag.                                                                                              |
-| Current 1M context                                                                                   | Standard model usage                                                     | The current guides publish no long-context premium for eligible 4.6+ and Mythos Preview models. Do not revive retired beta premiums.                                                                  |
-| Web search                                                                                           | Normalize as provider service                                            | USD 10 per 1,000 successful searches plus model tokens; errors are not billed.                                                                                                                        |
-| Web fetch                                                                                            | Normalize as `included` provider service                                 | No marginal fetch fee, while fetched content is billed as model input.                                                                                                                                |
-| Standalone code execution                                                                            | Normalize the rate, minimum, and allowance; leave request charge unbound | USD 0.05 per container-hour and five-minute minimum are exact. The response exposes a request count, not duration; final cost requires account reconciliation.                                        |
-| Web-assisted code execution                                                                          | Normalize as `included` provider-service offer                           | Qualifying current web-search/fetch tools include execution runtime; model and search charges still apply.                                                                                            |
-| Managed Agents runtime                                                                               | Normalize and bind                                                       | USD 0.08 per running session-hour binds exactly to `active_seconds`; code execution is covered and web search remains separate.                                                                       |
-| Managed Agents `list_cost`                                                                           | Preserve as authoritative session reconciliation                         | It is a rounded public-list subtotal, not a rate and not the customer's contracted invoice. Per-thread subtotals must not be summed into the session total.                                           |
-| Advisor                                                                                              | Included orchestration plus exact advisor-model usage                    | There is no orchestration fee. The separately named advisor model contributes its own token and cache usage.                                                                                          |
-| Compaction                                                                                           | Additional usage of the same model offer                                 | It is a billed sampling iteration, not a separately priced service. Reusing an existing compaction block adds no new charge.                                                                          |
-| Server fallback                                                                                      | Outcome-time multi-model execution                                       | Price every billable attempt at its served model. Do not normalize the unpublished default mapping.                                                                                                   |
-| Fallback credit                                                                                      | Normalize as a `rate_substitution` allowance                             | It is an organization/workspace-scoped, five-minute entitlement that replaces the eligible cache-creation rate with the exact cache-read rate. Returned usage supplies the quota/accounting evidence. |
-| Priority capacity                                                                                    | Preserve as `not_published`, `closed_to_new` capacity offer              | Quota, commitment length, model binding, and eligibility are exact; public payment amount and token-charge composition are not. The Cost API excludes it.                                             |
-| Claude Platform on AWS CCU settlement                                                                | Normalize public settlement rule                                         | The fixed CCU conversion and postpaid marketplace route are public; discounts, tax, and invoices remain account facts.                                                                                |
-| Token counting and Files                                                                             | Normalize as `free` provider services                                    | Anthropic explicitly identifies the operations as free; downstream model or execution usage remains separately charged.                                                                               |
-| Client functions, prompt/tool overhead, Bash, text editor, computer use, tool search, and remote MCP | No provider-service price term                                           | Returned model usage already includes provider-added model context; external execution costs are not Anthropic charges.                                                                               |
-| Managed Agents budget                                                                                | Exclude from pricing terms                                               | It is a hard list-cost spending control, not a discount, allowance, or rate.                                                                                                                          |
-| New-user credits                                                                                     | Preserve only as bounded raw disclosure                                  | Anthropic publishes neither a stable amount nor lifetime, so no public allowance can be normalized.                                                                                                   |
-| Partner-operated cloud rates, negotiated/private prices, taxes, balances, and invoices               | Explicit external/account boundary                                       | They do not belong to the public Anthropic list-price book.                                                                                                                                           |
-| Fine-tuning                                                                                          | No offer                                                                 | The current provider contract explicitly says it is unavailable; absence is not an unknown price.                                                                                                     |
+## Iteration accounting
 
-The code-execution allowance has a first-party conflict. The current `claude.com/pricing` card publishes 50 free container-hours per organization per day, while the detailed pricing and execution guides publish 1,550 hours per organization per month. These reset periods are not equivalent. Because the detailed guide explicitly delegates current prices to `claude.com/pricing`, the adapter selects the daily allowance as the current claim and retains the monthly observation as superseded evidence. If the concise card temporarily omits the daily claim, the monthly allowance remains usable instead of disappearing. The independently agreeing USD 0.05 hourly rate and five-minute minimum remain valid.
+Advisor, compaction, and server fallback do not need parallel service books:
 
-### Authority and conflicts
+- Advisor is a separate model inference billed at the selected advisor model's ordinary rates.
+- Compaction is an additional sampling iteration billed at the same selected model rates.
+- A credited fallback retry already changes returned cache-write and cache-read usage; no separate
+  credit allowance should be added.
 
-Authority is claim-specific, not one total ordering of documents:
+When `usage.iterations` is absent, price the response model from top-level usage. When it is present,
+price each typed iteration using that iteration's exact model and do not add the top-level token
+totals again. This handles executor, advisor, compaction, and fallback work through the normal model
+books. Cache-write variants bind only when the response exposes an exact TTL split; a generic cache
+creation total must not be guessed into the five-minute or one-hour rate.
 
-1. `claude.com/pricing#api` owns an overlapping current amount or allowance when it states one. The detailed pricing guide owns the complete mechanism and any commercial fact absent from the concise card.
-2. A current feature guide owns trigger semantics and exact compatibility. A release note can establish a historical launch but cannot keep withdrawn Fast support or a retired price alive.
-3. API references own response-field semantics. Managed Agents session/event contracts own `active_seconds` and `list_cost`; Usage/Cost references own delayed organization settlement.
-4. Exact model identity and lifecycle sources retain their existing precedence. A malformed supplemental date is withheld locally, while contradictory dates from core identity roots reject the provider rather than selecting one by vote.
+## Refresh and comparison policy
 
-Parsing and reconciliation fail at the smallest independently publishable claim: one cell, rate, allowance, relationship, binding, compatibility edge, or date. An invalid code-execution duration binding does not remove the code rate; an allowance conflict does not remove model prices; one malformed service row does not reject models. Match commercial rows by exact API ID, then by a uniquely documented name or alias. Never use family inheritance, fuzzy matching, an LLM, or a comparator to complete a join.
+The stable Markdown pricing page is authoritative for the collected matrix. Dynamic marketing or
+application pages are not refresh dependencies. Markdown frontmatter and other content before a
+reviewed API heading are tolerated, while the exact method and path remain checked. A source wording
+change becomes a localized reconciliation finding; a single unreadable model row or service claim
+does not reject the provider.
 
-The official inventory is a discovery contract as well as a presence check. A new commercial page is surfaced for review while understood claims continue to refresh. A missing local usage signal leaves its independent rate unbound; a missing minimum leaves the code-execution rate and allowance intact; a missing Managed Agents list-cost field leaves runtime pricing intact. A provider-wide collection or validation failure retains the previously accepted provider partition, and publication remains crash-atomic.
-
-### Model-detail composition and cost coverage
-
-Model details may project an Anthropic provider service only from exact compatible model refs. The UI treats exact service-to-model `requires` and `incurs` edges as independently selectable services; a model-to-service `incurs` edge remains an automatic component. It never infers either direction from a model capability or shared tool name. The calculator includes each independently charged component once: every billable model iteration, successful web search, standalone code runtime when measurable, and Managed Agents runtime. Included/free services stay visible without being added as numeric zero.
-
-Coverage must distinguish `complete`, `partial`, and `unavailable`. A normal response can be complete from outcome usage. Code execution is partial until duration/allowance or Cost API settlement is available. Priority, private discounts, credits, marketplace conversion, and fallback attempts with incomplete realized modifier fields remain explicit account/outcome gaps. Managed Agents `list_cost` is an authoritative public-list reconciliation signal but not proof of contracted cost.
-
-## Current request accounting boundary
-
-- A pre-request estimate needs the actual endpoint and request selectors: model, Message Batches versus synchronous Messages, `speed`, `inference_geo`, cache TTL, and any server-side tools. Workspace `default_inference_geo` supplies the geo when the request omits it, while `allowed_inference_geos` can reject an override.
-- Price a completed request from the returned usage outcome rather than assuming that the submitted selector won. The response reports uncached input, cache creation and cache-read tokens, output tokens, cache-creation TTL breakdown, actual `service_tier`, `inference_geo`, and—on the Fast beta surface—`speed`; server-tool counters identify web-search and related calls. When the response contains billed advisor, compaction, or fallback iterations, use the iteration ledger rather than pricing only top-level usage. `output_tokens` already includes billed thinking output, so do not add thinking tokens a second time.
-- Public prices calculate the standard token charge and its published Batch, Fast, cache, geography, and promotion modifiers. They cannot determine Priority Tier contract cost, negotiated volume or marketplace discounts, credits, taxes, code-execution allowance exhaustion or execution duration, or Managed Agents running time without additional account/usage state.
-- Fallback credit is request-scoped repricing rather than a model rate. A qualifying retry moves eligible cache-write usage into cache-read usage; the credit is bound to the originating organization and workspace, and Message Batches cannot mint it. Preserve the response usage as the billable outcome instead of applying a catalog discount.
-- Managed Agents exposes cumulative `active_seconds` and a whole-cent `list_cost` for session reconciliation. The former binds the runtime rate; the latter already includes public model, web-search, and runtime charges and must not be added to those reconstructed components a second time.
-- The organization Usage API provides minute, hour, or day buckets and can group token usage by model, workspace, API key, service tier, context window, inference geography, and beta speed. The Cost API provides daily USD-cent line items for token, web-search, and code-execution charges; it excludes Priority Tier costs. Console organizations require an Admin API key, individual accounts do not have these endpoints, Enterprise uses a separate Analytics API, and Claude Platform on AWS does not expose the programmatic Usage/Cost endpoints.
-- Usage and cost records normally appear within about five minutes and can occasionally take longer. They are delayed reconciliation evidence, not a synchronous per-request quote: do not use them for hot-path cost-based load balancing. Route on a conservative public-price estimate, correct it from the response usage, and reconcile aggregate/account-specific differences later.
-
-## Comparator update mechanisms
-
-- `models.dev` runs an hourly Anthropic sync from the authenticated Models API, paginates with `after_id`, probes pre-4.6 dateless aliases through the Retrieve Model endpoint, and joins the public pricing page by normalized display name. Its flat authored cost fields cover base input/output and cache read/write, with selected Fast variants, but omit Batch, geography, one-hour cache distinctions, provider services, allowances, capacity, and settlement topology. This is useful comparison evidence for pagination and alias retrieval, not production authority.
-- LiteLLM publishes a community-maintained JSON price/context registry with provider-specific US and Fast rows and selected search fields. Its flat current-rate shape cannot preserve the full service graph, outcome signals, allowance resets, settlement routes, or multiple dated intervals; it also currently retains Fast entries for models the current Anthropic guide says error or silently use Standard. It remains read-only comparison evidence and never repairs an official conflict.
+`models.dev` and LiteLLM are useful comparison inputs for detecting possible coverage gaps. They do
+not create Anthropic IDs or prices and never override a current official conflict.

@@ -1,10 +1,6 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
-import {
-  extractCohereCommercialFacts,
-  type CohereCommercialProduct,
-} from "./cohere-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
@@ -14,9 +10,13 @@ import type {
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import {
+  assertItemCount,
+  contractExtensionEvidence,
+  recognizeItems,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
-import { yamlBlock } from "./yaml.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { classifyModelTasks } from "./task.ts";
 
@@ -25,6 +25,18 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  catalogModels?: readonly Pick<
+    ProviderModel,
+    | "aliases"
+    | "api_endpoints"
+    | "capabilities"
+    | "model_id"
+    | "name"
+    | "status"
+    | "tasks"
+    | "version"
+  >[];
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -42,7 +54,7 @@ const endpointSchema = z.enum([
 const apiItemSchema = z.object({
   name: modelIdSchema,
   is_deprecated: z.boolean().optional(),
-  endpoints: z.array(endpointSchema).optional(),
+  endpoints: z.array(z.string().min(1)).optional(),
   context_length: z.number().int().nonnegative().optional(),
 });
 const apiSchema = z.object({
@@ -179,36 +191,15 @@ const endpointDefinitions: EndpointDefinition[] = [
 const accountingReferences: readonly {
   documentPath: string;
   markers: readonly RegExp[];
-  forbiddenMarkers?: readonly RegExp[];
-  message: string;
+  gap: "policy" | "chat-v2" | "chat-v1" | "embed-v2" | "rerank-v2";
 }[] = [
   {
     documentPath: "/docs/how-does-cohere-pricing-work.md",
     markers: [
       /billed_units[\s\S]*input_tokens[\s\S]*output_tokens[\s\S]*tokens/,
       /billed[^\n]*tokens are the tokens that you(?:'|’)re actually[^\n]*billed/i,
-      /trial API key usage is free/i,
     ],
-    message: "Cohere pricing-accounting reference drifted",
-  },
-  {
-    documentPath: "/docs/rate-limits.md",
-    markers: [
-      /evaluation keys \(free but limited in usage\).*production keys \(paid/i,
-      /Prod keys work like trial keys for newer model variants/i,
-      /Trial keys \(and prod keys on newer Chat model variants\) are limited to 1,000 API calls a month/i,
-    ],
-    message: "Cohere API-key pricing reference drifted",
-  },
-  {
-    documentPath: "/reference/errors.md",
-    markers: [/402 responses are sent when the account has reached its billing limit/i],
-    message: "Cohere billing-limit reference drifted",
-  },
-  {
-    documentPath: "/reference/teams-and-roles.md",
-    markers: [/View Usage history/, /View and download invoices/],
-    message: "Cohere account-billing reference drifted",
+    gap: "policy",
   },
   {
     documentPath: "/reference/chat.md",
@@ -216,40 +207,24 @@ const accountingReferences: readonly {
       /The number of billed input tokens[\s\S]*The number of billed output tokens/,
       /cached_tokens[\s\S]*The number of prompt tokens that hit the inference cache/,
     ],
-    message: "Cohere Chat usage reference drifted",
+    gap: "chat-v2",
   },
   {
     documentPath: "/reference/chat-v1.md",
     markers: [/billed_units[\s\S]*input_tokens[\s\S]*output_tokens[\s\S]*tokens/],
-    message: "Cohere Chat V1 usage reference drifted",
-  },
-  {
-    documentPath: "/reference/chat-stream.md",
-    markers: [/message-end[\s\S]*usage[\s\S]*billed_units/],
-    message: "Cohere streaming usage reference drifted",
+    gap: "chat-v1",
   },
   {
     documentPath: "/reference/embed.md",
     markers: [
       /The number of billed images[\s\S]*The number of billed input tokens[\s\S]*The number of billed image tokens/,
     ],
-    message: "Cohere Embed usage reference drifted",
+    gap: "embed-v2",
   },
   {
     documentPath: "/reference/rerank.md",
     markers: [/The number of billed search units/, /"billed_units"[\s\S]*"search_units"/],
-    message: "Cohere Rerank usage reference drifted",
-  },
-  {
-    documentPath: "/reference/get-embed-job.md",
-    markers: [/"billed_units"[\s\S]*"images"[\s\S]*"input_tokens"[\s\S]*"image_tokens"/],
-    message: "Cohere Embed Job usage reference drifted",
-  },
-  {
-    documentPath: "/reference/create-audio-transcription.md",
-    markers: [/### 200[\s\S]*successful response[\s\S]*The transcribed text/i],
-    forbiddenMarkers: [/billed_units/],
-    message: "Cohere transcription response reference drifted",
+    gap: "rerank-v2",
   },
 ];
 
@@ -336,13 +311,7 @@ function operationsFromEndpointLabels(
   labels: string[],
   references: EndpointReferences,
 ): ModelTask[] {
-  return unique(
-    labels.map((label) => {
-      const reference = references.byLabel.get(label);
-      if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
-      return reference.operation;
-    }),
-  );
+  return unique(labels.flatMap((label) => references.byLabel.get(label)?.operation ?? []));
 }
 
 function listedModelIds(
@@ -363,7 +332,10 @@ function listedModelIds(
   return ids;
 }
 
-function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
+function endpointReferences(
+  documents: LinkedDocument[],
+  reconcile?: Reconcile,
+): EndpointReferences {
   const byHref = new Map<string, EndpointReference>();
   const byLabel = new Map<string, EndpointReference>();
   for (const definition of endpointDefinitions) {
@@ -376,12 +348,28 @@ function endpointReferences(documents: LinkedDocument[]): EndpointReferences {
       document === undefined ||
       document.body.match(/^# ([^\n]+)$/m)?.[1] !== definition.title ||
       !document.body.includes(definition.marker)
-    )
-      throw new Error(`Cohere API reference drifted: ${definition.endpoint.name}`);
-    const modelIds =
-      definition.modelList === undefined
-        ? undefined
-        : listedModelIds(document.body, definition.modelList);
+    ) {
+      reconcile?.({
+        disposition: "unbound",
+        reason_code: "endpoint_reference_drift",
+        sample: definition.documentPath,
+      });
+      continue;
+    }
+    let modelIds: Set<string> | undefined;
+    try {
+      modelIds =
+        definition.modelList === undefined
+          ? undefined
+          : listedModelIds(document.body, definition.modelList);
+    } catch {
+      reconcile?.({
+        disposition: "unbound",
+        reason_code: "endpoint_model_list_drift",
+        sample: definition.documentPath,
+      });
+      continue;
+    }
     const reference: EndpointReference =
       modelIds === undefined
         ? {
@@ -415,8 +403,7 @@ function validateAccountingReferences(
     if (
       matches.length !== 1 ||
       document === undefined ||
-      reference.markers.some((marker) => !marker.test(document.body)) ||
-      reference.forbiddenMarkers?.some((marker) => marker.test(document.body)) === true
+      reference.markers.some((marker) => !marker.test(document.body))
     ) {
       reconcile?.({
         disposition: "unbound",
@@ -428,117 +415,6 @@ function validateAccountingReferences(
     valid.add(reference.documentPath);
   }
   return valid;
-}
-
-function requireYamlBlock(
-  body: string,
-  label: string,
-  indentation: number,
-  markers: readonly RegExp[],
-): void {
-  const block = yamlBlock(body, label, indentation);
-  if (block === undefined || markers.some((marker) => !marker.test(block)))
-    throw new Error(`Cohere OpenAPI reference drifted: ${label}`);
-}
-
-function validateOpenApi(documents: LinkedDocument[]): void {
-  const matches = documents.filter(({ url }) => {
-    const value = new URL(url);
-    return (
-      value.hostname === "raw.githubusercontent.com" &&
-      value.pathname === "/cohere-ai/cohere-developer-experience/main/cohere-openapi.yaml" &&
-      value.search === "" &&
-      value.hash === ""
-    );
-  });
-  const document = matches[0];
-  if (
-    matches.length !== 1 ||
-    document === undefined ||
-    !/^openapi:\s+3\.[01]\.\d+\s*$/m.test(document.body) ||
-    !/^\s+- url: https:\/\/api\.cohere\.com\s*$/m.test(document.body)
-  )
-    throw new Error("Cohere OpenAPI reference drifted: document");
-
-  const operations = [
-    ["/v1/chat", "chat", "post"],
-    ["/v2/chat", "chatv2", "post"],
-    ["/v1/embed", "embed", "post"],
-    ["/v2/embed", "embedv2", "post"],
-    ["/v1/embed-jobs", "create-embed-job", "post"],
-    ["/v1/rerank", "rerank", "post"],
-    ["/v2/rerank", "rerankv2", "post"],
-    ["/v2/audio/transcriptions", "create-transcription", "post"],
-  ] as const;
-  for (const [path, operationId, method] of operations)
-    requireYamlBlock(document.body, path, 2, [
-      new RegExp(`^ {4}${method}:\\s*$`, "m"),
-      new RegExp(`^ {6}operationId: ${operationId}\\s*$`, "m"),
-    ]);
-
-  requireYamlBlock(document.body, "/v1/models", 2, [
-    /^ {4}get:\s*$/m,
-    /^ {6}operationId: list-models\s*$/m,
-    /^ {8}- name: page_size\s*$/m,
-    /max value of `1000`/,
-    /^ {8}- name: page_token\s*$/m,
-    /next_page_token/,
-    /^ {8}- name: endpoint\s*$/m,
-    /#\/components\/schemas\/CompatibleEndpoint/,
-    /^ {8}- name: default_only\s*$/m,
-    /#\/components\/schemas\/ListModelsResponse/,
-  ]);
-  requireYamlBlock(document.body, "ApiMeta", 4, [
-    /^ {8}billed_units:\s*$/m,
-    /^ {12}images:\s*$/m,
-    /^ {12}input_tokens:\s*$/m,
-    /^ {12}image_tokens:\s*$/m,
-    /^ {12}output_tokens:\s*$/m,
-    /^ {12}search_units:\s*$/m,
-    /^ {12}classifications:\s*$/m,
-    /^ {8}tokens:\s*$/m,
-    /^ {8}cached_tokens:\s*$/m,
-  ]);
-  requireYamlBlock(document.body, "Usage", 4, [
-    /^ {8}billed_units:\s*$/m,
-    /^ {12}input_tokens:\s*$/m,
-    /^ {12}output_tokens:\s*$/m,
-    /^ {12}search_units:\s*$/m,
-    /^ {12}classifications:\s*$/m,
-    /^ {8}tokens:\s*$/m,
-    /^ {8}cached_tokens:\s*$/m,
-  ]);
-  requireYamlBlock(document.body, "ChatResponseV2", 4, [
-    /^ {8}usage:\s*$/m,
-    /#\/components\/schemas\/Usage/,
-  ]);
-  requireYamlBlock(document.body, "CompatibleEndpoint", 4, [
-    /^ {8}- chat\s*$/m,
-    /^ {8}- embed\s*$/m,
-    /^ {8}- classify\s*$/m,
-    /^ {8}- summarize\s*$/m,
-    /^ {8}- rerank\s*$/m,
-    /^ {8}- rate\s*$/m,
-    /^ {8}- generate\s*$/m,
-  ]);
-  requireYamlBlock(document.body, "GetModelResponse", 4, [
-    /^ {8}name:\s*$/m,
-    /^ {8}is_deprecated:\s*$/m,
-    /^ {8}endpoints:\s*$/m,
-    /^ {8}finetuned:\s*$/m,
-    /^ {8}context_length:\s*$/m,
-    /^ {8}tokenizer_url:\s*$/m,
-    /^ {8}default_endpoints:\s*$/m,
-    /^ {8}features:\s*$/m,
-    /^ {8}sampling_defaults:\s*$/m,
-  ]);
-  requireYamlBlock(document.body, "ListModelsResponse", 4, [
-    /^ {6}required:\s*$/m,
-    /^ {8}- models\s*$/m,
-    /^ {8}models:\s*$/m,
-    /#\/components\/schemas\/GetModelResponse/,
-    /^ {8}next_page_token:\s*$/m,
-  ]);
 }
 
 function withEndpoints(current: ProviderModel, values: ApiEndpoint[]): ProviderModel {
@@ -560,14 +436,12 @@ function linkedEndpoints(
   id: string,
   references: EndpointReferences,
 ): ApiEndpoint[] {
-  if (labels.join("\0") !== links.map(({ label }) => label).join("\0"))
-    throw new Error(`Cohere endpoint links drifted for ${id}`);
+  if (labels.join("\0") !== links.map(({ label }) => label).join("\0")) return [];
   return links.flatMap(({ label, href }) => {
     const url = href === undefined ? undefined : new URL(href, "https://docs.cohere.com");
     const reference =
       url?.origin === "https://docs.cohere.com" ? references.byHref.get(url.pathname) : undefined;
-    if (reference === undefined || !reference.labels.includes(label))
-      throw new Error(`Unsupported Cohere model endpoint: ${label}`);
+    if (reference === undefined || !reference.labels.includes(label)) return [];
     return reference.modelIds !== undefined && !reference.modelIds.has(id)
       ? []
       : [reference.endpoint];
@@ -627,8 +501,7 @@ function rootTables(
       .get();
     if (headers[0] !== "Model Name") return;
     const defaultOperations = sectionOperations;
-    if (defaultOperations === undefined)
-      throw new Error("Unsupported Cohere model catalog section");
+    if (defaultOperations === undefined) return;
     const column = (name: string): number => headers.indexOf(name);
     $(table)
       .find("tr")
@@ -979,12 +852,10 @@ function modelCard(
     .filter((_index, element) => !dimmed($(element).attr("style")))
     .map((_index, element) => text($(element).text()))
     .get();
-  if (endpointLabels.length === 0) throw new Error(`Cohere endpoint card drifted for ${id}`);
   const endpointTasks = operationsFromEndpointLabels(endpointLabels, references);
-  const apiEndpoints = endpointLabels.map((label) => {
+  const apiEndpoints = endpointLabels.flatMap((label) => {
     const reference = references.byLabel.get(label);
-    if (reference === undefined) throw new Error(`Unsupported Cohere model endpoint: ${label}`);
-    return reference.endpoint;
+    return reference === undefined ? [] : [reference.endpoint];
   });
   const current = model(models, input, id, endpointTasks);
   const tasks = unique([...current.tasks, ...endpointTasks]);
@@ -1046,10 +917,10 @@ function modelCard(
       reason_code: "free_until_rate_limits",
     });
   } else if (/contact (?:our )?sales|Model Vault/i.test(pricing)) {
-    update(models, id, (current) => ({ ...current, pricing_state: "custom_quote" }));
     input.onPricingReconciliation?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "custom_quote",
+      disposition: "excluded",
+      reason_code: "out_of_scope_capacity_offer",
+      sample: id,
     });
   }
   if (
@@ -1057,8 +928,9 @@ function modelCard(
     /Model Vault|contact (?:our )?sales/i.test(pricing)
   )
     input.onPricingReconciliation?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "model_vault_alternative",
+      disposition: "excluded",
+      reason_code: "out_of_scope_capacity_offer",
+      sample: id,
     });
 }
 
@@ -1098,8 +970,7 @@ function transcribePage(
     endpointUrl?.origin === "https://docs.cohere.com"
       ? references.byHref.get(endpointUrl.pathname)
       : undefined;
-  if (endpoint?.endpoint.name !== "Audio Transcriptions")
-    throw new Error("Cohere transcription endpoint link drifted");
+  const endpoints = endpoint?.endpoint.name === "Audio Transcriptions" ? [endpoint.endpoint] : [];
   const free = /via our API for free[\s\S]*Model Vault/i.test(text($(".fern-prose").text()));
   model(models, input, parsed.data, ["transcription"]);
   update(models, parsed.data, (current) =>
@@ -1113,7 +984,7 @@ function transcribePage(
         status: "active",
         pricing_state: free ? "free" : current.pricing_state,
       },
-      [endpoint.endpoint],
+      endpoints,
     ),
   );
   if (free) {
@@ -1122,8 +993,9 @@ function transcribePage(
       reason_code: "free_until_rate_limits",
     });
     input.onPricingReconciliation?.({
-      disposition: "explicit_non_numeric",
-      reason_code: "model_vault_alternative",
+      disposition: "excluded",
+      reason_code: "out_of_scope_capacity_offer",
+      sample: parsed.data,
     });
   }
 }
@@ -1337,7 +1209,13 @@ function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof prici
     const script = ($(element).html() ?? "").trim();
     const prefix = "self.__next_f.push(";
     if (!script.startsWith(prefix) || !script.endsWith(")")) return;
-    const frame = z.array(z.unknown()).safeParse(JSON.parse(script.slice(prefix.length, -1)));
+    let value: unknown;
+    try {
+      value = JSON.parse(script.slice(prefix.length, -1));
+    } catch {
+      return;
+    }
+    const frame = z.array(z.unknown()).safeParse(value);
     if (!frame.success) return;
     const payload = z.string().safeParse(frame.data[1]);
     const colon = payload.success ? payload.data.indexOf(":") : -1;
@@ -1350,10 +1228,17 @@ function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof prici
   });
   const products = new Map<string, z.infer<typeof pricingModelSchema>>();
   const conflicts = new Set<string>();
+  const comparable = (item: z.infer<typeof pricingModelSchema>): string =>
+    JSON.stringify({
+      ...item,
+      pricings: item.pricings?.toSorted((left, right) =>
+        JSON.stringify(left).localeCompare(JSON.stringify(right)),
+      ),
+    });
   for (const item of result) {
     if (conflicts.has(item.modelName)) continue;
     const existing = products.get(item.modelName);
-    if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(item)) {
+    if (existing !== undefined && comparable(existing) !== comparable(item)) {
       products.delete(item.modelName);
       conflicts.add(item.modelName);
       reconcile?.({
@@ -1379,18 +1264,26 @@ function applyPricing(
   input: Input,
   models: Map<string, ProviderModel>,
   body: string,
-): CohereCommercialProduct[] {
+  minimum: number,
+  maximum: number,
+): void {
   const $ = load(body);
   const products = pricingModels($, input.onPricingReconciliation);
-  if (products.length < 5 || products.length > 20)
-    throw new Error("Cohere pricing model structure drifted");
+  assertItemCount("Cohere pricing products", products.length, minimum, maximum);
   for (const product of products) {
     const description = nestedText(product.portableDescription);
     const matches = productMatches(models, product.modelName);
     const current = matches.length === 1 ? matches[0] : undefined;
     if (current === undefined) {
-      if (!/custom enterprise pricing|contact (?:our )?(?:team|sales)/i.test(description))
-        reconcileUnmatched(product.modelName, matches, input.onPricingReconciliation);
+      if (/custom enterprise pricing|contact (?:our )?(?:team|sales)/i.test(description))
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: /North|Compass/i.test(product.modelName)
+            ? "out_of_scope_orchestration_offer"
+            : "out_of_scope_capacity_offer",
+          sample: product.modelName,
+        });
+      else reconcileUnmatched(product.modelName, matches, input.onPricingReconciliation);
       continue;
     }
     if (product.per === "Free") {
@@ -1406,32 +1299,56 @@ function applyPricing(
       }
       continue;
     }
-    if (product.per !== "1M tokens")
-      throw new Error(`Unsupported Cohere pricing unit: ${product.per}`);
+    if (product.per !== "1M tokens") {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "unsupported_pricing_unit",
+        sample: `${product.modelName}: ${product.per}`,
+      });
+      continue;
+    }
     for (const item of product.pricings ?? []) {
       const unit = item.overridePer ?? product.per;
       const add = (label: string, price: number): void => {
         const normalized = label.toLowerCase();
-        const rate =
-          unit === "1K searches"
-            ? publishedRate(
-                "rerank_request",
-                String(price),
-                "thousand_search_units",
-                input.source.id,
-                unit,
-              )
-            : current.tasks.includes("embeddings")
-              ? publishedRate("embedding", String(price), "million_tokens", input.source.id, unit, {
-                  modality: normalized.includes("image") ? "image" : "text",
-                })
-              : publishedRate(
-                  normalized.includes("output") ? "output_text" : "input_text",
-                  String(price),
-                  "million_tokens",
-                  input.source.id,
-                  unit,
-                );
+        const rate = (() => {
+          if (unit === "1K searches")
+            return publishedRate(
+              "rerank_request",
+              String(price),
+              "thousand_search_units",
+              input.source.id,
+              unit,
+            );
+          if (unit !== "1M tokens") return;
+          if (current.tasks.includes("embeddings"))
+            return publishedRate(
+              "embedding",
+              String(price),
+              "million_tokens",
+              input.source.id,
+              unit,
+              {
+                modality: normalized.includes("image") ? "image" : "text",
+              },
+            );
+          if (normalized === "input" || normalized === "output")
+            return publishedRate(
+              normalized === "output" ? "output_text" : "input_text",
+              String(price),
+              "million_tokens",
+              input.source.id,
+              unit,
+            );
+        })();
+        if (rate === undefined) {
+          input.onPricingReconciliation?.({
+            disposition: "unbound",
+            reason_code: "unsupported_pricing_meter",
+            sample: `${product.modelName}: ${label} per ${unit}`,
+          });
+          return;
+        }
         update(models, current.model_id, (modelValue) =>
           addRate(modelValue, rate, input.onPricingReconciliation),
         );
@@ -1452,31 +1369,19 @@ function applyPricing(
     }
   }
   const legacy =
-    /(.+?) pricing is \$([\d.]+)\/1M tokens for input and \$([\d.]+)\/1M tokens for output/i;
+    /(.+?) pricing is \$[\d.]+\/1M tokens for input and \$[\d.]+\/1M tokens for output/i;
   $("li,p")
     .filter((_index, element) => $(element).find("li,p").length === 0)
     .each((_index, element) => {
-      const match = text($(element).text()).match(legacy);
-      if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) return;
-      const matches = productMatches(models, match[1], true);
-      const current = matches.length === 1 ? matches[0] : undefined;
-      if (current === undefined) {
-        reconcileUnmatched(match[1], matches, input.onPricingReconciliation, 2);
-        return;
-      }
-      const inputPrice = match[2];
-      const outputPrice = match[3];
-      update(models, current.model_id, (item) =>
-        addRate(
-          addRate(
-            item,
-            publishedRate("input_text", inputPrice, "million_tokens", input.source.id, "1M tokens"),
-            input.onPricingReconciliation,
-          ),
-          publishedRate("output_text", outputPrice, "million_tokens", input.source.id, "1M tokens"),
-          input.onPricingReconciliation,
-        ),
-      );
+      const label = text($(element).text()).match(legacy)?.[1];
+      if (label === undefined) return;
+      if (!/Command(?:-light| R(?:\+)?(?: \d{2}-\d{4})?)?$/i.test(label)) return;
+      for (let index = 0; index < 2; index += 1)
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "out_of_scope_account_offer",
+          sample: label,
+        });
     });
   const aya = text($("body").text()).match(
     /Aya Expanse models \(8B and 32B\).*?\$([\d.]+)\/1M tokens for input and \$([\d.]+)\/1M tokens for output/i,
@@ -1517,15 +1422,6 @@ function applyPricing(
           ),
         );
     }
-  return products.map((product) => ({
-    modelName: product.modelName,
-    per: product.per,
-    labels: (product.pricings ?? []).flatMap(({ inputLabel, outputLabel }) => [
-      inputLabel,
-      ...(outputLabel === undefined ? [] : [outputLabel]),
-    ]),
-    description: nestedText(product.portableDescription),
-  }));
 }
 
 function applyAliasPricing(models: Map<string, ProviderModel>): void {
@@ -1561,58 +1457,43 @@ function finalizeRetiredPricing(models: Map<string, ProviderModel>): void {
       });
 }
 
-function validatePricingCoverage(
-  models: Map<string, ProviderModel>,
-  minimum: number,
-  reconcile?: Reconcile,
-): void {
-  if (minimum < 0 || minimum > 1) throw new Error("Invalid Cohere pricing coverage threshold");
-  const current = [...models.values()].filter(({ status }) =>
-    ["active", "deprecated"].includes(status),
-  );
-  const covered = current.filter(
-    ({ pricing_state, price_facts, raw_price_facts }) =>
-      pricing_state !== "unknown" || price_facts.length > 0 || raw_price_facts.length > 0,
-  ).length;
-  if (current.length > 0 && covered / current.length < minimum)
-    reconcile?.({
-      disposition: "unbound",
-      reason_code: "pricing_coverage_below_reviewed_threshold",
-      sample: `${covered}/${current.length}`,
-    });
-}
-
 function addAccountingGaps(
   models: Map<string, ProviderModel>,
   valid: ReadonlySet<string>,
   sourceRef: string,
 ): void {
-  const policy = valid.has("/docs/how-does-cohere-pricing-work.md");
+  const gaps = accountingReferences
+    .filter(({ documentPath }) => !valid.has(documentPath))
+    .map(({ gap }) => gap);
+  if (gaps.length === 0) return;
   for (const current of models.values()) {
-    const reference = current.tasks.includes("embeddings")
-      ? "/reference/embed.md"
-      : current.tasks.includes("reranking")
-        ? "/reference/rerank.md"
-        : current.tasks.includes("text_generation")
-          ? "/reference/chat.md"
-          : undefined;
-    if (reference === undefined || (policy && valid.has(reference))) continue;
+    const paths = new Set(current.api_endpoints?.map(({ path }) => path) ?? []);
+    const relevant = gaps.filter(
+      (gap) =>
+        gap === "policy" ||
+        (gap === "chat-v2" && paths.has("v2/chat")) ||
+        (gap === "chat-v1" && paths.has("v1/chat")) ||
+        (gap === "embed-v2" && paths.has("v2/embed")) ||
+        (gap === "rerank-v2" && paths.has("v2/rerank")),
+    );
+    if (relevant.length === 0) continue;
     models.set(current.model_id, {
       ...current,
       raw_price_facts: [
         ...current.raw_price_facts,
-        {
-          term_key: "accounting_binding_unavailable",
-          impact: "informational",
-          reason: "unknown_meter",
-          conditions: {},
-          source_ref: sourceRef,
-          raw: {
-            fragment: `The exact Cohere billed-unit binding is unavailable because ${
-              policy ? reference : "/docs/how-does-cohere-pricing-work.md"
-            } drifted`,
-          },
-        },
+        ...relevant.map(
+          (gap) =>
+            ({
+              term_key: `accounting_binding_unavailable:${gap}`,
+              impact: "informational",
+              reason: "unknown_meter",
+              conditions: {},
+              source_ref: sourceRef,
+              raw: {
+                fragment: `The exact Cohere billed-unit binding is unavailable because ${gap} evidence drifted`,
+              },
+            }) satisfies SourceRawPricingFact,
+        ),
       ],
     });
   }
@@ -1673,12 +1554,15 @@ function releases(models: Map<string, ProviderModel>, body: string, root: boolea
     .map((_index, element) => text($(element).text()))
     .get()
     .filter(Boolean);
-  if (entries.size !== prose.length) throw new Error("Cohere changelog structure drifted");
-  [...entries].forEach(([path, value], index) => {
-    if (/(?:retirement|deprecat)/i.test(path)) return;
+  const dated = [...entries];
+  if (dated.length !== prose.length) {
+    return;
+  }
+  for (const [index, [path, at]] of dated.entries()) {
+    if (/(?:retirement|deprecat)/i.test(path)) continue;
     const content = prose[index];
-    if (content !== undefined) applyRelease(models, content, date(value));
-  });
+    if (content) applyRelease(models, content, date(at));
+  }
 }
 
 function applyGenerateEndpoint(
@@ -1686,10 +1570,9 @@ function applyGenerateEndpoint(
   references: EndpointReferences,
 ): void {
   const reference = references.byLabel.get("Generate");
-  if (reference?.modelIds === undefined)
-    throw new Error("Cohere Generate API reference is missing");
+  if (reference?.modelIds === undefined) return;
   for (const id of reference.modelIds) {
-    if (!models.has(id)) throw new Error(`Cohere Generate model did not match the catalog: ${id}`);
+    if (!models.has(id)) continue;
     update(models, id, (current) => withEndpoints(current, [reference.endpoint]));
   }
 }
@@ -1730,12 +1613,7 @@ function indexedModelDocuments(
     if (byPath.has(pathname)) throw new Error(`Duplicate Cohere model document: ${pathname}`);
     byPath.set(pathname, document);
   }
-  return [...paths].map((pathname) => {
-    const document = byPath.get(pathname);
-    if (document === undefined)
-      throw new Error(`Cohere model index document is missing: ${pathname}`);
-    return document;
-  });
+  return [...paths].flatMap((pathname) => byPath.get(pathname) ?? []);
 }
 
 export function parseCohereCatalog(input: Input): ProviderModel[] {
@@ -1746,8 +1624,7 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   if (linkedDocuments === undefined) throw new Error("Cohere catalog requires linked documents");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
-  validateOpenApi(bundle.documents);
-  const references = endpointReferences(bundle.documents);
+  const references = endpointReferences(bundle.documents, input.onPricingReconciliation);
   const accounting = validateAccountingReferences(bundle.documents, input.onPricingReconciliation);
   const modelDocuments = indexedModelDocuments(
     bundle.index,
@@ -1762,12 +1639,9 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
     if (/^\/docs\/transcribe(?:-arabic)?$/.test(url.pathname))
       transcribePage(input, models, url, document.body, references);
   }
-  let commercialProducts: CohereCommercialProduct[] = [];
   for (const document of bundle.documents) {
     const url = new URL(document.url);
     if (url.pathname === "/docs/deprecations") lifecycle(input, models, document.body);
-    if (url.hostname === "cohere.com" && url.pathname === "/pricing")
-      commercialProducts = applyPricing(input, models, document.body);
   }
   applyGenerateEndpoint(models, references);
   for (const document of bundle.documents) {
@@ -1778,18 +1652,6 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   applyAliasPricing(models);
   finalizeRetiredPricing(models);
   addAccountingGaps(models, accounting, input.source.id);
-  extractCohereCommercialFacts({
-    documents: bundle.documents,
-    embedJobModelIds: references.byLabel.get("Embed Jobs")?.modelIds ?? new Set(),
-    models,
-    products: commercialProducts,
-    resolve: (label, keepDate = false) => productMatches(models, label, keepDate),
-    sourceId: input.source.id,
-    ...(input.onPricingReconciliation === undefined
-      ? {}
-      : { reconcile: input.onPricingReconciliation }),
-  });
-  validatePricingCoverage(models, configuration.minPricingCoverage, input.onPricingReconciliation);
   assertItemCount(
     "Cohere model catalog",
     models.size,
@@ -1799,7 +1661,46 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   return [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 
+export function parseCoherePricing(input: Input): ProviderModel[] {
+  if (input.source.extractor.kind !== "cohere-pricing")
+    throw new Error("Invalid Cohere pricing extractor");
+  if (input.catalogModels === undefined) throw new Error("Cohere pricing requires the catalog");
+  const models = new Map(
+    input.catalogModels.map((target) => {
+      const value = {
+        ...baseModel({
+          providerId: input.provider.id,
+          id: target.model_id,
+          ...(target.version === undefined ? {} : { version: target.version }),
+          name: target.name,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        aliases: [...target.aliases],
+        tasks: [...target.tasks],
+        status: target.status,
+      } satisfies ProviderModel;
+      return [value.model_id, value] as const;
+    }),
+  );
+  applyPricing(
+    input,
+    models,
+    input.body,
+    input.source.extractor.minProducts,
+    input.source.extractor.maxProducts,
+  );
+  finalizeRetiredPricing(models);
+  return [...models.values()]
+    .filter(
+      ({ price_facts, raw_price_facts, pricing_state }) =>
+        price_facts.length > 0 || raw_price_facts.length > 0 || pricing_state !== "unknown",
+    )
+    .sort((left, right) => left.model_id.localeCompare(right.model_id));
+}
+
 export function parseCohereApi(input: Input): ProviderModel[] {
+  if (input.source.extractor.kind !== "cohere-api") throw new Error("Invalid Cohere API extractor");
   const value = apiSchema.parse(JSON.parse(input.body));
   if (value.next_page_token !== undefined)
     throw new Error("Cohere Models API response was truncated");
@@ -1808,12 +1709,19 @@ export function parseCohereApi(input: Input): ProviderModel[] {
     items: value.models,
     schema: apiItemSchema,
     modelId: "name",
+    rootKeys: [...Object.keys(apiItemSchema.shape), ...(input.source.extractor.knownFields ?? [])],
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
-  return items.map((item) => {
-    const facts = (item.endpoints ?? []).map((endpoint) => {
-      const fact = apiEndpointFacts.get(endpoint);
-      if (fact === undefined) throw new Error(`Unsupported Cohere API endpoint: ${endpoint}`);
-      return fact;
+  const unknownEndpoints = new Set<string>();
+  const models: ProviderModel[] = items.map((item) => {
+    const facts = (item.endpoints ?? []).flatMap((endpoint) => {
+      const parsed = endpointSchema.safeParse(endpoint);
+      if (!parsed.success) {
+        unknownEndpoints.add(endpoint);
+        return [];
+      }
+      return [apiEndpointFacts.get(parsed.data) ?? {}];
     });
     const tasks = unique(
       facts.flatMap((fact) => (fact.operation === undefined ? [] : [fact.operation])),
@@ -1835,7 +1743,10 @@ export function parseCohereApi(input: Input): ProviderModel[] {
         item.context_length === undefined || item.context_length === 0
           ? {}
           : { context_tokens: item.context_length },
-      status: item.is_deprecated === true ? "deprecated" : "unknown",
+      status: item.is_deprecated === true ? ("deprecated" as const) : ("unknown" as const),
     };
   });
+  if (unknownEndpoints.size > 0)
+    input.onContractFinding?.(contractExtensionEvidence(["/models/*/endpoints/*"]));
+  return models;
 }

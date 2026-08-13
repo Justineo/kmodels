@@ -23,6 +23,7 @@ import {
 import {
   assertCoverage,
   assertItemCount,
+  contractExtensionEvidence,
   recognizeItems,
   type SourceContractEvidence,
 } from "./source-contract.ts";
@@ -90,64 +91,52 @@ const retailProductScopes = new Map<string, readonly string[]>([
 interface AzureApiEndpoint {
   path: string;
   operationId: string;
-  spec: "stable" | "preview";
 }
 
 const azureApiEndpoints = {
   batch: {
     path: "openai/v1/batches",
     operationId: "createBatch",
-    spec: "stable",
   },
   chat: {
     path: "openai/v1/chat/completions",
     operationId: "createChatCompletion",
-    spec: "stable",
   },
   completion: {
     path: "openai/v1/completions",
     operationId: "createCompletion",
-    spec: "stable",
   },
   embedding: {
     path: "openai/v1/embeddings",
     operationId: "createEmbedding",
-    spec: "stable",
   },
   realtime: {
     path: "openai/v1/realtime/sessions",
     operationId: "createRealtimeSession",
-    spec: "stable",
   },
   response: {
     path: "openai/v1/responses",
     operationId: "createResponse",
-    spec: "stable",
   },
   speech: {
     path: "openai/v1/audio/speech",
     operationId: "createSpeech",
-    spec: "preview",
   },
   transcription: {
     path: "openai/v1/audio/transcriptions",
     operationId: "createTranscription",
-    spec: "preview",
   },
   translation: {
     path: "openai/v1/audio/translations",
     operationId: "createTranslation",
-    spec: "preview",
   },
   image: {
     path: "openai/v1/images/generations",
     operationId: "createImage",
-    spec: "preview",
   },
   video: {
     path: "openai/v1/videos",
     operationId: "Videos_Create",
-    spec: "preview",
   },
 } as const satisfies Record<string, AzureApiEndpoint>;
 
@@ -162,9 +151,7 @@ const azureModelSchema = z.object({
     deprecation: z
       .object({ fineTune: z.string().optional(), inference: z.string().optional() })
       .optional(),
-    lifecycleStatus: z
-      .enum(["Stable", "Preview", "GenerallyAvailable", "Legacy", "Deprecating", "Deprecated"])
-      .optional(),
+    lifecycleStatus: z.string().min(1).optional(),
     skus: z.array(azureArmSkuSchema).optional(),
   }),
 });
@@ -218,28 +205,7 @@ const azureRetailBundleSchema = z.object({
   prices: z.array(z.unknown()).min(1),
 });
 
-const azurePortalTaskSchema = z.enum([
-  "audio-generation",
-  "automatic-speech-recognition",
-  "chat-completion",
-  "completions",
-  "data-generation",
-  "embeddings",
-  "image-classification",
-  "image-to-image",
-  "image-to-text",
-  "responses",
-  "speech-to-text",
-  "speech-translation",
-  "summarization",
-  "text-classification",
-  "text-generation",
-  "text-to-image",
-  "text-to-speech",
-  "translation",
-]);
-type AzurePortalTask = z.infer<typeof azurePortalTaskSchema>;
-const azurePortalTaskMap: Readonly<Record<AzurePortalTask, readonly ModelTask[]>> = {
+const azurePortalTaskMap: Readonly<Record<string, readonly ModelTask[]>> = {
   "audio-generation": ["audio_generation"],
   "automatic-speech-recognition": ["transcription"],
   "chat-completion": ["text_generation"],
@@ -259,45 +225,30 @@ const azurePortalTaskMap: Readonly<Record<AzurePortalTask, readonly ModelTask[]>
   "text-to-speech": ["speech_synthesis"],
   translation: ["translation"],
 };
-const azurePortalInputModalitySchema = z.enum(["audio", "image", "pdf", "text"]);
-const azurePortalOutputModalitySchema = z.enum(["audio", "embeddings", "image", "text"]);
-const azurePortalLifecycleSchema = z.enum([
-  "Deprecated",
-  "Generally Available",
-  "Generally available",
-  "Legacy",
-  "Preview",
-  "Retired",
-]);
 const azurePortalDateSchema = z.iso.datetime({ offset: true }).nullable().optional();
 const azurePortalModelSchema = z.object({
   entityResourceName: z.string().min(1),
   entityId: z.string().min(1),
-  kind: z.literal("Versioned"),
+  kind: z.string().min(1),
   properties: z.object({
     id: z.string().min(3),
     name: modelIdSchema,
-    isAnonymous: z.literal(false),
+    isAnonymous: z.boolean(),
   }),
   annotations: z.object({
-    archived: z.literal(false),
+    archived: z.boolean(),
     description: z.string().nullable().optional(),
-    labels: z.array(z.string()).refine((labels) => labels.includes("latest")),
+    labels: z.array(z.string()),
     tags: z.object({
-      deploymentOptions: z.string().refine((value) =>
-        value
-          .split(",")
-          .map((item) => item.trim())
-          .includes("UnifiedEndpointMaaS"),
-      ),
+      deploymentOptions: z.string(),
     }),
     systemCatalogData: z.object({
       publisher: z.string().min(1).nullable().optional(),
       displayName: z.string().min(1),
       summary: z.string().min(1).nullable().optional(),
-      inferenceTasks: z.array(azurePortalTaskSchema).min(1),
-      inputModalities: z.array(azurePortalInputModalitySchema).nullable().optional(),
-      outputModalities: z.array(azurePortalOutputModalitySchema).nullable().optional(),
+      inferenceTasks: z.array(z.string().min(1)).min(1),
+      inputModalities: z.array(z.string().min(1)).nullable().optional(),
+      outputModalities: z.array(z.string().min(1)).nullable().optional(),
       modelCapabilities: z.array(z.string().min(1)).nullable().optional(),
       featuresSupported: z.array(z.string().min(1)).nullable().optional(),
       supportsToolCalling: z.boolean().nullable().optional(),
@@ -305,7 +256,7 @@ const azurePortalModelSchema = z.object({
       textContextWindow: z.number().int().positive().nullable().optional(),
       maxInputTokens: z.number().int().positive().nullable().optional(),
       maxOutputTokens: z.number().int().positive().nullable().optional(),
-      lifecycle: azurePortalLifecycleSchema.nullable().optional(),
+      lifecycle: z.string().min(1).nullable().optional(),
       preview: z.boolean().nullable().optional(),
       inferenceLegacyDate: azurePortalDateSchema,
       inferenceDeprecationDate: azurePortalDateSchema,
@@ -332,6 +283,15 @@ const azurePortalBundleSchema = z.object({ models: z.array(z.unknown()).min(1) }
 const azurePublicPriceAmountSchema = z.object({
   regional: z.record(z.string().min(1), decimalValue),
 });
+
+function azurePublicAmounts(raw: string): z.infer<typeof azurePublicPriceAmountSchema> | undefined {
+  try {
+    const result = azurePublicPriceAmountSchema.safeParse(JSON.parse(raw));
+    return result.success ? result.data : undefined;
+  } catch {
+    return;
+  }
+}
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
@@ -989,66 +949,10 @@ function assistants(models: Map<string, ProviderModel>, input: Input, body: stri
 }
 
 function document(bundle: z.infer<typeof linkedBundleSchema>, suffix: string): string {
-  const item = bundle.documents.find((candidate) =>
-    new URL(candidate.url).pathname.endsWith(suffix),
+  return (
+    bundle.documents.find((candidate) => new URL(candidate.url).pathname.endsWith(suffix))?.body ??
+    ""
   );
-  if (item === undefined) throw new Error(`Azure bundle omitted ${suffix}`);
-  return item.body;
-}
-
-function validateApiSpecs(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const specs = {
-    stable: document(bundle, "/azure-v1-v1-generated.yaml"),
-    preview: document(bundle, "/azure-v1-preview-generated.yaml"),
-  };
-  for (const body of Object.values(specs))
-    if (!/^  - url: ["']\{endpoint\}\/openai\/v1["']$/m.test(body))
-      throw new Error("Azure OpenAI API specification server drifted");
-  for (const value of Object.values(azureApiEndpoints)) {
-    const relativePath = value.path.replace(/^openai\/v1/, "");
-    const operation = `  ${relativePath}:\n    post:\n      operationId: ${value.operationId}`;
-    if (!specs[value.spec].includes(operation))
-      throw new Error(`Azure OpenAI API specification drifted for ${value.path}`);
-  }
-}
-
-function validateAccountingDocs(bundle: z.infer<typeof linkedBundleSchema>): void {
-  const costs = document(bundle, "/manage-costs.md");
-  if (
-    !costs.includes("HTTP status codes alone don't determine whether usage is billed") ||
-    !costs.includes("treat your invoice and meter records as the source of truth") ||
-    !costs.includes("because of ingestion timing and aggregation differences")
-  )
-    throw new Error("Azure Foundry billing-source boundary drifted");
-
-  const caching = document(bundle, "/how-to-prompt-caching-content.md");
-  if (
-    !caching.includes("cache reads are billed at a") ||
-    !caching.includes("`cached_tokens`") ||
-    !caching.includes("`cache_write_tokens`") ||
-    !caching.includes("GPT-5.6 models and later model families") ||
-    !caching.includes("cache writes can incur charges") ||
-    !caching.includes("Prompt caching is enabled by default for supported models") ||
-    !caching.includes("doesn't use prompt caching or incur cache-write charges")
-  )
-    throw new Error("Azure OpenAI cache accounting contract drifted");
-
-  const automation = document(bundle, "/manage-automation.md");
-  if (
-    !automation.includes("query at most once per day") ||
-    !automation.includes("Cost Management data is refreshed every four hours") ||
-    !automation.includes('"metric": "ActualCost"')
-  )
-    throw new Error("Azure Cost Management freshness contract drifted");
-
-  const claude = document(bundle, "/claude-models-billing.md");
-  if (
-    !claude.includes("Token usage is priced using Anthropic's per-model token rates") ||
-    !claude.includes("Any contractual discount you have") ||
-    !claude.includes("CCU is metered hourly to Azure Marketplace") ||
-    !claude.includes("Per-model token usage and request counts")
-  )
-    throw new Error("Azure Claude billing contract drifted");
 }
 
 export function parseAzureCatalog(input: Input): ProviderModel[] {
@@ -1059,8 +963,6 @@ export function parseAzureCatalog(input: Input): ProviderModel[] {
   const others = document(bundle, "/models-azure-direct-others.md");
   const partners = document(bundle, "/models-partners.md");
   const models = new Map<string, ProviderModel>();
-  validateApiSpecs(bundle);
-  validateAccountingDocs(bundle);
 
   lifecycle(models, input, document(bundle, "/concepts-model-retirement-schedule-content.md"));
   for (const suffix of [
@@ -1230,10 +1132,23 @@ export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
     items: bundle.models,
     schema: azurePortalModelSchema,
     modelId: azurePortalModelId,
+    skipInvalidItems: true,
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   const models = new Map<string, ProviderModel>();
+  const extensions = new Set<string>();
   for (const item of rows) {
+    const deploymentOptions = item.annotations.tags.deploymentOptions
+      .split(",")
+      .map((value) => value.trim());
+    if (
+      item.kind !== "Versioned" ||
+      item.properties.isAnonymous ||
+      item.annotations.archived ||
+      !item.annotations.labels.includes("latest") ||
+      !deploymentOptions.includes("UnifiedEndpointMaaS")
+    )
+      continue;
     const { id, version } = azurePortalIdentity(item);
     const documented = input.catalogModels.some(
       (model) => model.model_id === id && model.version === version,
@@ -1251,16 +1166,31 @@ export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
     const hasFeature = (...values: string[]): boolean =>
       values.some((value) => featureSet.has(value));
     const tasks = orderedTasks(
-      item.annotations.systemCatalogData.inferenceTasks.flatMap((task) => [
-        ...azurePortalTaskMap[task],
-      ]),
+      item.annotations.systemCatalogData.inferenceTasks.flatMap((task) => {
+        const mapped = azurePortalTaskMap[task];
+        if (mapped !== undefined) return [...mapped];
+        extensions.add(`/annotations/systemCatalogData/inferenceTasks/${task}`);
+        return [];
+      }),
     );
+    const modality = (value: string, output: boolean): Modality | undefined => {
+      if (value === "audio" || value === "image" || value === "pdf" || value === "text")
+        return value;
+      if (output && value === "embeddings") return "embedding";
+      extensions.add(
+        `/annotations/systemCatalogData/${output ? "outputModalities" : "inputModalities"}/${value}`,
+      );
+    };
     const modalities = {
-      input: unique((catalog.inputModalities ?? []).map((value): Modality => value)),
+      input: unique(
+        (catalog.inputModalities ?? [])
+          .map((value) => modality(value, false))
+          .filter((value): value is Modality => value !== undefined),
+      ),
       output: unique(
-        (catalog.outputModalities ?? []).map(
-          (value): Modality => (value === "embeddings" ? "embedding" : value),
-        ),
+        (catalog.outputModalities ?? [])
+          .map((value) => modality(value, true))
+          .filter((value): value is Modality => value !== undefined),
       ),
     };
     const availability = [
@@ -1311,9 +1241,9 @@ export function parseAzurePortalCatalog(input: Input): ProviderModel[] {
       pricing_state: "unknown",
       ...(availability.length === 0 ? {} : { availability }),
     };
-    if (models.has(model.uid)) throw new Error(`Azure portal repeated model ${model.uid}`);
-    models.set(model.uid, model);
+    upsert(models, model);
   }
+  if (extensions.size > 0) input.onContractFinding?.(contractExtensionEvidence([...extensions]));
   const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
   assertItemCount(
     "Azure portal catalog supplement",
@@ -1347,29 +1277,30 @@ function azureClaudeDate(value: string): string | undefined {
   return z.iso.date().safeParse(date).success ? date : undefined;
 }
 
-function azureClaudeIdentity(label: string): {
-  id: string;
-  conditions: SourcePriceFact["conditions"];
-} {
+function azureClaudeIdentity(label: string):
+  | {
+      id: string;
+      conditions: SourcePriceFact["conditions"];
+    }
+  | undefined {
   const value = plain(label)
     .replace(/\s+\([^)]*\)/g, "")
     .trim();
   const validity = value.match(/\s+(through|starting) ([A-Z][a-z]+ \d{1,2}, \d{4})$/);
   const date = validity?.[2] === undefined ? undefined : azureClaudeDate(validity[2]);
-  if (validity !== null && date === undefined)
-    throw new Error(`Azure Claude pricing contained an invalid date: ${validity[2] ?? ""}`);
+  if (validity !== null && date === undefined) return;
   const name = value.slice(0, validity?.index ?? value.length).trim();
-  if (!/^Claude [A-Za-z]+ \d+(?:[.]\d+)?$/.test(name))
-    throw new Error(`Azure Claude pricing contained an unsupported model label: ${label}`);
-  const id = modelIdSchema.parse(
+  if (!/^Claude [A-Za-z]+ \d+(?:[.]\d+)?$/.test(name)) return;
+  const id = modelIdSchema.safeParse(
     name
       .toLowerCase()
       .replace(/[.]/g, "-")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, ""),
   );
+  if (!id.success) return;
   return {
-    id,
+    id: id.data,
     conditions:
       validity?.[1] === "through" && date !== undefined
         ? { effective_until: date, promotion: true }
@@ -1423,38 +1354,77 @@ function azureClaudeDataZoneRates(rates: readonly SourcePriceFact[]): SourcePric
   }));
 }
 
+function azureClaudeFoundryContract(body: string, parsedTables: readonly MarkdownTable[]): boolean {
+  const foundry = parsedTables.find(
+    (table) =>
+      table.section === "Claude in Microsoft Foundry pricing" &&
+      table.headers.includes("Concept") &&
+      table.headers.includes("Details"),
+  );
+  const conversion = foundry?.rows.find(
+    (row) => plain(row[foundry.headers.indexOf("Concept")] ?? "") === "Conversion",
+  );
+  const details =
+    conversion === undefined
+      ? ""
+      : plain(conversion[foundry?.headers.indexOf("Details") ?? -1] ?? "");
+  const section = body.split(/^## Claude in Microsoft Foundry pricing\s*$/m)[1]?.split(/^## /m)[0];
+  return (
+    /standard per-model, per-feature rates/i.test(details) &&
+    /Claude API pricing/i.test(details) &&
+    section !== undefined &&
+    /US Data Zone Standard/i.test(section) &&
+    /1\.1x pricing multiplier/i.test(section)
+  );
+}
+
+function azureClaudeSupportsDataZone(id: string): boolean {
+  const version = id.match(/^claude-[a-z]+-(\d+)(?:-(\d+))?$/);
+  if (version?.[1] === undefined) return false;
+  const major = Number(version[1]);
+  const minor = Number(version[2] ?? 0);
+  return major > 4 || (major === 4 && minor >= 6);
+}
+
 export function parseAzureClaudePricing(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "azure-claude-pricing")
     throw new Error("Wrong Azure Claude pricing extractor");
-  if (
-    !input.body.includes("## Claude in Microsoft Foundry pricing") ||
-    !input.body.includes("same as [Claude API pricing](#model-pricing)") ||
-    !input.body.includes("Azure Marketplace hourly") ||
-    !input.body.includes("applies the same 1.1x pricing multiplier")
-  )
-    throw new Error("Azure Claude delegated-pricing contract drifted");
   const catalogModels = input.catalogModels;
   if (catalogModels === undefined || catalogModels.length === 0)
     throw new Error("Azure Claude pricing requires the public catalog");
-  const table = tables(input.body).find(
+  const parsedTables = tables(input.body);
+  if (!azureClaudeFoundryContract(input.body, parsedTables))
+    throw new Error("Azure Claude delegated-pricing contract drifted");
+  const priceColumns = [
+    "Base Input Tokens",
+    "5m Cache Writes",
+    "1h Cache Writes",
+    "Cache Hits & Refreshes",
+    "Output Tokens",
+  ];
+  const table = parsedTables.find(
     (candidate) =>
-      candidate.headers.join("\0") ===
-      [
-        "Model",
-        "Base Input Tokens",
-        "5m Cache Writes",
-        "1h Cache Writes",
-        "Cache Hits & Refreshes",
-        "Output Tokens",
-      ].join("\0"),
+      candidate.section === "Model pricing" &&
+      candidate.headers.includes("Model") &&
+      priceColumns.every((header) => candidate.headers.includes(header)),
   );
   if (table === undefined || table.rows.length === 0)
     throw new Error("Azure Claude pricing page omitted the model price table");
+  const modelColumn = table.headers.indexOf("Model");
+  const priceColumnIndexes = priceColumns.map((header) => table.headers.indexOf(header));
 
   const models = new Map<string, ProviderModel>();
   for (const row of table.rows) {
-    const identity = azureClaudeIdentity(row[0] ?? "");
+    const identity = azureClaudeIdentity(row[modelColumn] ?? "");
+    if (identity === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "claude_price_label_unsupported",
+        sample: plain(row[0] ?? "").slice(0, 256),
+      });
+      continue;
+    }
     const candidates = catalogModels.filter(
       (model) =>
         model.model_id === identity.id &&
@@ -1471,18 +1441,22 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
       });
       continue;
     }
-    const [inputPrice, fiveMinuteWrite, oneHourWrite, cacheRead, outputPrice] = row
-      .slice(1)
-      .map(azureClaudeAmount);
+    const [inputPrice, fiveMinuteWrite, oneHourWrite, cacheRead, outputPrice] =
+      priceColumnIndexes.map((index) => azureClaudeAmount(row[index] ?? ""));
     if (
-      row.length !== 6 ||
       inputPrice === undefined ||
       fiveMinuteWrite === undefined ||
       oneHourWrite === undefined ||
       cacheRead === undefined ||
       outputPrice === undefined
-    )
-      throw new Error(`Azure Claude price row was not machine-readable: ${row[0] ?? ""}`);
+    ) {
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "claude_price_row_unreadable",
+        sample: identity.id,
+      });
+      continue;
+    }
     const rates = [
       azureClaudeRate("input_text", inputPrice, identity.conditions, input.source.id),
       azureClaudeRate(
@@ -1502,7 +1476,10 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
       azureClaudeRate("cache_read_text", cacheRead, identity.conditions, input.source.id),
       azureClaudeRate("output_text", outputPrice, identity.conditions, input.source.id),
     ];
-    if (candidate.availability?.some(({ deployment_type }) => /data ?zone/i.test(deployment_type)))
+    if (
+      azureClaudeSupportsDataZone(candidate.model_id) &&
+      candidate.availability?.some(({ deployment_type }) => /data ?zone/i.test(deployment_type))
+    )
       rates.push(...azureClaudeDataZoneRates(rates));
     const uid = modelUid(input.provider.id, candidate.model_id);
     const current =
@@ -1511,20 +1488,6 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
         ...base(input, candidate.model_id),
         pricing_state: "numeric",
         price_facts: [],
-        raw_price_facts: [
-          {
-            term_key: "azure_marketplace_private_offer_discount",
-            impact: "base_price",
-            reason: "unknown_amount",
-            conditions: { account_eligibility: "azure_marketplace_private_offer" },
-            source_ref: input.source.id,
-            raw: {
-              label: "Azure Marketplace private offer",
-              fragment:
-                "Anthropic applies any negotiated per-model discount before converting token cost to Claude Consumption Units.",
-            },
-          },
-        ],
       } satisfies ProviderModel);
     current.price_facts.push(...rates);
     models.set(uid, current);
@@ -2066,6 +2029,8 @@ export function parseAzureRetailPrices(input: Input): ProviderModel[] {
     label: "Azure retail price",
     items: bundle.prices,
     schema: retailPriceSchema,
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   const catalogModels = input.catalogModels;
   if (catalogModels === undefined || catalogModels.length === 0)
@@ -2210,26 +2175,6 @@ const azurePublicPricingPages = new Map<string, AzurePublicPricingPage>([
     "/en-us/pricing/details/ai-foundry-models/fireworks/",
     { kind: "model", name: "Fireworks", productName: "Azure Fireworks Models" },
   ],
-  [
-    "/en-us/pricing/details/ai-foundry-models/fine-tuning-models/",
-    { kind: "commercial", name: "Fine-tuning models", productName: "" },
-  ],
-  [
-    "/en-us/pricing/details/foundry-agent-service/",
-    { kind: "commercial", name: "Foundry Agent Service", productName: "" },
-  ],
-  [
-    "/en-us/pricing/details/content-safety/",
-    { kind: "commercial", name: "Content Safety", productName: "" },
-  ],
-  [
-    "/en-us/pricing/details/foundryobservability/",
-    { kind: "commercial", name: "Foundry Observability", productName: "" },
-  ],
-  [
-    "/en-us/pricing/details/microsoft-foundry/",
-    { kind: "commercial", name: "Microsoft Foundry", productName: "" },
-  ],
 ]);
 
 const azurePublicModelAliases = new Map<string, string>([
@@ -2264,36 +2209,6 @@ function azurePublicPage(rawUrl: string): AzurePublicPricingPage {
   if (family === undefined || ["aoai", "fine-tuning-models"].includes(family))
     throw new Error("Azure public pricing bundle contained an unknown page");
   return { kind: "model", name: family, productName: "" };
-}
-
-function azureCommercialModelRefs(
-  label: string,
-  catalogModels: readonly RetailCatalogModel[],
-  providerId: string,
-): string[] {
-  const identities = new Set<string>();
-  for (const page of azurePublicPricingPages.values()) {
-    if (page.kind !== "model") continue;
-    const identity = azurePublicIdentity(page, label, label, catalogModels);
-    if (identity !== undefined)
-      for (const model of catalogModels)
-        if (
-          model.model_id === identity.id &&
-          (identity.version === undefined || model.version === identity.version)
-        )
-          identities.add(modelUid(providerId, model.model_id, model.version));
-  }
-  const key = retailWords(label)
-    .replace(/\b(?:global|regional|data zones?|short context|long context)\b/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  for (const model of catalogModels) {
-    const labels = [model.model_id, model.name, ...(model.aliases ?? [])].map((value) =>
-      retailWords(value).replace(/\s+/g, " ").trim(),
-    );
-    if (labels.includes(key)) identities.add(modelUid(providerId, model.model_id, model.version));
-  }
-  return [...identities].sort();
 }
 
 function azurePublicAlias(label: string): string | undefined {
@@ -2348,9 +2263,8 @@ const azurePublicRegionAliases: Readonly<Record<string, string>> = {
   "us-west-central": "westcentralus",
 };
 
-function azurePublicRegion(value: string): string {
-  if (!/^[a-z0-9-]+$/.test(value))
-    throw new Error("Azure public price contained an invalid region");
+function azurePublicRegion(value: string): string | undefined {
+  if (!/^[a-z0-9-]+$/.test(value)) return;
   return azurePublicRegionAliases[value] ?? value.replaceAll("-", "");
 }
 
@@ -2372,8 +2286,10 @@ function azurePublicConditions(
   label: string,
   segment: string,
   region: string,
-): SourcePriceFact["conditions"] {
-  const conditions = retailLabelConditions(`${label} ${segment}`, azurePublicRegion(region));
+): SourcePriceFact["conditions"] | undefined {
+  const normalizedRegion = azurePublicRegion(region);
+  if (normalizedRegion === undefined) return;
+  const conditions = retailLabelConditions(`${label} ${segment}`, normalizedRegion);
   const resolution = `${label} ${segment}`.match(/\b\d{2,5}\s*[x×]\s*\d{2,5}\b/i)?.[0];
   const quality = `${label} ${segment}`.match(/\b(?:low|medium|high|hd)\b/i)?.[0];
   const modality = segment.match(/^\s*(text|image|audio|video)\b/i)?.[1]?.toLowerCase();
@@ -2403,6 +2319,7 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
     throw new Error("Azure public pricing requires the public catalog");
 
   const models = new Map<string, ProviderModel>();
+  const conflicts = new Set<string>();
   const seenPages = new Set<string>();
   for (const document of [bundle.index, ...bundle.documents]) {
     const url = new URL(document.url);
@@ -2453,7 +2370,6 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
                 });
               continue;
             }
-            baseItems += 1;
             const contents = $(priceElement).parent().contents().toArray();
             const elementIndex = contents.indexOf(priceElement);
             let start = elementIndex;
@@ -2482,8 +2398,16 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
             const priceLabel = modality === undefined ? segment : `${modality} ${segment}`.trim();
             const sample = azurePublicSample(page.name, tableLabel, rowLabel, header, priceLabel);
             const rawAmount = $(priceElement).attr("data-amount");
-            if (rawAmount === undefined) throw new Error("Azure public price omitted its amount");
-            const amounts = azurePublicPriceAmountSchema.parse(JSON.parse(rawAmount));
+            const amounts = rawAmount === undefined ? undefined : azurePublicAmounts(rawAmount);
+            if (amounts === undefined) {
+              input.onPricingReconciliation?.({
+                disposition: "unsupported",
+                reason_code: "public_price_amount_unreadable",
+                sample,
+              });
+              continue;
+            }
+            baseItems += 1;
             if (Object.keys(amounts.regional).length === 0) {
               input.onPricingReconciliation?.({
                 disposition: "explicit_non_numeric",
@@ -2519,24 +2443,37 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
               kind: "table" as const,
               value: azurePublicSample(url.href, tableLabel, rowLabel, header, priceLabel),
             };
-            const rates: SourcePriceFact[] = Object.entries(amounts.regional).map(
-              ([region, amount]) => ({
-                meter,
-                price: scale === undefined ? amount : multiplyDecimal(amount, scale),
-                currency: "USD",
-                unit,
-                conditions: azurePublicConditions(
+            const rates: SourcePriceFact[] = Object.entries(amounts.regional).flatMap(
+              ([region, amount]) => {
+                const conditions = azurePublicConditions(
                   `${qualifiedLabel} ${header}`,
                   priceLabel,
                   region,
-                ),
-                source_ref: input.source.id,
-                source_locator: locator,
-                derived: scale !== undefined,
-                ...(scale === undefined ? {} : { derivation: `${amount} × ${scale}` }),
-                raw_price: amount,
-                raw_unit: rawUnit,
-              }),
+                );
+                if (conditions === undefined) {
+                  input.onPricingReconciliation?.({
+                    disposition: "unsupported",
+                    reason_code: "public_price_region_unsupported",
+                    sample: `${sample} / ${region}`.slice(0, 256),
+                  });
+                  return [];
+                }
+                return [
+                  {
+                    meter,
+                    price: scale === undefined ? amount : multiplyDecimal(amount, scale),
+                    currency: "USD",
+                    unit,
+                    conditions,
+                    source_ref: input.source.id,
+                    source_locator: locator,
+                    derived: scale !== undefined,
+                    ...(scale === undefined ? {} : { derivation: `${amount} × ${scale}` }),
+                    raw_price: amount,
+                    raw_unit: rawUnit,
+                  },
+                ];
+              },
             );
             const uid = modelUid(input.provider.id, identity.id, identity.version);
             const current =
@@ -2550,34 +2487,49 @@ export function parseAzurePublicPricing(input: Input): ProviderModel[] {
             );
             for (const fact of rates) {
               const key = sourcePriceFactKey(fact);
+              const conflictKey = `${uid}\0${key}`;
+              if (conflicts.has(conflictKey)) continue;
               const previous = existing.get(key);
-              if (previous !== undefined && !decimalsEqual(previous.price, fact.price))
-                throw new Error(
-                  `Azure public pricing disagreed for ${uid} at ${key}: ${previous.price} versus ${fact.price}`,
+              if (previous !== undefined && !decimalsEqual(previous.price, fact.price)) {
+                current.price_facts = current.price_facts.filter(
+                  (candidate) => sourcePriceFactKey(candidate) !== key,
                 );
+                existing.delete(key);
+                conflicts.add(conflictKey);
+                input.onPricingReconciliation?.({
+                  disposition: "unresolved",
+                  reason_code: "public_price_conflict",
+                  sample,
+                });
+                continue;
+              }
               if (previous === undefined) {
                 current.price_facts.push(fact);
                 existing.set(key, fact);
               }
             }
             models.set(uid, current);
-            input.onPricingReconciliation?.({
-              disposition: "normalized",
-              reason_code: "public_price_bound",
-            });
+            if (rates.length > 0)
+              input.onPricingReconciliation?.({
+                disposition: "normalized",
+                reason_code: "public_price_bound",
+              });
           }
         }
       }
     }
     if (page.kind === "model" && baseItems === 0)
-      throw new Error(`Azure public pricing page ${page.name} has no base prices`);
+      input.onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "public_price_page_unreadable",
+        sample: page.name,
+      });
   }
 
   const values = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
   const commercial = azureCommercialFacts({
     documents: [bundle.index, ...bundle.documents],
     sourceId: input.source.id,
-    modelRefsForLabel: (label) => azureCommercialModelRefs(label, catalogModels, input.provider.id),
     region: azurePublicRegion,
     ...(input.onPricingReconciliation === undefined
       ? {}
@@ -2819,6 +2771,8 @@ export function parseAzureApi(input: Input): ProviderModel[] {
     label: "Azure API retail price",
     items: bundle.prices,
     schema: retailPriceSchema,
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   const pricesByMeter = new Map<string, RetailPrice[]>();
   for (const price of prices)
@@ -2830,6 +2784,8 @@ export function parseAzureApi(input: Input): ProviderModel[] {
         items: rawModels,
         schema: azureModelSchema,
         modelId: azureApiModelId,
+        skipInvalidItems: true,
+        ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
       }),
     );
     return regionModels.map((item) => {
@@ -2848,9 +2804,13 @@ export function parseAzureApi(input: Input): ProviderModel[] {
       const modelTasksValue = orderedTasks(
         tasks.length === 0 ? classified : [...tasks, ...classified],
       );
-      const retiredAt = item.model.deprecation?.inference?.slice(0, 10);
-      if (retiredAt !== undefined && !z.iso.date().safeParse(retiredAt).success)
-        throw new Error("Azure API inference retirement date changed shape");
+      const retirement = item.model.deprecation?.inference?.slice(0, 10);
+      const retiredAt =
+        retirement !== undefined && z.iso.date().safeParse(retirement).success
+          ? retirement
+          : undefined;
+      if (retirement !== undefined && retiredAt === undefined)
+        input.onContractFinding?.(contractExtensionEvidence(["/model/deprecation/inference"]));
       const status = apiStatus(item.model.lifecycleStatus, retiredAt, input.observedAt);
       const rates = pricesFor(
         item,

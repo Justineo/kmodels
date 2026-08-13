@@ -21,16 +21,12 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
 - [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,
-  best-effort normalization and raw fallback, compact UI projections, exact
-  catalog binding, provider-atomic collection, commercial diffing, and
+  request-attributable inference rates, best-effort normalization and raw
+  fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
-- [Commercial topology](docs/commercial-topology.md): converged provider-wide
-  contract for resources, offer
-  composition, accounting, settlement, presentation, conflict resolution, and
-  resilient refresh. The shared wire cutover and the OpenAI, Anthropic,
-  Amazon Bedrock, Databricks, Vercel AI Gateway, Microsoft Foundry, Gemini API,
-  Vertex AI, Kimi, Cohere, Mistral AI, Meta Llama, xAI, Hugging Face,
-  Alibaba Cloud Model Studio, DeepSeek, Cerebras, and Ollama migrations are implemented;
+- [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
+  invocation-cost admission boundary, charge binding, presentation, conflict resolution, and
+  resilient refresh. Provider adapters converge to this boundary one at a time;
   `docs/pricing.md` owns the exact wire.
 
 ## Providers

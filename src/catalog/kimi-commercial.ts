@@ -7,12 +7,17 @@ import type {
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
-import { addAtom, rawEvidence } from "./pricing-commercial-assembly.ts";
+import {
+  addAtom,
+  isStandardUnit,
+  offerEvidence,
+  rawEvidence,
+  relation,
+  withApplicability,
+} from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
-  NormalizedPriceObservation,
-  OfferRelation,
   PriceApplicability,
   PriceCondition,
   PriceMeter,
@@ -29,7 +34,6 @@ interface ModelOffers {
 }
 
 export function applyKimiCommercialTopology(input: AtomicProviderPricing): AtomicProviderPricing {
-  if (input.provider_id !== "kimi") return input;
   const modelOffers = new Map<string, ModelOffers>();
   const books = input.books.map((book) => {
     if (book.scope.kind !== "models") return bindResourceBook(book, input);
@@ -87,7 +91,13 @@ function partitionOffer(
     const applicability = mechanismApplicability(state.applicability, mechanism);
     return applicability === undefined
       ? []
-      : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
+      : [
+          {
+            ...state,
+            applicability,
+            observation: withApplicability(state.observation, applicability),
+          },
+        ];
   });
   const terms = offer.terms.flatMap((term) => partitionTerm(book, term, mechanism));
   if (states.length === 0 && terms.length === 0) return;
@@ -122,7 +132,7 @@ function partitionTerm(
       {
         ...variant,
         applicability,
-        observation: normalized(variant.observation, applicability),
+        observation: withApplicability(variant.observation, applicability),
         ...(charge_binding === undefined ? {} : { charge_binding }),
       },
     ];
@@ -165,7 +175,7 @@ function modelBinding(
   variant: AtomicRateVariant,
   mechanism: Mechanism,
 ): ChargeBinding | undefined {
-  if (meter.namespace !== "kmodels" || !isTokenUnit(variant.price.per)) return;
+  if (meter.namespace !== "kmodels" || !isStandardUnit(variant.price.per, "token")) return;
   const modelRef = book.scope.kind === "models" ? book.scope.model_refs[0] : undefined;
   if (modelRef === undefined) return;
   if (mechanism === "batch") {
@@ -228,7 +238,7 @@ function resourceBinding(
   variant: AtomicRateVariant,
   input: AtomicProviderPricing,
 ): ChargeBinding | undefined {
-  if (resourceKey !== "web-search" || !isEventUnit(variant.price.per)) return;
+  if (resourceKey !== "web-search" || !isStandardUnit(variant.price.per, "event")) return;
   const formula = offer.offer_key === "formula";
   return providerBinding(
     input,
@@ -330,65 +340,6 @@ function withSettlement(offer: AtomicPricingOffer, label: string): AtomicPricing
       },
     ],
   };
-}
-
-function relation(
-  offer: AtomicPricingOffer,
-  kind: OfferRelation["kind"],
-  targets: string[],
-  label: string,
-): OfferRelation {
-  const offerRefs = [...new Set(targets)].sort();
-  const evidence = offerEvidence(offer);
-  return {
-    kind,
-    target: { kind: "offers", offer_refs: offerRefs },
-    applicability: unconditionalApplicability,
-    observations: [
-      {
-        ...rawEvidence(evidence),
-        raw: { label },
-        establishes_offer_refs: offerRefs,
-        establishes_book_refs: [],
-      },
-    ],
-  };
-}
-
-function offerEvidence(offer: AtomicPricingOffer): RawPriceObservation {
-  const evidence =
-    offer.states[0]?.observation ??
-    offer.terms.flatMap((term) =>
-      term.kind === "raw"
-        ? term.variants.map(({ observation }) => observation)
-        : [...term.variants, ...term.raw_variants].map(({ observation }) => observation),
-    )[0];
-  if (evidence === undefined) throw new Error(`Kimi offer ${offer.offer_key} has no evidence`);
-  return evidence;
-}
-
-function normalized(
-  observation: NormalizedPriceObservation,
-  applicability: PriceApplicability,
-): NormalizedPriceObservation {
-  return { ...observation, establishes_applicability: applicability };
-}
-
-function isTokenUnit(unit: UnitExpression): boolean {
-  return isUnit(unit, "token");
-}
-
-function isEventUnit(unit: UnitExpression): boolean {
-  return isUnit(unit, "event");
-}
-
-function isUnit(unit: UnitExpression, expected: "event" | "token"): boolean {
-  return (
-    unit.factors.length === 1 &&
-    unit.factors[0]?.power === 1 &&
-    unit.factors[0].unit.namespace === "kmodels" &&
-    unit.factors[0].unit.value === expected
-  );
 }
 
 function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {

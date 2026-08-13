@@ -151,11 +151,11 @@ const safety = (
 });
 
 describe("paired core/pricing provider transition", () => {
-  it("retains the exact prior core slice when an onboarded pricing provider fails", () => {
+  it("retains pricing without holding back independently refreshed core data", () => {
     const result = composeCatalogPair(catalog("old"), catalog("new"), pricing(partition()), []);
-    expect(result.catalog.providers[0]?.name).toBe("old");
-    expect(result.catalog.models[0]?.name).toBe("old");
-    expect(result.catalog.sources[0]?.content_hash).toBe("old".padEnd(64, "0"));
+    expect(result.catalog.providers[0]?.name).toBe("new");
+    expect(result.catalog.models[0]?.name).toBe("new");
+    expect(result.catalog.sources[0]?.content_hash).toBe("new".padEnd(64, "0"));
     expect(result.pricing.provider_snapshots[0]).toMatchObject({
       publication: "retained",
       refresh_failure: {

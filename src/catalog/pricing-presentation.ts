@@ -278,7 +278,8 @@ export function modelPricingViewFromIndex(
     resources.flatMap(({ book, offer }) =>
       isStandardResourceKind(book, "service") &&
       !automaticIds.has(offer.id) &&
-      isCompatibleWithMechanism(offer, mechanismIds, modelMechanisms)
+      (!index.mechanismScopedOffers.has(offer.id) ||
+        isCompatibleWithMechanism(offer, mechanismIds, modelMechanisms))
         ? [offer]
         : [],
     ),

@@ -85,8 +85,8 @@ export function composeCatalogPair(
     if (
       prior !== undefined &&
       previousPartition !== undefined &&
-      (transition.kind === "failed" ||
-        (transition.kind === "withdraw_pricing" && !affectsCore(findings.get(providerId) ?? [])))
+      transition.kind === "withdraw_pricing" &&
+      !affectsCore(findings.get(providerId) ?? [])
     )
       catalog = retainProviderCore(catalog, prior, providerId);
     else if (transition.kind === "remove_provider")

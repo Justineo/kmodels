@@ -69,6 +69,12 @@ Status: implemented
   bundle incomplete so publication retains the previous compatible pricing partition.
   This keeps pricebook completeness independent from catalog availability without
   silently replacing a previously broad pricebook with a partial one.
+- A missing fixed optional companion is likewise a bundle-level omission. A missing document
+  discovered from a bounded index is claim-local: report the partial source, refresh surviving
+  claims, and do not reject independently observed pricing merely because one discovered card was
+  unavailable. Providers may conservatively retain source-owned catalog enrichment for such a
+  partial non-exhaustive source; numeric pricing is retained only through the provider-atomic
+  partition rule above, never by silently merging stale price rows into a fresh partition.
 - Never snapshot or publish authenticated raw responses. Redact source URLs, cloud principals, account IDs, email identities, and unmatched private identifiers from diagnostics.
 
 ## Identity matching

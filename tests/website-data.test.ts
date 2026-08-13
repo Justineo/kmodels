@@ -244,7 +244,10 @@ describe("website data", () => {
     ).toBeLessThanOrEqual(32);
     expect(
       hydratedDetails.find(({ model_ref }) => model_ref === "ollama/alfred")?.pricing?.offers,
-    ).toEqual([expect.objectContaining({ title: "Local execution" })]);
+    ).toEqual([]);
+    expect(
+      hydratedDetails.find(({ model_ref }) => model_ref === "ollama/kimi-k3")?.pricing?.offers,
+    ).toEqual([expect.objectContaining({ title: "Ollama Cloud inference" })]);
     expect(
       hydratedDetails
         .find(({ model_ref }) => model_ref === "vercel/google/gemini-3-flash")

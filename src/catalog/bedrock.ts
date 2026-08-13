@@ -62,7 +62,7 @@ interface Card {
   identityKeys: Set<string>;
 }
 
-type BedrockModelEndpoint = "bedrock-runtime" | "bedrock-mantle";
+type BedrockModelEndpoint = "bedrock-runtime" | "bedrock-mantle" | "bedrock-agent-runtime";
 type DeploymentType = "in-region" | "geo" | "global";
 
 interface BedrockApiEndpoint {
@@ -79,7 +79,7 @@ interface BedrockAvailability {
 const rerankApi: BedrockApiEndpoint = {
   name: "Rerank",
   path: "rerank",
-  programmaticEndpoint: "bedrock-runtime",
+  programmaticEndpoint: "bedrock-agent-runtime",
 };
 const bedrockApiDefinitions = new Map<string, Omit<BedrockApiEndpoint, "name">[]>([
   ["Invoke", [{ path: "model/{modelId}/invoke", programmaticEndpoint: "bedrock-runtime" }]],
@@ -141,12 +141,7 @@ const priceTermSchema = z.object({
 });
 
 const priceListSchema = z.object({
-  offerCode: z.enum([
-    "AmazonBedrock",
-    "AmazonBedrockFoundationModels",
-    "AmazonBedrockService",
-    "AmazonBedrockAgentCore",
-  ]),
+  offerCode: z.enum(["AmazonBedrock", "AmazonBedrockFoundationModels", "AmazonBedrockService"]),
   products: z.record(z.string(), z.unknown()),
   terms: z.object({
     OnDemand: z.record(z.string(), z.record(z.string(), z.unknown())),
@@ -258,25 +253,6 @@ const reviewedApiEnumsSchema = z.object({
   modelLifecycle: z.object({ status: z.enum(["ACTIVE", "LEGACY"]) }).optional(),
 });
 
-const bedrockContractPaths = [
-  "/bedrock/latest/userguide/models-supported.md",
-  "/bedrock/latest/APIReference/API_ListFoundationModels.md",
-  "/bedrock/latest/APIReference/API_FoundationModelSummary.md",
-  "/bedrock/latest/APIReference/API_FoundationModelLifecycle.md",
-  "/bedrock/latest/APIReference/API_runtime_Converse.md",
-  "/bedrock/latest/APIReference/API_runtime_CountTokens.md",
-  "/bedrock/latest/userguide/service-tiers-inference.md",
-  "/bedrock/latest/userguide/conversation-inference.md",
-  "/bedrock/latest/userguide/prompt-caching.md",
-  "/bedrock/latest/userguide/count-tokens.md",
-  "/bedrock/latest/userguide/model-invocation-logging.md",
-  "/bedrock/latest/userguide/cost-management.md",
-  "/bedrock/latest/userguide/cost-mgmt-understanding-cur-data.md",
-  "/awsaccountbilling/latest/aboutv2/price-changes.md",
-  "/awsaccountbilling/latest/aboutv2/bulk-api-reading-price-list-files.md",
-  "/awsaccountbilling/latest/aboutv2/view-billing-dashboard.md",
-] as const;
-
 type BedrockDocuments = z.infer<typeof linkedBundleSchema>["documents"];
 
 function exactDocument(documents: BedrockDocuments, path: string): string | undefined {
@@ -286,201 +262,6 @@ function exactDocument(documents: BedrockDocuments, path: string): string | unde
   });
   if (matches.length > 1) throw new Error(`Bedrock catalog duplicated official document: ${path}`);
   return matches[0]?.body;
-}
-
-function requireDocumentFacts(name: string, body: string, facts: readonly RegExp[]): void {
-  for (const fact of facts)
-    if (!fact.test(body)) throw new Error(`Bedrock ${name} contract drifted: ${fact.source}`);
-}
-
-function documentedValues(body: string, field: string): string[] {
-  const match = body.match(
-    new RegExp(
-      `\\*\\*\\s*${field}\\s*\\*\\*[\\s\\S]{0,1200}?Valid Values:\\s*\u0060([^\u0060]+)\u0060`,
-    ),
-  );
-  if (match?.[1] === undefined)
-    throw new Error(`Bedrock FoundationModelSummary omitted ${field} valid values`);
-  return match[1].split("|").map((value) => value.trim());
-}
-
-function requireDocumentedValues(body: string, field: string, expected: string[]): void {
-  const values = documentedValues(body, field);
-  if (expected.some((value) => !values.includes(value)))
-    throw new Error(`Bedrock FoundationModelSummary ${field} enum contract drifted`);
-}
-
-function validateBedrockContracts(documents: BedrockDocuments): void {
-  const found = new Map(
-    bedrockContractPaths.flatMap((path) => {
-      const body = exactDocument(documents, path);
-      return body === undefined ? [] : [[path, body] as const];
-    }),
-  );
-  if (found.size === 0) return;
-  if (found.size !== bedrockContractPaths.length) {
-    const missing = bedrockContractPaths.filter((path) => !found.has(path));
-    throw new Error(`Bedrock catalog omitted official contract documents: ${missing.join(", ")}`);
-  }
-  const body = (path: (typeof bedrockContractPaths)[number]): string => {
-    const value = found.get(path);
-    if (value === undefined) throw new Error(`Bedrock catalog omitted official document: ${path}`);
-    return value;
-  };
-
-  for (const [name, path, facts] of [
-    [
-      "canonical model catalog",
-      "/bedrock/latest/userguide/models-supported.md",
-      [/has moved to \[models at a glance\]\(model-cards\.md\)/],
-    ],
-    [
-      "ListFoundationModels",
-      "/bedrock/latest/APIReference/API_ListFoundationModels.md",
-      [/GET \/foundation-models\?/, /"modelSummaries"/, /"modelArn"/, /"modelId"/],
-    ],
-  ] as const)
-    requireDocumentFacts(name, body(path), facts);
-  const summary = body("/bedrock/latest/APIReference/API_FoundationModelSummary.md");
-  requireDocumentedValues(summary, "customizationsSupported", [
-    "FINE_TUNING",
-    "CONTINUED_PRE_TRAINING",
-    "DISTILLATION",
-  ]);
-  requireDocumentedValues(summary, "inferenceTypesSupported", ["ON_DEMAND", "PROVISIONED"]);
-  for (const field of ["inputModalities", "outputModalities"])
-    requireDocumentedValues(summary, field, ["TEXT", "IMAGE", "EMBEDDING"]);
-  const lifecycle = body("/bedrock/latest/APIReference/API_FoundationModelLifecycle.md");
-  requireDocumentedValues(lifecycle, "status", ["ACTIVE", "LEGACY"]);
-  for (const [name, path, facts] of [
-    [
-      "foundation-model lifecycle",
-      "/bedrock/latest/APIReference/API_FoundationModelLifecycle.md",
-      [
-        /\*\* endOfLifeTime \*\*/,
-        /\*\* legacyTime \*\*/,
-        /\*\* publicExtendedAccessTime \*\*/,
-        /\*\* startOfLifeTime \*\*/,
-        /higher pricing/,
-      ],
-    ],
-    [
-      "Converse response",
-      "/bedrock/latest/APIReference/API_runtime_Converse.md",
-      [
-        /"performanceConfig"/,
-        /"serviceTier"/,
-        /"cacheDetails"/,
-        /"cacheReadInputTokens"/,
-        /"cacheWriteInputTokens"/,
-        /"inputTokens"/,
-        /"outputTokens"/,
-        /"totalTokens"/,
-      ],
-    ],
-    [
-      "CountTokens operation",
-      "/bedrock/latest/APIReference/API_runtime_CountTokens.md",
-      [/POST \/model\/\{\{modelId\}\}\/count-tokens/, /"inputTokens": number/],
-    ],
-    [
-      "service tier",
-      "/bedrock/latest/userguide/service-tiers-inference.md",
-      [
-        /four service tiers[^\n]*Reserved, Priority, Standard, and Flex/,
-        /automatically overflows to the Standard tier/,
-        /service\\?_tier/,
-        /"reserved \| priority \| default \| flex"/,
-        /ResolvedServiceTier shows the actual tier that served your requests/,
-      ],
-    ],
-    [
-      "conversation usage",
-      "/bedrock/latest/userguide/conversation-inference.md",
-      [
-        /`serviceTier`/,
-        /`cacheReadInputTokens`/,
-        /`cacheWriteInputTokens`/,
-        /"inputTokens"/,
-        /"outputTokens"/,
-      ],
-    ],
-    [
-      "prompt-cache accounting",
-      "/bedrock/latest/userguide/prompt-caching.md",
-      [
-        /`cacheDetails`/,
-        /`inputTokens` field represents only the non-cached input tokens/,
-        /inputTokens \+ cacheReadInputTokens \+ cacheWriteInputTokens/,
-      ],
-    ],
-    [
-      "token-counting guide",
-      "/bedrock/latest/userguide/count-tokens.md",
-      [
-        /doesn't incur charges/,
-        /Token counting is model-specific/,
-        /will match the token count that would be charged/,
-        /\/anthropic\/v1\/messages\/count_tokens/,
-      ],
-    ],
-    [
-      "invocation logging",
-      "/bedrock/latest/userguide/model-invocation-logging.md",
-      [
-        /disabled by default/,
-        /only supported for calls made through the `bedrock-runtime` endpoint/,
-        /`bedrock-mantle` endpoint, are not currently captured/,
-        /\| requestId \|/,
-        /\| region \|/,
-        /\| operation \|/,
-        /\| modelId \|/,
-        /\| identity\.arn \|/,
-        /\| input\.inputTokenCount \|/,
-        /\| output\.outputTokenCount \|/,
-      ],
-    ],
-    [
-      "cost-management grain",
-      "/bedrock/latest/userguide/cost-management.md",
-      [
-        /finest grain is per usage type per day/,
-        /they do not produce a per-request row/,
-        /Invocation logs only/,
-      ],
-    ],
-    [
-      "CUR accounting",
-      "/bedrock/latest/userguide/cost-mgmt-understanding-cur-data.md",
-      [
-        /Input tokens/,
-        /Output tokens/,
-        /Cache read tokens/,
-        /Cache write tokens/,
-        /aggregate Amazon Bedrock cost[^\n]*over an hour or a day/,
-        /neither carries a per-`requestId` identifier/,
-      ],
-    ],
-    [
-      "Price List precedence",
-      "/awsaccountbilling/latest/aboutv2/price-changes.md",
-      [
-        /Price List Query API and Price List Bulk API provide pricing details for informational purposes only/,
-        /AWS charges the prices on the \*service pricing page\*/,
-      ],
-    ],
-    [
-      "Price List current-version",
-      "/awsaccountbilling/latest/aboutv2/bulk-api-reading-price-list-files.md",
-      [/"currentVersionUrl"/, /most up-to-date service price list file/],
-    ],
-    [
-      "billing latency",
-      "/awsaccountbilling/latest/aboutv2/view-billing-dashboard.md",
-      [/take up to 24 hours/, /refreshed at least once every 24 hours/],
-    ],
-  ] as const)
-    requireDocumentFacts(name, body(path), facts);
 }
 
 const months = new Map([
@@ -625,19 +406,31 @@ function supported(cell: string): boolean {
   return cell.includes("icon-yes.png");
 }
 
-function supportedModality(cell: string): Modality | undefined {
+function supportedModality(
+  cell: string,
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): Modality | undefined {
   const label = tableLabel(cell);
-  if (label === undefined) return undefined;
+  if (label === undefined || !supported(cell)) return undefined;
   const value = label === "Speech" ? "audio" : label.toLowerCase();
   const parsed = modalitySchema.safeParse(value);
-  if (!parsed.success) throw new Error(`Unsupported Bedrock modality label: ${label}`);
-  return supported(cell) ? parsed.data : undefined;
+  if (parsed.success) return parsed.data;
+  onPricingReconciliation?.({
+    disposition: "unsupported",
+    reason_code: "model_card_modality_unsupported",
+    sample: label,
+  });
+  return undefined;
 }
 
-function cardTable(body: string): {
+function cardTable(
+  body: string,
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): {
   modalities: ProviderModel["modalities"];
   apiEndpoints: BedrockApiEndpoint[];
   modelEndpoints: Set<BedrockModelEndpoint>;
+  endpointEvidenceComplete: boolean;
 } {
   const table = markdownTable(body, ["Input Modalities", "Output Modalities"]);
   if (table === undefined) throw new Error("Bedrock model card omitted its modality table");
@@ -652,16 +445,24 @@ function cardTable(body: string): {
   const output: Modality[] = [];
   const apiEndpoints = new Map<string, BedrockApiEndpoint>();
   const modelEndpoints = new Set<BedrockModelEndpoint>();
+  let endpointEvidenceComplete = true;
   for (const cells of table.rows) {
-    const inputValue = supportedModality(cells[inputIndex] ?? "");
-    const outputValue = supportedModality(cells[outputIndex] ?? "");
+    const inputValue = supportedModality(cells[inputIndex] ?? "", onPricingReconciliation);
+    const outputValue = supportedModality(cells[outputIndex] ?? "", onPricingReconciliation);
     if (inputValue !== undefined) input.push(inputValue);
     if (outputValue !== undefined) output.push(outputValue);
     const apiLabel = tableLabel(cells[apiIndex] ?? "");
     if (apiLabel !== undefined) {
       const definitions = bedrockApiDefinitions.get(apiLabel);
-      if (definitions === undefined) throw new Error(`Unsupported Bedrock API label: ${apiLabel}`);
-      if (supported(cells[apiIndex] ?? ""))
+      const isSupported = supported(cells[apiIndex] ?? "");
+      if (definitions === undefined) {
+        if (isSupported)
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "model_card_api_unsupported",
+            sample: apiLabel,
+          });
+      } else if (isSupported)
         for (const definition of definitions) {
           const endpoint = { name: apiLabel, ...definition };
           apiEndpoints.set(
@@ -672,12 +473,20 @@ function cardTable(body: string): {
     }
     const endpointLabel = tableLabel(cells[endpointIndex] ?? "");
     if (endpointLabel !== undefined) {
-      if (endpointLabel !== "bedrock-runtime" && endpointLabel !== "bedrock-mantle")
-        throw new Error(`Unsupported Bedrock endpoint label: ${endpointLabel}`);
-      if (supported(cells[endpointIndex] ?? "")) modelEndpoints.add(endpointLabel);
+      const isSupported = supported(cells[endpointIndex] ?? "");
+      if (endpointLabel !== "bedrock-runtime" && endpointLabel !== "bedrock-mantle") {
+        if (isSupported) {
+          endpointEvidenceComplete = false;
+          onPricingReconciliation?.({
+            disposition: "unsupported",
+            reason_code: "model_card_endpoint_unsupported",
+            sample: endpointLabel,
+          });
+        }
+      } else if (isSupported) modelEndpoints.add(endpointLabel);
     }
   }
-  if (modelEndpoints.size === 0)
+  if (modelEndpoints.size === 0 && endpointEvidenceComplete)
     throw new Error("Bedrock model card contained no supported endpoint");
   if (/^#### \[\s*Rerank API\s*]$/m.test(body))
     apiEndpoints.set(apiEndpointKey(rerankApi), rerankApi);
@@ -685,6 +494,7 @@ function cardTable(body: string): {
     modalities: { input: unique(input), output: unique(output) },
     apiEndpoints: [...apiEndpoints.values()],
     modelEndpoints,
+    endpointEvidenceComplete,
   };
 }
 
@@ -859,7 +669,11 @@ function cardIdentityKeys(
   );
 }
 
-function parseCard(body: string, observedAt: string): Card {
+function parseCard(
+  body: string,
+  observedAt: string,
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): Card {
   const name = plain(body.match(/^# ([^\n]+)$/m)?.[1] ?? "");
   if (name === "") throw new Error("Bedrock model card omitted its name");
   const publisher = plain(body.match(/^## .*\)\s*([^—\n]+?)\s+—\s+/m)?.[1] ?? "");
@@ -868,28 +682,43 @@ function parseCard(body: string, observedAt: string): Card {
     ?.split("\n")
     .map((line) => line.trim())
     .find((line) => line !== "" && !line.startsWith("<a ") && !line.startsWith("+ "));
-  const cardSupport = cardTable(body);
-  const responsePath = body.match(
+  const cardSupport = cardTable(body, onPricingReconciliation);
+  const documentedResponsePath = body.match(
     /available on the `([^`]+)` path on the `bedrock-mantle` endpoint/i,
   )?.[1];
-  if (responsePath !== undefined && !/^(?:[a-z0-9-]+\/)*v1\/responses$/.test(responsePath))
-    throw new Error(`Unsupported Bedrock Responses path for ${name}: ${responsePath}`);
-  const apiEndpoints = cardSupport.apiEndpoints.map((endpoint) =>
-    responsePath !== undefined &&
-    endpoint.name === "Responses" &&
-    endpoint.programmaticEndpoint === "bedrock-mantle"
-      ? { ...endpoint, path: responsePath }
-      : endpoint,
-  );
+  const responsePath =
+    documentedResponsePath === undefined ||
+    /^(?:[a-z0-9-]+\/)*v1\/responses$/.test(documentedResponsePath)
+      ? documentedResponsePath
+      : undefined;
+  if (documentedResponsePath !== undefined && responsePath === undefined)
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "model_card_response_path_unsupported",
+      sample: `${name}: ${documentedResponsePath}`,
+    });
+  const apiEndpoints = cardSupport.apiEndpoints.flatMap((endpoint) => {
+    if (endpoint.name !== "Responses" || endpoint.programmaticEndpoint !== "bedrock-mantle")
+      return [endpoint];
+    if (documentedResponsePath !== undefined && responsePath === undefined) return [];
+    return responsePath === undefined ? [endpoint] : [{ ...endpoint, path: responsePath }];
+  });
   const cardIds = programmaticAccess(body, name);
   const programmaticEndpoints = new Set(
     [...cardIds.values()].flatMap(({ endpoints }) => [...endpoints]),
   );
   if (
-    programmaticEndpoints.size !== cardSupport.modelEndpoints.size ||
-    [...programmaticEndpoints].some((endpoint) => !cardSupport.modelEndpoints.has(endpoint))
+    cardSupport.endpointEvidenceComplete &&
+    (programmaticEndpoints.size !== cardSupport.modelEndpoints.size ||
+      [...programmaticEndpoints].some((endpoint) => !cardSupport.modelEndpoints.has(endpoint)))
   )
-    throw new Error(`Bedrock endpoint support disagreed with Programmatic Access for ${name}`);
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "model_card_endpoint_mismatch",
+      sample: name,
+    });
+  if (apiEndpoints.some(({ name: apiName }) => apiName === "Rerank"))
+    for (const access of cardIds.values()) access.endpoints.add("bedrock-agent-runtime");
   const lifecycle = fact(body, "Model lifecycle")?.toLowerCase();
   const documentedStatus: ProviderModel["status"] = lifecycle?.startsWith("active")
     ? "active"
@@ -903,16 +732,30 @@ function parseCard(body: string, observedAt: string): Card {
     : "unknown";
   const eol = fact(body, "Model EOL date");
   const launchDate = fact(body, "Model launch date");
-  const deprecatedAt = eol?.startsWith("Legacy:")
-    ? exactHumanDate(eol.slice("Legacy:".length).trim(), "legacy date")
-    : undefined;
-  const retiredAt =
-    eol === undefined ||
-    eol === "N/A" ||
-    eol.startsWith("No sooner than") ||
-    deprecatedAt !== undefined
-      ? undefined
-      : exactHumanDate(eol, "EOL date");
+  let deprecatedAt: string | undefined;
+  let retiredAt: string | undefined;
+  try {
+    if (eol?.startsWith("Legacy:"))
+      deprecatedAt = exactHumanDate(eol.slice("Legacy:".length).trim(), "legacy date");
+    else if (eol !== undefined && eol !== "N/A" && !eol.startsWith("No sooner than"))
+      retiredAt = exactHumanDate(eol, "EOL date");
+  } catch {
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "model_card_date_unsupported",
+      sample: `${name}: ${eol}`,
+    });
+  }
+  let releaseDate: string | undefined;
+  try {
+    if (launchDate !== undefined) releaseDate = exactHumanDate(launchDate, "launch date");
+  } catch {
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "model_card_date_unsupported",
+      sample: `${name}: ${launchDate}`,
+    });
+  }
   const status: ProviderModel["status"] =
     retiredAt !== undefined && retiredAt <= observedAt.slice(0, 10) ? "retired" : documentedStatus;
   const reasoning = fact(body, "Reasoning");
@@ -949,7 +792,7 @@ function parseCard(body: string, observedAt: string): Card {
     availability: cardAvailability(body),
     capabilities,
     limits,
-    releaseDate: launchDate === undefined ? undefined : exactHumanDate(launchDate, "launch date"),
+    releaseDate,
     deprecatedAt,
     retiredAt,
     status,
@@ -957,6 +800,67 @@ function parseCard(body: string, observedAt: string): Card {
     tasks,
     identityKeys: cardIdentityKeys(name, publisher, cardIds),
   };
+}
+
+function supplementalRerankCards(documents: BedrockDocuments): Card[] {
+  const body = exactDocument(documents, "/bedrock/latest/userguide/rerank-supported.md");
+  if (body === undefined) return [];
+  const table = markdownTable(body, [
+    "Provider",
+    "Model",
+    "Model ID",
+    "Single-region model support",
+  ]);
+  if (table === undefined) return [];
+  const providerIndex = table.header.indexOf("Provider");
+  const modelIndex = table.header.indexOf("Model");
+  const idIndex = table.header.indexOf("Model ID");
+  const regionsIndex = table.header.indexOf("Single-region model support");
+  return table.rows.flatMap((row): Card[] => {
+    const publisher = plain(row[providerIndex] ?? "");
+    const name = plain(row[modelIndex] ?? "");
+    const id = plain(row[idIndex] ?? "");
+    const regions = [...(row[regionsIndex] ?? "").matchAll(/[a-z]{2}(?:-[a-z0-9]+)+-\d/g)].map(
+      ([region]) => region,
+    );
+    if (
+      publisher === "" ||
+      name === "" ||
+      !modelIdSchema.safeParse(id).success ||
+      regions.length === 0
+    )
+      return [];
+    const ids = new Map<string, CardId>([
+      [
+        id,
+        {
+          aliases: new Set(),
+          endpoints: new Set(["bedrock-agent-runtime"]),
+          deploymentTypes: new Set(["in-region"]),
+        },
+      ],
+    ]);
+    return [
+      {
+        name,
+        publisher,
+        description: undefined,
+        ids,
+        modalities: { input: ["text"], output: ["text"] },
+        apiEndpoints: [rerankApi],
+        availability: regions.map((region) => ({ region, deploymentType: "in-region" })),
+        capabilities: { ...unknownCapabilities(), streaming: false },
+        limits: {},
+        releaseDate: undefined,
+        deprecatedAt: undefined,
+        retiredAt: undefined,
+        status: "active",
+        releaseStage: "unknown",
+        tasks: ["reranking"],
+        identityKeys: cardIdentityKeys(name, publisher, ids),
+      },
+    ];
+  });
 }
 
 function oneModel(cards: Card[]): Card | undefined {
@@ -996,6 +900,13 @@ function modelForProduct(cards: Card[], label: string, usage: string): Card | un
     });
   });
   if (matches.length > 0) return oneModel(matches);
+  const rerankMatches = cards.filter((card) => {
+    if (!card.tasks.includes("reranking")) return false;
+    const source = new Set(identityTokens(`${label} ${usage}`, card.publisher));
+    const identity = identityTokens(card.name, card.publisher);
+    return identity.length > 0 && identity.every((token) => source.has(token));
+  });
+  if (rerankMatches.length > 0) return oneModel(rerankMatches);
   if (identityKey(label) !== "") return undefined;
   const familyMatches = cards.filter((card) => {
     const source = new Set(identityTokens(`${label} ${usage}`, card.publisher));
@@ -1239,13 +1150,16 @@ function priceTargets(
 ): { ids: string[]; endpoint: BedrockModelEndpoint | undefined } {
   const deploymentType = priceDeploymentType(usage);
   const lower = usage.toLowerCase();
+  const reranking = card.tasks.includes("reranking");
   const onDemandToken = /token/.test(lower) && !/batch|reserved|provisioned|tpm/.test(lower);
   const marketplaceToken = offerCode === "AmazonBedrockFoundationModels" && onDemandToken;
   const endpointNeutral =
-    marketplaceToken ||
-    (offerCode === "AmazonBedrockService" && onDemandToken && !lower.includes("mantle"));
-  const endpoint =
-    offerCode === "AmazonBedrockFoundationModels" || !lower.includes("mantle")
+    !reranking &&
+    (marketplaceToken ||
+      (offerCode === "AmazonBedrockService" && onDemandToken && !lower.includes("mantle")));
+  const endpoint = reranking
+    ? "bedrock-agent-runtime"
+    : offerCode === "AmazonBedrockFoundationModels" || !lower.includes("mantle")
       ? "bedrock-runtime"
       : "bedrock-mantle";
   const ids = [...card.ids]
@@ -1636,70 +1550,6 @@ function slug(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function agentCoreService(usage: string): string | undefined {
-  return usage.match(
-    /(?:^|-)(Runtime|BrowserTool|CodeInterpreter|Evaluations|Gateway|Knowledge-Base|Memory|Policy|WebSearchTool):/,
-  )?.[1];
-}
-
-function agentCoreSpec(
-  attributes: Record<string, string>,
-  unit: string,
-): CommercialSpec | undefined {
-  const usage = attributes.usagetype ?? "";
-  const service = agentCoreService(usage);
-  if (attributes.operation === "AgentCoreRuntimeInstancesUsage" || service === "Runtime") {
-    const instance = attributes.operation === "AgentCoreRuntimeInstancesUsage";
-    return {
-      bookKey: "service:agentcore-runtime",
-      bookName: "AgentCore Runtime",
-      resourceKind: "service",
-      resourceKey: "agentcore-runtime",
-      modelRefs: [],
-      offerKey: instance ? "instance-based" : "consumption",
-      offerName: instance ? "Instance-based runtime" : "Consumption-based runtime",
-      billingMode: "usage",
-      termKey: instance
-        ? `instance-${slug(attributes.instanceType || usage)}`
-        : slug(attributes.resource || unit),
-    };
-  }
-  const identity: readonly [string, string] | undefined =
-    service === "BrowserTool"
-      ? ["agentcore-browser", "AgentCore Browser"]
-      : service === "CodeInterpreter"
-        ? ["agentcore-code-interpreter", "AgentCore Code Interpreter"]
-        : service === "Evaluations"
-          ? ["agentcore-evaluations", "AgentCore Evaluations"]
-          : service === "Gateway"
-            ? ["agentcore-gateway", "AgentCore Gateway"]
-            : service === "Knowledge-Base"
-              ? ["agentcore-knowledge-base", "AgentCore Knowledge Base"]
-              : service === "Memory"
-                ? ["agentcore-memory", "AgentCore Memory"]
-                : service === "Policy"
-                  ? ["agentcore-policy", "AgentCore Policy"]
-                  : service === "WebSearchTool"
-                    ? ["agentcore-web-search", "AgentCore Web Search"]
-                    : undefined;
-  if (identity === undefined) return;
-  const [resourceKey, bookName] = identity;
-  const tier = attributes.tier === undefined ? "" : `-${slug(attributes.tier)}`;
-  const strategy = attributes.strategy === undefined ? "" : `-${slug(attributes.strategy)}`;
-  const resource = slug(attributes.resource || unit);
-  return {
-    bookKey: `service:${resourceKey}`,
-    bookName,
-    resourceKind: "service",
-    resourceKey,
-    modelRefs: [],
-    offerKey: `consumption${tier}${strategy}`,
-    offerName: `Consumption-based${tier.replace("-", " ")}${strategy.replace("-", " ")}`,
-    billingMode: "usage",
-    termKey: resource,
-  };
-}
-
 function coreCommercialSpec(
   attributes: Record<string, string>,
   unit: string,
@@ -1707,67 +1557,18 @@ function coreCommercialSpec(
 ): CommercialSpec | undefined {
   const operation = attributes.operation ?? "";
   const feature = attributes.feature ?? "";
-  const featureType = attributes.featureType ?? "";
-  const inference = attributes.inferenceType ?? "";
   const usage = attributes.usagetype ?? "";
-  const text = `${operation} ${feature} ${featureType} ${inference} ${usage}`;
-  if (/Custom Model Import/i.test(text)) {
-    const offerKey = /storage/i.test(featureType) ? "storage" : "runtime";
-    return {
-      bookKey: "account-resource:custom-model-import",
-      bookName: "Custom Model Import",
-      resourceKind: "account_resource_template",
-      resourceKey: "custom-model-import",
-      modelRefs: [],
-      offerKey,
-      offerName: offerKey === "storage" ? "Imported model storage" : "Imported model runtime",
-      billingMode: "usage",
-      termKey: offerKey,
-    };
-  }
-  if (modelRefs.length > 0 && /custom|customization|training|storage/i.test(text)) {
-    const modelKey = slug(modelRefs.join("-"));
-    const offerKey = /training/i.test(featureType)
-      ? "training"
-      : /storage/i.test(featureType)
-        ? "storage"
-        : /provisioned/i.test(inference)
-          ? "custom-provisioned"
-          : "custom-inference";
-    return {
-      bookKey: `account-resource:model-customization:${modelKey}`,
-      bookName: "Model Customization",
-      resourceKind: "account_resource_template",
-      resourceKey: `model-customization:${modelKey}`,
-      modelRefs,
-      offerKey,
-      offerName: offerKey.replaceAll("-", " "),
-      billingMode: offerKey === "custom-provisioned" ? "capacity" : "usage",
-      termKey: slug(feature || inference || unit),
-    };
-  }
   const service: readonly [string, string, string] | undefined =
     operation === "ApplyGuardrail" || operation === "InvokeGuardrailChecks"
       ? ["guardrails", "Guardrails", operation === "ApplyGuardrail" ? "apply" : "invoke-checks"]
-      : operation === "BedrockFlows-v1-invokeFlow"
-        ? ["flows", "Flows", "node-transitions"]
-        : operation === "GenerateSQL-StructuredRetrieve"
-          ? ["knowledge-bases", "Knowledge Bases", "structured-data-retrieval"]
-          : operation === "InvokeDataAutomationAsync" || operation === "InvokeDataAutomationSync"
-            ? [
-                "data-automation",
-                "Bedrock Data Automation",
-                `${operation.endsWith("Sync") ? "sync" : "async"}-${slug(feature)}`,
-              ]
-            : operation === "APO-v1-optimizePrompt"
-              ? ["prompt-optimization", "Prompt Optimization", "simple"]
-              : feature === "Prompt Router"
-                ? ["prompt-routing", "Intelligent Prompt Routing", "routing"]
-                : feature === "Reranker" || /AmazonRerank.*searchunits/i.test(usage)
-                  ? ["reranking", "Bedrock Reranking", "amazon-rerank"]
-                  : /Bedrock-Websearch-Queries/i.test(usage)
-                    ? ["web-search", "Bedrock Web Search", "query"]
-                    : undefined;
+      : feature === "Prompt Router"
+        ? ["prompt-routing", "Intelligent Prompt Routing", "routing"]
+        : modelRefs.length === 0 &&
+            (feature === "Reranker" || /AmazonRerank.*searchunits/i.test(usage))
+          ? ["reranking", "Bedrock Reranking", "rerank"]
+          : /Bedrock-Websearch-Queries/i.test(usage)
+            ? ["web-search", "Bedrock Web Search", "query"]
+            : undefined;
   if (service === undefined) return;
   const [resourceKey, bookName, offerKey] = service;
   return {
@@ -1789,11 +1590,23 @@ function commercialSpec(
   unit: string,
   modelRefs: string[] = [],
 ): CommercialSpec | undefined {
-  return offerCode === "AmazonBedrockAgentCore"
-    ? agentCoreSpec(attributes, unit)
-    : offerCode === "AmazonBedrock"
-      ? coreCommercialSpec(attributes, unit, modelRefs)
-      : undefined;
+  return offerCode === "AmazonBedrock"
+    ? coreCommercialSpec(attributes, unit, modelRefs)
+    : undefined;
+}
+
+function outsideInvocationScope(attributes: Record<string, string>): boolean {
+  return /custom|customization|training|storage|provisioned|reserved|model evaluation|flow execution|bedrockflows|invokeflow/i.test(
+    [
+      attributes.feature,
+      attributes.featureType,
+      attributes.inferenceType,
+      attributes.operation,
+      attributes.usagetype,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 function commercialRawFact(
@@ -1887,423 +1700,6 @@ function commercialFacts(
     raw_price_facts: rates,
   }));
 }
-
-function pageRawFact(
-  sourceId: string,
-  termKey: string,
-  impact: SourceRawPricingFact["impact"],
-  raw: SourceRawPricingFact["raw"],
-): SourceRawPricingFact {
-  return {
-    term_key: termKey,
-    impact,
-    reason: "unsupported_structure",
-    conditions: {},
-    source_ref: sourceId,
-    raw,
-  };
-}
-
-interface PageCommercialFact {
-  bookKey: string;
-  bookName: string;
-  resourceKey: string;
-  offerKey: string;
-  offerName: string;
-  pricingState: SourceCommercialPricingFact["pricing_state"];
-  raw: SourceRawPricingFact[];
-}
-
-function pageCommercialFact(
-  sourceId: string,
-  value: PageCommercialFact,
-): SourceCommercialPricingFact {
-  return {
-    source_ref: sourceId,
-    book_key: value.bookKey,
-    book_name: value.bookName,
-    resource_kind: "service",
-    resource_key: value.resourceKey,
-    model_refs: [],
-    offer_key: value.offerKey,
-    offer_name: value.offerName,
-    billing_mode: "usage",
-    pricing_state: value.pricingState,
-    price_facts: [],
-    raw_price_facts: value.raw,
-  };
-}
-
-function pricingRow(
-  rows: ReadonlyMap<string, string[]>,
-  label: string,
-  expected: RegExp,
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): string | undefined {
-  const cells = rows.get(label);
-  const value = cells?.at(-1);
-  if (value === undefined || !expected.test(value)) {
-    onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "pricing_page_row_drifted",
-      sample: `AgentCore: ${label}`,
-    });
-    return;
-  }
-  return value;
-}
-
-function agentCorePageFacts(
-  documents: BedrockDocuments,
-  sourceId: string,
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): SourceCommercialPricingFact[] {
-  const matches = documents.filter(({ url }) => {
-    const parsed = new URL(url);
-    return (
-      parsed.hostname === "aws.amazon.com" && parsed.pathname === "/bedrock/agentcore/pricing/"
-    );
-  });
-  if (matches.length > 1)
-    onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "pricing_page_duplicated",
-      sample: "AgentCore pricing",
-    });
-  const document = matches[0];
-  if (document === undefined) return [];
-  const page = load(document.body);
-  const tables = page("table").filter((_index, table) => {
-    const text = page(table).text();
-    return (
-      text.includes("Token or API key requests for non-AWS resources") &&
-      text.includes("Registry Records")
-    );
-  });
-  if (tables.length !== 1) {
-    onPricingReconciliation?.({
-      disposition: "unsupported",
-      reason_code: "pricing_page_table_drifted",
-      sample: "AgentCore pricing",
-    });
-    return [];
-  }
-  const rows = new Map<string, string[]>();
-  tables.find("tr").each((_index, row) => {
-    const cells = page(row)
-      .children("th,td")
-      .map((_cellIndex, cell) => page(cell).text().replace(/\s+/g, " ").trim())
-      .get();
-    for (const label of cells.slice(0, -1)) if (label !== "") rows.set(label, cells);
-  });
-  const identity = pricingRow(
-    rows,
-    "Token or API key requests for non-AWS resources",
-    /^\$0\.010 per 1,000 token or API keys requested by the agent/,
-    onPricingReconciliation,
-  );
-  const insights = pricingRow(
-    rows,
-    "Insights (Preview)",
-    /^Free during public preview; pricing will be announced before general availability$/,
-    onPricingReconciliation,
-  );
-  const recommendations = pricingRow(
-    rows,
-    "Recommendations",
-    /^Recommendation generation is free; pay for any Evaluations consumed as part of workflow$/,
-    onPricingReconciliation,
-  );
-  const experiments = pricingRow(
-    rows,
-    "A/B Tests",
-    /^Pay for underlying AgentCore resources consumed$/,
-    onPricingReconciliation,
-  );
-  const registryRecords = pricingRow(
-    rows,
-    "Registry Records",
-    /^First 5,000 records free monthly, then \$0\.400 per 1,000 records$/,
-    onPricingReconciliation,
-  );
-  const registrySearch = pricingRow(
-    rows,
-    "Search API Invocation",
-    /^First 1,000,000 invocations free monthly, then \$0\.020 per 1,000 invocations$/,
-    onPricingReconciliation,
-  );
-  const registryList = pricingRow(
-    rows,
-    "List and Get API Invocations",
-    /^First 2,000,000 combined invocations free monthly, then \$0\.004 per 1,000 invocations$/,
-    onPricingReconciliation,
-  );
-  const paymentOperations = pricingRow(
-    rows,
-    "CreateInstrument and ProcessPayment API invocations",
-    /Coinbase CDP Wallet:.*1 CreateInstrument API invocation = 1 wallet operation fee.*1 ProcessPayment API invocation = 1 wallet operation fee.*Stripe Privy Wallet:.*1 CreateInstrument API invocation = No charge.*1 ProcessPayment API invocation = 1 wallet operation fee/,
-    onPricingReconciliation,
-  );
-  const freePaymentApis = pricingRow(
-    rows,
-    "Rest of the API invocations",
-    /^No charge$/,
-    onPricingReconciliation,
-  );
-  const temporalPolicies = pricingRow(
-    rows,
-    "Authorization Request",
-    /first 100 temporal policies per policy engine incur no additional authorization charges/i,
-    onPricingReconciliation,
-  );
-  const raw = (
-    termKey: string,
-    impact: SourceRawPricingFact["impact"],
-    fragment: string,
-    amount?: string,
-    unit?: string,
-    denomination?: "USD",
-  ) =>
-    pageRawFact(sourceId, termKey, impact, {
-      ...(amount === undefined ? {} : { amount }),
-      ...(denomination === undefined ? {} : { denomination }),
-      ...(unit === undefined ? {} : { unit }),
-      fragment,
-    });
-  const facts: SourceCommercialPricingFact[] = [];
-  if (identity !== undefined)
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-identity",
-        bookName: "AgentCore Identity",
-        resourceKey: "agentcore-identity",
-        offerKey: "direct",
-        offerName: "Direct successful credential requests",
-        pricingState: "numeric",
-        raw: [
-          raw("credential-requests", "base_price", identity, "0.010", "Per 1000 requests", "USD"),
-        ],
-      }),
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-identity",
-        bookName: "AgentCore Identity",
-        resourceKey: "agentcore-identity",
-        offerKey: "runtime-or-gateway",
-        offerName: "Through Runtime or Gateway",
-        pricingState: "included",
-        raw: [
-          raw(
-            "covering-services",
-            "informational",
-            "No additional charges through AgentCore Runtime or AgentCore Gateway",
-          ),
-        ],
-      }),
-    );
-  const optimization = [
-    { key: "insights-preview", name: "Insights public preview", state: "free", text: insights },
-    {
-      key: "recommendations",
-      name: "Recommendations",
-      state: "included",
-      text: recommendations,
-    },
-    { key: "experiments", name: "A/B tests", state: "included", text: experiments },
-  ] as const;
-  for (const { key, name, state, text } of optimization) {
-    if (text === undefined) continue;
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-optimization",
-        bookName: "AgentCore Optimization",
-        resourceKey: "agentcore-optimization",
-        offerKey: key,
-        offerName: name,
-        pricingState: state,
-        raw: [raw("underlying-services", "informational", text)],
-      }),
-    );
-  }
-  const registry = [
-    {
-      key: "records",
-      text: registryRecords,
-      price: "0.400",
-      priceUnit: "1K Registry Record-Months",
-      allowance: "5000",
-      allowanceUnit: "Registry Records",
-    },
-    {
-      key: "search",
-      text: registrySearch,
-      price: "0.020",
-      priceUnit: "Per 1000 requests",
-      allowance: "1000000",
-      allowanceUnit: "Requests",
-    },
-    {
-      key: "list-get",
-      text: registryList,
-      price: "0.004",
-      priceUnit: "Per 1000 requests",
-      allowance: "2000000",
-      allowanceUnit: "Requests",
-    },
-  ] as const;
-  const registryRaw = registry.flatMap(
-    ({ key, text, price, priceUnit, allowance, allowanceUnit }) =>
-      text === undefined
-        ? []
-        : [
-            raw(key, "base_price", text, price, priceUnit, "USD"),
-            raw(`${key}-allowance`, "allowance", text, allowance, allowanceUnit),
-          ],
-  );
-  if (registryRaw.length > 0)
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-registry",
-        bookName: "AWS Agent Registry",
-        resourceKey: "agentcore-registry",
-        offerKey: "consumption",
-        offerName: "Consumption-based registry",
-        pricingState: "numeric",
-        raw: registryRaw,
-      }),
-    );
-  if (temporalPolicies !== undefined)
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-policy",
-        bookName: "AgentCore Policy",
-        resourceKey: "agentcore-policy",
-        offerKey: "consumption",
-        offerName: "Consumption-based",
-        pricingState: "numeric",
-        raw: [raw("temporal-policy-coverage", "allowance", temporalPolicies)],
-      }),
-    );
-  if (paymentOperations !== undefined)
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-payments",
-        bookName: "AgentCore Payments",
-        resourceKey: "agentcore-payments",
-        offerKey: "coinbase-wallet",
-        offerName: "Coinbase CDP wallet operations",
-        pricingState: "externally_billed",
-        raw: [raw("wallet-provider-operations", "informational", paymentOperations)],
-      }),
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-payments",
-        bookName: "AgentCore Payments",
-        resourceKey: "agentcore-payments",
-        offerKey: "privy-process-payment",
-        offerName: "Privy ProcessPayment",
-        pricingState: "externally_billed",
-        raw: [raw("wallet-provider-operations", "informational", paymentOperations)],
-      }),
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-payments",
-        bookName: "AgentCore Payments",
-        resourceKey: "agentcore-payments",
-        offerKey: "privy-create-instrument",
-        offerName: "Privy CreateInstrument",
-        pricingState: "free",
-        raw: [raw("wallet-provider-operations", "informational", paymentOperations)],
-      }),
-    );
-  if (freePaymentApis !== undefined)
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:agentcore-payments",
-        bookName: "AgentCore Payments",
-        resourceKey: "agentcore-payments",
-        offerKey: "other-api",
-        offerName: "Other AgentCore Payments API calls",
-        pricingState: "free",
-        raw: [raw("other-api", "informational", freePaymentApis)],
-      }),
-    );
-  return facts;
-}
-
-function bedrockPageFacts(
-  documents: BedrockDocuments,
-  sourceId: string,
-  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): SourceCommercialPricingFact[] {
-  const facts: SourceCommercialPricingFact[] = [];
-  const countTokens = exactDocument(documents, "/bedrock/latest/userguide/count-tokens.md");
-  if (countTokens !== undefined && /CountTokens doesn't incur charges\./.test(countTokens))
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:token-counting",
-        bookName: "CountTokens",
-        resourceKey: "token-counting",
-        offerKey: "preflight",
-        offerName: "Model-specific token count",
-        pricingState: "free",
-        raw: [
-          pageRawFact(sourceId, "estimated-input-tokens", "informational", {
-            fragment:
-              "CountTokens does not incur charges and estimates model-specific input tokens",
-          }),
-        ],
-      }),
-    );
-  const pricing = documents.find(({ url }) => {
-    const parsed = new URL(url);
-    return parsed.hostname === "aws.amazon.com" && parsed.pathname === "/bedrock/pricing/";
-  });
-  if (pricing !== undefined) {
-    const page = load(pricing.body);
-    const section = page("h2#Model_Evaluation").first().closest("li[role='tabpanel']");
-    const text = section.text().replace(/\s+/g, " ").trim();
-    if (section.length !== 1 || !text.includes("a charge of $0.21 per completed human task")) {
-      onPricingReconciliation?.({
-        disposition: "unsupported",
-        reason_code: "pricing_page_section_drifted",
-        sample: "Bedrock Model Evaluation",
-      });
-      return facts;
-    }
-    facts.push(
-      pageCommercialFact(sourceId, {
-        bookKey: "service:model-evaluation",
-        bookName: "Model Evaluation",
-        resourceKey: "model-evaluation",
-        offerKey: "human-evaluation",
-        offerName: "Human-based evaluation",
-        pricingState: "numeric",
-        raw: [
-          pageRawFact(sourceId, "completed-human-task", "base_price", {
-            amount: "0.21",
-            denomination: "USD",
-            unit: "Evaluations",
-            fragment: "A charge of $0.21 per completed human task",
-          }),
-        ],
-      }),
-      pageCommercialFact(sourceId, {
-        bookKey: "service:model-evaluation",
-        bookName: "Model Evaluation",
-        resourceKey: "model-evaluation",
-        offerKey: "algorithmic-scores",
-        offerName: "Automatically generated algorithmic scores",
-        pricingState: "included",
-        raw: [
-          pageRawFact(sourceId, "model-inference", "informational", {
-            fragment:
-              "Algorithmic scores have no extra charge; selected model inference remains billable",
-          }),
-        ],
-      }),
-    );
-  }
-  return facts;
-}
-
 function productDimensions(
   list: z.infer<typeof priceListSchema>,
   sku: string,
@@ -2350,7 +1746,16 @@ function parsePrices(
   const unsupported = new Set<string>();
   for (const document of documents) {
     if (new URL(document.url).hostname !== "pricing.us-east-1.amazonaws.com") continue;
-    const list = priceListSchema.parse(JSON.parse(document.body));
+    const parsedList = priceListSchema.safeParse(JSON.parse(document.body));
+    if (!parsedList.success) {
+      onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "price_list_unsupported",
+        sample: document.url,
+      });
+      continue;
+    }
+    const list = parsedList.data;
     for (const [sku, productInput] of Object.entries(list.products)) {
       const product = priceProductSchema.safeParse(productInput);
       if (!product.success) {
@@ -2414,15 +1819,20 @@ function parsePrices(
           continue;
         }
         const label = identityLabel || usage;
-        if (card === undefined) {
-          const stale = explicitLabel !== undefined || list.offerCode !== "AmazonBedrockAgentCore";
+        if (outsideInvocationScope(attributes)) {
           handledDimensions++;
-          if (!stale) unbound.add(label);
           onPricingReconciliation?.({
-            disposition: stale ? "excluded" : "unbound",
-            reason_code: stale
-              ? "price_product_absent_from_current_catalog"
-              : "commercial_product_unbound",
+            disposition: "excluded",
+            reason_code: "price_dimension_outside_invocation_scope",
+            sample: `${label}: ${dimension.description}`,
+          });
+          continue;
+        }
+        if (card === undefined) {
+          handledDimensions++;
+          onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "price_product_absent_from_current_catalog",
             sample: `${label}: ${dimension.description}`,
           });
           continue;
@@ -2466,6 +1876,15 @@ function parsePrices(
           });
           continue;
         }
+        if (parsed.meter === "provisioned_throughput") {
+          handledDimensions++;
+          onPricingReconciliation?.({
+            disposition: "excluded",
+            reason_code: "price_dimension_outside_invocation_scope",
+            sample: `${label}: ${dimension.description}`,
+          });
+          continue;
+        }
         handledDimensions++;
         onPricingReconciliation?.({
           disposition: "normalized",
@@ -2492,173 +1911,299 @@ function parsePrices(
     );
   });
   if (cohereMarketplace.length > 1)
-    throw new Error("Bedrock Cohere Embed 4 Marketplace document was duplicated");
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "optional_pricing_source_duplicated",
+      sample: "Cohere Embed 4 Marketplace",
+    });
   const marketplaceDocument = cohereMarketplace[0];
   if (marketplaceDocument !== undefined) {
-    const id = "cohere.embed-v4:0";
-    if (!cards.some((card) => card.ids.has(id)))
-      throw new Error("Bedrock Cohere Embed 4 Marketplace model was not callable");
-    const marketplaceRates = cohereEmbedMarketplaceRates(marketplaceDocument.body, sourceId);
-    requiredDimensions += marketplaceRates.length;
-    handledDimensions += marketplaceRates.length;
-    const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
-    for (const marketplaceRate of marketplaceRates) {
-      const overrodePriceList = setReviewedPageRate(rates, marketplaceRate);
+    try {
+      const id = "cohere.embed-v4:0";
+      if (!cards.some((card) => card.ids.has(id)))
+        throw new Error("Cohere Embed 4 Marketplace model was not callable");
+      const marketplaceRates = cohereEmbedMarketplaceRates(marketplaceDocument.body, sourceId);
+      requiredDimensions += marketplaceRates.length;
+      handledDimensions += marketplaceRates.length;
+      const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
+      for (const marketplaceRate of marketplaceRates) {
+        const overrodePriceList = setReviewedPageRate(rates, marketplaceRate);
+        onPricingReconciliation?.({
+          disposition: "normalized",
+          reason_code: overrodePriceList
+            ? "marketplace_product_rate_overrode_price_list"
+            : "marketplace_product_rate_bound",
+        });
+      }
+      byId.set(id, rates);
+    } catch (error) {
       onPricingReconciliation?.({
-        disposition: "normalized",
-        reason_code: overrodePriceList
-          ? "marketplace_product_rate_overrode_price_list"
-          : "marketplace_product_rate_bound",
+        disposition: "unsupported",
+        reason_code: "optional_pricing_source_drifted",
+        sample: `Cohere Embed 4 Marketplace: ${error instanceof Error ? error.message : String(error)}`,
       });
     }
-    byId.set(id, rates);
   }
   const publicPages = documents.filter(({ url }) => {
     const parsed = new URL(url);
     return parsed.hostname === "aws.amazon.com" && parsed.pathname === "/bedrock/pricing/";
   });
-  if (publicPages.length > 1) throw new Error("Bedrock public pricing document was duplicated");
+  if (publicPages.length > 1)
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "optional_pricing_source_duplicated",
+      sample: "Bedrock public pricing page",
+    });
   const publicPage = publicPages[0];
   if (publicPage !== undefined) {
-    const page = load(publicPage.body);
-    const openAiHeading = page("h2#OpenAI").first();
-    const openAiPanel = openAiHeading.closest("li[role='tabpanel']");
-    const frontierPanel = openAiHeading
-      .nextAll(".lb-tabs")
-      .first()
-      .find("li[role='tabpanel']")
-      .first();
-    const openAi = frontierPanel.length === 0 ? openAiPanel : frontierPanel;
-    if (openAi.length === 0) throw new Error("Bedrock pricing page omitted the OpenAI panel");
-    const regionNames = new Map([
-      ["US East (N. Virginia)", "us-east-1"],
-      ["US East (Ohio)", "us-east-2"],
-      ["US West (Oregon)", "us-west-2"],
-      ["AWS GovCloud (US-West)", "us-gov-west-1"],
-    ]);
-    let reviewedTables = 0;
-    openAi.find("table").each((_tableIndex, table) => {
-      const rows = page(table).find("tr");
-      const rowCells = (index: number): string[] =>
-        rows
-          .eq(index)
-          .children("th,td")
-          .map((_cellIndex, cell) => page(cell).text().replace(/\s+/g, " ").trim())
-          .get();
-      let headers = rowCells(0);
-      let dataRows = rows.slice(1);
-      let contextConditions: Array<
-        { label: string; contextMinTokens?: number; contextMaxTokens?: number } | undefined
-      > = headers.map(() => undefined);
-      const secondHeaders = rowCells(1);
-      if (headers[0] === "" && secondHeaders[0] === "OpenAI models") {
-        const groups = rows
-          .eq(0)
-          .children("th,td")
-          .map((_cellIndex, cell) => ({
-            label: page(cell).text().replace(/\s+/g, " ").trim(),
-            colspan: Number(page(cell).attr("colspan") ?? "1"),
-          }))
-          .get();
-        if (
-          groups.length !== 3 ||
-          groups[0]?.label !== "" ||
-          groups[0].colspan !== 1 ||
-          !groups.every(({ colspan }) => Number.isInteger(colspan) && colspan > 0)
-        )
-          throw new Error("Bedrock OpenAI pricing context header changed");
-        const short = groups[1]?.label.match(/^Short Context Window \((\d+(?:\.\d+)?[KM])\)$/);
-        const long = groups[2]?.label.match(/^Long Context Window \((\d+(?:\.\d+)?[KM])\)$/);
-        const shortMaximum = tokens(short?.[1]);
-        const longMaximum = tokens(long?.[1]);
-        if (shortMaximum === undefined || longMaximum === undefined || shortMaximum >= longMaximum)
-          throw new Error("Bedrock OpenAI pricing context ranges changed");
-        contextConditions = groups.flatMap(({ label, colspan }, index) =>
-          Array.from({ length: colspan }, () =>
-            index === 0
-              ? undefined
-              : index === 1
-                ? { label, contextMaxTokens: shortMaximum }
-                : {
-                    label,
-                    contextMinTokens: shortMaximum + 1,
-                    contextMaxTokens: longMaximum,
-                  },
-          ),
-        );
-        if (contextConditions.length !== secondHeaders.length)
-          throw new Error("Bedrock OpenAI pricing context columns changed");
-        headers = secondHeaders;
-        dataRows = rows.slice(2);
-      }
-      if (
-        headers[0] !== "OpenAI models" ||
-        !headers.includes("Price per 1M input tokens") ||
-        !headers.includes("Price per 1M output tokens")
-      )
-        return;
-      reviewedTables++;
-      const regionText = page(table)
-        .parent()
-        .prevAll(".lb-rtxt")
+    try {
+      const page = load(publicPage.body);
+      const openAiHeading = page("h2#OpenAI").first();
+      const openAiPanel = openAiHeading.closest("li[role='tabpanel']");
+      const frontierPanel = openAiHeading
+        .nextAll(".lb-tabs")
         .first()
-        .text()
-        .replace(/\s+/g, " ")
-        .trim()
-        .replace(/^Regions?:\s*/i, "");
-      const regions = [...regionNames]
-        .filter(([label]) => regionText.includes(label))
-        .map(([, region]) => region);
-      if (regions.length === 0)
-        throw new Error(`Unsupported Bedrock OpenAI pricing region: ${regionText}`);
-      const rateColumns = headers.flatMap((header, index) => {
-        const meter: SourcePriceFact["meter"] | undefined =
-          header === "Price per 1M input tokens"
-            ? "input_text"
-            : /Price per 1M input tokens \((?:30m )?cache write\)/.test(header)
-              ? "cache_write_text"
-              : header === "Price per 1M input tokens (cache read)" ||
-                  header === "Price per 1M cached input tokens"
-                ? "cache_read_text"
-                : header === "Price per 1M output tokens"
-                  ? "output_text"
-                  : undefined;
-        return meter === undefined
-          ? []
-          : [
-              {
-                index,
-                meter,
-                cacheTtl: header.includes("30m cache write") ? 1_800 : undefined,
-                context: contextConditions[index],
-              },
-            ];
+        .find("li[role='tabpanel']")
+        .first();
+      const openAi = frontierPanel.length === 0 ? openAiPanel : frontierPanel;
+      if (openAi.length === 0) throw new Error("Bedrock pricing page omitted the OpenAI panel");
+      const regionNames = new Map([
+        ["US East (N. Virginia)", "us-east-1"],
+        ["US East (Ohio)", "us-east-2"],
+        ["US West (Oregon)", "us-west-2"],
+        ["AWS GovCloud (US-West)", "us-gov-west-1"],
+      ]);
+      let reviewedTables = 0;
+      openAi.find("table").each((_tableIndex, table) => {
+        const rows = page(table).find("tr");
+        const rowCells = (index: number): string[] =>
+          rows
+            .eq(index)
+            .children("th,td")
+            .map((_cellIndex, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+            .get();
+        let headers = rowCells(0);
+        let dataRows = rows.slice(1);
+        let contextConditions: Array<
+          { label: string; contextMinTokens?: number; contextMaxTokens?: number } | undefined
+        > = headers.map(() => undefined);
+        const secondHeaders = rowCells(1);
+        if (headers[0] === "" && secondHeaders[0] === "OpenAI models") {
+          const groups = rows
+            .eq(0)
+            .children("th,td")
+            .map((_cellIndex, cell) => ({
+              label: page(cell).text().replace(/\s+/g, " ").trim(),
+              colspan: Number(page(cell).attr("colspan") ?? "1"),
+            }))
+            .get();
+          if (
+            groups.length !== 3 ||
+            groups[0]?.label !== "" ||
+            groups[0].colspan !== 1 ||
+            !groups.every(({ colspan }) => Number.isInteger(colspan) && colspan > 0)
+          )
+            throw new Error("Bedrock OpenAI pricing context header changed");
+          const short = groups[1]?.label.match(/^Short Context Window \((\d+(?:\.\d+)?[KM])\)$/);
+          const long = groups[2]?.label.match(/^Long Context Window \((\d+(?:\.\d+)?[KM])\)$/);
+          const shortMaximum = tokens(short?.[1]);
+          const longMaximum = tokens(long?.[1]);
+          if (
+            shortMaximum === undefined ||
+            longMaximum === undefined ||
+            shortMaximum >= longMaximum
+          )
+            throw new Error("Bedrock OpenAI pricing context ranges changed");
+          contextConditions = groups.flatMap(({ label, colspan }, index) =>
+            Array.from({ length: colspan }, () =>
+              index === 0
+                ? undefined
+                : index === 1
+                  ? { label, contextMaxTokens: shortMaximum }
+                  : {
+                      label,
+                      contextMinTokens: shortMaximum + 1,
+                      contextMaxTokens: longMaximum,
+                    },
+            ),
+          );
+          if (contextConditions.length !== secondHeaders.length)
+            throw new Error("Bedrock OpenAI pricing context columns changed");
+          headers = secondHeaders;
+          dataRows = rows.slice(2);
+        }
+        if (
+          headers[0] !== "OpenAI models" ||
+          !headers.includes("Price per 1M input tokens") ||
+          !headers.includes("Price per 1M output tokens")
+        )
+          return;
+        reviewedTables++;
+        const regionText = page(table)
+          .parent()
+          .prevAll(".lb-rtxt")
+          .first()
+          .text()
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/^Regions?:\s*/i, "");
+        const regions = [...regionNames]
+          .filter(([label]) => regionText.includes(label))
+          .map(([, region]) => region);
+        if (regions.length === 0)
+          throw new Error(`Unsupported Bedrock OpenAI pricing region: ${regionText}`);
+        const rateColumns = headers.flatMap((header, index) => {
+          const meter: SourcePriceFact["meter"] | undefined =
+            header === "Price per 1M input tokens"
+              ? "input_text"
+              : /Price per 1M input tokens \((?:30m )?cache write\)/.test(header)
+                ? "cache_write_text"
+                : header === "Price per 1M input tokens (cache read)" ||
+                    header === "Price per 1M cached input tokens"
+                  ? "cache_read_text"
+                  : header === "Price per 1M output tokens"
+                    ? "output_text"
+                    : undefined;
+          return meter === undefined
+            ? []
+            : [
+                {
+                  index,
+                  meter,
+                  cacheTtl: header.includes("30m cache write") ? 1_800 : undefined,
+                  context: contextConditions[index],
+                },
+              ];
+        });
+        dataRows.each((_rowIndex, row) => {
+          const cells = page(row)
+            .children("th,td")
+            .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+            .get();
+          const label = cells[0];
+          if (label === undefined || label === "") return;
+          const card = modelForProduct(cards, label, "");
+          const ids =
+            card === undefined
+              ? []
+              : [...card.ids]
+                  .filter(([, access]) => access.deploymentTypes.has("in-region"))
+                  .map(([id]) => id);
+          for (const column of rateColumns) {
+            const raw = cells[column.index] ?? "";
+            if (raw === "-" || raw === "N/A") {
+              onPricingReconciliation?.({
+                disposition: "excluded",
+                reason_code: "price_cell_not_available",
+                sample: `${label}: ${headers[column.index] ?? column.meter}`,
+              });
+              continue;
+            }
+            requiredDimensions++;
+            if (card === undefined || ids.length === 0) {
+              handledDimensions++;
+              unbound.add(label);
+              onPricingReconciliation?.({
+                disposition: "unbound",
+                reason_code: "pricing_page_model_unbound",
+                sample: label,
+              });
+              continue;
+            }
+            const amount = raw.match(/^\$\s*(\d+(?:\.\d+)?)$/)?.[1];
+            if (amount === undefined) {
+              unsupported.add(`${label}: ${raw}`);
+              onPricingReconciliation?.({
+                disposition: "unsupported",
+                reason_code: "pricing_page_amount_unsupported",
+                sample: `${label}: ${raw}`,
+              });
+              continue;
+            }
+            handledDimensions++;
+            let overrodePriceList = false;
+            for (const id of ids) {
+              const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
+              for (const region of regions)
+                overrodePriceList =
+                  setReviewedPageRate(rates, {
+                    meter: column.meter,
+                    price: amount,
+                    currency: "USD",
+                    unit: "million_tokens",
+                    conditions: {
+                      region,
+                      deployment_scope: "in_region",
+                      service_tier: "standard",
+                      ...(column.context?.contextMinTokens === undefined
+                        ? {}
+                        : { context_min_tokens: column.context.contextMinTokens }),
+                      ...(column.context?.contextMaxTokens === undefined
+                        ? {}
+                        : { context_max_tokens: column.context.contextMaxTokens }),
+                      ...(column.cacheTtl === undefined
+                        ? {}
+                        : { cache_ttl_seconds: column.cacheTtl }),
+                    },
+                    source_ref: sourceId,
+                    derived: false,
+                    raw_price: raw,
+                    raw_unit:
+                      column.context === undefined
+                        ? headers[column.index]
+                        : `${column.context.label}: ${headers[column.index] ?? column.meter}`,
+                  }) || overrodePriceList;
+              byId.set(id, rates);
+            }
+            onPricingReconciliation?.({
+              disposition: "normalized",
+              reason_code: overrodePriceList
+                ? "pricing_page_cell_overrode_price_list"
+                : "pricing_page_cell_bound",
+            });
+          }
+        });
       });
-      dataRows.each((_rowIndex, row) => {
-        const cells = page(row)
+      if (reviewedTables === 0)
+        throw new Error("Bedrock pricing page contained no reviewed OpenAI model tables");
+
+      const stability = page("h2#Stability_AI").first().closest("li[role='tabpanel']");
+      if (stability.length === 0)
+        throw new Error("Bedrock pricing page omitted the Stability AI panel");
+      let stabilityTables = 0;
+      stability.find("table").each((_tableIndex, table) => {
+        const rows = page(table).find("tr");
+        const headers = rows
+          .first()
           .children("th,td")
           .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
           .get();
-        const label = cells[0];
-        if (label === undefined || label === "") return;
-        const card = modelForProduct(cards, label, "");
-        const ids =
-          card === undefined
-            ? []
-            : [...card.ids]
-                .filter(([, access]) => access.deploymentTypes.has("in-region"))
-                .map(([id]) => id);
-        for (const column of rateColumns) {
-          const raw = cells[column.index] ?? "";
-          if (raw === "-" || raw === "N/A") {
-            onPricingReconciliation?.({
-              disposition: "excluded",
-              reason_code: "price_cell_not_available",
-              sample: `${label}: ${headers[column.index] ?? column.meter}`,
-            });
-            continue;
-          }
+        if (
+          headers[0] !== "Stability AI Image Services" ||
+          headers[1] !== "Price per generation for each model"
+        )
+          return;
+        stabilityTables++;
+        const regions = ["us-east-1", "us-east-2", "us-west-2"];
+        rows.slice(1).each((_rowIndex, row) => {
+          const cells = page(row)
+            .children("th,td")
+            .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
+            .get();
+          const label = cells[0];
+          const raw = cells[1];
+          if (label === undefined || label === "" || raw === undefined || raw === "") return;
           requiredDimensions++;
+          const card = modelForProduct(cards, label, "");
+          const ids =
+            card === undefined
+              ? []
+              : [...card.ids]
+                  .filter(
+                    ([, access]) =>
+                      access.endpoints.has("bedrock-runtime") && access.deploymentTypes.has("geo"),
+                  )
+                  .map(([id]) => id);
           if (card === undefined || ids.length === 0) {
             handledDimensions++;
             unbound.add(label);
@@ -2667,7 +2212,7 @@ function parsePrices(
               reason_code: "pricing_page_model_unbound",
               sample: label,
             });
-            continue;
+            return;
           }
           const amount = raw.match(/^\$\s*(\d+(?:\.\d+)?)$/)?.[1];
           if (amount === undefined) {
@@ -2677,7 +2222,7 @@ function parsePrices(
               reason_code: "pricing_page_amount_unsupported",
               sample: `${label}: ${raw}`,
             });
-            continue;
+            return;
           }
           handledDimensions++;
           let overrodePriceList = false;
@@ -2686,31 +2231,19 @@ function parsePrices(
             for (const region of regions)
               overrodePriceList =
                 setReviewedPageRate(rates, {
-                  meter: column.meter,
+                  meter: "image_generation",
                   price: amount,
                   currency: "USD",
-                  unit: "million_tokens",
+                  unit: "image",
                   conditions: {
                     region,
-                    deployment_scope: "in_region",
+                    deployment_scope: "geo",
                     service_tier: "standard",
-                    ...(column.context?.contextMinTokens === undefined
-                      ? {}
-                      : { context_min_tokens: column.context.contextMinTokens }),
-                    ...(column.context?.contextMaxTokens === undefined
-                      ? {}
-                      : { context_max_tokens: column.context.contextMaxTokens }),
-                    ...(column.cacheTtl === undefined
-                      ? {}
-                      : { cache_ttl_seconds: column.cacheTtl }),
                   },
                   source_ref: sourceId,
                   derived: false,
                   raw_price: raw,
-                  raw_unit:
-                    column.context === undefined
-                      ? headers[column.index]
-                      : `${column.context.label}: ${headers[column.index] ?? column.meter}`,
+                  raw_unit: headers[1],
                 }) || overrodePriceList;
             byId.set(id, rates);
           }
@@ -2720,104 +2253,19 @@ function parsePrices(
               ? "pricing_page_cell_overrode_price_list"
               : "pricing_page_cell_bound",
           });
-        }
-      });
-    });
-    if (reviewedTables === 0)
-      throw new Error("Bedrock pricing page contained no reviewed OpenAI model tables");
-
-    const stability = page("h2#Stability_AI").first().closest("li[role='tabpanel']");
-    if (stability.length === 0)
-      throw new Error("Bedrock pricing page omitted the Stability AI panel");
-    let stabilityTables = 0;
-    stability.find("table").each((_tableIndex, table) => {
-      const rows = page(table).find("tr");
-      const headers = rows
-        .first()
-        .children("th,td")
-        .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
-        .get();
-      if (
-        headers[0] !== "Stability AI Image Services" ||
-        headers[1] !== "Price per generation for each model"
-      )
-        return;
-      stabilityTables++;
-      const regions = ["us-east-1", "us-east-2", "us-west-2"];
-      rows.slice(1).each((_rowIndex, row) => {
-        const cells = page(row)
-          .children("th,td")
-          .map((_index, cell) => page(cell).text().replace(/\s+/g, " ").trim())
-          .get();
-        const label = cells[0];
-        const raw = cells[1];
-        if (label === undefined || label === "" || raw === undefined || raw === "") return;
-        requiredDimensions++;
-        const card = modelForProduct(cards, label, "");
-        const ids =
-          card === undefined
-            ? []
-            : [...card.ids]
-                .filter(
-                  ([, access]) =>
-                    access.endpoints.has("bedrock-runtime") && access.deploymentTypes.has("geo"),
-                )
-                .map(([id]) => id);
-        if (card === undefined || ids.length === 0) {
-          handledDimensions++;
-          unbound.add(label);
-          onPricingReconciliation?.({
-            disposition: "unbound",
-            reason_code: "pricing_page_model_unbound",
-            sample: label,
-          });
-          return;
-        }
-        const amount = raw.match(/^\$\s*(\d+(?:\.\d+)?)$/)?.[1];
-        if (amount === undefined) {
-          unsupported.add(`${label}: ${raw}`);
-          onPricingReconciliation?.({
-            disposition: "unsupported",
-            reason_code: "pricing_page_amount_unsupported",
-            sample: `${label}: ${raw}`,
-          });
-          return;
-        }
-        handledDimensions++;
-        let overrodePriceList = false;
-        for (const id of ids) {
-          const rates = byId.get(id) ?? new Map<string, SourcePriceFact>();
-          for (const region of regions)
-            overrodePriceList =
-              setReviewedPageRate(rates, {
-                meter: "image_generation",
-                price: amount,
-                currency: "USD",
-                unit: "image",
-                conditions: {
-                  region,
-                  deployment_scope: "geo",
-                  service_tier: "standard",
-                },
-                source_ref: sourceId,
-                derived: false,
-                raw_price: raw,
-                raw_unit: headers[1],
-              }) || overrodePriceList;
-          byId.set(id, rates);
-        }
-        onPricingReconciliation?.({
-          disposition: "normalized",
-          reason_code: overrodePriceList
-            ? "pricing_page_cell_overrode_price_list"
-            : "pricing_page_cell_bound",
         });
       });
-    });
-    if (stabilityTables !== 1)
-      throw new Error(
-        `Bedrock pricing page contained ${stabilityTables} reviewed Stability AI tables`,
-      );
+      if (stabilityTables !== 1)
+        throw new Error(
+          `Bedrock pricing page contained ${stabilityTables} reviewed Stability AI tables`,
+        );
+    } catch (error) {
+      onPricingReconciliation?.({
+        disposition: "unsupported",
+        reason_code: "optional_pricing_source_drifted",
+        sample: `Bedrock public pricing page: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
   if (requiredDimensions === 0 || handledDimensions !== requiredDimensions)
     onPricingReconciliation?.({
@@ -2836,11 +2284,7 @@ function parsePrices(
         ),
       ]),
     ),
-    commercialFacts: [
-      ...commercialFacts(commercial, sourceId),
-      ...agentCorePageFacts(documents, sourceId, onPricingReconciliation),
-      ...bedrockPageFacts(documents, sourceId, onPricingReconciliation),
-    ],
+    commercialFacts: commercialFacts(commercial, sourceId),
   };
 }
 
@@ -2848,8 +2292,16 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   if (input.source.extractor.kind !== "bedrock-catalog")
     throw new Error("Bedrock catalog parser received the wrong extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  validateBedrockContracts(bundle.documents);
-  const supportedMantleRegions = mantleRegions(bundle.documents);
+  let supportedMantleRegions = new Set<string>();
+  try {
+    supportedMantleRegions = mantleRegions(bundle.documents);
+  } catch (error) {
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "optional_catalog_source_drifted",
+      sample: `Bedrock Mantle: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
   const cards = bundle.documents
     .filter((document) => {
       const url = new URL(document.url);
@@ -2858,7 +2310,32 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
         /^\/bedrock\/latest\/userguide\/model-card-[a-z0-9-]+\.md$/.test(url.pathname)
       );
     })
-    .map((document) => parseCard(document.body, input.observedAt));
+    .flatMap((document): Card[] => {
+      try {
+        return [parseCard(document.body, input.observedAt, input.onPricingReconciliation)];
+      } catch (error) {
+        input.onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "model_card_unsupported",
+          sample: `${document.url}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        return [];
+      }
+    });
+  try {
+    const known = new Set(cards.flatMap(({ ids }) => [...ids.keys()]));
+    cards.push(
+      ...supplementalRerankCards(bundle.documents).filter(
+        ({ ids }) => ![...ids.keys()].some((id) => known.has(id)),
+      ),
+    );
+  } catch (error) {
+    input.onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "optional_catalog_source_drifted",
+      sample: `Bedrock rerank inventory: ${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
   if (cards.length === 0) throw new Error("Bedrock catalog contained no model cards");
   const prices = parsePrices(
     bundle.documents,

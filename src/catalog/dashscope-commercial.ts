@@ -6,18 +6,10 @@ import type {
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
-import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
-import {
-  accountingGaps,
-  isStandardUnit,
-  offerEvidence,
-  rawEvidence,
-  relation,
-} from "./pricing-commercial-assembly.ts";
-import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
+import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import { isStandardUnit, rawEvidence, withApplicability } from "./pricing-commercial-assembly.ts";
 import type {
   ChargeBinding,
-  NormalizedPriceObservation,
   PriceApplicability,
   PriceCondition,
   PriceMeter,
@@ -26,106 +18,63 @@ import type {
 } from "./pricing-schema.ts";
 
 type Mechanism = "sync" | "batch";
-
-interface ModelOffers {
-  sync?: string;
-  batch?: string;
-}
+type StandardSignal = Extract<UsageSignal, { namespace: "kmodels" }>["value"];
 
 export function applyDashscopeCommercialTopology(
   input: AtomicProviderPricing,
 ): AtomicProviderPricing {
-  if (input.provider_id !== "dashscope") return input;
-  const modelOffers = new Map<string, ModelOffers>();
-  const books = input.books.map((book) => {
-    if (book.scope.kind !== "models") return bindResourceBook(book);
-    const migrated = splitModelBook(book);
-    const bookId = pricingBookId(input.provider_id, book.book_key);
-    const offers: ModelOffers = {};
-    if (migrated.offers.some(({ offer_key }) => offer_key === "sync"))
-      offers.sync = pricingOfferId(bookId, "sync");
-    if (migrated.offers.some(({ offer_key }) => offer_key === "batch"))
-      offers.batch = pricingOfferId(bookId, "batch");
-    for (const modelRef of book.scope.model_refs) modelOffers.set(modelRef, offers);
-    return migrated;
-  });
-  for (const book of books)
-    if (book.scope.kind === "provider_resource") bindResourceRelations(book, modelOffers);
-  return { ...input, books };
+  return {
+    ...input,
+    books: input.books.map((book) =>
+      book.scope.kind === "models" ? splitModelBook(book) : bindResourceBook(book),
+    ),
+  };
 }
 
 function splitModelBook(book: AtomicPricingBook): AtomicPricingBook {
-  const blocked = accountingGaps(book.offers.flatMap(({ terms }) => terms));
-  const offers = book.offers.flatMap((offer) => {
-    if (offer.offer_key !== "usage")
-      return [withSettlement(offer, "Model Studio usage", blocked.has("settlement"))];
-    const hasCache = offer.terms.some(
-      (term) =>
-        term.kind === "rate" &&
-        term.meter.namespace === "kmodels" &&
-        ["cache_read_text", "cache_write_text"].includes(term.meter.value),
-    );
-    const sync = partitionOffer(offer, "sync", blocked, hasCache);
-    const batch = partitionOffer(offer, "batch", blocked, hasCache);
-    const result = [sync, batch].filter(hasCommercialContent);
-    if (sync !== undefined && batch !== undefined && result.length === 2) {
-      const bookId = pricingBookId("dashscope", book.book_key);
-      sync.relations.push(
-        relation(
-          sync,
-          "exclusive_with",
-          [pricingOfferId(bookId, "batch")],
-          "Realtime and Batch inference are alternative execution mechanisms",
-        ),
-      );
-      batch.relations.push(
-        relation(
-          batch,
-          "exclusive_with",
-          [pricingOfferId(bookId, "sync")],
-          "Batch and realtime inference are alternative execution mechanisms",
-        ),
-      );
-    }
-    return result;
-  });
-  return { ...book, offers };
+  return {
+    ...book,
+    offers: book.offers.flatMap((offer) => {
+      if (offer.offer_key !== "usage") return [{ ...offer, relations: [], settlement: [] }];
+      return (["sync", "batch"] as const).flatMap((mechanism) => {
+        const partition = partitionOffer(offer, mechanism);
+        return partition === undefined ? [] : [partition];
+      });
+    }),
+    resource_edges: [],
+  };
 }
 
 function partitionOffer(
   offer: AtomicPricingOffer,
   mechanism: Mechanism,
-  blocked: ReadonlySet<string>,
-  hasCache: boolean,
 ): AtomicPricingOffer | undefined {
   const states = offer.states.flatMap((state) => {
     const applicability = mechanismApplicability(state.applicability, mechanism);
     return applicability === undefined
       ? []
-      : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
+      : [
+          {
+            ...state,
+            applicability,
+            observation: withApplicability(state.observation, applicability),
+          },
+        ];
   });
-  const terms = offer.terms.flatMap((term) => partitionTerm(term, mechanism, blocked, hasCache));
+  const terms = offer.terms.flatMap((term) => partitionTerm(term, mechanism));
   if (states.length === 0 && terms.length === 0) return;
-  return withSettlement(
-    {
-      ...offer,
-      offer_key: mechanism,
-      name: mechanism === "batch" ? "Batch inference" : "Realtime inference",
-      states,
-      terms,
-      relations: [],
-    },
-    mechanism === "batch" ? "Model Studio Batch usage" : "Model Studio realtime usage",
-    blocked.has("settlement"),
-  );
+  return {
+    ...offer,
+    offer_key: mechanism,
+    name: mechanism === "batch" ? "Batch inference" : "Realtime inference",
+    states,
+    terms,
+    relations: [],
+    settlement: [],
+  };
 }
 
-function partitionTerm(
-  term: AtomicPricingTerm,
-  mechanism: Mechanism,
-  blocked: ReadonlySet<string>,
-  hasCache: boolean,
-): AtomicPricingTerm[] {
+function partitionTerm(term: AtomicPricingTerm, mechanism: Mechanism): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism));
     return variants.length === 0 ? [] : [{ ...term, variants }];
@@ -137,9 +86,9 @@ function partitionTerm(
     const next = {
       ...variant,
       applicability,
-      observation: normalized(variant.observation, applicability),
+      observation: withApplicability(variant.observation, applicability),
     };
-    const charge_binding = modelBinding(term.meter, next, mechanism, blocked, hasCache);
+    const charge_binding = modelBinding(term.meter, next, mechanism);
     return [{ ...next, ...(charge_binding === undefined ? {} : { charge_binding }) }];
   });
   const raw_variants = term.raw_variants.flatMap((variant) => partitionRaw(variant, mechanism));
@@ -177,60 +126,45 @@ function modelBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
   mechanism: Mechanism,
-  blocked: ReadonlySet<string>,
-  hasCache: boolean,
 ): ChargeBinding | undefined {
-  if (
-    blocked.has("tokens") ||
-    (mechanism === "batch" && blocked.has("batch")) ||
-    (blocked.has("cache") &&
-      meter.namespace === "kmodels" &&
-      ["cache_read_text", "cache_write_text"].includes(meter.value)) ||
-    !isUnit(variant.price.per, "token")
-  )
-    return;
-  const signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"] | undefined =
-    meter.namespace !== "kmodels"
-      ? undefined
-      : meter.value === "cache_read_text"
-        ? "cached_input_tokens"
-        : meter.value === "cache_write_text"
-          ? "cache_write_tokens"
-          : meter.value === "output_text"
-            ? "output_tokens"
-            : meter.value === "input_text"
-              ? hasCache && mechanism === "sync"
-                ? undefined
-                : "input_tokens"
-              : undefined;
+  const signal = modelSignal(meter, variant.price.per);
   if (signal === undefined) return;
   return {
     signal: { namespace: "kmodels", value: signal },
     aggregation: mechanism === "batch" ? "result_item" : "request",
     observations: usageFields(signal, mechanism).map((field) => ({
       ...rawEvidence(variant.observation),
-      locator: {
-        kind: "provider_key",
-        value: field,
-      },
+      locator: { kind: "provider_key", value: field },
     })),
   };
 }
 
-function usageFields(
-  signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
-  mechanism: Mechanism,
-): string[] {
+function modelSignal(meter: PriceMeter, unit: UnitExpression): StandardSignal | undefined {
+  if (meter.namespace !== "kmodels") return;
+  if (meter.value === "input_text" && isStandardUnit(unit, "token")) return "uncached_input_tokens";
+  if (meter.value === "cache_read_text" && isStandardUnit(unit, "token"))
+    return "cached_input_tokens";
+  if (meter.value === "cache_write_text" && isStandardUnit(unit, "token"))
+    return "cache_write_tokens";
+  if (meter.value === "output_text" && isStandardUnit(unit, "token")) return "output_tokens";
+}
+
+function usageFields(signal: StandardSignal, mechanism: Mechanism): string[] {
   if (mechanism === "batch") return [`batch-result:usage.${usageField(signal)}`];
   switch (signal) {
     case "cache_write_tokens":
-      return ["responses:usage.cache_creation_input_tokens"];
+      return [
+        "chat:usage.prompt_tokens_details.cache_creation_input_tokens",
+        "anthropic:usage.cache_creation_input_tokens",
+      ];
     case "cached_input_tokens":
       return [
         "chat:usage.prompt_tokens_details.cached_tokens",
         "responses:usage.input_tokens_details.cached_tokens",
+        "anthropic:usage.cache_read_input_tokens",
       ];
     case "input_tokens":
+    case "uncached_input_tokens":
       return ["chat:usage.prompt_tokens", "responses:usage.input_tokens"];
     case "output_tokens":
       return ["chat:usage.completion_tokens", "responses:usage.output_tokens"];
@@ -239,121 +173,53 @@ function usageFields(
   }
 }
 
-function usageField(signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"]): string {
+function usageField(signal: StandardSignal): string {
   if (signal === "cache_write_tokens") return "cache_creation_input_tokens";
   if (signal === "cached_input_tokens") return "cached_tokens";
-  if (signal === "input_tokens") return "input_tokens";
-  return "output_tokens";
+  if (signal === "input_tokens" || signal === "uncached_input_tokens") return "input_tokens";
+  if (signal === "output_tokens") return "output_tokens";
+  return signal;
 }
 
 function bindResourceBook(book: AtomicPricingBook): AtomicPricingBook {
-  if (book.scope.kind !== "provider_resource") return book;
+  if (book.scope.kind !== "provider_resource" || book.scope.resource_key !== "web-search")
+    return { ...book, resource_edges: [] };
   return {
     ...book,
     offers: book.offers.map((offer) => ({
-      ...withSettlement(
-        offer,
-        `Model Studio ${book.name ?? book.book_key}`,
-        offer.terms.some(
-          ({ term_key }) => term_key === "accounting_binding_unavailable:settlement",
-        ),
-      ),
+      ...offer,
       terms: offer.terms.map((term) => {
         if (
-          book.scope.kind !== "provider_resource" ||
-          book.scope.resource_key !== "web-search" ||
           term.kind !== "rate" ||
-          offer.terms.some(
-            ({ term_key }) => term_key === "accounting_binding_unavailable:web_search",
-          )
+          term.meter.namespace !== "kmodels" ||
+          term.meter.value !== "web_search"
         )
           return term;
         return {
           ...term,
           variants: term.variants.map(
-            (variant): AtomicRateVariant =>
-              isUnit(variant.price.per, "event") || isUnit(variant.price.per, "request")
-                ? {
-                    ...variant,
-                    charge_binding: {
-                      signal: { namespace: "kmodels", value: "successful_web_searches" },
-                      aggregation: "request",
-                      observations: [
-                        {
-                          ...rawEvidence(variant.observation),
-                          locator: {
-                            kind: "provider_key",
-                            value: "response:usage.x_tools.web_search.count",
-                          },
-                        },
-                      ],
+            (variant): AtomicRateVariant => ({
+              ...variant,
+              charge_binding: {
+                signal: { namespace: "kmodels", value: "successful_web_searches" },
+                aggregation: "request",
+                observations: [
+                  {
+                    ...rawEvidence(variant.observation),
+                    locator: {
+                      kind: "provider_key",
+                      value: "responses:usage.x_tools.web_search.count",
                     },
-                  }
-                : variant,
+                  },
+                ],
+              },
+            }),
           ),
         };
       }),
+      relations: [],
+      settlement: [],
     })),
+    resource_edges: [],
   };
-}
-
-function bindResourceRelations(
-  book: AtomicPricingBook,
-  modelOffers: ReadonlyMap<string, ModelOffers>,
-): void {
-  if (book.scope.kind !== "provider_resource" || book.scope.resource_key !== "web-search") return;
-  for (const offer of book.offers) {
-    const encoded = offer.offer_key.match(/^built-in:(.+):[^:]+$/)?.[1];
-    const target = encoded === undefined ? undefined : modelOffers.get(encoded)?.sync;
-    if (target !== undefined)
-      offer.relations.push(
-        relation(
-          offer,
-          "requires",
-          [target],
-          "Executed built-in web search adds to the exact realtime model inference charge",
-        ),
-      );
-  }
-}
-
-function withSettlement(
-  offer: AtomicPricingOffer,
-  label: string,
-  unavailable = false,
-): AtomicPricingOffer {
-  if (unavailable) return { ...offer, settlement: [] };
-  return {
-    ...offer,
-    settlement: [
-      {
-        channel: "direct",
-        biller: "Alibaba Cloud",
-        payment_sources: ["prepaid_balance", "provider_credit", "postpaid_invoice"],
-        applicability: unconditionalApplicability,
-        observations: [
-          {
-            ...rawEvidence(offerEvidence(offer)),
-            raw: { label: `${label} settles through the selected Model Studio account` },
-            establishes_applicability: unconditionalApplicability,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function normalized(
-  observation: NormalizedPriceObservation,
-  applicability: PriceApplicability,
-): NormalizedPriceObservation {
-  return { ...observation, establishes_applicability: applicability };
-}
-
-function isUnit(unit: UnitExpression, value: "event" | "request" | "token"): boolean {
-  return isStandardUnit(unit, value);
-}
-
-function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {
-  return offer !== undefined && (offer.states.length > 0 || offer.terms.length > 0);
 }

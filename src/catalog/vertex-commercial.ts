@@ -6,58 +6,56 @@ import type {
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
-import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
-import { addAtom, rawEvidence, unitIdentityKey } from "./pricing-commercial-assembly.ts";
+import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import {
+  addAtom,
+  isStandardUnit,
+  providerKeyEvidence,
+  relation,
+  withApplicability,
+} from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
-  NormalizedPriceObservation,
-  OfferRelation,
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  RawPriceObservation,
   UnitExpression,
 } from "./pricing-schema.ts";
 import type { ParsedProviderModel } from "./pricing-source.ts";
 
 type Mechanism = "sync" | "batch";
-
 type PublishedModel = Pick<ParsedProviderModel, "service_families" | "uid">;
 
 const servedTier = { namespace: "kmodels", value: "served_service_tier" } as const;
+const requestServices = new Set([
+  "claude-web-search",
+  "google-image-search",
+  "google-maps",
+  "google-search",
+  "grounded-generation",
+  "web-grounding-enterprise",
+]);
 
 export function applyVertexCommercialTopology(
   input: AtomicProviderPricing,
   publishedModels: readonly PublishedModel[],
 ): AtomicProviderPricing {
-  if (input.provider_id !== "vertex") return input;
   const models = new Map(publishedModels.map((model) => [model.uid, model]));
-  const syncOffers = new Map<string, string>();
-  const books = input.books.map((book) => {
-    if (book.scope.kind !== "models") return bindResourceBook(book, input);
-    const migrated = splitModelBook(book, input, models);
-    const sync = migrated.offers.find(({ offer_key }) => offer_key === "sync");
-    if (sync !== undefined) {
-      const ref = pricingOfferId(pricingBookId(input.provider_id, book.book_key), sync.offer_key);
-      for (const modelRef of book.scope.model_refs) syncOffers.set(modelRef, ref);
+  const modelOffers = new Map<string, string>();
+  const books = input.books.flatMap((book) => {
+    if (book.scope.kind === "models") {
+      const migrated = splitModelBook(book, input, models);
+      if (migrated.offers.some(({ offer_key }) => offer_key === "sync")) {
+        const ref = pricingOfferId(pricingBookId(input.provider_id, book.book_key), "sync");
+        for (const modelRef of book.scope.model_refs) modelOffers.set(modelRef, ref);
+      }
+      return [migrated];
     }
-    return migrated;
+    if (!requestServices.has(book.scope.resource_key)) return [];
+    return [bindRequestService(book, input)];
   });
-  const resourceOffers = new Map<string, string>();
-  for (const book of books) {
-    if (book.scope.kind !== "provider_resource" || !book.scope.resource_key.startsWith("agent:"))
-      continue;
-    const execution = book.offers.find(({ offer_key }) => offer_key === "execution");
-    if (execution !== undefined)
-      resourceOffers.set(
-        book.scope.resource_key,
-        pricingOfferId(pricingBookId(input.provider_id, book.book_key), execution.offer_key),
-      );
-  }
-  for (const book of books)
-    if (book.scope.kind === "provider_resource")
-      bindResourceRelations(book, syncOffers, resourceOffers);
+  for (const book of books) bindServiceRelations(book, modelOffers);
   return { ...input, books };
 }
 
@@ -66,33 +64,15 @@ function splitModelBook(
   input: AtomicProviderPricing,
   models: ReadonlyMap<string, PublishedModel>,
 ): AtomicPricingBook {
-  const offers = book.offers.flatMap((offer) => {
-    if (offer.offer_key !== "usage") return [withSettlement(offer, "Vertex AI usage")];
-    const sync = partitionOffer(book, offer, "sync", input, models);
-    const batch = partitionOffer(book, offer, "batch", input, models);
-    const result = [sync, batch].filter(hasCommercialContent);
-    if (sync !== undefined && batch !== undefined && result.length === 2) {
-      const bookId = pricingBookId(input.provider_id, book.book_key);
-      sync.relations.push(
-        relation(
-          sync,
-          "exclusive_with",
-          pricingOfferId(bookId, "batch"),
-          "Synchronous and Batch inference are alternative execution mechanisms",
-        ),
-      );
-      batch.relations.push(
-        relation(
-          batch,
-          "exclusive_with",
-          pricingOfferId(bookId, "sync"),
-          "Batch and synchronous inference are alternative execution mechanisms",
-        ),
-      );
-    }
-    return result;
-  });
-  return { ...book, offers };
+  return {
+    ...book,
+    offers: book.offers.flatMap((offer) => {
+      if (offer.offer_key !== "usage") return [{ ...offer, settlement: [] }];
+      return (["sync", "batch"] as const)
+        .map((mechanism) => partitionOffer(book, offer, mechanism, input, models))
+        .filter((candidate): candidate is AtomicPricingOffer => candidate !== undefined);
+    }),
+  };
 }
 
 function partitionOffer(
@@ -106,21 +86,30 @@ function partitionOffer(
     const applicability = mechanismApplicability(state.applicability, mechanism, input);
     return applicability === undefined
       ? []
-      : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
+      : [
+          {
+            ...state,
+            applicability,
+            observation: withApplicability(state.observation, applicability),
+          },
+        ];
   });
-  const terms = offer.terms.flatMap((term) => partitionTerm(book, term, mechanism, input, models));
-  if (states.length === 0 && terms.length === 0) return;
-  return withSettlement(
-    {
-      ...offer,
-      offer_key: mechanism,
-      name: mechanism === "batch" ? "Batch inference" : "Synchronous inference",
-      states,
-      terms,
-      relations: [],
-    },
-    mechanism === "batch" ? "Vertex AI Batch usage" : "Vertex AI synchronous usage",
+  const blocked = offer.terms.some(
+    (term) => term.kind === "raw" && term.term_key === "charge_binding_unavailable",
   );
+  const terms = offer.terms.flatMap((term) =>
+    partitionTerm(book, term, mechanism, input, models, blocked),
+  );
+  if (states.length === 0 && terms.length === 0) return;
+  return {
+    ...offer,
+    offer_key: mechanism,
+    name: mechanism === "batch" ? "Batch inference" : "Online inference",
+    states,
+    terms,
+    relations: [],
+    settlement: [],
+  };
 }
 
 function partitionTerm(
@@ -129,6 +118,7 @@ function partitionTerm(
   mechanism: Mechanism,
   input: AtomicProviderPricing,
   models: ReadonlyMap<string, PublishedModel>,
+  blocked: boolean,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism, input));
@@ -138,12 +128,15 @@ function partitionTerm(
   const variants = term.variants.flatMap((variant) => {
     const applicability = mechanismApplicability(variant.applicability, mechanism, input);
     if (applicability === undefined) return [];
-    const charge_binding = modelBinding(book, term.meter, variant, mechanism, input, models);
+    const observation = withApplicability(variant.observation, applicability);
+    const charge_binding = blocked
+      ? undefined
+      : modelBinding(book, term.meter, variant, mechanism, input, models);
     return [
       {
         ...variant,
         applicability,
-        observation: normalized(variant.observation, applicability),
+        observation,
         ...(charge_binding === undefined ? {} : { charge_binding }),
       },
     ];
@@ -204,6 +197,12 @@ function isServiceTier(condition: PriceCondition): boolean {
   );
 }
 
+interface Signal {
+  key: string;
+  definition: string;
+  locators: string[];
+}
+
 function modelBinding(
   book: AtomicPricingBook,
   meter: PriceMeter,
@@ -214,16 +213,21 @@ function modelBinding(
 ): ChargeBinding | undefined {
   const signal = modelSignal(book, meter, variant.price.per, models);
   if (signal === undefined) return;
-  const key = `${mechanism === "batch" ? "batch_result" : "response"}_${signal}`;
-  return providerBinding(
-    input,
-    key,
-    `Billable ${signal.replaceAll("_", " ")} for one Vertex ${mechanism === "batch" ? "Batch result item" : "API attempt"}`,
-    variant.price.per,
-    mechanism === "batch" ? "result_item" : "attempt",
-    variant.observation,
-    `usage:${key}`,
-  );
+  addAtom(input, {
+    kind: "usage_signal",
+    key: signal.key,
+    definition: signal.definition,
+    unit: variant.price.per,
+    resolution_phase: "outcome",
+  });
+  const prefix = mechanism === "batch" ? "batch-result" : "response";
+  return {
+    signal: { namespace: "provider", provider_id: input.provider_id, value: signal.key },
+    aggregation: mechanism === "batch" ? "result_item" : "request",
+    observations: signal.locators.map((locator) =>
+      providerKeyEvidence(variant.observation, `${prefix}:${locator}`),
+    ),
+  };
 }
 
 function modelSignal(
@@ -231,316 +235,204 @@ function modelSignal(
   meter: PriceMeter,
   unit: UnitExpression,
   models: ReadonlyMap<string, PublishedModel>,
-): string | undefined {
-  if (meter.namespace !== "kmodels" || book.scope.kind !== "models") return;
+): Signal | undefined {
+  if (
+    meter.namespace !== "kmodels" ||
+    !isStandardUnit(unit, "token") ||
+    book.scope.kind !== "models"
+  )
+    return;
   const families = new Set(
     book.scope.model_refs.flatMap((ref) => models.get(ref)?.service_families ?? []),
   );
-  const source = book.source_refs.includes("vertex-google-models")
-    ? "gemini"
-    : families.has("publishers/anthropic")
-      ? "claude"
-      : families.has("publishers/xai")
-        ? "responses"
-        : "chat";
-  const billedUnit = singleUnit(unit);
-  if (source === "gemini") {
-    switch (meter.value) {
-      case "input_text":
-        return "usage_metadata_uncached_prompt_tokens";
-      case "cache_read_text":
-        return "usage_metadata_cached_content_tokens";
-      case "output_text":
-        return "usage_metadata_candidate_and_thought_tokens";
-      case "image_generation":
-        return `prediction_generated_image_${billedUnit}`;
-      case "video_generation":
-        return `prediction_generated_video_${billedUnit}`;
-      default:
-        return `usage_metadata_${meter.value}_${billedUnit}`;
-    }
-  }
-  if (source === "claude") {
-    switch (meter.value) {
-      case "input_text":
-        return "claude_usage_input_tokens";
-      case "cache_read_text":
-        return "claude_usage_cache_read_input_tokens";
-      case "cache_write_text":
-        return "claude_usage_cache_creation_input_tokens";
-      case "output_text":
-        return "claude_usage_output_tokens";
-      default:
-        return `claude_usage_${meter.value}_${billedUnit}`;
-    }
-  }
-  const prefix = source === "responses" ? "responses_usage" : "chat_usage";
-  if (meter.value === "input_text")
-    return `${prefix}_${source === "responses" ? "input" : "prompt"}_tokens`;
-  if (meter.value === "cache_read_text") return `${prefix}_cached_input_tokens`;
-  if (meter.value === "output_text")
-    return `${prefix}_${source === "responses" ? "output" : "completion"}_tokens`;
-  return `${prefix}_${meter.value}_${billedUnit}`;
+  if (families.has("publishers/google")) return geminiSignal(meter);
+  if (families.has("publishers/anthropic")) return claudeSignal(meter);
+  if (families.has("publishers/xai")) return responsesSignal(meter);
+  return chatSignal(meter);
 }
 
-function bindResourceBook(
+function geminiSignal(meter: PriceMeter): Signal | undefined {
+  const modality = meter.value.split("_").at(-1)?.toUpperCase();
+  if (meter.value.startsWith("input_") && modality !== undefined)
+    return {
+      key: `uncached_input_${modality.toLowerCase()}_tokens`,
+      definition: `Uncached Vertex Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
+      locators: [
+        `GenerateContentResponse.usageMetadata.promptTokensDetails[modality=${modality}].tokenCount - GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=${modality}].tokenCount`,
+      ],
+    };
+  if (meter.value.startsWith("cache_read_") && modality !== undefined)
+    return {
+      key: `cached_input_${modality.toLowerCase()}_tokens`,
+      definition: `Cached Vertex Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
+      locators: [
+        `GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=${modality}].tokenCount`,
+      ],
+    };
+  if (meter.value === "output_text")
+    return {
+      key: "output_text_tokens",
+      definition: "Vertex Gemini candidate and thought output tokens reported by usage metadata",
+      locators: [
+        "GenerateContentResponse.usageMetadata.candidatesTokenCount + GenerateContentResponse.usageMetadata.thoughtsTokenCount",
+      ],
+    };
+  if (meter.value.startsWith("output_") && modality !== undefined)
+    return {
+      key: `output_${modality.toLowerCase()}_tokens`,
+      definition: `Vertex Gemini ${modality.toLowerCase()} output tokens reported by usage metadata`,
+      locators: [
+        `GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=${modality}].tokenCount`,
+      ],
+    };
+  if (meter.value === "embedding")
+    return {
+      key: "embedding_input_tokens",
+      definition: "Vertex Gemini embedding input tokens reported by the embedding response",
+      locators: ["EmbedContentResponse.usageMetadata.promptTokenCount"],
+    };
+}
+
+function claudeSignal(meter: PriceMeter): Signal | undefined {
+  const field =
+    meter.value === "input_text"
+      ? "input_tokens"
+      : meter.value === "cache_read_text"
+        ? "cache_read_input_tokens"
+        : meter.value === "cache_write_text"
+          ? "cache_creation_input_tokens"
+          : meter.value === "output_text"
+            ? "output_tokens"
+            : undefined;
+  return field === undefined
+    ? undefined
+    : {
+        key: `claude_${field}`,
+        definition: `Vertex Claude ${field.replaceAll("_", " ")} reported by response usage`,
+        locators: [`Message.usage.${field}`],
+      };
+}
+
+function responsesSignal(meter: PriceMeter): Signal | undefined {
+  const locator =
+    meter.value === "input_text"
+      ? "Response.usage.input_tokens - Response.usage.input_tokens_details.cached_tokens"
+      : meter.value === "cache_read_text"
+        ? "Response.usage.input_tokens_details.cached_tokens"
+        : meter.value === "output_text"
+          ? "Response.usage.output_tokens"
+          : undefined;
+  return locator === undefined
+    ? undefined
+    : {
+        key: `responses_${meter.value}_tokens`,
+        definition: `Vertex Responses ${meter.value.replaceAll("_", " ")} tokens reported by response usage`,
+        locators: [locator],
+      };
+}
+
+function chatSignal(meter: PriceMeter): Signal | undefined {
+  const locator =
+    meter.value === "input_text"
+      ? "ChatCompletion.usage.prompt_tokens"
+      : meter.value === "output_text"
+        ? "ChatCompletion.usage.completion_tokens"
+        : undefined;
+  return locator === undefined
+    ? undefined
+    : {
+        key: `chat_${meter.value}_tokens`,
+        definition: `Vertex Chat Completions ${meter.value.replaceAll("_", " ")} tokens reported by response usage`,
+        locators: [locator],
+      };
+}
+
+function bindRequestService(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
 ): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
   const resourceKey = book.scope.resource_key;
-  const offers = book.offers.map((offer) => ({
-    ...withSettlement(offer, `Vertex AI ${book.name ?? book.book_key}`),
-    terms: offer.terms.map((term) => {
-      if (term.kind !== "rate") return term;
+  return {
+    ...book,
+    resource_edges: [],
+    offers: book.offers.map((offer) => {
+      const blocked = offer.terms.some(
+        (term) => term.kind === "raw" && term.term_key === "charge_binding_unavailable",
+      );
       return {
-        ...term,
-        variants: term.variants.map((variant) => {
-          const charge_binding = resourceBinding(resourceKey, term.meter, variant, input);
-          return charge_binding === undefined ? variant : { ...variant, charge_binding };
+        ...offer,
+        enrollment: [],
+        settlement: [],
+        terms: offer.terms.map((term) => {
+          if (term.kind !== "rate" || blocked) return term;
+          return {
+            ...term,
+            variants: term.variants.map((variant) => {
+              const charge_binding = serviceBinding(resourceKey, variant, input);
+              return charge_binding === undefined ? variant : { ...variant, charge_binding };
+            }),
+          };
         }),
       };
     }),
-  }));
-  return { ...book, offers };
+  };
 }
 
-function resourceBinding(
+function serviceBinding(
   resourceKey: string,
-  meter: PriceMeter,
   variant: AtomicRateVariant,
   input: AtomicProviderPricing,
 ): ChargeBinding | undefined {
-  if (meter.namespace !== "kmodels") return;
-  const baseKey =
-    resourceKey === "explicit-cache-storage" && meter.value === "storage"
-      ? "explicit_cache_stored_token_time"
-      : resourceKey === "provisioned-throughput" && meter.value === "provisioned_capacity"
-        ? "provisioned_gsu_commitment"
-        : resourceKey === "model-tuning" && meter.value === "training_input"
-          ? "training_dataset_tokens_times_epochs"
-          : resourceKey === "agent-search" && meter.value === "retrieval"
-            ? "agent_search_queries"
-            : resourceKey === "agent-search" && meter.value === "grounded_generation"
-              ? "agent_search_advanced_generative_answer_queries"
-              : resourceKey.startsWith("agent:")
-                ? `${resourceKey.slice("agent:".length).replaceAll("-", "_")}_${meter.value}`
-                : resourceKey === "codemender" || resourceKey === "alphaevolve"
-                  ? `${resourceKey}_${meter.value}`
-                  : resourceKey === "claude-web-search"
-                    ? "claude_server_tool_use_web_search_requests"
-                    : resourceKey === "google-image-search"
-                      ? "grounding_metadata_image_search_queries"
-                      : resourceKey === "google-maps" && isRequestUnit(variant.price.per)
-                        ? "grounding_metadata_maps_queries"
-                        : resourceKey === "grounded-generation"
-                          ? "grounded_generation_billable_requests"
-                          : resourceKey === "google-search" ||
-                              resourceKey === "web-grounding-enterprise"
-                            ? isRequestUnit(variant.price.per)
-                              ? "grounding_metadata_successful_grounded_prompts"
-                              : "grounding_metadata_web_search_queries"
-                            : undefined;
-  if (baseKey === undefined) return;
-  const key =
-    baseKey === "provisioned_gsu_commitment"
-      ? `${baseKey}_${unitIdentityKey(variant.price.per)}`
-      : baseKey;
-  const storage = resourceKey === "explicit-cache-storage";
-  const capacity = resourceKey === "provisioned-throughput";
-  const training = resourceKey === "model-tuning";
-  const agent = resourceKey.startsWith("agent:");
-  const compositeAgent = resourceKey === "codemender" || resourceKey === "alphaevolve";
-  const request = resourceKey === "agent-search" || resourceKey === "grounded-generation";
-  return providerBinding(
-    input,
-    key,
-    storage
-      ? "Explicit cache token count integrated over its retained lifetime"
-      : `Billable ${key.replaceAll("_", " ")}`,
-    variant.price.per,
-    storage || capacity
-      ? "resource"
-      : training || agent || compositeAgent
-        ? "job"
-        : request
-          ? "request"
-          : isRequestUnit(variant.price.per)
-            ? "attempt"
-            : "result_item",
-    variant.observation,
-    `usage:${key}`,
-    storage || capacity ? "account" : request ? "request" : "outcome",
-  );
-}
-
-function bindResourceRelations(
-  book: AtomicPricingBook,
-  syncOffers: ReadonlyMap<string, string>,
-  resourceOffers: ReadonlyMap<string, string>,
-): void {
-  if (book.scope.kind !== "provider_resource") return;
-  for (const offer of book.offers) {
-    if (offer.offer_key.startsWith("agent:")) {
-      const target = resourceOffers.get(offer.offer_key);
-      if (target !== undefined)
-        offer.relations.push(
-          relation(
-            offer,
-            "requires",
-            target,
-            "This tool charge adds to the exact managed-agent execution charge",
-          ),
-        );
-      continue;
-    }
-    for (const prefix of ["codemender:", "alphaevolve:"]) {
-      if (!offer.offer_key.startsWith(prefix)) continue;
-      for (const modelRef of offer.offer_key.slice(prefix.length).split("+")) {
-        const target = syncOffers.get(modelRef);
-        if (target !== undefined)
-          offer.relations.push(
-            relation(
-              offer,
-              "requires",
-              target,
-              "The managed agent component adds to the exact selected model charge",
-            ),
-          );
-      }
-      continue;
-    }
-    const modelRef = offerModelRef(offer.offer_key);
-    const target = modelRef === undefined ? undefined : syncOffers.get(modelRef);
-    if (target === undefined) continue;
-    const storage = book.scope.resource_key === "explicit-cache-storage";
-    offer.relations.push(
-      relation(
-        offer,
-        storage ? "compatible_with" : "requires",
-        target,
-        storage
-          ? "Explicit cache storage remains bound to the exact model identity"
-          : "This service charge adds to the exact model's synchronous inference charge",
-      ),
-    );
-  }
-}
-
-function offerModelRef(offerKey: string): string | undefined {
-  for (const prefix of ["usage:", "storage:"])
-    if (offerKey.startsWith(prefix)) return offerKey.slice(prefix.length);
-}
-
-function providerBinding(
-  input: AtomicProviderPricing,
-  key: string,
-  definition: string,
-  unit: UnitExpression,
-  aggregation: ChargeBinding["aggregation"],
-  evidence: RawPriceObservation,
-  locator: string,
-  resolutionPhase: "request" | "outcome" | "account" = "outcome",
-): ChargeBinding {
+  const request = isStandardUnit(variant.price.per, "request");
+  const requestCount = resourceKey === "claude-web-search" || request;
+  const locator =
+    resourceKey === "claude-web-search"
+      ? "Message.usage.server_tool_use.web_search_requests"
+      : resourceKey === "google-image-search" && !request
+        ? "GenerateContentResponse.candidates[*].groundingMetadata.imageSearchQueries.length"
+        : (resourceKey === "google-search" || resourceKey === "web-grounding-enterprise") &&
+            !request
+          ? "GenerateContentResponse.candidates[*].groundingMetadata.webSearchQueries.length"
+          : resourceKey === "google-maps" && request
+            ? "GenerateContentResponse.candidates[*].groundingMetadata.googleMapsWidgetContextToken (one grounded prompt)"
+            : undefined;
+  if (locator === undefined) return;
+  const key = `${resourceKey.replaceAll("-", "_")}_${requestCount ? "requests" : "queries"}`;
   addAtom(input, {
     kind: "usage_signal",
     key,
-    definition,
-    unit,
-    resolution_phase: resolutionPhase,
+    definition: `Billable Vertex ${resourceKey.replaceAll("-", " ")} usage reported by the generated result`,
+    unit: variant.price.per,
+    resolution_phase: "outcome",
   });
   return {
     signal: { namespace: "provider", provider_id: input.provider_id, value: key },
-    aggregation,
-    observations: [{ ...rawEvidence(evidence), locator: { kind: "provider_key", value: locator } }],
+    aggregation: "result_item",
+    observations: [providerKeyEvidence(variant.observation, locator)],
   };
 }
 
-function withSettlement(offer: AtomicPricingOffer, label: string): AtomicPricingOffer {
-  const evidence = offerEvidence(offer);
-  const reseller = offer.source_refs.some((source) =>
-    ["vertex-partner-models", "vertex-open-models"].includes(source),
-  );
-  return {
-    ...offer,
-    settlement: [
-      {
-        channel: reseller ? "reseller" : "direct",
-        biller: "Google Cloud",
-        payment_sources: ["allowance", "provider_credit", "postpaid_invoice"],
-        applicability: unconditionalApplicability,
-        observations: [
-          {
-            ...rawEvidence(evidence),
-            raw: {
-              label: `${label} settles through Google Cloud${reseller ? " as the MaaS reseller" : ""}`,
-            },
-            establishes_applicability: unconditionalApplicability,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function relation(
-  offer: AtomicPricingOffer,
-  kind: OfferRelation["kind"],
-  target: string,
-  label: string,
-): OfferRelation {
-  const evidence = offerEvidence(offer);
-  return {
-    kind,
-    target: { kind: "offers", offer_refs: [target] },
-    applicability: unconditionalApplicability,
-    observations: [
-      {
-        ...rawEvidence(evidence),
-        raw: { label },
-        establishes_offer_refs: [target],
-        establishes_book_refs: [],
-      },
-    ],
-  };
-}
-
-function offerEvidence(offer: AtomicPricingOffer): RawPriceObservation {
-  const evidence =
-    offer.states[0]?.observation ??
-    offer.terms.flatMap((term) =>
-      term.kind === "raw"
-        ? term.variants.map(({ observation }) => observation)
-        : [...term.variants, ...term.raw_variants].map(({ observation }) => observation),
-    )[0];
-  if (evidence === undefined) throw new Error(`Vertex offer ${offer.offer_key} has no evidence`);
-  return evidence;
-}
-
-function normalized(
-  observation: NormalizedPriceObservation,
-  applicability: PriceApplicability,
-): NormalizedPriceObservation {
-  return { ...observation, establishes_applicability: applicability };
-}
-
-function hasCommercialContent(offer: AtomicPricingOffer | undefined): offer is AtomicPricingOffer {
-  return offer !== undefined && (offer.states.length > 0 || offer.terms.length > 0);
-}
-
-function singleUnit(unit: UnitExpression): string {
-  const factor = unit.factors.length === 1 ? unit.factors[0] : undefined;
-  if (factor?.power !== 1) return "quantity";
-  return `${factor.unit.value}${factor.unit.value.endsWith("s") ? "" : "s"}`;
-}
-
-function isRequestUnit(unit: UnitExpression): boolean {
-  return (
-    unit.factors.length === 1 &&
-    unit.factors[0]?.power === 1 &&
-    unit.factors[0].unit.namespace === "kmodels" &&
-    unit.factors[0].unit.value === "request"
-  );
+function bindServiceRelations(
+  book: AtomicPricingBook,
+  modelOffers: ReadonlyMap<string, string>,
+): void {
+  if (book.scope.kind !== "provider_resource") return;
+  for (const offer of book.offers) {
+    const modelRef = offer.offer_key.startsWith("request:")
+      ? offer.offer_key.slice("request:".length)
+      : undefined;
+    const target = modelRef === undefined ? undefined : modelOffers.get(modelRef);
+    if (target !== undefined)
+      offer.relations.push(
+        relation(
+          offer,
+          "compatible_with",
+          [target],
+          "This request component is compatible with the model's online offer",
+        ),
+      );
+  }
 }
 
 function title(value: string): string {

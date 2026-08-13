@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
-import { extractHuggingFaceCommercialFacts } from "./huggingface-commercial-source.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
 import { huggingFacePartnerIds, type SourceManifest } from "./manifests.ts";
@@ -541,18 +540,10 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     "/docs/inference-providers/en/pricing.md",
     [
       "with no markup from Hugging Face",
-      "$0.10, subject to change",
-      "$2.00 per seat",
       "same rates as the provider",
-      "No separate provider account is required",
-      "broken down by model and provider",
-      "Hugging Face won't charge you for the call",
       "compute time x price of the underlying hardware",
-      '"X-HF-Bill-To: my-org-name"',
-      "set a spending limit",
-      "disable a set of Inference Providers",
     ],
-    "pricing_account_billing_contract_drift",
+    "inference_pricing_contract_drift",
   );
 
   const overview = reviewedCompanion(
@@ -660,24 +651,6 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
           : "auto_routing_policy_unresolved",
     });
 
-  reviewedCompanion(
-    input,
-    bundle,
-    "/docs/inference-providers/en/hub-api.md",
-    [
-      "inference_provider=all",
-      "inferenceProviderMapping",
-      "List OpenAI-compatible models",
-      "https://router.huggingface.co/v1/models",
-      "To retrieve a single model",
-      "`live` or `error`",
-      "status (`staging` or `live`)",
-      "`input` and `output` prices in USD per million tokens, when available",
-      "temporary promo",
-      "Output throughput in tokens per second",
-    ],
-    "hub_routing_api_contract_drift",
-  );
   const chat = reviewedCompanion(
     input,
     bundle,
@@ -692,48 +665,6 @@ function commercialEvidence(input: Input, bundle: z.infer<typeof linkedBundleSch
     ["All Inference Providers chat completion models", "/v1/responses"],
     "responses_api_contract_drift",
   );
-  reviewedCompanion(
-    input,
-    bundle,
-    "/docs/inference-providers/en/register-as-a-provider.md",
-    [
-      "GET /api/partners/{provider}/models?status=staging|live",
-      "namespace/model-name",
-      "pipeline_tag == task",
-      '"staging" models are only available',
-      'switch them to "live" when they\'re ready to go live',
-      "huggingface.js/inference",
-      "publicly accessible",
-      "grouped by task",
-      "tested every 6 hours",
-      "retesting every hour",
-      "placeholder",
-      "background job runs every minute",
-      "cost in nano-USD (10^-9 USD)",
-      "up to 10,000 request IDs",
-      "30 minutes",
-      "completed successfully",
-      "`Inference-Id`",
-      "Price in US dollars per million input tokens",
-    ],
-    "provider_cost_reconciliation_contract_drift",
-  );
-  reviewedCompanion(
-    input,
-    bundle,
-    "/docs/hub/en/billing.md",
-    ["monitor your usage at any time from your billing dashboard", "beginning of each month"],
-    "billing_history_contract_drift",
-  );
-
-  for (const reason_code of [
-    "account_credits_not_public_rates",
-    "byok_direct_provider_billing",
-    "billing_dashboard_out_of_catalog",
-    "organization_billing_controls_not_rates",
-    "provider_cost_api_not_user_accessible",
-  ])
-    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
   if (chat !== undefined) {
     const responseReturnsCost = ["costNanoUsd", "cost_in_usd", "exact_cost"].some((field) =>
       chat.includes(field),
@@ -902,14 +833,6 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   }
   assertItemCount("Hugging Face router models", models.length, config.minModels, config.maxModels);
   commercialEvidence(input, bundle);
-  extractHuggingFaceCommercialFacts({
-    bundle,
-    models,
-    sourceId: input.source.id,
-    ...(input.onPricingReconciliation === undefined
-      ? {}
-      : { report: input.onPricingReconciliation }),
-  });
   return models;
 }
 

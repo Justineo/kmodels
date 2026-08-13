@@ -12,7 +12,12 @@ import type {
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
-import { assertItemCount } from "./source-contract.ts";
+import {
+  assertItemCount,
+  contractExtensionEvidence,
+  recognizeItems,
+  type SourceContractEvidence,
+} from "./source-contract.ts";
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
 import {
   modalitySchema,
@@ -27,6 +32,7 @@ interface ParseInput {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (item: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -63,10 +69,10 @@ const languageModelSchema = z.object({
           supportedEfforts: z.array(z.string().min(1)).min(1),
           defaultEffort: z.string().min(1),
         })
-        .strict()
+        .strip()
         .optional(),
     })
-    .strict()
+    .strip()
     .default({}),
 });
 const embeddingModelSchema = z.object({
@@ -84,10 +90,11 @@ const imageModelSchema = z.object({
     .array(
       z
         .object({
-          resolution: z.enum(["IMAGE_RESOLUTION_1K", "IMAGE_RESOLUTION_2K", "IMAGE_RESOLUTION_4K"]),
+          resolution: z.string().regex(/^IMAGE_RESOLUTION_[A-Z0-9]+$/u),
           pricePerImage: integerString,
+          quality: z.string().min(1).optional(),
         })
-        .strict(),
+        .strip(),
     )
     .min(1),
   pricePerInputImage: integerString.optional(),
@@ -136,14 +143,10 @@ const videoModelSchema = z.object({
     .array(
       z
         .object({
-          resolution: z.enum([
-            "VIDEO_RESOLUTION_480P",
-            "VIDEO_RESOLUTION_720P",
-            "VIDEO_RESOLUTION_1080P",
-          ]),
+          resolution: z.string().regex(/^VIDEO_RESOLUTION_[A-Z0-9]+$/u),
           pricePerSecond: integerString,
         })
-        .strict(),
+        .strip(),
     )
     .min(1),
   pricePerInputImage: integerString.optional(),
@@ -158,11 +161,11 @@ const clusterSchema = z
     audioModels: z.array(voiceServiceSchema).default([]),
     videoGenerationModels: z.array(videoModelSchema).default([]),
   })
-  .strict();
-const publicModelsSchema = z.object({ clusterConfigs: z.array(clusterSchema).min(1) }).strict();
+  .strip();
 const publicModelsEnvelopeSchema = z.object({
   clusterConfigs: z.array(z.record(z.string(), z.unknown())).min(1),
 });
+type PublicModels = { clusterConfigs: Array<z.infer<typeof clusterSchema>> };
 const modelCategoryKeys = new Set([
   "languageModels",
   "embeddingModels",
@@ -220,6 +223,7 @@ const publicModelFieldEntries = [
       "cluster",
       "imagePrice",
       "pricePerInputImage",
+      "rateLimits",
       "resolutionPricing",
       "rpm",
       "rps",
@@ -264,28 +268,40 @@ const voicePricingFieldEntries = [
 ] as const;
 
 const apiPriceSchema = z.number().int().nonnegative();
-const apiItemSchema = z
-  .object({
-    id: modelIdSchema,
-    aliases: z.array(modelIdSchema),
-    context_length: z.number().int().positive().nullable().optional(),
-    created: z.number().int().nonnegative(),
-    object: z.literal("model"),
-    owned_by: z.string().min(1),
-    prompt_text_token_price: apiPriceSchema.nullable().optional(),
-    cached_prompt_text_token_price: apiPriceSchema.nullable().optional(),
-    prompt_image_token_price: apiPriceSchema.nullable().optional(),
-    completion_text_token_price: apiPriceSchema.nullable().optional(),
-    prompt_text_token_price_long_context: apiPriceSchema.nullable().optional(),
-    cached_prompt_text_token_price_long_context: apiPriceSchema.nullable().optional(),
-    completion_text_token_price_long_context: apiPriceSchema.nullable().optional(),
-    long_context_threshold: z.number().int().nonnegative().nullable().optional(),
-    image_price: apiPriceSchema.nullable().optional(),
-  })
-  .strict();
+const imagePricingSchema = z
+  .array(
+    z
+      .object({
+        price_per_image: apiPriceSchema,
+        quality: z.string().min(1),
+        resolution: z.string().min(1),
+      })
+      .strip(),
+  )
+  .min(1)
+  .optional();
+const apiItemShape = {
+  id: modelIdSchema,
+  aliases: z.array(modelIdSchema),
+  context_length: z.number().int().positive().nullable().optional(),
+  created: z.number().int().nonnegative(),
+  object: z.literal("model"),
+  owned_by: z.string().min(1),
+  prompt_text_token_price: apiPriceSchema.nullable().optional(),
+  cached_prompt_text_token_price: apiPriceSchema.nullable().optional(),
+  prompt_image_token_price: apiPriceSchema.nullable().optional(),
+  completion_text_token_price: apiPriceSchema.nullable().optional(),
+  prompt_text_token_price_long_context: apiPriceSchema.nullable().optional(),
+  cached_prompt_text_token_price_long_context: apiPriceSchema.nullable().optional(),
+  completion_text_token_price_long_context: apiPriceSchema.nullable().optional(),
+  long_context_threshold: z.number().int().nonnegative().nullable().optional(),
+  image_price: apiPriceSchema.nullable().optional(),
+  pricing: imagePricingSchema,
+} as const;
+const apiItemSchema = z.object(apiItemShape).strip();
 const apiListSchema = z
-  .object({ data: z.array(apiItemSchema).min(1), object: z.literal("list") })
-  .strict();
+  .object({ data: z.array(z.unknown()).min(1), object: z.literal("list") })
+  .strip();
 const detailedApiShape = {
   id: modelIdSchema,
   aliases: z.array(modelIdSchema),
@@ -310,15 +326,16 @@ const languageApiSchema = z
     completion_text_token_price_long_context: apiPriceSchema,
     long_context_threshold: apiPriceSchema,
   })
-  .strict();
+  .strip();
 const imageApiSchema = z
   .object({
     ...detailedApiShape,
     image_price: apiPriceSchema,
     max_prompt_length: z.number().int().positive(),
+    pricing: imagePricingSchema,
   })
-  .strict();
-const videoApiSchema = z.object(detailedApiShape).strict();
+  .strip();
+const videoApiSchema = z.object(detailedApiShape).strip();
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values)];
@@ -373,7 +390,15 @@ function reviewClaim<Value>(
 }
 
 function pricingWarning(termKey: string, fragment: string, sourceId: string): SourceRawPricingFact {
-  return rawPricingFact(sourceId, termKey, "informational", "conflicting_values", fragment);
+  return rawPricingFact(
+    sourceId,
+    termKey,
+    "informational",
+    "superseded_value",
+    fragment,
+    {},
+    "prefer_exact_scoped_rate",
+  );
 }
 
 function exactRate(
@@ -470,7 +495,7 @@ function mediaRate(
   return exactRate(meter, raw, 10, unit, sourceId, "USD ticks", conditions);
 }
 
-function embeddedModels(body: string): z.infer<typeof publicModelsSchema> {
+function embeddedModels(input: ParseInput, body: string): PublicModels {
   const $ = load(body);
   const prefix = "globalThis.__XAI_PUBLIC_MODELS__=";
   const scripts = $("script")
@@ -483,21 +508,58 @@ function embeddedModels(body: string): z.infer<typeof publicModelsSchema> {
     throw new Error("xAI public models payload was malformed");
   const value: unknown = JSON.parse(script.slice(prefix.length, -1));
   const envelope = publicModelsEnvelopeSchema.parse(value);
+  const root = z.record(z.string(), z.unknown()).parse(value);
   const unknownCategories = unique(
     envelope.clusterConfigs.flatMap((cluster) =>
       Object.keys(cluster).filter((key) => key.endsWith("Models") && !modelCategoryKeys.has(key)),
     ),
   );
-  if (unknownCategories.length > 0)
-    throw new Error(`xAI public models payload added categories: ${unknownCategories.join(", ")}`);
+  const findings = [
+    ...Object.keys(root)
+      .filter((key) => key !== "clusterConfigs")
+      .map((key) => `/${key}`),
+    ...unknownCategories.map((category) => `/clusterConfigs/*/${category}`),
+  ];
   for (const cluster of envelope.clusterConfigs)
     for (const [category, allowed] of publicModelFieldEntries) {
       const items = z.array(z.record(z.string(), z.unknown())).default([]).parse(cluster[category]);
       const unknownFields = unique(
         items.flatMap((item) => Object.keys(item).filter((key) => !allowed.has(key))),
       );
-      if (unknownFields.length > 0)
-        throw new Error(`xAI public ${category} payload added fields: ${unknownFields.join(", ")}`);
+      findings.push(...unknownFields.map((field) => `/clusterConfigs/*/${category}/*/${field}`));
+      if (category === "languageModels")
+        for (const item of items) {
+          const features = z.record(z.string(), z.unknown()).default({}).parse(item["features"]);
+          findings.push(
+            ...Object.keys(features)
+              .filter(
+                (key) =>
+                  ![
+                    "functionCalling",
+                    "structuredOutputs",
+                    "reasoning",
+                    "reasoningEffortOptions",
+                  ].includes(key),
+              )
+              .map((field) => `/clusterConfigs/*/languageModels/*/features/${field}`),
+          );
+        }
+      if (category === "imageGenerationModels" || category === "videoGenerationModels")
+        for (const item of items) {
+          const rows = z
+            .array(z.record(z.string(), z.unknown()))
+            .default([])
+            .parse(item["resolutionPricing"]);
+          const allowedRowFields =
+            category === "imageGenerationModels"
+              ? new Set(["resolution", "pricePerImage", "quality"])
+              : new Set(["resolution", "pricePerSecond"]);
+          findings.push(
+            ...unique(
+              rows.flatMap((row) => Object.keys(row).filter((key) => !allowedRowFields.has(key))),
+            ).map((field) => `/clusterConfigs/*/${category}/*/resolutionPricing/*/${field}`),
+          );
+        }
       if (category !== "audioModels") continue;
       for (const item of items) {
         const endpoints = z.array(z.record(z.string(), z.unknown())).parse(item["endpoints"]);
@@ -505,10 +567,11 @@ function embeddedModels(body: string): z.infer<typeof publicModelsSchema> {
           const unknownEndpointFields = Object.keys(endpoint).filter(
             (key) => !voiceEndpointFields.has(key),
           );
-          if (unknownEndpointFields.length > 0)
-            throw new Error(
-              `xAI public voice endpoint added fields: ${unknownEndpointFields.join(", ")}`,
-            );
+          findings.push(
+            ...unknownEndpointFields.map(
+              (field) => `/clusterConfigs/*/audioModels/*/endpoints/*/${field}`,
+            ),
+          );
           const endpointName = z.string().parse(endpoint["endpoint"]);
           const pricingFields = voicePricingFieldEntries.find(
             ([candidate]) => candidate === endpointName,
@@ -518,10 +581,11 @@ function embeddedModels(body: string): z.infer<typeof publicModelsSchema> {
           const unknownPricingFields = Object.keys(pricing).filter(
             (key) => !pricingFields.has(key),
           );
-          if (unknownPricingFields.length > 0)
-            throw new Error(
-              `xAI public ${endpointName} pricing added fields: ${unknownPricingFields.join(", ")}`,
-            );
+          findings.push(
+            ...unknownPricingFields.map(
+              (field) => `/clusterConfigs/*/audioModels/*/endpoints/*/pricing/${field}`,
+            ),
+          );
           const tiers = z
             .array(z.record(z.string(), z.unknown()))
             .default([])
@@ -529,12 +593,32 @@ function embeddedModels(body: string): z.infer<typeof publicModelsSchema> {
           const unknownTierFields = unique(
             tiers.flatMap((tier) => Object.keys(tier).filter((key) => !voiceTierFields.has(key))),
           );
-          if (unknownTierFields.length > 0)
-            throw new Error(`xAI public voice tier added fields: ${unknownTierFields.join(", ")}`);
+          findings.push(
+            ...unknownTierFields.map(
+              (field) => `/clusterConfigs/*/audioModels/*/endpoints/*/tiers/*/${field}`,
+            ),
+          );
         }
       }
     }
-  return publicModelsSchema.parse(value);
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
+  return {
+    clusterConfigs: recognizeItems({
+      label: "xAI public model clusters",
+      items: envelope.clusterConfigs,
+      schema: clusterSchema,
+      rootKeys: [
+        "clusterName",
+        "languageModels",
+        "embeddingModels",
+        "imageGenerationModels",
+        "audioModels",
+        "videoGenerationModels",
+      ],
+      skipInvalidItems: true,
+      ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+    }),
+  };
 }
 
 function distinct<T extends { name: string }>(values: T[], category: string): T[] {
@@ -548,7 +632,7 @@ function distinct<T extends { name: string }>(values: T[], category: string): T[
   return [...models.values()];
 }
 
-function modelRegions(catalog: z.infer<typeof publicModelsSchema>): Map<string, string[]> {
+function modelRegions(catalog: PublicModels): Map<string, string[]> {
   const regions = new Map<string, string[]>();
   for (const cluster of catalog.clusterConfigs) {
     const models = [
@@ -600,6 +684,7 @@ const generalApiFields = [
   "long_context_threshold",
   "object",
   "owned_by",
+  "pricing",
   "prompt_image_token_price",
   "prompt_text_token_price",
   "prompt_text_token_price_long_context",
@@ -627,7 +712,12 @@ const languageApiFields = [
   "prompt_text_token_price_long_context",
   "search_price",
 ] as const;
-const imageApiFields = [...detailedApiFields, "image_price", "max_prompt_length"] as const;
+const imageApiFields = [
+  ...detailedApiFields,
+  "image_price",
+  "max_prompt_length",
+  "pricing",
+] as const;
 
 const modelApiRoutes = [
   { path: "/v1/models", container: "data", fields: generalApiFields },
@@ -1034,9 +1124,12 @@ function batchExclusions(llms: string, models: { name: string; aliases: string[]
   ];
   if (supported.some((path) => !body.includes(`\`${path}\``)))
     throw new Error("xAI Batch API endpoint support changed");
-  const ids = [
-    ...body.matchAll(/`([^`]+)` is not currently supported for Batch API requests/g),
-  ].flatMap((match) => (match[1] === undefined ? [] : [modelIdSchema.parse(match[1])]));
+  const unsupported = body.match(
+    /(?:^>\s*)?((?:`[^`]+`(?:, | and )?)+) (?:is|are) not currently supported for Batch API requests/m,
+  )?.[1];
+  const ids = [...(unsupported?.matchAll(/`([^`]+)`/g) ?? [])].flatMap((match) =>
+    match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
+  );
   if (ids.length === 0) throw new Error("xAI Batch API model exclusions changed");
   return new Set(ids.map((id) => resolveModel(id, models, "Batch API exclusion")));
 }
@@ -1337,58 +1430,7 @@ function commercialEvidence(
   llms: string,
   pricing: string,
   voice: VoicePrices | undefined,
-  services: z.infer<typeof voiceServiceSchema>[],
 ): XaiCommercialEvidence {
-  auditCommercialContracts(input, llms, pricing);
-  const rate = (
-    reasonCode: string,
-    label: string,
-    meter: SourcePriceFact["meter"],
-    unit: SourcePriceFact["unit"],
-    rawUnit: string,
-  ): SourcePriceFact | undefined =>
-    reviewClaim(input, reasonCode, () => {
-      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const denominator = rawUnit.replace(/^USD \/ /, "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const amount = pricing.match(
-        new RegExp(
-          `^\\|\\s*${escaped}\\s*\\|\\s*\\$([\\d.]+)\\s*\\/\\s*${denominator}\\s*\\|$`,
-          "im",
-        ),
-      )?.[1];
-      if (amount === undefined) throw new Error(`xAI ${label} price was not found`);
-      return publishedRate(meter, scaleDecimal(amount, 0), unit, input.source.id, rawUnit);
-    });
-  const compaction = reviewClaim(input, "context_compaction_contract_drift", () => {
-    const body = section(llms, "/developers/advanced-api-usage/context-compaction");
-    requireClaims(
-      body,
-      ["POST /v1/responses/compact", "usage.input_tokens", "usage.output_tokens"],
-      "xAI context-compaction contract drifted",
-    );
-    const ids = unique(
-      [...body.matchAll(/model(?:=|":\s*)["'](grok-[a-z0-9._-]+)["']/gi)].flatMap((match) =>
-        match[1] === undefined ? [] : [modelIdSchema.parse(match[1])],
-      ),
-    );
-    if (ids.length === 0) throw new Error("xAI context-compaction models were not found");
-    return ids;
-  });
-  const customVoices =
-    reviewClaim(input, "custom_voice_contract_drift", () => {
-      requireClaims(
-        section(llms, "/developers/model-capabilities/audio/custom-voices"),
-        [
-          "create up to 30 custom voices for free",
-          "Enterprise plan",
-          "POST /v1/custom-voices",
-          "POST /v1/tts",
-          "wss://api.x.ai/v1/realtime",
-        ],
-        "xAI custom-voice contract drifted",
-      );
-      return true;
-    }) ?? false;
   const imageGenerationTool =
     reviewClaim(input, "image_generation_tool_contract_drift", () => {
       requireClaims(
@@ -1407,40 +1449,6 @@ function commercialEvidence(
       );
       return true;
     }) ?? false;
-  const zeroDataRetention =
-    reviewClaim(input, "zero_data_retention_contract_drift", () => {
-      requireClaims(
-        section(llms, "/developers/faq/security"),
-        [
-          "30 days",
-          "Stateful Responses",
-          "Files",
-          "Collections",
-          "Batch",
-          "deferred completions",
-          "stored media output",
-        ],
-        "xAI Zero Data Retention contract drifted",
-      );
-      return true;
-    }) ?? false;
-  const includedTools = [
-    ["image-search", ["Image Search is part of Web Search", "standard Web Search rate"]],
-    ["remote-mcp", ["Remote MCP tools", "will not be charged for the tool invocation"]],
-    ["view-media", ["view image and view x video tools", "not be charged for the tool invocation"]],
-  ] as const;
-  const pstn = reviewClaim(input, "pstn_price_contract_drift", () => {
-    const values = unique(
-      services.flatMap(({ endpoints }) => {
-        const endpoint = endpoints[0];
-        return endpoint?.endpoint === "REALTIME" && endpoint.pricing.pstnMinutePrice !== undefined
-          ? [endpoint.pricing.pstnMinutePrice]
-          : [];
-      }),
-    );
-    if (values.length > 1) throw new Error("xAI PSTN candidates disagree");
-    return values[0];
-  });
   const fee = reviewClaim(input, "usage_guideline_violation_fee_drift", () => {
     const amount = pricing.match(
       /caught before generation in the Responses API[\s\S]*?\$([\d.]+)\s+usage guideline violation fee per request/i,
@@ -1454,53 +1462,8 @@ function commercialEvidence(
       "USD / rejected request",
     );
   });
-  const fileStorage = rate(
-    "file_storage_price_drift",
-    "File storage",
-    "storage",
-    "gibibyte_day",
-    "USD / GiB / day",
-  );
-  const collectionStorage = rate(
-    "collection_storage_price_drift",
-    "Collection storage",
-    "storage",
-    "gibibyte_day",
-    "USD / GiB / day",
-  );
-  const fileDownload = rate(
-    "file_download_price_drift",
-    "File downloads",
-    "data_transfer",
-    "gibibyte",
-    "USD / GiB downloaded",
-  );
-  const collectionDownload = rate(
-    "collection_download_price_drift",
-    "Collection downloads",
-    "data_transfer",
-    "gibibyte",
-    "USD / GiB downloaded",
-  );
   return {
-    contextCompactionModels: compaction ?? [],
-    customVoices,
     imageGenerationTool,
-    includedTools: includedTools.flatMap(([key, claims]) =>
-      reviewClaim(input, `${key}_contract_drift`, () => {
-        requireClaims(pricing, claims, `xAI ${key} pricing contract drifted`);
-        return key;
-      }) === undefined
-        ? []
-        : [key],
-    ),
-    ...(pstn === undefined ? {} : { pstnMinuteTicks: pstn }),
-    storageRates: {
-      ...(fileStorage === undefined ? {} : { fileStorage }),
-      ...(collectionStorage === undefined ? {} : { collectionStorage }),
-      ...(fileDownload === undefined ? {} : { fileDownload }),
-      ...(collectionDownload === undefined ? {} : { collectionDownload }),
-    },
     toolRates: toolRates(input, pricing),
     ...(voice?.speech === undefined
       ? {}
@@ -1537,104 +1500,7 @@ function commercialEvidence(
         }),
     ...(fee === undefined ? {} : { violationRate: fee }),
     voiceTools,
-    zeroDataRetention,
   };
-}
-
-function auditCommercialContracts(input: ParseInput, llms: string, pricing: string): void {
-  const contracts = [
-    [
-      "exact_response_cost",
-      "/developers/cost-tracking",
-      [
-        "exact cost you were charged",
-        "`cost_in_usd_ticks`",
-        "after all applicable discounts",
-        "inclusive of all token costs and server-side tool invocation costs",
-        "1 USD = 10,000,000,000 ticks",
-      ],
-    ],
-    [
-      "cached_token_accounting",
-      "/developers/advanced-api-usage/prompt-caching/usage-and-pricing",
-      ["cached_tokens", "Reasoning tokens | Full completion token price"],
-    ],
-    [
-      "priority_accounting",
-      "/developers/advanced-api-usage/priority-processing",
-      ['response confirms `"priority"`', '"cost_in_usd_ticks"'],
-    ],
-    [
-      "tool_accounting",
-      "/developers/tools/tool-usage-details",
-      ["`server_side_tool_usage` - Successful Calls (Billable)", "determines your billing"],
-    ],
-    [
-      "batch_accounting",
-      "/developers/advanced-api-usage/batch-api",
-      ["cost_in_usd_ticks", "total_cost_usd_ticks"],
-    ],
-    [
-      "management_api",
-      "/developers/rest-api-reference/management",
-      ["management key", "https://management-api.x.ai"],
-    ],
-    [
-      "historical_usage_api",
-      "/developers/rest-api-reference/management/billing",
-      ["Get historical usage of the API", '"name": "usd"'],
-    ],
-    [
-      "billing_timing",
-      "/developers/faq/billing",
-      ["cost is calculated immediately", "inference endpoints add pre-defined tokens"],
-    ],
-    [
-      "account_tier",
-      "/developers/rate-limits",
-      ["tier is based on cumulative spend", "Rate limit tiers apply to text and embedding models"],
-    ],
-    [
-      "console_billing",
-      "/console/billing",
-      ["Prepaid credits", "Monthly invoiced billing", "minimum $25"],
-    ],
-    [
-      "console_usage",
-      "/console/usage",
-      ["usage is calculated by cost in USD", "Dimension -> Billing items"],
-    ],
-    [
-      "management_inventory",
-      "/developers/management-api-guide",
-      [
-        "management key, which is separate from your API key",
-        "api-key:model:*",
-        "auth/teams/{teamId}/models",
-      ],
-    ],
-  ] as const;
-  for (const [key, path, claims] of contracts)
-    reviewClaim(input, `${key}_contract_drift`, () =>
-      requireClaims(section(llms, path), claims, `xAI ${key} contract drifted`),
-    );
-  reviewClaim(input, "availability_contract_drift", () =>
-    requireClaims(
-      pricing,
-      ["geographical location, account limitations"],
-      "xAI availability contract drifted",
-    ),
-  );
-  for (const reason_code of [
-    "account_response_cost_out_of_catalog",
-    "account_usage_api_out_of_catalog",
-    "credits_and_limits_not_public_rates",
-    "spend_tier_affects_limits_not_rates",
-    "console_billing_terms_out_of_catalog",
-    "console_usage_reporting_out_of_catalog",
-    "management_team_inventory_out_of_catalog",
-  ])
-    input.onPricingReconciliation?.({ disposition: "excluded", reason_code });
 }
 
 function voiceRates(prices: VoicePrices, id: string, sourceId: string): SourcePriceFact[] {
@@ -1717,7 +1583,7 @@ function preview(
 
 function currentModels(
   input: ParseInput,
-  catalog: z.infer<typeof publicModelsSchema>,
+  catalog: PublicModels,
   html: string,
   llms: string,
 ): { evidence: XaiCommercialEvidence; models: ProviderModel[] } {
@@ -1904,9 +1770,10 @@ function currentModels(
     });
   });
   const imageModels = images.map((value) => {
-    const rates = value.resolutionPricing.map(({ resolution, pricePerImage }) =>
+    const rates = value.resolutionPricing.map(({ resolution, pricePerImage, quality }) =>
       mediaRate("image_generation", pricePerImage, "image", input.source.id, {
         resolution: resolution.replace("IMAGE_RESOLUTION_", ""),
+        quality,
       }),
     );
     if (value.pricePerInputImage !== undefined)
@@ -1969,7 +1836,7 @@ function currentModels(
       voiceModels(input, llms, voice, prices, releases, regions),
     ) ?? fallbackVoiceModels(input, voice, prices, releases, regions);
   return {
-    evidence: commercialEvidence(input, llms, pricing ?? "", prices, voice),
+    evidence: commercialEvidence(input, llms, pricing ?? "", prices),
     models: [...languageModels, ...embeddingModels, ...imageModels, ...videoModels, ...realtime],
   };
 }
@@ -2297,7 +2164,12 @@ function redirectedModels(models: ProviderModel[]): ProviderModel[] {
 export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const llms = companion(bundle, "/llms.txt");
-  const current = currentModels(input, embeddedModels(bundle.index.body), bundle.index.body, llms);
+  const current = currentModels(
+    input,
+    embeddedModels(input, bundle.index.body),
+    bundle.index.body,
+    llms,
+  );
   const lifecycle =
     reviewClaim(input, "lifecycle_contract_drift", () => lifecycleModels(input, llms)) ?? [];
   const combined = combine([...current.models, ...lifecycle]);
@@ -2321,24 +2193,50 @@ export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
 export function parseXaiApi(input: ParseInput): ProviderModel[] {
   const extractor = input.source.extractor;
   if (extractor.kind !== "xai-api") throw new Error("Invalid xAI API extractor");
-  if (extractor.category === "all")
-    return apiListSchema.parse(JSON.parse(input.body)).data.map((value) =>
+  const body: unknown = JSON.parse(input.body);
+  if (extractor.category === "all") {
+    const envelope = apiListSchema.parse(body);
+    const values = recognizeItems({
+      label: "xAI model inventory",
+      items: envelope.data,
+      schema: apiItemSchema,
+      modelId: "id",
+      rootKeys: Object.keys(apiItemShape),
+      skipInvalidItems: true,
+      ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+    });
+    return values.map((value) =>
       model(input, value.id, {
         aliases: value.aliases,
         limits: value.context_length === null ? {} : { context_tokens: value.context_length },
         scope: "runtime_observation",
       }),
     );
+  }
   const schema =
     extractor.category === "language"
       ? languageApiSchema
       : extractor.category === "image"
         ? imageApiSchema
         : videoApiSchema;
-  const values = z
-    .object({ models: z.array(schema).min(1) })
-    .strict()
-    .parse(JSON.parse(input.body)).models;
+  const envelope = z
+    .object({ models: z.array(z.unknown()).min(1) })
+    .strip()
+    .parse(body);
+  const values = recognizeItems({
+    label: `xAI ${extractor.category} model inventory`,
+    items: envelope.models,
+    schema,
+    modelId: "id",
+    rootKeys:
+      extractor.category === "language"
+        ? languageApiFields
+        : extractor.category === "image"
+          ? imageApiFields
+          : detailedApiFields,
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+  });
   const type: ModelTask =
     extractor.category === "language"
       ? "text_generation"

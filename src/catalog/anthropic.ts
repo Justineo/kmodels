@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
@@ -10,7 +10,7 @@ import type {
   SourceCommercialPricingFact,
   SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -18,6 +18,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -98,9 +99,7 @@ function tables(body: string): MarkdownTable[] {
     let cursor = line + 2;
     while (lines[cursor]?.trim().startsWith("|")) {
       const values = cells(lines[cursor] ?? "");
-      if (values.length !== headers.length)
-        throw new Error("Anthropic Markdown table contained an irregular row");
-      rows.push(values);
+      if (values.length === headers.length) rows.push(values);
       cursor += 1;
     }
     result.push({ headers, rows, line });
@@ -179,7 +178,12 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
 
 function overview(body: string, input: Input, models: Map<string, ProviderModel>): void {
   const featureTables = tables(body).filter((table) => table.headers[0] === "Feature");
-  if (featureTables.length < 2) throw new Error("Anthropic overview omitted model tables");
+  if (featureTables.length < 2)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "model_overview_drift",
+      sample: "model feature tables",
+    });
   for (const table of featureTables) {
     const ids = row(table, "Claude API ID");
     if (ids === undefined) continue;
@@ -249,8 +253,14 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
     if (targetId === undefined || sourceName === undefined) continue;
     const target = models.get(targetId);
     const sources = [...models.values()].filter(({ name }) => name === sourceName);
-    if (target === undefined || sources.length !== 1 || sources[0] === undefined)
-      throw new Error(`Anthropic shared model facts did not bind: ${targetId}`);
+    if (target === undefined || sources.length !== 1 || sources[0] === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "shared_model_fact_unbound",
+        sample: targetId,
+      });
+      continue;
+    }
     const source = sources[0];
     target.modalities = {
       input: [...source.modalities.input],
@@ -258,33 +268,6 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
     };
     target.limits = { ...source.limits };
     target.capabilities.reasoning = source.capabilities.reasoning;
-  }
-}
-
-function launchDetails(body: string, input: Input, models: Map<string, ProviderModel>): void {
-  const table = tables(body).find(
-    (candidate) => candidate.headers.join("|") === "Model|API model ID|Description",
-  );
-  if (table === undefined || table.rows.length === 0)
-    throw new Error("Anthropic launch page omitted its model table");
-  const releaseDate = date(
-    body.match(/become available on ([A-Z][a-z]+ \d{1,2}, \d{4})/)?.[1] ?? "",
-  );
-  if (releaseDate === undefined) throw new Error("Anthropic launch page omitted its release date");
-  for (const values of table.rows) {
-    const id = values[1];
-    if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
-    const item = model(models, input, id);
-    item.name = values[0] || item.name;
-    item.description = values[2] || item.description;
-    if (item.release_date !== undefined && item.release_date !== releaseDate) {
-      delete item.release_date;
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "release_date_conflict",
-        sample: item.model_id,
-      });
-    } else item.release_date = releaseDate;
   }
 }
 
@@ -299,8 +282,14 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
     if (subject === undefined) continue;
     const opening = text(subject.split(",", 1)[0] ?? "");
     if (!/^Claude (?:Fable|Mythos|Opus|Sonnet|Haiku|\d)\b/.test(opening)) continue;
-    if (currentDate === undefined)
-      throw new Error("Anthropic release notes omitted a valid launch date");
+    if (currentDate === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "release_notes_drift",
+        sample: opening,
+      });
+      continue;
+    }
     const targets = new Map<string, ProviderModel>();
     for (const match of subject.matchAll(
       /`(claude-[a-z0-9._:/-]+)`|\((claude-[a-z0-9._:/-]+)\)/g,
@@ -326,7 +315,12 @@ function releaseNotes(body: string, input: Input, models: Map<string, ProviderMo
       launches += 1;
     }
   }
-  if (launches === 0) throw new Error("Anthropic release notes omitted model launches");
+  if (launches === 0)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "release_notes_drift",
+      sample: "model launches",
+    });
 }
 
 function status(value: string): ProviderModel["status"] | undefined {
@@ -341,8 +335,13 @@ function status(value: string): ProviderModel["status"] | undefined {
 function lifecycle(body: string, input: Input, models: Map<string, ProviderModel>): void {
   const parsedTables = tables(body);
   const statusTable = parsedTables.find((table) => table.headers[0] === "API model name");
-  if (statusTable === undefined) throw new Error("Anthropic lifecycle page omitted model status");
-  for (const values of statusTable.rows) {
+  if (statusTable === undefined)
+    input.onPricingReconciliation?.({
+      disposition: "unresolved",
+      reason_code: "lifecycle_table_drift",
+      sample: "model status",
+    });
+  for (const values of statusTable?.rows ?? []) {
     const id = values[0];
     const state = status(values[1] ?? "");
     if (id === undefined || state === undefined || !modelIdSchema.safeParse(id).success) continue;
@@ -363,8 +362,14 @@ function lifecycle(body: string, input: Input, models: Map<string, ProviderModel
       .reverse()
       .map((line) => line.match(/^### (\d{4}-\d{2}-\d{2}):/)?.[1])
       .find((value) => value !== undefined);
-    if (deprecatedAt === undefined)
-      throw new Error("Anthropic lifecycle history omitted announcement date");
+    if (deprecatedAt === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "lifecycle_table_drift",
+        sample: "historical announcement date",
+      });
+      continue;
+    }
     for (const values of table.rows) {
       const id = values[1];
       const replacement = values[2];
@@ -421,7 +426,7 @@ function validateEndpoint(
   expected: { name: string; path: string },
   method: "get" | "post" = "post",
 ): void {
-  const header = body.match(/^## (.+)\r?\n\r?\n\*\*(get|post)\*\* `\/([^`]+)`/);
+  const header = body.match(/^## (.+)\r?\n\r?\n\*\*(get|post)\*\* `\/([^`]+)`/m);
   if (header?.[1] !== expected.name || header[2] !== method || header[3] !== expected.path)
     throw new Error(`Anthropic endpoint document drifted for ${expected.path}`);
 }
@@ -700,75 +705,32 @@ function capabilities(
   else for (const item of toolModels) if (callable(item)) item.capabilities.tool_call = true;
 }
 
-function validateDocumentationIndex(body: string, input: Input): void {
-  if (!body.startsWith("# Anthropic Developer Documentation")) {
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "documentation_index_drift",
-      sample: "llms.txt heading",
-    });
-    return;
-  }
-  const indexedPaths = new Set(
-    [...body.matchAll(/https:\/\/platform\.claude\.com(\/docs\/en\/[^)\s]+\.md)/g)].flatMap(
-      (match) => (match[1] === undefined ? [] : [match[1]]),
-    ),
+function validateModelIdentityContract(body: string, modelsListBody: string, input: Input): void {
+  const report = (valid: boolean, sample: string): void => {
+    if (!valid)
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "model_identity_contract_drift",
+        sample,
+      });
+  };
+  report(
+    body.includes("Each Claude model ID identifies a pinned version of the model") &&
+      body.includes("Starting with the Claude 4.6 generation, model IDs use a dateless format") &&
+      body.includes("dateless ID is the canonical model ID for that release") &&
+      body.includes("convenience pointer that resolves to the most recent dated snapshot"),
+    "model ID semantics",
   );
-  const configured = input.source.linkedDocuments?.documents;
-  if (configured === undefined) throw new Error("Anthropic documentation bundle is not fixed");
-  const configuredPaths = new Set<string>();
-  for (const { url } of configured) {
-    const parsed = new URL(url);
-    if (parsed.hostname !== "platform.claude.com") continue;
-    const path = parsed.pathname;
-    if (path === "/llms.txt") continue;
-    configuredPaths.add(path);
-    if (!indexedPaths.has(path))
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "documentation_index_omission",
-        sample: path,
-      });
+  try {
+    validateEndpoint(modelsListBody, { name: "List Models", path: "v1/models" }, "get");
+  } catch {
+    report(false, "Models API endpoint");
   }
-  for (const path of indexedPaths)
-    if (
-      !configuredPaths.has(path) &&
-      /(?:pricing|billing|cost|usage|service-tier|managed-agents|fallback)/.test(path)
-    )
-      input.onPricingReconciliation?.({
-        disposition: "unresolved",
-        reason_code: "unreviewed_commercial_source",
-        sample: path,
-      });
-}
-
-function validateModelIdentityContract(body: string, modelsListBody: string): void {
-  if (
-    !body.includes("Each Claude model ID identifies a pinned version of the model") ||
-    !body.includes("Starting with the Claude 4.6 generation, model IDs use a dateless format") ||
-    !body.includes("dateless ID is the canonical model ID for that release") ||
-    !body.includes("convenience pointer that resolves to the most recent dated snapshot")
-  )
-    throw new Error("Anthropic model-ID versioning contract drifted");
-  validateEndpoint(modelsListBody, { name: "List Models", path: "v1/models" }, "get");
-  if (
-    !modelsListBody.includes("Defaults to `20`. Ranges from `1` to `1000`.") ||
-    !modelsListBody.includes("ID of the object to use as a cursor for pagination")
-  )
-    throw new Error("Anthropic Models API pagination contract drifted");
-  for (const field of [
-    "batch",
-    "citations",
-    "code_execution",
-    "context_management",
-    "effort",
-    "image_input",
-    "pdf_input",
-    "structured_outputs",
-    "thinking",
-  ])
-    if (!modelsListBody.includes(`- \`${field}:`))
-      throw new Error(`Anthropic Models API capability contract drifted for ${field}`);
+  report(
+    modelsListBody.includes("Defaults to `20`. Ranges from `1` to `1000`.") &&
+      modelsListBody.includes("ID of the object to use as a cursor for pagination"),
+    "Models API pagination",
+  );
 }
 
 interface ModelGeneration {
@@ -824,16 +786,9 @@ function atLeastGeneration(id: string, threshold: ModelGeneration): boolean {
   );
 }
 
-function validateAccountingContracts(
-  bodies: {
-    messages: string;
-    serviceTiers: string;
-    dataResidency: string;
-    usageCost: string;
-    usageReport: string;
-    costReport: string;
-    fallbackCredit: string;
-  },
+function validateRequestAccounting(
+  messages: string,
+  dataResidency: string,
   input: Input,
 ): ModelGeneration | undefined {
   const contract = (valid: boolean, sample: string): boolean => {
@@ -854,98 +809,19 @@ function validateAccountingContracts(
     "server_tool_use",
     "service_tier",
   ])
-    contract(bodies.messages.includes(`- \`${field}:`), `Messages usage.${field}`);
-
-  const serviceTierContract = contract(
-    bodies.serviceTiers.includes('`"auto"` (default)') &&
-      bodies.serviceTiers.includes('`"standard_only"`') &&
-      bodies.serviceTiers.includes('"service_tier": "priority"') &&
-      bodies.serviceTiers.includes(
-        "Requests beyond your committed capacity automatically fall back to standard tier",
-      ),
-    "service-tier outcomes",
-  );
-  if (serviceTierContract)
-    input.onPricingReconciliation?.({
-      disposition: "excluded",
-      reason_code: "account_specific_service_tier",
-      sample: "Priority Tier contract pricing",
-    });
+    contract(messages.includes(`- \`${field}:`), `Messages usage.${field}`);
 
   const dataResidencyGeneration = reviewedGeographyGeneration(
-    bodies.dataResidency,
+    dataResidency,
     "data-residency",
     input,
   );
   contract(
-    bodies.dataResidency.includes(
-      "The response `usage` object includes an `inference_geo` field",
-    ) &&
-      bodies.dataResidency.includes("`allowed_inference_geos`") &&
-      bodies.dataResidency.includes("`default_inference_geo`") &&
-      bodies.dataResidency.includes("return a 400 error"),
+    dataResidency.includes("The response `usage` object includes an `inference_geo` field") &&
+      dataResidency.includes("`allowed_inference_geos`") &&
+      dataResidency.includes("`default_inference_geo`") &&
+      dataResidency.includes("return a 400 error"),
     "inference-geography outcomes",
-  );
-
-  try {
-    validateEndpoint(
-      bodies.usageReport,
-      { name: "Get Messages Usage Report", path: "v1/organizations/usage_report/messages" },
-      "get",
-    );
-  } catch {
-    contract(false, "Usage API endpoint");
-  }
-  for (const field of [
-    'bucket_width: optional "1d" or "1h" or "1m"',
-    '"api_key_id"',
-    '"context_window"',
-    '"inference_geo"',
-    '"model"',
-    '"service_tier"',
-    '"speed"',
-    '"workspace_id"',
-    "cache_creation",
-    "output_tokens",
-    "uncached_input_tokens",
-  ])
-    contract(bodies.usageReport.includes(field), `Usage API ${field}`);
-
-  try {
-    validateEndpoint(
-      bodies.costReport,
-      { name: "Get Cost Report", path: "v1/organizations/cost_report" },
-      "get",
-    );
-  } catch {
-    contract(false, "Cost API endpoint");
-  }
-  for (const field of [
-    'bucket_width: optional "1d"',
-    "amount",
-    "cost_type",
-    "currency",
-    "inference_geo",
-    "model",
-    "service_tier",
-    "token_type",
-    "workspace_id",
-  ])
-    contract(bodies.costReport.includes(field), `Cost API ${field}`);
-
-  contract(
-    bodies.usageCost.includes("Usage and cost data typically appears within 5 minutes") &&
-      bodies.usageCost.includes("Priority Tier costs are not available in the cost endpoint") &&
-      bodies.usageCost.includes("Admin API key required"),
-    "Usage and Cost API boundary",
-  );
-
-  contract(
-    bodies.fallbackCredit.includes("fallback_credit_token") &&
-      bodies.fallbackCredit.includes("Refusals in [Message Batches]") &&
-      bodies.fallbackCredit.includes("`cache_creation_input_tokens` is lower") &&
-      bodies.fallbackCredit.includes("organization and workspace that received the refusal"),
-    "fallback credit",
   );
   return dataResidencyGeneration;
 }
@@ -1032,40 +908,6 @@ function validateFastMode(body: string, expectedIds: Set<string>): void {
     [...supported].some((id) => !expectedIds.has(id))
   )
     throw new Error("Anthropic fast-mode model coverage disagreed with pricing");
-}
-
-function reconcileCommercialBoundaries(body: string, input: Input): void {
-  const ccuRates = body.match(/\$0\.01 per CCU \(fixed;/g)?.length ?? 0;
-  if (ccuRates !== 2)
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "marketplace_settlement_drift",
-      sample: "Claude Consumption Units",
-    });
-  else {
-    input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "marketplace_settlement_bound",
-      sample: "Claude Platform on AWS CCU",
-    });
-    input.onPricingReconciliation?.({
-      disposition: "excluded",
-      reason_code: "external_provider_partition",
-      sample: "Claude in Microsoft Foundry CCU",
-    });
-  }
-  if (!/Volume discounts may be available[\s\S]*?negotiated on a case-by-case basis/.test(body))
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "account_discount_boundary_drift",
-      sample: "Negotiated volume discount",
-    });
-  else
-    input.onPricingReconciliation?.({
-      disposition: "excluded",
-      reason_code: "account_specific_discount",
-      sample: "Negotiated volume discount",
-    });
 }
 
 function pricing(
@@ -1320,7 +1162,6 @@ function pricing(
       reason_code: "inference_geo_multiplier_drift",
       sample: "US inference multiplier",
     });
-    reconcileCommercialBoundaries(body, input);
     return;
   }
   const pricingGeneration = reviewedGeographyGeneration(body, "pricing", input);
@@ -1357,7 +1198,6 @@ function pricing(
       reason_code: "inference_geo_multiplier_applied",
     });
   }
-  reconcileCommercialBoundaries(body, input);
 }
 
 function commercialRaw(
@@ -1380,12 +1220,10 @@ function commercialRaw(
 interface CommercialFactInput {
   bookKey: string;
   bookName: string;
-  resourceKind?: SourceCommercialPricingFact["resource_kind"];
   resourceKey: string;
   modelRefs?: string[];
   offerKey: string;
   offerName: string;
-  billingMode?: SourceCommercialPricingFact["billing_mode"];
   state: SourceCommercialPricingFact["pricing_state"];
   rates?: SourcePriceFact[];
   raw?: SourceCommercialPricingFact["raw_price_facts"];
@@ -1396,12 +1234,12 @@ function commercialFact(sourceId: string, value: CommercialFactInput): SourceCom
     source_ref: sourceId,
     book_key: value.bookKey,
     book_name: value.bookName,
-    resource_kind: value.resourceKind ?? "service",
+    resource_kind: "service",
     resource_key: value.resourceKey,
     model_refs: value.modelRefs ?? [],
     offer_key: value.offerKey,
     offer_name: value.offerName,
-    billing_mode: value.billingMode ?? "usage",
+    billing_mode: "usage",
     pricing_state: value.state,
     price_facts: value.rates ?? [],
     raw_price_facts: value.raw ?? [],
@@ -1428,52 +1266,17 @@ function ids(value: string): string[] {
 
 function commercialPricing(
   bodies: {
-    pricing: string;
-    currentPricing: string;
     webSearch: string;
-    webFetch: string;
     codeExecution: string;
     advisor: string;
     compaction: string;
-    tokenCounting: string;
-    files: string;
-    managedAgents: string;
-    managedAgentCreate: string;
-    managedAgentEvents: string;
-    serviceTiers: string;
     fallbackCredit: string;
   },
   input: Input,
   models: Map<string, ProviderModel>,
 ): void {
   const facts: SourceCommercialPricingFact[] = [];
-  const callableModels = [...models.values()].filter(callable);
-  const activeModels = callableModels.filter(({ status }) => status === "active");
-  const callableRefs = callableModels.map(({ uid }) => uid);
-  const batchRefs = activeModels
-    .filter(({ capabilities }) => capabilities.batch === true)
-    .map(({ uid }) => uid);
-  const endpointFacts = (
-    value: Omit<CommercialFactInput, "modelRefs" | "offerKey" | "offerName">,
-    names: { sync: string; batch: string },
-  ): SourceCommercialPricingFact[] => [
-    commercialFact(input.source.id, {
-      ...value,
-      modelRefs: callableRefs,
-      offerKey: "sync",
-      offerName: names.sync,
-    }),
-    ...(batchRefs.length === 0
-      ? []
-      : [
-          commercialFact(input.source.id, {
-            ...value,
-            modelRefs: batchRefs,
-            offerKey: "batch",
-            offerName: names.batch,
-          }),
-        ]),
-  ];
+  const callableRefs = [...models.values()].filter(callable).map(({ uid }) => uid);
   const report = (normalized: boolean, reasonCode: string, sample: string): void =>
     input.onPricingReconciliation?.({
       disposition: normalized ? "normalized" : "unresolved",
@@ -1510,52 +1313,36 @@ function commercialPricing(
       value: "/docs/en/agents-and-tools/tool-use/web-search-tool.md#usage-and-pricing",
     };
     facts.push(
-      ...endpointFacts(
-        {
-          bookKey: "service:web-search",
-          bookName: "Web Search",
-          resourceKey: "web-search",
-          state: "numeric",
-          rates: [rate],
-          raw: searchSignal
-            ? [
-                commercialRaw(
-                  "usage-signal",
-                  "informational",
-                  "unsupported_structure",
-                  "usage.server_tool_use.web_search_requests",
-                  input.source.id,
-                ),
-              ]
-            : [],
-        },
-        { sync: "Web Search", batch: "Batch Web Search" },
-      ),
+      commercialFact(input.source.id, {
+        bookKey: "service:web-search",
+        bookName: "Web Search",
+        resourceKey: "web-search",
+        modelRefs: callableRefs,
+        offerKey: "usage",
+        offerName: "Successful search",
+        state: "numeric",
+        rates: [rate],
+        raw: searchSignal
+          ? [
+              commercialRaw(
+                "usage-signal",
+                "informational",
+                "unsupported_structure",
+                "usage.server_tool_use.web_search_requests",
+                input.source.id,
+              ),
+            ]
+          : [],
+      }),
     );
   }
   report(searchAmount !== undefined, "web_search_service_bound", "Web Search rate");
   report(searchSignal, "web_search_usage_bound", "Web Search usage signal");
 
-  const fetchIncluded = /no additional charges beyond standard token costs/i.test(bodies.webFetch);
-  const fetchSignal = bodies.webFetch.includes('"web_fetch_requests"');
-  if (fetchIncluded)
-    facts.push(
-      ...endpointFacts(
-        {
-          bookKey: "service:web-fetch",
-          bookName: "Web Fetch",
-          resourceKey: "web-fetch",
-          state: "included",
-        },
-        { sync: "Web Fetch", batch: "Batch Web Fetch" },
-      ),
-    );
-  report(fetchIncluded, "web_fetch_service_bound", "Web Fetch service");
-  report(fetchSignal, "web_fetch_usage_bound", "Web Fetch usage signal");
-
   const codeTable = tables(bodies.codeExecution).find(
     (table) => table.headers.join("|") === "Model|Tool versions",
   );
+  const codeText = text(bodies.codeExecution);
   const codeIds = new Set<string>();
   const codeRefs = new Set<string>();
   for (const values of codeTable?.rows ?? []) {
@@ -1564,24 +1351,16 @@ function commercialPricing(
     const item = rawId === undefined ? undefined : commercialModel(models, rawId);
     if (item !== undefined && callable(item)) codeRefs.add(item.uid);
   }
-  const codeAmount = bodies.codeExecution.match(
+  const codeAmount = codeText.match(
     /\$((?:0|[1-9]\d*)(?:\.\d+)?) USD per hour, per container/,
   )?.[1];
-  const minimum = bodies.codeExecution.match(/minimum of (\d+) minutes/)?.[1];
-  const monthlyAllowance = bodies.codeExecution.match(
-    /([\d,]+) free hours of usage per month/,
-  )?.[1];
-  const dailyAllowance = bodies.currentPricing.match(
-    /((?:0|[1-9]\d*)(?:\.\d+)?) free hours of usage daily per organization/,
-  )?.[1];
+  const minimum = codeText.match(/minimum of (\d+) minutes/)?.[1];
+  const monthlyAllowance = codeText.match(/([\d,]+) free hours of usage per month/)?.[1];
   const webAssisted =
-    bodies.codeExecution.includes(
-      "Code execution is free when used with web search or web fetch",
-    ) &&
+    codeText.includes("Code execution is free when used with web search or web fetch") &&
     bodies.codeExecution.includes("web_search_20260209") &&
     bodies.codeExecution.includes("web_fetch_20260209");
   const scope = [...codeRefs];
-  const batchScope = scope.filter((ref) => batchRefs.includes(ref));
   if (codeAmount !== undefined && scope.length > 0) {
     const rate = publishedRate(
       "container_runtime",
@@ -1594,8 +1373,8 @@ function commercialPricing(
       kind: "fragment",
       value: "/docs/en/agents-and-tools/tool-use/code-execution-tool.md#usage-and-pricing",
     };
-    const raw =
-      minimum === undefined
+    const raw = [
+      ...(minimum === undefined
         ? []
         : [
             commercialRaw(
@@ -1605,34 +1384,38 @@ function commercialPricing(
               `${minimum}-minute minimum execution time`,
               input.source.id,
             ),
-          ];
+          ]),
+      ...(monthlyAllowance === undefined
+        ? []
+        : [
+            commercialRaw(
+              "monthly-container-allowance",
+              "allowance",
+              "unsupported_structure",
+              `${monthlyAllowance} free container-hours per organization per month`,
+              input.source.id,
+            ),
+          ]),
+      commercialRaw(
+        "runtime-observation",
+        "informational",
+        "requires_usage_aggregation",
+        "Messages usage reports code-execution request count, not billable container duration",
+        input.source.id,
+      ),
+    ];
     facts.push(
       commercialFact(input.source.id, {
         bookKey: "service:code-execution",
         bookName: "Code Execution",
         resourceKey: "code-execution",
         modelRefs: scope,
-        offerKey: "sync",
+        offerKey: "standalone",
         offerName: "Standalone Code Execution",
         state: "numeric",
         rates: [rate],
         raw,
       }),
-      ...(batchScope.length === 0
-        ? []
-        : [
-            commercialFact(input.source.id, {
-              bookKey: "service:code-execution",
-              bookName: "Code Execution",
-              resourceKey: "code-execution",
-              modelRefs: batchScope,
-              offerKey: "batch",
-              offerName: "Batch Code Execution",
-              state: "numeric",
-              rates: [rate],
-              raw,
-            }),
-          ]),
     );
   }
   if (webAssisted && scope.length > 0)
@@ -1642,62 +1425,11 @@ function commercialPricing(
         bookName: "Code Execution",
         resourceKey: "code-execution",
         modelRefs: scope,
-        offerKey: "web-assisted-sync",
+        offerKey: "web-assisted",
         offerName: "Web-assisted Code Execution",
         state: "included",
       }),
-      ...(batchScope.length === 0
-        ? []
-        : [
-            commercialFact(input.source.id, {
-              bookKey: "service:code-execution",
-              bookName: "Code Execution",
-              resourceKey: "code-execution",
-              modelRefs: batchScope,
-              offerKey: "web-assisted-batch",
-              offerName: "Web-assisted Batch Code Execution",
-              state: "included",
-            }),
-          ]),
     );
-  if ((dailyAllowance !== undefined || monthlyAllowance !== undefined) && scope.length > 0) {
-    const allowanceRaw = [
-      ...(dailyAllowance === undefined
-        ? []
-        : [
-            commercialRaw(
-              "daily-container-allowance",
-              "allowance",
-              "unsupported_structure",
-              `${dailyAllowance} free container-hours per organization per day`,
-              input.source.id,
-            ),
-          ]),
-      ...(monthlyAllowance === undefined
-        ? []
-        : [
-            commercialRaw(
-              "monthly-container-allowance",
-              "allowance",
-              dailyAllowance === undefined ? "unsupported_structure" : "superseded_value",
-              `${monthlyAllowance.replaceAll(",", "")} free container-hours per organization per month`,
-              input.source.id,
-            ),
-          ]),
-    ];
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "service:code-execution",
-        bookName: "Code Execution",
-        resourceKey: "code-execution",
-        modelRefs: scope,
-        offerKey: "organization-allowance",
-        offerName: "Organization free-hours allowance",
-        state: "included",
-        raw: allowanceRaw,
-      }),
-    );
-  }
   report(
     codeIds.size > 0 && codeRefs.size === codeIds.size,
     "code_execution_scope_bound",
@@ -1706,373 +1438,23 @@ function commercialPricing(
   report(codeAmount !== undefined, "code_execution_rate_bound", "Code Execution rate");
   report(minimum !== undefined, "code_execution_minimum_bound", "Code Execution minimum");
   report(
-    dailyAllowance !== undefined || monthlyAllowance !== undefined,
+    monthlyAllowance !== undefined,
     "code_execution_allowance_bound",
     "Code Execution allowance",
   );
   report(webAssisted, "code_execution_web_assisted_bound", "Web-assisted Code Execution");
 
-  const advisorTable = tables(bodies.advisor).find(
-    (table) => table.headers.join("|") === "Executor models|Advisor models",
-  );
-  let advisorScopeBound = advisorTable !== undefined;
-  const advisorExecutors = new Map<string, Set<string>>();
-  for (const values of advisorTable?.rows ?? []) {
-    const executorIds = ids(values[0] ?? "");
-    const executors = executorIds.flatMap((id) => {
-      const item = commercialModel(models, id);
-      return item === undefined ? [] : [item.uid];
-    });
-    if (executors.length !== executorIds.length) advisorScopeBound = false;
-    for (const advisorId of ids(values[1] ?? "")) {
-      const advisor = commercialModel(models, advisorId);
-      if (advisor === undefined) {
-        advisorScopeBound = false;
-        continue;
-      }
-      const refs = advisorExecutors.get(advisor.uid) ?? new Set<string>();
-      for (const executor of executors) refs.add(executor);
-      advisorExecutors.set(advisor.uid, refs);
-    }
-  }
   const advisorBilling =
     bodies.advisor.includes("separate sub-inference billed at the advisor model's rates") &&
     bodies.advisor.includes("usage.iterations");
-  if (advisorBilling)
-    for (const [advisorRef, executorRefs] of advisorExecutors) {
-      const advisor = models.get(advisorRef.replace(/^anthropic\//, ""));
-      const name = advisor?.name ?? advisorRef;
-      const raw = [
-        commercialRaw(
-          "advisor-model-usage",
-          "base_price",
-          "target_rate_not_normalized",
-          `Advisor sub-inference uses ${advisorRef} list rates and usage.iterations`,
-          input.source.id,
-        ),
-      ];
-      facts.push(
-        commercialFact(input.source.id, {
-          bookKey: `service:advisor:${advisorRef}`,
-          bookName: `${name} Advisor`,
-          resourceKey: `advisor:${advisorRef}`,
-          modelRefs: [...executorRefs],
-          offerKey: "sync",
-          offerName: `${name} advisor sub-inference`,
-          state: "included",
-          raw,
-        }),
-        commercialFact(input.source.id, {
-          bookKey: `service:advisor:${advisorRef}`,
-          bookName: `${name} Advisor`,
-          resourceKey: `advisor:${advisorRef}`,
-          modelRefs: [...executorRefs].filter((ref) => batchRefs.includes(ref)),
-          offerKey: "batch",
-          offerName: `${name} Batch advisor sub-inference`,
-          state: "included",
-          raw,
-        }),
-      );
-    }
-  report(
-    advisorBilling && advisorScopeBound && advisorExecutors.size > 0,
-    "advisor_service_bound",
-    "Advisor sub-inference",
-  );
+  report(advisorBilling, "advisor_usage_ledger_bound", "Advisor sub-inference model usage");
 
-  const fallbackTargetIds = ids(
-    bodies.fallbackCredit.split(/\r?\n/).find((line) => line.includes("permitted targets are")) ??
-      "",
-  );
-  const fallbackTargets = fallbackTargetIds.flatMap((id) => {
-    const item = commercialModel(models, id);
-    return item === undefined ? [] : [item.uid];
-  });
   const fallbackContract =
     bodies.fallbackCredit.includes("fallback_credit_token") &&
     bodies.fallbackCredit.includes("five-minute window") &&
     bodies.fallbackCredit.includes("cache_creation_input_tokens") &&
     bodies.fallbackCredit.includes("cache_read_input_tokens");
-  if (fallbackContract && fallbackTargets.length > 0)
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "account-resource:fallback-credit-token",
-        bookName: "Fallback Credit Token",
-        resourceKind: "account_resource_template",
-        resourceKey: "fallback-credit-token",
-        modelRefs: fallbackTargets,
-        offerKey: "redemption",
-        offerName: "Fallback cache repricing",
-        state: "included",
-        raw: [
-          commercialRaw(
-            "fallback-rate-substitution",
-            "allowance",
-            "unsupported_structure",
-            "Eligible cache writes are repriced as cache reads",
-            input.source.id,
-          ),
-          commercialRaw(
-            "fallback-credit-lifetime",
-            "informational",
-            "unsupported_structure",
-            "Opaque token is redeemable within five minutes by its originating organization and workspace",
-            input.source.id,
-          ),
-        ],
-      }),
-    );
-  report(
-    fallbackContract &&
-      fallbackTargetIds.length > 0 &&
-      fallbackTargets.length === fallbackTargetIds.length,
-    "fallback_credit_bound",
-    "Fallback prompt-cache credit",
-  );
-
-  const newUserCredits = bodies.pricing.includes(
-    "New users receive a small amount of free credits to test the API",
-  );
-  if (newUserCredits)
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "account-resource:new-user-credit",
-        bookName: "New-user API credit",
-        resourceKind: "account_resource_template",
-        resourceKey: "new-user-credit",
-        offerKey: "grant",
-        offerName: "New-user credit grant",
-        state: "included",
-        raw: [
-          commercialRaw(
-            "credit-amount",
-            "allowance",
-            "unknown_amount",
-            "New users receive an unspecified small amount of free API credits",
-            input.source.id,
-          ),
-        ],
-      }),
-    );
-  report(newUserCredits, "new_user_credit_bound", "New-user API credit");
-
-  const tokenCountingFree = /Token counting is free to use/i.test(bodies.tokenCounting);
-  if (tokenCountingFree)
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "service:token-counting",
-        bookName: "Token Counting",
-        resourceKey: "token-counting",
-        modelRefs: activeModels.map(({ uid }) => uid),
-        offerKey: "preflight",
-        offerName: "Token count estimate",
-        state: "free",
-      }),
-    );
-  report(tokenCountingFree, "token_counting_service_bound", "Token Counting");
-
-  const filesFree =
-    /Files API operations are free/i.test(bodies.files) &&
-    ["Uploading files", "Downloading files", "Listing files", "Deleting files"].every((value) =>
-      bodies.files.includes(value),
-    );
-  if (filesFree)
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "service:files",
-        bookName: "Files API",
-        resourceKey: "files",
-        offerKey: "management",
-        offerName: "File management",
-        state: "free",
-      }),
-    );
-  report(filesFree, "files_service_bound", "Files API");
-
-  const managedAmount = bodies.pricing.match(
-    /\| Session runtime \| \$((?:0|[1-9]\d*)(?:\.\d+)?) per session-hour \|/,
-  )?.[1];
-  const managedIds = [
-    ...new Set(
-      [...bodies.managedAgentCreate.matchAll(/^\s*-\s+`"(claude-[a-z0-9._:/-]+)"`\s*$/gm)]
-        .map((match) => match[1])
-        .filter((id): id is string => id !== undefined),
-    ),
-  ];
-  const managedRefs = managedIds.flatMap((id) => {
-    const item = commercialModel(models, id);
-    return item === undefined || !callable(item) ? [] : [item.uid];
-  });
-  const managedService = bodies.managedAgents.includes("Claude Managed Agents");
-  const managedActiveSignal = bodies.managedAgentEvents.includes('"active_seconds"');
-  const managedListCost = bodies.managedAgentEvents.includes('"list_cost"');
-  const managedModelUsage = bodies.pricing.includes(
-    "All tokens consumed by a Claude Managed Agents session are billed at the rates shown in",
-  );
-  const managedCodeIncluded = bodies.pricing.includes(
-    "Session runtime replaces the [code execution](#code-execution-tool) container-hour billing model",
-  );
-  if (managedAmount !== undefined && managedService && managedRefs.length > 0) {
-    const rate = publishedRate(
-      "session_runtime",
-      managedAmount,
-      "hour",
-      input.source.id,
-      "per running session-hour",
-    );
-    rate.source_locator = {
-      kind: "fragment",
-      value: "/docs/en/about-claude/pricing.md#managed-agents-pricing",
-    };
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "service:managed-agents-runtime",
-        bookName: "Managed Agents Runtime",
-        resourceKey: "managed-agents-runtime",
-        modelRefs: managedRefs,
-        offerKey: "runtime",
-        offerName: "Running session",
-        state: "numeric",
-        rates: [rate],
-        raw: [
-          ...(managedActiveSignal
-            ? [
-                commercialRaw(
-                  "runtime-signal",
-                  "informational",
-                  "unsupported_structure",
-                  "usage.active_seconds is cumulative deduplicated session runtime",
-                  input.source.id,
-                ),
-              ]
-            : []),
-          ...(managedModelUsage
-            ? [
-                commercialRaw(
-                  "model-usage",
-                  "informational",
-                  "unsupported_structure",
-                  "Session tokens use exact model rates and prompt-cache multipliers",
-                  input.source.id,
-                ),
-              ]
-            : []),
-          ...(managedListCost
-            ? [
-                commercialRaw(
-                  "session-list-cost",
-                  "informational",
-                  "requires_usage_aggregation",
-                  "Session list_cost is the authoritative rounded public-list subtotal",
-                  input.source.id,
-                ),
-              ]
-            : []),
-        ],
-      }),
-    );
-    const managedCodeRefs = managedRefs.filter((ref) => codeRefs.has(ref));
-    if (managedCodeIncluded && managedCodeRefs.length > 0)
-      facts.push(
-        commercialFact(input.source.id, {
-          bookKey: "service:code-execution",
-          bookName: "Code Execution",
-          resourceKey: "code-execution",
-          modelRefs: managedCodeRefs,
-          offerKey: "managed-agents",
-          offerName: "Managed Agents code execution",
-          state: "included",
-        }),
-      );
-  }
-  report(
-    managedService && managedIds.length > 0 && managedRefs.length === managedIds.length,
-    "managed_agents_scope_bound",
-    "Managed Agents model scope",
-  );
-  report(
-    managedAmount !== undefined && managedActiveSignal,
-    "managed_agents_runtime_bound",
-    "Managed Agents runtime",
-  );
-  report(managedModelUsage, "managed_agents_model_usage_bound", "Managed Agents model usage");
-  report(managedListCost, "managed_agents_list_cost_bound", "Managed Agents list cost");
-  report(
-    managedCodeIncluded,
-    "managed_agents_code_execution_bound",
-    "Managed Agents code execution coverage",
-  );
-
-  const priorityClosed = bodies.serviceTiers.includes(
-    "Priority Tier capacity commitments are no longer available for purchase",
-  );
-  const prioritySupport = bodies.serviceTiers
-    .split(/\r?\n/)
-    .find((line) =>
-      line.includes("Priority Tier is supported on all available Claude models except"),
-    );
-  if (prioritySupport !== undefined) {
-    const excluded = new Set(mentioned(prioritySupport, models).map(({ uid }) => uid));
-    for (const { name, uid } of activeModels.filter(({ uid }) => !excluded.has(uid)))
-      facts.push(
-        commercialFact(input.source.id, {
-          bookKey: `capacity:priority-tier:${uid}`,
-          bookName: `${name} Priority Tier Capacity`,
-          resourceKind: "capacity",
-          resourceKey: `priority-tier:${uid}`,
-          modelRefs: [uid],
-          offerKey: "commitment",
-          offerName: "Existing capacity commitment",
-          billingMode: "capacity",
-          state: "not_published",
-          raw: [
-            commercialRaw(
-              "commitment-terms",
-              "base_price",
-              "unknown_amount",
-              "Input/output TPM, model version, and 1/3/6/12-month commitment; payment unpublished",
-              input.source.id,
-            ),
-            ...(priorityClosed
-              ? [
-                  commercialRaw(
-                    "closed-enrollment",
-                    "informational",
-                    "unsupported_structure",
-                    "Priority Tier capacity commitments are closed to new purchases",
-                    input.source.id,
-                  ),
-                ]
-              : []),
-          ],
-        }),
-      );
-  }
-  report(prioritySupport !== undefined, "priority_capacity_bound", "Priority Tier capacity");
-  report(priorityClosed, "priority_enrollment_bound", "Priority Tier enrollment");
-
-  if (bodies.pricing.includes("Claude Platform on AWS") && bodies.pricing.includes("$0.01 per CCU"))
-    facts.push(
-      commercialFact(input.source.id, {
-        bookKey: "distribution:claude-platform-aws",
-        bookName: "Claude Platform on AWS",
-        resourceKind: "distribution",
-        resourceKey: "claude-platform-aws",
-        modelRefs: activeModels.map(({ uid }) => uid),
-        offerKey: "marketplace",
-        offerName: "AWS Marketplace settlement",
-        state: "externally_billed",
-        raw: [
-          commercialRaw(
-            "ccu-conversion",
-            "informational",
-            "unsupported_structure",
-            "100 Claude Consumption Units represent USD 1 after applicable discounts",
-            input.source.id,
-          ),
-        ],
-      }),
-    );
+  report(fallbackContract, "fallback_usage_outcome_bound", "Fallback retry usage outcome");
 
   const carrier = [...models.values()].find(({ price_facts }) => price_facts.length > 0);
   if (carrier !== undefined && facts.length > 0) carrier.commercial_facts = facts;
@@ -2080,42 +1462,38 @@ function commercialPricing(
 
 export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(json(input.body));
-  const document = (path: string): string =>
-    linkedDocumentBody(bundle, path, `Anthropic catalog expected exactly one document: ${path}`);
+  const documents = new Map<string, string>();
+  for (const item of bundle.documents) {
+    const path = new URL(item.url).pathname;
+    if (documents.has(path))
+      throw new Error(`Anthropic catalog expected at most one document: ${path}`);
+    documents.set(path, item.body);
+  }
+  const document = (path: string): string => documents.get(path) ?? "";
   const messagesBody = document("/docs/en/api/messages/create.md");
-  validateDocumentationIndex(document("/llms.txt"), input);
-  validateModelIdentityContract(
-    document("/docs/en/about-claude/models/model-ids-and-versions.md"),
-    document("/docs/en/api/models/list.md"),
-  );
-  const dataResidencyGeneration = validateAccountingContracts(
-    {
-      messages: messagesBody,
-      serviceTiers: document("/docs/en/api/service-tiers.md"),
-      dataResidency: document("/docs/en/manage-claude/data-residency.md"),
-      usageCost: document("/docs/en/manage-claude/usage-cost-api.md"),
-      usageReport: document("/docs/en/api/admin/usage_report/retrieve_messages.md"),
-      costReport: document("/docs/en/api/admin/cost_report/retrieve.md"),
-      fallbackCredit: document("/docs/en/build-with-claude/fallback-credit.md"),
-    },
+  const modelIds = document("/docs/en/about-claude/models/model-ids-and-versions.md");
+  const modelsList = document("/docs/en/api/models/list.md");
+  if (modelIds && modelsList) validateModelIdentityContract(modelIds, modelsList, input);
+  const dataResidencyGeneration = validateRequestAccounting(
+    messagesBody,
+    document("/docs/en/manage-claude/data-residency.md"),
     input,
   );
   const models = new Map<string, ProviderModel>();
   overview(bundle.index.body, input, models);
-  launchDetails(
-    document("/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5.md"),
-    input,
-    models,
-  );
-  lifecycle(document("/docs/en/about-claude/model-deprecations.md"), input, models);
-  releaseNotes(document("/docs/en/release-notes/overview.md"), input, models);
-  pricing(
-    document("/docs/en/about-claude/pricing.md"),
-    document("/docs/en/build-with-claude/fast-mode.md"),
-    dataResidencyGeneration,
-    input,
-    models,
-  );
+  const lifecycleBody = document("/docs/en/about-claude/model-deprecations.md");
+  if (lifecycleBody) lifecycle(lifecycleBody, input, models);
+  const releases = document("/docs/en/release-notes/overview.md");
+  if (releases) releaseNotes(releases, input, models);
+  const pricingBody = document("/docs/en/about-claude/pricing.md");
+  if (pricingBody)
+    pricing(
+      pricingBody,
+      document("/docs/en/build-with-claude/fast-mode.md"),
+      dataResidencyGeneration,
+      input,
+      models,
+    );
   applyEndpoints(
     messagesBody,
     document("/docs/en/api/messages/batches/create.md"),
@@ -2142,19 +1520,10 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   );
   commercialPricing(
     {
-      pricing: document("/docs/en/about-claude/pricing.md"),
-      currentPricing: document("/pricing"),
       webSearch: document("/docs/en/agents-and-tools/tool-use/web-search-tool.md"),
-      webFetch: document("/docs/en/agents-and-tools/tool-use/web-fetch-tool.md"),
       codeExecution: document("/docs/en/agents-and-tools/tool-use/code-execution-tool.md"),
       advisor: document("/docs/en/agents-and-tools/tool-use/advisor-tool.md"),
       compaction: document("/docs/en/build-with-claude/compaction.md"),
-      tokenCounting: document("/docs/en/build-with-claude/token-counting.md"),
-      files: document("/docs/en/build-with-claude/files.md"),
-      managedAgents: document("/docs/en/managed-agents/overview.md"),
-      managedAgentCreate: document("/docs/en/api/beta/agents/create.md"),
-      managedAgentEvents: document("/docs/en/managed-agents/events-and-streaming.md"),
-      serviceTiers: document("/docs/en/api/service-tiers.md"),
       fallbackCredit: document("/docs/en/build-with-claude/fallback-credit.md"),
     },
     input,
@@ -2173,6 +1542,17 @@ export function parseAnthropicApi(input: Input): ProviderModel[] {
     items: parsed.data,
     schema: itemSchema,
     modelId: "id",
+    rootKeys: [
+      "id",
+      "type",
+      "display_name",
+      "created_at",
+      "max_input_tokens",
+      "max_tokens",
+      "capabilities",
+    ],
+    skipInvalidItems: true,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   return items.map((item) => {
     const inputModalities: Modality[] = ["text"];

@@ -1,9 +1,5 @@
 import { load } from "cheerio";
 import { z } from "zod";
-import {
-  attachDeepseekCommercialFacts,
-  type DeepseekCommercialEvidence,
-} from "./deepseek-commercial-source.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
@@ -281,26 +277,14 @@ function chatClaims(input: Input, body: string | undefined): ChatClaims {
 interface ResponseClaims {
   modelIds: Set<string>;
   tokenAccounting: boolean;
-  webSearch: boolean;
 }
 
 function responseClaims(input: Input, body: string | undefined): ResponseClaims {
-  if (body === undefined) return { modelIds: new Set(), tokenAccounting: false, webSearch: false };
+  if (body === undefined) return { modelIds: new Set(), tokenAccounting: false };
   const evidence = claim(input, "responses_operation_contract_drift", "Responses", () =>
     endpointEvidence(body, responsesEndpoint),
   );
-  if (evidence === undefined)
-    return { modelIds: new Set(), tokenAccounting: false, webSearch: false };
-  const webSearch =
-    claim(input, "responses_tool_contract_drift", "Responses tools", () => {
-      propertyClaims(
-        evidence,
-        "tools",
-        ["function", "web_search", "executed on the server side"],
-        "tool contract drifted",
-      );
-      return true;
-    }) === true;
+  if (evidence === undefined) return { modelIds: new Set(), tokenAccounting: false };
   const tokenAccounting =
     claim(input, "responses_usage_contract_drift", "Responses usage", () => {
       propertyClaims(
@@ -311,7 +295,7 @@ function responseClaims(input: Input, body: string | undefined): ResponseClaims 
       );
       return true;
     }) === true;
-  return { modelIds: evidence.modelIds, tokenAccounting, webSearch };
+  return { modelIds: evidence.modelIds, tokenAccounting };
 }
 
 interface FimClaims {
@@ -463,169 +447,6 @@ function companion(input: Input, bundle: Bundle, pathname: string): string | und
   );
 }
 
-function hasClaims(
-  input: Input,
-  body: string | undefined,
-  claims: readonly string[],
-  reasonCode: string,
-): boolean {
-  if (body === undefined) return false;
-  const value = htmlText(load(body).root().text()).toLowerCase();
-  const missing = claims.filter((item) => !value.includes(item.toLowerCase()));
-  if (missing.length === 0) return true;
-  diagnostic(input, "unbound", reasonCode, missing.slice(0, 3).join(" | "));
-  return false;
-}
-
-interface CommercialEvidence extends Omit<DeepseekCommercialEvidence, "webSearchModels"> {
-  anthropicWebSearch: boolean;
-  cacheAccounting: boolean;
-  settlement: boolean;
-  tokenAccounting: boolean;
-  webSearch: boolean;
-}
-
-function commercialEvidence(input: Input, bundle: Bundle): CommercialEvidence {
-  hasClaims(
-    input,
-    bundle.index.body,
-    [
-      "bill based on the total number of input and output tokens",
-      "expense = number of tokens × price",
-      "most recent pricing information",
-    ],
-    "public_pricing_contract_drift",
-  );
-  const futureIncrease = hasClaims(
-    input,
-    bundle.index.body,
-    [
-      "raise the overall pricing for DeepSeek API services in the near future",
-      "specific pricing plan will be subject to official notice",
-    ],
-    "future_price_notice_drift",
-  );
-  const settlement = hasClaims(
-    input,
-    bundle.index.body,
-    [
-      "expense = number of tokens × price",
-      "topped-up",
-      "granted balance",
-      "preference for using the granted balance first",
-    ],
-    "settlement_contract_drift",
-  );
-  const tokenAccounting = hasClaims(
-    input,
-    companion(input, bundle, "/quick_start/token_usage/"),
-    [
-      "units we use for billing",
-      "actual number of tokens processed each time is based on the model's return",
-      "usage results",
-    ],
-    "token_usage_contract_drift",
-  );
-  const cacheAccounting = hasClaims(
-    input,
-    companion(input, bundle, "/guides/kv_cache/"),
-    [
-      "enabled by default for all users",
-      "prompt_cache_hit_tokens",
-      "prompt_cache_miss_tokens",
-      "best-effort",
-    ],
-    "context_cache_contract_drift",
-  );
-  const balance = hasClaims(
-    input,
-    companion(input, bundle, "/api/get-user-balance"),
-    [
-      "Get user current balance",
-      "is_available",
-      "total_balance",
-      "granted_balance",
-      "topped_up_balance",
-    ],
-    "balance_api_contract_drift",
-  );
-  const concurrency = hasClaims(
-    input,
-    companion(input, bundle, "/quick_start/rate_limit/"),
-    [
-      "account level, regardless of which API Key is used",
-      "There is no additional cost for capacity expansion",
-      "KVCache Isolation",
-      "Scheduling Isolation",
-    ],
-    "account_quota_contract_drift",
-  );
-  hasClaims(
-    input,
-    companion(input, bundle, "/quick_start/error_codes/"),
-    ["402 - Insufficient Balance", "check your account's balance"],
-    "insufficient_balance_contract_drift",
-  );
-  const webSearch = hasClaims(
-    input,
-    companion(input, bundle, "/guides/responses_api/"),
-    ["server-side web search tool call", "final event", "full response object including usage"],
-    "responses_accounting_contract_drift",
-  );
-  const anthropicBody = companion(input, bundle, "/guides/anthropic_api/");
-  const anthropicRouting = hasClaims(
-    input,
-    anthropicBody,
-    [
-      "unsupported model name",
-      "automatically map it to the deepseek-v4-flash model",
-      "Models starting with claude-opus are mapped to deepseek-v4-pro",
-      "claude-haiku or claude-sonnet are mapped to deepseek-v4-flash",
-    ],
-    "anthropic_routing_contract_drift",
-  );
-  const anthropicWebSearch = hasClaims(
-    input,
-    anthropicBody,
-    ["server_tool_use", "web_search_tool_result", "Supported"],
-    "anthropic_web_search_contract_drift",
-  );
-  const webSearchTokenCost = hasClaims(
-    input,
-    companion(input, bundle, "/quick_start/agent_integrations/claude_code/"),
-    [
-      "Web Search tool generates additional LLM API requests",
-      "additional model token costs will be incurred",
-    ],
-    "web_search_token_cost_contract_drift",
-  );
-  const faq = hasClaims(
-    input,
-    companion(input, bundle, "/faq"),
-    ["topped-up balance will not expire", "unused balances are refundable"],
-    "balance_terms_contract_drift",
-  );
-
-  diagnostic(input, "excluded", "response_exact_cost_not_returned");
-  if (futureIncrease) diagnostic(input, "unbound", "future_price_increase_not_effective");
-  if (webSearch || anthropicWebSearch) diagnostic(input, "unbound", "web_search_fee_not_published");
-  if (balance) diagnostic(input, "raw", "account_balance_terms_preserved");
-  if (concurrency) diagnostic(input, "raw", "account_concurrency_terms_preserved");
-  if (anthropicRouting) diagnostic(input, "raw", "anthropic_model_mapping_preserved");
-  return {
-    anthropicRouting,
-    anthropicWebSearch,
-    balance,
-    cacheAccounting,
-    concurrency,
-    faq,
-    settlement,
-    tokenAccounting,
-    webSearch,
-    webSearchTokenCost,
-  };
-}
-
 const catalogRows = new Set([
   ...baseUrls.map(([label]) => label),
   "MODEL VERSION",
@@ -653,14 +474,6 @@ function validateCatalogTable(input: Input, table: HtmlTable, columns: number[])
     });
   for (const label of ["Chat Prefix Completion（Beta）", "FIM Completion（Beta）", "Anthropic API"])
     claim(input, "catalog_support_claim_drift", label, () => support(table, label, columns));
-  claim(input, "catalog_concurrency_claim_drift", "Concurrency Limit", () => {
-    if (
-      cells(table, "Concurrency Limit", columns).some(
-        (value) => !/^[1-9]\d*$/.test(value.replace(/,/g, "")),
-      )
-    )
-      throw new Error("expected positive integer concurrency");
-  });
 }
 
 function model(
@@ -800,8 +613,6 @@ function attachCnyRates(input: Input, bundle: Bundle, models: ProviderModel[]): 
       diagnostic(input, "normalized", "price_fact_normalized", `${id}:${meter}:CNY`);
     }
   }
-  if (models.some(({ price_facts }) => price_facts.some(({ currency }) => currency === "CNY")))
-    diagnostic(input, "unbound", "currency_book_applicability_unresolved");
 }
 
 function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
@@ -814,7 +625,6 @@ function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
 
 export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
-  const commercial = commercialEvidence(input, bundle);
   const chat = chatClaims(input, companion(input, bundle, "/api/create-chat-completion"));
   const responses = responseClaims(input, companion(input, bundle, "/api/create-response"));
   const fim = fimClaims(input, companion(input, bundle, "/api/create-completion"));
@@ -864,15 +674,6 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
         : [],
     ),
   );
-  const tableAnthropicIds = new Set(
-    columns.flatMap(({ column, id }) =>
-      claim(input, "anthropic_table_claim_drift", `${id}:Anthropic API`, () =>
-        supportValue(cell(table, "Anthropic API", column)),
-      ) === true
-        ? [id]
-        : [],
-    ),
-  );
   if (
     responses.modelIds.size > 0 &&
     (responses.modelIds.size !== tableResponseIds.size ||
@@ -904,14 +705,11 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   )
     diagnostic(input, "unbound", "model_inventory_disagreement");
 
-  const chatAccounting = commercial.tokenAccounting && chat.tokenAccounting;
-  const responseAccounting = commercial.tokenAccounting && responses.tokenAccounting;
-  const fimAccounting = commercial.tokenAccounting && fim.tokenAccounting;
   for (const current of models) {
     const interfaces = [
-      [chat.modelIds.has(current.model_id), chatAccounting, "chat"],
-      [responses.modelIds.has(current.model_id), responseAccounting, "responses"],
-      [fim.modelIds.has(current.model_id), fimAccounting, "fim"],
+      [chat.modelIds.has(current.model_id), chat.tokenAccounting, "chat"],
+      [responses.modelIds.has(current.model_id), responses.tokenAccounting, "responses"],
+      [fim.modelIds.has(current.model_id), fim.tokenAccounting, "fim"],
     ] as const;
     if (!interfaces.some(([applies, accounting]) => applies && accounting))
       current.raw_price_facts.push(
@@ -927,32 +725,8 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
           current.raw_price_facts.push(
             rawGap(input.source.id, key, `The ${key} usage contract is unavailable`),
           );
-    if (!commercial.cacheAccounting)
-      current.raw_price_facts.push(
-        rawGap(input.source.id, "cache", "The cache hit/miss accounting contract is unavailable"),
-      );
-    if (!commercial.settlement)
-      current.raw_price_facts.push(
-        rawGap(
-          input.source.id,
-          "settlement",
-          "The direct account settlement contract is unavailable",
-        ),
-      );
   }
   attachCnyRates(input, bundle, models);
-  const webSearchModels = new Set([
-    ...(commercial.webSearch && responses.webSearch ? responses.modelIds : []),
-    ...(commercial.anthropicWebSearch ? tableAnthropicIds : []),
-  ]);
-  attachDeepseekCommercialFacts(models, input.source.id, {
-    anthropicRouting: commercial.anthropicRouting,
-    balance: commercial.balance,
-    concurrency: commercial.concurrency,
-    faq: commercial.faq,
-    webSearchModels,
-    webSearchTokenCost: commercial.webSearchTokenCost,
-  });
   return bounded(input, models);
 }
 

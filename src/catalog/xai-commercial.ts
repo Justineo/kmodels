@@ -3,22 +3,18 @@ import type {
   AtomicPricingOffer,
   AtomicPricingTerm,
   AtomicProviderPricing,
-  AtomicRateTerm,
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
-import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
+import { canonicalizeApplicability } from "./pricing-canonical.ts";
 import {
   addAtom,
   isStandardUnit,
-  offerEvidence,
   rawEvidence,
-  relation,
+  withApplicability,
 } from "./pricing-commercial-assembly.ts";
-import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
-  NormalizedPriceObservation,
   PriceApplicability,
   PriceCondition,
   PriceMeter,
@@ -29,18 +25,22 @@ import type { PublishedPricingModel } from "./pricing-adapter.ts";
 
 type Mechanism = "batch" | "direct" | "realtime" | "sync";
 
-interface ModelOffers {
-  batch?: string;
-  direct?: string;
-  realtime?: string;
-  sync?: string;
-}
+const requestResources = new Set([
+  "attachment-search",
+  "code-execution",
+  "collections-search",
+  "image-generation-tool",
+  "responses-policy",
+  "speech-to-text",
+  "text-to-speech",
+  "web-search",
+  "x-search",
+]);
 
 export function applyXaiCommercialTopology(
   input: AtomicProviderPricing,
   publishedModels: readonly PublishedPricingModel[],
 ): AtomicProviderPricing {
-  if (input.provider_id !== "xai") return input;
   addAtom(input, {
     kind: "categorical_value",
     key: "default",
@@ -49,22 +49,14 @@ export function applyXaiCommercialTopology(
     label: "Default",
   });
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
-  const modelOffers = new Map<string, ModelOffers>();
-  const books = input.books.map((book) => {
-    if (book.scope.kind !== "models") return resourceBook(book, input);
-    const model = published.get(book.scope.model_refs[0] ?? "");
-    const migrated = modelBook(book, model, input);
-    const bookId = pricingBookId(input.provider_id, book.book_key);
-    const offers: ModelOffers = {};
-    for (const offer of migrated.offers) {
-      const key = offer.offer_key;
-      if (["batch", "direct", "realtime", "sync"].includes(key))
-        offers[key as Mechanism] = pricingOfferId(bookId, key);
-    }
-    for (const modelRef of book.scope.model_refs) modelOffers.set(modelRef, offers);
-    return migrated;
+  const books = input.books.flatMap((book) => {
+    if (book.scope.kind !== "models")
+      return book.scope.kind === "provider_resource" &&
+        requestResources.has(book.scope.resource_key)
+        ? [resourceBook(book, input)]
+        : [];
+    return [modelBook(book, published.get(book.scope.model_refs[0] ?? ""), input)];
   });
-  bindRelations(books, modelOffers);
   input.vocabulary.atoms = input.vocabulary.atoms.flatMap((atom) => {
     if (
       atom.kind !== "categorical_value" ||
@@ -84,18 +76,17 @@ function modelBook(
   input: AtomicProviderPricing,
 ): AtomicPricingBook {
   const mechanisms = modelMechanisms(model);
-  const offers = book.offers.flatMap((offer) => {
-    if (offer.offer_key !== "usage") return [settled(offer, "xAI API usage")];
-    const result = mechanisms.flatMap((mechanism) => {
-      const partitioned = modelOffer(offer, mechanism, model, input);
-      return hasContent(partitioned)
-        ? [settled(partitioned, `xAI ${mechanismName(mechanism).toLowerCase()}`)]
-        : [];
-    });
-    if (result.length > 1) addExclusiveRelations(book, result);
-    return result;
-  });
-  return { ...book, offers };
+  return {
+    ...book,
+    offers: book.offers.flatMap((offer) =>
+      offer.offer_key !== "usage"
+        ? [{ ...offer, settlement: [] }]
+        : mechanisms.flatMap((mechanism) => {
+            const next = modelOffer(offer, mechanism, model, input);
+            return next.states.length + next.terms.length === 0 ? [] : [next];
+          }),
+    ),
+  };
 }
 
 function modelMechanisms(model: PublishedPricingModel | undefined): Mechanism[] {
@@ -123,7 +114,13 @@ function modelOffer(
       : mechanismApplicability(state.applicability, mechanism);
     return applicability === undefined
       ? []
-      : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
+      : [
+          {
+            ...state,
+            applicability,
+            observation: withApplicability(state.observation, applicability),
+          },
+        ];
   });
   const terms = offer.terms.flatMap((term) => modelTerm(term, mechanism, duplicate, input));
   return {
@@ -133,6 +130,7 @@ function modelOffer(
     states,
     terms,
     relations: [],
+    settlement: [],
   };
 }
 
@@ -147,8 +145,17 @@ function modelTerm(
     return variants.length === 0 ? [] : [{ ...term, variants }];
   }
   if (term.kind !== "rate") return mechanism === "batch" ? [] : [term];
-  const migrated = modelMeter(term, mechanism, input);
-  const variants = migrated.variants.flatMap((variant) => {
+  const meter =
+    mechanism === "realtime" &&
+    term.meter.namespace === "kmodels" &&
+    term.meter.value === "output_audio"
+      ? providerMeter(
+          input,
+          "realtime_audio",
+          "xAI Speech-to-Speech audio minutes without a published input/output split",
+        )
+      : term.meter;
+  const variants = term.variants.flatMap((variant) => {
     const applicability = duplicate
       ? variant.applicability
       : mechanismApplicability(variant.applicability, mechanism);
@@ -156,39 +163,24 @@ function modelTerm(
     const next = {
       ...variant,
       applicability,
-      observation: normalized(variant.observation, applicability),
+      observation: withApplicability(variant.observation, applicability),
     };
-    const charge_binding = modelBinding(migrated.meter, next, mechanism, input);
+    const charge_binding = modelBinding(meter, next, mechanism, input);
     return [{ ...next, ...(charge_binding === undefined ? {} : { charge_binding }) }];
   });
-  const raw_variants = migrated.raw_variants.flatMap((variant) =>
+  const raw_variants = term.raw_variants.flatMap((variant) =>
     rawVariant(variant, mechanism, duplicate),
   );
   return variants.length + raw_variants.length === 0
     ? []
-    : [{ ...migrated, variants, raw_variants }];
-}
-
-function modelMeter(
-  term: AtomicRateTerm,
-  mechanism: Mechanism,
-  input: AtomicProviderPricing,
-): AtomicRateTerm {
-  if (
-    mechanism !== "realtime" ||
-    term.meter.namespace !== "kmodels" ||
-    term.meter.value !== "output_audio"
-  )
-    return term;
-  return {
-    ...term,
-    term_key: "realtime_audio",
-    meter: providerMeter(
-      input,
-      "realtime_audio",
-      "xAI Speech-to-Speech audio minutes without a published input/output split",
-    ),
-  };
+    : [
+        {
+          ...term,
+          ...(meter === term.meter ? {} : { term_key: "realtime_audio", meter }),
+          variants,
+          raw_variants,
+        },
+      ];
 }
 
 function modelBinding(
@@ -202,168 +194,152 @@ function modelBinding(
     return providerBinding(
       input,
       "billed_realtime_audio_seconds",
-      "Audio seconds billed by the Speech-to-Speech service without a public input/output split",
+      "Audio seconds billed by the Speech-to-Speech service without a public direction split",
       variant.price.per,
       aggregation,
       variant.observation,
-      "voice:billed_audio_seconds",
+      "Voice session accepted input audio seconds + emitted output audio seconds",
       "outcome",
     );
   if (meter.namespace !== "kmodels") return;
-  if (meter.value === "input_text" && isUnit(variant.price.per, "token"))
-    return standardBinding(
+  if (meter.value === "input_text" && isStandardUnit(variant.price.per, "token"))
+    return providerBinding(
+      input,
       "uncached_input_tokens",
+      "xAI input tokens excluding cached tokens",
+      variant.price.per,
       aggregation,
       variant.observation,
-      "usage:prompt_tokens",
+      "Response.usage.input_tokens - Response.usage.input_tokens_details.cached_tokens",
+      "outcome",
     );
-  if (meter.value === "cache_read_text" && isUnit(variant.price.per, "token"))
-    return standardBinding(
+  if (meter.value === "cache_read_text" && isStandardUnit(variant.price.per, "token"))
+    return providerBinding(
+      input,
       "cached_input_tokens",
-      aggregation,
-      variant.observation,
-      "usage:cached_tokens",
-    );
-  if (meter.value === "output_text" && isUnit(variant.price.per, "token"))
-    return providerBinding(
-      input,
-      "billed_output_tokens",
-      "Non-overlapping completion and reasoning tokens billed at the published output rate",
+      "xAI cached input tokens",
       variant.price.per,
       aggregation,
       variant.observation,
-      "usage:completion_tokens+reasoning_tokens",
+      "Response.usage.input_tokens_details.cached_tokens",
       "outcome",
     );
-  if (meter.value === "input_image" && isUnit(variant.price.per, "token"))
+  if (meter.value === "output_text" && isStandardUnit(variant.price.per, "token"))
     return providerBinding(
       input,
-      "prompt_image_tokens",
-      "Image tokens reported for visual input",
+      "output_tokens",
+      "xAI output tokens, including billed reasoning tokens",
       variant.price.per,
       aggregation,
       variant.observation,
-      "usage:prompt_image_tokens",
+      "Response.usage.output_tokens",
       "outcome",
     );
-  if (meter.value === "image_generation" && isUnit(variant.price.per, "image"))
-    return standardBinding("generated_images", aggregation, variant.observation, "result:images");
-  if (meter.value === "video_generation" && isUnit(variant.price.per, "second"))
+  if (meter.value === "input_image" && isStandardUnit(variant.price.per, "token"))
+    return providerBinding(
+      input,
+      "input_image_tokens",
+      "xAI prompt image tokens",
+      variant.price.per,
+      aggregation,
+      variant.observation,
+      "ChatCompletion.usage.prompt_image_tokens",
+      "outcome",
+    );
+  if (meter.value === "image_generation" && isStandardUnit(variant.price.per, "image"))
+    return standardBinding(
+      "generated_images",
+      aggregation,
+      variant.observation,
+      "result.data.length",
+    );
+  if (meter.value === "video_generation" && isStandardUnit(variant.price.per, "second"))
     return standardBinding(
       "generated_seconds",
       aggregation,
       variant.observation,
-      "result:video_seconds",
+      "completed video duration_seconds",
     );
-  if (meter.value === "input_image" && isUnit(variant.price.per, "image"))
+  if (meter.value === "input_image" && isStandardUnit(variant.price.per, "image"))
     return providerBinding(
       input,
       "submitted_input_images",
-      "Input images submitted to an Imagine generation or edit",
+      "Accepted input images in an Imagine request",
       variant.price.per,
       aggregation,
       variant.observation,
-      "request:input_images",
+      "request input image count",
       "request",
     );
-  if (meter.value === "input_video" && isUnit(variant.price.per, "second"))
+  if (meter.value === "input_video" && isStandardUnit(variant.price.per, "second"))
     return providerBinding(
       input,
       "submitted_input_video_seconds",
-      "Input video seconds submitted to an Imagine edit or extension",
+      "Accepted source-video seconds in an Imagine request",
       variant.price.per,
       aggregation,
       variant.observation,
-      "request:input_video_seconds",
+      "request source video duration_seconds",
       "request",
     );
-  if (meter.value === "input_text" && isUnit(variant.price.per, "request"))
+  if (meter.value === "input_text" && isStandardUnit(variant.price.per, "request"))
     return providerBinding(
       input,
       "realtime_text_input_events",
-      "conversation.item.create text-input events billed by xAI Realtime",
+      "Billable Speech-to-Speech text-input events",
       variant.price.per,
       aggregation,
       variant.observation,
-      "voice:conversation.item.create",
+      "conversation.item.create non-audio client events excluding function_call_output",
       "request",
     );
-  if (meter.value === "input_text" && isUnit(variant.price.per, "token"))
-    return standardBinding("input_tokens", aggregation, variant.observation, "usage:prompt_tokens");
 }
 
 function resourceBook(book: AtomicPricingBook, input: AtomicProviderPricing): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
+  const resourceKey = book.scope.resource_key;
   return {
     ...book,
-    offers: book.offers.map((offer) => {
-      const terms = offer.terms.map((term) => resourceTerm(book, offer, term, input));
-      const accountResource =
-        book.scope.kind === "provider_resource" &&
-        book.scope.resource_kind.namespace === "kmodels" &&
-        book.scope.resource_kind.value === "account_resource_template";
-      return settled(
-        {
-          ...offer,
-          terms,
-          ...(accountResource
-            ? {
-                enrollment: [
-                  {
-                    state: "account_scoped" as const,
-                    applicability: unconditionalApplicability,
-                    observations: [
-                      {
-                        ...rawEvidence(offerEvidence(offer)),
-                        establishes_applicability: unconditionalApplicability,
-                      },
-                    ],
-                  },
-                ],
-              }
-            : {}),
-        },
-        `xAI ${book.name ?? book.book_key}`,
-      );
-    }),
+    resource_edges: [],
+    offers: book.offers.map((offer) => ({
+      ...offer,
+      enrollment: [],
+      relations: [],
+      settlement: [],
+      terms: offer.terms.map((term) => resourceTerm(resourceKey, offer, term, input)),
+    })),
   };
 }
 
 function resourceTerm(
-  book: AtomicPricingBook,
+  resourceKey: string,
   offer: AtomicPricingOffer,
   term: AtomicPricingTerm,
   input: AtomicProviderPricing,
 ): AtomicPricingTerm {
-  if (term.kind !== "rate" || book.scope.kind !== "provider_resource") return term;
-  const resourceKey = book.scope.resource_key;
-  const meter = resourceMeter(resourceKey, term.meter, input);
-  const migrated = meter === term.meter ? term : { ...term, term_key: resourceKey, meter };
+  if (term.kind !== "rate") return term;
+  const meter =
+    resourceKey === "x-search"
+      ? providerMeter(input, "x_search", "Successful xAI X Search executions")
+      : resourceKey === "responses-policy"
+        ? providerMeter(
+            input,
+            "pre_generation_usage_guideline_violation",
+            "Responses requests rejected before generation for an xAI usage-guideline violation",
+          )
+        : resourceKey === "text-to-speech"
+          ? ({ namespace: "kmodels", value: "speech_generation" } as const)
+          : resourceKey === "speech-to-text"
+            ? ({ namespace: "kmodels", value: "transcription" } as const)
+            : term.meter;
   return {
-    ...migrated,
-    variants: migrated.variants.map((variant) => {
+    ...term,
+    ...(meter === term.meter ? {} : { term_key: resourceKey, meter }),
+    variants: term.variants.map((variant) => {
       const charge_binding = resourceBinding(resourceKey, offer, variant, input);
       return charge_binding === undefined ? variant : { ...variant, charge_binding };
     }),
   };
-}
-
-function resourceMeter(
-  resourceKey: string,
-  meter: PriceMeter,
-  input: AtomicProviderPricing,
-): PriceMeter {
-  if (resourceKey === "x-search")
-    return providerMeter(input, "x_search", "Successful xAI X Search executions");
-  if (resourceKey === "responses-policy")
-    return providerMeter(
-      input,
-      "pre_generation_usage_guideline_violation",
-      "Responses requests rejected for a usage-guideline violation before generation",
-    );
-  if (resourceKey === "text-to-speech") return { namespace: "kmodels", value: "speech_generation" };
-  if (resourceKey === "speech-to-text") return { namespace: "kmodels", value: "transcription" };
-  return meter;
 }
 
 function resourceBinding(
@@ -372,43 +348,61 @@ function resourceBinding(
   variant: AtomicRateVariant,
   input: AtomicProviderPricing,
 ): ChargeBinding | undefined {
-  const providerSignals = new Map<string, readonly [string, string]>([
-    ["web-search", ["successful_web_searches", "SERVER_SIDE_TOOL_WEB_SEARCH"]],
-    ["x-search", ["successful_x_searches", "SERVER_SIDE_TOOL_X_SEARCH"]],
-    ["code-execution", ["successful_code_executions", "SERVER_SIDE_TOOL_CODE_EXECUTION"]],
+  const toolLocators = new Map<string, readonly [string, string]>([
+    [
+      "web-search",
+      ["successful_web_searches", "Response.usage.server_side_tool_usage_details.web_search_calls"],
+    ],
+    [
+      "x-search",
+      ["successful_x_searches", "Response.usage.server_side_tool_usage_details.x_search_calls"],
+    ],
+    [
+      "code-execution",
+      [
+        "successful_code_executions",
+        "Response.usage.server_side_tool_usage_details.code_interpreter_calls",
+      ],
+    ],
+    [
+      "attachment-search",
+      [
+        "successful_attachment_searches",
+        "Response.usage.server_side_tool_usage_details.document_search_calls",
+      ],
+    ],
     [
       "collections-search",
-      ["successful_collections_searches", "SERVER_SIDE_TOOL_COLLECTIONS_SEARCH"],
+      [
+        "successful_collections_searches",
+        "Response.usage.server_side_tool_usage_details.file_search_calls",
+      ],
     ],
   ]);
-  const tool = providerSignals.get(resourceKey);
+  const tool = toolLocators.get(resourceKey);
   if (tool !== undefined)
     return providerBinding(
       input,
       tool[0],
-      `Successful billable calls reported in server_side_tool_usage.${tool[1]}`,
+      `Successful billable ${resourceKey.replaceAll("-", " ")} calls reported by xAI usage`,
       variant.price.per,
       "request",
       variant.observation,
-      `server_side_tool_usage:${tool[1]}`,
+      tool[1],
       "outcome",
     );
-  if (resourceKey === "image-generation-tool")
-    return standardBinding(
-      "generated_images",
-      "request",
-      variant.observation,
-      "response:image_generation_call",
-    );
+  // The tool reports successful calls, but does not expose the resolution/quality
+  // needed to choose among the published Imagine rates.
+  if (resourceKey === "image-generation-tool") return;
   if (resourceKey === "text-to-speech")
     return providerBinding(
       input,
       "submitted_tts_characters",
-      "Characters submitted to the xAI Text-to-Speech service",
+      "Characters in the accepted Text-to-Speech input",
       variant.price.per,
       "request",
       variant.observation,
-      "request:text.length",
+      "request.text character count",
       "request",
     );
   if (resourceKey === "speech-to-text")
@@ -416,122 +410,8 @@ function resourceBinding(
       "active_seconds",
       "request",
       variant.observation,
-      `${offer.offer_key}:audio_seconds`,
+      `${offer.offer_key} accepted audio duration_seconds`,
     );
-  if (resourceKey === "files" || resourceKey === "collections")
-    return offer.offer_key === "storage"
-      ? standardBinding(
-          "stored_byte_seconds",
-          "resource",
-          variant.observation,
-          `${resourceKey}:stored_byte_seconds`,
-        )
-      : standardBinding(
-          "transferred_bytes",
-          "request",
-          variant.observation,
-          `${resourceKey}:downloaded_bytes`,
-        );
-}
-
-function bindRelations(
-  books: AtomicPricingBook[],
-  modelOffers: ReadonlyMap<string, ModelOffers>,
-): void {
-  const resourceOffers = new Map<string, string[]>();
-  for (const book of books) {
-    if (book.scope.kind !== "provider_resource") continue;
-    const bookId = pricingBookId("xai", book.book_key);
-    resourceOffers.set(
-      book.scope.resource_key,
-      book.offers.map(({ offer_key }) => pricingOfferId(bookId, offer_key)),
-    );
-  }
-  for (const book of books) {
-    if (book.scope.kind !== "provider_resource") continue;
-    for (const offer of book.offers) {
-      const targets = book.scope.model_refs.flatMap((modelRef) => {
-        const value = modelOffers.get(modelRef);
-        return [value?.sync, value?.batch, value?.realtime].filter(
-          (ref): ref is string => ref !== undefined,
-        );
-      });
-      if (targets.length > 0)
-        offer.relations.push(
-          relation(
-            offer,
-            "requires",
-            targets,
-            "The service charge is additive to an exact compatible xAI model execution",
-          ),
-        );
-      if (book.scope.resource_key === "image-search") {
-        const web = resourceOffers.get("web-search") ?? [];
-        if (web.length > 0)
-          offer.relations.push(
-            relation(offer, "requires", web, "Image Search is included inside Web Search"),
-          );
-      }
-      if (book.scope.resource_key === "custom-voices") {
-        const voice = [
-          ...(resourceOffers.get("text-to-speech") ?? []),
-          ...[...modelOffers.values()].flatMap(({ realtime }) =>
-            realtime === undefined ? [] : [realtime],
-          ),
-        ];
-        if (voice.length > 0)
-          offer.relations.push(
-            relation(
-              offer,
-              "compatible_with",
-              voice,
-              "A retained custom voice can be used by Text-to-Speech and Realtime voice offers",
-            ),
-          );
-      }
-      if (book.scope.resource_key === "zero-data-retention") {
-        const disabled = [
-          ...[...modelOffers.values()].flatMap(({ batch }) => (batch === undefined ? [] : [batch])),
-          ...(resourceOffers.get("files") ?? []),
-          ...(resourceOffers.get("collections") ?? []),
-          ...(resourceOffers.get("image-generation-tool") ?? []),
-        ];
-        if (disabled.length > 0)
-          offer.relations.push(
-            relation(
-              offer,
-              "exclusive_with",
-              disabled,
-              "Zero Data Retention disables these exact stored or asynchronous xAI offers",
-            ),
-          );
-      }
-    }
-  }
-  const transcription = books.find(
-    (book) =>
-      book.scope.kind === "provider_resource" && book.scope.resource_key === "speech-to-text",
-  );
-  if (transcription?.scope.kind === "provider_resource" && transcription.offers.length > 1)
-    addExclusiveRelations(transcription, transcription.offers);
-}
-
-function addExclusiveRelations(book: AtomicPricingBook, offers: AtomicPricingOffer[]): void {
-  const bookId = pricingBookId("xai", book.book_key);
-  for (const offer of offers) {
-    const targets = offers
-      .filter((candidate) => candidate !== offer)
-      .map(({ offer_key }) => pricingOfferId(bookId, offer_key));
-    if (targets.length > 0)
-      offer.relations.push(
-        relation(
-          offer,
-          "exclusive_with",
-          targets,
-          "These execution mechanisms are alternatives for the same work item",
-        ),
-      );
-  }
 }
 
 function mechanismApplicability(
@@ -570,11 +450,9 @@ function rawVariant(
 }
 
 function servedTier(condition: PriceCondition): PriceCondition {
-  if (!isServiceTier(condition)) return condition;
-  return {
-    ...condition,
-    dimension: { namespace: "kmodels", value: "served_service_tier" },
-  };
+  return isServiceTier(condition)
+    ? { ...condition, dimension: { namespace: "kmodels", value: "served_service_tier" } }
+    : condition;
 }
 
 function defaultServedTier(): PriceCondition {
@@ -608,15 +486,9 @@ function providerBinding(
   aggregation: ChargeBinding["aggregation"],
   evidence: RawPriceObservation,
   locator: string,
-  resolutionPhase: "account" | "outcome" | "request",
+  resolution_phase: "outcome" | "request",
 ): ChargeBinding {
-  addAtom(input, {
-    kind: "usage_signal",
-    key,
-    definition,
-    unit,
-    resolution_phase: resolutionPhase,
-  });
+  addAtom(input, { kind: "usage_signal", key, definition, unit, resolution_phase });
   return {
     signal: { namespace: "provider", provider_id: input.provider_id, value: key },
     aggregation,
@@ -637,39 +509,6 @@ function standardBinding(
   };
 }
 
-function settled(offer: AtomicPricingOffer, label: string): AtomicPricingOffer {
-  const evidence = offerEvidence(offer);
-  return {
-    ...offer,
-    settlement: [
-      {
-        channel: "direct",
-        biller: "xAI",
-        payment_sources: ["prepaid_balance", "postpaid_invoice"],
-        applicability: unconditionalApplicability,
-        observations: [
-          {
-            ...rawEvidence(evidence),
-            raw: { label: `${label} settles directly with xAI` },
-            establishes_applicability: unconditionalApplicability,
-          },
-        ],
-      },
-    ],
-  };
-}
-
-function normalized(
-  observation: NormalizedPriceObservation,
-  applicability: PriceApplicability,
-): NormalizedPriceObservation {
-  return { ...observation, establishes_applicability: applicability };
-}
-
-function isUnit(unit: UnitExpression, expected: "image" | "request" | "second" | "token"): boolean {
-  return isStandardUnit(unit, expected);
-}
-
 function mechanismName(mechanism: Mechanism): string {
   switch (mechanism) {
     case "batch":
@@ -681,8 +520,4 @@ function mechanismName(mechanism: Mechanism): string {
     case "sync":
       return "Synchronous inference";
   }
-}
-
-function hasContent(offer: AtomicPricingOffer): boolean {
-  return offer.states.length > 0 || offer.terms.length > 0;
 }
