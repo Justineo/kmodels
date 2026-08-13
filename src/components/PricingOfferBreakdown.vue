@@ -38,13 +38,14 @@ interface ScopeCopy {
 const inputs = ref<Record<string, string>>({});
 const selectors = computed(() => props.offer.selectors);
 type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
-const fixedSelectors = computed(() => selectors.value.filter(isFixedSelector));
 const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
 );
-const fixedSelectionValues = computed(() => fixedSelectors.value.map(fixedSelection));
+const fixedSelectionValues = computed(() =>
+  selectors.value.filter(isFixedSelector).map(fixedSelection),
+);
 const selectionValues = computed(() => [
-  ...selectors.value.flatMap((selector) => {
+  ...configurableSelectors.value.flatMap((selector) => {
     const value = selection(selector);
     return value === undefined ? [] : [value];
   }),
@@ -55,39 +56,23 @@ const visibleStates = computed(() => matchingRows(props.offer.states));
 const rateProjection = computed(() =>
   projectWebsiteRateQuery(props.offer, props.modelRef, selectionValues.value),
 );
-const baseRateProjection = computed(() =>
-  projectWebsiteRateQuery(props.offer, props.modelRef, fixedSelectionValues.value),
-);
-const rateSelectorKeys = computed(
-  () => new Set(baseRateProjection.value.unresolved_dimensions.map(canonicalJson)),
-);
-const querySelectors = computed(() =>
-  configurableSelectors.value.filter(({ key }) => rateSelectorKeys.value.has(key)),
-);
-const advancedSelectors = computed(() =>
-  configurableSelectors.value.filter(({ key }) => !rateSelectorKeys.value.has(key)),
-);
-const visibleRates = computed(() =>
-  rateProjection.value.rates.map(({ row, invariant_dimensions }) => ({
-    ...row,
-    qualifier: [
-      invariant_dimensions.length === 0
-        ? undefined
-        : `Same across available ${joinLabels(invariant_dimensions.map(formatDimension))} options`,
-      row.validity === undefined ? undefined : validityNote(row.validity),
-    ]
-      .filter((value): value is string => value !== undefined)
-      .join(" · "),
-  })),
-);
+const rateSelectors = computed(() => {
+  const keys = new Set(
+    projectWebsiteRateQuery(
+      props.offer,
+      props.modelRef,
+      fixedSelectionValues.value,
+    ).unresolved_dimensions.map(canonicalJson),
+  );
+  return configurableSelectors.value.filter(({ key }) => keys.has(key));
+});
+const visibleRates = computed(() => rateProjection.value.rates.map(({ row }) => row));
 const visibleAllowances = computed(() => matchingRows(props.offer.allowances));
 const visibleContributions = computed(() => matchingRows(props.offer.contributions));
-const visibleEnrollment = computed(() => matchingRows(props.offer.enrollment));
-const visibleSettlement = computed(() => matchingRows(props.offer.settlement));
 const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
 const contextPrompt = computed(() => {
   const labels = joinLabels(unresolvedRateDimensions.value.map(formatDimension));
-  return `Choose ${labels} to ${visibleRates.value.length === 0 ? "see rates" : "resolve the remaining rates"}.`;
+  return `Select ${labels} to ${visibleRates.value.length === 0 ? "see rates" : "see remaining rates"}.`;
 });
 const visibleUnnormalized = computed(() =>
   props.offer.unnormalized
@@ -230,10 +215,6 @@ function fixedSelection(selector: FixedSelector): PricingSelection {
       };
 }
 
-function fixedSelectorValue(selector: FixedSelector): string {
-  return selector.kind === "categorical" ? selector.values[0]!.label : selector.values[0]!;
-}
-
 type DecimalRangeSelector = Extract<WebsitePricingSelector, { kind: "decimal_range" }>;
 
 function setInput(key: string, value: string): void {
@@ -339,19 +320,19 @@ function joinLabels(labels: string[]): string {
 <template>
   <div class="offer-breakdown">
     <section
-      v-if="querySelectors.length > 0"
+      v-if="rateSelectors.length > 0"
       class="pricing-context"
       :aria-labelledby="`${offer.id}-context-heading`"
     >
       <header class="pricing-subheading">
         <div>
-          <h5 :id="`${offer.id}-context-heading`">Pricing context</h5>
-          <p>Choose only the request details that change these rates.</p>
+          <h6 :id="`${offer.id}-context-heading`">Options</h6>
+          <p v-if="unresolvedRateDimensions.length > 0">{{ contextPrompt }}</p>
         </div>
         <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
       </header>
       <div class="pricing-selector-grid">
-        <label v-for="selector in querySelectors" :key="selector.key">
+        <label v-for="selector in rateSelectors" :key="selector.key">
           <span>
             {{ selector.label }}
             <template v-if="'unit' in selector"
@@ -406,13 +387,13 @@ function joinLabels(labels: string[]): string {
       </div>
     </section>
 
-    <section v-if="offer.rates.length > 0" class="offer-section">
-      <header class="pricing-subheading">
-        <h5>Published rates</h5>
-      </header>
-      <p v-if="unresolvedRateDimensions.length > 0" class="context-prompt">
-        {{ contextPrompt }}
-      </p>
+    <section
+      v-if="
+        offer.rates.length > 0 && (visibleRates.length > 0 || unresolvedRateDimensions.length === 0)
+      "
+      class="offer-section"
+      aria-label="Published rates"
+    >
       <div v-if="visibleRates.length > 0" class="pricing-matrix">
         <table>
           <thead>
@@ -425,9 +406,9 @@ function joinLabels(labels: string[]): string {
             <tr v-for="rate in visibleRates" :key="rate.key">
               <th scope="row">
                 <span class="rate-name">{{ rate.label }}</span>
-                <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
+                <small v-if="rate.validity">{{ validityNote(rate.validity) }}</small>
                 <details v-if="rate.driver" class="rate-driver">
-                  <summary>What this rate charges for</summary>
+                  <summary>Meter details</summary>
                   <ChargeDriverFacts :driver="rate.driver" />
                 </details>
               </th>
@@ -445,7 +426,7 @@ function joinLabels(labels: string[]): string {
     </section>
 
     <div v-if="showPublishedStatus" class="published-status">
-      <small>Published status</small>
+      <small>Status</small>
       <strong>{{ offer.state_summary }}</strong>
     </div>
 
@@ -455,13 +436,11 @@ function joinLabels(labels: string[]): string {
           incompleteCount === 1 ? "" : "s"
         }}</strong
       >
-      <span
-        >Available exact rates are shown above. Source exceptions remain available for audit.</span
-      >
+      <span>Exact rates are shown above. Exceptions are available below.</span>
     </div>
 
     <section v-if="visibleAllowances.length > 0" class="offer-section">
-      <header class="pricing-subheading"><h5>Allowances</h5></header>
+      <header class="pricing-subheading"><h6>Allowances</h6></header>
       <div class="allowance-list">
         <div v-for="allowance in visibleAllowances" :key="allowance.key">
           <div>
@@ -474,7 +453,7 @@ function joinLabels(labels: string[]): string {
     </section>
 
     <section v-if="visibleContributions.length > 0" class="offer-section">
-      <header class="pricing-subheading"><h5>Additional usage</h5></header>
+      <header class="pricing-subheading"><h6>Additional usage</h6></header>
       <div class="allowance-list">
         <div v-for="contribution in visibleContributions" :key="contribution.key">
           <div>
@@ -494,119 +473,23 @@ function joinLabels(labels: string[]): string {
       </div>
     </section>
 
-    <details class="pricing-disclosure">
-      <summary>
-        <span><UiIcon name="chevron-right" />Billing details</span>
-      </summary>
-      <div class="advanced-details">
-        <p v-if="offer.composition" class="offer-composition">{{ offer.composition }}</p>
-
-        <div v-if="fixedSelectors.length > 0" class="fixed-context-list">
-          <span v-for="selector in fixedSelectors" :key="selector.key">
-            <small>{{ selector.label }}</small>
-            <span>{{ fixedSelectorValue(selector) }}</span>
-          </span>
-        </div>
-
-        <section v-if="advancedSelectors.length > 0" class="advanced-selector-section">
-          <header class="pricing-subheading">
-            <h5>Additional conditions</h5>
-            <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
-          </header>
-          <div class="pricing-selector-grid">
-            <label v-for="selector in advancedSelectors" :key="selector.key">
-              <span>
-                {{ selector.label }}
-                <template v-if="'unit' in selector">
-                  ({{ formatUnitExpression(selector.unit) }})
-                </template>
-              </span>
-              <UiSelect
-                v-if="selector.kind === 'categorical'"
-                :model-value="inputValue(selector.key)"
-                :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
-                placeholder="Choose…"
-                @update:model-value="setInput(selector.key, $event)"
-              />
-              <UiSelect
-                v-else-if="selector.kind === 'boolean'"
-                :model-value="inputValue(selector.key)"
-                :options="booleanOptions"
-                placeholder="Choose…"
-                @update:model-value="setInput(selector.key, $event)"
-              />
-              <UiSelect
-                v-else-if="selector.kind === 'decimal_values'"
-                :model-value="inputValue(selector.key)"
-                :options="selector.values.map((value) => ({ value, label: value }))"
-                placeholder="Choose…"
-                @update:model-value="setInput(selector.key, $event)"
-              />
-              <UiSelect
-                v-else-if="selector.kind === 'decimal_buckets'"
-                :model-value="inputValue(selector.key)"
-                :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
-                placeholder="Choose…"
-                @update:model-value="setInput(selector.key, $event)"
-              />
-              <input
-                v-else
-                :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
-                :value="inputValue(selector.key)"
-                :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
-                :aria-describedby="`${offer.id}-${selector.key}-advanced-range-guidance`"
-                placeholder="Enter value"
-                @input="setDecimalInput(selector.key, $event)"
-              />
-              <small
-                v-if="selector.kind === 'decimal_range'"
-                :id="`${offer.id}-${selector.key}-advanced-range-guidance`"
-                :class="
-                  decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'
-                "
-              >
-                {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
-              </small>
-            </label>
-          </div>
-        </section>
-
-        <div class="billing-fact-list">
+    <section v-if="showOfferStates" class="offer-section">
+      <header class="pricing-subheading"><h6>Pricing states</h6></header>
+      <div class="state-list">
+        <div
+          v-for="state in visibleStates"
+          :key="state.key"
+          class="state-row"
+          :data-state="state.state"
+        >
+          <span class="state-marker"></span>
           <div>
-            <span class="billing-fact-value">{{ offer.billing_mode.label }}</span>
-            <small>Billing method</small>
-            <small v-if="offer.billing_mode.description">{{
-              offer.billing_mode.description
-            }}</small>
-          </div>
-          <div v-for="entry in visibleEnrollment" :key="entry.key">
-            <span class="billing-fact-value">{{ entry.label }}</span>
-            <small>Enrollment</small>
-            <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
-          </div>
-          <div v-for="entry in visibleSettlement" :key="entry.key">
-            <span class="billing-fact-value">{{ entry.channel }} · {{ entry.biller }}</span>
-            <small>{{ entry.payment_sources.join(" → ") }}</small>
-            <small v-if="entry.qualifier">{{ entry.qualifier }}</small>
-          </div>
-        </div>
-
-        <div v-if="showOfferStates" class="state-list">
-          <div
-            v-for="state in visibleStates"
-            :key="state.key"
-            class="state-row"
-            :data-state="state.state"
-          >
-            <span class="state-marker"></span>
-            <div>
-              <span class="state-label">{{ state.label }}</span>
-              <small v-if="state.qualifier">{{ state.qualifier }}</small>
-            </div>
+            <span class="state-label">{{ state.label }}</span>
+            <small v-if="state.qualifier">{{ state.qualifier }}</small>
           </div>
         </div>
       </div>
-    </details>
+    </section>
 
     <details v-if="visibleUnnormalized.length > 0" class="pricing-disclosure">
       <summary>
@@ -635,7 +518,6 @@ function joinLabels(labels: string[]): string {
 
 .pricing-subheading,
 .state-row,
-.billing-fact-list > div,
 .allowance-list > div,
 .pricing-disclosure > summary,
 .raw-fact-list header {
@@ -654,17 +536,13 @@ function joinLabels(labels: string[]): string {
   gap: var(--space-3);
 }
 
-.pricing-subheading h5,
-.pricing-subheading p {
+.pricing-subheading h6 {
   margin: 0;
-}
-
-.pricing-subheading h5 {
   font-size: var(--font-size-body);
 }
 
 .pricing-subheading p {
-  margin-top: var(--space-0-5);
+  margin: var(--space-0-5) 0 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);
 }
@@ -696,37 +574,6 @@ function joinLabels(labels: string[]): string {
 .published-status small {
   color: var(--color-text-muted);
   font-size: var(--font-size-body);
-}
-
-.fixed-context-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.fixed-context-list > span {
-  display: inline-flex;
-  min-height: var(--control-height-default);
-  align-items: center;
-  gap: var(--space-1-5);
-  padding-inline: var(--space-2);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-subtle);
-}
-
-.fixed-context-list small {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
-}
-
-.fixed-context-list > span > span {
-  font-size: var(--font-size-caption);
-}
-
-.fixed-context-list small::after {
-  content: ":";
 }
 
 .pricing-selector-grid {
@@ -773,27 +620,17 @@ function joinLabels(labels: string[]): string {
   color: var(--color-status-danger);
 }
 
-.offer-composition,
 .context-prompt {
-  margin: 0;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2-5) var(--space-3);
+  border-left: var(--stroke-focus) solid var(--color-border-default);
   color: var(--color-text-muted);
+  background: var(--color-surface-subtle);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
 }
 
-.offer-composition,
-.context-prompt {
-  padding: var(--space-2-5) var(--space-3);
-  border-left: var(--stroke-focus) solid var(--color-border-default);
-  background: var(--color-surface-subtle);
-}
-
-.context-prompt {
-  margin-top: var(--space-2);
-}
-
 .state-list,
-.billing-fact-list,
 .allowance-list,
 .raw-fact-list {
   display: grid;
@@ -802,7 +639,6 @@ function joinLabels(labels: string[]): string {
 }
 
 .state-row,
-.billing-fact-list > div,
 .allowance-list > div,
 .raw-fact-list > div {
   gap: var(--space-3);
@@ -812,7 +648,6 @@ function joinLabels(labels: string[]): string {
 }
 
 .state-row > div,
-.billing-fact-list > div,
 .allowance-list > div > div {
   display: grid;
   flex: 1;
@@ -827,7 +662,6 @@ function joinLabels(labels: string[]): string {
 }
 
 .state-label,
-.billing-fact-value,
 .allowance-value,
 .rate-name,
 .exact-rate {
@@ -836,7 +670,6 @@ function joinLabels(labels: string[]): string {
 }
 
 .state-row small,
-.billing-fact-list small,
 .allowance-list small,
 .raw-fact-list small {
   color: var(--color-text-muted);
@@ -948,16 +781,6 @@ function joinLabels(labels: string[]): string {
 
 .pricing-disclosure[open] > summary .ui-icon {
   transform: rotate(90deg);
-}
-
-.advanced-details {
-  display: grid;
-  gap: var(--space-3);
-  padding-bottom: var(--space-3);
-}
-
-.advanced-selector-section {
-  min-width: 0;
 }
 
 .raw-fact-list header {

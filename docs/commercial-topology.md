@@ -165,10 +165,10 @@ The model list shows compact representative inference rates. Details show:
 3. separately metered optional, automatic, or independently callable request costs attributable to
    that mechanism.
 
-The mechanism remains the stable presentation context. A related service never replaces it or
-merges unlike meters into a synthetic total. Optional services disclose charges that apply only
-when used; automatic components disclose charges produced by the selected mechanism. Only an exact
-`exclusive_with` relation creates a mutually exclusive related-service choice.
+The mechanism remains the stable presentation context. One fully expanded rate sheet presents it
+before its related services while keeping their meters separate. Optional services label charges
+that apply only when used; automatic components label charges produced by the mechanism. Only an
+exact `exclusive_with` relation creates a mutually exclusive related-service choice.
 
 The UI does not expose training, storage, capacity procurement, plan enrollment, or settlement
 topology. It does not ask for usage quantities or show a total. Known parameters that affect the
