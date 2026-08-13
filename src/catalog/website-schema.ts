@@ -23,9 +23,16 @@ const modelDate = z.union([
   z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])$/),
   z.string().regex(/^\d{4}$/),
 ]);
-const modelTaskSchema = z.enum(modelTasks);
 const standardPriceDimensionSchema = z.enum(standardPriceDimensions);
 const standardBillingUnitSchema = z.enum(standardBillingUnits);
+
+function enumIndexSchema(values: readonly unknown[]) {
+  return z
+    .number()
+    .int()
+    .min(0)
+    .max(values.length - 1);
+}
 
 function providerOwned<T extends z.ZodType>(value: T) {
   return z.strictObject({
@@ -107,7 +114,6 @@ const publishedValiditySchema = z.union([
 ]);
 
 const websitePricingCellSchema = z.strictObject({
-  meter: z.string().min(1),
   amount: z.string().min(1),
   displayUnit: z.string().min(1),
   accessibleText: z.string().min(1),
@@ -142,46 +148,92 @@ export const websitePricingSummarySchema = z.strictObject({
   output: websitePricingCellSchema.optional(),
 });
 
-const websiteCatalogIndexModelSchema = z.strictObject({
-  provider_id: nonEmpty,
-  model_id: nonEmpty,
-  version: nonEmpty.optional(),
-  name: nonEmpty,
-  tasks: z.array(modelTaskSchema),
-  release_date: modelDate.optional(),
-  status: z.enum(modelLifecycles),
-  release_stage: z.enum(modelReleaseStages),
-  context_tokens: z.number().int().nonnegative().optional(),
-  detail_chunk: z.number().int().nonnegative(),
-});
+const websiteCatalogIndexModelSchema = z.tuple([
+  z.number().int().nonnegative(),
+  nonEmpty,
+  nonEmpty.nullable(),
+  nonEmpty.nullable(),
+  z.array(enumIndexSchema(modelTasks)),
+  modelDate.nullable(),
+  enumIndexSchema(modelLifecycles),
+  enumIndexSchema(modelReleaseStages),
+  z.number().int().nonnegative().nullable(),
+  z.number().int().positive().nullable(),
+]);
 
-export const websiteCatalogIndexSchema = z.strictObject({
-  schema_version: z.literal(2),
-  data_version: hash,
-  generated_at: z.string().min(1),
-  providers: z.array(
-    z.strictObject({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      pricing_coverage: z.strictObject({
-        models: z.number().int().nonnegative(),
-        representative_models: z.number().int().nonnegative(),
-        offer_models: z.number().int().nonnegative(),
-        unknown_models: z.number().int().nonnegative(),
-        not_applicable_models: z.number().int().nonnegative(),
-        standalone_resources: z.number().int().nonnegative(),
-        detail_chunks: z.number().int().nonnegative(),
+export const websiteCatalogIndexSchema = z
+  .strictObject({
+    schema_version: z.literal(3),
+    data_version: hash,
+    generated_at: z.string().min(1),
+    providers: z.array(
+      z.strictObject({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        pricing_coverage: z.strictObject({
+          representative_models: z.number().int().nonnegative(),
+          offer_models: z.number().int().nonnegative(),
+          unknown_models: z.number().int().nonnegative(),
+          not_applicable_models: z.number().int().nonnegative(),
+          standalone_resources: z.number().int().nonnegative(),
+          detail_chunks: z.number().int().nonnegative(),
+        }),
       }),
-    }),
-  ),
-  models: z.array(websiteCatalogIndexModelSchema),
-});
+    ),
+    models: z.array(websiteCatalogIndexModelSchema),
+  })
+  .superRefine(({ providers, models }, context) => {
+    for (const [index, model] of models.entries()) {
+      if (model[0] < providers.length) continue;
+      context.addIssue({
+        code: "custom",
+        message: `Model provider index ${model[0]} does not exist`,
+        path: ["models", index, 0],
+      });
+    }
+  });
 
-export const websitePricingSummariesSchema = z.strictObject({
-  schema_version: z.literal(1),
-  data_version: hash,
-  pricing: z.array(websitePricingSummarySchema),
-});
+const websitePricingStatusRowSchema = z.tuple([nonEmpty, nonEmpty]);
+const websitePricingCellRowSchema = z.tuple([
+  nonEmpty,
+  nonEmpty,
+  nonEmpty,
+  z.union([z.literal(0), z.literal(1)]),
+]);
+const websitePricingSummaryRowSchema = z.tuple([
+  z.union([z.literal(0), z.literal(1), z.literal(2)]),
+  z.number().int().nonnegative().nullable(),
+  z.number().int().nonnegative().nullable(),
+  z.number().int().nonnegative().nullable(),
+  z.number().int().nonnegative().nullable(),
+]);
+
+export const websitePricingSummariesSchema = z
+  .strictObject({
+    schema_version: z.literal(2),
+    data_version: hash,
+    statuses: z.array(websitePricingStatusRowSchema),
+    cells: z.array(websitePricingCellRowSchema),
+    pricing: z.array(websitePricingSummaryRowSchema),
+  })
+  .superRefine(({ statuses, cells, pricing }, context) => {
+    for (const [rowIndex, row] of pricing.entries()) {
+      const indexes = [
+        [row[1], statuses.length],
+        [row[2], cells.length],
+        [row[3], cells.length],
+        [row[4], cells.length],
+      ] as const;
+      for (const [columnIndex, [index, length]] of indexes.entries()) {
+        if (index === null || index < length) continue;
+        context.addIssue({
+          code: "custom",
+          message: `Pricing dictionary index ${index} does not exist`,
+          path: ["pricing", rowIndex, columnIndex + 1],
+        });
+      }
+    }
+  });
 
 const selectorBase = {
   key: z.string().min(1),
@@ -455,17 +507,29 @@ export const websiteDetailChunkSchema = z.strictObject({
 });
 
 export type WebsiteCatalogIndex = z.infer<typeof websiteCatalogIndexSchema>;
-export type WebsiteCatalogIndexModel = z.infer<typeof websiteCatalogIndexModelSchema>;
 export type WebsitePricingSummaries = z.infer<typeof websitePricingSummariesSchema>;
 export type WebsitePricingSummary = z.infer<typeof websitePricingSummarySchema>;
 export type WebsiteDetailChunk = z.infer<typeof websiteDetailChunkSchema>;
 export type WebsiteOfferChunk = z.infer<typeof websiteOfferChunkSchema>;
 export type WebsiteOfferReference = z.infer<typeof websiteOfferReferenceSchema>;
+export interface WebsiteCatalogIndexModel {
+  provider_id: string;
+  model_id: string;
+  version?: string;
+  name: string;
+  tasks: (typeof modelTasks)[number][];
+  release_date?: string;
+  status: (typeof modelLifecycles)[number];
+  release_stage: (typeof modelReleaseStages)[number];
+  context_tokens?: number;
+  detail_chunk: number;
+}
+
 export type WebsiteModel = WebsiteCatalogIndexModel & {
   uid: string;
   pricing: WebsitePricingSummary;
 };
-export type WebsiteCatalog = Omit<WebsiteCatalogIndex, "models"> & {
+export type WebsiteCatalog = Omit<WebsiteCatalogIndex, "models" | "schema_version"> & {
   models: WebsiteModel[];
 };
 export type WebsiteModelDetail = z.infer<typeof websiteModelDetailSchema>;

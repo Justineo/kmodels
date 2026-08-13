@@ -15,14 +15,15 @@ import {
   websitePublication,
   type WebsitePublication,
 } from "../src/catalog/website-data.ts";
+import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 import type { WebsiteModelDetail, WebsitePricingOffer } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
 const websiteDataBudgets = {
-  catalogBytes: 1024 * 1024,
-  pricingBytes: 1024 * 1024,
-  compressedCatalogBytes: 64 * 1024,
-  compressedPricingBytes: 32 * 1024,
+  catalogBytes: 320 * 1024,
+  pricingBytes: 112 * 1024,
+  compressedCatalogBytes: 48 * 1024,
+  compressedPricingBytes: 10 * 1024,
   modelDetailBytes: 80 * 1024 * 1024,
 };
 
@@ -158,16 +159,24 @@ describe("website data", () => {
     expect(publication.pricing.data_version).toBe(dataVersion);
     expect(publication.catalog.models).toHaveLength(catalog.models.length);
     expect(publication.pricing.pricing).toHaveLength(catalog.models.length);
-    for (const summary of publication.pricing.pricing) {
+    expect(new Set(publication.pricing.statuses.map((value) => JSON.stringify(value))).size).toBe(
+      publication.pricing.statuses.length,
+    );
+    expect(new Set(publication.pricing.cells.map((value) => JSON.stringify(value))).size).toBe(
+      publication.pricing.cells.length,
+    );
+    const runtimeCatalog = parseWebsiteCatalog(publication.catalog, publication.pricing);
+    for (const { pricing } of runtimeCatalog.models) {
       const hasRepresentativeRate =
-        summary.input !== undefined || summary.cache !== undefined || summary.output !== undefined;
-      expect(summary.status === undefined).toBe(hasRepresentativeRate);
+        pricing.input !== undefined || pricing.cache !== undefined || pricing.output !== undefined;
+      expect(pricing.status === undefined).toBe(hasRepresentativeRate);
     }
-    expect(
-      publication.pricing.pricing.flatMap(({ input, cache, output }) =>
-        [input, cache, output].flatMap((price) => (price === undefined ? [] : [price.amount])),
+    const amounts = runtimeCatalog.models.flatMap(({ pricing }) =>
+      [pricing.input, pricing.cache, pricing.output].flatMap((cell) =>
+        cell === undefined ? [] : [cell.amount],
       ),
-    ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
+    );
+    expect(amounts).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
   }, 90_000);
 
   it("publishes audit-free details in bounded provider chunks", async () => {
@@ -202,7 +211,7 @@ describe("website data", () => {
         provider.pricing_coverage.offer_models +
           provider.pricing_coverage.unknown_models +
           provider.pricing_coverage.not_applicable_models,
-      ).toBe(provider.pricing_coverage.models);
+      ).toBe(catalog.models.filter(({ provider_id }) => provider_id === provider.id).length);
     }
     expect(new Set(details.map(({ model_ref }) => model_ref))).toEqual(
       new Set(catalog.models.map(({ uid }) => uid)),

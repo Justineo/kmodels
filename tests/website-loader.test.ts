@@ -46,7 +46,6 @@ const provider = {
   id: "test",
   name: "Test",
   pricing_coverage: {
-    models: 1,
     representative_models: 0,
     offer_models: 0,
     unknown_models: 1,

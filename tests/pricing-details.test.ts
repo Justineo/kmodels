@@ -94,7 +94,12 @@ function offer(
 async function render(offers: WebsitePricingOffer[]): Promise<string> {
   const detail = { offers } satisfies WebsitePricingDetail;
   return renderToString(
-    createSSRApp(ssrComponent(PricingDetails), { model, detail, loading: false }),
+    createSSRApp(ssrComponent(PricingDetails), {
+      model,
+      detail,
+      loading: false,
+      error: undefined,
+    }),
   );
 }
 
@@ -121,5 +126,45 @@ describe("model pricing details", () => {
     expect(html).toContain("Choose Region to see rates");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("$3");
+  });
+
+  it("explains a billing meter as plainly labeled facts", async () => {
+    const pricedOffer = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    const rate = pricedOffer.rates[0];
+    if (rate === undefined) throw new Error("Missing test rate");
+    rate.driver = {
+      label: "Runtime input tokens",
+      definition: "Input tokens reported for the completed request",
+      aggregation: "Request",
+      aggregation_definition: "Retries are counted as separate requests.",
+      resolution_phase: "outcome",
+    };
+
+    const html = await render([pricedOffer]);
+
+    expect(html).toContain("What this rate charges for");
+    expect(html).toContain("Charges for");
+    expect(html).toContain("What counts");
+    expect(html).toContain("Counted per");
+    expect(html).toContain("When known");
+    expect(html).toContain("After the result is known");
+    expect(html).not.toContain("How usage is counted");
+    expect(html).not.toContain("aggregation boundary");
+    expect(html).not.toContain("resolution phase");
+  });
+
+  it("keeps a retryable pricing state when detail loading fails", async () => {
+    const html = await renderToString(
+      createSSRApp(ssrComponent(PricingDetails), {
+        model,
+        detail: undefined,
+        loading: false,
+        error: "Model details are temporarily unavailable.",
+      }),
+    );
+
+    expect(html).toContain("Pricing unavailable");
+    expect(html).toContain("Model details are temporarily unavailable.");
+    expect(html).toContain("Retry");
   });
 });

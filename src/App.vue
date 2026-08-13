@@ -1,16 +1,28 @@
 <script setup lang="ts" vapor>
-import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  shallowRef,
+  useTemplateRef,
+  watch,
+  type Component,
+} from "vue";
 import { afterFirstPaint } from "./after-first-paint.ts";
-import { modelLifecycles, modelReleaseStages } from "./catalog/catalog-vocabulary.ts";
-import { loadWebsiteModelDetail, loadWebsiteProviderPricing } from "./catalog/website-loader.ts";
+import {
+  loadWebsiteModelDetail,
+  loadWebsiteProviderPricing,
+  preloadWebsiteSchemas,
+} from "./catalog/website-loader.ts";
 import {
   groupModels,
   modelGroupKey,
   modelTableRows,
   type ModelGroup,
 } from "./catalog/model-groups.ts";
-import { formatCount, formatModelTask, versionBadgeModelUids } from "./catalog/presentation.ts";
-import { orderedTasks } from "./catalog/task.ts";
+import { formatCount, versionBadgeModelUids } from "./catalog/presentation.ts";
 import type { WebsiteCatalog, WebsiteModel } from "./catalog/website-schema.ts";
 import {
   formatRouteSearch,
@@ -22,7 +34,6 @@ import {
 import { indexModels, searchModels } from "./catalog/search.ts";
 import { calculateVirtualRange, nearestItemScrollOffset } from "./catalog/virtualization.ts";
 import ColumnSortButton from "./components/ColumnSortButton.vue";
-import IconSprite from "./components/IconSprite.vue";
 import ModelGroupRow from "./components/ModelGroupRow.vue";
 import ModelRow from "./components/ModelRow.vue";
 import ProviderSelect from "./components/ProviderSelect.vue";
@@ -36,15 +47,13 @@ const OVERSCAN_ROWS = 8;
 const INITIAL_VIRTUAL_ITEM_SIZE = 1;
 
 type Theme = "light" | "dark";
-const LIFECYCLE_OPTIONS = modelLifecycles;
-const RELEASE_STAGE_OPTIONS = modelReleaseStages;
 const root = document.documentElement;
 const initialRoute = parseRouteSearch(location.search);
 const props = defineProps<{ catalog: WebsiteCatalog }>();
 
 const { providers, generated_at: generatedAt } = props.catalog;
 const catalogUpdateUrl = __KMODELS_CATALOG_UPDATE_URL__;
-const models = ref(props.catalog.models);
+const models = props.catalog.models;
 const query = ref(initialRoute.query);
 const selectedProvider = ref(initialRoute.provider);
 const selectedTasks = ref(initialRoute.tasks);
@@ -55,8 +64,7 @@ const expandedModelGroupKeys = ref<ReadonlySet<string>>(new Set());
 const theme = ref<Theme>(root.dataset.theme === "dark" ? "dark" : "light");
 const sort = ref(initialRoute.sort);
 const searchInput = useTemplateRef<HTMLInputElement>("searchInput");
-const filterScrollHost = useTemplateRef<HTMLDivElement>("filterScrollHost");
-const filterScrollViewport = useTemplateRef<HTMLDivElement>("filterScrollViewport");
+const filterPopover = shallowRef<Component>();
 const tableScrollHost = useTemplateRef<HTMLDivElement>("tableScrollHost");
 const tableShell = useTemplateRef<HTMLDivElement>("tableShell");
 const tableBody = useTemplateRef<HTMLTableSectionElement>("tableBody");
@@ -69,10 +77,6 @@ let detailRequest = "";
 let providerPricingRequest = "";
 let applyingRoute = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
-const updateFilterScrollbars = useOverlayScrollbars(() => ({
-  target: filterScrollHost.value,
-  viewport: filterScrollViewport.value,
-}));
 const updateTableHorizontalScrollbar = useOverlayScrollbars(() => ({
   target: tableScrollHost.value,
   viewport: tableShell.value,
@@ -91,28 +95,39 @@ const selectedProviderRecord = computed(() =>
 );
 const selectedModel = computed(() => {
   const uid = selectedModelUid.value;
-  return uid === undefined ? undefined : models.value.find((model) => model.uid === uid);
+  return uid === undefined ? undefined : models.find((model) => model.uid === uid);
 });
 const providerOptions = [...providers].sort((left, right) => left.name.localeCompare(right.name));
-const taskOptions = orderedTasks(models.value.flatMap((model) => model.tasks));
-const versionBadgeUids = versionBadgeModelUids(models.value);
-const allModelGroups = computed(() => groupModels(models.value));
-const searchIndex = indexModels(models.value);
+const versionBadgeUids = versionBadgeModelUids(models);
+const allModelGroups = groupModels(models);
+let searchIndex: ReturnType<typeof indexModels<WebsiteModel>> | undefined;
 const filteredModels = computed(() => {
-  const values = searchModels(searchIndex, query.value).filter(
-    (model) =>
-      (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
-      (selectedTasks.value.length === 0 ||
-        model.tasks.some((task) => selectedTasks.value.includes(task))) &&
-      (selectedLifecycles.value.length === 0 || selectedLifecycles.value.includes(model.status)) &&
-      (selectedReleaseStages.value.length === 0 ||
-        selectedReleaseStages.value.includes(model.release_stage)),
-  );
+  let values =
+    query.value === "" ? models : searchModels((searchIndex ??= indexModels(models)), query.value);
+  if (
+    selectedProvider.value !== "" ||
+    selectedTasks.value.length > 0 ||
+    selectedLifecycles.value.length > 0 ||
+    selectedReleaseStages.value.length > 0
+  )
+    values = values.filter(
+      (model) =>
+        (selectedProvider.value === "" || model.provider_id === selectedProvider.value) &&
+        (selectedTasks.value.length === 0 ||
+          model.tasks.some((task) => selectedTasks.value.includes(task))) &&
+        (selectedLifecycles.value.length === 0 ||
+          selectedLifecycles.value.includes(model.status)) &&
+        (selectedReleaseStages.value.length === 0 ||
+          selectedReleaseStages.value.includes(model.release_stage)),
+    );
   const activeSort = sort.value;
-  if (activeSort) values.sort((left, right) => compareModels(left, right, activeSort));
+  if (activeSort)
+    values = [...values].sort((left, right) => compareModels(left, right, activeSort));
   return values;
 });
-const filteredModelGroups = computed(() => groupModels(filteredModels.value));
+const filteredModelGroups = computed(() =>
+  filteredModels.value === models ? allModelGroups : groupModels(filteredModels.value),
+);
 const tableRows = computed(() =>
   modelTableRows(filteredModelGroups.value, expandedModelGroupKeys.value),
 );
@@ -133,12 +148,6 @@ const hasFilters = computed(
   () =>
     query.value !== "" ||
     selectedProvider.value !== "" ||
-    selectedTasks.value.length > 0 ||
-    selectedLifecycles.value.length > 0 ||
-    selectedReleaseStages.value.length > 0,
-);
-const hasAdvancedFilters = computed(
-  () =>
     selectedTasks.value.length > 0 ||
     selectedLifecycles.value.length > 0 ||
     selectedReleaseStages.value.length > 0,
@@ -268,11 +277,6 @@ function clearAdvancedFilters(): void {
   selectedReleaseStages.value = [];
 }
 
-function handleFilterToggle(event: ToggleEvent): void {
-  if (event.newState !== "open") return;
-  void nextTick(updateFilterScrollbars);
-}
-
 function dismissTooltips(): void {
   tooltipCoordinator.dismiss();
 }
@@ -320,7 +324,7 @@ function reconcileRouteSelections(): void {
   }
   if (
     selectedModelUid.value !== undefined &&
-    !models.value.some((model) => model.uid === selectedModelUid.value)
+    !models.some((model) => model.uid === selectedModelUid.value)
   ) {
     selectedModelUid.value = undefined;
   }
@@ -491,6 +495,11 @@ detailsState.close = () => {
   selectedModelUid.value = undefined;
 };
 detailsState.navigate = selectRelativeModel;
+detailsState.retryModel = () => {
+  const model = selectedModel.value;
+  if (model === undefined) return;
+  void loadModelDetail(model);
+};
 
 watch(
   selectedModel,
@@ -518,6 +527,18 @@ watch(
   { immediate: true },
 );
 
+async function loadDeferredUi(): Promise<void> {
+  const deferred = [
+    import("./components/FilterPopover.vue").then((module) => {
+      filterPopover.value = module.default;
+    }),
+    import("./details-app.ts").then(({ mountDetailsApp }) => mountDetailsApp()),
+    preloadWebsiteSchemas(),
+  ];
+  searchIndex ??= indexModels(models);
+  await Promise.all(deferred);
+}
+
 onMounted(() => {
   reconcileRouteSelections();
   virtualItemSize = pixelToken("--layout-table-row-height");
@@ -532,11 +553,7 @@ onMounted(() => {
   }
   updateVirtualRange();
   syncRoute();
-  void afterFirstPaint().then(() => {
-    void import("./details-app.ts")
-      .then(({ mountDetailsApp }) => mountDetailsApp())
-      .catch((error: unknown) => console.error(error));
-  });
+  void afterFirstPaint().then(loadDeferredUi).catch(console.error);
 });
 
 onUnmounted(() => {
@@ -549,8 +566,6 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <IconSprite />
-
   <header class="site-header">
     <h1 id="page-title">
       <a class="brand" href="/" aria-label="Kmodels home">Kmodels</a>
@@ -640,92 +655,15 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <dialog
-          id="catalog-filters"
-          class="filter-popover"
-          popover="auto"
-          aria-labelledby="filter-popover-title"
-          @toggle="handleFilterToggle"
-        >
-          <header class="filter-popover-header">
-            <div>
-              <h2 id="filter-popover-title">Filters</h2>
-              <p>Matches any selected value within each group.</p>
-            </div>
-            <div class="filter-popover-actions">
-              <button type="button" :disabled="!hasAdvancedFilters" @click="clearAdvancedFilters">
-                Clear
-              </button>
-              <button
-                class="filter-popover-close"
-                type="button"
-                popovertarget="catalog-filters"
-                popovertargetaction="hide"
-                aria-label="Close filters"
-              >
-                <UiIcon name="x" />
-              </button>
-            </div>
-          </header>
-
-          <div ref="filterScrollHost" class="filter-scroll-host" data-overlayscrollbars-initialize>
-            <div ref="filterScrollViewport" class="filter-scroll-viewport">
-              <div class="filter-popover-body">
-                <fieldset class="filter-group">
-                  <legend>Tasks</legend>
-                  <div class="filter-options">
-                    <label v-for="task in taskOptions" :key="task" class="filter-option">
-                      <input v-model="selectedTasks" type="checkbox" :value="task" />
-                      <span>{{ formatModelTask(task) }}</span>
-                    </label>
-                  </div>
-                </fieldset>
-
-                <fieldset class="filter-group">
-                  <legend>Lifecycle</legend>
-                  <div class="filter-options">
-                    <label
-                      v-for="lifecycle in LIFECYCLE_OPTIONS"
-                      :key="lifecycle"
-                      class="filter-option"
-                    >
-                      <input v-model="selectedLifecycles" type="checkbox" :value="lifecycle" />
-                      <span
-                        class="filter-status-dot"
-                        :data-status="lifecycle"
-                        aria-hidden="true"
-                      ></span>
-                      <span class="status-filter-label">{{ lifecycle }}</span>
-                    </label>
-                  </div>
-                </fieldset>
-
-                <fieldset class="filter-group">
-                  <legend>Release stage</legend>
-                  <div class="filter-options">
-                    <label
-                      v-for="releaseStage in RELEASE_STAGE_OPTIONS"
-                      :key="releaseStage"
-                      class="filter-option"
-                    >
-                      <input
-                        v-model="selectedReleaseStages"
-                        type="checkbox"
-                        :value="releaseStage"
-                      />
-                      <span
-                        class="filter-status-dot"
-                        :data-status="releaseStage"
-                        aria-hidden="true"
-                      ></span>
-                      <span class="status-filter-label">{{ releaseStage }}</span>
-                    </label>
-                  </div>
-                </fieldset>
-              </div>
-            </div>
-          </div>
-        </dialog>
+        <component
+          :is="filterPopover"
+          v-if="filterPopover"
+          v-model:tasks="selectedTasks"
+          v-model:lifecycles="selectedLifecycles"
+          v-model:release-stages="selectedReleaseStages"
+          :models="models"
+          @clear="clearAdvancedFilters"
+        />
       </div>
 
       <div ref="tableScrollHost" class="table-scroll-host" data-overlayscrollbars-initialize>

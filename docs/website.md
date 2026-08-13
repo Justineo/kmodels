@@ -106,12 +106,17 @@ Status: implemented core; provider pricing convergence is in progress
   reject invalid or non-integral count/TTL input.
 - Each resolved rate retains its display-ready charge binding. The primary rate
   matrix keeps meter and numeric rate scannable; each row discloses the official
-  cost driver, its reviewed billable-trigger definition, aggregation boundary,
-  and earliest resolution phase on demand. A known rate without an exact public
-  quantity signal stays visible; the UI never treats that as a missing rate.
+  cost driver on demand as four plainly labeled facts: what is measured, what
+  counts, what each total is grouped by, and when that quantity becomes known.
+  Do not expose internal terms such as “aggregation boundary” or “resolution
+  phase” in UI copy. A known rate without an exact public quantity signal stays
+  visible; the UI never treats that as a missing rate.
   Contribution rows expose the same driver metadata without copying the target rate. Billing mode is
   read-only invocation context. These facts explain what affects cost without accepting usage input,
   multiplying quantities, or presenting an account total.
+- Keep the Pricing section mounted after a detail request fails. Show a clear
+  unavailable state with an in-place retry instead of removing the section when
+  loading ends without a usable detail payload.
 - The provider-level pricing inspector uses the same rate, driver, contribution, raw-fact, and
   retained-snapshot semantics. Known raw facts may expose only concise source-native parameters
   that affect cost; observations, locators, and audit evidence remain excluded.
@@ -242,12 +247,22 @@ Status: implemented core; provider pricing convergence is in progress
   scroll positions are transient.
 - The browser's first-render data dependencies are `/ui/catalog/index.json` and
   `/ui/catalog/pricing.json`. Request both concurrently and await both before
-  mounting the application; core table data never has a deferred loading state.
+  mounting the application; preload both from the HTML shell so their transfers
+  start in parallel with the core module graph. Core table data never has a
+  deferred loading state.
   The catalog chunk contains provider labels and only the model fields needed
   for rows, grouping, search, filters, and sorting. The pricing chunk contains
   build-time representative pricing in matching model order. Browser-only UIDs
   are derived from the exact tuple; `updated_date`, inspector facts, audit
   fields, and random per-model references do not inflate either payload.
+  Both chunks use versioned compact row tuples instead of repeating field names.
+  Catalog rows index providers and fixed vocabularies; pricing rows index shared
+  status and cell dictionaries. A display name identical to its model ID and a
+  zero detail-chunk index use compact sentinel values and are restored at the
+  boundary. Expand the rows once in the dependency-free parser, while retaining
+  shared task, status, and pricing-cell objects in memory. This encoding is
+  transport-only and does not weaken closed-schema validation or change UI
+  semantics.
 - Request model details only when their inspector opens. Detail assets are
   provider-scoped, deterministic chunks capped at 2 MiB uncompressed; large
   providers may own several numbered chunks. Model pricing refers to exact
@@ -279,22 +294,24 @@ Status: implemented core; provider pricing convergence is in progress
   Scope deferred-source, parsed-chunk, and model-detail caches to that version;
   evict rejected requests so a transient fetch or validation failure cannot
   poison later attempts.
-- Keep the initial catalog parser small and dependency-free. On hover-capable
-  pointer devices, load OverlayScrollbars runtime/CSS concurrently with core
-  data so its explicit viewports replace native scrollbars before the first
-  rendered frame. On coarse touch devices without hover, do not request or
-  initialize OverlayScrollbars for general surfaces; keep their native scrolling
-  and momentum. The table's horizontal-only and vertical-only instances are the
-  exception: initialize them against the real outer and nested body viewports so
-  touch users can drag directly through wide and long result sets.
-  Load the full closed-schema validator, inspector component, and inspector CSS
-  asynchronously after that frame. Split non-core code instead of deferring core
-  table data. Both browser graphs contain only browser-safe modules; canonical
-  hashing and publication I/O remain build/collection concerns. Static Vue and
-  scrollbar dependencies are split into cacheable, module-preloaded chunks;
-  deferred chunks must not be module-preloaded by the HTML shell. Mount the
-  deferred inspector into its dedicated second Vapor root and share only a
-  small reactive state object with the catalog root.
+- Keep the initial catalog parser small and dependency-free. Provider/UI icons
+  and table scrollbars belong to the first rendered state: start the icon
+  sprite, applicable OverlayScrollbars runtime/CSS, and two core data requests
+  concurrently; await them before mounting and initialize scrollbars during
+  mount. These may be separate cacheable async chunks, but are not post-paint
+  work. The first Vapor root renders only visible workspace chrome and the
+  virtualized table. Keep catalog rows outside Vue's deep-reactive graph, and
+  build the search index after first paint unless an earlier search needs it.
+  After that paint, eagerly load the closed filter popover, inspector, their CSS,
+  and the full closed-schema validator in parallel. Only provider/model JSON
+  details remain interaction-demanded. On coarse touch devices, keep native
+  scrolling for general surfaces; initialize the table's axis-specific
+  OverlayScrollbars during the first mount against its real outer and nested
+  body viewports.
+  Keep both browser graphs browser-safe; canonical hashing and publication I/O
+  remain build concerns. Keep post-paint chunks out of the HTML module-preload
+  graph. Mount the inspector into a second Vapor root and share only the small
+  reactive detail state.
 - All UI projections exclude source records, observations, locators, undigested
   source fragments, derivations, evidence arrays, and canonical audit-envelope
   metadata. Raw commercial facts may retain only display-safe structured

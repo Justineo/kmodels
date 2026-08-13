@@ -28,6 +28,10 @@ function websiteSchemas(): Promise<typeof import("./website-schema.ts")> {
   return schemaModule;
 }
 
+export function preloadWebsiteSchemas(): Promise<void> {
+  return websiteSchemas().then(() => undefined);
+}
+
 function cachedRequest<T>(
   cache: Map<string, Promise<T>>,
   key: string,
