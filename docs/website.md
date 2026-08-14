@@ -61,7 +61,7 @@ Status: implemented core; provider pricing convergence is in progress
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `[Run mode when selectable] → Rates → audit exceptions`. The first mechanism in
+- The detail flow is `[Run mode when selectable] → offers → audit exceptions`. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
   recommendation, or cheapest-offer choice. A sole mechanism is named only by its base-rate block.
   The selected mechanism remains the context for the entire cost breakdown; exact mechanism
