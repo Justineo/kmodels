@@ -114,8 +114,8 @@ describe("model pricing details", () => {
   it("shows invariant regional rates without making the user choose a region", async () => {
     const html = await render([offer([{ amount: "$2", scope: region("us", "eu") }])]);
 
-    expect(html).toContain("Rates");
     expect(html).toContain("$2");
+    expect(html).not.toContain(">Rates<");
     expect(html).not.toContain("Region");
     expect(html).not.toContain("Run mode");
   });

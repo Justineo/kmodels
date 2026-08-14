@@ -156,12 +156,7 @@ function offerKind(offer: WebsitePricingOffer): string {
         </fieldset>
       </section>
 
-      <section v-if="rateOffers.length > 0" class="rate-sheet" aria-labelledby="rates-heading">
-        <header class="rate-sheet-heading">
-          <h4 id="rates-heading">Rates</h4>
-          <p>Each meter is billed separately.</p>
-        </header>
-
+      <div v-if="rateOffers.length > 0" class="rate-sheet">
         <div v-if="!activeMechanism" class="pricing-outcome no-base-offer">
           <strong>No base model rate</strong>
         </div>
@@ -181,7 +176,7 @@ function offerKind(offer: WebsitePricingOffer): string {
           </header>
           <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
         </article>
-      </section>
+      </div>
     </template>
   </section>
 </template>
@@ -253,8 +248,15 @@ function offerKind(offer: WebsitePricingOffer): string {
   background: var(--color-surface-hover);
 }
 
-.run-mode,
+.run-mode {
+  margin-top: var(--space-5);
+}
+
 .rate-sheet {
+  margin-top: var(--space-3);
+}
+
+.run-mode + .rate-sheet {
   margin-top: var(--space-5);
 }
 
@@ -265,22 +267,13 @@ function offerKind(offer: WebsitePricingOffer): string {
 }
 
 .section-heading,
-.rate-sheet-heading h4,
-.rate-sheet-heading p,
 .rate-offer-heading h5 {
   margin: 0;
 }
 
-.section-heading,
-.rate-sheet-heading h4 {
+.section-heading {
   color: var(--color-text-primary);
   font-size: var(--font-size-body);
-}
-
-.rate-sheet-heading p {
-  margin-top: var(--space-0-5);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
 }
 
 .offer-choice small {
@@ -345,12 +338,6 @@ function offerKind(offer: WebsitePricingOffer): string {
   text-align: right;
 }
 
-.rate-sheet {
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--color-border-subtle);
-}
-
-.rate-sheet-heading,
 .rate-offer-heading {
   gap: var(--space-3);
 }
@@ -360,6 +347,12 @@ function offerKind(offer: WebsitePricingOffer): string {
   margin-top: var(--space-4);
   padding-top: var(--space-4);
   border-top: 1px solid var(--color-border-subtle);
+}
+
+.rate-offer[data-kind="model_mechanism"] {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .rate-offer-heading > div {
