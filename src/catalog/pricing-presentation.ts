@@ -758,6 +758,10 @@ export function formatDailyTimeSchedule(schedule: DailyTimeSchedule): string {
   return schedule.windows.map(({ from, until }) => `${from}–${until}`).join(", ");
 }
 
+export function formatRateUnit(value: string): string {
+  return value.replace(/^per(?=\s|$)/, "/");
+}
+
 function offerCanApplyToModel(offer: PricingOffer, context: readonly PricingSelection[]): boolean {
   const statePossible = offer.states.some(
     ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",

@@ -1,5 +1,3 @@
-import { createSSRApp, type Component } from "vue";
-import { renderToString } from "vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import PricingDetails from "../src/components/PricingDetails.vue";
 import type {
@@ -8,6 +6,7 @@ import type {
   WebsitePricingDetail,
   WebsitePricingOffer,
 } from "../src/catalog/website-schema.ts";
+import { renderComponent } from "./render-component.ts";
 
 const model = {
   provider_id: "test",
@@ -20,12 +19,6 @@ const model = {
   uid: "test/model",
   pricing: { outcome: "offers" },
 } satisfies WebsiteModel;
-
-function ssrComponent(value: unknown): Component {
-  if (typeof value !== "object" || value === null || !("ssrRender" in value))
-    throw new Error("Vapor component is missing its SSR renderer");
-  return value;
-}
 
 function region(...values: string[]): WebsitePriceApplicability {
   return {
@@ -100,14 +93,12 @@ function offer(
 
 async function render(offers: WebsitePricingOffer[]): Promise<string> {
   const detail = { offers } satisfies WebsitePricingDetail;
-  return renderToString(
-    createSSRApp(ssrComponent(PricingDetails), {
-      model,
-      detail,
-      loading: false,
-      error: undefined,
-    }),
-  );
+  return renderComponent(PricingDetails, {
+    model,
+    detail,
+    loading: false,
+    error: undefined,
+  });
 }
 
 describe("model pricing details", () => {
@@ -250,14 +241,12 @@ describe("model pricing details", () => {
   });
 
   it("keeps a retryable pricing state when detail loading fails", async () => {
-    const html = await renderToString(
-      createSSRApp(ssrComponent(PricingDetails), {
-        model,
-        detail: undefined,
-        loading: false,
-        error: "Model details are temporarily unavailable.",
-      }),
-    );
+    const html = await renderComponent(PricingDetails, {
+      model,
+      detail: undefined,
+      loading: false,
+      error: "Model details are temporarily unavailable.",
+    });
 
     expect(html).toContain("Pricing unavailable");
     expect(html).toContain("Model details are temporarily unavailable.");

@@ -1,5 +1,3 @@
-import { createSSRApp, type Component } from "vue";
-import { renderToString } from "vue/server-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
 import ProviderPricingOfferDetails from "../src/components/ProviderPricingOfferDetails.vue";
@@ -10,14 +8,9 @@ import type {
   WebsiteProviderPricingDetail,
   WebsiteProviderPricingOffer,
 } from "../src/catalog/website-schema.ts";
+import { renderComponent } from "./render-component.ts";
 
 afterEach(() => vi.useRealTimers());
-
-function ssrComponent(value: unknown): Component {
-  if (typeof value !== "object" || value === null || !("ssrRender" in value))
-    throw new Error("Vapor component is missing its SSR renderer");
-  return value;
-}
 
 function promotion(value: boolean): WebsitePricingOffer["states"][number]["applicability"] {
   return {
@@ -129,9 +122,7 @@ function pricingOffer(): WebsitePricingOffer {
 
 describe("provider pricing details", () => {
   it("renders every conditional pricing state", async () => {
-    const html = await renderToString(
-      createSSRApp(ssrComponent(ProviderPricingOfferDetails), { offer: pricingOffer() }),
-    );
+    const html = await renderComponent(ProviderPricingOfferDetails, { offer: pricingOffer() });
 
     expect(html).toContain('aria-label="Pricing states"');
     expect(html).toContain("Free");
@@ -146,9 +137,10 @@ describe("provider pricing details", () => {
     offer.selectors = [billingPeriodSelector];
     offer.rates = billingPeriodRates();
 
-    const html = await renderToString(
-      createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
-    );
+    const html = await renderComponent(PricingOfferBreakdown, {
+      offer,
+      modelRef: "test/model",
+    });
 
     expect(html).toContain('<section class="pricing-context"');
     expect(html).toContain('aria-label="Pricing options"');
@@ -206,9 +198,10 @@ describe("provider pricing details", () => {
     ];
 
     vi.setSystemTime(new Date("2026-08-15T00:00:00.000Z"));
-    const before = await renderToString(
-      createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
-    );
+    const before = await renderComponent(PricingOfferBreakdown, {
+      offer,
+      modelRef: "test/model",
+    });
     expect(before).toContain("New rates");
     expect(before).toContain(`datetime="${transition}"`);
     expect(before).toContain("$0.90");
@@ -217,9 +210,10 @@ describe("provider pricing details", () => {
     expect(before).not.toContain("currentness not asserted");
 
     vi.setSystemTime(new Date(transition));
-    const after = await renderToString(
-      createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
-    );
+    const after = await renderComponent(PricingOfferBreakdown, {
+      offer,
+      modelRef: "test/model",
+    });
     expect(after).not.toContain("New rates");
     expect(after).not.toContain("$0.90");
     expect(after).toContain("Billing period");
@@ -271,14 +265,12 @@ describe("provider pricing details", () => {
       ],
     } satisfies WebsiteProviderPricingDetail;
 
-    const html = await renderToString(
-      createSSRApp(ssrComponent(ProviderPricingDetails), {
-        provider,
-        detail,
-        loading: false,
-        error: undefined,
-      }),
-    );
+    const html = await renderComponent(ProviderPricingDetails, {
+      provider,
+      detail,
+      loading: false,
+      error: undefined,
+    });
 
     expect(html).toContain("Normalized resources");
     expect(html).toContain("Find a resource or offer");

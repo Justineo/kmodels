@@ -1,13 +1,12 @@
 <script setup lang="ts" vapor>
 import { computed, ref, watch } from "vue";
-import { formatRelativeTime, formatSnapshotAt } from "../catalog/presentation.ts";
 import type {
   WebsiteModel,
   WebsitePricingDetail,
   WebsitePricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
-import UiTooltip from "./UiTooltip.vue";
+import RelativeTime from "./RelativeTime.vue";
 
 const props = defineProps<{
   model: WebsiteModel;
@@ -74,17 +73,9 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
   <section class="detail-section pricing-section" aria-labelledby="pricing-heading">
     <header class="pricing-section-header">
       <h3 id="pricing-heading">Pricing</h3>
-      <UiTooltip
-        v-if="detail?.snapshot?.publication === 'fresh'"
-        as="button"
-        class="pricing-time"
-        :content="formatSnapshotAt(detail.snapshot.observed_at)"
-      >
-        Verified
-        <time :datetime="detail.snapshot.observed_at">
-          {{ formatRelativeTime(detail.snapshot.observed_at) }}
-        </time>
-      </UiTooltip>
+      <p v-if="detail?.snapshot?.publication === 'fresh'" class="pricing-time">
+        Verified <RelativeTime :value="detail.snapshot.observed_at" />
+      </p>
     </header>
 
     <p
@@ -92,41 +83,18 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
       class="pricing-refresh-status"
       role="status"
     >
-      <span v-if="model.pricing.outcome === 'unknown'">
-        No pricing was present in the provider snapshot verified
-        <UiTooltip
-          as="button"
-          class="pricing-time"
-          :content="formatSnapshotAt(detail.snapshot.observed_at)"
-        >
-          <time :datetime="detail.snapshot.observed_at">
-            {{ formatRelativeTime(detail.snapshot.observed_at) }}
-          </time> </UiTooltip
-        >.
-      </span>
-      <span v-else>
-        Showing provider pricing verified
-        <UiTooltip
-          as="button"
-          class="pricing-time"
-          :content="formatSnapshotAt(detail.snapshot.observed_at)"
-        >
-          <time :datetime="detail.snapshot.observed_at">
-            {{ formatRelativeTime(detail.snapshot.observed_at) }}
-          </time> </UiTooltip
-        >.
+      <span>
+        {{
+          model.pricing.outcome === "unknown"
+            ? "No pricing was present in the provider snapshot"
+            : "Showing provider pricing"
+        }}
+        verified
+        <RelativeTime class="pricing-time" :value="detail.snapshot.observed_at" />.
       </span>
       <span>
         A refresh
-        <UiTooltip
-          as="button"
-          class="pricing-time"
-          :content="formatSnapshotAt(detail.snapshot.refresh_failure.attempted_at)"
-        >
-          <time :datetime="detail.snapshot.refresh_failure.attempted_at">
-            {{ formatRelativeTime(detail.snapshot.refresh_failure.attempted_at) }}
-          </time>
-        </UiTooltip>
+        <RelativeTime class="pricing-time" :value="detail.snapshot.refresh_failure.attempted_at" />
         was rejected: {{ detail.snapshot.refresh_failure.message }}
       </span>
     </p>
@@ -216,16 +184,9 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
   margin-bottom: var(--space-2-5);
 }
 
-.pricing-section-header h3 {
-  margin: 0;
-}
-
-.pricing-section-header :deep(.pricing-time),
-.pricing-refresh-status :deep(.pricing-time) {
-  border-bottom: var(--stroke-hairline) dotted var(--color-border-interactive);
+.pricing-time {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
-  cursor: help;
 }
 
 .pricing-refresh-status {
@@ -272,10 +233,6 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
 .pricing-outcome button:hover {
   border-color: var(--color-border-interactive);
   background: var(--color-surface-hover);
-}
-
-.run-mode {
-  margin-top: 0;
 }
 
 .rate-sheet {

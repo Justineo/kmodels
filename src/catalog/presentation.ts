@@ -28,7 +28,7 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
-export function formatSnapshotAt(value: string): string {
+export function formatUtcDateTime(value: string): string {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? exactDateTime.format(timestamp) : value;
 }
@@ -42,10 +42,6 @@ export function formatRelativeTime(value: string, now = Date.now()): string {
     relativeTimeUnits.find(([candidate]) => absoluteDifference >= candidate) ??
     ([1_000, "second"] as const);
   return relativeTime.format(Math.round(difference / duration), unit);
-}
-
-export function formatRateUnit(value: string): string {
-  return value.replace(/^per(?=\s|$)/, "/");
 }
 
 export function versionBadgeModelUids(models: readonly VersionedModel[]): Set<string> {
