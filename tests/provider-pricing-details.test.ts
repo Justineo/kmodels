@@ -3,6 +3,7 @@ import { renderToString } from "vue/server-renderer";
 import { describe, expect, it } from "vite-plus/test";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
 import ProviderPricingOfferDetails from "../src/components/ProviderPricingOfferDetails.vue";
+import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
 import type {
   WebsitePricingOffer,
   WebsiteProvider,
@@ -78,6 +79,62 @@ describe("provider pricing details", () => {
     expect(html).toContain("Numeric");
     expect(html).toContain("No promotion");
     expect(html).not.toContain("/pricing/index.json");
+  });
+
+  it("shows a categorical billing-period selector with its daily rule", async () => {
+    const offer = pricingOffer();
+    const dimension = { namespace: "kmodels" as const, value: "billing_period" as const };
+    const values = [
+      {
+        key: "off-peak",
+        label: "Off-peak",
+        value: { namespace: "provider" as const, provider_id: "test", value: "off_peak" },
+        schedule: { kind: "daily_time_remainder" as const, time_zone: "UTC" as const },
+      },
+      {
+        key: "peak",
+        label: "Peak",
+        value: { namespace: "provider" as const, provider_id: "test", value: "peak" },
+        schedule: {
+          kind: "daily_time_windows" as const,
+          time_zone: "UTC" as const,
+          windows: [
+            { from: "01:00", until: "04:00" },
+            { from: "06:00", until: "10:00" },
+          ],
+        },
+      },
+    ];
+    offer.selectors = [
+      {
+        key: '{"namespace":"kmodels","value":"billing_period"}',
+        label: "Billing period",
+        dimension,
+        kind: "categorical",
+        values,
+      },
+    ];
+    offer.rates = values.map(({ value, label }, index) => ({
+      key: `rate:${index}`,
+      term_ref: "c".repeat(64),
+      label: "Input text",
+      amount: index === 0 ? "$0.22" : "$0.44",
+      unit: "per 1M tokens",
+      accessible_text: `${label} input text rate`,
+      applicability: {
+        any_of: [{ all_of: [{ kind: "categorical" as const, dimension, values: [value] }] }],
+      },
+      applicability_label: `Billing period: ${label}`,
+    }));
+
+    const html = await renderToString(
+      createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
+    );
+
+    expect(html).toContain("Daily rule · UTC");
+    expect(html).toContain("01:00–04:00, 06:00–10:00");
+    expect(html).toContain("All other times");
+    expect(html).not.toContain("current period");
   });
 
   it("separates normalized resources from raw-only official rows", async () => {

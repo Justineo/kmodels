@@ -244,7 +244,51 @@ function validateVocabulary(
     if (atoms.has(key)) fail("vocabulary", "duplicate provider atom key");
     atoms.set(key, atom);
   }
+  validateDailyTimeSchedules(vocabulary);
   return atoms;
+}
+
+function validateDailyTimeSchedules(vocabulary: ProviderPricingVocabulary): void {
+  const groups = new Map<
+    string,
+    Array<Extract<ProviderAtomRegistryEntry, { kind: "categorical_value" }>>
+  >();
+  for (const atom of vocabulary.atoms) {
+    if (atom.kind !== "categorical_value" || atom.schedule === undefined) continue;
+    const key = canonicalJsonKey(atom.dimension);
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [atom]);
+    else group.push(atom);
+  }
+  for (const scheduled of groups.values()) {
+    const remainders = scheduled.filter(
+      ({ schedule }) => schedule?.kind === "daily_time_remainder",
+    );
+    const windowAtoms = scheduled.filter(({ schedule }) => schedule?.kind === "daily_time_windows");
+    if (remainders.length !== 1 || windowAtoms.length === 0)
+      fail(
+        "vocabulary",
+        "a daily categorical schedule requires window values and one remainder value",
+      );
+    const windows = windowAtoms
+      .flatMap((atom) =>
+        atom.schedule?.kind === "daily_time_windows"
+          ? atom.schedule.windows.map((window) => ({ ...window, atom: atom.key }))
+          : [],
+      )
+      .sort(
+        (left, right) => compareUtf8(left.from, right.from) || compareUtf8(left.until, right.until),
+      );
+    for (let index = 1; index < windows.length; index += 1) {
+      const previous = windows[index - 1];
+      const current = windows[index];
+      if (previous !== undefined && current !== undefined && previous.until > current.from)
+        fail(
+          "vocabulary",
+          `daily categorical schedules ${previous.atom} and ${current.atom} overlap`,
+        );
+    }
+  }
 }
 
 function validateBook(book: PricingBook, context: ProviderValidation, ids: Set<string>): void {

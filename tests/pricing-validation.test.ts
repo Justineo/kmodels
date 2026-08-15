@@ -126,6 +126,37 @@ describe("canonical pricing serialized catalog validation", () => {
     expect(() => validatePricingCatalog(catalog(), core)).not.toThrow();
   });
 
+  it("requires a complete non-overlapping daily categorical partition", () => {
+    const valid = catalog();
+    valid.provider_vocabularies[0]!.atoms = [
+      {
+        kind: "categorical_value",
+        key: "off_peak",
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        definition: "All hours outside the peak windows",
+        schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+      },
+      {
+        kind: "categorical_value",
+        key: "peak",
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        definition: "Published peak billing windows",
+        schedule: {
+          kind: "daily_time_windows",
+          time_zone: "UTC",
+          windows: [{ from: "01:00", until: "04:00" }],
+        },
+      },
+    ];
+    expect(() => validatePricingCatalog(valid, core)).not.toThrow();
+
+    const incomplete = catalog();
+    incomplete.provider_vocabularies[0]!.atoms = [valid.provider_vocabularies[0]!.atoms[1]!];
+    expect(() => validatePricingCatalog(incomplete, core)).toThrow(
+      "requires window values and one remainder value",
+    );
+  });
+
   it("checks the complete graph for I-JSON before using validated canonical serialization", () => {
     const invalid = catalog();
     invalid.books[0]!.scope_observations[0]!.raw = { label: "\ud800" };

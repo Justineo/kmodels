@@ -35,6 +35,8 @@ This includes:
 - input, output, cache, media, request, and duration rates used by those operations;
 - request-visible dimensions such as model, route, region, endpoint, service tier, context band,
   cache mode, modality, quality, and resolution;
+- provider-published recurring billing periods when the exact daily UTC rule is recorded beside a
+  categorical selector and no collection-time or viewer-time evaluation is performed;
 - separately priced request components such as provider-hosted web search, grounding, reranking,
   guardrails, code execution, or tool calls when their trigger is exact; and
 - automatic downstream model or service usage when first-party evidence identifies both the

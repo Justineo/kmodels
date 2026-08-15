@@ -36,6 +36,7 @@ import type {
   UnitExpression,
   UnitPrice,
 } from "./pricing-schema.ts";
+import type { DailyTimeSchedule } from "./pricing-temporal.ts";
 import type { ProviderModel } from "./schema.ts";
 
 type PricingModel = Pick<ProviderModel, "provider_id" | "tasks" | "uid">;
@@ -750,6 +751,11 @@ export function formatCategoricalValue(value: PriceCategoricalValue): string {
     : /^[a-z][a-z0-9_]*$/.test(value.value)
       ? formatSentenceCase(value.value)
       : value.value;
+}
+
+export function formatDailyTimeSchedule(schedule: DailyTimeSchedule): string {
+  if (schedule.kind === "daily_time_remainder") return "All other times";
+  return schedule.windows.map(({ from, until }) => `${from}–${until}`).join(", ");
 }
 
 function offerCanApplyToModel(offer: PricingOffer, context: readonly PricingSelection[]): boolean {

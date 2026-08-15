@@ -84,6 +84,10 @@ Status: implemented core; provider pricing convergence is in progress
   customizable-select component. Configurable controls in the same grid row
   stay top-aligned when one control includes guidance or validation text. A
   categorical dimension or exact decimal selector with one possible value resolves internally.
+  A categorical selector whose values carry a recurring daily billing rule shows one compact UTC
+  rule list directly below the control. Selecting a value highlights its rule and filters rates;
+  the UI never evaluates the viewer's current time, marks a current period, or chooses a value on
+  the user's behalf.
   Price-query controls contain only dimensions that can change a rate or leave its numeric state
   partially covered. When every still-possible variant of one rate has the same
   amount, denomination, unit, driver, and validity and together covers the

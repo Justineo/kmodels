@@ -5,6 +5,7 @@ export const pricingLimits = {
   providerSelectorWork: 268_435_456,
   conditionsPerClause: 32,
   categoricalValuesPerCondition: 4_096,
+  dailyTimeWindows: 16,
   unitFactors: 8,
   unitFactorPower: 8,
   semanticStringBytes: 512,

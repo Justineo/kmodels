@@ -12595,12 +12595,35 @@ describe("DeepSeek adapters", () => {
       limits: { context_tokens: 1_000_000, max_output_tokens: 384_000 },
       pricing_state: "numeric",
       price_facts: expect.arrayContaining([
-        expect.objectContaining({ meter: "cache_read_text", price: "0.003625", currency: "USD" }),
+        expect.objectContaining({
+          meter: "cache_read_text",
+          price: "0.003625",
+          currency: "USD",
+          conditions: expect.objectContaining({
+            effective_until: "2026-08-16T16:00:00.000Z",
+          }),
+        }),
         expect.objectContaining({ meter: "input_text", price: "0.435", currency: "USD" }),
         expect.objectContaining({ meter: "output_text", price: "0.87", currency: "USD" }),
         expect.objectContaining({ meter: "cache_read_text", price: "0.025", currency: "CNY" }),
         expect.objectContaining({ meter: "input_text", price: "3", currency: "CNY" }),
         expect.objectContaining({ meter: "output_text", price: "6", currency: "CNY" }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "1.32",
+          currency: "USD",
+          conditions: {
+            billing_currency: "USD",
+            billing_period: "peak",
+            effective_from: "2026-08-16T16:00:00.000Z",
+          },
+        }),
+        expect.objectContaining({
+          meter: "output_text",
+          price: "13.5",
+          currency: "CNY",
+          conditions: expect.objectContaining({ billing_period: "off_peak" }),
+        }),
       ]),
     });
     expect(models.find(({ model_id }) => model_id === "deepseek-v4-flash")?.api_endpoints).toEqual([
@@ -12617,7 +12640,7 @@ describe("DeepSeek adapters", () => {
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
     expect(changedOperation).toHaveLength(2);
-    expect(changedOperation.every(({ price_facts }) => price_facts.length === 6)).toBe(true);
+    expect(changedOperation.every(({ price_facts }) => price_facts.length === 18)).toBe(true);
     expect(
       changedOperation.every(
         ({ api_endpoints }) =>
@@ -12682,7 +12705,7 @@ describe("DeepSeek adapters", () => {
       models
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
         ?.price_facts.filter(({ currency }) => currency === "USD"),
-    ).toHaveLength(2);
+    ).toHaveLength(8);
     expect(reconciliation).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ reason_code: "usd_price_claim_drift" }),
@@ -12698,7 +12721,21 @@ describe("DeepSeek adapters", () => {
       cnyModels
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
         ?.price_facts.filter(({ currency }) => currency === "CNY"),
-    ).toHaveLength(2);
+    ).toHaveLength(8);
+
+    const scheduledReconciliation: PricingReconciliationItem[] = [];
+    const scheduledDrift = await deepseekCatalog({
+      catalog: catalog.replace("$1.98", "TBD"),
+      onPricingReconciliation: (item) => scheduledReconciliation.push(item),
+    });
+    expect(
+      scheduledDrift
+        .find(({ model_id }) => model_id === "deepseek-v4-pro")
+        ?.price_facts.filter(({ currency }) => currency === "USD"),
+    ).toHaveLength(8);
+    expect(scheduledReconciliation).toContainEqual(
+      expect.objectContaining({ reason_code: "scheduled_price_claim_drift" }),
+    );
 
     const oneColumn = await deepseekCatalog({
       catalog: catalog.replace("deepseek-v4-pro</td>", "invalid model id</td>"),
@@ -12724,7 +12761,7 @@ describe("DeepSeek adapters", () => {
       "deepseek-v4-flash",
       "deepseek-v4-pro",
     ]);
-    expect(withoutCompanions.every(({ price_facts }) => price_facts.length === 3)).toBe(true);
+    expect(withoutCompanions.every(({ price_facts }) => price_facts.length === 9)).toBe(true);
   });
 
   it("keeps the rate book limited to current request-attributable inference", async () => {
@@ -12734,7 +12771,7 @@ describe("DeepSeek adapters", () => {
     });
     expect(
       sourcePricingReconciliation(models, reconciliation, true).disposition_counts,
-    ).toMatchObject({ normalized: 12, raw: 0, excluded: 0 });
+    ).toMatchObject({ normalized: 36, raw: 0, excluded: 0 });
     expect(models.every(({ raw_price_facts }) => raw_price_facts.length === 0)).toBe(true);
     expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
     expect(reconciliation).toEqual(
@@ -12783,6 +12820,49 @@ describe("DeepSeek adapters", () => {
       "responses:usage.input_tokens - usage.input_tokens_details.cached_tokens",
     ]);
     expect(flash?.terms.some(({ term_key }) => term_key === "cache_write_text")).toBe(false);
+    expect(pricing?.vocabulary.atoms).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "categorical_value",
+          key: "peak",
+          label: "Peak",
+          schedule: {
+            kind: "daily_time_windows",
+            time_zone: "UTC",
+            windows: [
+              { from: "01:00", until: "04:00" },
+              { from: "06:00", until: "10:00" },
+            ],
+          },
+        }),
+        expect.objectContaining({
+          kind: "categorical_value",
+          key: "off_peak",
+          label: "Off-peak",
+          schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+        }),
+      ]),
+    );
+    expect(
+      input?.kind === "rate" ? input.variants.map(({ validity }) => validity).filter(Boolean) : [],
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          until: {
+            value: "2026-08-16T16:00:00.000Z",
+            precision: "datetime",
+            inclusive: false,
+          },
+        },
+        {
+          from: {
+            value: "2026-08-16T16:00:00.000Z",
+            precision: "datetime",
+            inclusive: true,
+          },
+        },
+      ]),
+    );
     expect(pricing?.books).toHaveLength(2);
     expect(pricing?.books.every(({ scope }) => scope.kind === "models")).toBe(true);
     expect(

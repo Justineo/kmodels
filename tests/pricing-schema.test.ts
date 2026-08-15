@@ -3,6 +3,7 @@ import {
   decimalSchema,
   priceApplicabilitySchema,
   pricingCatalogEnvelopeSchema,
+  providerAtomRegistryEntrySchema,
   providerPricingSnapshotSchema,
   publishedValiditySchema,
   rationalSchema,
@@ -146,5 +147,35 @@ describe("canonical pricing wire schema", () => {
         from: { value: "2026-07-28T10:11:12.1200Z", precision: "datetime" },
       }),
     ).toThrow("Invalid datetime value");
+  });
+
+  it("models recurring daily rules without evaluating the current time", () => {
+    const atom = {
+      kind: "categorical_value",
+      key: "peak",
+      dimension: { namespace: "kmodels", value: "billing_period" },
+      definition: "Provider-published peak billing period",
+      schedule: {
+        kind: "daily_time_windows",
+        time_zone: "UTC",
+        windows: [
+          { from: "01:00", until: "04:00" },
+          { from: "06:00", until: "10:00" },
+        ],
+      },
+    };
+    expect(providerAtomRegistryEntrySchema.parse(atom)).toEqual(atom);
+    expect(() =>
+      providerAtomRegistryEntrySchema.parse({
+        ...atom,
+        schedule: {
+          ...atom.schedule,
+          windows: [
+            { from: "06:00", until: "10:00" },
+            { from: "01:00", until: "04:00" },
+          ],
+        },
+      }),
+    ).toThrow("sorted and non-overlapping");
   });
 });
