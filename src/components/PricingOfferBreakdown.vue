@@ -1,5 +1,5 @@
 <script setup lang="ts" vapor>
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { canonicalJson } from "../catalog/canonical-value.ts";
 import { isPricingDecimal } from "../catalog/pricing-constants.ts";
 import {
@@ -13,8 +13,12 @@ import {
   isWholeNumberDimension,
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
+import { publishedValidityStatus } from "../catalog/pricing-time.ts";
 import { formatSentenceCase } from "../catalog/presentation.ts";
-import { projectWebsiteRateQuery } from "../catalog/website-pricing-query.ts";
+import {
+  projectWebsitePricingTimeline,
+  projectWebsiteRateQuery,
+} from "../catalog/website-pricing-query.ts";
 import type {
   WebsitePriceApplicability,
   WebsitePriceCondition,
@@ -37,7 +41,15 @@ interface ScopeCopy {
 }
 
 const inputs = ref<Record<string, string>>({});
-const selectors = computed(() => props.offer.selectors);
+const liveNow = ref(new Date().toISOString());
+const viewingUpcoming = ref(false);
+const timeline = computed(() => projectWebsitePricingTimeline(props.offer, liveNow.value));
+const displayOffer = computed(() =>
+  viewingUpcoming.value && timeline.value.upcoming !== undefined
+    ? timeline.value.upcoming.offer
+    : timeline.value.current,
+);
+const selectors = computed(() => displayOffer.value.selectors);
 type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
 const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
@@ -53,30 +65,32 @@ const selectionValues = computed(() => [
   ...fixedSelectionValues.value,
 ]);
 const hasSelections = computed(() => Object.keys(inputs.value).length > 0);
-const visibleStates = computed(() => matchingRows(props.offer.states));
+const visibleStates = computed(() => matchingRows(displayOffer.value.states));
 const rateProjection = computed(() =>
-  projectWebsiteRateQuery(props.offer, props.modelRef, selectionValues.value),
+  projectWebsiteRateQuery(displayOffer.value, props.modelRef, selectionValues.value),
 );
 const rateSelectors = computed(() => {
   const keys = new Set(
     projectWebsiteRateQuery(
-      props.offer,
+      displayOffer.value,
       props.modelRef,
       fixedSelectionValues.value,
     ).unresolved_dimensions.map(canonicalJson),
   );
   return configurableSelectors.value.filter(({ key }) => keys.has(key));
 });
-const visibleRates = computed(() => rateProjection.value.rates.map(({ row }) => row));
-const visibleAllowances = computed(() => matchingRows(props.offer.allowances));
-const visibleContributions = computed(() => matchingRows(props.offer.contributions));
+const visibleRates = computed(() =>
+  rateProjection.value.rates.map(({ row }) => ({ ...row, qualifier: validityNote(row.validity) })),
+);
+const visibleAllowances = computed(() => matchingRows(displayOffer.value.allowances));
+const visibleContributions = computed(() => matchingRows(displayOffer.value.contributions));
 const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
 const contextPrompt = computed(() => {
   const labels = joinLabels(unresolvedRateDimensions.value.map(formatDimension));
   return `Select ${labels} to ${visibleRates.value.length === 0 ? "see rates" : "see remaining rates"}.`;
 });
 const visibleUnnormalized = computed(() =>
-  props.offer.unnormalized
+  displayOffer.value.unnormalized
     .filter(({ possible_scope }) => possible_scope === undefined || applies(possible_scope))
     .map((row) => ({
       ...row,
@@ -90,13 +104,13 @@ const incompleteCount = computed(
   () => visibleUnnormalized.value.filter(({ impact }) => impact === "base_price").length,
 );
 const showOfferStates = computed(
-  () => visibleStates.value.length > 0 && props.offer.states.length > 1,
+  () => visibleStates.value.length > 0 && displayOffer.value.states.length > 1,
 );
 const showPublishedStatus = computed(
   () =>
-    props.offer.rates.length === 0 &&
-    props.offer.state_summary !== "Metered pricing" &&
-    props.offer.state_summary !== "Incomplete",
+    displayOffer.value.rates.length === 0 &&
+    displayOffer.value.state_summary !== "Metered pricing" &&
+    displayOffer.value.state_summary !== "Incomplete",
 );
 const booleanOptions = [
   { value: "true", label: "Yes" },
@@ -107,8 +121,42 @@ watch(
   () => props.offer.id,
   () => {
     inputs.value = {};
+    viewingUpcoming.value = false;
+    scheduleClockRefresh();
   },
 );
+
+watch(viewingUpcoming, () => {
+  inputs.value = {};
+});
+
+watch(
+  () => timeline.value.upcoming?.effective_at,
+  () => {
+    viewingUpcoming.value = false;
+  },
+);
+
+let clockTimer: ReturnType<typeof setTimeout> | undefined;
+
+onMounted(scheduleClockRefresh);
+onBeforeUnmount(() => {
+  if (clockTimer !== undefined) clearTimeout(clockTimer);
+});
+
+function scheduleClockRefresh(): void {
+  if (clockTimer !== undefined) clearTimeout(clockTimer);
+  clockTimer = undefined;
+  liveNow.value = new Date().toISOString();
+  const nextChangeAt = timeline.value.next_change_at;
+  if (nextChangeAt === undefined) return;
+  const delay = Math.min(Math.max(Date.parse(nextChangeAt) - Date.now() + 1, 1), 2_147_483_647);
+  clockTimer = setTimeout(scheduleClockRefresh, delay);
+}
+
+function toggleUpcoming(): void {
+  viewingUpcoming.value = !viewingUpcoming.value;
+}
 
 function applies(applicability: WebsitePriceApplicability): boolean {
   return evaluate(applicability).state !== "false";
@@ -132,7 +180,7 @@ function matchingRows<
     .filter(({ applicability }) => matches(applicability))
     .map((row) => ({
       ...row,
-      qualifier: row.validity === undefined ? undefined : validityNote(row.validity),
+      qualifier: validityNote(row.validity),
     }));
 }
 
@@ -145,7 +193,7 @@ function scopeCopy(
   if (result.state !== "missing") return qualifiedScope(scope, validity);
   return {
     primary: `Choose ${result.missing_dimensions.map(formatDimension).join(", ")}`,
-    secondary: [scope, validity === undefined ? undefined : validityNote(validity)]
+    secondary: [scope, validityNote(validity)]
       .filter((value): value is string => value !== undefined)
       .join(" · "),
   };
@@ -155,7 +203,8 @@ function qualifiedScope(
   primary: string,
   validity: WebsitePublishedValidity | undefined,
 ): ScopeCopy {
-  return validity === undefined ? { primary } : { primary, secondary: validityNote(validity) };
+  const secondary = validityNote(validity);
+  return secondary === undefined ? { primary } : { primary, secondary };
 }
 
 function applicabilityLabel(applicability: WebsitePriceApplicability): string {
@@ -184,10 +233,28 @@ function conditionLabel(condition: WebsitePriceCondition): string {
   return `${label}: ${bounds.join(" · ")} ${formatUnitExpression(condition.unit)}`;
 }
 
-function validityNote(validity: WebsitePublishedValidity): string {
-  const from = validity.from === undefined ? "" : `from ${validity.from.value}`;
-  const until = validity.until === undefined ? "" : `until ${validity.until.value}`;
-  return `Validity-qualified; currentness not asserted (${[from, until].filter(Boolean).join(" ")})`;
+function validityNote(validity: WebsitePublishedValidity | undefined): string | undefined {
+  if (validity === undefined || publishedValidityStatus(validity, liveNow.value) !== "unresolved")
+    return undefined;
+  const from = validity.from === undefined ? undefined : `From ${formatBoundary(validity.from)}`;
+  const until =
+    validity.until === undefined ? undefined : `Until ${formatBoundary(validity.until)}`;
+  return [from, until].filter((value): value is string => value !== undefined).join(" · ");
+}
+
+function formatBoundary(boundary: NonNullable<WebsitePublishedValidity["from"]>): string {
+  return boundary.precision === "datetime" ? formatEffectiveAt(boundary.value) : boundary.value;
+}
+
+function formatEffectiveAt(value: string): string {
+  return new Intl.DateTimeFormat("en", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(value));
 }
 
 function clearSelections(): void {
@@ -336,6 +403,21 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
 <template>
   <div class="offer-breakdown">
+    <div v-if="timeline.upcoming" class="pricing-change">
+      <div>
+        <strong>{{ viewingUpcoming ? "Upcoming rates" : "Price update" }}</strong>
+        <span>
+          {{ viewingUpcoming ? "Effective" : "New rates from" }}
+          <time :datetime="timeline.upcoming.effective_at">
+            {{ formatEffectiveAt(timeline.upcoming.effective_at) }}
+          </time>
+        </span>
+      </div>
+      <button type="button" @click="toggleUpcoming">
+        {{ viewingUpcoming ? "Current rates" : "Preview" }}
+      </button>
+    </div>
+
     <section
       v-if="rateSelectors.length > 0"
       class="pricing-context"
@@ -424,7 +506,8 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
     <section
       v-if="
-        offer.rates.length > 0 && (visibleRates.length > 0 || unresolvedRateDimensions.length === 0)
+        displayOffer.rates.length > 0 &&
+        (visibleRates.length > 0 || unresolvedRateDimensions.length === 0)
       "
       class="offer-section"
       aria-label="Published rates"
@@ -441,7 +524,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
             <tr v-for="rate in visibleRates" :key="rate.key">
               <th scope="row">
                 <span class="rate-name">{{ rate.label }}</span>
-                <small v-if="rate.validity">{{ validityNote(rate.validity) }}</small>
+                <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
               </th>
               <td class="numeric" :aria-label="rate.accessible_text">
                 <span class="exact-rate">{{ rate.amount }}</span>
@@ -458,7 +541,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
     <div v-if="showPublishedStatus" class="published-status">
       <small>Status</small>
-      <strong>{{ offer.state_summary }}</strong>
+      <strong>{{ displayOffer.state_summary }}</strong>
     </div>
 
     <div v-if="incompleteCount > 0" class="pricing-warning" role="status">
@@ -547,6 +630,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
   min-width: 0;
 }
 
+.pricing-change,
 .pricing-subheading,
 .state-row,
 .allowance-list > div,
@@ -555,6 +639,39 @@ function scheduleRows(selector: WebsitePricingSelector) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.pricing-change {
+  min-height: var(--control-height-comfortable);
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-block: 1px solid var(--color-border-subtle);
+}
+
+.pricing-change > div {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pricing-change span {
+  color: var(--color-text-muted);
+}
+
+.pricing-change button,
+.pricing-subheading button {
+  border: 0;
+  color: var(--color-accent);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pricing-change button {
+  padding: var(--space-1) 0;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
 }
 
 .pricing-context,
@@ -576,14 +693,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
   margin: var(--space-0-5) 0 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-micro);
-}
-
-.pricing-subheading button {
-  border: 0;
-  color: var(--color-accent);
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
 }
 
 .pricing-warning,
