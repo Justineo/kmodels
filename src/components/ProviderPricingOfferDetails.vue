@@ -1,6 +1,7 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
 import { formatDailyTimeSchedule } from "../catalog/pricing-presentation.ts";
+import { formatRateUnit } from "../catalog/presentation.ts";
 import type { WebsitePricingOffer, WebsitePricingSelector } from "../catalog/website-schema.ts";
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 
@@ -70,7 +71,7 @@ function summarize(values: string[]): string {
         </div>
         <div class="provider-rate-value" :aria-label="rate.accessible_text">
           <strong>{{ rate.amount }}</strong>
-          <small>{{ rate.unit }}</small>
+          <small>{{ formatRateUnit(rate.unit) }}</small>
         </div>
         <details v-if="rate.driver">
           <summary>What this rate charges for</summary>
@@ -170,7 +171,7 @@ function summarize(values: string[]): string {
 .provider-rate-list small,
 .provider-fact-list {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
 .provider-context-list > div {

@@ -1,8 +1,14 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
 const tokens = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
 const components = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const componentDirectory = new URL("../src/components/", import.meta.url);
+const componentStyles = readdirSync(componentDirectory)
+  .filter((name) => name.endsWith(".vue"))
+  .map((name) => readFileSync(new URL(name, componentDirectory), "utf8"))
+  .join("\n");
+const allStyles = `${components}\n${componentStyles}`;
 const app = readFileSync(new URL("../src/App.vue", import.meta.url), "utf8");
 const tooltip = readFileSync(new URL("../src/components/UiTooltip.vue", import.meta.url), "utf8");
 const modelRow = readFileSync(new URL("../src/components/ModelRow.vue", import.meta.url), "utf8");
@@ -65,17 +71,33 @@ describe("design token contract", () => {
       allowed: /^$/,
     },
   ])("keeps $name out of component CSS", ({ pattern, allowed }) => {
-    expect(matches(pattern, components).filter((value) => !allowed.test(value))).toEqual([]);
+    expect(matches(pattern, allStyles).filter((value) => !allowed.test(value))).toEqual([]);
+  });
+
+  it("uses one readable semantic type scale", () => {
+    expect(tokens).toMatch(/--font-size-meta:\s*0\.6875rem;/);
+    expect(tokens).toMatch(/--font-size-body:\s*0\.8125rem;/);
+    expect(tokens).toMatch(/--font-size-heading:\s*0\.9375rem;/);
+    expect(tokens).toMatch(/--font-size-title:\s*1\.25rem;/);
+    expect(`${tokens}\n${allStyles}`).not.toMatch(
+      /--font-size-(?:micro|label|caption|chrome|brand|display)\b/,
+    );
+    expect(tokens).not.toMatch(/font-size:\s*var\(--font-size-body\)/);
+    expect(components).toMatch(/body\s*\{[^}]*font-size:\s*var\(--font-size-body\);/s);
+    expect(components).toMatch(
+      /\.table-status-trigger\s*\{[^}]*font-size:\s*var\(--font-size-body\);/s,
+    );
+    expect(components).toMatch(/text-size-adjust:\s*100%;/);
   });
 
   it("declares every consumed custom property locally", () => {
     const declared = new Set(
-      matches(/--[a-z0-9-]+\s*:/i, `${tokens}\n${components}`).map((value) =>
+      matches(/--[a-z0-9-]+\s*:/i, `${tokens}\n${allStyles}`).map((value) =>
         value.slice(0, value.indexOf(":")).trim(),
       ),
     );
     const consumed = new Set(
-      matches(/var\(--[a-z0-9-]+/i, `${tokens}\n${components}`).map((value) =>
+      matches(/var\(--[a-z0-9-]+/i, `${tokens}\n${allStyles}`).map((value) =>
         value.slice("var(".length),
       ),
     );
@@ -84,7 +106,7 @@ describe("design token contract", () => {
   });
 
   it("keeps shared token declarations out of component CSS", () => {
-    const componentDeclarations = matches(/--[a-z0-9-]+\s*:/i, components).map((value) =>
+    const componentDeclarations = matches(/--[a-z0-9-]+\s*:/i, allStyles).map((value) =>
       value.slice(0, value.indexOf(":")).trim(),
     );
 
@@ -96,7 +118,7 @@ describe("design token contract", () => {
   });
 
   it("keeps the previous ad hoc semantic aliases retired", () => {
-    expect(components).not.toMatch(
+    expect(allStyles).not.toMatch(
       /--(?:background|surface|text|border|accent|positive|warning|danger|header-height|toolbar-height)\b/,
     );
   });

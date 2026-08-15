@@ -115,12 +115,17 @@ describe("model pricing details", () => {
     const html = await render([offer([{ amount: "$2", scope: region("us", "eu") }])]);
 
     expect(html).toContain("$2");
+    expect(html).toContain("/ 1M tokens");
+    expect(html).not.toContain(">per 1M tokens<");
     expect(html).not.toContain(">Rates<");
+    expect(html).toContain('<dl class="rate-grid fact-grid"');
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("<thead");
     expect(html).not.toContain("Region");
     expect(html).not.toContain("Run mode");
   });
 
-  it("asks only for context that changes the price", async () => {
+  it("shows only context that changes the price", async () => {
     const html = await render([
       offer([
         { amount: "$2", scope: region("us") },
@@ -128,7 +133,8 @@ describe("model pricing details", () => {
       ]),
     ]);
 
-    expect(html).toContain("Select Region to see rates");
+    expect(html).toContain(">Region");
+    expect(html).not.toContain("Select Region to see rates");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("$3");
   });
@@ -144,7 +150,7 @@ describe("model pricing details", () => {
 
     const html = await render([mechanism, service]);
 
-    expect(html).toContain("Base model");
+    expect(html).not.toContain("Base model");
     expect(html).toContain("$2");
     expect(html).toContain("Optional");
     expect(html).toContain("Web Search");
@@ -190,6 +196,7 @@ describe("model pricing details", () => {
     expect(html).toContain("Run mode");
     expect(html).toContain("Interactive");
     expect(html).toContain("Batch");
+    expect(html.match(/>Interactive</g)).toEqual([">Interactive<"]);
     expect(html).toContain("$2");
     expect(html).not.toContain("$1");
     expect(html).not.toContain("Batch tools");

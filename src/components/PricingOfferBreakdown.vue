@@ -14,7 +14,7 @@ import {
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
-import { formatSentenceCase } from "../catalog/presentation.ts";
+import { formatRateUnit, formatSentenceCase } from "../catalog/presentation.ts";
 import {
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
@@ -64,7 +64,6 @@ const selectionValues = computed(() => [
   }),
   ...fixedSelectionValues.value,
 ]);
-const hasSelections = computed(() => Object.keys(inputs.value).length > 0);
 const visibleStates = computed(() => matchingRows(displayOffer.value.states));
 const rateProjection = computed(() =>
   projectWebsiteRateQuery(displayOffer.value, props.modelRef, selectionValues.value),
@@ -85,10 +84,6 @@ const visibleRates = computed(() =>
 const visibleAllowances = computed(() => matchingRows(displayOffer.value.allowances));
 const visibleContributions = computed(() => matchingRows(displayOffer.value.contributions));
 const unresolvedRateDimensions = computed(() => rateProjection.value.unresolved_dimensions);
-const contextPrompt = computed(() => {
-  const labels = joinLabels(unresolvedRateDimensions.value.map(formatDimension));
-  return `Select ${labels} to ${visibleRates.value.length === 0 ? "see rates" : "see remaining rates"}.`;
-});
 const visibleUnnormalized = computed(() =>
   displayOffer.value.unnormalized
     .filter(({ possible_scope }) => possible_scope === undefined || applies(possible_scope))
@@ -257,10 +252,6 @@ function formatEffectiveAt(value: string): string {
   }).format(new Date(value));
 }
 
-function clearSelections(): void {
-  inputs.value = {};
-}
-
 function isFixedSelector(selector: WebsitePricingSelector): selector is FixedSelector {
   return (
     (selector.kind === "categorical" || selector.kind === "decimal_values") &&
@@ -379,11 +370,6 @@ function inputValue(key: string): string {
   return inputs.value[key] ?? "";
 }
 
-function joinLabels(labels: string[]): string {
-  if (labels.length < 2) return labels[0] ?? "the required context";
-  return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
-}
-
 function scheduleRows(selector: WebsitePricingSelector) {
   if (selector.kind !== "categorical") return [];
   return selector.values.flatMap(({ key, label, schedule }) =>
@@ -404,53 +390,40 @@ function scheduleRows(selector: WebsitePricingSelector) {
 <template>
   <div class="offer-breakdown">
     <div v-if="timeline.upcoming" class="pricing-change">
-      <div>
-        <strong>{{ viewingUpcoming ? "Upcoming rates" : "Price update" }}</strong>
-        <span>
-          {{ viewingUpcoming ? "Effective" : "New rates from" }}
-          <time :datetime="timeline.upcoming.effective_at">
-            {{ formatEffectiveAt(timeline.upcoming.effective_at) }}
-          </time>
-        </span>
-      </div>
+      <span class="pricing-change-icon"><UiIcon name="calendar-clock" /></span>
+      <p>
+        <strong>{{ viewingUpcoming ? "Previewing new rates" : "New rates" }}</strong>
+        <time :datetime="timeline.upcoming.effective_at">
+          {{ formatEffectiveAt(timeline.upcoming.effective_at) }}
+        </time>
+      </p>
       <button type="button" @click="toggleUpcoming">
-        {{ viewingUpcoming ? "Current rates" : "Preview" }}
+        {{ viewingUpcoming ? "Current" : "Preview" }}
       </button>
     </div>
 
-    <section
-      v-if="rateSelectors.length > 0"
-      class="pricing-context"
-      :aria-labelledby="`${offer.id}-context-heading`"
-    >
-      <header class="pricing-subheading">
-        <div>
-          <h6 :id="`${offer.id}-context-heading`">Options</h6>
-          <p v-if="unresolvedRateDimensions.length > 0">{{ contextPrompt }}</p>
-        </div>
-        <button v-if="hasSelections" type="button" @click="clearSelections">Reset</button>
-      </header>
+    <section v-if="rateSelectors.length > 0" class="pricing-context" aria-label="Pricing options">
       <div class="pricing-selector-grid">
-        <label v-for="selector in rateSelectors" :key="selector.key">
-          <span>
+        <div v-for="(selector, index) in rateSelectors" :key="selector.key">
+          <label :for="`${offer.id}-selector-${index}`">
             {{ selector.label }}
             <template v-if="'unit' in selector"
               >({{ formatUnitExpression(selector.unit) }})</template
             >
-          </span>
+          </label>
           <template v-if="selector.kind === 'categorical'">
             <UiSelect
+              :id="`${offer.id}-selector-${index}`"
               :model-value="inputValue(selector.key)"
               :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
               placeholder="Choose…"
               @update:model-value="setInput(selector.key, $event)"
             />
-            <div
-              v-if="scheduleRows(selector).length > 0"
-              class="schedule-rule"
-              :aria-label="`${selector.label} daily schedule`"
-            >
-              <small>Daily rule · {{ scheduleRows(selector)[0]?.timeZone }}</small>
+            <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
+              <summary>
+                <span>Daily rule · {{ scheduleRows(selector)[0]?.timeZone }}</span>
+                <UiIcon name="chevron-right" />
+              </summary>
               <dl>
                 <div
                   v-for="row in scheduleRows(selector)"
@@ -461,10 +434,11 @@ function scheduleRows(selector: WebsitePricingSelector) {
                   <dd>{{ row.rule }}</dd>
                 </div>
               </dl>
-            </div>
+            </details>
           </template>
           <UiSelect
             v-else-if="selector.kind === 'boolean'"
+            :id="`${offer.id}-selector-${index}`"
             :model-value="inputValue(selector.key)"
             :options="booleanOptions"
             placeholder="Choose…"
@@ -472,6 +446,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
           />
           <UiSelect
             v-else-if="selector.kind === 'decimal_values'"
+            :id="`${offer.id}-selector-${index}`"
             :model-value="inputValue(selector.key)"
             :options="selector.values.map((value) => ({ value, label: value }))"
             placeholder="Choose…"
@@ -479,6 +454,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
           />
           <UiSelect
             v-else-if="selector.kind === 'decimal_buckets'"
+            :id="`${offer.id}-selector-${index}`"
             :model-value="inputValue(selector.key)"
             :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
             placeholder="Choose…"
@@ -486,21 +462,22 @@ function scheduleRows(selector: WebsitePricingSelector) {
           />
           <input
             v-else
+            :id="`${offer.id}-selector-${index}`"
             :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
             :value="inputValue(selector.key)"
             :aria-invalid="decimalInputError(selector) === undefined ? undefined : true"
-            :aria-describedby="`${offer.id}-${selector.key}-range-guidance`"
+            :aria-describedby="`${offer.id}-selector-${index}-guidance`"
             placeholder="Enter value"
             @input="setDecimalInput(selector.key, $event)"
           />
           <small
             v-if="selector.kind === 'decimal_range'"
-            :id="`${offer.id}-${selector.key}-range-guidance`"
+            :id="`${offer.id}-selector-${index}-guidance`"
             :class="decimalInputError(selector) === undefined ? 'selector-hint' : 'selector-error'"
           >
             {{ decimalInputError(selector) ?? `Supported: ${decimalRangeLabel(selector)}` }}
           </small>
-        </label>
+        </div>
       </div>
     </section>
 
@@ -512,28 +489,18 @@ function scheduleRows(selector: WebsitePricingSelector) {
       class="offer-section"
       aria-label="Published rates"
     >
-      <div v-if="visibleRates.length > 0" class="pricing-matrix">
-        <table>
-          <thead>
-            <tr>
-              <th scope="col">Meter</th>
-              <th scope="col">Rate</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="rate in visibleRates" :key="rate.key">
-              <th scope="row">
-                <span class="rate-name">{{ rate.label }}</span>
-                <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
-              </th>
-              <td class="numeric" :aria-label="rate.accessible_text">
-                <span class="exact-rate">{{ rate.amount }}</span>
-                <small>{{ rate.unit }}</small>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <dl v-if="visibleRates.length > 0" class="rate-grid fact-grid">
+        <div v-for="rate in visibleRates" :key="rate.key">
+          <dt>
+            <span class="rate-name">{{ rate.label }}</span>
+            <small v-if="rate.qualifier">{{ rate.qualifier }}</small>
+          </dt>
+          <dd class="numeric" :aria-label="rate.accessible_text">
+            <span class="exact-rate">{{ rate.amount }}</span>
+            <small>{{ formatRateUnit(rate.unit) }}</small>
+          </dd>
+        </div>
+      </dl>
       <p v-else-if="unresolvedRateDimensions.length === 0" class="context-prompt">
         No rates match the selected context.
       </p>
@@ -630,8 +597,8 @@ function scheduleRows(selector: WebsitePricingSelector) {
   min-width: 0;
 }
 
-.pricing-change,
 .pricing-subheading,
+.schedule-rule > summary,
 .state-row,
 .allowance-list > div,
 .pricing-disclosure > summary,
@@ -642,57 +609,100 @@ function scheduleRows(selector: WebsitePricingSelector) {
 }
 
 .pricing-change {
-  min-height: var(--control-height-comfortable);
+  display: grid;
+  min-height: var(--target-size-minimum);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--space-3);
-  padding-block: var(--space-2);
-  border-block: 1px solid var(--color-border-subtle);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-2-5);
+  border: var(--stroke-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
 }
 
-.pricing-change > div {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.pricing-change span {
-  color: var(--color-text-muted);
-}
-
-.pricing-change button,
-.pricing-subheading button {
-  border: 0;
+.pricing-change-icon {
+  display: grid;
+  width: var(--control-height-compact);
+  height: var(--control-height-compact);
+  place-items: center;
+  border-radius: var(--radius-full);
   color: var(--color-accent);
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
+  background: var(--color-accent-soft);
+}
+
+.pricing-change-icon .ui-icon {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.pricing-change p {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-0-5);
+  margin: 0;
+  font-size: var(--font-size-body);
+}
+
+.pricing-change time {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-meta);
 }
 
 .pricing-change button {
-  padding: var(--space-1) 0;
+  min-height: var(--control-height-compact);
+  padding-inline: var(--space-2);
+  border: var(--stroke-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
+  cursor: pointer;
   white-space: nowrap;
 }
 
-.pricing-context,
+.pricing-change button:hover {
+  border-color: var(--color-border-interactive);
+  background: var(--color-surface-hover);
+}
+
 .offer-section {
-  margin-top: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.pricing-context {
+  margin-top: var(--space-3);
+}
+
+.schedule-rule > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.schedule-rule > summary::-webkit-details-marker {
+  display: none;
+}
+
+.schedule-rule > summary .ui-icon {
+  width: var(--icon-size-xs);
+  height: var(--icon-size-xs);
+  transition: transform var(--duration-fast) var(--easing-standard);
+}
+
+.schedule-rule[open] > summary .ui-icon {
+  transform: rotate(90deg);
 }
 
 .pricing-subheading {
-  min-height: var(--control-height-default);
+  min-height: var(--control-height-compact);
   gap: var(--space-3);
 }
 
 .pricing-subheading h6 {
   margin: 0;
   font-size: var(--font-size-body);
-}
-
-.pricing-subheading p {
-  margin: var(--space-0-5) 0 0;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
 }
 
 .pricing-warning,
@@ -721,15 +731,17 @@ function scheduleRows(selector: WebsitePricingSelector) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 
-.pricing-selector-grid label {
+.pricing-selector-grid > div {
   display: grid;
   min-width: 0;
   gap: var(--space-1);
+}
+
+.pricing-selector-grid label {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
 .pricing-selector-grid :deep(.ui-select-control),
@@ -742,6 +754,11 @@ function scheduleRows(selector: WebsitePricingSelector) {
   color: var(--color-text-primary);
   background: var(--color-surface);
   font: inherit;
+}
+
+.pricing-selector-grid :deep(.ui-select-control),
+.pricing-selector-grid :deep(.ui-select option) {
+  font-size: var(--font-size-meta);
 }
 
 .pricing-selector-grid :deep(.ui-select-control:has(.ui-select:focus-visible)),
@@ -761,14 +778,22 @@ function scheduleRows(selector: WebsitePricingSelector) {
 }
 
 .schedule-rule {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-1) 0 var(--space-1) var(--space-2);
-  border-left: 1px solid var(--color-border-subtle);
+  overflow: hidden;
+  border: var(--stroke-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
 }
 
-.schedule-rule > small {
+.schedule-rule > summary {
+  min-height: var(--control-height-compact);
+  padding-inline: var(--space-2);
   color: var(--color-text-muted);
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-medium);
+}
+
+.schedule-rule[open] > summary {
+  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
 }
 
 .schedule-rule dl,
@@ -778,26 +803,51 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
 .schedule-rule dl {
   display: grid;
-  gap: var(--space-0-5);
+  background: var(--color-surface);
 }
 
 .schedule-rule dl > div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-columns: var(--space-2) minmax(0, 1fr) minmax(0, 2fr);
+  align-items: center;
   gap: var(--space-2);
-  transition: color var(--duration-fast) var(--easing-standard);
+  padding: var(--space-2) var(--space-2-5);
+  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
+  transition: background-color var(--duration-fast) var(--easing-standard);
+}
+
+.schedule-rule dl > div:last-child {
+  border-bottom: 0;
+}
+
+.schedule-rule dl > div::before {
+  width: var(--space-2);
+  height: var(--space-2);
+  border: var(--stroke-hairline) solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  content: "";
 }
 
 .schedule-rule dl > div[data-selected="true"] {
-  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.schedule-rule dl > div[data-selected="true"]::before {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
 }
 
 .schedule-rule dt {
+  font-size: var(--font-size-meta);
   font-weight: var(--font-weight-medium);
 }
 
 .schedule-rule dd {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-meta);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .context-prompt {
@@ -837,14 +887,12 @@ function scheduleRows(selector: WebsitePricingSelector) {
 .state-marker {
   width: var(--space-2);
   height: var(--space-2);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--color-accent);
 }
 
 .state-label,
-.allowance-value,
-.rate-name,
-.exact-rate {
+.allowance-value {
   color: var(--color-text-primary);
   font-weight: var(--font-weight-medium);
 }
@@ -853,79 +901,43 @@ function scheduleRows(selector: WebsitePricingSelector) {
 .allowance-list small,
 .raw-fact-list small {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
-.pricing-matrix {
-  overflow-x: auto;
+.rate-grid {
   margin-top: var(--space-2);
-  border-block: 1px solid var(--color-border-subtle);
+  padding: 0;
 }
 
-.pricing-matrix table {
-  width: 100%;
-  border-collapse: collapse;
+.rate-grid:has(> :only-child) {
+  grid-template-columns: 1fr;
+  width: 50%;
 }
 
-.pricing-matrix thead th:first-child {
-  width: 60%;
-}
-
-.pricing-matrix thead th:last-child {
-  width: 40%;
-  text-align: right;
-}
-
-.pricing-matrix th,
-.pricing-matrix td {
-  padding: var(--space-2-5) 0;
-  border-bottom: 1px solid var(--color-border-subtle);
-  text-align: left;
-}
-
-.pricing-matrix th + th,
-.pricing-matrix th + td {
-  padding-left: var(--space-3);
-}
-
-.pricing-matrix tr:last-child > * {
-  border-bottom: 0;
-}
-
-.pricing-matrix thead th {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
-}
-
-.pricing-matrix tbody th,
-.pricing-matrix td {
-  vertical-align: top;
-}
-
-.pricing-matrix tbody th {
-  font-weight: var(--font-weight-regular);
-}
-
-.pricing-matrix tbody th > *,
-.pricing-matrix td > * {
+.rate-grid dt > * {
   display: block;
 }
 
-.pricing-matrix tbody th small,
-.pricing-matrix td small {
+.rate-grid dt small {
   margin-top: var(--space-0-5);
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
-.pricing-matrix td {
-  text-align: right;
+.rate-grid dd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
   white-space: nowrap;
+}
+
+.rate-grid dd small {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-meta);
 }
 
 .pricing-disclosure {
   margin-top: var(--space-4);
-  border-top: 1px solid var(--color-border-subtle);
 }
 
 .pricing-disclosure > summary {
@@ -964,6 +976,28 @@ function scheduleRows(selector: WebsitePricingSelector) {
 @media (max-width: 640px) {
   .pricing-selector-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pricing-change {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .pricing-change button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .schedule-rule dl > div {
+    grid-template-columns: var(--space-2) minmax(0, 1fr);
+  }
+
+  .schedule-rule dd {
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .rate-grid:has(> :only-child) {
+    width: 100%;
   }
 }
 </style>

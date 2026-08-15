@@ -169,7 +169,7 @@ function handleToggle(event: ToggleEvent): void {
 }
 
 .filter-popover-header h2 {
-  font-size: var(--font-size-chrome);
+  font-size: var(--font-size-heading);
   font-weight: var(--font-weight-semibold);
   letter-spacing: var(--tracking-snug);
 }
@@ -177,7 +177,7 @@ function handleToggle(event: ToggleEvent): void {
 .filter-popover-header p {
   margin-top: var(--space-0-5);
   color: var(--color-text-muted);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-meta);
 }
 
 .filter-popover-actions {
@@ -189,7 +189,7 @@ function handleToggle(event: ToggleEvent): void {
   padding-inline: var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-body);
 }
 
 .filter-popover-actions > button:hover:not(:disabled) {
@@ -232,7 +232,7 @@ function handleToggle(event: ToggleEvent): void {
 .filter-group legend {
   margin-bottom: var(--space-2);
   color: var(--color-text-muted);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-meta);
   font-weight: var(--font-weight-semibold);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
@@ -254,7 +254,7 @@ function handleToggle(event: ToggleEvent): void {
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-body);
 }
 
 .filter-option:hover {

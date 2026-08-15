@@ -1,12 +1,13 @@
 <script setup lang="ts" vapor>
 import { computed, ref, watch } from "vue";
-import { formatSnapshotAt } from "../catalog/presentation.ts";
+import { formatRelativeTime, formatSnapshotAt } from "../catalog/presentation.ts";
 import type {
   WebsiteModel,
   WebsitePricingDetail,
   WebsitePricingOffer,
 } from "../catalog/website-schema.ts";
 import PricingOfferBreakdown from "./PricingOfferBreakdown.vue";
+import UiTooltip from "./UiTooltip.vue";
 
 const props = defineProps<{
   model: WebsiteModel;
@@ -62,8 +63,7 @@ function offerState(offer: WebsitePricingOffer): string | undefined {
   return offer.state_summary === "Metered pricing" ? undefined : offer.state_summary;
 }
 
-function offerKind(offer: WebsitePricingOffer): string {
-  if (offer.group === "model_mechanism") return "Base model";
+function supplementaryOfferKind(offer: WebsitePricingOffer): string {
   if (offer.group === "optional_service") return "Optional";
   if (offer.group === "automatic_component") return "Automatic";
   return "Service";
@@ -73,15 +73,18 @@ function offerKind(offer: WebsitePricingOffer): string {
 <template>
   <section class="detail-section pricing-section" aria-labelledby="pricing-heading">
     <header class="pricing-section-header">
-      <div>
-        <h3 id="pricing-heading">Pricing</h3>
-        <p v-if="detail?.snapshot?.publication === 'fresh'">
-          Public rates verified
-          <time :datetime="detail.snapshot.observed_at">
-            {{ formatSnapshotAt(detail.snapshot.observed_at) }}
-          </time>
-        </p>
-      </div>
+      <h3 id="pricing-heading">Pricing</h3>
+      <UiTooltip
+        v-if="detail?.snapshot?.publication === 'fresh'"
+        as="button"
+        class="pricing-time"
+        :content="formatSnapshotAt(detail.snapshot.observed_at)"
+      >
+        Verified
+        <time :datetime="detail.snapshot.observed_at">
+          {{ formatRelativeTime(detail.snapshot.observed_at) }}
+        </time>
+      </UiTooltip>
     </header>
 
     <p
@@ -90,22 +93,40 @@ function offerKind(offer: WebsitePricingOffer): string {
       role="status"
     >
       <span v-if="model.pricing.outcome === 'unknown'">
-        No pricing was present in the provider snapshot verified on
-        <time :datetime="detail.snapshot.observed_at">
-          {{ formatSnapshotAt(detail.snapshot.observed_at) }} </time
+        No pricing was present in the provider snapshot verified
+        <UiTooltip
+          as="button"
+          class="pricing-time"
+          :content="formatSnapshotAt(detail.snapshot.observed_at)"
+        >
+          <time :datetime="detail.snapshot.observed_at">
+            {{ formatRelativeTime(detail.snapshot.observed_at) }}
+          </time> </UiTooltip
         >.
       </span>
       <span v-else>
-        Showing provider pricing verified on
-        <time :datetime="detail.snapshot.observed_at">
-          {{ formatSnapshotAt(detail.snapshot.observed_at) }} </time
+        Showing provider pricing verified
+        <UiTooltip
+          as="button"
+          class="pricing-time"
+          :content="formatSnapshotAt(detail.snapshot.observed_at)"
+        >
+          <time :datetime="detail.snapshot.observed_at">
+            {{ formatRelativeTime(detail.snapshot.observed_at) }}
+          </time> </UiTooltip
         >.
       </span>
       <span>
-        A refresh on
-        <time :datetime="detail.snapshot.refresh_failure.attempted_at">
-          {{ formatSnapshotAt(detail.snapshot.refresh_failure.attempted_at) }}
-        </time>
+        A refresh
+        <UiTooltip
+          as="button"
+          class="pricing-time"
+          :content="formatSnapshotAt(detail.snapshot.refresh_failure.attempted_at)"
+        >
+          <time :datetime="detail.snapshot.refresh_failure.attempted_at">
+            {{ formatRelativeTime(detail.snapshot.refresh_failure.attempted_at) }}
+          </time>
+        </UiTooltip>
         was rejected: {{ detail.snapshot.refresh_failure.message }}
       </span>
     </p>
@@ -167,9 +188,14 @@ function offerKind(offer: WebsitePricingOffer): string {
           class="rate-offer"
           :data-kind="offer.group"
         >
-          <header class="rate-offer-heading">
+          <header
+            v-if="offer.group !== 'model_mechanism' || modelMechanisms.length === 1"
+            class="rate-offer-heading"
+          >
             <div>
-              <small class="rate-kind">{{ offerKind(offer) }}</small>
+              <small v-if="offer.group !== 'model_mechanism'" class="rate-kind">
+                {{ supplementaryOfferKind(offer) }}
+              </small>
               <h5>{{ offer.title }}</h5>
             </div>
             <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
@@ -184,22 +210,22 @@ function offerKind(offer: WebsitePricingOffer): string {
 <style scoped>
 .pricing-section-header {
   display: flex;
-  min-height: var(--control-height-comfortable);
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-4);
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-2-5);
 }
 
-.pricing-section-header h3,
-.pricing-section-header p {
+.pricing-section-header h3 {
   margin: 0;
 }
 
-.pricing-section-header p {
-  margin-top: var(--space-0-5);
+.pricing-section-header :deep(.pricing-time),
+.pricing-refresh-status :deep(.pricing-time) {
+  border-bottom: var(--stroke-hairline) dotted var(--color-border-interactive);
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
+  cursor: help;
 }
 
 .pricing-refresh-status {
@@ -239,7 +265,7 @@ function offerKind(offer: WebsitePricingOffer): string {
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
   background: var(--color-surface);
-  font-size: var(--font-size-caption);
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-medium);
 }
 
@@ -249,15 +275,15 @@ function offerKind(offer: WebsitePricingOffer): string {
 }
 
 .run-mode {
-  margin-top: var(--space-5);
+  margin-top: 0;
 }
 
 .rate-sheet {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .run-mode + .rate-sheet {
-  margin-top: var(--space-5);
+  margin-top: var(--space-3);
 }
 
 .rate-offer-heading {
@@ -274,11 +300,12 @@ function offerKind(offer: WebsitePricingOffer): string {
 .section-heading {
   color: var(--color-text-primary);
   font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
 }
 
 .offer-choice small {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
 .run-mode-options {
@@ -292,7 +319,7 @@ function offerKind(offer: WebsitePricingOffer): string {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .offer-choice {
@@ -332,9 +359,13 @@ function offerKind(offer: WebsitePricingOffer): string {
   accent-color: var(--color-accent);
 }
 
+.offer-choice input:focus-visible {
+  outline: 0;
+}
+
 .offer-state {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
   text-align: right;
 }
 
@@ -344,15 +375,11 @@ function offerKind(offer: WebsitePricingOffer): string {
 
 .rate-offer {
   min-width: 0;
-  margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border-subtle);
+  margin-top: var(--space-5);
 }
 
 .rate-offer[data-kind="model_mechanism"] {
   margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
 }
 
 .rate-offer-heading > div {
@@ -368,7 +395,7 @@ function offerKind(offer: WebsitePricingOffer): string {
 
 .rate-kind {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
   font-weight: var(--font-weight-medium);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);

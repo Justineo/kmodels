@@ -44,7 +44,7 @@ const whenKnown = {
   gap: var(--space-1-5) var(--space-2);
   margin: var(--space-2) 0 0;
   color: var(--color-text-secondary);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
   font-weight: var(--font-weight-regular);
 }
 

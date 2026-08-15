@@ -18,9 +18,9 @@ Status: implemented core; provider pricing convergence is in progress
 
 ## Table and details
 
-- Give each inspector fact one home. The header owns provider, display name,
-  exact request identity, primary lifecycle/release status, and catalog scope;
-  overview does not repeat those status fields. Suppress the identifier line
+- Give each inspector fact one home. The header owns provider, display name, and exact request
+  identity. Primary lifecycle/release status and catalog scope begin the content in one compact
+  metadata line; Overview does not repeat those fields. Suppress the identifier line
   when it exactly repeats the display name, while retaining a distinct version.
   Keep task, delivery, limits, dates, availability, modalities, supported
   capabilities, endpoints, and pricing in their respective sections.
@@ -45,9 +45,9 @@ Status: implemented core; provider pricing convergence is in progress
   that the columns show representative prices, normalize comparable token rates
   per million, and retain a verified source-native fixed-unit scale for other
   meters when it exactly reproduces the canonical price. Internal rational
-  fractions are never exposed. Do not repeat `/ 1M tokens` in every cell. Only
-  provider-owned meters, units, or credits add a price tooltip with
-  namespace-qualified exact copy.
+  fractions are never exposed. Do not repeat `/ 1M tokens` in every cell. Exact numeric cells do
+  not add a tooltip when their value and unit are already visible; accessible labels retain the
+  namespace-qualified exact copy for provider-owned meters, units, or credits.
 - Representative columns are derived only from canonical price books. A cell
   shows a number when one normalized rate is proven invariant across the
   complete applicable offer context;
@@ -57,7 +57,9 @@ Status: implemented core; provider pricing convergence is in progress
   context-dependent price, an offer count for
   several base offers, and retain the exact `Free`, `Quote`,
   `Unpublished`, `Incomplete`, `No offer`, `Unknown`, `No base offer`, or `Details`
-  distinction. This status is never owned by the input meter. There is no
+  distinction. Interactive pricing status keeps the same body size as other table cells; its
+  affordance comes from the dotted underline and interaction states. This status is never owned by
+  the input meter. There is no
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
@@ -67,12 +69,23 @@ Status: implemented core; provider pricing convergence is in progress
   The selected mechanism remains the context for the entire cost breakdown; exact mechanism
   references filter its related costs. One continuous rate sheet fully expands the base model,
   optional services, automatic charges, and independently callable services in that order. Each
-  offer keeps its own heading, price-changing options, and meters; rates are billed separately and
-  never combined into a total. Account plans and capacity are omitted. Offer choices show one
+  offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
+  two-column definition-grid structure as Overview and collapse to one column on narrow screens.
+  A lone rate keeps one column rather than stretching across the grid. Rate cards omit
+  self-evident headings, use the same left-aligned label-over-value hierarchy, and keep each numeric
+  value and slash-prefixed unit together. Rates are
+  billed separately and never combined
+  into a total. A sole base mechanism uses its reviewed title without a redundant kind label; when
+  Run mode is selectable, the selected choice already names the active base mechanism and its rate
+  block does not repeat that title. Supplementary offers retain `Optional`, `Automatic`, or
+  `Service` labels where the kind changes interpretation. Account plans and capacity are omitted.
+  Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
   explanatory prose already implied by the control. Multiple mechanism choices form a compact
   wrapping radio group; its native keyboard behavior owns arrow keys and must
-  not navigate between models. Fresh pricing shows its verification time. A retained partition
+  not navigate between models. Keyboard focus is shown once on the complete choice surface rather
+  than repeated around its native radio. Fresh pricing shows a localized relative verification time;
+  its tooltip provides the complete UTC timestamp. A retained partition
   instead shows one provider-level status note with both the preserved
   verification time and the latest rejected-attempt time plus a reviewed
   explanation. For an unknown model it says that the last verified provider
@@ -81,13 +94,15 @@ Status: implemented core; provider pricing convergence is in progress
   Selecting another Run mode resets only the outgoing mechanism's child context, and context
   filtering never hides or reorders the choices above it. Each related offer owns independent child
   context. Context controls use the shared
-  customizable-select component. Configurable controls in the same grid row
-  stay top-aligned when one control includes guidance or validation text. A
+  customizable-select component, remain visible, and rely on their own labels and empty choices.
+  Configurable controls in the same grid row stay top-aligned when one control includes guidance or
+  validation text. A
   categorical dimension or exact decimal selector with one possible value resolves internally.
-  A categorical selector whose values carry a recurring daily billing rule shows one compact UTC
-  rule list directly below the control. Selecting a value highlights its rule and filters rates;
-  the viewer's clock never selects a recurring value. Exact UTC validity instead versions an
-  entire published rate plan.
+  A categorical selector whose values carry a recurring daily billing rule exposes one compact UTC
+  rule disclosure below the control. Its values render as separated marker rows rather than an
+  undifferentiated text list. Selecting a value highlights its row and filters rates; the viewer's
+  clock never selects a recurring value. Exact UTC validity instead versions an entire published
+  rate plan.
   Model details resolve those exact boundaries against the viewer's clock, show only the current
   plan by default, and expose the next plan through one compact effective-time preview. The preview
   swaps the same rate surface rather than duplicating it. Imprecise year, month, or date validity
@@ -97,14 +112,14 @@ Status: implemented core; provider pricing convergence is in progress
   amount, denomination, unit, driver, and validity and together covers the
   complete remaining numeric offer-state scope, that invariant rate appears
   immediately without repeating invariant dimensions. Unresolved unequal or
-  partial alternatives remain hidden behind a prompt for only their missing
-  dimensions. Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
+  partial alternatives remain hidden until their required controls are chosen; the control labels
+  and empty choices communicate that requirement without a repeated section heading or prompt.
+  Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
   rate-book UI. The controls resolve exact applicable rates but do not estimate
   usage, consume allowances, or calculate a total. Selected applicability is not
   repeated on each resolved rate, allowance, or state. A resolved plan boundary appears once in
-  the price-update row instead of being repeated on every state and rate; unresolved validity
-  remains visible. Its reset action appears only after a configurable selection
-  and does not repeat a selection count. A single offer state stays in the offer
+  a compact, icon-led status band instead of being repeated on every state and rate; unresolved
+  validity remains visible. A single offer state stays in the offer
   summary; state detail appears only when the offer has multiple possible outcomes.
   Numeric context preserves its published domain: singleton predicates become
   choices, and complete non-overlapping range partitions become ordered range
@@ -352,7 +367,9 @@ Status: implemented core; provider pricing convergence is in progress
 
 - Use Kong dark green `#000F06`, electric lime `#CCFF00`, Bay `#B7BDB5`, white, and the reviewed neutral scale through semantic tokens. Lime marks focus, selection, and active state; it is not decoration.
 - Ground the system in Kong's 2026 brand rules, Apple HIG legibility, Vercel Geist utility patterns, and VoidZero/Vite+ structural restraint.
-- Follow system-font legibility, a compact 13–14px utility scale, mono identifiers, tabular numerals, thin borders, crisp planes, compact radii, and low-elevation floating surfaces.
+- Follow system-font legibility, mono identifiers, tabular numerals, thin borders, crisp planes, compact radii, and low-elevation floating surfaces.
+- Use one compact four-step type scale expressed in `rem`: 11px metadata, 13px body and controls, 15px headings, and 20px inspector titles. Apply the body size to `body`, not the root element, so the `rem` steps retain those browser-relative sizes. Inspector section labels, including Pricing, and fact labels, including rate names, share the metadata treatment; offer titles, fact values, and exact amounts use the body size. Dense selectors and recurring rules also use the metadata size. Prefer weight, color, tracking, and spacing over additional intermediate sizes. Persistent text never drops below the metadata size, and normal browser text adjustment remains enabled.
+- Inside the inspector, use spacing and bounded data surfaces for section hierarchy. Keep the header divider, but do not place horizontal rules between every content section or offer.
 - Create hierarchy with alignment, weight, density, and information order. Do not add gradients, decorative imagery, oversized display type, floating-card composition, or decorative chrome.
 - Reuse Kong's current ICO fallback plus 16px and 32px PNG favicon files.
 - `src/tokens.css` owns immutable brand foundations, shared scales, light/dark semantic roles, and the smallest necessary repeated component roles.

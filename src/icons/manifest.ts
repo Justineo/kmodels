@@ -1,6 +1,7 @@
 const uiIconNames = [
   "arrow-right",
   "arrow-up",
+  "calendar-clock",
   "chevron-down",
   "chevron-right",
   "external-link",
