@@ -71,11 +71,12 @@ Status: implemented core; provider pricing convergence is in progress
   optional services, automatic charges, and independently callable services in that order. Each
   offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
   two-column definition-grid structure as Overview and collapse to one column on narrow screens.
-  Like Overview, an unpaired final rate spans the row instead of leaving a false empty cell; an
-  offer with only one rate keeps one half-width card. Rate cards omit self-evident headings, use the
-  same left-aligned label-over-value hierarchy, and keep each numeric value and slash-prefixed unit
-  together. Rates are
-  billed separately and never combined
+  Every rate occupies one column, so an unpaired final rate remains in the left column rather than
+  stretching across the row. Each data item owns its own border and surface, so the unused right
+  half remains outside the card instead of appearing as part of it. Rate cards omit self-evident
+  headings, use the same left-aligned label-over-value hierarchy, and keep each numeric value and
+  slash-prefixed unit together. Rates are billed
+  separately and never combined
   into a total. A sole base mechanism uses its reviewed title without a redundant kind label; when
   Run mode is selectable, the selected choice already names the active base mechanism and its rate
   block does not repeat that title. Supplementary offers retain `Optional`, `Automatic`, or

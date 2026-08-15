@@ -9,7 +9,6 @@ describe("model price cell", () => {
         amount: "$0.08",
         displayUnit: "video",
         accessibleText: "video_generation: USD 0.08 per video",
-        showTooltip: true,
       },
     });
 

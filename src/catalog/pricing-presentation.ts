@@ -85,11 +85,9 @@ interface PricingViewIndex {
 }
 
 interface PricingTableCell {
-  meter: string;
   amount: string;
   displayUnit: string;
   accessibleText: string;
-  showTooltip: boolean;
 }
 
 const inputMeters = ["input_text", "input_image", "input_audio", "input_video"] as const;
@@ -981,13 +979,8 @@ function tableCell(
   const display = displayUnitPrice(price, observations);
   const formattedMeter = formatMeter(meter);
   return {
-    meter: formattedMeter,
     ...display,
     accessibleText: `${formattedMeter}: ${display.accessibleText}`,
-    showTooltip:
-      meter.namespace === "provider" ||
-      price.denomination.kind === "provider_credit" ||
-      price.per.factors.some(({ unit }) => unit.namespace === "provider"),
   };
 }
 

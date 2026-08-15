@@ -90,12 +90,15 @@ describe("design token contract", () => {
     expect(globalStyles).toMatch(/text-size-adjust:\s*100%;/);
   });
 
-  it("fills unpaired fact-grid rows without stretching a sole rate", () => {
-    expect(globalStyles).toMatch(
-      /\.fact-grid\s*>\s*div:last-child:nth-child\(odd\)\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s,
+  it("keeps every fact-grid item in one column with its own surface", () => {
+    expect(`${globalStyles}\n${componentStyles}`).not.toMatch(
+      /\.(?:fact-grid|rate-grid)\s*>[^{}]*\{[^}]*grid-column:/s,
     );
-    expect(componentStyles).toMatch(
-      /\.rate-grid\s*>\s*div:only-child\s*\{[^}]*grid-column:\s*auto;/s,
+    expect(globalStyles).toMatch(
+      /\.fact-grid\s*>\s*div\s*\{[^}]*border:\s*var\(--stroke-hairline\) solid var\(--color-border-subtle\);[^}]*background:\s*var\(--color-surface\);/s,
+    );
+    expect(globalStyles).toMatch(
+      /\.fact-grid\s*>\s*div:nth-last-child\(2\):nth-child\(even\)\s*\{[^}]*border-end-end-radius:\s*var\(--list-surface-radius\);/s,
     );
   });
 

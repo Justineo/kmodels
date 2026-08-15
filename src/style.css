@@ -1198,22 +1198,41 @@ button.table-status-trigger {
 .fact-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--stroke-hairline);
-  border: var(--stroke-hairline) solid var(--color-border-subtle);
-  border-radius: var(--list-surface-radius);
-  background: var(--color-border-subtle);
-  overflow: hidden;
 }
 
 .fact-grid > div {
   min-width: 0;
   min-height: var(--layout-detail-cell-height);
   padding: var(--space-2) var(--space-2-5);
+  border: var(--stroke-hairline) solid var(--color-border-subtle);
   background: var(--color-surface);
 }
 
-.fact-grid > div:last-child:nth-child(odd) {
-  grid-column: 1 / -1;
+.fact-grid > div:nth-child(even) {
+  border-left: 0;
+}
+
+.fact-grid > div:nth-child(n + 3) {
+  border-top: 0;
+}
+
+.fact-grid > div:first-child {
+  border-start-start-radius: var(--list-surface-radius);
+}
+
+.fact-grid > div:nth-child(2),
+.fact-grid > div:only-child {
+  border-start-end-radius: var(--list-surface-radius);
+}
+
+.fact-grid > div:last-child,
+.fact-grid > div:nth-last-child(2):nth-child(even) {
+  border-end-end-radius: var(--list-surface-radius);
+}
+
+.fact-grid > div:last-child:nth-child(odd),
+.fact-grid > div:nth-last-child(2):nth-child(odd) {
+  border-end-start-radius: var(--list-surface-radius);
 }
 
 .fact-grid dt {
@@ -1522,6 +1541,32 @@ button.table-status-trigger {
 
   .fact-grid {
     grid-template-columns: 1fr;
+  }
+
+  .fact-grid > div:nth-child(even) {
+    border-left: var(--stroke-hairline) solid var(--color-border-subtle);
+  }
+
+  .fact-grid > div:nth-child(n + 2) {
+    border-top: 0;
+  }
+
+  .fact-grid > div:nth-child(n) {
+    border-radius: var(--radius-none);
+  }
+
+  .fact-grid > div:first-child {
+    border-start-start-radius: var(--list-surface-radius);
+    border-start-end-radius: var(--list-surface-radius);
+  }
+
+  .fact-grid > div:last-child {
+    border-end-start-radius: var(--list-surface-radius);
+    border-end-end-radius: var(--list-surface-radius);
+  }
+
+  .fact-grid > div:only-child {
+    border-radius: var(--list-surface-radius);
   }
 
   .modality-flow {

@@ -198,14 +198,13 @@ function compactPricingSummaries(
     intern(summary.output, cells, cellIndexes),
   ]);
   return websitePricingSummariesSchema.parse({
-    schema_version: 2,
+    schema_version: 3,
     data_version: dataVersion,
     statuses: statuses.map(({ label, description }) => [label, description]),
-    cells: cells.map(({ amount, displayUnit, accessibleText, showTooltip }) => [
+    cells: cells.map(({ amount, displayUnit, accessibleText }) => [
       amount,
       displayUnit,
       accessibleText,
-      showTooltip ? 1 : 0,
     ]),
     pricing,
   });
@@ -504,7 +503,6 @@ function websitePricingCell(
     amount: cell.amount,
     displayUnit: cell.displayUnit,
     accessibleText: cell.accessibleText,
-    showTooltip: cell.showTooltip,
   };
 }
 

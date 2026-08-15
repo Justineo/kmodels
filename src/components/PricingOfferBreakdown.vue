@@ -910,10 +910,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
   padding: 0;
 }
 
-.rate-grid > div:only-child {
-  grid-column: auto;
-}
-
 .rate-grid dt > * {
   display: block;
 }

@@ -22,10 +22,10 @@ const catalog = {
   models: [[0, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2]],
 };
 const pricing = {
-  schema_version: 2,
+  schema_version: 3,
   data_version: catalog.data_version,
   statuses: [],
-  cells: [["$1", "/ 1M tokens", "$1 per 1 million input tokens", 0]],
+  cells: [["$1", "/ 1M tokens", "$1 per 1 million input tokens"]],
   pricing: [[2, null, 0, null, null]],
 };
 
@@ -83,5 +83,11 @@ describe("website runtime catalog parser", () => {
         pricing: [[2, null, 1, null, null]],
       }),
     ).toThrow("does not exist");
+    expect(() =>
+      parseWebsiteCatalog(catalog, {
+        ...pricing,
+        cells: [["$1", "/ 1M tokens", "$1 per 1 million input tokens", 0]],
+      }),
+    ).toThrow("3-item array");
   });
 });

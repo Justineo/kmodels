@@ -170,7 +170,7 @@ function parseWebsitePricing(value: unknown): {
 } {
   const pricing = record(value, "pricing");
   exactKeys(pricing, pricingKeys, "pricing");
-  if (pricing.schema_version !== 2) throw new Error("Unsupported website pricing schema");
+  if (pricing.schema_version !== 3) throw new Error("Unsupported website pricing schema");
   const dataVersion = nonEmptyString(pricing.data_version, "pricing.data_version");
   if (!hashPattern.test(dataVersion)) throw new Error("pricing.data_version must be a hash");
   if (!Array.isArray(pricing.statuses)) throw new Error("pricing.statuses must be an array");
@@ -186,13 +186,11 @@ function parseWebsitePricing(value: unknown): {
   });
   const cells = pricing.cells.map((value, index) => {
     const label = `pricing.cells[${index}]`;
-    const item = tuple(value, 4, label);
-    if (item[3] !== 0 && item[3] !== 1) throw new Error(`${label}[3] is invalid`);
+    const item = tuple(value, 3, label);
     return {
       amount: nonEmptyString(item[0], `${label}[0]`),
       displayUnit: nonEmptyString(item[1], `${label}[1]`),
       accessibleText: nonEmptyString(item[2], `${label}[2]`),
-      showTooltip: item[3] === 1,
     };
   });
   const summaries = pricing.pricing.map((value, index): WebsitePricingSummary => {
