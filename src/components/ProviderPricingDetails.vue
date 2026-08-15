@@ -1,6 +1,5 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
-import { formatRelativeTime, formatSnapshotAt } from "../catalog/presentation.ts";
 import {
   loadWebsiteProviderPricingChunk,
   loadWebsiteProviderPricingOffer,
@@ -14,8 +13,8 @@ import type {
 import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import ProviderPricingOfferDetails from "./ProviderPricingOfferDetails.vue";
+import RelativeTime from "./RelativeTime.vue";
 import UiIcon from "./UiIcon.vue";
-import UiTooltip from "./UiTooltip.vue";
 
 const props = defineProps<{
   provider: WebsiteProvider | undefined;
@@ -239,15 +238,7 @@ async function loadMoreResources(): Promise<void> {
               <p v-if="detail.snapshot" class="provider-pricing-status">
                 <template v-if="detail.snapshot.publication === 'fresh'">Verified</template>
                 <template v-else>Retained snapshot verified</template>
-                <UiTooltip
-                  as="button"
-                  class="provider-pricing-time"
-                  :content="formatSnapshotAt(detail.snapshot.observed_at)"
-                >
-                  <time :datetime="detail.snapshot.observed_at">
-                    {{ formatRelativeTime(detail.snapshot.observed_at) }}
-                  </time>
-                </UiTooltip>
+                <RelativeTime :value="detail.snapshot.observed_at" />
               </p>
               <p
                 v-if="detail.snapshot?.publication === 'retained'"
@@ -255,15 +246,8 @@ async function loadMoreResources(): Promise<void> {
                 role="status"
               >
                 Latest refresh
-                <UiTooltip
-                  as="button"
-                  class="provider-pricing-time"
-                  :content="formatSnapshotAt(detail.snapshot.refresh_failure.attempted_at)"
-                >
-                  <time :datetime="detail.snapshot.refresh_failure.attempted_at">
-                    {{ formatRelativeTime(detail.snapshot.refresh_failure.attempted_at) }}
-                  </time> </UiTooltip
-                >: {{ detail.snapshot.refresh_failure.message }}
+                <RelativeTime :value="detail.snapshot.refresh_failure.attempted_at" />:
+                {{ detail.snapshot.refresh_failure.message }}
               </p>
 
               <label class="provider-resource-search">
@@ -378,13 +362,6 @@ async function loadMoreResources(): Promise<void> {
   margin: 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-body);
-}
-
-.provider-pricing-status :deep(.provider-pricing-time),
-.unknown-note :deep(.provider-pricing-time) {
-  border-bottom: var(--stroke-hairline) dotted var(--color-border-interactive);
-  color: inherit;
-  cursor: help;
 }
 
 .provider-resource-search {

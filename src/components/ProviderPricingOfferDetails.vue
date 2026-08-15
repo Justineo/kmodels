@@ -1,7 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import { formatDailyTimeSchedule } from "../catalog/pricing-presentation.ts";
-import { formatRateUnit } from "../catalog/presentation.ts";
+import { formatDailyTimeSchedule, formatRateUnit } from "../catalog/pricing-presentation.ts";
 import type { WebsitePricingOffer, WebsitePricingSelector } from "../catalog/website-schema.ts";
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 

@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   formatModelTask,
-  formatRateUnit,
   formatRelativeTime,
-  formatSnapshotAt,
+  formatUtcDateTime,
   formatTableTask,
   versionBadgeModelUids,
 } from "../src/catalog/presentation.ts";
@@ -93,14 +92,7 @@ describe("time presentation", () => {
     const now = Date.parse("2026-08-16T10:33:00.000Z");
 
     expect(formatRelativeTime(observedAt, now)).toBe("yesterday");
-    expect(formatSnapshotAt(observedAt)).toBe("Aug 15, 2026, 10:33:00 AM UTC");
-  });
-});
-
-describe("rate presentation", () => {
-  it("uses a slash for compact units", () => {
-    expect(formatRateUnit("per 1M tokens")).toBe("/ 1M tokens");
-    expect(formatRateUnit("USD / request")).toBe("USD / request");
+    expect(formatUtcDateTime(observedAt)).toBe("Aug 15, 2026, 10:33:00 AM UTC");
   });
 });
 

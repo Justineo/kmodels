@@ -8,13 +8,14 @@ import {
   formatCategoricalValue,
   formatDailyTimeSchedule,
   formatDimension,
+  formatRateUnit,
   formatUnitExpression,
   isModelDimension,
   isWholeNumberDimension,
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
-import { formatRateUnit, formatSentenceCase } from "../catalog/presentation.ts";
+import { formatSentenceCase } from "../catalog/presentation.ts";
 import {
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
@@ -909,9 +910,8 @@ function scheduleRows(selector: WebsitePricingSelector) {
   padding: 0;
 }
 
-.rate-grid:has(> :only-child) {
-  grid-template-columns: 1fr;
-  width: 50%;
+.rate-grid > div:only-child {
+  grid-column: auto;
 }
 
 .rate-grid dt > * {
@@ -994,10 +994,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
   .schedule-rule dd {
     grid-column: 2;
     text-align: left;
-  }
-
-  .rate-grid:has(> :only-child) {
-    width: 100%;
   }
 }
 </style>

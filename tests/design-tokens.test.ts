@@ -1,14 +1,14 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vite-plus/test";
 
-const tokens = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
-const components = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const tokenStyles = readFileSync(new URL("../src/tokens.css", import.meta.url), "utf8");
+const globalStyles = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
 const componentDirectory = new URL("../src/components/", import.meta.url);
 const componentStyles = readdirSync(componentDirectory)
   .filter((name) => name.endsWith(".vue"))
   .map((name) => readFileSync(new URL(name, componentDirectory), "utf8"))
   .join("\n");
-const allStyles = `${components}\n${componentStyles}`;
+const allStyles = `${globalStyles}\n${componentStyles}`;
 const app = readFileSync(new URL("../src/App.vue", import.meta.url), "utf8");
 const tooltip = readFileSync(new URL("../src/components/UiTooltip.vue", import.meta.url), "utf8");
 const modelRow = readFileSync(new URL("../src/components/ModelRow.vue", import.meta.url), "utf8");
@@ -75,29 +75,38 @@ describe("design token contract", () => {
   });
 
   it("uses one readable semantic type scale", () => {
-    expect(tokens).toMatch(/--font-size-meta:\s*0\.6875rem;/);
-    expect(tokens).toMatch(/--font-size-body:\s*0\.8125rem;/);
-    expect(tokens).toMatch(/--font-size-heading:\s*0\.9375rem;/);
-    expect(tokens).toMatch(/--font-size-title:\s*1\.25rem;/);
-    expect(`${tokens}\n${allStyles}`).not.toMatch(
+    expect(tokenStyles).toMatch(/--font-size-meta:\s*0\.6875rem;/);
+    expect(tokenStyles).toMatch(/--font-size-body:\s*0\.8125rem;/);
+    expect(tokenStyles).toMatch(/--font-size-heading:\s*0\.9375rem;/);
+    expect(tokenStyles).toMatch(/--font-size-title:\s*1\.25rem;/);
+    expect(`${tokenStyles}\n${allStyles}`).not.toMatch(
       /--font-size-(?:micro|label|caption|chrome|brand|display)\b/,
     );
-    expect(tokens).not.toMatch(/font-size:\s*var\(--font-size-body\)/);
-    expect(components).toMatch(/body\s*\{[^}]*font-size:\s*var\(--font-size-body\);/s);
-    expect(components).toMatch(
+    expect(tokenStyles).not.toMatch(/font-size:\s*var\(--font-size-body\)/);
+    expect(globalStyles).toMatch(/body\s*\{[^}]*font-size:\s*var\(--font-size-body\);/s);
+    expect(globalStyles).toMatch(
       /\.table-status-trigger\s*\{[^}]*font-size:\s*var\(--font-size-body\);/s,
     );
-    expect(components).toMatch(/text-size-adjust:\s*100%;/);
+    expect(globalStyles).toMatch(/text-size-adjust:\s*100%;/);
+  });
+
+  it("fills unpaired fact-grid rows without stretching a sole rate", () => {
+    expect(globalStyles).toMatch(
+      /\.fact-grid\s*>\s*div:last-child:nth-child\(odd\)\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;/s,
+    );
+    expect(componentStyles).toMatch(
+      /\.rate-grid\s*>\s*div:only-child\s*\{[^}]*grid-column:\s*auto;/s,
+    );
   });
 
   it("declares every consumed custom property locally", () => {
     const declared = new Set(
-      matches(/--[a-z0-9-]+\s*:/i, `${tokens}\n${allStyles}`).map((value) =>
+      matches(/--[a-z0-9-]+\s*:/i, `${tokenStyles}\n${allStyles}`).map((value) =>
         value.slice(0, value.indexOf(":")).trim(),
       ),
     );
     const consumed = new Set(
-      matches(/var\(--[a-z0-9-]+/i, `${tokens}\n${allStyles}`).map((value) =>
+      matches(/var\(--[a-z0-9-]+/i, `${tokenStyles}\n${allStyles}`).map((value) =>
         value.slice("var(".length),
       ),
     );
@@ -124,16 +133,16 @@ describe("design token contract", () => {
   });
 
   it("keeps native horizontal table overflow inside the viewport", () => {
-    expect(components).toMatch(/\.catalog-section\s*\{[^}]*min-width:\s*0;/s);
-    expect(components).toMatch(/\.table-scroll-host\s*\{[^}]*min-width:\s*0;/s);
-    expect(components).toMatch(
+    expect(globalStyles).toMatch(/\.catalog-section\s*\{[^}]*min-width:\s*0;/s);
+    expect(globalStyles).toMatch(/\.table-scroll-host\s*\{[^}]*min-width:\s*0;/s);
+    expect(globalStyles).toMatch(
       /\.table-shell\s*\{[^}]*width:\s*100%;[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*hidden;/s,
     );
   });
 
   it("keeps virtual row striping independent of rendered child position", () => {
-    expect(components).not.toMatch(/\.model-row:nth-child\((?:odd|even)\)/);
-    expect(components).toMatch(/\.model-row\[data-alternate="true"\]\s*>\s*td/);
+    expect(globalStyles).not.toMatch(/\.model-row:nth-child\((?:odd|even)\)/);
+    expect(globalStyles).toMatch(/\.model-row\[data-alternate="true"\]\s*>\s*td/);
     expect(matches(/:alternate="\(virtualRange\.start \+ index\) % 2 === 1"/, app)).toHaveLength(2);
     expect(modelRow).toMatch(/:data-alternate="alternate \? 'true' : undefined"/);
     expect(modelGroupRow).toMatch(/:data-alternate="alternate \? 'true' : undefined"/);
@@ -174,27 +183,27 @@ describe("design token contract", () => {
   });
 
   it("keeps custom scrollbar tokens stronger than the asynchronously loaded base theme", () => {
-    expect(components).toMatch(/\.os-scrollbar\.kmodels-scrollbar\s*\{/);
-    expect(components).not.toMatch(/(?<!\.os-scrollbar)\.kmodels-scrollbar\s*\{/);
+    expect(globalStyles).toMatch(/\.os-scrollbar\.kmodels-scrollbar\s*\{/);
+    expect(globalStyles).not.toMatch(/(?<!\.os-scrollbar)\.kmodels-scrollbar\s*\{/);
   });
 
   it("keeps heading anchors outside the vertical table scroller", () => {
-    expect(components).toMatch(
+    expect(globalStyles).toMatch(
       /\.model-table\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*var\(--layout-table-header-height\) minmax\(0, 1fr\);/s,
     );
-    expect(components).toMatch(
+    expect(globalStyles).toMatch(
       /\.model-table tbody\s*\{[^}]*min-height:\s*0;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;/s,
     );
-    expect(components).not.toMatch(/\.model-table th\s*\{[^}]*position:\s*sticky;/s);
+    expect(globalStyles).not.toMatch(/\.model-table th\s*\{[^}]*position:\s*sticky;/s);
     expect(app).toMatch(/<tbody ref="tableBody" @scroll\.passive="updateVirtualRange">/);
   });
 
   it("keeps coarse-pointer table scrolling touch-friendly", () => {
-    expect(components).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
-    expect(components).toMatch(
+    expect(globalStyles).toMatch(/\.model-table tbody td\s*\{[^}]*touch-action:\s*pan-x pan-y;/s);
+    expect(globalStyles).toMatch(
       /\.table-vertical-scrollbar-slot\s*\{[^}]*inset:\s*var\(--layout-table-header-height\)/s,
     );
-    expect(components).toMatch(
+    expect(globalStyles).toMatch(
       /\.table-vertical-scrollbar-slot\s*>\s*\.os-scrollbar-horizontal,[^{]*\.table-scroll-host\s*>\s*\.os-scrollbar-vertical\s*\{[^}]*display:\s*none;/s,
     );
   });

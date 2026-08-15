@@ -12,6 +12,7 @@ import {
   formatBillingMode,
   formatDenomination,
   formatDimension,
+  formatRateUnit,
   formatUnitExpression,
   isWholeNumberDimension,
   modelPricingView,
@@ -183,6 +184,11 @@ const tokenPrice: UnitPrice = {
 };
 
 describe("canonical pricing presentation", () => {
+  it("uses a slash for compact rate units", () => {
+    expect(formatRateUnit("per 1M tokens")).toBe("/ 1M tokens");
+    expect(formatRateUnit("USD / request")).toBe("USD / request");
+  });
+
   it("uses concise labels for unit-bearing dimensions", () => {
     expect(formatDimension({ namespace: "kmodels", value: "cache_ttl_seconds" })).toBe("Cache TTL");
     expect(formatDimension({ namespace: "kmodels", value: "context_tokens" })).toBe("Context");
