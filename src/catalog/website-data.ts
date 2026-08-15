@@ -40,6 +40,7 @@ import type {
   UsageSignal,
 } from "./pricing-schema.ts";
 import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
+import type { DailyTimeSchedule } from "./pricing-temporal.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
 import {
   websiteCatalogIndexSchema,
@@ -66,11 +67,15 @@ export const WEBSITE_DETAIL_CHUNK_MAX_BYTES = 2 * 1024 * 1024;
 export const PROVIDER_UNNORMALIZED_PREVIEW_LIMIT = 20;
 export const WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH = 180;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
-type CategoricalLabelIndex = ReadonlyMap<string, string>;
+interface CategoricalMetadata {
+  label?: string;
+  schedule?: DailyTimeSchedule;
+}
+type CategoricalMetadataIndex = ReadonlyMap<string, CategoricalMetadata>;
 type ProviderAtomIndex = ReadonlyMap<string, ProviderAtomRegistryEntry>;
 const selectorCache = new WeakMap<
   PricingOffer,
-  WeakMap<CategoricalLabelIndex, WebsitePricingSelector[]>
+  WeakMap<CategoricalMetadataIndex, WebsitePricingSelector[]>
 >();
 
 export interface WebsitePublication {
@@ -87,7 +92,7 @@ export function websitePublication(
   dataVersion: string,
 ): WebsitePublication {
   const index = pricingViewIndex(pricing);
-  const labels = categoricalLabelIndex(pricing);
+  const labels = categoricalMetadataIndex(pricing);
   const atoms = providerAtomIndex(pricing);
   const pricingViews = new Map(
     catalog.models.map((model) => [model.uid, modelPricingViewFromIndex(index, model)]),
@@ -251,7 +256,7 @@ function websiteDeferredAssets(
   pricing: PricingCatalog,
   dataVersion: string,
   view: (model: ProviderModel) => ModelPricingView,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
 ): Pick<WebsitePublication, "details" | "offers" | "providerPricing"> {
   const details: WebsiteDetailChunk[] = [];
@@ -473,7 +478,7 @@ function boundedChunks<Value, Chunk>(
 function pricingSummary(
   view: ModelPricingView,
   model: ProviderModel,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
 ) {
   const input = websitePricingCell(view, model, "input");
   const cache = websitePricingCell(view, model, "cache");
@@ -503,7 +508,7 @@ function websitePricingCell(
   };
 }
 
-function pricingStatus(view: ModelPricingView, modelRef: string, labels: CategoricalLabelIndex) {
+function pricingStatus(view: ModelPricingView, modelRef: string, labels: CategoricalMetadataIndex) {
   if (view.outcome === "not_applicable")
     return {
       label: "No offer",
@@ -587,7 +592,7 @@ export function websiteModelDetail(
   return websiteModelDetailFromView(
     modelPricingView(pricing, model),
     model,
-    categoricalLabelIndex(pricing),
+    categoricalMetadataIndex(pricing),
     providerAtomIndex(pricing),
   );
 }
@@ -595,7 +600,7 @@ export function websiteModelDetail(
 function websiteModelDetailFromView(
   view: ModelPricingView,
   model: ProviderModel,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
 ): WebsiteModelDetail {
   const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
@@ -619,7 +624,7 @@ function websiteModelDetailFromView(
 function websitePricingDetail(
   view: ModelPricingView,
   modelRef: string,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
 ): WebsitePricingDetail | undefined {
   const snapshot = websiteSnapshot(view.snapshot);
@@ -673,7 +678,7 @@ function websitePricingDetail(
 function websiteProviderPricingResources(
   pricing: PricingCatalog,
   providerId: string,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
 ): Array<{
   id: string;
@@ -760,7 +765,7 @@ function websiteOffer(
   offer: PricingOffer,
   group: WebsitePricingOffer["group"],
   modelRef: string | undefined,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
   atoms: ProviderAtomIndex,
   options: { unnormalizedLimit?: number; mechanismRefs?: readonly string[] } = {},
 ): WebsitePricingOffer {
@@ -872,7 +877,7 @@ function websiteOffer(
 
 function scopeFields(
   value: Pick<PricingOffer["states"][number], "applicability" | "validity">,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
 ) {
   return {
     applicability: value.applicability,
@@ -897,7 +902,7 @@ function rawFactDetails(raw: RawPriceFact): string[] {
 
 function pricingSelectors(
   offer: PricingOffer,
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
 ): WebsitePricingSelector[] {
   const cache = selectorCache.get(offer);
   const cached = cache?.get(labels);
@@ -906,7 +911,7 @@ function pricingSelectors(
   const selectors = [...byDimension.entries()]
     .map(([key, conditions]) => pricingSelector(key, conditions, labels))
     .sort((left, right) => compareUtf8(left.label, right.label));
-  const created = cache ?? new WeakMap<CategoricalLabelIndex, WebsitePricingSelector[]>();
+  const created = cache ?? new WeakMap<CategoricalMetadataIndex, WebsitePricingSelector[]>();
   created.set(labels, selectors);
   if (cache === undefined) selectorCache.set(offer, created);
   return selectors;
@@ -929,7 +934,7 @@ function conditionsByDimension(
 function pricingSelector(
   key: string,
   conditions: PriceCondition[],
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
 ): WebsitePricingSelector {
   const first = conditions[0];
   if (first === undefined) throw new Error(`Pricing selector ${key} has no conditions`);
@@ -944,9 +949,15 @@ function pricingSelector(
         if (condition.kind !== "categorical") return [];
         return condition.values.map((value) => {
           const valueKey = canonicalJsonKey(value);
+          const metadata = categoricalMetadata(labels, first.dimension, value);
           return [
             valueKey,
-            { key: valueKey, label: categoricalLabel(labels, first.dimension, value), value },
+            {
+              key: valueKey,
+              label: metadata.label,
+              value,
+              ...(metadata.schedule === undefined ? {} : { schedule: metadata.schedule }),
+            },
           ] as const;
         });
       }),
@@ -995,23 +1006,29 @@ function pricingSelector(
   return { ...base, kind: "decimal_range", unit: first.unit, ranges };
 }
 
-function categoricalLabelIndex(pricing: PricingCatalog): CategoricalLabelIndex {
-  const labels = new Map<string, string>();
+function categoricalMetadataIndex(pricing: PricingCatalog): CategoricalMetadataIndex {
+  const labels = new Map<string, CategoricalMetadata>();
   for (const vocabulary of pricing.provider_vocabularies)
     for (const atom of vocabulary.atoms)
-      if (atom.kind === "categorical_value" && atom.label !== undefined)
-        addCategoricalLabel(
+      if (
+        atom.kind === "categorical_value" &&
+        (atom.label !== undefined || atom.schedule !== undefined)
+      )
+        addCategoricalMetadata(
           labels,
           categoricalLabelIdentity(vocabulary.provider_id, atom.dimension, atom.key),
-          atom.label,
+          {
+            ...(atom.label === undefined ? {} : { label: atom.label }),
+            ...(atom.schedule === undefined ? {} : { schedule: atom.schedule }),
+          },
         );
   const providerManifests: readonly ProviderManifest[] = manifests;
   for (const manifest of providerManifests)
     for (const label of manifest.pricingCategoricalLabels ?? [])
-      addCategoricalLabel(
+      addCategoricalMetadata(
         labels,
         categoricalLabelIdentity(manifest.provider.id, label.dimension, label.value),
-        label.label,
+        { label: label.label },
       );
   return labels;
 }
@@ -1044,28 +1061,66 @@ function providerAtom(
   return atom;
 }
 
-function addCategoricalLabel(labels: Map<string, string>, identity: string, label: string): void {
+function addCategoricalMetadata(
+  labels: Map<string, CategoricalMetadata>,
+  identity: string,
+  metadata: CategoricalMetadata,
+): void {
   const current = labels.get(identity);
-  if (current !== undefined && current !== label)
-    throw new Error(`Provider categorical label conflicts with its canonical vocabulary`);
-  labels.set(identity, label);
+  if (
+    current !== undefined &&
+    ((current.label !== undefined &&
+      metadata.label !== undefined &&
+      current.label !== metadata.label) ||
+      (current.schedule !== undefined &&
+        metadata.schedule !== undefined &&
+        !sameSchedule(current.schedule, metadata.schedule)))
+  )
+    throw new Error(`Provider categorical metadata conflicts with its canonical vocabulary`);
+  labels.set(identity, {
+    ...(current?.label === undefined ? {} : { label: current.label }),
+    ...(current?.schedule === undefined ? {} : { schedule: current.schedule }),
+    ...metadata,
+  });
+}
+
+function sameSchedule(
+  left: DailyTimeSchedule | undefined,
+  right: DailyTimeSchedule | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return canonicalJsonKey(left) === canonicalJsonKey(right);
+}
+
+function categoricalMetadata(
+  labels: CategoricalMetadataIndex,
+  dimension: PriceDimension,
+  value: PriceCategoricalValue,
+): { label: string; schedule?: DailyTimeSchedule } {
+  if (value.namespace === "provider") {
+    const metadata = labels.get(
+      categoricalLabelIdentity(value.provider_id, dimension, value.value),
+    );
+    if (metadata !== undefined)
+      return {
+        label: metadata.label ?? formatCategoricalValue(value),
+        ...(metadata.schedule === undefined ? {} : { schedule: metadata.schedule }),
+      };
+  }
+  return { label: formatCategoricalValue(value) };
 }
 
 function categoricalLabel(
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
   dimension: PriceDimension,
   value: PriceCategoricalValue,
 ): string {
-  if (value.namespace === "provider") {
-    const label = labels.get(categoricalLabelIdentity(value.provider_id, dimension, value.value));
-    if (label !== undefined) return label;
-  }
-  return formatCategoricalValue(value);
+  return categoricalMetadata(labels, dimension, value).label;
 }
 
 export function applicabilityLabel(
   applicability: PricingOffer["states"][number]["applicability"],
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
 ): string {
   const clauses = applicability.any_of.map(({ all_of }) =>
     all_of.filter(({ dimension }) => !isModelDimension(dimension)),
@@ -1108,7 +1163,7 @@ export function applicabilityLabel(
   return `Conditional pricing · ${clauses.length} combination${clauses.length === 1 ? "" : "s"} across ${dimensions} dimension${dimensions === 1 ? "" : "s"}`;
 }
 
-function conditionLabel(condition: PriceCondition, labels: CategoricalLabelIndex): string {
+function conditionLabel(condition: PriceCondition, labels: CategoricalMetadataIndex): string {
   const label = dimensionLabel(condition.dimension);
   if (condition.kind === "categorical")
     return `${label}: ${condition.values
@@ -1128,7 +1183,7 @@ function conditionLabel(condition: PriceCondition, labels: CategoricalLabelIndex
 
 function dimensionConditionSummary(
   conditions: PriceCondition[],
-  labels: CategoricalLabelIndex,
+  labels: CategoricalMetadataIndex,
 ): string {
   const first = conditions[0];
   if (first === undefined) throw new Error("Cannot summarize an empty pricing dimension");

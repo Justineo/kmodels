@@ -1,10 +1,17 @@
 import type {
+  AtomicPriceState,
   AtomicPricingBook,
   AtomicPricingTerm,
   AtomicProviderPricing,
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
-import type { ChargeBinding, PriceMeter } from "./pricing-schema.ts";
+import type {
+  ChargeBinding,
+  PriceMeter,
+  ProviderAtomRegistryEntry,
+  ProviderPricingVocabulary,
+  PublishedValidity,
+} from "./pricing-schema.ts";
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import {
   accountingGaps,
@@ -21,12 +28,46 @@ export function applyDeepseekCommercialTopology(
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
   return {
     ...input,
+    vocabulary: deepseekVocabulary(input.vocabulary),
     books: input.books.flatMap((book) =>
       book.scope.kind === "models"
         ? [modelBook(book, published.get(book.scope.model_refs[0] ?? ""))]
         : [],
     ),
   };
+}
+
+function deepseekVocabulary(vocabulary: ProviderPricingVocabulary): ProviderPricingVocabulary {
+  return { ...vocabulary, atoms: vocabulary.atoms.map(deepseekAtom) };
+}
+
+function deepseekAtom(atom: ProviderAtomRegistryEntry): ProviderAtomRegistryEntry {
+  if (
+    atom.kind !== "categorical_value" ||
+    atom.dimension.namespace !== "kmodels" ||
+    atom.dimension.value !== "billing_period"
+  )
+    return atom;
+  if (atom.key === "peak")
+    return {
+      ...atom,
+      label: "Peak",
+      schedule: {
+        kind: "daily_time_windows",
+        time_zone: "UTC",
+        windows: [
+          { from: "01:00", until: "04:00" },
+          { from: "06:00", until: "10:00" },
+        ],
+      },
+    };
+  if (atom.key === "off_peak")
+    return {
+      ...atom,
+      label: "Off-peak",
+      schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+    };
+  return atom;
 }
 
 function modelBook(
@@ -42,12 +83,45 @@ function modelBook(
         ...offer,
         offer_key: "payg",
         name: "Pay-as-you-go inference",
-        terms: stripAccountingGaps(offer.terms).map((term) => bindTerm(term, model, blocked)),
+        states: offer.states.map(normalizeStateValidity),
+        terms: stripAccountingGaps(offer.terms).map((term) =>
+          normalizeTermValidity(bindTerm(term, model, blocked)),
+        ),
         relations: [],
         settlement: [],
       };
     }),
   };
+}
+
+function normalizeStateValidity(state: AtomicPriceState): AtomicPriceState {
+  const validity = deepseekValidity(state.validity);
+  return validity === undefined ? state : { ...state, validity };
+}
+
+function normalizeTermValidity(term: AtomicPricingTerm): AtomicPricingTerm {
+  if (term.kind !== "rate") return term;
+  return {
+    ...term,
+    variants: term.variants.map((variant) => {
+      const validity = deepseekValidity(variant.validity);
+      return validity === undefined ? variant : { ...variant, validity };
+    }),
+  };
+}
+
+function deepseekValidity(validity: PublishedValidity | undefined): PublishedValidity | undefined {
+  if (validity === undefined) return;
+  const from =
+    validity.from === undefined
+      ? undefined
+      : { ...validity.from, inclusive: validity.from.inclusive ?? true };
+  const until =
+    validity.until === undefined
+      ? undefined
+      : { ...validity.until, inclusive: validity.until.inclusive ?? false };
+  if (from === undefined) return until === undefined ? undefined : { until };
+  return until === undefined ? { from } : { from, until };
 }
 
 function bindTerm(

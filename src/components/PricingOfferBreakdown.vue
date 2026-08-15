@@ -6,6 +6,7 @@ import {
   evaluateApplicability,
   evaluateModelApplicability,
   formatCategoricalValue,
+  formatDailyTimeSchedule,
   formatDimension,
   formatUnitExpression,
   isModelDimension,
@@ -315,6 +316,22 @@ function joinLabels(labels: string[]): string {
   if (labels.length < 2) return labels[0] ?? "the required context";
   return `${labels.slice(0, -1).join(", ")} and ${labels.at(-1)}`;
 }
+
+function scheduleRows(selector: WebsitePricingSelector) {
+  if (selector.kind !== "categorical") return [];
+  return selector.values.flatMap(({ key, label, schedule }) =>
+    schedule === undefined
+      ? []
+      : [
+          {
+            key,
+            label,
+            rule: formatDailyTimeSchedule(schedule),
+            timeZone: schedule.time_zone,
+          },
+        ],
+  );
+}
 </script>
 
 <template>
@@ -339,13 +356,31 @@ function joinLabels(labels: string[]): string {
               >({{ formatUnitExpression(selector.unit) }})</template
             >
           </span>
-          <UiSelect
-            v-if="selector.kind === 'categorical'"
-            :model-value="inputValue(selector.key)"
-            :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
-            placeholder="Choose…"
-            @update:model-value="setInput(selector.key, $event)"
-          />
+          <template v-if="selector.kind === 'categorical'">
+            <UiSelect
+              :model-value="inputValue(selector.key)"
+              :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
+              placeholder="Choose…"
+              @update:model-value="setInput(selector.key, $event)"
+            />
+            <div
+              v-if="scheduleRows(selector).length > 0"
+              class="schedule-rule"
+              :aria-label="`${selector.label} daily schedule`"
+            >
+              <small>Daily rule · {{ scheduleRows(selector)[0]?.timeZone }}</small>
+              <dl>
+                <div
+                  v-for="row in scheduleRows(selector)"
+                  :key="row.key"
+                  :data-selected="inputValue(selector.key) === row.key"
+                >
+                  <dt>{{ row.label }}</dt>
+                  <dd>{{ row.rule }}</dd>
+                </div>
+              </dl>
+            </div>
+          </template>
           <UiSelect
             v-else-if="selector.kind === 'boolean'"
             :model-value="inputValue(selector.key)"
@@ -614,6 +649,46 @@ function joinLabels(labels: string[]): string {
 
 .pricing-selector-grid .selector-error {
   color: var(--color-status-danger);
+}
+
+.schedule-rule {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1) 0 var(--space-1) var(--space-2);
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.schedule-rule > small {
+  color: var(--color-text-muted);
+}
+
+.schedule-rule dl,
+.schedule-rule dd {
+  margin: 0;
+}
+
+.schedule-rule dl {
+  display: grid;
+  gap: var(--space-0-5);
+}
+
+.schedule-rule dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: var(--space-2);
+  transition: color var(--duration-fast) var(--easing-standard);
+}
+
+.schedule-rule dl > div[data-selected="true"] {
+  color: var(--color-accent);
+}
+
+.schedule-rule dt {
+  font-weight: var(--font-weight-medium);
+}
+
+.schedule-rule dd {
+  text-align: right;
 }
 
 .context-prompt {

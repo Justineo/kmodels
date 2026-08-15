@@ -400,6 +400,64 @@ describe("website data projection", () => {
     });
   });
 
+  it("projects recurring billing rules with categorical selector values", () => {
+    const dimension = { namespace: "kmodels" as const, value: "billing_period" as const };
+    const values = [
+      { namespace: "provider" as const, provider_id: providerId, value: "off_peak" },
+      { namespace: "provider" as const, provider_id: providerId, value: "peak" },
+    ];
+    const atoms: ProviderAtomRegistryEntry[] = [
+      {
+        kind: "categorical_value",
+        key: "off_peak",
+        dimension,
+        definition: "All other times",
+        label: "Off-peak",
+        schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+      },
+      {
+        kind: "categorical_value",
+        key: "peak",
+        dimension,
+        definition: "Peak billing windows",
+        label: "Peak",
+        schedule: {
+          kind: "daily_time_windows",
+          time_zone: "UTC",
+          windows: [
+            { from: "01:00", until: "04:00" },
+            { from: "06:00", until: "10:00" },
+          ],
+        },
+      },
+    ];
+
+    expect(
+      detail([{ kind: "categorical", dimension, values }], atoms).pricing?.offers[0]?.selectors[0],
+    ).toMatchObject({
+      kind: "categorical",
+      values: expect.arrayContaining([
+        expect.objectContaining({
+          label: "Off-peak",
+          value: values[0],
+          schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+        }),
+        expect.objectContaining({
+          label: "Peak",
+          value: values[1],
+          schedule: {
+            kind: "daily_time_windows",
+            time_zone: "UTC",
+            windows: [
+              { from: "01:00", until: "04:00" },
+              { from: "06:00", until: "10:00" },
+            ],
+          },
+        }),
+      ]),
+    });
+  });
+
   it("uses range choices only for a complete non-overlapping numeric partition", () => {
     const partition = numericDetail([
       { upper: { value: "10", inclusive: true } },

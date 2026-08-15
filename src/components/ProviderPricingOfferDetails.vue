@@ -1,5 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
+import { formatDailyTimeSchedule } from "../catalog/pricing-presentation.ts";
 import type { WebsitePricingOffer, WebsitePricingSelector } from "../catalog/website-schema.ts";
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 
@@ -14,7 +15,12 @@ const showStates = computed(
 );
 
 function selectorSummary(selector: WebsitePricingSelector): string {
-  if (selector.kind === "categorical") return summarize(selector.values.map(({ label }) => label));
+  if (selector.kind === "categorical")
+    return summarize(
+      selector.values.map(({ label, schedule }) =>
+        schedule === undefined ? label : `${label} (${formatDailyTimeSchedule(schedule)} UTC)`,
+      ),
+    );
   if (selector.kind === "boolean") return "Yes or no";
   if (selector.kind === "decimal_values") return summarize(selector.values);
   if (selector.kind === "decimal_buckets")

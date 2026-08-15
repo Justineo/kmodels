@@ -450,6 +450,12 @@ Standard dimensions have schema-owned kinds and value grammars. Provider
 dimensions and categorical values are provider-qualified and registered.
 Unknown source applicability is not represented as an exact selector.
 
+A provider-published recurring daily billing rule is metadata on its categorical values, not a
+datetime condition. The bounded form is either one or more sorted, non-overlapping UTC
+`[from, until)` windows or the single remainder of those windows. A scheduled categorical
+partition requires at least one window value and exactly one remainder value. This records rules
+such as Peak and Off-peak without selecting a value from collection time or the viewer's clock.
+
 Partial UI evaluation is three-valued:
 
 - a supplied condition is true or false;
@@ -466,6 +472,10 @@ resolution.
 Validity preserves an official label with year, month, date, or canonical UTC
 datetime precision and inclusive/exclusive endpoint metadata. It is display
 metadata.
+
+Recurring daily schedules and published validity are independent: the schedule says which
+categorical value applies within a day, while validity says when that published rule starts or
+stops being offered.
 
 Kmodels does not turn collection time into validity and does not execute
 imprecise validity as a historical/current price query. A validity-bearing
@@ -773,6 +783,11 @@ requires any label carried by the canonical vocabulary to agree with it, then
 resolves labels by provider, dimension, and exact value. Values without a
 reviewed label continue through the shared conservative formatter. Components
 never contain provider- or value-specific label branches.
+
+When a categorical value carries a recurring daily schedule, the compact payload preserves the
+structured rule beside that selector value. Model details show a quiet UTC rule list directly below
+the selector and highlight the chosen row; the provider inspector includes the same rule in its
+read-only summary. Neither surface labels a current period or chooses Peak/Off-peak automatically.
 
 Generated-data tests require every configured label to match a current
 vocabulary value and its UI projection, and reject duplicate labels inside a

@@ -40,6 +40,14 @@ USD and CNY remain separate `billing_currency` variants with no FX conversion. T
 conflict because their denominations differ. Kmodels does not infer which currency settles a
 credential; a consumer selects the applicable currency from its own account configuration.
 
+The price table also publishes a rule that takes effect at `2026-08-16T16:00:00Z`. The new rates
+are `billing_period` variants: Peak covers the half-open UTC windows `01:00–04:00` and
+`06:00–10:00`, while Off-peak is the remainder of each UTC day. The preceding flat rates end
+exclusively at the same instant and the scheduled rates begin inclusively, so their validity does
+not overlap. The Chinese table is accepted only when its Beijing-time rule and effective time map
+to the same UTC schedule. Kmodels records this rule and exposes Peak/Off-peak as categorical
+choices; collection never decides a period from its own clock.
+
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort
 changes quantity rather than rate. FIM, Responses, and Anthropic compatibility do not create new
@@ -53,9 +61,9 @@ identity.
 
 The collector intentionally discards account balance, granted credit, recharge/refund terms,
 concurrency, capacity expansion, settlement order, and future price notices without an effective
-rate. Training, storage, provisioned capacity, subscriptions, and self-hosted execution are also
-outside the direct request-rate boundary. Excluded facts are not published as `unknown` or raw
-pricing.
+rate and exact applicability rule. Training, storage, provisioned capacity, subscriptions, and
+self-hosted execution are also outside the direct request-rate boundary. Excluded facts are not
+published as `unknown` or raw pricing.
 
 ## Usage bindings
 
@@ -96,11 +104,12 @@ there is no fuzzy reconciliation, family inheritance, or comparator fallback.
 
 ## Presentation
 
-Model details show one PAYG mechanism, a billing-currency selector, the three published rates, and
-their verified usage counters. They do not show balance, concurrency, settlement, routing,
-provisioning, training, storage, or a separate web-search price. The website presents rates rather
-than calculating a total; Gateway consumers may multiply the selected rates by returned usage and
-sum requests.
+Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors, the compact UTC
+daily rule, the three applicable published rates, and their verified usage counters. They do not
+show balance, concurrency, settlement, routing, provisioning, training, storage, or a separate
+web-search price. The website presents rates rather than calculating a total or deciding the
+current billing period; Gateway consumers may select the applicable rule, multiply rates by
+returned usage, and sum requests.
 
 ## Comparator audit only
 
