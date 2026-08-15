@@ -118,7 +118,6 @@ const websitePricingCellSchema = z.strictObject({
   amount: z.string().min(1),
   displayUnit: z.string().min(1),
   accessibleText: z.string().min(1),
-  showTooltip: z.boolean(),
 });
 
 const websitePricingSnapshotSchema = z.discriminatedUnion("publication", [
@@ -195,12 +194,7 @@ export const websiteCatalogIndexSchema = z
   });
 
 const websitePricingStatusRowSchema = z.tuple([nonEmpty, nonEmpty]);
-const websitePricingCellRowSchema = z.tuple([
-  nonEmpty,
-  nonEmpty,
-  nonEmpty,
-  z.union([z.literal(0), z.literal(1)]),
-]);
+const websitePricingCellRowSchema = z.tuple([nonEmpty, nonEmpty, nonEmpty]);
 const websitePricingSummaryRowSchema = z.tuple([
   z.union([z.literal(0), z.literal(1), z.literal(2)]),
   z.number().int().nonnegative().nullable(),
@@ -211,7 +205,7 @@ const websitePricingSummaryRowSchema = z.tuple([
 
 export const websitePricingSummariesSchema = z
   .strictObject({
-    schema_version: z.literal(2),
+    schema_version: z.literal(3),
     data_version: hash,
     statuses: z.array(websitePricingStatusRowSchema),
     cells: z.array(websitePricingCellRowSchema),

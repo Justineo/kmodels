@@ -423,11 +423,9 @@ describe("canonical pricing presentation", () => {
     });
     expect(modelPricingView(data, model()).outcome).toBe("offers");
     expect(projectPricingTableCell(data, model(), "input")).toMatchObject({
-      meter: "input_text",
       amount: "$2",
       displayUnit: "1M tokens",
       accessibleText: "input_text: USD 2 per 1M tokens",
-      showTooltip: false,
     });
 
     const squared = structuredClone(tokenPrice);
@@ -555,7 +553,6 @@ describe("canonical pricing presentation", () => {
       amount: "$0.198",
       displayUnit: "1K TPM·hr",
       accessibleText: "input_text: USD 0.198 per 1K TPM·hr",
-      showTooltip: true,
     });
     expect(
       displayUnitPrice({
