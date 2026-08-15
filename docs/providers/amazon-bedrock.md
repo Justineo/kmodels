@@ -90,6 +90,10 @@ A model book contains separate on-demand and batch offers. Batch is removed from
 dimension after it becomes the offer mechanism. Standard, Priority, Flex, resolved speed, Region,
 routing scope, cache behavior, and context thresholds remain ordinary applicability dimensions.
 
+Price List and reviewed pricing-page rows share the same deployment-scope vocabulary:
+`in_region`, `geo_cross_region`, and `global_cross_region`. The page does not introduce a separate
+`geo` alias for the same geographic cross-Region mechanism.
+
 The collector preserves exact AWS decimal amounts and normalizes only reviewed units, including:
 
 - 1K/1M tokens, individual tokens, requests, search units, images, pages, audio/video duration, and

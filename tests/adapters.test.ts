@@ -9121,7 +9121,7 @@ describe("document adapter", () => {
       meter: "image_generation",
       price: "0.07",
       unit: "image",
-      conditions: { deployment_scope: "geo", service_tier: "standard" },
+      conditions: { deployment_scope: "geo_cross_region", service_tier: "standard" },
     });
     expect(models.flatMap(({ commercial_facts }) => commercial_facts ?? [])).toEqual([]);
     expect(reconciliation).toEqual([
