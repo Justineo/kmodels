@@ -8,13 +8,44 @@ const compactNumber = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
+const exactDateTime = new Intl.DateTimeFormat("en", {
+  dateStyle: "medium",
+  timeStyle: "long",
+  timeZone: "UTC",
+});
+const relativeTime = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+const relativeTimeUnits = [
+  [365 * 24 * 60 * 60 * 1_000, "year"],
+  [30 * 24 * 60 * 60 * 1_000, "month"],
+  [7 * 24 * 60 * 60 * 1_000, "week"],
+  [24 * 60 * 60 * 1_000, "day"],
+  [60 * 60 * 1_000, "hour"],
+  [60 * 1_000, "minute"],
+  [1_000, "second"],
+] as const;
 
 export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
 export function formatSnapshotAt(value: string): string {
-  return `${value.slice(0, 10)} ${value.slice(11, 16)} UTC`;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? exactDateTime.format(timestamp) : value;
+}
+
+export function formatRelativeTime(value: string, now = Date.now()): string {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "at an unknown time";
+  const difference = timestamp - now;
+  const absoluteDifference = Math.abs(difference);
+  const [duration, unit] =
+    relativeTimeUnits.find(([candidate]) => absoluteDifference >= candidate) ??
+    ([1_000, "second"] as const);
+  return relativeTime.format(Math.round(difference / duration), unit);
+}
+
+export function formatRateUnit(value: string): string {
+  return value.replace(/^per(?=\s|$)/, "/");
 }
 
 export function versionBadgeModelUids(models: readonly VersionedModel[]): Set<string> {

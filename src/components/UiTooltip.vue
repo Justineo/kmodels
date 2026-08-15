@@ -169,7 +169,7 @@ span.ui-tooltip-trigger {
   color: var(--color-text-secondary);
   background: var(--color-surface);
   box-shadow: var(--shadow-popover);
-  font-size: var(--font-size-label);
+  font-size: var(--font-size-body);
   font-weight: var(--font-weight-regular);
   letter-spacing: var(--tracking-normal);
   line-height: var(--line-height-control);

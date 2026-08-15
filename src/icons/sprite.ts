@@ -18,6 +18,7 @@ import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
 import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
 import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
 import arrowUp from "lucide-static/icons/arrow-up.svg?raw";
+import calendarClock from "lucide-static/icons/calendar-clock.svg?raw";
 import chevronDown from "lucide-static/icons/chevron-down.svg?raw";
 import chevronRight from "lucide-static/icons/chevron-right.svg?raw";
 import externalLink from "lucide-static/icons/external-link.svg?raw";
@@ -35,6 +36,7 @@ import { svgSymbol } from "./svg.ts";
 const uiSources = {
   "arrow-right": arrowRight,
   "arrow-up": arrowUp,
+  "calendar-clock": calendarClock,
   "chevron-down": chevronDown,
   "chevron-right": chevronRight,
   "external-link": externalLink,

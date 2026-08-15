@@ -150,6 +150,12 @@ describe("provider pricing details", () => {
       createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
     );
 
+    expect(html).toContain('<section class="pricing-context"');
+    expect(html).toContain('aria-label="Pricing options"');
+    expect(html).not.toContain(">Pricing options</h6>");
+    expect(html).not.toContain("Select Billing period to see rates.");
+    expect(html).toContain('<details class="schedule-rule"');
+    expect(html).not.toContain('<details class="schedule-rule" open');
     expect(html).toContain("Daily rule · UTC");
     expect(html).toContain("01:00–04:00, 06:00–10:00");
     expect(html).toContain("All other times");
@@ -203,8 +209,7 @@ describe("provider pricing details", () => {
     const before = await renderToString(
       createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
     );
-    expect(before).toContain("Price update");
-    expect(before).toContain("New rates from");
+    expect(before).toContain("New rates");
     expect(before).toContain(`datetime="${transition}"`);
     expect(before).toContain("$0.90");
     expect(before).not.toContain("Billing period");
@@ -215,7 +220,7 @@ describe("provider pricing details", () => {
     const after = await renderToString(
       createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
     );
-    expect(after).not.toContain("Price update");
+    expect(after).not.toContain("New rates");
     expect(after).not.toContain("$0.90");
     expect(after).toContain("Billing period");
     expect(after).toContain("Daily rule · UTC");

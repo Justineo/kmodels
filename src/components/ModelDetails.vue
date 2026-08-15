@@ -183,7 +183,7 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
   >
     <article v-if="model" class="details-panel" @animationend.self="finishClose">
       <header class="details-header">
-        <div>
+        <div class="details-header-copy">
           <p class="eyebrow">
             <ProviderIcon :provider-id="model.provider_id" :provider-name="providerName" />
             {{ providerName }}
@@ -216,7 +216,7 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
 
             <section class="detail-section" aria-labelledby="overview-heading">
               <h3 id="overview-heading">Overview</h3>
-              <dl class="detail-grid">
+              <dl class="detail-grid fact-grid">
                 <div>
                   <dt>Tasks</dt>
                   <dd>{{ modelTaskList(model) }}</dd>

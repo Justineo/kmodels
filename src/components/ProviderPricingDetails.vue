@@ -1,6 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, ref, useTemplateRef, watch } from "vue";
-import { formatSnapshotAt } from "../catalog/presentation.ts";
+import { formatRelativeTime, formatSnapshotAt } from "../catalog/presentation.ts";
 import {
   loadWebsiteProviderPricingChunk,
   loadWebsiteProviderPricingOffer,
@@ -15,6 +15,7 @@ import { useOverlayScrollbars } from "../composables/useOverlayScrollbars.ts";
 import ProviderIcon from "./ProviderIcon.vue";
 import ProviderPricingOfferDetails from "./ProviderPricingOfferDetails.vue";
 import UiIcon from "./UiIcon.vue";
+import UiTooltip from "./UiTooltip.vue";
 
 const props = defineProps<{
   provider: WebsiteProvider | undefined;
@@ -238,9 +239,15 @@ async function loadMoreResources(): Promise<void> {
               <p v-if="detail.snapshot" class="provider-pricing-status">
                 <template v-if="detail.snapshot.publication === 'fresh'">Verified</template>
                 <template v-else>Retained snapshot verified</template>
-                <time :datetime="detail.snapshot.observed_at">
-                  {{ formatSnapshotAt(detail.snapshot.observed_at) }}
-                </time>
+                <UiTooltip
+                  as="button"
+                  class="provider-pricing-time"
+                  :content="formatSnapshotAt(detail.snapshot.observed_at)"
+                >
+                  <time :datetime="detail.snapshot.observed_at">
+                    {{ formatRelativeTime(detail.snapshot.observed_at) }}
+                  </time>
+                </UiTooltip>
               </p>
               <p
                 v-if="detail.snapshot?.publication === 'retained'"
@@ -248,8 +255,14 @@ async function loadMoreResources(): Promise<void> {
                 role="status"
               >
                 Latest refresh
-                <time :datetime="detail.snapshot.refresh_failure.attempted_at">
-                  {{ formatSnapshotAt(detail.snapshot.refresh_failure.attempted_at) }} </time
+                <UiTooltip
+                  as="button"
+                  class="provider-pricing-time"
+                  :content="formatSnapshotAt(detail.snapshot.refresh_failure.attempted_at)"
+                >
+                  <time :datetime="detail.snapshot.refresh_failure.attempted_at">
+                    {{ formatRelativeTime(detail.snapshot.refresh_failure.attempted_at) }}
+                  </time> </UiTooltip
                 >: {{ detail.snapshot.refresh_failure.message }}
               </p>
 
@@ -367,11 +380,18 @@ async function loadMoreResources(): Promise<void> {
   font-size: var(--font-size-body);
 }
 
+.provider-pricing-status :deep(.provider-pricing-time),
+.unknown-note :deep(.provider-pricing-time) {
+  border-bottom: var(--stroke-hairline) dotted var(--color-border-interactive);
+  color: inherit;
+  cursor: help;
+}
+
 .provider-resource-search {
   display: grid;
   gap: var(--space-1);
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
 .provider-resource-search input {
@@ -404,7 +424,7 @@ async function loadMoreResources(): Promise<void> {
 
 .provider-resource-group > header p {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
 .provider-resource > header,
@@ -419,7 +439,7 @@ async function loadMoreResources(): Promise<void> {
 .provider-resource > header > span,
 .provider-offer small {
   color: var(--color-text-muted);
-  font-size: var(--font-size-micro);
+  font-size: var(--font-size-meta);
 }
 
 .provider-offer {
