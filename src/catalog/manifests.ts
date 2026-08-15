@@ -860,7 +860,6 @@ export const manifests = [
     },
     pricingCategoricalLabels: [
       ...pricingLabels("deployment_scope", {
-        geo: "Geographic Cross-Region",
         global_cross_region: "Global Cross-Region",
         in_region: "In-Region",
       }),

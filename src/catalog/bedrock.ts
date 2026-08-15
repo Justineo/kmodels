@@ -2237,7 +2237,7 @@ function parsePrices(
                   unit: "image",
                   conditions: {
                     region,
-                    deployment_scope: "geo",
+                    deployment_scope: "geo_cross_region",
                     service_tier: "standard",
                   },
                   source_ref: sourceId,
