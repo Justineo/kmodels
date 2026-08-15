@@ -470,17 +470,21 @@ resolution.
 ### Published validity
 
 Validity preserves an official label with year, month, date, or canonical UTC
-datetime precision and inclusive/exclusive endpoint metadata. It is display
-metadata.
+datetime precision and inclusive/exclusive endpoint metadata. The canonical
+contract records that fact without asserting currentness. Model details may use
+exact datetime boundaries to select the current rate-plan version without
+rewriting or discarding the published validity.
 
 Recurring daily schedules and published validity are independent: the schedule says which
 categorical value applies within a day, while validity says when that published rule starts or
 stops being offered.
 
-Kmodels does not turn collection time into validity and does not execute
-imprecise validity as a historical/current price query. A validity-bearing
-variant is details-only unless a separate source fact establishes currentness.
-Provably empty or reversed intervals are not normalized.
+Kmodels does not turn collection time into validity or execute imprecise year,
+month, or date labels as a historical/current query. Model details default to
+the exact datetime version containing the current instant and offer one concise
+preview of the next version. The effective time belongs to the plan transition
+rather than every state and rate row. Provably empty or reversed intervals are
+not normalized.
 
 Validity does participate in conflict detection: unequal values conflict only
 when both their applicability and their published validity may overlap.
@@ -787,7 +791,9 @@ never contain provider- or value-specific label branches.
 When a categorical value carries a recurring daily schedule, the compact payload preserves the
 structured rule beside that selector value. Model details show a quiet UTC rule list directly below
 the selector and highlight the chosen row; the provider inspector includes the same rule in its
-read-only summary. Neither surface labels a current period or chooses Peak/Off-peak automatically.
+read-only summary. Neither surface chooses Peak/Off-peak automatically from the viewer's clock.
+This remains independent from model-detail resolution of a one-time exact rate-plan validity
+boundary; the provider inspector continues to expose every reviewed validity-qualified row.
 
 Generated-data tests require every configured label to match a current
 vocabulary value and its UI projection, and reject duplicate labels inside a

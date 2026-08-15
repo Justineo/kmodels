@@ -1,6 +1,6 @@
 import { createSSRApp, type Component } from "vue";
 import { renderToString } from "vue/server-renderer";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import ProviderPricingDetails from "../src/components/ProviderPricingDetails.vue";
 import ProviderPricingOfferDetails from "../src/components/ProviderPricingOfferDetails.vue";
 import PricingOfferBreakdown from "../src/components/PricingOfferBreakdown.vue";
@@ -10,6 +10,8 @@ import type {
   WebsiteProviderPricingDetail,
   WebsiteProviderPricingOffer,
 } from "../src/catalog/website-schema.ts";
+
+afterEach(() => vi.useRealTimers());
 
 function ssrComponent(value: unknown): Component {
   if (typeof value !== "object" || value === null || !("ssrRender" in value))
@@ -31,6 +33,64 @@ function promotion(value: boolean): WebsitePricingOffer["states"][number]["appli
       },
     ],
   };
+}
+
+const allContexts: WebsitePricingOffer["states"][number]["applicability"] = {
+  any_of: [{ all_of: [] }],
+};
+const billingPeriodDimension = {
+  namespace: "kmodels" as const,
+  value: "billing_period" as const,
+};
+const billingPeriodValues = [
+  {
+    key: "off-peak",
+    label: "Off-peak",
+    value: { namespace: "provider" as const, provider_id: "test", value: "off_peak" },
+    schedule: { kind: "daily_time_remainder" as const, time_zone: "UTC" as const },
+  },
+  {
+    key: "peak",
+    label: "Peak",
+    value: { namespace: "provider" as const, provider_id: "test", value: "peak" },
+    schedule: {
+      kind: "daily_time_windows" as const,
+      time_zone: "UTC" as const,
+      windows: [
+        { from: "01:00", until: "04:00" },
+        { from: "06:00", until: "10:00" },
+      ],
+    },
+  },
+];
+const billingPeriodSelector = {
+  key: '{"namespace":"kmodels","value":"billing_period"}',
+  label: "Billing period",
+  dimension: billingPeriodDimension,
+  kind: "categorical" as const,
+  values: billingPeriodValues,
+} satisfies WebsitePricingOffer["selectors"][number];
+
+function billingPeriodRates(
+  validity?: WebsitePricingOffer["rates"][number]["validity"],
+): WebsitePricingOffer["rates"] {
+  return billingPeriodValues.map(({ value, label }, index) => ({
+    key: `rate:${index}`,
+    term_ref: "c".repeat(64),
+    label: "Input text",
+    amount: index === 0 ? "$0.22" : "$0.44",
+    unit: "per 1M tokens",
+    accessible_text: `${label} input text rate`,
+    applicability: {
+      any_of: [
+        {
+          all_of: [{ kind: "categorical", dimension: billingPeriodDimension, values: [value] }],
+        },
+      ],
+    },
+    applicability_label: `Billing period: ${label}`,
+    ...(validity === undefined ? {} : { validity }),
+  }));
 }
 
 function pricingOffer(): WebsitePricingOffer {
@@ -83,49 +143,8 @@ describe("provider pricing details", () => {
 
   it("shows a categorical billing-period selector with its daily rule", async () => {
     const offer = pricingOffer();
-    const dimension = { namespace: "kmodels" as const, value: "billing_period" as const };
-    const values = [
-      {
-        key: "off-peak",
-        label: "Off-peak",
-        value: { namespace: "provider" as const, provider_id: "test", value: "off_peak" },
-        schedule: { kind: "daily_time_remainder" as const, time_zone: "UTC" as const },
-      },
-      {
-        key: "peak",
-        label: "Peak",
-        value: { namespace: "provider" as const, provider_id: "test", value: "peak" },
-        schedule: {
-          kind: "daily_time_windows" as const,
-          time_zone: "UTC" as const,
-          windows: [
-            { from: "01:00", until: "04:00" },
-            { from: "06:00", until: "10:00" },
-          ],
-        },
-      },
-    ];
-    offer.selectors = [
-      {
-        key: '{"namespace":"kmodels","value":"billing_period"}',
-        label: "Billing period",
-        dimension,
-        kind: "categorical",
-        values,
-      },
-    ];
-    offer.rates = values.map(({ value, label }, index) => ({
-      key: `rate:${index}`,
-      term_ref: "c".repeat(64),
-      label: "Input text",
-      amount: index === 0 ? "$0.22" : "$0.44",
-      unit: "per 1M tokens",
-      accessible_text: `${label} input text rate`,
-      applicability: {
-        any_of: [{ all_of: [{ kind: "categorical" as const, dimension, values: [value] }] }],
-      },
-      applicability_label: `Billing period: ${label}`,
-    }));
+    offer.selectors = [billingPeriodSelector];
+    offer.rates = billingPeriodRates();
 
     const html = await renderToString(
       createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
@@ -135,6 +154,72 @@ describe("provider pricing details", () => {
     expect(html).toContain("01:00–04:00, 06:00–10:00");
     expect(html).toContain("All other times");
     expect(html).not.toContain("current period");
+  });
+
+  it("shows the current rate plan before resolving a recurring schedule", async () => {
+    vi.useFakeTimers();
+    const offer = pricingOffer();
+    const transition = "2026-08-16T16:00:00.000Z";
+    offer.state_summary = "2 pricing states";
+    offer.states = [
+      {
+        key: "state:current",
+        state: "numeric",
+        label: "Metered pricing",
+        applicability: allContexts,
+        applicability_label: "All contexts",
+        validity: {
+          until: { value: transition, precision: "datetime", inclusive: false },
+        },
+      },
+      {
+        key: "state:upcoming",
+        state: "numeric",
+        label: "Metered pricing",
+        applicability: allContexts,
+        applicability_label: "All contexts",
+        validity: { from: { value: transition, precision: "datetime" } },
+      },
+    ];
+    offer.selectors = [billingPeriodSelector];
+    offer.rates = [
+      {
+        key: "rate:current",
+        term_ref: "c".repeat(64),
+        label: "Input text",
+        amount: "$0.90",
+        unit: "per 1M tokens",
+        accessible_text: "Current input text rate",
+        applicability: allContexts,
+        applicability_label: "All contexts",
+        validity: {
+          until: { value: transition, precision: "datetime", inclusive: false },
+        },
+      },
+      ...billingPeriodRates({ from: { value: transition, precision: "datetime" } }),
+    ];
+
+    vi.setSystemTime(new Date("2026-08-15T00:00:00.000Z"));
+    const before = await renderToString(
+      createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
+    );
+    expect(before).toContain("Price update");
+    expect(before).toContain("New rates from");
+    expect(before).toContain(`datetime="${transition}"`);
+    expect(before).toContain("$0.90");
+    expect(before).not.toContain("Billing period");
+    expect(before).not.toContain("Pricing states");
+    expect(before).not.toContain("currentness not asserted");
+
+    vi.setSystemTime(new Date(transition));
+    const after = await renderToString(
+      createSSRApp(ssrComponent(PricingOfferBreakdown), { offer, modelRef: "test/model" }),
+    );
+    expect(after).not.toContain("Price update");
+    expect(after).not.toContain("$0.90");
+    expect(after).toContain("Billing period");
+    expect(after).toContain("Daily rule · UTC");
+    expect(after).not.toContain("Pricing states");
   });
 
   it("separates normalized resources from raw-only official rows", async () => {

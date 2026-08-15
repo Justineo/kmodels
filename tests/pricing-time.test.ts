@@ -5,6 +5,7 @@ import {
   isPublishedTime,
   publishedValiditiesOverlap,
   publishedValidityIsCoherent,
+  publishedValidityStatus,
 } from "../src/catalog/pricing-time.ts";
 
 describe("pricing published time", () => {
@@ -76,5 +77,31 @@ describe("pricing published time", () => {
         { from: { value: "2026-09-01", precision: "date" } },
       ),
     ).toBe(false);
+  });
+
+  it("resolves exact effective times without executing imprecise labels", () => {
+    const transition = "2026-08-16T16:00:00.000Z";
+    const before = "2026-08-15T00:00:00.000Z";
+    const currentPlan = {
+      until: { value: transition, precision: "datetime" as const, inclusive: false },
+    };
+    const nextPlan = { from: { value: transition, precision: "datetime" as const } };
+
+    expect(publishedValidityStatus(currentPlan, before)).toBe("current");
+    expect(publishedValidityStatus(nextPlan, before)).toBe("upcoming");
+    expect(publishedValidityStatus(currentPlan, transition)).toBe("expired");
+    expect(publishedValidityStatus(nextPlan, transition)).toBe("current");
+    expect(
+      publishedValidityStatus({ until: { value: transition, precision: "datetime" } }, transition),
+    ).toBe("current");
+    expect(
+      publishedValidityStatus(
+        { from: { value: transition, precision: "datetime", inclusive: false } },
+        transition,
+      ),
+    ).toBe("upcoming");
+    expect(
+      publishedValidityStatus({ from: { value: "2026-08-17", precision: "date" } }, before),
+    ).toBe("unresolved");
   });
 });

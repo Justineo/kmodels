@@ -113,6 +113,34 @@ export function publishedValiditiesOverlap(
   return !(endsBefore(left?.until, right?.from) || endsBefore(right?.until, left?.from));
 }
 
+export function publishedValidityStatus(
+  validity: PublishedValidityLike | undefined,
+  currentInstant: string,
+): "current" | "upcoming" | "expired" | "unresolved" {
+  if (!isCanonicalInstant(currentInstant))
+    throw new Error("Current time must be a canonical instant");
+  if (validity === undefined) return "current";
+
+  const current: PublishedTimeBoundaryLike = {
+    value: currentInstant,
+    precision: "datetime",
+  };
+  const { from, until } = validity;
+  if (from?.precision === "datetime") {
+    const comparison = comparePublishedTimes(current, from);
+    if (comparison < 0 || (comparison === 0 && from.inclusive === false)) return "upcoming";
+  }
+  if (until?.precision === "datetime") {
+    const comparison = comparePublishedTimes(current, until);
+    if (comparison > 0 || (comparison === 0 && until.inclusive === false)) return "expired";
+  }
+  return [from, until].some(
+    (boundary) => boundary !== undefined && boundary.precision !== "datetime",
+  )
+    ? "unresolved"
+    : "current";
+}
+
 function endsBefore(
   until: PublishedTimeBoundaryLike | undefined,
   from: PublishedTimeBoundaryLike | undefined,

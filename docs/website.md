@@ -86,8 +86,12 @@ Status: implemented core; provider pricing convergence is in progress
   categorical dimension or exact decimal selector with one possible value resolves internally.
   A categorical selector whose values carry a recurring daily billing rule shows one compact UTC
   rule list directly below the control. Selecting a value highlights its rule and filters rates;
-  the UI never evaluates the viewer's current time, marks a current period, or chooses a value on
-  the user's behalf.
+  the viewer's clock never selects a recurring value. Exact UTC validity instead versions an
+  entire published rate plan.
+  Model details resolve those exact boundaries against the viewer's clock, show only the current
+  plan by default, and expose the next plan through one compact effective-time preview. The preview
+  swaps the same rate surface rather than duplicating it. Imprecise year, month, or date validity
+  remains unresolved and visible as source-published qualification.
   Price-query controls contain only dimensions that can change a rate or leave its numeric state
   partially covered. When every still-possible variant of one rate has the same
   amount, denomination, unit, driver, and validity and together covers the
@@ -97,8 +101,9 @@ Status: implemented core; provider pricing convergence is in progress
   dimensions. Account enrollment, settlement, capacity, and plan selectors are outside the Gateway
   rate-book UI. The controls resolve exact applicable rates but do not estimate
   usage, consume allowances, or calculate a total. Selected applicability is not
-  repeated on each resolved rate, allowance, or state; validity qualifications
-  remain visible. Its reset action appears only after a configurable selection
+  repeated on each resolved rate, allowance, or state. A resolved plan boundary appears once in
+  the price-update row instead of being repeated on every state and rate; unresolved validity
+  remains visible. Its reset action appears only after a configurable selection
   and does not repeat a selection count. A single offer state stays in the offer
   summary; state detail appears only when the offer has multiple possible outcomes.
   Numeric context preserves its published domain: singleton predicates become
@@ -106,7 +111,7 @@ Status: implemented core; provider pricing convergence is in progress
   choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
   operators. Ranges with gaps or overlaps continue to accept an exact value and
   reject invalid or non-integral count/TTL input.
-- The model rate matrix shows only the meter, rate, unit, and validity qualification. Driver metadata
+- The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
   remains in the provider inspector and canonical audit; a missing driver never hides a rate.
   Contribution rows expose the same driver metadata without copying the target rate. Generic
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
