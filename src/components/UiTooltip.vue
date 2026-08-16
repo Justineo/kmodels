@@ -4,14 +4,13 @@ import {
   shouldOpenTooltipOnClick,
   tooltipCoordinator,
   type TooltipClient,
-  type TooltipTrigger,
 } from "../composables/tooltip.ts";
 
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(
   defineProps<{
-    as?: TooltipTrigger;
+    as?: "a" | "button" | "span";
     content?: string;
   }>(),
   {
@@ -102,12 +101,13 @@ function handleClick(event: MouseEvent): void {
   const clickPointerType =
     "pointerType" in event && typeof event.pointerType === "string" ? event.pointerType : undefined;
   const pointerType = event.detail > 0 ? clickPointerType || pointerDownType : undefined;
-  const shouldOpen = shouldOpenTooltipOnClick(props.as, activationOpen, pointerType);
+  const isAction = props.as !== "span";
+  const shouldOpen = shouldOpenTooltipOnClick(isAction, activationOpen, pointerType);
   clearPointerDown();
 
   if (shouldOpen) {
     activationOpen = true;
-    if (props.as === "button") {
+    if (isAction) {
       event.preventDefault();
       event.stopImmediatePropagation();
     }

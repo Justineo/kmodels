@@ -12577,7 +12577,7 @@ describe("DeepSeek adapters", () => {
       "deepseek-v4-pro",
     ]);
     expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")).toMatchObject({
-      name: "DeepSeek-V4-Pro",
+      name: "DeepSeek-V4-Pro-0813",
       tasks: ["text_generation"],
       api_endpoints: [
         { name: "Chat Completions", path: "/chat/completions" },
@@ -12597,26 +12597,15 @@ describe("DeepSeek adapters", () => {
       price_facts: expect.arrayContaining([
         expect.objectContaining({
           meter: "cache_read_text",
-          price: "0.003625",
+          price: "0.022",
           currency: "USD",
-          conditions: expect.objectContaining({
-            effective_until: "2026-08-16T16:00:00.000Z",
-          }),
+          conditions: { billing_currency: "USD", billing_period: "off_peak" },
         }),
-        expect.objectContaining({ meter: "input_text", price: "0.435", currency: "USD" }),
-        expect.objectContaining({ meter: "output_text", price: "0.87", currency: "USD" }),
-        expect.objectContaining({ meter: "cache_read_text", price: "0.025", currency: "CNY" }),
-        expect.objectContaining({ meter: "input_text", price: "3", currency: "CNY" }),
-        expect.objectContaining({ meter: "output_text", price: "6", currency: "CNY" }),
         expect.objectContaining({
           meter: "input_text",
           price: "1.32",
           currency: "USD",
-          conditions: {
-            billing_currency: "USD",
-            billing_period: "peak",
-            effective_from: "2026-08-16T16:00:00.000Z",
-          },
+          conditions: { billing_currency: "USD", billing_period: "peak" },
         }),
         expect.objectContaining({
           meter: "output_text",
@@ -12640,7 +12629,7 @@ describe("DeepSeek adapters", () => {
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
     expect(changedOperation).toHaveLength(2);
-    expect(changedOperation.every(({ price_facts }) => price_facts.length === 18)).toBe(true);
+    expect(changedOperation.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
     expect(
       changedOperation.every(
         ({ api_endpoints }) =>
@@ -12696,7 +12685,7 @@ describe("DeepSeek adapters", () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await deepseekCatalog({
       catalog: catalog
-        .replace("$0.435", "TBD")
+        .replace("$0.022", "TBD")
         .replace("</table>", '<tr><td colspan="2">NEW FACT</td><td>x</td><td>y</td></tr></table>'),
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
@@ -12705,23 +12694,23 @@ describe("DeepSeek adapters", () => {
       models
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
         ?.price_facts.filter(({ currency }) => currency === "USD"),
-    ).toHaveLength(8);
+    ).toHaveLength(5);
     expect(reconciliation).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ reason_code: "usd_price_claim_drift" }),
+        expect.objectContaining({ reason_code: "scheduled_price_claim_drift" }),
         expect.objectContaining({ reason_code: "catalog_row_unhandled" }),
       ]),
     );
 
     const cny = await fixture("deepseek/catalog-cny.html");
     const cnyModels = await deepseekCatalog({
-      overrides: { "zh-cn/quick_start/pricing/": cny.replace("3元", "待定") },
+      overrides: { "zh-cn/quick_start/pricing/": cny.replace("0.15元", "待定") },
     });
     expect(
       cnyModels
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
         ?.price_facts.filter(({ currency }) => currency === "CNY"),
-    ).toHaveLength(8);
+    ).toHaveLength(5);
 
     const scheduledReconciliation: PricingReconciliationItem[] = [];
     const scheduledDrift = await deepseekCatalog({
@@ -12732,7 +12721,7 @@ describe("DeepSeek adapters", () => {
       scheduledDrift
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
         ?.price_facts.filter(({ currency }) => currency === "USD"),
-    ).toHaveLength(8);
+    ).toHaveLength(5);
     expect(scheduledReconciliation).toContainEqual(
       expect.objectContaining({ reason_code: "scheduled_price_claim_drift" }),
     );
@@ -12741,6 +12730,46 @@ describe("DeepSeek adapters", () => {
       catalog: catalog.replace("deepseek-v4-pro</td>", "invalid model id</td>"),
     });
     expect(oneColumn.map(({ model_id }) => model_id)).toEqual(["deepseek-v4-flash"]);
+  });
+
+  it("localizes malformed inline billing-period labels", async () => {
+    const catalog = await fixture("deepseek/catalog.html");
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = await deepseekCatalog({
+      catalog: catalog
+        .replaceAll("<td>OFF-PEAK</td>", "<td>INVALID</td>")
+        .replaceAll("<td>PEAK</td>", "<td>INVALID</td>"),
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+
+    expect(
+      models.flatMap(({ price_facts }) => price_facts).filter(({ currency }) => currency === "USD"),
+    ).toEqual([]);
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({ reason_code: "scheduled_billing_period_claim_drift" }),
+    );
+  });
+
+  it("preserves exact validity across a separately published price transition", async () => {
+    const models = await deepseekCatalog({
+      catalog: await fixture("deepseek/catalog-transition.html"),
+      overrides: {
+        "zh-cn/quick_start/pricing/": await fixture("deepseek/catalog-transition-cny.html"),
+      },
+    });
+    const rates = models[0]?.price_facts ?? [];
+
+    expect(rates.filter(({ currency }) => currency === "USD")).toHaveLength(9);
+    expect(rates.filter(({ currency }) => currency === "CNY")).toHaveLength(9);
+    expect(rates.map(({ conditions }) => conditions)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ effective_until: "2026-08-16T16:00:00.000Z" }),
+        expect.objectContaining({
+          billing_period: "peak",
+          effective_from: "2026-08-16T16:00:00.000Z",
+        }),
+      ]),
+    );
   });
 
   it("uses public inventory as a non-destructive witness", async () => {
@@ -12761,7 +12790,7 @@ describe("DeepSeek adapters", () => {
       "deepseek-v4-flash",
       "deepseek-v4-pro",
     ]);
-    expect(withoutCompanions.every(({ price_facts }) => price_facts.length === 9)).toBe(true);
+    expect(withoutCompanions.every(({ price_facts }) => price_facts.length === 6)).toBe(true);
   });
 
   it("keeps the rate book limited to current request-attributable inference", async () => {
@@ -12771,7 +12800,7 @@ describe("DeepSeek adapters", () => {
     });
     expect(
       sourcePricingReconciliation(models, reconciliation, true).disposition_counts,
-    ).toMatchObject({ normalized: 36, raw: 0, excluded: 0 });
+    ).toMatchObject({ normalized: 24, raw: 0, excluded: 0 });
     expect(models.every(({ raw_price_facts }) => raw_price_facts.length === 0)).toBe(true);
     expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
     expect(reconciliation).toEqual(
@@ -12845,24 +12874,7 @@ describe("DeepSeek adapters", () => {
     );
     expect(
       input?.kind === "rate" ? input.variants.map(({ validity }) => validity).filter(Boolean) : [],
-    ).toEqual(
-      expect.arrayContaining([
-        {
-          until: {
-            value: "2026-08-16T16:00:00.000Z",
-            precision: "datetime",
-            inclusive: false,
-          },
-        },
-        {
-          from: {
-            value: "2026-08-16T16:00:00.000Z",
-            precision: "datetime",
-            inclusive: true,
-          },
-        },
-      ]),
-    );
+    ).toEqual([]);
     expect(pricing?.books).toHaveLength(2);
     expect(pricing?.books.every(({ scope }) => scope.kind === "models")).toBe(true);
     expect(

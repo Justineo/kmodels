@@ -76,7 +76,7 @@ describe("design token contract", () => {
 
   it("uses one readable semantic type scale", () => {
     expect(tokenStyles).toMatch(/--font-size-meta:\s*0\.6875rem;/);
-    expect(tokenStyles).toMatch(/--font-size-body:\s*0\.8125rem;/);
+    expect(tokenStyles).toMatch(/--font-size-body:\s*0\.75rem;/);
     expect(tokenStyles).toMatch(/--font-size-heading:\s*0\.9375rem;/);
     expect(tokenStyles).toMatch(/--font-size-title:\s*1\.25rem;/);
     expect(`${tokenStyles}\n${allStyles}`).not.toMatch(

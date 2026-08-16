@@ -1,13 +1,12 @@
 const TOOLTIP_WARM_UP_MS = 700;
 const TOOLTIP_COOLDOWN_MS = 400;
-export type TooltipTrigger = "button" | "span";
 
 export function shouldOpenTooltipOnClick(
-  trigger: TooltipTrigger,
+  isAction: boolean,
   activationOpen: boolean,
   pointerType: string | undefined,
 ): boolean {
-  return !activationOpen && (trigger === "span" || pointerType === "touch");
+  return !activationOpen && (!isAction || pointerType === "touch");
 }
 
 export interface TooltipClient {

@@ -377,7 +377,8 @@ function addModelPricing(
   const state = model.pricing_state;
   const publishesState =
     !hasUsageRate && (state === "free" || state === "custom_quote" || state === "not_published");
-  if (rates.length === 0 && model.raw_price_facts.length === 0 && !publishesState) return;
+  const hasBaseRaw = model.raw_price_facts.some(({ impact }) => impact === "base_price");
+  if (rates.length === 0 && !hasBaseRaw && !publishesState) return;
 
   addScope(context, sourceRef, modelRefs);
   if (forcedOffer !== undefined) {
