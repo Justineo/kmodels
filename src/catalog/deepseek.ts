@@ -70,10 +70,9 @@ const cnyPriceRows = [
 type DeepseekCurrency = "CNY" | "USD";
 type BillingPeriod = "off_peak" | "peak";
 
-interface ScheduledPricing {
-  effectiveFrom: string;
-  table: HtmlTable;
-}
+type ScheduledPricing =
+  | { layout: "inline"; table: HtmlTable }
+  | { layout: "separate"; effectiveFrom: string; table: HtmlTable };
 
 function exactId(value: string): string | undefined {
   const parsed = modelIdSchema.safeParse(value.trim());
@@ -86,6 +85,12 @@ function withoutFootnote(value: string): string {
 
 function catalogId(value: string): string | undefined {
   return exactId(withoutFootnote(value));
+}
+
+function modelColumnStart(table: HtmlTable, modelHeader: string): number {
+  const index = table.headers.findIndex((header) => header !== modelHeader);
+  if (index < 1) throw new Error(`DeepSeek ${modelHeader} columns are missing`);
+  return index;
 }
 
 function tokenCount(value: string): number {
@@ -485,6 +490,25 @@ function validateCatalogTable(input: Input, table: HtmlTable, columns: number[])
     claim(input, "catalog_support_claim_drift", label, () => support(table, label, columns));
 }
 
+function priceFact(
+  input: Input,
+  meter: SourcePriceFact["meter"],
+  amount: string,
+  rawUnit: string,
+  currency: DeepseekCurrency,
+  conditions: SourcePriceFact["conditions"],
+): SourcePriceFact {
+  const rate = publishedRate(meter, amount, "million_tokens", input.source.id, rawUnit, conditions);
+  return currency === "USD" ? rate : { ...rate, currency };
+}
+
+function addRate(input: Input, target: ProviderModel, rate: SourcePriceFact, sample: string): void {
+  target.price_facts.push(rate);
+  target.pricing_state = "numeric";
+  if (rate.meter === "cache_read_text") target.capabilities.prompt_cache = true;
+  diagnostic(input, "normalized", "price_fact_normalized", sample);
+}
+
 function model(
   input: Input,
   table: HtmlTable,
@@ -493,7 +517,7 @@ function model(
   chat: ChatClaims,
   responses: ResponseClaims,
   fim: FimClaims,
-  effectiveUntil: string | undefined,
+  scheduled: ScheduledPricing | undefined,
 ): ProviderModel {
   const value = <T>(reasonCode: string, label: string, parse: (cell: string) => T): T | undefined =>
     claim(input, reasonCode, `${id}:${label}`, () => parse(cell(table, label, column)));
@@ -513,24 +537,7 @@ function model(
     ...(hasResponsesEndpoint ? [responsesEndpoint] : []),
     ...(hasFimEndpoint ? [fimEndpoint] : []),
   ];
-  const priceFacts = priceRows.flatMap(([meter, label]): SourcePriceFact[] => {
-    const amount = value("usd_price_claim_drift", label, (item) => price(item, "USD"));
-    return amount === undefined
-      ? []
-      : [
-          publishedRate(meter, amount, "million_tokens", input.source.id, label, {
-            billing_currency: "USD",
-            ...(effectiveUntil === undefined ? {} : { effective_until: effectiveUntil }),
-          }),
-        ];
-  });
-  for (const rate of priceFacts)
-    input.onPricingReconciliation?.({
-      disposition: "normalized",
-      reason_code: "price_fact_normalized",
-      sample: `${id}:${rate.meter}`,
-    });
-  return {
+  const current: ProviderModel = {
     ...baseModel({
       providerId: input.provider.id,
       id,
@@ -548,21 +555,38 @@ function model(
       ...(structured === undefined ? {} : { structured_output: structured }),
       ...(hasChatEndpoint && chat.streaming ? { streaming: true } : {}),
       ...(hasChatEndpoint && chat.effortControl ? { effort_control: true } : {}),
-      ...(priceFacts.some(({ meter }) => meter === "cache_read_text")
-        ? { prompt_cache: true }
-        : {}),
     },
     limits: {
       ...(context === undefined ? {} : { context_tokens: context }),
       ...(output === undefined ? {} : { max_output_tokens: output }),
     },
     status: "active",
-    pricing_state: priceFacts.length === 0 ? "unknown" : "numeric",
-    price_facts: priceFacts,
+    pricing_state: "unknown",
+    price_facts: [],
   };
+  if (scheduled?.layout === "inline") return current;
+  const effectiveUntil = scheduled?.effectiveFrom;
+  for (const [meter, label] of priceRows) {
+    const amount = value("usd_price_claim_drift", label, (item) => price(item, "USD"));
+    if (amount === undefined) continue;
+    addRate(
+      input,
+      current,
+      priceFact(input, meter, amount, label, "USD", {
+        billing_currency: "USD",
+        ...(effectiveUntil === undefined ? {} : { effective_until: effectiveUntil }),
+      }),
+      `${id}:${meter}`,
+    );
+  }
+  return current;
 }
 
-function scheduledPricing(body: string, currency: DeepseekCurrency): ScheduledPricing | undefined {
+function scheduledPricing(
+  body: string,
+  currency: DeepseekCurrency,
+  inlineTable: HtmlTable,
+): ScheduledPricing | undefined {
   const expectedHeaders = (currency === "USD" ? priceRows : cnyPriceRows).map(([, label]) => label);
   const modelHeader = currency === "USD" ? "MODEL" : "模型";
   const tables = htmlTables(body).filter(
@@ -572,21 +596,27 @@ function scheduledPricing(body: string, currency: DeepseekCurrency): ScheduledPr
       headers.length === expectedHeaders.length + 2 &&
       expectedHeaders.every((header, index) => headers[index + 2] === header),
   );
-  if (tables.length === 0) {
-    const prose = htmlText(load(body)("article").text());
-    const hasNotice =
-      currency === "USD" ? /peak\s*\/\s*off-peak billing/i.test(prose) : /采用峰谷定价/.test(prose);
-    if (hasNotice) throw new Error(`DeepSeek ${currency} scheduled price table not found`);
-    return;
-  }
   const table = tables[0];
-  if (tables.length !== 1 || table === undefined)
-    throw new Error(`DeepSeek ${currency} scheduled price table is ambiguous`);
-  return {
-    table,
-    effectiveFrom:
-      currency === "USD" ? englishScheduledEffectiveFrom(body) : cnyScheduledEffectiveFrom(body),
-  };
+  if (tables.length > 1) throw new Error(`DeepSeek ${currency} scheduled price table is ambiguous`);
+  if (table !== undefined)
+    return {
+      layout: "separate",
+      table,
+      effectiveFrom:
+        currency === "USD" ? englishScheduledEffectiveFrom(body) : cnyScheduledEffectiveFrom(body),
+    };
+
+  const prose = htmlText(load(body)("article").text());
+  const hasSchedule =
+    currency === "USD"
+      ? /(?:peak\s*\/\s*off-peak billing|off-peak rates (?:are|at) half).*?peak hours/i.test(prose)
+      : /(?:采用峰谷定价|空闲时段价格为高峰时段价格的一半).*?高峰时段/.test(prose);
+  const hasInlineRows = expectedHeaders.some(
+    (label) => inlineTable.rows.filter((item) => rowLabel(item) === label).length > 1,
+  );
+  if (hasSchedule && hasInlineRows) return { layout: "inline", table: inlineTable };
+  if (hasSchedule) throw new Error(`DeepSeek ${currency} scheduled price table not found`);
+  return;
 }
 
 function englishScheduledEffectiveFrom(body: string): string {
@@ -651,6 +681,10 @@ function attachScheduledRates(
   scheduled: ScheduledPricing,
   currency: DeepseekCurrency,
 ): void {
+  if (scheduled.layout === "inline") {
+    attachInlineScheduledRates(input, models, scheduled.table, currency);
+    return;
+  }
   const labels = currency === "USD" ? priceRows : cnyPriceRows;
   const byId = new Map(models.map((item) => [item.model_id, item]));
   const seen = new Set<string>();
@@ -691,27 +725,79 @@ function attachScheduledRates(
         },
       );
       if (amount === undefined) continue;
-      const rate = publishedRate(
-        meter,
-        amount,
-        "million_tokens",
-        input.source.id,
-        `${label} (${periodText})`,
-        {
+      addRate(
+        input,
+        target,
+        priceFact(input, meter, amount, `${label} (${periodText})`, currency, {
           billing_currency: currency,
           billing_period: period,
           effective_from: scheduled.effectiveFrom,
-        },
-      );
-      target.price_facts.push(currency === "USD" ? rate : { ...rate, currency: "CNY" });
-      diagnostic(
-        input,
-        "normalized",
-        "price_fact_normalized",
+        }),
         `${id}:${meter}:${currency}:${period}`,
       );
     }
-    target.pricing_state = "numeric";
+  }
+}
+
+function attachInlineScheduledRates(
+  input: Input,
+  models: ProviderModel[],
+  table: HtmlTable,
+  currency: DeepseekCurrency,
+): void {
+  const labels = currency === "USD" ? priceRows : cnyPriceRows;
+  const byId = new Map(models.map((item) => [item.model_id, item]));
+  const seen = new Set<string>();
+  const columnStart = modelColumnStart(table, currency === "USD" ? "MODEL" : "模型");
+  for (const [headerIndex, header] of table.headers.slice(columnStart).entries()) {
+    const id = catalogId(header);
+    const target = id === undefined ? undefined : byId.get(id);
+    if (id === undefined || target === undefined) {
+      diagnostic(input, "unbound", "scheduled_price_model_not_in_catalog", header);
+      continue;
+    }
+    const priceColumn = headerIndex + columnStart;
+    for (const [meter, label] of labels) {
+      for (const tableRow of table.rows.filter((item) => rowLabel(item) === label)) {
+        const periodText = tableRow[2]?.text;
+        const period = claim(
+          input,
+          "scheduled_billing_period_claim_drift",
+          `${id}:${currency}:${periodText ?? "missing"}`,
+          () => {
+            if (periodText === undefined) throw new Error("billing period is missing");
+            return billingPeriod(periodText);
+          },
+        );
+        if (period === undefined) continue;
+        const identity = `${id}\0${meter}\0${period}`;
+        if (seen.has(identity)) {
+          diagnostic(input, "unsupported", "scheduled_price_row_duplicate", `${id}:${currency}`);
+          continue;
+        }
+        seen.add(identity);
+        const rawAmount = tableRow[priceColumn]?.text;
+        const amount = claim(
+          input,
+          "scheduled_price_claim_drift",
+          `${id}:${meter}:${currency}:${period}`,
+          () => {
+            if (rawAmount === undefined) throw new Error("price is missing");
+            return price(rawAmount, currency);
+          },
+        );
+        if (amount === undefined) continue;
+        addRate(
+          input,
+          target,
+          priceFact(input, meter, amount, `${label} (${periodText})`, currency, {
+            billing_currency: currency,
+            billing_period: period,
+          }),
+          `${id}:${meter}:${currency}:${period}`,
+        );
+      }
+    }
   }
 }
 
@@ -753,16 +839,18 @@ function attachCnyRates(
     diagnostic(input, "unsupported", "cny_price_table_drift", "model table");
     return;
   }
-  const scheduled = scheduledPricing(body, "CNY");
-  if (
-    scheduled !== undefined &&
-    usdEffectiveFrom !== undefined &&
-    scheduled.effectiveFrom !== usdEffectiveFrom
-  )
+  const scheduled = scheduledPricing(body, "CNY", table);
+  const effectiveFrom = scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined;
+  if (effectiveFrom !== usdEffectiveFrom)
     throw new Error("DeepSeek USD and CNY scheduled pricing effective times disagree");
+  if (scheduled?.layout === "inline") {
+    attachScheduledRates(input, models, scheduled, "CNY");
+    return;
+  }
   const byId = new Map(models.map((item) => [item.model_id, item]));
   const seen = new Set<string>();
-  for (const [index, header] of table.headers.slice(2).entries()) {
+  const columnStart = modelColumnStart(table, "模型");
+  for (const [index, header] of table.headers.slice(columnStart).entries()) {
     const id = catalogId(header);
     if (id === undefined || seen.has(id)) {
       diagnostic(input, "unsupported", "cny_model_header_unbound", header);
@@ -776,18 +864,18 @@ function attachCnyRates(
     }
     for (const [meter, label] of cnyPriceRows) {
       const amount = claim(input, "cny_price_claim_drift", `${id}:${label}`, () =>
-        price(cell(table, label, index + 2), "CNY"),
+        price(cell(table, label, index + columnStart), "CNY"),
       );
       if (amount === undefined) continue;
-      target.price_facts.push({
-        ...publishedRate(meter, amount, "million_tokens", input.source.id, label, {
+      addRate(
+        input,
+        target,
+        priceFact(input, meter, amount, label, "CNY", {
           billing_currency: "CNY",
-          ...(scheduled === undefined ? {} : { effective_until: scheduled.effectiveFrom }),
+          ...(effectiveFrom === undefined ? {} : { effective_until: effectiveFrom }),
         }),
-        currency: "CNY",
-      });
-      target.pricing_state = "numeric";
-      diagnostic(input, "normalized", "price_fact_normalized", `${id}:${meter}:CNY`);
+        `${id}:${meter}:CNY`,
+      );
     }
   }
   if (scheduled !== undefined) attachScheduledRates(input, models, scheduled, "CNY");
@@ -808,16 +896,15 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const fim = fimClaims(input, companion(input, bundle, "/api/create-completion"));
   const modelTables = htmlTables(bundle.index.body).filter(
     ({ headers, rows }) =>
-      headers[0] === "MODEL" &&
-      headers[1] === "MODEL" &&
-      rows.some((item) => rowLabel(item) === "MODEL VERSION"),
+      headers[0] === "MODEL" && rows.some((item) => rowLabel(item) === "MODEL VERSION"),
   );
   const [table] = modelTables;
   if (modelTables.length !== 1 || table === undefined)
     throw new Error("DeepSeek model table not found or ambiguous");
   const columns: Array<{ column: number; id: string }> = [];
   const seen = new Set<string>();
-  for (const [index, header] of table.headers.slice(2).entries()) {
+  const columnStart = modelColumnStart(table, "MODEL");
+  for (const [index, header] of table.headers.slice(columnStart).entries()) {
     const id = catalogId(header);
     if (id === undefined || seen.has(id)) {
       diagnostic(
@@ -829,7 +916,7 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
       continue;
     }
     seen.add(id);
-    columns.push({ column: index + 2, id });
+    columns.push({ column: index + columnStart, id });
   }
   if (columns.length < 1) throw new Error("DeepSeek catalog returned no model IDs");
   validateCatalogTable(
@@ -866,9 +953,9 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     (fim.modelIds.size !== tableFimIds.size || [...fim.modelIds].some((id) => !tableFimIds.has(id)))
   )
     diagnostic(input, "unbound", "fim_inventory_disagreement");
-  const scheduled = scheduledPricing(bundle.index.body, "USD");
+  const scheduled = scheduledPricing(bundle.index.body, "USD", table);
   const models = columns.map(({ column, id }) =>
-    model(input, table, column, id, chat, responses, fim, scheduled?.effectiveFrom),
+    model(input, table, column, id, chat, responses, fim, scheduled),
   );
   if (scheduled !== undefined) attachScheduledRates(input, models, scheduled, "USD");
   const knownIds = new Set(models.map(({ model_id }) => model_id));
@@ -909,7 +996,12 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
             rawGap(input.source.id, key, `The ${key} usage contract is unavailable`),
           );
   }
-  attachCnyRates(input, bundle, models, scheduled?.effectiveFrom);
+  attachCnyRates(
+    input,
+    bundle,
+    models,
+    scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined,
+  );
   return bounded(input, models);
 }
 

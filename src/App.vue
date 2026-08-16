@@ -22,7 +22,12 @@ import {
   modelTableRows,
   type ModelGroup,
 } from "./catalog/model-groups.ts";
-import { formatCount, versionBadgeModelUids } from "./catalog/presentation.ts";
+import {
+  formatCount,
+  formatRelativeTime,
+  formatUtcDateTime,
+  versionBadgeModelUids,
+} from "./catalog/presentation.ts";
 import type { WebsiteCatalog, WebsiteModel } from "./catalog/website-schema.ts";
 import {
   formatRouteSearch,
@@ -152,13 +157,6 @@ const hasFilters = computed(
     selectedLifecycles.value.length > 0 ||
     selectedReleaseStages.value.length > 0,
 );
-const generatedAtLabel = new Intl.DateTimeFormat("en", {
-  month: "short",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-}).format(new Date(generatedAt));
 const resultCountLabel = computed(() => {
   const count = filteredModelGroups.value.length;
   return `${formatCount(count)} ${count === 1 ? "result" : "results"}`;
@@ -578,13 +576,15 @@ onUnmounted(() => {
         <strong>{{ providers.length }}</strong>
         providers
       </span>
-      <a
+      <UiTooltip
+        as="a"
         class="generated-at"
         :href="catalogUpdateUrl"
+        :content="formatUtcDateTime(generatedAt)"
         aria-label="View this catalog update on GitHub"
       >
-        <time :datetime="generatedAt">Updated {{ generatedAtLabel }}</time>
-      </a>
+        <time :datetime="generatedAt">Updated {{ formatRelativeTime(generatedAt) }}</time>
+      </UiTooltip>
       <a
         class="header-link"
         href="https://github.com/Justineo/kmodels"

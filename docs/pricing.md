@@ -243,6 +243,10 @@ Raw variants carry a commercial impact:
 - `allowance`: may change benefits and blocks a complete allowance summary;
 - `informational`: retained for audit but excluded from commercial equality.
 
+Only an explicit offer state, a normalized rate, or a `base_price` raw fact establishes an offer.
+Allowance and informational raw facts may annotate an established offer, but cannot create an
+otherwise empty offer or imply that an unknown price is available.
+
 ## Public semantics
 
 ### Envelope and provider ownership

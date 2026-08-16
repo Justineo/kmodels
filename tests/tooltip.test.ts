@@ -5,16 +5,16 @@ afterEach(() => vi.useRealTimers());
 
 describe("tooltip click policy", () => {
   it.each([
-    ["plain text click", "span", false, undefined, true],
-    ["first click after focus opens text", "span", false, "mouse", true],
-    ["first click after hover switches text", "span", false, "mouse", true],
-    ["second pointer click on text", "span", true, "touch", false],
-    ["first touch on an action", "button", false, "touch", true],
-    ["second touch on an action", "button", true, "touch", false],
-    ["mouse action", "button", false, "mouse", false],
-    ["keyboard action", "button", false, undefined, false],
-  ] as const)("handles %s", (_name, trigger, activationOpen, pointerType, expected) => {
-    expect(shouldOpenTooltipOnClick(trigger, activationOpen, pointerType)).toBe(expected);
+    ["plain text click", false, false, undefined, true],
+    ["first click after focus opens text", false, false, "mouse", true],
+    ["first click after hover switches text", false, false, "mouse", true],
+    ["second pointer click on text", false, true, "touch", false],
+    ["first touch on an action", true, false, "touch", true],
+    ["second touch on an action", true, true, "touch", false],
+    ["mouse action", true, false, "mouse", false],
+    ["keyboard action", true, false, undefined, false],
+  ] as const)("handles %s", (_name, isAction, activationOpen, pointerType, expected) => {
+    expect(shouldOpenTooltipOnClick(isAction, activationOpen, pointerType)).toBe(expected);
   });
 });
 

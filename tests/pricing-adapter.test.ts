@@ -10,6 +10,7 @@ import {
   pricingOfferId,
   pricingTermId,
 } from "../src/catalog/pricing-identifiers.ts";
+import { rawPricingFact } from "../src/catalog/pricing.ts";
 import { modelPricingView } from "../src/catalog/pricing-presentation.ts";
 import { sourcePricingReconciliation } from "../src/catalog/pricing-reconciliation.ts";
 import type { PricingCatalog } from "../src/catalog/pricing-schema.ts";
@@ -504,6 +505,34 @@ describe("parsed-source canonical pricing adapter", () => {
       ],
     });
   });
+
+  it.each(["allowance", "informational"] as const)(
+    "does not create an offer from %s raw facts alone",
+    (impact) => {
+      const { source: pricingSource } = pricingManifest();
+      const parsedModel = model();
+      parsedModel.pricing_state = "unknown";
+      parsedModel.price_facts = [];
+      parsedModel.raw_price_facts = [
+        rawPricingFact(
+          sourceRef,
+          "non_base_fact",
+          impact,
+          "requires_usage_aggregation",
+          "Unresolved non-base pricing fact",
+        ),
+      ];
+
+      expect(
+        assembleParsedProviderPricing(
+          providerId,
+          observedAt,
+          [{ source: pricingSource, models: [parsedModel] }],
+          [parsedModel],
+        ),
+      ).toBeUndefined();
+    },
+  );
 
   it("keeps account eligibility independent from inference service tiers", () => {
     const { source: pricingSource } = pricingManifest();

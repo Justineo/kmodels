@@ -40,13 +40,12 @@ USD and CNY remain separate `billing_currency` variants with no FX conversion. T
 conflict because their denominations differ. Kmodels does not infer which currency settles a
 credential; a consumer selects the applicable currency from its own account configuration.
 
-The price table also publishes a rule that takes effect at `2026-08-16T16:00:00Z`. The new rates
-are `billing_period` variants: Peak covers the half-open UTC windows `01:00–04:00` and
-`06:00–10:00`, while Off-peak is the remainder of each UTC day. The preceding flat rates end
-exclusively at the same instant and the scheduled rates begin inclusively, so their validity does
-not overlap. The Chinese table is accepted only when its Beijing-time rule and effective time map
-to the same UTC schedule. Kmodels records this rule and exposes Peak/Off-peak as categorical
-choices; collection never decides a period from its own clock.
+The current price tables publish Peak and Off-peak rows directly inside the model table. They are
+`billing_period` variants: Peak covers the half-open UTC windows `01:00–04:00` and `06:00–10:00`,
+while Off-peak is the remainder of each UTC day. The Chinese table is accepted only when its
+Beijing-time rule maps to the same UTC schedule. The pages publish no effective instant, so Kmodels
+does not infer a validity boundary. Kmodels records the published daily rule and exposes
+Peak/Off-peak as categorical choices; collection never decides a period from its own clock.
 
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort
@@ -88,8 +87,8 @@ reported without removing either model or its ordinary rates.
 
 - A missing or ambiguous main model table is systemic and retains the previously accepted DeepSeek
   partition.
-- A malformed model header, field, support value, price cell, companion operation, or usage group
-  suppresses only that exact claim. Valid siblings remain.
+- A malformed model header, field, support value, billing-period label, price cell, companion
+  operation, or usage group suppresses only that exact claim. Valid siblings remain.
 - An optional companion failure cannot erase current IDs or numeric price-table rows. If usage
   evidence fails, only the affected charge binding is omitted.
 - The public model-list witness and optional authenticated inventory report exact-ID disagreements
