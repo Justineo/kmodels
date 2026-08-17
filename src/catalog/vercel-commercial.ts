@@ -239,9 +239,10 @@ function bindResourceBook(
 ): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
   const key = book.scope.resource_key;
+  const merged = mergeSearchComponents(book);
   return {
-    ...book,
-    offers: book.offers.map((offer) => ({
+    ...merged,
+    offers: merged.offers.map((offer) => ({
       ...offer,
       terms: offer.terms.map((term) =>
         term.kind === "rate"
@@ -252,6 +253,37 @@ function bindResourceBook(
       enrollment: [],
       settlement: [],
     })),
+  };
+}
+
+function mergeSearchComponents(book: AtomicPricingBook): AtomicPricingBook {
+  if (book.scope.kind !== "provider_resource") return book;
+  const operation =
+    book.scope.resource_key === "exa-search"
+      ? "additional_requested_results"
+      : book.scope.resource_key === "parallel-search"
+        ? "additional_results"
+        : undefined;
+  if (operation === undefined) return book;
+  const search = book.offers.find(({ offer_key: key }) => key === "search");
+  const additional = book.offers.find(({ offer_key: key }) => key === "additional-results");
+  if (search === undefined || additional === undefined) return book;
+  const merged = {
+    ...search,
+    terms: [
+      ...search.terms,
+      ...additional.terms.map((term) => ({
+        ...term,
+        term_key: `${term.term_key}:${operation}`,
+      })),
+    ],
+    source_refs: unique([...search.source_refs, ...additional.source_refs]),
+  };
+  return {
+    ...book,
+    offers: book.offers.flatMap((offer) =>
+      offer === search ? [merged] : offer === additional ? [] : [offer],
+    ),
   };
 }
 

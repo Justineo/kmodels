@@ -1773,13 +1773,50 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
       );
       const body = normalizeVercelModelPage(raw.body);
       const payload = { ...raw, body, contentHash: sha256(body) };
-      return { key, url: url.href, payload };
+      return { key, url: url.href, payload, rawBody: raw.body };
     } catch {
       return { omitted: key } as const;
     }
   });
 
-  const fetched = [...endpointDocuments, ...modelPages];
+  const fetchedModelPages = modelPages.flatMap((document) =>
+    "omitted" in document ? [] : [document],
+  );
+  const pricingScriptUrls = vercelPricingScriptUrls(
+    fetchedModelPages.map(({ rawBody }) => rawBody),
+    source,
+  );
+  assertItemCount(
+    "Vercel model pricing scripts",
+    pricingScriptUrls.length,
+    0,
+    transport.maxPricingScripts,
+  );
+  const pricingScriptCandidates = await mapConcurrent(
+    pricingScriptUrls,
+    transport.concurrency,
+    async (url) => {
+      const key = `${source.id}/model-page-pricing/${sha256(url.href)}`;
+      try {
+        const raw = await fetchPayload(
+          requestSource(source, key, url, "mixed", transport.maxPricingScriptBytes),
+        );
+        const body = normalizeVercelPricingScript(raw.body);
+        if (body === undefined) return undefined;
+        return { key, url: url.href, payload: { ...raw, body, contentHash: sha256(body) } };
+      } catch {
+        return undefined;
+      }
+    },
+  );
+  const pricingScripts = pricingScriptCandidates.flatMap((document) =>
+    document === undefined ? [] : [document],
+  );
+  const missingPricingRegistry =
+    pricingScripts.length === 0 &&
+    fetchedModelPages.some(({ rawBody }) => /\+\d+ more/u.test(rawBody));
+
+  const fetched = [...endpointDocuments, ...modelPages, ...pricingScripts];
   const omitted = fetched.flatMap((document) => ("omitted" in document ? [document.omitted] : []));
   const documents = [
     ...fetched.flatMap((document) => ("omitted" in document ? [] : [document])),
@@ -1803,9 +1840,16 @@ async function fetchVercelModels(source: SourceManifest): Promise<FetchResult> {
     ...(documentation.omittedDependencies.length === 0
       ? {}
       : { omittedOptionalDependencies: documentation.omittedDependencies }),
-    ...(documentation.omittedDocuments.length + omitted.length === 0
+    ...(documentation.omittedDocuments.length + omitted.length + Number(missingPricingRegistry) ===
+    0
       ? {}
-      : { omittedOptionalDocuments: [...documentation.omittedDocuments, ...omitted].sort() }),
+      : {
+          omittedOptionalDocuments: [
+            ...documentation.omittedDocuments,
+            ...omitted,
+            ...(missingPricingRegistry ? [`${source.id}/model-page-pricing`] : []),
+          ].sort(),
+        }),
   };
 }
 
@@ -1882,6 +1926,160 @@ export function normalizeVercelModelPage(body: string): string {
         .filter((value) => value !== ""),
     );
   return JSON.stringify({ title, provider, headers, values, titles });
+}
+
+const vercelPricingScriptPath =
+  /^\/vc-ap-vercel-marketing\/_next\/static\/immutable\/chunks\/[A-Za-z0-9_-]+\.js$/u;
+
+function vercelPricingScriptUrls(bodies: readonly string[], source: SourceManifest): URL[] {
+  const urls = new Map<string, URL>();
+  for (const body of bodies) {
+    const $ = load(body);
+    $("script[src]").each((_index, element) => {
+      const src = $(element).attr("src");
+      if (src === undefined) return;
+      try {
+        const url = checkedUrl(new URL(src, "https://vercel.com").href, source);
+        if (
+          url.hostname !== "vercel.com" ||
+          url.port !== "" ||
+          url.username !== "" ||
+          url.password !== "" ||
+          url.search !== "" ||
+          url.hash !== "" ||
+          !vercelPricingScriptPath.test(url.pathname)
+        )
+          return;
+        urls.set(url.href, url);
+      } catch {
+        return;
+      }
+    });
+  }
+  return [...urls.values()].sort((left, right) => left.href.localeCompare(right.href));
+}
+
+const vercelDecimalPattern = String.raw`(?:0|[1-9]\d*)(?:\.\d+)?`;
+
+function exactObjectList<T>(
+  body: string,
+  pattern: RegExp,
+  normalize: (match: RegExpMatchArray) => T | undefined,
+): T[] | undefined {
+  const matches = [...body.matchAll(pattern)];
+  if (matches.length === 0 || matches.map((match) => match[0]).join(",") !== body) return undefined;
+  const values: T[] = [];
+  for (const match of matches) {
+    const value = normalize(match);
+    if (value === undefined) return undefined;
+    values.push(value);
+  }
+  return values;
+}
+
+function setVercelPricingDetail(
+  models: Map<string, Record<string, unknown>>,
+  slug: string,
+  key: string,
+  value: unknown,
+): void {
+  const model = models.get(slug) ?? {};
+  const previous = model[key];
+  if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(value))
+    throw new Error(`Vercel pricing script disagreed for ${slug}:${key}`);
+  model[key] = value;
+  models.set(slug, model);
+}
+
+export function normalizeVercelPricingScript(body: string): string | undefined {
+  const models = new Map<string, Record<string, unknown>>();
+  const videoRegistry = new RegExp(
+    String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{videoCost:"(${vercelDecimalPattern})",videoDimensionPricing:\[([^\]]+)\]\}`,
+    "gu",
+  );
+  const videoItem = new RegExp(
+    String.raw`\{quality:"([^"]+)"(?:,resolution:"([^"]+)")?,hasVideoInput:!(0|1),cost:"(${vercelDecimalPattern})",costUnit:"sec"\}`,
+    "gu",
+  );
+  for (const registry of body.matchAll(videoRegistry)) {
+    const slug = registry[1] ?? registry[2];
+    const primary = registry[3];
+    const rawItems = registry[4];
+    if (slug === undefined || primary === undefined || rawItems === undefined) continue;
+    const items = exactObjectList(rawItems, videoItem, (match) => {
+      const quality = match[1];
+      const resolution = match[2];
+      const videoInput = match[3];
+      const price = match[4];
+      if (quality === undefined || videoInput === undefined || price === undefined)
+        return undefined;
+      return {
+        price,
+        quality,
+        ...(resolution === undefined ? {} : { resolution }),
+        video_input: videoInput === "0",
+      };
+    });
+    if (items === undefined || items.length < 2 || !items.some(({ price }) => price === primary))
+      continue;
+    setVercelPricingDetail(models, slug, "video_generation", items);
+  }
+
+  const imageRegistry = new RegExp(
+    String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{imageCost:"(${vercelDecimalPattern})",imageDimensionQualityPricing:\[([^\]]+)\]\}`,
+    "gu",
+  );
+  const imageItem = new RegExp(
+    String.raw`\{size:"([^"]+)",quality:"([^"]+)",cost:"(${vercelDecimalPattern})"\}`,
+    "gu",
+  );
+  for (const registry of body.matchAll(imageRegistry)) {
+    const slug = registry[1] ?? registry[2];
+    const primary = registry[3];
+    const rawItems = registry[4];
+    if (slug === undefined || primary === undefined || rawItems === undefined) continue;
+    const items = exactObjectList(rawItems, imageItem, (match) => {
+      const resolution = match[1];
+      const quality = match[2];
+      const price = match[3];
+      return resolution === undefined || quality === undefined || price === undefined
+        ? undefined
+        : { price, resolution, quality };
+    });
+    if (items === undefined || items.length < 2 || !items.some(({ price }) => price === primary))
+      continue;
+    setVercelPricingDetail(models, slug, "image_generation", items);
+  }
+
+  const searchRegistry = new RegExp(
+    String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{inputCost:"${vercelDecimalPattern}",outputCost:"${vercelDecimalPattern}",webSearchCallCost:"(${vercelDecimalPattern})",webSearchRequestPricing:\[([^\]]+)\]\}`,
+    "gu",
+  );
+  const searchItem = new RegExp(
+    String.raw`\{contextSize:"([^"]+)",cost:"(${vercelDecimalPattern})"\}`,
+    "gu",
+  );
+  for (const registry of body.matchAll(searchRegistry)) {
+    const slug = registry[1] ?? registry[2];
+    const primary = registry[3];
+    const rawItems = registry[4];
+    if (slug === undefined || primary === undefined || rawItems === undefined) continue;
+    const items = exactObjectList(rawItems, searchItem, (match) => {
+      const contextTier = match[1];
+      const price = match[2];
+      return contextTier === undefined || price === undefined
+        ? undefined
+        : { price, context_tier: contextTier };
+    });
+    if (items === undefined || items.length < 2 || !items.some(({ price }) => price === primary))
+      continue;
+    setVercelPricingDetail(models, slug, "web_search", items);
+  }
+
+  if (models.size === 0) return undefined;
+  return JSON.stringify({
+    models: Object.fromEntries([...models].sort(([left], [right]) => left.localeCompare(right))),
+  });
 }
 
 export function normalizeVercelEndpointResponse(body: string): string {

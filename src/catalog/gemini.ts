@@ -743,6 +743,16 @@ function conditions(
   const resolution = descriptor.match(/\b(0\.5K|1K|2K|4K|720p|1080p)\b/i)?.[1];
   if (resolution !== undefined) result.resolution = resolution;
   if (/with audio/i.test(row)) result.audio = true;
+  if (accountEligibility === "paid_tier") {
+    const validity = descriptor.match(
+      /\b(through|starting|beginning)\s+([A-Z][a-z]+ \d{1,2}, \d{4})/i,
+    );
+    const date = validity?.[2] === undefined ? undefined : modelDate(validity[2]);
+    if (date !== undefined) {
+      if (/^through$/i.test(validity?.[1] ?? "")) result.effective_until = date;
+      else result.effective_from = date;
+    }
+  }
   return result;
 }
 

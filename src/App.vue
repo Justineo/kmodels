@@ -699,7 +699,7 @@ onUnmounted(() => {
                 </th>
                 <th class="tasks-col" scope="col">Tasks</th>
                 <th class="status-col" scope="col" aria-label="Model status and maturity">
-                  <UiTooltip class="table-header-tooltip-trigger" tabindex="0">
+                  <UiTooltip class="tooltip-text-trigger table-header-tooltip-trigger" tabindex="0">
                     Status
                     <template #content>
                       <div class="status-tooltip-content">
@@ -756,7 +756,7 @@ onUnmounted(() => {
                 </th>
                 <th class="input-col numeric" scope="col" aria-label="Representative input rate">
                   <UiTooltip
-                    class="table-header-tooltip-trigger"
+                    class="tooltip-text-trigger table-header-tooltip-trigger"
                     tabindex="0"
                     content="Representative input price. Token rates use 1M tokens; other meters show their native unit in the cell."
                   >
@@ -765,7 +765,7 @@ onUnmounted(() => {
                 </th>
                 <th class="cached-col numeric" scope="col" aria-label="Representative cache rate">
                   <UiTooltip
-                    class="table-header-tooltip-trigger"
+                    class="tooltip-text-trigger table-header-tooltip-trigger"
                     tabindex="0"
                     content="Representative cache price. Token rates use 1M tokens; other meters show their native unit in the cell."
                   >
@@ -774,7 +774,7 @@ onUnmounted(() => {
                 </th>
                 <th class="output-col numeric" scope="col" aria-label="Representative output rate">
                   <UiTooltip
-                    class="table-header-tooltip-trigger"
+                    class="tooltip-text-trigger table-header-tooltip-trigger"
                     tabindex="0"
                     content="Representative output price. Token rates use 1M tokens; other meters show their native unit in the cell."
                   >

@@ -58,6 +58,10 @@ catalog presence, and repository creation time is not treated as model release t
 - Featherless's unauthenticated active-model API and pricing documentation provide an exact native
   rate overlay only for already admitted models with a live `featherless-ai` route. Native models
   without such a route are discarded before merge.
+- The public Fireworks model catalog, Z.ai pricing table, Groq model card, and Cohere pricing page
+  provide paid token-rate overlays only after an exact live Hugging Face route and provider model ID
+  have already been established. These sources cannot create catalog presence or cross provider
+  boundaries.
 
 models.dev, LiteLLM, Portkey, gateways, and marketplaces are comparison inputs only. They may reveal
 a missing official claim but cannot create Hugging Face identities or rates.
@@ -67,7 +71,13 @@ a missing official claim but cannot create Hugging Face identities or rates.
 Router rates are normalized independently by meter and qualified by exact `route_provider`. A
 malformed input price does not erase a valid output price, route, model, or sibling backend. A live
 route without a published amount remains a local raw unknown rather than inheriting another route's
-rate.
+rate. When the exact Featherless overlay supplies complete input and output rates for that same
+`featherless-ai` route, those native rates satisfy the router fallback; the missing router fields
+remain a collection diagnostic instead of making the canonical offer incomplete. The same bounded
+resolution applies to a paid Fireworks, Z.ai, Groq, or Cohere rate only when the live partner mapping
+binds the Hugging Face model to the exact native provider model ID. A native free or promotional
+claim never overrides a router route explicitly marked non-free; that disagreement remains a local
+raw unknown. Missing prices without an exact paid join remain local raw unknowns.
 
 Featherless publishes both per-token and per-million-token fields. Kmodels normalizes the exact
 per-token value and uses it as the deterministic winner when the redundant fields conflict. The
@@ -110,6 +120,10 @@ publishes a separate request charge; no such surcharge is currently modeled.
   route, the collector retains only its last verified facts on exact current model matches; current
   router and mapping rates still refresh. A newly parsed Featherless snapshot replaces facts only
   for rows it actually observes.
+- Native provider price pages form an optional commercial overlay bundle. Only exact current paid
+  joins are published; if a dependency is unavailable, the last accepted Hugging Face pricing
+  partition is retained. An ambiguous, promotional, or structurally changed native row leaves the
+  router fallback visible instead of borrowing a sibling model or provider rate.
 - A complete but locally imperfect bundle publishes every safe sibling fact. An invalid assembled
   provider partition retains the previous provider pricing snapshot with visible staleness.
 

@@ -74,6 +74,7 @@ const pricingModelSchema = z.object({
   pricings: z.array(pricingSchema).optional(),
   portableDescription: z.array(z.unknown()).optional(),
 });
+export type CoherePublicPricingProduct = z.infer<typeof pricingModelSchema>;
 
 type Document = ReturnType<typeof load>;
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
@@ -1253,6 +1254,13 @@ function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof prici
   return [...products.values()];
 }
 
+export function parseCoherePublicPricingProducts(
+  body: string,
+  reconcile?: Reconcile,
+): CoherePublicPricingProduct[] {
+  return pricingModels(load(body), reconcile);
+}
+
 function nestedText(value: unknown): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(nestedText).join(" ");
@@ -1268,7 +1276,7 @@ function applyPricing(
   maximum: number,
 ): void {
   const $ = load(body);
-  const products = pricingModels($, input.onPricingReconciliation);
+  const products = parseCoherePublicPricingProducts(body, input.onPricingReconciliation);
   assertItemCount("Cohere pricing products", products.length, minimum, maximum);
   for (const product of products) {
     const description = nestedText(product.portableDescription);

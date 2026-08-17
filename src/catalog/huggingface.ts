@@ -1,5 +1,7 @@
+import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { parseCoherePublicPricingProducts } from "./cohere.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
 import { huggingFacePartnerIds, type SourceManifest } from "./manifests.ts";
@@ -26,7 +28,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
-  catalogModels?: readonly Pick<ProviderModel, "model_id" | "routes">[];
+  catalogModels?: readonly Pick<ProviderModel, "model_id" | "price_facts" | "routes">[];
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -1075,6 +1077,517 @@ export function parseHuggingFaceFeatherless(input: Input): ProviderModel[] {
         });
   assertItemCount(
     "Hugging Face Featherless models",
+    models.size,
+    config.minModels,
+    config.maxModels,
+  );
+  return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
+}
+
+const nativePricingAuthority = "native_provider_price_over_huggingface_route_snapshot";
+const nativePricingProviders = ["cohere", "fireworks-ai", "groq", "zai-org"] as const;
+type NativePricingProvider = (typeof nativePricingProviders)[number];
+type CatalogModel = NonNullable<Input["catalogModels"]>[number];
+
+interface NativeRoute {
+  model: CatalogModel;
+  provider: NativePricingProvider;
+  providerModelId: string;
+}
+
+interface NativePriceRow {
+  input: string;
+  output: string;
+  locator: string;
+}
+
+function nativeDocument(
+  input: Input,
+  bundle: z.infer<typeof linkedBundleSchema>,
+  hostname: string,
+  pathname: string,
+): string | undefined {
+  const matches = bundle.documents.filter(({ url }) => {
+    const parsed = new URL(url);
+    return parsed.hostname === hostname && parsed.pathname === pathname;
+  });
+  if (matches.length === 1) return matches[0]?.body;
+  input.onPricingReconciliation?.({
+    disposition: "unresolved",
+    reason_code:
+      matches.length === 0
+        ? "native_pricing_document_missing"
+        : "native_pricing_document_duplicate",
+    sample: `${hostname}${pathname}`,
+  });
+  return;
+}
+
+function routePriceFacts(
+  model: CatalogModel,
+  provider: NativePricingProvider,
+  meter: "input_text" | "output_text",
+): SourcePriceFact[] {
+  return model.price_facts.filter(
+    (fact) => fact.meter === meter && fact.conditions.route_provider === provider,
+  );
+}
+
+function nativePartnerRoutes(
+  input: Input,
+  bundle: z.infer<typeof linkedBundleSchema>,
+): Map<string, Map<NativePricingProvider, Set<string>>> {
+  const current = new Set(input.catalogModels?.map(({ model_id }) => model_id) ?? []);
+  const result = new Map<string, Map<NativePricingProvider, Set<string>>>();
+  for (const document of bundle.documents) {
+    const url = new URL(document.url);
+    if (url.hostname !== "huggingface.co") continue;
+    const match = /^\/api\/partners\/(cohere|fireworks-ai|groq|zai-org)\/models$/.exec(
+      url.pathname,
+    );
+    const provider = match?.[1] as NativePricingProvider | undefined;
+    if (provider === undefined) continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(document.body);
+    } catch {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "native_route_mapping_invalid",
+        sample: provider,
+      });
+      continue;
+    }
+    const parsed = mappingSchema.safeParse(value);
+    if (!parsed.success) {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "native_route_mapping_invalid",
+        sample: provider,
+      });
+      continue;
+    }
+    for (const entries of Object.values(parsed.data))
+      for (const [rawId, rawEntry] of Object.entries(entries)) {
+        const id = hubIdSchema.safeParse(rawId);
+        const entry = mappingEntrySchema.safeParse(rawEntry);
+        if (!id.success || !entry.success || !current.has(id.data)) continue;
+        const providers = result.get(id.data) ?? new Map();
+        const providerModelIds = providers.get(provider) ?? new Set();
+        providerModelIds.add(entry.data.providerId);
+        providers.set(provider, providerModelIds);
+        result.set(id.data, providers);
+      }
+  }
+  return result;
+}
+
+function nativeRoutes(input: Input, bundle: z.infer<typeof linkedBundleSchema>): NativeRoute[] {
+  if (input.catalogModels === undefined) return [];
+  const partnerRoutes = nativePartnerRoutes(input, bundle);
+  const result: NativeRoute[] = [];
+  for (const model of input.catalogModels) {
+    for (const provider of nativePricingProviders) {
+      const providerModelIds = unique([
+        ...(model.routes ?? []).flatMap((route) =>
+          route.status === "live" && route.provider === provider ? [route.provider_model_id] : [],
+        ),
+        ...(partnerRoutes.get(model.model_id)?.get(provider) ?? []),
+      ]);
+      if (providerModelIds.length === 0) continue;
+      if (providerModelIds.length > 1) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "native_route_model_id_ambiguous",
+          sample: diagnosticSample(model.model_id, provider),
+        });
+        continue;
+      }
+      const providerModelId = providerModelIds[0];
+      if (providerModelId === undefined) continue;
+      const complete = (["input_text", "output_text"] as const).every(
+        (meter) => routePriceFacts(model, provider, meter).length > 0,
+      );
+      if (!complete) result.push({ model, provider, providerModelId });
+    }
+  }
+  return result;
+}
+
+function normalizeNativeName(value: string): string {
+  return value.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+}
+
+function pricedToken(value: string): string | undefined {
+  const parsed = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/.exec(value.trim());
+  return parsed?.[1];
+}
+
+interface FireworksRow extends NativePriceRow {
+  slug: string;
+  title: string;
+}
+
+function fireworksRows(body: string): FireworksRow[] {
+  const $ = load(body);
+  const rows = new Map<string, FireworksRow>();
+  $('a[href^="/models/"]').each((_index, element) => {
+    const href = $(element).attr("href");
+    const title = $(element).find("h3").first().text().trim();
+    if (href === undefined || title.length === 0) return;
+    const text = $(element).text().replaceAll(/\s+/g, " ").trim();
+    const price =
+      /\$((?:0|[1-9]\d*)(?:\.\d+)?)\/M Input\s*•\s*\$((?:0|[1-9]\d*)(?:\.\d+)?)\/M Output/.exec(
+        text,
+      );
+    const slug = new URL(href, "https://fireworks.ai").pathname.split("/").at(-1);
+    if (price?.[1] === undefined || price[2] === undefined || slug === undefined) return;
+    rows.set(href, {
+      input: price[1],
+      output: price[2],
+      locator: `fireworks:${href}`,
+      slug,
+      title,
+    });
+  });
+  return [...rows.values()];
+}
+
+function zaiRows(body: string): { prices: Map<string, NativePriceRow>; free: Set<string> } {
+  const $ = load(body);
+  const prices = new Map<string, NativePriceRow>();
+  const free = new Set<string>();
+  $("table").each((_tableIndex, table) => {
+    const headers = $(table)
+      .find("th")
+      .map((_index, header) => $(header).text().trim())
+      .get();
+    const modelIndex = headers.indexOf("Model");
+    const inputIndex = headers.indexOf("Input");
+    const outputIndex = headers.indexOf("Output");
+    if (modelIndex < 0 || inputIndex < 0 || outputIndex < 0) return;
+    $(table)
+      .find("tbody tr")
+      .each((_rowIndex, row) => {
+        const cells = $(row)
+          .find("td")
+          .map((_index, cell) => $(cell).text().trim())
+          .get();
+        const model = cells[modelIndex];
+        const rawInput = cells[inputIndex];
+        const rawOutput = cells[outputIndex];
+        if (model === undefined || rawInput === undefined || rawOutput === undefined) return;
+        const key = model.toLowerCase();
+        if (rawInput === "Free" && rawOutput === "Free") {
+          free.add(key);
+          return;
+        }
+        const inputPrice = pricedToken(rawInput);
+        const outputPrice = pricedToken(rawOutput);
+        if (inputPrice === undefined || outputPrice === undefined) return;
+        prices.set(key, {
+          input: inputPrice,
+          output: outputPrice,
+          locator: `zai:${model}`,
+        });
+      });
+  });
+  return { prices, free };
+}
+
+function groqSafeguardRow(body: string): NativePriceRow | undefined {
+  const $ = load(body);
+  const rawText = $.root().text();
+  const heading = $("h3")
+    .filter((_index, element) => $(element).text().trim() === "PRICING")
+    .first();
+  const section = heading.parent();
+  const price = (label: "Input" | "Output"): string | undefined => {
+    const labelElement = section
+      .find("div")
+      .filter((_index, element) => {
+        const ownText = $(element).clone().children().remove().end().text().trim();
+        return ownText === label;
+      })
+      .first();
+    const values = labelElement
+      .parent()
+      .find("div")
+      .map((_index, element) => pricedToken($(element).text()))
+      .get()
+      .filter((value): value is string => value !== undefined);
+    return new Set(values).size === 1 ? values[0] : undefined;
+  };
+  const inputPrice = price("Input");
+  const outputPrice = price("Output");
+  if (
+    !rawText.includes("openai/gpt-oss-safeguard-20b") ||
+    inputPrice === undefined ||
+    outputPrice === undefined
+  )
+    return;
+  return {
+    input: inputPrice,
+    output: outputPrice,
+    locator: "groq:openai/gpt-oss-safeguard-20b",
+  };
+}
+
+const cohereProductByModel = new Map([
+  ["command-a-03-2025", "Command A"],
+  ["command-r-08-2024", "Command R"],
+  ["command-r7b-12-2024", "Command R7B"],
+] as const);
+
+function cohereRows(body: string): Map<string, NativePriceRow> {
+  const prices = new Map<string, NativePriceRow>();
+  const products = parseCoherePublicPricingProducts(body);
+  for (const [providerModelId, productName] of cohereProductByModel) {
+    const product = products.find(({ modelName }) => modelName === productName);
+    if (product?.per !== "1M tokens") continue;
+    const inputs = new Set<string>();
+    const outputs = new Set<string>();
+    for (const item of product.pricings ?? []) {
+      if ((item.overridePer ?? product.per) !== "1M tokens") continue;
+      if (
+        item.inputLabel.toLowerCase() === "input" &&
+        item.inputPrice !== null &&
+        item.inputPrice !== undefined
+      )
+        inputs.add(String(item.inputPrice));
+      if (
+        item.outputLabel?.toLowerCase() === "output" &&
+        item.outputPrice !== null &&
+        item.outputPrice !== undefined
+      )
+        outputs.add(String(item.outputPrice));
+    }
+    const inputPrice = [...inputs][0];
+    const outputPrice = [...outputs][0];
+    if (
+      inputs.size !== 1 ||
+      outputs.size !== 1 ||
+      inputPrice === undefined ||
+      outputPrice === undefined
+    )
+      continue;
+    prices.set(providerModelId, {
+      input: inputPrice,
+      output: outputPrice,
+      locator: `cohere:${providerModelId}`,
+    });
+  }
+  const decoded = body.replaceAll('\\"', '"');
+  for (const [providerModelId, productName] of cohereProductByModel) {
+    if (prices.has(providerModelId)) continue;
+    const escapedName = productName.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = new RegExp(
+      `"modelName":"${escapedName}","per":"1M tokens"[\\s\\S]{0,2500}?"pricings":\\[\\{[\\s\\S]{0,1000}?"inputLabel":"Input","inputPrice":((?:0|[1-9]\\d*)(?:\\.\\d+)?),"outputLabel":"Output","outputPrice":((?:0|[1-9]\\d*)(?:\\.\\d+)?)`,
+    ).exec(decoded);
+    if (match?.[1] === undefined || match[2] === undefined) continue;
+    prices.set(providerModelId, {
+      input: match[1],
+      output: match[2],
+      locator: `cohere:${providerModelId}`,
+    });
+  }
+  const aya =
+    /Aya Expanse models \(8B and 32B\) on the API are charged at \$((?:0|[1-9]\d*)(?:\.\d+)?)\/1M tokens for input and \$((?:0|[1-9]\d*)(?:\.\d+)?)\/1M tokens for output/i.exec(
+      load(body).root().text().replaceAll(/\s+/g, " "),
+    );
+  if (aya?.[1] !== undefined && aya[2] !== undefined)
+    prices.set("c4ai-aya-expanse-32b", {
+      input: aya[1],
+      output: aya[2],
+      locator: "cohere:c4ai-aya-expanse-32b",
+    });
+  return prices;
+}
+
+function cohereCommandARow(body: string): NativePriceRow | undefined {
+  const $ = load(body);
+  if ($("h1").filter((_index, element) => $(element).text().trim() === "Command A").length !== 1)
+    return;
+  const text = $.root().text().replaceAll(/\s+/g, "");
+  const match =
+    /Input\$((?:0|[1-9]\d*)(?:\.\d+)?)\/1MtokensOutput\$((?:0|[1-9]\d*)(?:\.\d+)?)\/1Mtokens/.exec(
+      text,
+    );
+  if (match?.[1] === undefined || match[2] === undefined) return;
+  return {
+    input: match[1],
+    output: match[2],
+    locator: "cohere:command-a-03-2025",
+  };
+}
+
+function nativeRate(
+  input: Input,
+  route: NativeRoute,
+  meter: "input_text" | "output_text",
+  price: string,
+  locator: string,
+): SourcePriceFact {
+  return {
+    ...publishedRate(
+      meter,
+      price,
+      "million_tokens",
+      input.source.id,
+      "Native provider USD per million tokens; Hugging Face routes without markup",
+      { route_provider: route.provider },
+    ),
+    source_locator: {
+      kind: "provider_key",
+      value: `${locator}:${meter === "input_text" ? "input" : "output"}`,
+    },
+    resolution_policy: nativePricingAuthority,
+  };
+}
+
+function addNativeRow(
+  input: Input,
+  models: Map<string, ProviderModel>,
+  route: NativeRoute,
+  row: NativePriceRow,
+): boolean {
+  const expected = { input_text: row.input, output_text: row.output } as const;
+  for (const meter of ["input_text", "output_text"] as const) {
+    const published = routePriceFacts(route.model, route.provider, meter);
+    if (published.some(({ price }) => !decimalsEqual(price, expected[meter]))) {
+      input.onPricingReconciliation?.({
+        disposition: "ambiguous",
+        reason_code: "native_route_price_conflict",
+        sample: diagnosticSample(route.model.model_id, route.provider, meter),
+      });
+      return false;
+    }
+  }
+  const rates = (["input_text", "output_text"] as const).flatMap((meter) =>
+    routePriceFacts(route.model, route.provider, meter).length === 0
+      ? [nativeRate(input, route, meter, expected[meter], row.locator)]
+      : [],
+  );
+  if (rates.length === 0) return true;
+  const current = models.get(route.model.model_id);
+  const model =
+    current ??
+    ({
+      ...baseModel({
+        providerId: input.provider.id,
+        id: route.model.model_id,
+        name: route.model.model_id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      pricing_state: "numeric",
+      price_facts: [],
+    } satisfies ProviderModel);
+  models.set(route.model.model_id, {
+    ...model,
+    pricing_state: "numeric",
+    price_facts: [...model.price_facts, ...rates],
+  });
+  input.onPricingReconciliation?.({
+    disposition: "normalized",
+    reason_code: "native_route_price_normalized",
+    sample: diagnosticSample(route.model.model_id, route.provider),
+  });
+  return true;
+}
+
+export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
+  const config = input.source.extractor;
+  if (config.kind !== "huggingface-native-pricing")
+    throw new Error("Invalid Hugging Face native pricing extractor");
+  if (input.catalogModels === undefined)
+    throw new Error("Hugging Face native pricing requires the catalog");
+  const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
+  requireClaims(
+    bundle.index.body,
+    ["with no markup from Hugging Face", "same rates as the provider"],
+    "Hugging Face native pass-through pricing contract drifted",
+  );
+  const routes = nativeRoutes(input, bundle);
+  const models = new Map<string, ProviderModel>();
+  const resolved = new Set<NativeRoute>();
+
+  const fireworks = nativeDocument(input, bundle, "fireworks.ai", "/models");
+  if (fireworks !== undefined) {
+    const rows = fireworksRows(fireworks);
+    for (const route of routes.filter(({ provider }) => provider === "fireworks-ai")) {
+      const suffix = route.providerModelId.split("/").at(-1);
+      const modelName = route.model.model_id.split("/").at(-1);
+      const matches = rows.filter(
+        ({ slug, title }) =>
+          slug === suffix ||
+          (modelName !== undefined &&
+            normalizeNativeName(title) === normalizeNativeName(modelName)),
+      );
+      const row = matches.length === 1 ? matches[0] : undefined;
+      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+      else if (matches.length > 1)
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "native_route_price_join_ambiguous",
+          sample: diagnosticSample(route.model.model_id, route.provider),
+        });
+    }
+  }
+
+  const zai = nativeDocument(input, bundle, "docs.z.ai", "/guides/overview/pricing");
+  if (zai !== undefined) {
+    const rows = zaiRows(zai);
+    for (const route of routes.filter(({ provider }) => provider === "zai-org")) {
+      const key = route.providerModelId.toLowerCase();
+      const row = rows.prices.get(key);
+      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+      else if (rows.free.has(key))
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "native_free_conflicts_with_hf_paid_route",
+          sample: diagnosticSample(route.model.model_id, route.providerModelId),
+        });
+    }
+  }
+
+  const groq = nativeDocument(
+    input,
+    bundle,
+    "console.groq.com",
+    "/docs/model/openai/gpt-oss-safeguard-20b",
+  );
+  if (groq !== undefined) {
+    const row = groqSafeguardRow(groq);
+    for (const route of routes.filter(
+      ({ provider, providerModelId }) =>
+        provider === "groq" && providerModelId === "openai/gpt-oss-safeguard-20b",
+    ))
+      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+  }
+
+  const cohere = nativeDocument(input, bundle, "cohere.com", "/pricing");
+  const commandA = nativeDocument(input, bundle, "docs.cohere.com", "/docs/command-a");
+  if (cohere !== undefined || commandA !== undefined) {
+    const rows = cohere === undefined ? new Map<string, NativePriceRow>() : cohereRows(cohere);
+    const row = commandA === undefined ? undefined : cohereCommandARow(commandA);
+    if (row !== undefined) rows.set("command-a-03-2025", row);
+    for (const route of routes.filter(({ provider }) => provider === "cohere")) {
+      const row = rows.get(route.providerModelId);
+      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+    }
+  }
+
+  for (const route of routes)
+    if (!resolved.has(route))
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "native_route_price_not_exactly_joinable",
+        sample: diagnosticSample(route.model.model_id, route.provider, route.providerModelId),
+      });
+
+  assertItemCount(
+    "Hugging Face native pricing models",
     models.size,
     config.minModels,
     config.maxModels,

@@ -42,8 +42,10 @@ are discarded as out of scope rather than preserved as raw or unknown pricing.
 - Synchronous and Batch invocation are separate offers. Batch rates are derived at 50% only for
   models whose official feature definition supports batching. Their distinct offers already express
   selection; no synthetic `exclusive_with` relation is needed.
-- Cache-read rates are derived at 10% of input only for supported Chat/FIM models. An explicit
-  cached-input price from the pricing page supersedes the derivation.
+- Cache-read rates are derived at 10% of input only for supported Chat/FIM models without an
+  explicit cached-input row. Exact `Cached input` rows in the repository model definition or the
+  pricing page are direct cache rates, not additional ordinary input rates; an explicit page amount
+  supersedes an older repository amount for the same claim.
 - OCR/Document AI retain per-page rates, transcription and audio chat retain per-second input,
   speech synthesis retains submitted-character pricing, and text/embedding models retain token
   rates. Public-page labels must map to an exact model identity and operation; ambiguous rows are

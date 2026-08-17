@@ -856,16 +856,17 @@ kbd {
   content: "";
 }
 
-.table-header-tooltip-trigger {
+.tooltip-text-trigger {
   border-bottom: var(--stroke-hairline) dotted currentColor;
   cursor: help;
-  line-height: var(--line-height-none);
 }
 
-.table-header-tooltip-trigger:focus-visible {
+.tooltip-text-trigger:focus-visible {
   border-radius: var(--radius-xs);
-  outline: var(--stroke-focus) solid var(--color-accent);
-  outline-offset: var(--space-0-5);
+}
+
+.table-header-tooltip-trigger {
+  line-height: var(--line-height-none);
 }
 
 .status-tooltip-content,
@@ -917,18 +918,7 @@ kbd {
 }
 
 .table-status-trigger {
-  border-bottom: var(--stroke-hairline) dotted currentColor;
-}
-
-.table-status-trigger:focus-visible {
-  border-radius: var(--radius-xs);
-  outline: var(--stroke-focus) solid var(--color-accent);
-  outline-offset: var(--space-0-5);
-}
-
-.table-status-trigger {
   color: var(--color-text-secondary);
-  cursor: help;
   font-size: var(--font-size-body);
 }
 

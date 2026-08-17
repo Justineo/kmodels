@@ -1596,7 +1596,7 @@ function commercialSpec(
 }
 
 function outsideInvocationScope(attributes: Record<string, string>): boolean {
-  return /custom|customization|training|storage|provisioned|reserved|model evaluation|flow execution|bedrockflows|invokeflow/i.test(
+  return /custom|customization|training|storage|provisioned|reserved|model evaluation|prompt optimization|optimize.?prompt|flow execution|bedrockflows|invokeflow/i.test(
     [
       attributes.feature,
       attributes.featureType,
@@ -1784,7 +1784,10 @@ function parsePrices(
       const identityLabel =
         explicitLabel ??
         (list.offerCode === "AmazonBedrockFoundationModels" ? (attributes.servicename ?? "") : "");
-      const card = modelForProduct(cards, identityLabel, usage);
+      const excludedFromInvocation = outsideInvocationScope(attributes);
+      const card = excludedFromInvocation
+        ? undefined
+        : modelForProduct(cards, identityLabel, usage);
       requiredDimensions += dimensions.length;
       const modelRefs =
         card === undefined ? [] : [...card.ids.keys()].map((id) => `amazon-bedrock/${id}`);
@@ -1819,7 +1822,7 @@ function parsePrices(
           continue;
         }
         const label = identityLabel || usage;
-        if (outsideInvocationScope(attributes)) {
+        if (excludedFromInvocation) {
           handledDimensions++;
           onPricingReconciliation?.({
             disposition: "excluded",

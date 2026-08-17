@@ -318,6 +318,45 @@ const modelPageDocumentSchema = z
     "Model-page pricing columns must align",
   );
 
+const modelPagePricingDetailSchema = z
+  .object({
+    video_generation: z
+      .array(
+        z
+          .object({
+            price: decimal,
+            quality: z.string().min(1),
+            resolution: z.string().min(1).optional(),
+            video_input: z.boolean(),
+          })
+          .strict(),
+      )
+      .min(2)
+      .optional(),
+    image_generation: z
+      .array(
+        z
+          .object({
+            price: decimal,
+            resolution: z.string().min(1),
+            quality: z.string().min(1),
+          })
+          .strict(),
+      )
+      .min(2)
+      .optional(),
+    web_search: z
+      .array(z.object({ price: decimal, context_tier: z.string().min(1) }).strict())
+      .min(2)
+      .optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, "Model-page pricing detail is empty");
+
+const modelPagePricingRegistrySchema = z
+  .object({ models: z.record(z.string().min(1), modelPagePricingDetailSchema) })
+  .strict();
+
 const bundleSchema = z
   .object({
     index: z.object({ url: z.url(), body: z.string().min(1) }).strict(),
@@ -332,6 +371,7 @@ type TokenPrice = z.infer<typeof tokenPriceSchema>;
 type Endpoint = z.infer<typeof endpointSchema>;
 type EndpointPrice = z.infer<typeof endpointTokenPriceSchema>;
 type ModelPageDocument = z.infer<typeof modelPageDocumentSchema>;
+type ModelPagePricingDetail = z.infer<typeof modelPagePricingDetailSchema>;
 
 const pricingKeys = new Set(Object.keys(pricingSchema.shape));
 const endpointPricingKeys = new Set(Object.keys(endpointPricingSchema.shape));
@@ -746,6 +786,7 @@ function rawPageRate(
 function modelPageRates(
   item: Item,
   page: ModelPageDocument,
+  details: ModelPagePricingDetail | undefined,
   sourceId: string,
 ): { rates: SourcePriceFact[]; raw: SourceRawPricingFact[]; free: boolean } {
   if (page.title !== item.name) throw new Error(`Vercel model page title disagreed for ${item.id}`);
@@ -768,6 +809,15 @@ function modelPageRates(
       throw new Error(`Vercel model page price changed shape for ${item.id}: ${header}`);
     const [, amount, unit, star, alternatives] = match;
     if (star !== undefined || alternatives !== undefined) {
+      const detailedRates = modelPageDetailedRates(item, header, page.provider, details, sourceId);
+      const expectedCount = alternatives === undefined ? undefined : Number(alternatives) + 1;
+      if (
+        detailedRates.some((rate) => rate.price === amount) &&
+        (expectedCount === undefined || detailedRates.length === expectedCount)
+      ) {
+        rates.push(...detailedRates);
+        continue;
+      }
       raw.push(rawPageRate(header, value, page.provider, sourceId));
       continue;
     }
@@ -828,6 +878,42 @@ function modelPageRates(
   if (rates.length === 0 && raw.length === 0 && !free)
     throw new Error(`Vercel model page contained no usable pricing for ${item.id}`);
   return { rates, raw, free };
+}
+
+function modelPageDetailedRates(
+  item: Item,
+  header: string,
+  provider: string,
+  details: ModelPagePricingDetail | undefined,
+  sourceId: string,
+): SourcePriceFact[] {
+  const route = { route_provider: provider };
+  if (header === "Output" && item.type === "video" && details?.video_generation !== undefined)
+    return details.video_generation.map(({ price, quality, resolution, video_input: videoInput }) =>
+      publishedRate("video_generation", price, "second", sourceId, "second", {
+        ...route,
+        quality,
+        resolution,
+        video_input: videoInput,
+      }),
+    );
+  if (header === "Output" && item.type === "image" && details?.image_generation !== undefined)
+    return details.image_generation.map(({ price, quality, resolution }) =>
+      publishedRate("image_generation", price, "image", sourceId, "image", {
+        ...route,
+        quality,
+        resolution,
+      }),
+    );
+  if (header === "Web Search" && details?.web_search !== undefined)
+    return details.web_search.map(({ price, context_tier: contextTier }) =>
+      publishedRate("web_search", price, "thousand_requests", sourceId, "1K requests", {
+        ...route,
+        operation: "web_search",
+        context_tier: contextTier,
+      }),
+    );
+  return [];
 }
 
 function routes(item: Item, endpoints: readonly Endpoint[], sourceId: string): ModelRoute[] {
@@ -1014,6 +1100,7 @@ function model(
   input: Input,
   endpointValues: readonly Endpoint[],
   page: ModelPageDocument | undefined,
+  pageDetails: ModelPagePricingDetail | undefined,
 ): ProviderModel {
   const creator = item.id.split("/")[0];
   if (creator !== item.owned_by) throw new Error(`Vercel owner mismatch for ${item.id}`);
@@ -1038,7 +1125,7 @@ function model(
   const pagePricing =
     page === undefined
       ? { rates: [], raw: [], free: false }
-      : modelPageRates(item, page, input.source.id);
+      : modelPageRates(item, page, pageDetails, input.source.id);
   const explicitlyFree = tags.includes("free");
   input.onPricingReconciliation?.(
     catalogRates.length === 0
@@ -1200,12 +1287,13 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   reportPricingExtensions(list.data, pricingKeys, input);
-  if (!bundled.success) return parsed.map((item) => model(item, input, [], undefined));
+  if (!bundled.success) return parsed.map((item) => model(item, input, [], undefined, undefined));
   if (bundled.data.index.url !== input.source.url)
     throw new Error("Vercel bundle index URL changed");
   const byId = new Map(parsed.map((item) => [item.id, item]));
   const endpoints = new Map<string, Endpoint[]>();
   const pages = new Map<string, ModelPageDocument>();
+  const pagePricingDetails = new Map<string, ModelPagePricingDetail>();
   const documentation = new Map<string, string>();
   for (const document of bundled.data.documents) {
     const url = new URL(document.url);
@@ -1262,6 +1350,22 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     }
     if (
       url.hostname === "vercel.com" &&
+      /^\/vc-ap-vercel-marketing\/_next\/static\/immutable\/chunks\/[A-Za-z0-9_-]+\.js$/u.test(
+        url.pathname,
+      )
+    ) {
+      const registry = modelPagePricingRegistrySchema.safeParse(JSON.parse(document.body));
+      if (!registry.success) continue;
+      for (const [slug, details] of Object.entries(registry.data.models)) {
+        const previous = pagePricingDetails.get(slug);
+        if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(details))
+          throw new Error(`Vercel model-page pricing scripts disagreed for ${slug}`);
+        pagePricingDetails.set(slug, details);
+      }
+      continue;
+    }
+    if (
+      url.hostname === "vercel.com" &&
       (url.pathname.endsWith(".md") ||
         url.pathname === "/ai-gateway/models" ||
         url.pathname === "/crawled-sitemap.xml")
@@ -1277,6 +1381,7 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       input,
       endpoints.get(item.id) ?? [],
       slug === undefined ? undefined : pages.get(slug),
+      slug === undefined ? undefined : pagePricingDetails.get(slug),
     );
   });
   const commercialFacts = vercelCommercialFacts({

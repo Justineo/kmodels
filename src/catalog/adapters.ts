@@ -33,6 +33,7 @@ import {
   parseHuggingFaceFeatherless,
   parseHuggingFaceHub,
   parseHuggingFaceMapping,
+  parseHuggingFaceNativePricing,
   parseHuggingFaceRouter,
 } from "./huggingface.ts";
 import { parseLlamaApi, parseLlamaCatalog } from "./llama.ts";
@@ -1198,7 +1199,7 @@ function openAiFineTunedInferenceFacts(
   const modelRefs = target === undefined ? [] : [target.uid];
   const conditions: SourcePriceFact["conditions"] = {
     ...openAiTierConditions(table.tier),
-    ...(dataSharing ? { account_eligibility: "data_sharing" } : {}),
+    account_eligibility: dataSharing ? "data_sharing" : "default",
   };
   const amount = (header: string): Exclude<OpenAiAmount, "free" | undefined> | undefined => {
     const value = openAiAmount(
@@ -1281,19 +1282,47 @@ function openAiPriceConflict(
   };
 }
 
-function openAiRegionalProcessingUplift(sourceId: string): SourceRawPricingFact {
-  return {
-    term_key: "regional-processing-uplift",
-    impact: "base_price",
-    reason: "unsupported_structure",
-    conditions: { deployment_scope: "regional_processing" },
-    source_ref: sourceId,
-    raw: {
-      label: "Regional processing uplift for eligible models released on or after 2026-03-05",
-      amount: "10%",
-      unit: "published model rates",
-    },
-  };
+function openAiRegionalUpliftEligible(
+  model: Pick<ProviderModel, "availability" | "release_date">,
+): boolean {
+  return (
+    model.release_date !== undefined &&
+    model.release_date >= "2026-03-05" &&
+    model.availability?.some(({ deployment_type }) => deployment_type === "regional_processing") ===
+      true
+  );
+}
+
+function openAiGlobalProcessingRates(
+  rates: readonly SourcePriceFact[],
+  model: Pick<ProviderModel, "availability" | "release_date">,
+): SourcePriceFact[] {
+  if (!openAiRegionalUpliftEligible(model)) return [...rates];
+  return rates.map((rate) => ({
+    ...rate,
+    conditions: { ...rate.conditions, deployment_scope: "global_processing" },
+  }));
+}
+
+function openAiRegionalProcessingRates(rates: readonly SourcePriceFact[]): SourcePriceFact[] {
+  return rates.flatMap((rate): SourcePriceFact[] => {
+    const global = {
+      ...rate,
+      conditions: { ...rate.conditions, deployment_scope: "global_processing" },
+    };
+    return [
+      global,
+      {
+        ...rate,
+        price: multiplyDecimal(rate.price, "1.1"),
+        conditions: { ...rate.conditions, deployment_scope: "regional_processing" },
+        derived: true,
+        derivation: "1.1 × published rate for eligible regional-processing endpoints",
+        raw_price: undefined,
+        raw_unit: "published 10% regional-processing uplift",
+      },
+    ];
+  });
 }
 
 function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
@@ -1577,13 +1606,11 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       if (target === undefined) throw new Error("OpenAI pricing lost its catalog binding");
       const modelRates = rates.get(modelId);
       const rawPriceFacts = [...(conflicts.get(modelId)?.values() ?? [])];
-      if (
-        hasRegionalUplift &&
-        target.availability?.some(
-          ({ deployment_type }) => deployment_type === "regional_processing",
-        )
-      )
-        rawPriceFacts.push(openAiRegionalProcessingUplift(input.source.id));
+      const priceFacts = [...(modelRates?.values() ?? [])];
+      const publishedRates =
+        hasRegionalUplift && openAiRegionalUpliftEligible(target)
+          ? openAiRegionalProcessingRates(priceFacts)
+          : priceFacts;
       return {
         ...baseModel({
           providerId: input.provider.id,
@@ -1598,7 +1625,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
           modelRates === undefined || modelRates.size === 0
             ? (states.get(modelId) ?? "unknown")
             : "numeric",
-        price_facts: [...(modelRates?.values() ?? [])],
+        price_facts: publishedRates,
         raw_price_facts: rawPriceFacts,
       };
     })
@@ -1896,7 +1923,7 @@ function parseOpenAiModelPricing(input: ParseInput): ProviderModel[] {
                 : pageText.includes("open-weight model")
                   ? "not_applicable"
                   : "unknown",
-          price_facts: rates,
+          price_facts: openAiGlobalProcessingRates(rates, target),
         },
       ];
     })
@@ -1938,6 +1965,66 @@ const openAiMonths = new Map(
     "December",
   ].map((month, index) => [month, index + 1]),
 );
+
+function parseOpenAiChangelog(input: ParseInput): ProviderModel[] {
+  if (input.catalogModels === undefined)
+    throw new Error("OpenAI changelog requires the collected catalog");
+  const known = new Map(input.catalogModels.map((model) => [model.model_id, model]));
+  const releases = new Map<string, string>();
+  const abbreviatedMonths = new Map(
+    [...openAiMonths].map(([month, number]) => [month.slice(0, 3), number]),
+  );
+  let year: string | undefined;
+  let month: number | undefined;
+  let date: string | undefined;
+  for (const rawLine of input.body.split(/\r?\n/)) {
+    const line = normalizedText(rawLine);
+    const monthHeading = line.match(/^## ([A-Z][a-z]+), (\d{4})$/);
+    if (monthHeading?.[1] !== undefined && monthHeading[2] !== undefined) {
+      month = openAiMonths.get(monthHeading[1]);
+      year = monthHeading[2];
+      date = undefined;
+      continue;
+    }
+    const dayHeading = line.match(/^### ([A-Z][a-z]{2}) ([1-9]|[12]\d|3[01])$/);
+    if (dayHeading?.[1] !== undefined && dayHeading[2] !== undefined && year !== undefined) {
+      const headingMonth = abbreviatedMonths.get(dayHeading[1]);
+      date =
+        headingMonth === undefined || headingMonth !== month
+          ? undefined
+          : `${year}-${String(headingMonth).padStart(2, "0")}-${dayHeading[2].padStart(2, "0")}`;
+      continue;
+    }
+    if (date === undefined || !line.startsWith("Feature ·")) continue;
+    for (const match of line.matchAll(/(?:^| · )Model: ([a-z0-9._-]+)/g)) {
+      const modelId = match[1];
+      if (modelId === undefined || !known.has(modelId)) continue;
+      const current = releases.get(modelId);
+      if (current === undefined || date < current) releases.set(modelId, date);
+    }
+  }
+  if (releases.size === 0) throw new Error("OpenAI changelog contained no known model releases");
+  if (input.source.extractor.kind !== "openai-changelog")
+    throw new Error("Invalid OpenAI changelog extractor");
+  return [...releases]
+    .map(([modelId, releaseDate]) => {
+      const target = known.get(modelId);
+      if (target === undefined) throw new Error("OpenAI changelog lost its catalog binding");
+      return {
+        ...baseModel({
+          providerId: input.provider.id,
+          id: modelId,
+          ...(target.version === undefined ? {} : { version: target.version }),
+          name: target.name,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        tasks: target.tasks,
+        release_date: releaseDate,
+      };
+    })
+    .sort((left, right) => left.uid.localeCompare(right.uid));
+}
 
 function openAiShutdownDate(value: string): string | undefined {
   const normalized = normalizedText(value).replace(/[‐‑‒–—−]/g, "-");
@@ -2056,6 +2143,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseOpenAiModelPricing(input);
     case "openai-api":
       return parseOpenAiApi(input);
+    case "openai-changelog":
+      return parseOpenAiChangelog(input);
     case "openai-deprecations":
       return parseOpenAiDeprecations(input);
     case "openai-data-residency":
@@ -2084,6 +2173,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseHuggingFaceRouter(input);
     case "huggingface-featherless":
       return parseHuggingFaceFeatherless(input);
+    case "huggingface-native-pricing":
+      return parseHuggingFaceNativePricing(input);
     case "huggingface-hub":
       return parseHuggingFaceHub(input);
     case "ollama-library":

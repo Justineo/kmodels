@@ -19,6 +19,7 @@ interface PriceRow {
   table: string;
   row: string;
   header: string;
+  amountContext: string;
   segment: string;
   regional: Record<string, string>;
   locator: string;
@@ -32,6 +33,8 @@ interface RateSpec {
 }
 
 type MutableFact = Omit<SourceCommercialPricingFact, "source_ref">;
+type LoadedDocument = ReturnType<typeof load>;
+type Selection = ReturnType<LoadedDocument>;
 
 const amountSchema = z.object({
   regional: z.record(
@@ -55,7 +58,7 @@ export function azureCommercialFacts(input: Input): SourceCommercialPricingFact[
         });
         continue;
       }
-      const spec = rateSpec(text);
+      const spec = rateSpec(text, row.amountContext);
       if (spec === undefined) {
         addRawFact(facts, row, input);
         continue;
@@ -127,14 +130,16 @@ function priceRows(url: URL, body: string, input: Input): PriceRow[] {
             });
             continue;
           }
+          const amountContext = localAmountContext($, $(element));
           const segment = htmlText($(element).parent().text());
           rows.push({
             table: tableLabel,
             row: rowLabel,
             header,
+            amountContext,
             segment,
             regional,
-            locator: [url.href, tableLabel, rowLabel, header, segment]
+            locator: [url.href, tableLabel, rowLabel, header, amountContext, segment]
               .filter(Boolean)
               .join(" / ")
               .slice(0, 512),
@@ -146,6 +151,22 @@ function priceRows(url: URL, body: string, input: Input): PriceRow[] {
   return rows;
 }
 
+function localAmountContext($: LoadedDocument, element: Selection): string {
+  const target = element.get(0);
+  if (target === undefined) return "";
+  const parent = element.parent();
+  const index = parent
+    .find("[data-amount]")
+    .toArray()
+    .findIndex((amount) => amount === target);
+  if (index < 0) return "";
+  const clone = parent.clone();
+  clone.find("[data-amount]").each((amountIndex, amount) => {
+    $(amount).replaceWith(` __KMODELS_AMOUNT_${amountIndex}__ `);
+  });
+  return htmlText(clone.text()).split(/__KMODELS_AMOUNT_\d+__/u)[index] ?? "";
+}
+
 function parseAmount(raw: string): Record<string, string> | undefined {
   try {
     const result = amountSchema.safeParse(JSON.parse(raw));
@@ -155,7 +176,7 @@ function parseAmount(raw: string): Record<string, string> | undefined {
   }
 }
 
-function rateSpec(text: string): RateSpec | undefined {
+function rateSpec(text: string, amountContext: string): RateSpec | undefined {
   if (/file search tool call/i.test(text))
     return {
       key: "responses-file-search",
@@ -177,13 +198,18 @@ function rateSpec(text: string): RateSpec | undefined {
       meter: "web_search",
       unit: /\b(?:1k|1,000|thousand)\b/i.test(text) ? "thousand_requests" : "request",
     };
-  if (/computer use/i.test(text))
+  if (/computer use/i.test(text)) {
+    const direction = amountContext || text;
+    const input = /\binput\b/i.test(direction);
+    const output = /\boutput\b/i.test(direction);
+    if (input === output) return;
     return {
       key: "computer-use",
       name: "Computer Use",
-      meter: /output/i.test(text) ? "output_text" : "input_text",
+      meter: output ? "output_text" : "input_text",
       unit: "million_tokens",
     };
+  }
 }
 
 function getFact(facts: Map<string, MutableFact>, spec: RateSpec): MutableFact {
