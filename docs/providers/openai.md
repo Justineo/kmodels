@@ -29,6 +29,7 @@ that call and are excluded.
 | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | [`/api/docs/models/all.md`](https://developers.openai.com/api/docs/models/all.md) and its exact Markdown model-card links | Exhaustive public identity and model semantics                                   |
 | [`/api/docs/models/all`](https://developers.openai.com/api/docs/models/all) and its HTML cards                            | Optional card-local price fallback where the Markdown rendering omits tier state |
+| [Changelog](https://developers.openai.com/api/docs/changelog)                                                             | Exact public model release dates                                                 |
 | [Pricing](https://developers.openai.com/api/docs/pricing)                                                                 | Current public amount authority and provider-service rates                       |
 | [Deprecations](https://developers.openai.com/api/docs/deprecations)                                                       | Non-exhaustive lifecycle dates and replacements                                  |
 | [Your data](https://developers.openai.com/api/docs/guides/your-data)                                                      | Exact endpoint and regional-processing eligibility                               |
@@ -48,6 +49,8 @@ transport or documentation change to stall the entire provider.
 - A card contributes rich facts only when its URL and single `Model ID` agree.
 - Display name, description, snapshots, routed aliases, modalities, limits, endpoint support,
   capabilities, and tool support are parsed independently where possible.
+- Changelog `Feature` entries provide the earliest exact release date for catalog identities; later
+  updates do not move that date and unknown changelog identities cannot create catalog rows.
 - A missing, duplicated, or malformed card does not remove its indexed identity. The collector
   publishes the minimal indexed row, reports a contract signal, and continues with valid siblings.
 - Discovered card fetches are optional within the bundle for the same reason. A failed card becomes
@@ -120,7 +123,10 @@ the observed usage fields cannot establish.
 
 Fine-tuned input, cached-input, and output rates form a direct `fine-tuned-inference:<base>` service.
 Standard and Batch are split into the same synchronous/result-item mechanisms used by ordinary
-model books. The requested private ID, training job, retained artifacts, and account enrollment are
+model books. Within each mechanism, the unqualified published row uses
+`account_eligibility=default` and the discounted row uses `account_eligibility=data_sharing`; this
+keeps the two source-declared account schedules disjoint without adding a provider-specific price
+dimension. The requested private ID, training job, retained artifacts, and account enrollment are
 outside the public partition.
 
 ## Regional processing
@@ -130,11 +136,11 @@ snapshot exceptions. Unknown regions or endpoints are withheld without discardin
 the same row.
 
 OpenAI publishes a 10% regional-processing uplift for eligible data-residency models released on or
-after 2026-03-05. The catalog does not currently have a first-party structured release date for
-every eligible identity, so the uplift is preserved model-locally as a conditional raw base-price
-term. It must not be derived from a date-like model ID or applied globally. Once exact release
-eligibility is available, the same fact can become derived numeric variants without changing the
-shared price model.
+after 2026-03-05. The changelog supplies the exact release date and the data-residency matrix supplies
+regional eligibility. When both facts establish applicability, each published rate is split into a
+global-processing value and a derived `1.1 ×` regional-processing value. Earlier models keep their
+published rate without a processing-scope selector. The collector neither infers release dates from
+model IDs nor applies the uplift to every model merely because it appears in the residency matrix.
 
 ## Presentation and cost use
 

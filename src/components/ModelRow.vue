@@ -147,7 +147,7 @@ function filterStatus(): void {
         <UiTooltip
           as="button"
           type="button"
-          class="table-status-trigger"
+          class="tooltip-text-trigger table-status-trigger"
           :content="pricingStatus.description"
           :aria-label="`View ${model.name} pricing details. ${pricingStatus.description}`"
           @click="emit('selectPricing', model)"

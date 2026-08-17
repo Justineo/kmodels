@@ -29,15 +29,18 @@ usage record alone. They are outside this rate book rather than unknown prices.
 The model list is the authoritative exhaustive inventory and the primary model-level price source.
 For every ID, the documented per-model endpoint API is a claim-local enrichment for route identity
 and route-specific rates. A public model page is fetched only when the model-list price object is
-empty and can supply an exact visible fallback price. The fixed first-party companions are:
+empty and can supply an exact visible fallback price. When a visible cell advertises multiple
+variants, Kmodels also reads the page's first-party immutable client pricing registry; that registry
+is the data source for the page's hover table, rather than a second-party reconstruction. The fixed
+first-party companions are:
 
 - `models-and-providers.md`, for the list and endpoint API contract;
 - `rest-api.md`, for generation usage counters; and
 - `web-search.md`, for the three generic search services and their published amounts.
 
 All companions and per-model enrichments are optional at refresh time. Losing one endpoint, model
-page, or guide withholds only facts owned by that document. It never rejects another model, the
-model-list price, or the complete provider refresh.
+page, pricing registry, or guide withholds only facts owned by that document. It never rejects
+another model, the model-list price, or the complete provider refresh.
 
 ## Normalization
 
@@ -49,7 +52,11 @@ on the same inference offer; they do not create separate commercial mechanisms.
 Endpoint prices add `route_provider` and any exact regional condition. The endpoint API wins only
 inside that exact route-qualified scope. Catalog summary rates remain valid outside it. A visible
 model page fills an otherwise empty price object only when its amount, denominator, and route are
-unambiguous. Compound cells such as `+N more` remain raw at the affected term.
+unambiguous. For a compound cell, the primary amount and advertised alternative count must agree
+with the immutable registry before its hover-table rows are normalized. Video rows use the existing
+quality, resolution, and video-input conditions; image rows use quality and resolution; Perplexity
+search rows use the existing context-tier condition. A missing, changed-shape, or disagreeing
+registry leaves only that compound term raw.
 
 The model inference book keeps one `usage` offer. Provider-native web and Maps prices move to two
 shared service books whose model references express exact compatibility; no relation or settlement
@@ -58,6 +65,11 @@ graph is needed. Generic search tools each use one shared service book:
 - Perplexity: `$5 / 1,000 requests`;
 - Exa: `$7 / 1,000 requests`, plus `$1 / 1,000` requested results above ten; and
 - Parallel: `$5 / 1,000 requests`, plus `$1 / 1,000` additional results above ten.
+
+For Exa and Parallel, the request fee and excess-result fee are additive billing components, not
+alternative prices for one meter. They are collected separately and merged into two rate terms on
+the same search offer. The published operation label scopes only the excess-result term; it does not
+make the request fee and surcharge mutually exclusive.
 
 The Parallel excess-result amount remains published without a charge binding because the official
 guide does not define a request or result field precisely enough. Missing binding is local and does

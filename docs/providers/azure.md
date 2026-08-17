@@ -79,7 +79,9 @@ is observable from the proxied operation:
 
 Persistent File Search/vector storage is excluded. An unknown row in the reviewed built-in-tools
 table is retained as one bounded raw request-component fact; an explicitly identified storage or
-capacity row is discarded rather than serialized as raw.
+capacity row is discarded rather than serialized as raw. When one Computer Use cell contains both
+Input and Output regional amounts, each amount is classified from its nearest local label rather
+than from the combined cell text.
 
 ### Excluded commercial facts
 

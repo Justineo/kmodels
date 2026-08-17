@@ -45,16 +45,21 @@ provider refresh itself cannot publish a valid replacement.
   labels, and approximate dates do not create identity.
 - A family price may apply to multiple IDs only when one model card establishes that family. Other
   joins require a unique best model match; ambiguous rows remain unmatched rather than widening a
-  price.
+  price. An explicit unmatched model label also ends the preceding row group, so later continuation
+  rows cannot inherit an unrelated model.
 - The current Cloud pricing page is normalized by semantic heading and table order. Flexible
   Savings Plan columns are removed before parsing because they are account commitments, not
   request rates. New unrelated columns and sections are ignored locally.
 - Standard, Priority, Flex, and Batch remain shared `service_tier` values. A combined Flex/Batch
   heading expands to both only when the row does not distinguish them; `Global (Flex)` and
-  `Global (Batch)` select the exact tier.
+  `Global (Batch)` select the exact tier. Row descriptors such as `Batch Input` and explicit
+  `Request Type` cells take the same exact tier instead of overlapping the standard row.
 - Global and non-global values use `deployment_scope`; exact published regions use `region`.
+  Region tabs are part of the table scope: global, multi-region, and regional panels remain
+  disjoint even when the table itself has no Region column.
   Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
-  independent applicability dimensions.
+  independent applicability dimensions. Dated promotional and standard labels retain their
+  published `through`, `beginning`, or `starting` boundary.
 - Direct token rates are normalized per token while preserving the published million-token unit as
   evidence. Page alternatives are ignored only when a first-party model card gives an exact token
   equivalence; otherwise the token rate remains normalized and the unresolved alternative remains

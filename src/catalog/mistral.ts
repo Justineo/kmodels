@@ -51,9 +51,10 @@ interface Input {
 }
 
 type Direction = "input" | "output";
+type SourcePriceKind = Direction | "cached_input";
 
 interface SourcePrice {
-  direction: Direction;
+  kind: SourcePriceKind;
   price: string;
   denominator: string;
 }
@@ -309,7 +310,7 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
     if (type === "flat")
       return result([
         {
-          direction: "input",
+          kind: "input",
           price: numberText(property(pricing, "price"), "pricing.price"),
           denominator: requiredString(pricing, "denominator"),
         },
@@ -317,7 +318,7 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
     if (type === "range")
       return result(
         (["input", "output"] as const).map((direction) => ({
-          direction,
+          kind: direction,
           price: numberText(property(pricing, direction), `pricing.${direction}`),
           denominator: requiredString(pricing, "denominator"),
         })),
@@ -334,9 +335,11 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
             const rate = objectValue(item, `pricing.${direction} rate`);
             const rateType = requiredString(rate, "type");
             if (rateType !== "flat" && rateType !== "range") return [];
+            const label = stringValue(property(rate, "label"));
+            const kind = sourcePriceKind(direction, label);
             return [
               {
-                direction,
+                kind,
                 price: numberText(property(rate, "price"), "pricing rate price"),
                 denominator: requiredString(rate, "denominator"),
               },
@@ -350,6 +353,13 @@ function sourcePricing(object: ts.ObjectLiteralExpression): SourcePricing {
   } catch {
     return { free: false, prices: [], valid: false };
   }
+}
+
+function sourcePriceKind(direction: Direction, label: string | undefined): SourcePriceKind {
+  if (label === undefined || label === (direction === "input" ? "Input" : "Output"))
+    return direction;
+  if (direction === "input" && label === "Cached input") return "cached_input";
+  throw new Error(`Mistral published an unsupported pricing label: ${label}`);
 }
 
 function parseDraft(sourceSlug: string, body: string): Draft {
@@ -634,21 +644,29 @@ function directRate(
   if (price.denominator === "/M Tokens") {
     unit = "million_tokens";
     meter =
-      price.direction === "output"
+      price.kind === "output"
         ? "output_text"
-        : modelTasks.includes("embeddings")
-          ? "embedding"
-          : "input_text";
+        : price.kind === "cached_input"
+          ? "cache_read_text"
+          : modelTasks.includes("embeddings")
+            ? "embedding"
+            : "input_text";
   } else if (price.denominator === "/M Chars") {
+    if (price.kind === "cached_input")
+      throw new Error("Mistral cached-input pricing did not use token units");
     unit = "million_characters";
-    meter = price.direction === "output" ? "output_audio" : "input_text";
+    meter = price.kind === "output" ? "output_audio" : "input_text";
   } else if (price.denominator === "/Min") {
+    if (price.kind === "cached_input")
+      throw new Error("Mistral cached-input pricing did not use token units");
     unit = "minute";
-    meter = price.direction === "output" ? "output_audio" : "input_audio";
+    meter = price.kind === "output" ? "output_audio" : "input_audio";
     if (modelTasks.includes("transcription") && !modelTasks.includes("text_generation"))
       conditions.operation = "transcription";
     else if (modelTasks.includes("text_generation")) conditions.operation = "chat_completions";
   } else if (price.denominator === "/1000 Pages" || price.denominator === "/1000 Annotated Pages") {
+    if (price.kind === "cached_input")
+      throw new Error("Mistral cached-input pricing did not use token units");
     unit = "thousand_pages";
     meter = "input_image";
     conditions.operation =
@@ -667,17 +685,23 @@ function derivedPricing(
   const derived: SourcePriceFact[] = [];
   if (batch)
     derived.push(
-      ...direct.map((rate) => ({
-        ...rate,
-        price: multiplyDecimal(rate.price, "0.5"),
-        conditions: { ...rate.conditions, service_tier: "batch" },
-        derived: true,
-        derivation: "0.5 × published standard rate for Batch API",
-        raw_price: undefined,
-        raw_unit: "published 50% Batch API discount",
-      })),
+      ...direct.flatMap((rate): SourcePriceFact[] =>
+        rate.meter === "cache_read_text"
+          ? []
+          : [
+              {
+                ...rate,
+                price: multiplyDecimal(rate.price, "0.5"),
+                conditions: { ...rate.conditions, service_tier: "batch" },
+                derived: true,
+                derivation: "0.5 × published standard rate for Batch API",
+                raw_price: undefined,
+                raw_unit: "published 50% Batch API discount",
+              },
+            ],
+      ),
     );
-  if (cache)
+  if (cache && !direct.some(({ meter }) => meter === "cache_read_text"))
     derived.push(
       ...direct.flatMap((rate): SourcePriceFact[] =>
         rate.meter !== "input_text"

@@ -152,7 +152,7 @@ function filterStatus(): void {
     <td class="status-col">
       <UiTooltip
         v-if="sharedStatus.kind === 'varies'"
-        class="table-status-trigger"
+        class="tooltip-text-trigger table-status-trigger"
         tabindex="0"
         :content="variedStatusDescription"
         :aria-label="variedStatusDescription"
@@ -184,7 +184,7 @@ function filterStatus(): void {
     <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
       <span class="price-status-band">
         <UiTooltip
-          class="table-status-trigger"
+          class="tooltip-text-trigger table-status-trigger"
           tabindex="0"
           :content="pricingStatus.description"
           :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"

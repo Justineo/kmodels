@@ -32,16 +32,32 @@ export function vercelCommercialFacts(input: Input): SourceCommercialPricingFact
     ]),
     commercialFact(input, "exa-search", "Exa Search", [
       rate("web_search", "7", "thousand_requests", input.sourceId),
-      rate("web_search", "1", "thousand_items", input.sourceId, {
-        operation: "additional_requested_results",
-      }),
     ]),
+    commercialFact(
+      input,
+      "exa-search",
+      "Exa Search",
+      [
+        rate("web_search", "1", "thousand_items", input.sourceId, {
+          operation: "additional_requested_results",
+        }),
+      ],
+      "additional-results",
+    ),
     commercialFact(input, "parallel-search", "Parallel Search", [
       rate("web_search", "5", "thousand_requests", input.sourceId),
-      rate("web_search", "1", "thousand_items", input.sourceId, {
-        operation: "additional_results",
-      }),
     ]),
+    commercialFact(
+      input,
+      "parallel-search",
+      "Parallel Search",
+      [
+        rate("web_search", "1", "thousand_items", input.sourceId, {
+          operation: "additional_results",
+        }),
+      ],
+      "additional-results",
+    ),
   ];
 }
 
@@ -50,6 +66,7 @@ function commercialFact(
   key: string,
   name: string,
   rates: SourcePriceFact[],
+  offerKey = "search",
 ): SourceCommercialPricingFact {
   return {
     source_ref: input.sourceId,
@@ -58,8 +75,8 @@ function commercialFact(
     resource_kind: "service",
     resource_key: key,
     model_refs: [...input.modelRefs],
-    offer_key: "search",
-    offer_name: name,
+    offer_key: offerKey,
+    offer_name: offerKey === "search" ? name : `${name} additional results`,
     billing_mode: "usage",
     pricing_state: "numeric",
     price_facts: rates,

@@ -11,6 +11,10 @@ const componentStyles = readdirSync(componentDirectory)
 const allStyles = `${globalStyles}\n${componentStyles}`;
 const app = readFileSync(new URL("../src/App.vue", import.meta.url), "utf8");
 const tooltip = readFileSync(new URL("../src/components/UiTooltip.vue", import.meta.url), "utf8");
+const relativeTime = readFileSync(
+  new URL("../src/components/RelativeTime.vue", import.meta.url),
+  "utf8",
+);
 const modelRow = readFileSync(new URL("../src/components/ModelRow.vue", import.meta.url), "utf8");
 const modelGroupRow = readFileSync(
   new URL("../src/components/ModelGroupRow.vue", import.meta.url),
@@ -156,7 +160,7 @@ describe("design token contract", () => {
       /<th class="status-col"[^>]*>[\s\S]*?<UiTooltip[\s\S]*?>[\s\S]*?Status[\s\S]*?<template #content>[\s\S]*?Lifecycle[\s\S]*?Maturity[\s\S]*?<\/template>[\s\S]*?<\/UiTooltip>/,
     );
     expect(matches(/class="status-badge" data-status="[^"]+"/, app)).toHaveLength(9);
-    expect(matches(/class="table-header-tooltip-trigger"/, app)).toHaveLength(4);
+    expect(matches(/class="[^"]*\btable-header-tooltip-trigger\b[^"]*"/, app)).toHaveLength(4);
   });
 
   it("keeps explanatory tooltip hit areas on their visible content", () => {
@@ -164,6 +168,23 @@ describe("design token contract", () => {
     expect(tooltip).toMatch(
       /span\.ui-tooltip-trigger\s*\{[^}]*display:\s*inline-block;[^}]*width:\s*fit-content;/s,
     );
+  });
+
+  it("uses one global dotted treatment for explanatory text triggers", () => {
+    expect(globalStyles).toMatch(
+      /\.tooltip-text-trigger\s*\{[^}]*border-bottom:\s*var\(--stroke-hairline\) dotted currentColor;[^}]*cursor:\s*help;/s,
+    );
+    expect(globalStyles).toMatch(
+      /\.tooltip-text-trigger:focus-visible\s*\{[^}]*border-radius:\s*var\(--radius-xs\);/s,
+    );
+    expect(relativeTime).toMatch(/<UiTooltip[^>]*class="tooltip-text-trigger"/s);
+    expect(relativeTime).not.toMatch(/<style/);
+    expect(matches(/class="tooltip-text-trigger table-header-tooltip-trigger"/, app)).toHaveLength(
+      4,
+    );
+    expect(
+      matches(/class="tooltip-text-trigger table-status-trigger"/, `${modelRow}\n${modelGroupRow}`),
+    ).toHaveLength(3);
   });
 
   it("prevents tooltip surfaces from passing clicks to obscured controls", () => {

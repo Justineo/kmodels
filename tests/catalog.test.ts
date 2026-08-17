@@ -270,6 +270,7 @@ describe("generated static catalog", () => {
       "huggingface-featherless",
       "huggingface-hf-inference",
       "huggingface-hub",
+      "huggingface-native-pricing",
       "huggingface-router",
     ]);
   });

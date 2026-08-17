@@ -279,6 +279,8 @@ function pricingDocument(body: string): LoadedDocument {
       return;
     }
     const table = item.clone();
+    const scope = pricingTabScope(source, item);
+    if (scope !== "") table.attr("data-kmodels-pricing-scope", scope);
     table.find('button,[role="status"]').remove();
     const headers = table.find("tr").first().find("th,td");
     const omitted = new Set<number>();
@@ -1309,6 +1311,7 @@ function tiers(
   table: Selection,
   header: string,
   headers: string[],
+  descriptor = "",
   scope = "",
 ): (string | undefined)[] {
   if (/\bPriority\b/i.test(header)) return ["priority"];
@@ -1320,6 +1323,10 @@ function tiers(
   if (/Batch API/i.test(header)) return ["batch"];
   if (headers.some((value) => /Batch API/i.test(value)) && /^Price$/i.test(header))
     return ["standard"];
+  if (/\bBatch\b/i.test(descriptor)) return ["batch"];
+  if (/\bFlex\b/i.test(descriptor)) return ["flex"];
+  if (/\bPriority\b/i.test(descriptor)) return ["priority"];
+  if (/\bOnline\b/i.test(descriptor)) return ["standard"];
   const value = text(table.prevAll("h3,h4").first().text()).toLowerCase();
   if (value === "standard" || value === "priority") return [value];
   if (value === "flex/batch") return ["flex", "batch"];
@@ -1335,6 +1342,31 @@ function column(cells: Selection, columnCount: number, index: number): Selection
 function deploymentScope(value: string): string | undefined {
   const scope = text(value.replace(/\*/g, " ").replace(/\((?:Batch|Flex)\)/gi, " "));
   return /^(?:Global|Non-global)$/i.test(scope) ? scope.toLowerCase() : undefined;
+}
+
+function pricingScope($: LoadedDocument, table: Selection, rowScope: string): string {
+  if (rowScope !== "") return normalizePricingScope(rowScope);
+  const retained = table.attr("data-kmodels-pricing-scope");
+  if (retained !== undefined) return normalizePricingScope(retained);
+  return pricingTabScope($, table);
+}
+
+function pricingTabScope($: LoadedDocument, table: Selection): string {
+  const panel = table.closest('[role="tabpanel"][aria-labelledby]').first();
+  const labelId = panel.attr("aria-labelledby");
+  if (labelId === undefined) return "";
+  let label = "";
+  $('[role="tab"][id]').each((_index, element) => {
+    if ($(element).attr("id") === labelId) label = text($(element).text());
+  });
+  return label;
+}
+
+function normalizePricingScope(value: string): string {
+  const scope = text(value);
+  const multiRegion = scope.match(/^(?:US|EU) Multi-Region \((US|EU)\)$/i)?.[1];
+  if (multiRegion !== undefined) return multiRegion.toLowerCase();
+  return /^[a-z]+-[a-z]+\s+\d$/i.test(scope) ? scope.replace(/\s+/g, "") : scope;
 }
 
 function pageAlternativeVerified(
@@ -1361,6 +1393,23 @@ function contextTokenBounds(header: string): SourcePriceFact["conditions"] {
   return {
     ...(/(?:<=|=<)\s*200K/i.test(header) ? { context_max_tokens: 200_000 } : {}),
     ...(/>\s*200K/i.test(header) ? { context_min_tokens: 200_001 } : {}),
+  };
+}
+
+function pricingValidity(label: string): SourcePriceFact["conditions"] {
+  const match = label.match(
+    /\b(through|beginning|starting)\s+([A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4})/i,
+  );
+  const date =
+    match?.[2] === undefined ? undefined : modelDate(match[2].replace(/(\d)(?:st|nd|rd|th)/, "$1"));
+  return {
+    ...(/\b(?:beginning|starting)\b/i.test(match?.[1] ?? "") && date !== undefined
+      ? { effective_from: date }
+      : {}),
+    ...(/\bthrough\b/i.test(match?.[1] ?? "") && date !== undefined
+      ? { effective_until: date }
+      : {}),
+    ...(/promotional/i.test(label) ? { promotion: true } : {}),
   };
 }
 
@@ -1396,8 +1445,10 @@ function tokenTables(
     const modelIndex = headers.findIndex((header) => /^Model(?: name)?$/i.test(header));
     const typeIndex = headers.findIndex((header) => /^Type$/i.test(header));
     const regionIndex = headers.findIndex((header) => /^Region$/i.test(header));
+    const requestTypeIndex = headers.findIndex((header) => /^Request Type$/i.test(header));
     let current: ProviderModel[] = [];
     let descriptor = "";
+    let validity: SourcePriceFact["conditions"] = {};
     table
       .find("tr")
       .slice(1)
@@ -1406,6 +1457,7 @@ function tokenTables(
         if (cells.length === 1) {
           const label = text(cells.eq(0).text());
           current = priceTargets(models, label);
+          validity = current.length === 0 ? {} : pricingValidity(label);
           if (label !== "" && current.length === 0)
             reconcile?.({
               disposition: "unbound",
@@ -1420,18 +1472,49 @@ function tokenTables(
         if (direct.length > 0) {
           current = direct;
           descriptor = "";
+          validity = pricingValidity(modelLabel);
+        } else if (modelLabel !== "") {
+          current = [];
+          descriptor = "";
+          validity = {};
+          reconcile?.({
+            disposition: "unbound",
+            reason_code: "pricing_model_unbound",
+            sample: modelLabel.slice(0, 256),
+          });
         }
         if (current.length === 0) return;
         const offset = headers.length - cells.length;
         const rowDescriptor = text(column(cells, headers.length, typeIndex)?.text() ?? "");
+        if (
+          modelLabel === "" &&
+          /^(?:Input|Output)$/i.test(rowDescriptor) &&
+          /\b(?:Batch )?Cache (?:Hit|Write)\b/i.test(descriptor)
+        ) {
+          current = [];
+          descriptor = "";
+          validity = {};
+          reconcile?.({
+            disposition: "unbound",
+            reason_code: "pricing_model_unbound",
+            sample: `${rowDescriptor}: ${cellText($(row))}`.slice(0, 256),
+          });
+          return;
+        }
         if (rowDescriptor !== "") descriptor = rowDescriptor;
-        const scope = text(column(cells, headers.length, regionIndex)?.text() ?? "");
+        const requestType = text(column(cells, headers.length, requestTypeIndex)?.text() ?? "");
+        const scope = pricingScope(
+          $,
+          table,
+          text(column(cells, headers.length, regionIndex)?.text() ?? ""),
+        );
         cells.each((cellIndex, cell) => {
           const logicalIndex = cellIndex + offset;
           if (
             logicalIndex === modelIndex ||
             logicalIndex === typeIndex ||
-            logicalIndex === regionIndex
+            logicalIndex === regionIndex ||
+            logicalIndex === requestTypeIndex
           )
             return;
           const header = headers[logicalIndex] ?? "";
@@ -1451,7 +1534,7 @@ function tokenTables(
                 });
           for (const item of prices)
             for (const serviceTier of item.serviceTier === undefined
-              ? tiers(table, header, headers, scope)
+              ? tiers(table, header, headers, `${descriptor} ${requestType}`, scope)
               : [item.serviceTier])
               for (const target of current)
                 for (const rateMeter of rateMeters)
@@ -1469,6 +1552,7 @@ function tokenTables(
                         region:
                           scope === "" || deploymentScope(scope) !== undefined ? undefined : scope,
                         ...contextTokenBounds(header),
+                        ...validity,
                       },
                     ),
                     reconcile,
@@ -1493,6 +1577,7 @@ function tokenTables(
                       region:
                         scope === "" || deploymentScope(scope) !== undefined ? undefined : scope,
                       ...contextTokenBounds(header),
+                      ...validity,
                     },
                     "base_price",
                     reconcile,
@@ -1692,9 +1777,7 @@ function labeledTables(
         const modelLabel = text(cells.eq(0).text());
         const targets = priceTargets(models, modelLabel);
         if (targets.length === 0) return;
-        const effective = modelLabel
-          .match(/(?:through|beginning) ([A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?, \d{4})/i)?.[1]
-          ?.replace(/(\d)(?:st|nd|rd|th)/, "$1");
+        const validity = pricingValidity(modelLabel);
         cells.slice(1).each((cellIndex, cell) => {
           const header = headers[cellIndex + 1] ?? "";
           const originalFragment = cellText($(cell));
@@ -1741,15 +1824,7 @@ function labeledTables(
                       : lower.startsWith("1h")
                         ? 3600
                         : undefined,
-                    effective_from:
-                      /beginning/i.test(modelLabel) && effective !== undefined
-                        ? modelDate(effective)
-                        : undefined,
-                    effective_until:
-                      /through/i.test(modelLabel) && effective !== undefined
-                        ? modelDate(effective)
-                        : undefined,
-                    promotion: /promotional/i.test(modelLabel) || undefined,
+                    ...validity,
                   },
                 ),
                 reconcile,

@@ -66,7 +66,9 @@ entitlement or settlement.
 `Free Tier` and `Paid Tier` are account-eligibility dimensions. Only an exact official `Free of
 charge` cell becomes a zero rate. Standard/Flex/Priority and Batch remain execution dimensions. An
 adjacent per-image or per-minute amount is treated as a usage equivalence when the same cell already
-publishes a primary token price; it is not a second charge.
+publishes a primary token price; it is not a second charge. When a paid cell publishes successive
+`through` and `starting` prices, those dates remain applicability boundaries; the adjacent undated
+Free Tier cell remains continuous rather than inheriting the paid schedule.
 
 Gemini 3 Search and Maps are priced per executed query. Gemini 2.5 and older rows are priced per
 grounded prompt. The source unit is retained exactly; no cross-generation conversion is inferred.

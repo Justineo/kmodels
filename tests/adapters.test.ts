@@ -19,6 +19,7 @@ import {
   normalizeOllamaResponse,
   normalizeVercelEndpointResponse,
   normalizeVercelModelPage,
+  normalizeVercelPricingScript,
 } from "../src/catalog/fetch.ts";
 import { applyGroups, applySupplementGroups, retainSourceFacts } from "../src/catalog/collector.ts";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
@@ -698,6 +699,16 @@ function huggingFaceFeatherlessSource(value: ProviderManifest): SourceManifest {
   };
 }
 
+function huggingFaceNativePricingSource(value: ProviderManifest): SourceManifest {
+  const configured = value.sources.find((source) => source.id === "huggingface-native-pricing");
+  if (configured === undefined || configured.extractor.kind !== "huggingface-native-pricing")
+    throw new Error("Missing Hugging Face native pricing source");
+  return {
+    ...configured,
+    extractor: { kind: "huggingface-native-pricing", minModels: 1, maxModels: 10 },
+  };
+}
+
 async function huggingFaceMapping(
   path: string,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
@@ -840,6 +851,110 @@ async function huggingFaceFeatherless(
     }),
     observedAt,
     ...(catalogModels === undefined ? {} : { catalogModels }),
+    ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+  });
+}
+
+async function huggingFaceNativePricing(
+  catalogModels: ProviderModel[],
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): Promise<ProviderModel[]> {
+  const value = manifest("huggingface");
+  const source = huggingFaceNativePricingSource(value);
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: JSON.stringify({
+      index: {
+        url: source.url,
+        body: await fixture("huggingface/pricing.md"),
+      },
+      documents: [
+        {
+          url: "https://fireworks.ai/models?show=Image",
+          body: await fixture("huggingface/native-fireworks.html"),
+        },
+        {
+          url: "https://docs.z.ai/guides/overview/pricing",
+          body: await fixture("huggingface/native-zai.html"),
+        },
+        {
+          url: "https://console.groq.com/docs/model/openai/gpt-oss-safeguard-20b",
+          body: await fixture("huggingface/native-groq.html"),
+        },
+        {
+          url: "https://cohere.com/pricing",
+          body: (await fixture("cohere/pricing.html")).replace(
+            "self.__next_f.push",
+            "self.__next_f.invalid",
+          ),
+        },
+        {
+          url: "https://docs.cohere.com/docs/command-a",
+          body: await fixture("huggingface/native-cohere-command-a.html"),
+        },
+        {
+          url: "https://huggingface.co/api/partners/cohere/models?status=live",
+          body: JSON.stringify({
+            conversational: {
+              "CohereLabs/c4ai-command-a-03-2025": {
+                _id: "command-a",
+                providerId: "command-a-03-2025",
+                status: "live",
+              },
+              "CohereLabs/c4ai-command-r7b-12-2024": {
+                _id: "command-r7b",
+                providerId: "command-r7b-12-2024",
+                status: "live",
+              },
+            },
+          }),
+        },
+        {
+          url: "https://huggingface.co/api/partners/fireworks-ai/models?status=live",
+          body: JSON.stringify({
+            conversational: {
+              "deepseek-ai/DeepSeek-V4-Pro-0813": {
+                _id: "deepseek-v4-pro",
+                providerId: "accounts/fireworks/models/deepseek-v4-pro-0813",
+                status: "live",
+              },
+            },
+          }),
+        },
+        {
+          url: "https://huggingface.co/api/partners/groq/models?status=live",
+          body: JSON.stringify({
+            conversational: {
+              "openai/gpt-oss-safeguard-20b": {
+                _id: "safeguard",
+                providerId: "openai/gpt-oss-safeguard-20b",
+                status: "live",
+              },
+            },
+          }),
+        },
+        {
+          url: "https://huggingface.co/api/partners/zai-org/models?status=live",
+          body: JSON.stringify({
+            conversational: {
+              "zai-org/GLM-4.7-FP8": {
+                _id: "glm-4.7",
+                providerId: "glm-4.7",
+                status: "live",
+              },
+              "zai-org/GLM-4.6V-Flash": {
+                _id: "glm-4.6v-flash",
+                providerId: "glm-4.6v-flash",
+                status: "live",
+              },
+            },
+          }),
+        },
+      ],
+    }),
+    observedAt,
+    catalogModels,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
   });
 }
@@ -2746,6 +2861,63 @@ describe("Mistral adapters", () => {
     );
   });
 
+  it("classifies an explicit repository cached-input row without duplicating input", async () => {
+    const medium = (await fixture("mistral/mistral-medium-3-5-26-04.ts")).replace(
+      'input: [{ type: "range", price: 1.5, denominator: "/M Tokens" }]',
+      `input: [
+      { type: "range", price: 1.5, denominator: "/M Tokens", label: "Input" },
+      { type: "range", price: 0.26, denominator: "/M Tokens", label: "Cached input" },
+    ]`,
+    );
+    const model = (
+      await mistralCatalog({
+        medium,
+        omitDocument: "https://mistral.ai/pricing/api/",
+      })
+    ).find(({ model_id }) => model_id === "mistral-medium-3-5");
+    expect(
+      model?.price_facts
+        .filter(({ currency }) => currency === "USD")
+        .map(({ meter, price, derived, conditions }) => ({
+          meter,
+          price,
+          derived,
+          conditions,
+        })),
+    ).toEqual([
+      {
+        meter: "input_text",
+        price: "1.5",
+        derived: false,
+        conditions: { billing_currency: "USD" },
+      },
+      {
+        meter: "cache_read_text",
+        price: "0.26",
+        derived: false,
+        conditions: { billing_currency: "USD" },
+      },
+      {
+        meter: "output_text",
+        price: "7.5",
+        derived: false,
+        conditions: { billing_currency: "USD" },
+      },
+      {
+        meter: "input_text",
+        price: "0.75",
+        derived: true,
+        conditions: { billing_currency: "USD", service_tier: "batch" },
+      },
+      {
+        meter: "output_text",
+        price: "3.75",
+        derived: true,
+        conditions: { billing_currency: "USD", service_tier: "batch" },
+      },
+    ]);
+  });
+
   it("accounts for every reviewed repository and public-page price observation", async () => {
     const items: PricingReconciliationItem[] = [];
     const models = await mistralCatalog({}, (item) => items.push(item));
@@ -4050,7 +4222,19 @@ describe("OpenAI adapters", () => {
 
   it("keeps card-local pricing in a separately replaceable HTML overlay", async () => {
     const catalog = await parsed("openai", "openai/catalog.json");
-    const models = await openAiModelPricing("openai/pricing-catalog.json", catalog);
+    const availability: NonNullable<ProviderModel["availability"]> = [
+      { region: "United States", deployment_type: "regional_processing" },
+    ];
+    const eligibleCatalog = catalog.map((model) =>
+      model.model_id === "gpt-5.4"
+        ? {
+            ...model,
+            release_date: "2026-03-05",
+            availability,
+          }
+        : model,
+    );
+    const models = await openAiModelPricing("openai/pricing-catalog.json", eligibleCatalog);
     const model = models.find((candidate) => candidate.model_id === "gpt-5.4");
     expect(
       model?.price_facts.find(
@@ -4069,6 +4253,9 @@ describe("OpenAI adapters", () => {
           rate.meter === "cache_read_text" && rate.conditions.context_min_tokens === 272_001,
       )?.price,
     ).toBe("0.5");
+    expect(
+      new Set(model?.price_facts.map(({ conditions }) => conditions.deployment_scope)),
+    ).toEqual(new Set(["global_processing"]));
   });
 
   it("distinguishes the standard and batch views behind a price-tier selector", async () => {
@@ -4182,6 +4369,32 @@ describe("OpenAI adapters", () => {
       tasks: ["speech_synthesis"],
       api_endpoints: [{ name: "Speech generation", path: "v1/audio/speech" }],
     });
+  });
+
+  it("takes the earliest exact model release from changelog feature entries", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-changelog");
+    if (source === undefined || source.extractor.kind !== "openai-changelog")
+      throw new Error("Missing OpenAI changelog source");
+    const catalogModels = [
+      openAiModel("gpt-5.4", ["text_generation"]),
+      openAiModel("gpt-5.4-pro", ["text_generation"]),
+      openAiModel("gpt-5.6-sol", ["text_generation"]),
+      openAiModel("gpt-image-2", ["image_generation"]),
+    ];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("openai/changelog.md"),
+      observedAt,
+      catalogModels,
+    });
+    expect(models.map(({ model_id, release_date }) => ({ model_id, release_date }))).toEqual([
+      { model_id: "gpt-5.4", release_date: "2026-03-05" },
+      { model_id: "gpt-5.4-pro", release_date: "2026-03-05" },
+      { model_id: "gpt-5.6-sol", release_date: "2026-07-09" },
+      { model_id: "gpt-image-2", release_date: "2026-04-21" },
+    ]);
   });
 
   it("keeps reviewed residency facts when a row adds an unknown region", async () => {
@@ -4406,6 +4619,39 @@ describe("OpenAI adapters", () => {
         expect.objectContaining({ meter: "output_audio", price: "10.00" }),
       ]),
     );
+    const fineTunedFacts = commercial
+      .filter(({ resource_key }) => resource_key === "fine-tuned-inference:o4-mini-2025-04-16")
+      .flatMap(({ price_facts }) => price_facts);
+    expect(fineTunedFacts).toHaveLength(12);
+    expect(new Set(fineTunedFacts.map(({ conditions }) => conditions.account_eligibility))).toEqual(
+      new Set(["default", "data_sharing"]),
+    );
+    const assembled = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, models }],
+      models,
+    );
+    const fineTuned = assembled?.books.find(
+      ({ scope }) =>
+        scope.kind === "provider_resource" &&
+        scope.resource_key === "fine-tuned-inference:o4-mini-2025-04-16",
+    );
+    expect(fineTuned?.offers.map(({ offer_key }) => offer_key)).toEqual(["batch", "sync"]);
+    expect(
+      fineTuned?.offers.flatMap(({ terms }) =>
+        terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+      ),
+    ).toHaveLength(12);
+    expect(
+      fineTuned?.offers.flatMap(({ terms }) =>
+        terms.flatMap((term) =>
+          term.kind === "rate"
+            ? term.raw_variants.filter(({ reason }) => reason === "conflicting_values")
+            : [],
+        ),
+      ),
+    ).toEqual([]);
     const resolved = parsePricing(pricingBody.replace("$5.00", "$5.01"));
     expect(
       resolved
@@ -4558,12 +4804,18 @@ describe("OpenAI adapters", () => {
     );
   });
 
-  it("preserves the in-scope regional-processing uplift as a model-local raw term", () => {
+  it("derives disjoint regional-processing rates from exact release eligibility", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
     if (source === undefined) throw new Error("Missing OpenAI pricing source");
     const model = {
       ...openAiModel("gpt-test", ["text_generation"]),
+      release_date: "2026-03-05",
+      availability: [{ region: "United States", deployment_type: "regional_processing" }],
+    } satisfies ProviderModel;
+    const oldModel = {
+      ...openAiModel("gpt-old", ["text_generation"]),
+      release_date: "2026-03-04",
       availability: [{ region: "United States", deployment_type: "regional_processing" }],
     } satisfies ProviderModel;
     const models = parseSource({
@@ -4575,18 +4827,58 @@ describe("OpenAI adapters", () => {
         "| Model | Short context input | Short context output |",
         "| --- | --- | --- |",
         "| gpt-test | $1.00 | $2.00 |",
-        "Regional processing endpoints are charged a 10% uplift.",
+        "| gpt-old | $3.00 | $4.00 |",
+        "Regional processing (data residency) endpoints are charged a 10% uplift for models released on or after March 5, 2026, that are eligible for data residency.",
       ].join("\n"),
       observedAt,
-      catalogModels: [model],
+      catalogModels: [model, oldModel],
     });
-    expect(models[0]?.raw_price_facts).toEqual([
-      expect.objectContaining({
-        term_key: "regional-processing-uplift",
-        impact: "base_price",
-        conditions: { deployment_scope: "regional_processing" },
-      }),
+    expect(
+      models
+        .find(({ model_id }) => model_id === "gpt-test")
+        ?.price_facts.map(({ meter, price, conditions }) => ({ meter, price, conditions })),
+    ).toEqual([
+      {
+        meter: "input_text",
+        price: "1.00",
+        conditions: { service_tier: "standard", deployment_scope: "global_processing" },
+      },
+      {
+        meter: "input_text",
+        price: "1.1",
+        conditions: { service_tier: "standard", deployment_scope: "regional_processing" },
+      },
+      {
+        meter: "output_text",
+        price: "2.00",
+        conditions: { service_tier: "standard", deployment_scope: "global_processing" },
+      },
+      {
+        meter: "output_text",
+        price: "2.2",
+        conditions: { service_tier: "standard", deployment_scope: "regional_processing" },
+      },
     ]);
+    expect(models.find(({ model_id }) => model_id === "gpt-test")?.raw_price_facts).toEqual([]);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "gpt-old")
+        ?.price_facts.map(({ price, conditions }) => ({ price, conditions })),
+    ).toEqual([
+      { price: "3.00", conditions: { service_tier: "standard" } },
+      { price: "4.00", conditions: { service_tier: "standard" } },
+    ]);
+    const assembled = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, models }],
+      [model, oldModel],
+      value.pricingCategoricalLabels,
+    );
+    const terms = assembled?.books
+      .find(({ book_key: key }) => key === "model:openai/gpt-test")
+      ?.offers.flatMap(({ terms }) => terms);
+    expect(terms?.flatMap((term) => (term.kind === "rate" ? term.raw_variants : []))).toEqual([]);
   });
 
   it("binds Realtime translation duration to audio input", async () => {
@@ -5345,6 +5637,7 @@ describe("Azure adapters", () => {
     });
     const commercial = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
     expect(commercial.map(({ resource_key }) => resource_key).sort()).toEqual([
+      "computer-use",
       "responses-code-interpreter",
       "responses-file-search",
     ]);
@@ -5359,6 +5652,13 @@ describe("Azure adapters", () => {
         expect.objectContaining({
           resource_key: "responses-code-interpreter",
           price_facts: [expect.objectContaining({ meter: "code_execution", unit: "session" })],
+        }),
+        expect.objectContaining({
+          resource_key: "computer-use",
+          price_facts: expect.arrayContaining([
+            expect.objectContaining({ meter: "input_text", price: "3" }),
+            expect.objectContaining({ meter: "output_text", price: "12" }),
+          ]),
         }),
       ]),
     );
@@ -5386,6 +5686,20 @@ describe("Azure adapters", () => {
         }),
       ],
     });
+    const computerUse = pricing?.books.find(
+      ({ scope }) => scope.kind === "provider_resource" && scope.resource_key === "computer-use",
+    );
+    expect(
+      computerUse?.offers[0]?.terms
+        .filter((term) => term.kind === "rate")
+        .map(({ meter }) => meter.value)
+        .sort(),
+    ).toEqual(["input_text", "output_text"]);
+    expect(
+      computerUse?.offers[0]?.terms.flatMap((term) =>
+        term.kind === "raw" ? term.variants : term.raw_variants,
+      ),
+    ).toEqual([]);
     expect(
       pricing?.books.some(
         ({ scope }) =>
@@ -5761,6 +6075,59 @@ describe("Gemini adapters", () => {
       cached: "0.15",
       resources: expect.arrayContaining(["google-maps", "google-search"]),
     });
+  });
+
+  it("keeps dated paid schedules disjoint without constraining the free tier", async () => {
+    const pricing = `
+      <div class="devsite-article-body">
+        <div class="models-section">
+          <div class="heading-group"><h2>Gemini Test <code>gemini-test-preview</code></h2></div>
+        </div>
+        <section>
+          <h3>Standard</h3>
+          <table class="pricing-table">
+            <thead><tr>
+              <th></th><th>Free Tier</th><th>Paid Tier, per 1M tokens in USD</th>
+            </tr></thead>
+            <tbody><tr>
+              <td>Input price</td><td>Free of charge</td>
+              <td>
+                $0.75 through December 31, 2026.<br>
+                $1.50 starting January 1, 2027.
+              </td>
+            </tr></tbody>
+          </table>
+        </section>
+      </div>`;
+    const model = (await geminiCatalog({ "pricing.html": pricing })).find(
+      ({ model_id }) => model_id === "gemini-test-preview",
+    );
+    const rates = model?.price_facts
+      .filter(({ meter }) => meter === "input_text")
+      .map(({ price, conditions }) => ({ price, conditions }));
+    expect(rates).toHaveLength(3);
+    expect(rates).toEqual(
+      expect.arrayContaining([
+        {
+          price: "0",
+          conditions: { account_eligibility: "free_tier" },
+        },
+        {
+          price: "0.75",
+          conditions: {
+            account_eligibility: "paid_tier",
+            effective_until: "2026-12-31",
+          },
+        },
+        {
+          price: "1.50",
+          conditions: {
+            account_eligibility: "paid_tier",
+            effective_from: "2027-01-01",
+          },
+        },
+      ]),
+    );
   });
 
   it("uses generation-specific grounding units and reconciles every pricing claim", async () => {
@@ -6570,6 +6937,91 @@ describe("Vertex AI adapters", () => {
       scope: "global",
     });
     expect(model?.price_facts.some(({ price }) => price === "3.24" || price === "99")).toBe(false);
+  });
+
+  it("keeps row tiers and pricing-tab regions disjoint", async () => {
+    const pricing = `
+      <main>
+        <div role="tab" id="pricing-us-east5">us-east5</div>
+        <div role="tabpanel" aria-labelledby="pricing-us-east5">
+          <table>
+            <tr><th>Model</th><th>Type</th><th>Price (/1M tokens)</th></tr>
+            <tr><td>Gemini Test</td><td>Input</td><td>$1.00</td></tr>
+            <tr><td></td><td>Batch Input</td><td>$0.50</td></tr>
+            <tr><td></td><td>Batch Cache Hit</td><td>$0.05</td></tr>
+            <tr><td></td><td>Input</td><td>$99.00</td></tr>
+            <tr><td></td><td>Output</td><td>$88.00</td></tr>
+          </table>
+        </div>
+        <table>
+          <tr><th>Model</th><th>Type</th><th>Region</th><th>Price (/1M tokens)</th></tr>
+          <tr>
+            <td>Gemini Test (Promotional Price through August 31, 2026)</td>
+            <td>Input</td><td>Global</td><td>$2.00</td>
+          </tr>
+          <tr>
+            <td>Gemini Test (Standard Price beginning September 1st, 2026)</td>
+            <td>Input</td><td>Global</td><td>$3.00</td>
+          </tr>
+          <tr><td>Gemini Future</td><td>Input</td><td>Global</td><td>$9.00</td></tr>
+          <tr><td></td><td>Output</td><td>Global</td><td>$10.00</td></tr>
+        </table>
+        <table>
+          <tr>
+            <th>Model</th><th>Type</th><th>Description</th><th>Request Type</th>
+            <th>Price /1M tokens (USD)</th>
+          </tr>
+          <tr>
+            <td>Gemini Embedding Test</td><td>Input text</td><td>Text embeddings</td>
+            <td>Online requests</td><td>$0.20</td>
+          </tr>
+          <tr><td></td><td></td><td></td><td>Batch requests</td><td>$0.10</td></tr>
+          <tr>
+            <td></td><td>Input image</td><td>Image embeddings</td>
+            <td>Online requests</td><td>$0.45</td>
+          </tr>
+          <tr><td></td><td></td><td></td><td>Batch requests</td><td>$0.225</td></tr>
+        </table>
+      </main>`;
+    const models = await vertexCatalog({ "pricing.html": pricing });
+    const regional = models.find(({ model_id }) => model_id === "gemini-test");
+    const embedding = models.find(({ model_id }) => model_id === "gemini-embedding-test");
+    if (regional === undefined || embedding === undefined)
+      throw new Error("Missing Vertex pricing fixture models");
+    const regionalRates = regional.price_facts
+      .filter(({ meter }) => meter === "input_text")
+      .map(({ price, conditions }) => [
+        price,
+        conditions.service_tier,
+        conditions.deployment_scope,
+        conditions.region,
+        conditions.effective_from,
+        conditions.effective_until,
+        conditions.promotion,
+      ]);
+    expect(regionalRates).toHaveLength(4);
+    expect(regionalRates).toEqual(
+      expect.arrayContaining([
+        ["1.00", undefined, undefined, "us-east5", undefined, undefined, undefined],
+        ["0.50", "batch", undefined, "us-east5", undefined, undefined, undefined],
+        ["2.00", undefined, "global", undefined, undefined, "2026-08-31", true],
+        ["3.00", undefined, "global", undefined, "2026-09-01", undefined, undefined],
+      ]),
+    );
+    const embeddingRates = embedding.price_facts.map(({ meter, price, conditions }) => [
+      meter,
+      price,
+      conditions.service_tier,
+    ]);
+    expect(embeddingRates).toHaveLength(4);
+    expect(embeddingRates).toEqual(
+      expect.arrayContaining([
+        ["input_image", "0.45", "standard"],
+        ["input_image", "0.225", "batch"],
+        ["input_text", "0.20", "standard"],
+        ["input_text", "0.10", "batch"],
+      ]),
+    );
   });
 
   it("resolves only document-verified Vertex pricing ambiguities", async () => {
@@ -7897,6 +8349,15 @@ describe("Databricks adapters", () => {
         conditions: { service_tier: "priority" },
       }),
     ]);
+    expect(
+      models.find((model) => model.model_id === "databricks-gemini-3-5-flash")?.raw_price_facts,
+    ).toEqual([
+      expect.objectContaining({
+        term_key: "priority_pay_per_token",
+        reason: "unknown_amount",
+        conditions: { service_tier: "priority", endpoint: "global" },
+      }),
+    ]);
   });
 
   it("publishes only request-attributable model inference rates", async () => {
@@ -8859,7 +9320,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v16");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v17");
     expect(source.linkedDocuments?.documents?.map(({ id, optional }) => [id, optional])).toEqual([
       ["bedrock-mantle", true],
       ["bedrock-rerank-supported", true],
@@ -9592,6 +10053,102 @@ describe("document adapter", () => {
     );
   });
 
+  it("does not bind Automatic Prompt Optimization charges to a numeric model identity", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const bundle = linkedBundle(await fixture("document/bedrock.json"));
+    const card = bundle.documents.find((document) =>
+      document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
+    );
+    if (card === undefined) throw new Error("Missing Bedrock model-card fixture");
+    card.url = "https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-deepseek-v3-1.md";
+    card.body = card.body
+      .replaceAll("Claude Haiku 4.5", "DeepSeek V3.1")
+      .replace("Anthropic —", "DeepSeek —")
+      .replaceAll("anthropic.claude-haiku-4-5-20251001-v1:0", "deepseek.v3-v1:0")
+      .replaceAll("anthropic.claude-haiku-4-5", "deepseek.v3-mantle")
+      .replaceAll("us-east-1", "ap-south-1");
+    const priceList = bundle.documents.find((document) =>
+      document.url.endsWith("/AmazonBedrock/current/index.json"),
+    );
+    if (priceList === undefined) throw new Error("Missing Bedrock price-list fixture");
+    const list = JSON.parse(priceList.body) as {
+      products: Record<string, unknown>;
+      terms: { OnDemand: Record<string, unknown> };
+    };
+    list.products["DEEPSEEK"] = {
+      sku: "DEEPSEEK",
+      attributes: {
+        servicecode: "AmazonBedrock",
+        usagetype: "APS3-DeepSeek-V3.1-input-tokens",
+        feature: "On-demand Inference",
+        inferenceType: "Input tokens",
+        model: "DeepSeek V3.1",
+        provider: "DeepSeek",
+        regionCode: "ap-south-1",
+      },
+    };
+    list.terms.OnDemand["DEEPSEEK"] = {
+      "DEEPSEEK.JRTCKXETXF": {
+        effectiveDate: "2026-08-01T00:00:00Z",
+        priceDimensions: {
+          "DEEPSEEK.JRTCKXETXF.6YS6EN2CT7": {
+            description: "$0.000682424 per 1K input tokens for DeepSeek V3.1",
+            unit: "1K tokens",
+            pricePerUnit: { USD: "0.0006824240" },
+          },
+        },
+      },
+    };
+    list.products["PROMPTOPT"] = {
+      sku: "PROMPTOPT",
+      attributes: {
+        servicecode: "AmazonBedrock",
+        usagetype: "APS3-APO-v1-optimizePrompt",
+        operation: "APO-v1-optimizePrompt",
+        feature: "Automatic Prompt Optimization",
+        regionCode: "ap-south-1",
+      },
+    };
+    list.terms.OnDemand["PROMPTOPT"] = {
+      "PROMPTOPT.JRTCKXETXF": {
+        effectiveDate: "2026-08-01T00:00:00Z",
+        priceDimensions: {
+          "PROMPTOPT.JRTCKXETXF.6YS6EN2CT7": {
+            description: "$0.03 per 1K tokens for APS3-APO-v1-optimizePrompt",
+            unit: "1K tokens",
+            pricePerUnit: { USD: "0.0300000000" },
+          },
+        },
+      },
+    };
+    priceList.body = JSON.stringify(list);
+    const findings: PricingReconciliationItem[] = [];
+    const model = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+      onPricingReconciliation: (item) => findings.push(item),
+    }).find(({ model_id }) => model_id === "deepseek.v3-v1:0");
+
+    expect(
+      model?.price_facts
+        .filter(
+          ({ meter, conditions }) => meter === "input_text" && conditions.region === "ap-south-1",
+        )
+        .map(({ price, conditions }) => ({ price, tier: conditions.service_tier })),
+    ).toEqual([{ price: "0.682424", tier: "standard" }]);
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        disposition: "excluded",
+        reason_code: "price_dimension_outside_invocation_scope",
+        sample: expect.stringContaining("APO-v1-optimizePrompt"),
+      }),
+    );
+  });
+
   it("keeps embedding invocation dimensions and excludes provisioned capacity", async () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
@@ -10220,7 +10777,7 @@ describe("Vercel adapter", () => {
     await expect(vercelCatalog("vercel/normal.json", () => "{")).rejects.toThrow("invalid_json");
   });
 
-  it("normalizes volatile route telemetry and the stable model-page pricing row", () => {
+  it("normalizes volatile route telemetry and the stable model-page pricing evidence", () => {
     expect(
       JSON.parse(
         normalizeVercelEndpointResponse(
@@ -10284,6 +10841,49 @@ describe("Vercel adapter", () => {
       values: ["Acme", "$2/K"],
       titles: [[], ["Per 1,000 queries"]],
     });
+    expect(
+      JSON.parse(
+        normalizeVercelPricingScript(`
+          let video={"flux-3-video":{videoCost:"0.17",videoDimensionPricing:[{quality:"Full render",resolution:"hd (720p)",hasVideoInput:!1,cost:"0.17",costUnit:"sec"},{quality:"Full render",resolution:"hd (720p)",hasVideoInput:!0,cost:"0.43",costUnit:"sec"},{quality:"Draft",hasVideoInput:!1,cost:"0.06",costUnit:"sec"},{quality:"Draft",hasVideoInput:!0,cost:"0.12",costUnit:"sec"}]}};
+          let image={"flux-fast-schnell":{imageCost:"0.001",imageDimensionQualityPricing:[{size:"≤640px",quality:"Up to 2 steps",cost:"0.001"},{size:"≤640px",quality:"Up to 4 steps",cost:"0.0015"}]}};
+          let search={sonar:{inputCost:"1",outputCost:"1",webSearchCallCost:"5",webSearchRequestPricing:[{contextSize:"Low (default)",cost:"5"},{contextSize:"Medium",cost:"8"},{contextSize:"High",cost:"12"}]}};
+        `) ?? "null",
+      ),
+    ).toEqual({
+      models: {
+        "flux-3-video": {
+          video_generation: [
+            {
+              price: "0.17",
+              quality: "Full render",
+              resolution: "hd (720p)",
+              video_input: false,
+            },
+            {
+              price: "0.43",
+              quality: "Full render",
+              resolution: "hd (720p)",
+              video_input: true,
+            },
+            { price: "0.06", quality: "Draft", video_input: false },
+            { price: "0.12", quality: "Draft", video_input: true },
+          ],
+        },
+        "flux-fast-schnell": {
+          image_generation: [
+            { price: "0.001", resolution: "≤640px", quality: "Up to 2 steps" },
+            { price: "0.0015", resolution: "≤640px", quality: "Up to 4 steps" },
+          ],
+        },
+        sonar: {
+          web_search: [
+            { price: "5", context_tier: "Low (default)" },
+            { price: "8", context_tier: "Medium" },
+            { price: "12", context_tier: "High" },
+          ],
+        },
+      },
+    });
   });
 
   it("joins route-specific endpoint prices and model-page fallbacks from one official bundle", async () => {
@@ -10343,6 +10943,20 @@ describe("Vercel adapter", () => {
           url: "https://vercel.com/ai-gateway/models/text-1",
           body: JSON.stringify(page),
         },
+        {
+          url: "https://vercel.com/vc-ap-vercel-marketing/_next/static/immutable/chunks/pricing.js",
+          body: JSON.stringify({
+            models: {
+              "text-1": {
+                web_search: [
+                  { price: "5", context_tier: "Low (default)" },
+                  { price: "8", context_tier: "Medium" },
+                  { price: "12", context_tier: "High" },
+                ],
+              },
+            },
+          }),
+        },
         ...vercelDocumentation(),
       ],
     });
@@ -10388,29 +11002,48 @@ describe("Vercel adapter", () => {
           unit: "million_tokens",
           conditions: { route_provider: "acme" },
         },
-      ],
-      raw: [
         {
-          term_key: "model_page_web_search",
-          impact: "base_price",
-          reason: "unknown_applicability",
-          conditions: { route_provider: "acme" },
-          source_ref: "vercel-models",
-          raw: {
-            label: "Web Search",
-            denomination: "USD",
-            fragment: "$5/K*+2 more",
+          meter: "web_search",
+          price: "5",
+          unit: "thousand_requests",
+          conditions: {
+            route_provider: "acme",
+            operation: "web_search",
+            context_tier: "Low (default)",
+          },
+        },
+        {
+          meter: "web_search",
+          price: "8",
+          unit: "thousand_requests",
+          conditions: {
+            route_provider: "acme",
+            operation: "web_search",
+            context_tier: "Medium",
+          },
+        },
+        {
+          meter: "web_search",
+          price: "12",
+          unit: "thousand_requests",
+          conditions: {
+            route_provider: "acme",
+            operation: "web_search",
+            context_tier: "High",
           },
         },
       ],
+      raw: [],
       pricingState: "numeric",
     });
     expect(
       dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "excluded"]),
-    ).toMatchObject({ raw: 1, explicit_non_numeric: 1 });
+    ).toMatchObject({ normalized: 6, raw: 0, explicit_non_numeric: 1 });
     expect(model?.commercial_facts?.map(({ resource_key: key }) => key)).toEqual([
       "perplexity-search",
       "exa-search",
+      "exa-search",
+      "parallel-search",
       "parallel-search",
     ]);
     const pricing = assembleParsedProviderPricing(
@@ -10441,6 +11074,26 @@ describe("Vercel adapter", () => {
             enrollment.length === 0 && relations.length === 0 && settlement.length === 0,
         ),
     ).toBe(true);
+    for (const [bookKey, operation, bound] of [
+      ["service:exa-search", "additional_requested_results", true],
+      ["service:parallel-search", "additional_results", false],
+    ] as const) {
+      const book = pricing?.books.find(({ book_key: key }) => key === bookKey);
+      expect(book?.offers.map(({ offer_key: key }) => key)).toEqual(["search"]);
+      const terms = book?.offers[0]?.terms.filter((term) => term.kind === "rate") ?? [];
+      expect(terms.map(({ term_key: key }) => key).sort()).toEqual([
+        "web_search",
+        `web_search:${operation}`,
+      ]);
+      expect(terms.flatMap(({ variants }) => variants)).toHaveLength(2);
+      expect(terms.flatMap(({ raw_variants }) => raw_variants)).toEqual([]);
+      const additional = terms.find(({ term_key: key }) => key === `web_search:${operation}`);
+      expect(additional?.variants[0]).toEqual(
+        bound
+          ? expect.objectContaining({ charge_binding: expect.any(Object) })
+          : expect.not.objectContaining({ charge_binding: expect.anything() }),
+      );
+    }
   });
 
   it("declares endpoint, missing-price page, and commercial-policy collection", () => {
@@ -11493,6 +12146,7 @@ describe("Hugging Face adapter", () => {
       { id: "huggingface-hf-inference", role: "catalog" },
       { id: "huggingface-router", role: "catalog" },
       { id: "huggingface-featherless", role: "overlay" },
+      { id: "huggingface-native-pricing", role: "overlay" },
       { id: "huggingface-hub", role: "overlay" },
     ]);
     const mappings = sources[0];
@@ -11536,7 +12190,23 @@ describe("Hugging Face adapter", () => {
       retainOmittedFacts: true,
       transport: { kind: "featherless-models", pageSize: 1000 },
     });
-    expect(sources[3]?.extractorVersion).toBe("huggingface-hub-v2");
+    expect(sources[3]).toMatchObject({
+      extractorVersion: "huggingface-native-pricing-v1",
+      optional: true,
+      extractor: { kind: "huggingface-native-pricing" },
+    });
+    expect(sources[3]?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual([
+      "fireworks-models",
+      "zai-pricing",
+      "groq-safeguard",
+      "cohere-pricing",
+      "cohere-command-a",
+      "cohere-routes",
+      "fireworks-routes",
+      "groq-routes",
+      "zai-routes",
+    ]);
+    expect(sources[4]?.extractorVersion).toBe("huggingface-hub-v2");
   });
 
   it("discovers current task documents without a task URL allowlist", () => {
@@ -11635,6 +12305,213 @@ describe("Hugging Face adapter", () => {
     expect(combined.find(({ model_id }) => model_id === "org/embed-model")?.pricing_state).toBe(
       "unknown",
     );
+  });
+
+  it("joins exact paid native-provider rates without inheriting free promotions", async () => {
+    const value = manifest("huggingface");
+    const baseSource = huggingFaceMappingSource(value);
+    if (baseSource.extractor.kind !== "huggingface-mapping")
+      throw new Error("Missing Hugging Face mapping source");
+    const modelIds = [
+      "deepseek-ai/DeepSeek-V4-Pro-0813",
+      "zai-org/GLM-4.7-FP8",
+      "zai-org/GLM-4.6V-Flash",
+      "openai/gpt-oss-safeguard-20b",
+      "CohereLabs/c4ai-command-a-03-2025",
+      "CohereLabs/c4ai-command-r7b-12-2024",
+    ];
+    const mappingSource: SourceManifest = {
+      ...baseSource,
+      extractor: {
+        ...baseSource.extractor,
+        providers: ["fireworks-ai", "zai-org", "groq", "cohere"],
+        minModels: modelIds.length,
+        maxModels: modelIds.length,
+        minRoutes: modelIds.length,
+        maxRoutes: modelIds.length,
+      },
+    };
+    const entry = (providerId: string) => ({ _id: providerId, providerId, status: "live" });
+    const mappings = parseSource({
+      provider: provider(value),
+      source: mappingSource,
+      body: huggingFaceMappingBundle(
+        [
+          {
+            provider: "fireworks-ai",
+            models: {
+              conversational: {
+                "deepseek-ai/DeepSeek-V4-Pro-0813": entry(
+                  "accounts/fireworks/models/deepseek-v4-pro-0813",
+                ),
+              },
+            },
+          },
+          {
+            provider: "zai-org",
+            models: {
+              conversational: {
+                "zai-org/GLM-4.7-FP8": entry("glm-4.7"),
+                "zai-org/GLM-4.6V-Flash": entry("glm-4.6v-flash"),
+              },
+            },
+          },
+          {
+            provider: "groq",
+            models: {
+              conversational: {
+                "openai/gpt-oss-safeguard-20b": entry("openai/gpt-oss-safeguard-20b"),
+              },
+            },
+          },
+          {
+            provider: "cohere",
+            models: {
+              conversational: {
+                "CohereLabs/c4ai-command-a-03-2025": entry("command-a-03-2025"),
+                "CohereLabs/c4ai-command-r7b-12-2024": entry("command-r7b-12-2024"),
+              },
+            },
+          },
+        ],
+        modelIds,
+      ),
+      observedAt,
+    });
+    const reconciliation: PricingReconciliationItem[] = [];
+    const native = await huggingFaceNativePricing(mappings, (item) => reconciliation.push(item));
+    expect(
+      Object.fromEntries(
+        native.map((model) => [
+          model.model_id,
+          model.price_facts.map(({ meter, price, conditions, resolution_policy }) => [
+            meter,
+            price,
+            conditions.route_provider,
+            resolution_policy,
+          ]),
+        ]),
+      ),
+    ).toEqual({
+      "CohereLabs/c4ai-command-a-03-2025": [
+        ["input_text", "2.5", "cohere", "native_provider_price_over_huggingface_route_snapshot"],
+        ["output_text", "10", "cohere", "native_provider_price_over_huggingface_route_snapshot"],
+      ],
+      "CohereLabs/c4ai-command-r7b-12-2024": [
+        ["input_text", "0.0375", "cohere", "native_provider_price_over_huggingface_route_snapshot"],
+        ["output_text", "0.15", "cohere", "native_provider_price_over_huggingface_route_snapshot"],
+      ],
+      "deepseek-ai/DeepSeek-V4-Pro-0813": [
+        [
+          "input_text",
+          "1.32",
+          "fireworks-ai",
+          "native_provider_price_over_huggingface_route_snapshot",
+        ],
+        [
+          "output_text",
+          "3.96",
+          "fireworks-ai",
+          "native_provider_price_over_huggingface_route_snapshot",
+        ],
+      ],
+      "openai/gpt-oss-safeguard-20b": [
+        ["input_text", "0.075", "groq", "native_provider_price_over_huggingface_route_snapshot"],
+        ["output_text", "0.30", "groq", "native_provider_price_over_huggingface_route_snapshot"],
+      ],
+      "zai-org/GLM-4.7-FP8": [
+        ["input_text", "0.6", "zai-org", "native_provider_price_over_huggingface_route_snapshot"],
+        ["output_text", "2.2", "zai-org", "native_provider_price_over_huggingface_route_snapshot"],
+      ],
+    });
+    expect(reconciliation).toContainEqual({
+      disposition: "ambiguous",
+      reason_code: "native_free_conflicts_with_hf_paid_route",
+      sample: "zai-org/GLM-4.6V-Flash:glm-4.6v-flash",
+    });
+
+    const routerSource = huggingFaceRouterSource(value);
+    const rawModels = mappings.map((model) => {
+      const routeProvider = model.routes?.[0]?.provider;
+      if (routeProvider === undefined) throw new Error("Missing fixture route");
+      return {
+        ...model,
+        pricing_state: "unknown" as const,
+        price_facts: [],
+        raw_price_facts: [
+          {
+            term_key: "route_price_not_published",
+            impact: "base_price" as const,
+            reason: "unknown_amount" as const,
+            conditions: { route_provider: routeProvider },
+            source_ref: routerSource.id,
+            raw: { label: "Input and output route prices are not published" },
+          },
+        ],
+      };
+    });
+    const nativeSource = huggingFaceNativePricingSource(value);
+    const published = applyGroups(rawModels, [{ source: nativeSource, models: native }], false);
+    const partition = assembleParsedProviderPricing(
+      "huggingface",
+      observedAt,
+      [
+        { source: routerSource, models: rawModels },
+        { source: nativeSource, models: native },
+      ],
+      published,
+      value.pricingCategoricalLabels,
+    );
+    const unresolved = partition?.books
+      .flatMap(({ offers }) => offers)
+      .flatMap(({ terms }) => terms)
+      .filter((term) => term.kind === "raw" && term.term_key === "route_price_not_published")
+      .flatMap((term) => (term.kind === "raw" ? term.variants : []));
+    expect(unresolved).toHaveLength(1);
+    expect(JSON.stringify(unresolved?.[0]?.possible_scope)).toContain('"value":"zai-org"');
+  });
+
+  it("resolves only the router price fallback covered by exact Featherless rates", async () => {
+    const value = manifest("huggingface");
+    const routerSource = huggingFaceRouterSource(value);
+    const featherlessSource = huggingFaceFeatherlessSource(value);
+    const router = await huggingFaceRouter("huggingface/pricing.json", (body) =>
+      body
+        .replace('"status": "error"', '"status": "live"')
+        .replace(',\n          "pricing": { "input": 9, "output": 9 }', ""),
+    );
+    const native = await huggingFaceFeatherless();
+    const published = applyGroups(router, [{ source: featherlessSource, models: native }], false);
+    const partition = assembleParsedProviderPricing(
+      "huggingface",
+      observedAt,
+      [
+        { source: routerSource, models: router },
+        { source: featherlessSource, models: native },
+      ],
+      published,
+      value.pricingCategoricalLabels,
+    );
+    const offer = partition?.books
+      .find(({ book_key }) => book_key === "model:huggingface/org/model-1")
+      ?.offers.find(({ offer_key }) => offer_key === "routed-inference");
+    const raw = offer?.terms.find(
+      (term) => term.kind === "raw" && term.term_key === "route_price_not_published",
+    );
+    if (raw?.kind !== "raw") throw new Error("Missing unrelated router fallback");
+    expect(raw.variants).toHaveLength(1);
+    expect(JSON.stringify(raw.variants[0]?.possible_scope)).toContain('"value":"groq"');
+    expect(JSON.stringify(raw.variants[0]?.possible_scope)).not.toContain(
+      '"value":"featherless-ai"',
+    );
+    expect(
+      offer?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap((term) => term.variants)
+        .filter(({ observations }) =>
+          observations.some(({ source_ref }) => source_ref === "huggingface-featherless"),
+        ),
+    ).toHaveLength(2);
   });
 
   it("keeps usable Featherless meters and resolves native/listing price conflicts", async () => {

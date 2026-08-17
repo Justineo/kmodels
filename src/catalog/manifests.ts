@@ -6,6 +6,7 @@ export type Extractor =
   | { kind: "openai-catalog" }
   | { kind: "openai-model-pricing" }
   | { kind: "openai-api" }
+  | { kind: "openai-changelog" }
   | { kind: "openai-deprecations" }
   | { kind: "openai-data-residency" }
   | { kind: "openai-pricing" }
@@ -27,6 +28,7 @@ export type Extractor =
     }
   | { kind: "huggingface-router"; minModels: number; maxModels: number }
   | { kind: "huggingface-featherless"; minModels: number; maxModels: number }
+  | { kind: "huggingface-native-pricing"; minModels: number; maxModels: number }
   | { kind: "huggingface-hub"; minModels: number; maxModels: number }
   | { kind: "ollama-library"; minModels: number; maxModels: number }
   | { kind: "ollama-cloud"; minModels: number; maxModels: number }
@@ -243,6 +245,8 @@ export interface SourceManifest {
         concurrency: number;
         maxModelPageBytes: number;
         maxEndpointBytes: number;
+        maxPricingScripts: number;
+        maxPricingScriptBytes: number;
       }
     | {
         kind: "ollama-cloud";
@@ -553,6 +557,10 @@ export const manifests = [
       docs_url: "https://developers.openai.com/api/docs/models",
       catalog_scope: "global",
     },
+    pricingCategoricalLabels: pricingLabels("deployment_scope", {
+      global_processing: "Global processing",
+      regional_processing: "Regional processing",
+    }),
     sources: [
       {
         id: "openai-models",
@@ -596,31 +604,21 @@ export const manifests = [
         },
       },
       {
-        id: "openai-overview",
-        url: "https://developers.openai.com/api/docs/models/all",
+        id: "openai-changelog",
+        url: "https://developers.openai.com/api/docs/changelog.md",
         type: "website",
+        source: ["website"],
         access: "public",
-        format: "html",
+        format: "markdown",
         stability: "semi_structured",
-        extractor: { kind: "openai-model-pricing" },
-        extractorVersion: "openai-model-pricing-v2",
-        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
-        fields: ["model_id", "tasks", "pricing"],
+        extractor: { kind: "openai-changelog" },
+        extractorVersion: "openai-changelog-v1",
+        fields: ["release_date"],
         allowedHosts: ["developers.openai.com"],
-        maxResponseBytes: mebibytes(64),
+        maxResponseBytes: mebibytes(8),
         scope: "global",
         exhaustive: false,
-        role: "overlay",
-        optional: true,
-        retainOmittedFacts: true,
-        linkedDocuments: {
-          path: /^\/api\/docs\/models\/[a-z0-9._-]+$/,
-          minDocuments: 1,
-          maxDocuments: 500,
-          concurrency: 8,
-          optionalDocuments: true,
-          maxDocumentBytes: mebibytes(2),
-        },
+        role: "supplement",
       },
       {
         id: "openai-deprecations",
@@ -657,6 +655,33 @@ export const manifests = [
         optional: true,
       },
       {
+        id: "openai-overview",
+        url: "https://developers.openai.com/api/docs/models/all",
+        type: "website",
+        access: "public",
+        format: "html",
+        stability: "semi_structured",
+        extractor: { kind: "openai-model-pricing" },
+        extractorVersion: "openai-model-pricing-v3",
+        pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
+        fields: ["model_id", "tasks", "pricing"],
+        allowedHosts: ["developers.openai.com"],
+        maxResponseBytes: mebibytes(64),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+        retainOmittedFacts: true,
+        linkedDocuments: {
+          path: /^\/api\/docs\/models\/[a-z0-9._-]+$/,
+          minDocuments: 1,
+          maxDocuments: 500,
+          concurrency: 8,
+          optionalDocuments: true,
+          maxDocumentBytes: mebibytes(2),
+        },
+      },
+      {
         id: "openai-pricing",
         url: "https://developers.openai.com/api/docs/pricing.md",
         type: "website",
@@ -664,7 +689,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v6",
+        extractorVersion: "openai-pricing-v8",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -885,7 +910,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v16",
+        extractorVersion: "bedrock-catalog-v17",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1172,7 +1197,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v14",
+        extractorVersion: "vercel-catalog-v16",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1204,6 +1229,8 @@ export const manifests = [
           concurrency: 12,
           maxModelPageBytes: mebibytes(2),
           maxEndpointBytes: mebibytes(1),
+          maxPricingScripts: 100,
+          maxPricingScriptBytes: mebibytes(3),
         },
         linkedDocuments: {
           path: /$^/,
@@ -1465,7 +1492,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "azure-public-pricing", minModels: 1, maxModels: 300 },
-        extractorVersion: "azure-public-pricing-v3",
+        extractorVersion: "azure-public-pricing-v4",
         pricingEvidence: firstPartyPricing("price_book", "base_model_id"),
         fields: ["pricing"],
         allowedHosts: ["azure.microsoft.com"],
@@ -1642,7 +1669,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v1",
+        extractorVersion: "gemini-pricing-v2",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
@@ -1949,7 +1976,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v1",
+        extractorVersion: "vertex-pricing-v2",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],
@@ -2299,7 +2326,7 @@ export const manifests = [
           minModels: 50,
           maxModels: 90,
         },
-        extractorVersion: "mistral-catalog-v13",
+        extractorVersion: "mistral-catalog-v14",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_or_documented_alias"),
         fields: [
           "model_id",
@@ -2932,6 +2959,74 @@ export const manifests = [
               "https://featherless.ai/docs/request-pricing-and-credits",
               4,
               "html",
+            ],
+          ]),
+        },
+      },
+      {
+        id: "huggingface-native-pricing",
+        url: "https://huggingface.co/docs/inference-providers/en/pricing.md",
+        type: "website",
+        source: ["website"],
+        access: "public",
+        format: "mixed",
+        stability: "semi_structured",
+        extractor: { kind: "huggingface-native-pricing", minModels: 1, maxModels: 10_000 },
+        extractorVersion: "huggingface-native-pricing-v1",
+        pricingEvidence: firstPartyPricing("price_book", "exact_id", "current_snapshot"),
+        fields: ["pricing"],
+        allowedHosts: [
+          "huggingface.co",
+          "fireworks.ai",
+          "docs.z.ai",
+          "console.groq.com",
+          "cohere.com",
+          "docs.cohere.com",
+        ],
+        maxResponseBytes: mebibytes(8),
+        scope: "global",
+        exhaustive: false,
+        role: "overlay",
+        optional: true,
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 4,
+          documents: optionalFixedDocuments([
+            ["fireworks-models", "https://fireworks.ai/models?show=Image", 4, "html"],
+            ["zai-pricing", "https://docs.z.ai/guides/overview/pricing", 1, "html"],
+            [
+              "groq-safeguard",
+              "https://console.groq.com/docs/model/openai/gpt-oss-safeguard-20b",
+              2,
+              "html",
+            ],
+            ["cohere-pricing", "https://cohere.com/pricing", 2, "html"],
+            ["cohere-command-a", "https://docs.cohere.com/docs/command-a", 2, "html"],
+            [
+              "cohere-routes",
+              "https://huggingface.co/api/partners/cohere/models?status=live",
+              1,
+              "json",
+            ],
+            [
+              "fireworks-routes",
+              "https://huggingface.co/api/partners/fireworks-ai/models?status=live",
+              1,
+              "json",
+            ],
+            [
+              "groq-routes",
+              "https://huggingface.co/api/partners/groq/models?status=live",
+              1,
+              "json",
+            ],
+            [
+              "zai-routes",
+              "https://huggingface.co/api/partners/zai-org/models?status=live",
+              1,
+              "json",
             ],
           ]),
         },

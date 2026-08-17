@@ -107,6 +107,10 @@ The collector preserves exact AWS decimal amounts and normalizes only reviewed u
 Provisioned and Reserved dimensions are explicitly excluded before canonical pricing assembly. They
 never become capacity books or model-local rate choices.
 
+Automatic Prompt Optimization dimensions are also excluded before model identity matching. An
+`OptimizePrompt` charge pays for the separate prompt-rewrite operation, even though the request
+names a target model; it is not an inference input-token rate for that model.
+
 A Nova Web Grounding service book already carries the exact compatible model reference and the
 grounding offer is itself the separately charged request component. That ownership is sufficient;
 the canonical projection does not add a redundant `requires` edge back to the same model's

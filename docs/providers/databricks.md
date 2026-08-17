@@ -81,6 +81,12 @@ dependency.
   rate. Account-team enablement is an access prerequisite, not a price dimension, so it is not
   encoded. A requested Priority tier is not proof of the billed tier when Databricks documents
   fallback to Standard; response usage is authoritative.
+- The Priority support page publishes exact eligible Databricks endpoint IDs and says that the tier
+  has a per-token premium, but it publishes no amounts for partner models. Its OpenAI and Google
+  links are additional product-behavior resources, not a statement that Databricks invoices those
+  providers' USD prices. Kmodels therefore keeps those Priority variants as `unknown_amount` until
+  a Databricks model-qualified DBU row appears. It does not infer a multiplier from Qwen's separate
+  two-times row, copy upstream USD rates, or assume a universal DBU-to-USD conversion.
 - Promotion percentages, validity dates, launch targets, and referenced Standard-rate families are
   parsed from first-party footnotes. Model IDs, rates, and dates are not hard-coded.
 - Blank, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only
