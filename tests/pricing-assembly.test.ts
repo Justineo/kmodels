@@ -215,6 +215,24 @@ describe("canonical pricing canonical assembly", () => {
     expect(term.raw_variants[0]!.observations).toHaveLength(2);
   });
 
+  it("downgrades the complete overlap component", () => {
+    const source = input([
+      rate(unconditionalApplicability, "summary"),
+      rate(inputTokens(1), "conflict", "400000"),
+      rate(inputTokens(2), "matching-detail"),
+    ]);
+    const term = assemble(source).books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+
+    expect(term.variants).toEqual([]);
+    expect(
+      term.raw_variants
+        .flatMap(({ observations }) => observations)
+        .map(({ locator }) => locator.value)
+        .sort(),
+    ).toEqual(["conflict", "matching-detail", "summary"]);
+  });
+
   it("retains values outside an unequal-overlap component", () => {
     const source = input([
       rate(region("US"), "us-standard"),

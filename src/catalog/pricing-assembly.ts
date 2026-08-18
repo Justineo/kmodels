@@ -450,9 +450,7 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
   }
   const resolution = resolveRatePrecedence(normalizedVariants);
   raw.push(...resolution.shadowed);
-  const conflicts = unequalOverlapIndexes(resolution.retained, (variant) =>
-    canonicalJson(variant.price),
-  );
+  const conflicts = conflictIndexes(resolution.retained, (variant) => canonicalJson(variant.price));
   for (const [index, item] of resolution.retained.entries()) {
     if (conflicts.has(index)) {
       raw.push(toRawAtomic(item, "base_price", "conflicting_values", item.applicability));
@@ -583,7 +581,7 @@ function assembleAllowanceVariants(variants: AtomicAllowanceVariant[]): {
       ...normalized,
     });
   }
-  const conflicts = unequalOverlapIndexes(normalizedVariants, (variant) =>
+  const conflicts = conflictIndexes(normalizedVariants, (variant) =>
     canonicalJson([variant.benefit, variant.target, variant.reset]),
   );
   for (const [index, item] of normalizedVariants.entries()) {
@@ -685,7 +683,7 @@ function applyRateContainment(states: PriceStateVariant[], terms: PricingTerm[])
   });
 }
 
-function unequalOverlapIndexes<
+function conflictIndexes<
   T extends {
     applicability: PriceApplicability;
     validity?: PublishedValidity | undefined;
@@ -711,10 +709,7 @@ function unequalOverlapIndexes<
       if (rightGroup === undefined) continue;
       for (const left of leftGroup) {
         for (const right of rightGroup) {
-          if (
-            applicabilitiesOverlap(left.variant.applicability, right.variant.applicability) &&
-            publishedValiditiesOverlap(left.variant.validity, right.variant.validity)
-          ) {
+          if (variantsOverlap(left.variant, right.variant)) {
             conflicts.add(left.index);
             conflicts.add(right.index);
           }
@@ -722,7 +717,28 @@ function unequalOverlapIndexes<
       }
     }
   }
+
+  const pending = variants.filter((_variant, index) => conflicts.has(index));
+  while (pending.length > 0) {
+    const conflict = pending.pop();
+    if (conflict === undefined) break;
+    for (const [candidateIndex, candidate] of variants.entries()) {
+      if (conflicts.has(candidateIndex) || !variantsOverlap(conflict, candidate)) continue;
+      conflicts.add(candidateIndex);
+      pending.push(candidate);
+    }
+  }
   return conflicts;
+}
+
+function variantsOverlap(
+  left: { applicability: PriceApplicability; validity?: PublishedValidity | undefined },
+  right: { applicability: PriceApplicability; validity?: PublishedValidity | undefined },
+): boolean {
+  return (
+    applicabilitiesOverlap(left.applicability, right.applicability) &&
+    publishedValiditiesOverlap(left.validity, right.validity)
+  );
 }
 
 function finalizeProviderTerms(books: PricingBook[]): PricingBook[] {
