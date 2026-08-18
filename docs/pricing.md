@@ -380,9 +380,12 @@ Variants carry the changing assertion: value, applicability, optional
 published validity, and observations. Historical/future or region-specific
 values therefore coexist under one logical term without changing its identity.
 
-Normalized and raw variants may coexist under one term. A conflict fallback
-also cascades to dependent allowances so one unsupported component does not
-invalidate an otherwise useful provider partition.
+Normalized and raw variants may coexist under one term. An unequal overlap
+downgrades its complete applicability-and-validity overlap component, so a broad
+raw fallback never encloses a normalized value. Disjoint variants stay
+normalized.
+The fallback also cascades to dependent allowances so one unsupported component
+does not invalidate an otherwise useful provider partition.
 
 ### Rates, quantities, and allowances
 
