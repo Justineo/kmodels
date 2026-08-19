@@ -13,7 +13,6 @@ import mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg?raw";
 import ollama from "@lobehub/icons-static-svg/icons/ollama.svg?raw";
 import openAi from "@lobehub/icons-static-svg/icons/openai.svg?raw";
 import vercel from "@lobehub/icons-static-svg/icons/vercel.svg?raw";
-import vertex from "@lobehub/icons-static-svg/icons/vertexai-color.svg?raw";
 import xai from "@lobehub/icons-static-svg/icons/xai.svg?raw";
 import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
 import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
@@ -66,7 +65,7 @@ const providerSources = {
   ollama,
   openai: openAi,
   vercel,
-  vertex,
+  vertex: gemini,
   xai,
 } as const satisfies Readonly<Record<ProviderIconId, string>>;
 

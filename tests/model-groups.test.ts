@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { groupModels, modelGroupKey, modelTableRows } from "../src/catalog/model-groups.ts";
+import {
+  groupModels,
+  modelGroupKey,
+  modelTableRows,
+  preferredModelGroupName,
+} from "../src/catalog/model-groups.ts";
 
 const models = [
   { provider_id: "azure", model_id: "gpt-4o", uid: "azure/gpt-4o@1" },
@@ -37,5 +42,20 @@ describe("model groups", () => {
       ["openai/gpt-4o", false],
       ["azure/phi-4", false],
     ]);
+  });
+
+  it("prefers the first provider display name and otherwise falls back to the model ID", () => {
+    const namedGroups = groupModels([
+      { provider_id: "azure", model_id: "gpt-4o", uid: "1", name: "gpt-4o" },
+      { provider_id: "azure", model_id: "gpt-4o", uid: "2", name: "GPT-4o" },
+      { provider_id: "azure", model_id: "gpt-4o", uid: "3", name: "GPT-4o 2024" },
+      { provider_id: "azure", model_id: "phi-4", uid: "4", name: "phi-4" },
+    ]);
+    const gpt4o = namedGroups[0];
+    const phi4 = namedGroups[1];
+    if (gpt4o === undefined || phi4 === undefined) throw new Error("Expected both model groups");
+
+    expect(preferredModelGroupName(gpt4o)).toBe("GPT-4o");
+    expect(preferredModelGroupName(phi4)).toBe("phi-4");
   });
 });

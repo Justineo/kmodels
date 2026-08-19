@@ -26,13 +26,20 @@ Status: implemented core; provider pricing convergence is in progress
   capabilities, endpoints, and pricing in their respective sections.
 - Keep single-variant provider models as one ordinary row. When the filtered
   result contains multiple exact versions of one `(provider_id, model_id)`,
-  show one collapsed parent row with the variant count. A parent cell shows an
-  exact value only when every visible variant agrees; otherwise it says
-  `Varies`. Varying status uses the same dotted tooltip treatment as pricing
-  status and names the distinct values. Expanding inserts the exact variants as
-  fixed-height child rows, and selecting a child opens its details. Never infer
-  or label a latest version from version spelling. Always show the complete
-  version in child details and JSON.
+  show one collapsed parent row with the variant count. Its identity uses the
+  first provider display name in stable catalog order that differs from
+  `model_id`, falling back to `model_id`; this display choice never implies a
+  preferred or latest version. Every other parent cell shows an exact value
+  only when all visible variants agree. Otherwise it uses the shared dotted
+  tooltip treatment to name the distinct values and make `Varies` a disclosure
+  action. Mouse and keyboard activation toggle the exact version rows; touch
+  follows the shared first-tap explanation and second-tap action behavior. The
+  version-count badge toggles the rows immediately.
+  Compare representative input, cache, and output independently so an agreed
+  rate remains exact when only another pricing column varies. Expanding inserts
+  the exact variants as fixed-height child rows, and selecting a child opens its
+  details. Never infer or label a latest version from version spelling. Always
+  show the complete version in child details and JSON.
 - Use short task badges for scanning while accessible labels, filters,
   tooltips, and details retain full names.
 - The `Status` heading is a shared tooltip trigger that defines lifecycle and

@@ -4,6 +4,10 @@ interface GroupableModel {
   readonly uid: string;
 }
 
+interface NamedGroupableModel extends GroupableModel {
+  readonly name: string;
+}
+
 export interface ModelGroup<T extends GroupableModel> {
   key: string;
   provider_id: string;
@@ -26,6 +30,12 @@ export type ModelTableRow<T extends GroupableModel> =
 
 export function modelGroupKey(providerId: string, modelId: string): string {
   return JSON.stringify([providerId, modelId]);
+}
+
+export function preferredModelGroupName<T extends NamedGroupableModel>(
+  group: ModelGroup<T>,
+): string {
+  return group.models.find((model) => model.name !== group.model_id)?.name ?? group.model_id;
 }
 
 export function groupModels<T extends GroupableModel>(models: readonly T[]): ModelGroup<T>[] {

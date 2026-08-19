@@ -1735,9 +1735,9 @@ export const manifests = [
   {
     provider: {
       id: "vertex",
-      name: "Vertex AI",
+      name: "Gemini Enterprise Agent Platform",
       kind: "cloud_platform",
-      homepage: "https://cloud.google.com/vertex-ai/",
+      homepage: "https://cloud.google.com/products/gemini-enterprise-agent-platform",
       docs_url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models",
       catalog_scope: "regional",
     },
