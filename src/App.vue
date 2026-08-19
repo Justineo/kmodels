@@ -20,6 +20,7 @@ import {
   groupModels,
   modelGroupKey,
   modelTableRows,
+  preferredModelGroupName,
   type ModelGroup,
 } from "./catalog/model-groups.ts";
 import {
@@ -105,6 +106,9 @@ const selectedModel = computed(() => {
 const providerOptions = [...providers].sort((left, right) => left.name.localeCompare(right.name));
 const versionBadgeUids = versionBadgeModelUids(models);
 const allModelGroups = groupModels(models);
+const modelGroupNames = new Map(
+  allModelGroups.map((group) => [group.key, preferredModelGroupName(group)]),
+);
 let searchIndex: ReturnType<typeof indexModels<WebsiteModel>> | undefined;
 const filteredModels = computed(() => {
   let values =
@@ -802,6 +806,7 @@ onUnmounted(() => {
                 <ModelGroupRow
                   v-if="row.kind === 'group'"
                   :group="row.group"
+                  :model-name="modelGroupNames.get(row.group.key) ?? row.group.model_id"
                   :provider-name="providerName(row.group.provider_id)"
                   :row-index="virtualRange.start + index + 2"
                   :alternate="(virtualRange.start + index) % 2 === 1"

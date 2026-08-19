@@ -178,7 +178,7 @@ function mechanismApplicability(
           kind: "categorical_value",
           key: value.value,
           dimension: servedTier,
-          definition: `Vertex response-reported served traffic type ${JSON.stringify(value.value)}`,
+          definition: `Agent Platform response-reported served traffic type ${JSON.stringify(value.value)}`,
           label: title(value.value),
         });
         return value;
@@ -256,7 +256,7 @@ function geminiSignal(meter: PriceMeter): Signal | undefined {
   if (meter.value.startsWith("input_") && modality !== undefined)
     return {
       key: `uncached_input_${modality.toLowerCase()}_tokens`,
-      definition: `Uncached Vertex Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
+      definition: `Uncached Agent Platform Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
       locators: [
         `GenerateContentResponse.usageMetadata.promptTokensDetails[modality=${modality}].tokenCount - GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=${modality}].tokenCount`,
       ],
@@ -264,7 +264,7 @@ function geminiSignal(meter: PriceMeter): Signal | undefined {
   if (meter.value.startsWith("cache_read_") && modality !== undefined)
     return {
       key: `cached_input_${modality.toLowerCase()}_tokens`,
-      definition: `Cached Vertex Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
+      definition: `Cached Agent Platform Gemini ${modality.toLowerCase()} input tokens reported by usage metadata`,
       locators: [
         `GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=${modality}].tokenCount`,
       ],
@@ -272,7 +272,8 @@ function geminiSignal(meter: PriceMeter): Signal | undefined {
   if (meter.value === "output_text")
     return {
       key: "output_text_tokens",
-      definition: "Vertex Gemini candidate and thought output tokens reported by usage metadata",
+      definition:
+        "Agent Platform Gemini candidate and thought output tokens reported by usage metadata",
       locators: [
         "GenerateContentResponse.usageMetadata.candidatesTokenCount + GenerateContentResponse.usageMetadata.thoughtsTokenCount",
       ],
@@ -280,7 +281,7 @@ function geminiSignal(meter: PriceMeter): Signal | undefined {
   if (meter.value.startsWith("output_") && modality !== undefined)
     return {
       key: `output_${modality.toLowerCase()}_tokens`,
-      definition: `Vertex Gemini ${modality.toLowerCase()} output tokens reported by usage metadata`,
+      definition: `Agent Platform Gemini ${modality.toLowerCase()} output tokens reported by usage metadata`,
       locators: [
         `GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=${modality}].tokenCount`,
       ],
@@ -288,7 +289,7 @@ function geminiSignal(meter: PriceMeter): Signal | undefined {
   if (meter.value === "embedding")
     return {
       key: "embedding_input_tokens",
-      definition: "Vertex Gemini embedding input tokens reported by the embedding response",
+      definition: "Agent Platform Gemini embedding input tokens reported by the embedding response",
       locators: ["EmbedContentResponse.usageMetadata.promptTokenCount"],
     };
 }
@@ -308,7 +309,7 @@ function claudeSignal(meter: PriceMeter): Signal | undefined {
     ? undefined
     : {
         key: `claude_${field}`,
-        definition: `Vertex Claude ${field.replaceAll("_", " ")} reported by response usage`,
+        definition: `Agent Platform Claude ${field.replaceAll("_", " ")} reported by response usage`,
         locators: [`Message.usage.${field}`],
       };
 }
@@ -326,7 +327,7 @@ function responsesSignal(meter: PriceMeter): Signal | undefined {
     ? undefined
     : {
         key: `responses_${meter.value}_tokens`,
-        definition: `Vertex Responses ${meter.value.replaceAll("_", " ")} tokens reported by response usage`,
+        definition: `Agent Platform Responses ${meter.value.replaceAll("_", " ")} tokens reported by response usage`,
         locators: [locator],
       };
 }
@@ -342,7 +343,7 @@ function chatSignal(meter: PriceMeter): Signal | undefined {
     ? undefined
     : {
         key: `chat_${meter.value}_tokens`,
-        definition: `Vertex Chat Completions ${meter.value.replaceAll("_", " ")} tokens reported by response usage`,
+        definition: `Agent Platform Chat Completions ${meter.value.replaceAll("_", " ")} tokens reported by response usage`,
         locators: [locator],
       };
 }
@@ -402,7 +403,7 @@ function serviceBinding(
   addAtom(input, {
     kind: "usage_signal",
     key,
-    definition: `Billable Vertex ${resourceKey.replaceAll("-", " ")} usage reported by the generated result`,
+    definition: `Billable Agent Platform ${resourceKey.replaceAll("-", " ")} usage reported by the generated result`,
     unit: variant.price.per,
     resolution_phase: "outcome",
   });

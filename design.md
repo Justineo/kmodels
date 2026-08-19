@@ -38,7 +38,7 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Vercel AI Gateway](docs/providers/vercel.md)
 - [Microsoft Foundry](docs/providers/azure.md)
 - [Gemini API](docs/providers/gemini.md)
-- [Vertex AI](docs/providers/vertex.md)
+- [Gemini Enterprise Agent Platform](docs/providers/vertex.md)
 - [Cohere](docs/providers/cohere.md)
 - [Mistral AI](docs/providers/mistral.md)
 - [Meta Llama](docs/providers/llama.md)

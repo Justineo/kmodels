@@ -48,7 +48,7 @@ dynamic product documentation as a refresh dependency.
 - Optional authenticated model inventories are enabled by `XAI_API_KEY`. They are
   account-scoped observations and may enrich a matching public identity, but cannot
   create global presence or replace the public price book.
-- Comparator catalogs and Azure, OCI, or Vertex listings are audit evidence only. Their
+- Comparator catalogs and Azure, OCI, or Agent Platform listings are audit evidence only. Their
   identities and prices belong to their respective sellers.
 
 Preserve the structured `version` as identity. Dated aliases are evaluated at the

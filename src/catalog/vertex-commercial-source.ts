@@ -87,7 +87,7 @@ function bindingUnavailable(sourceRef: string) {
     impact: "informational" as const,
     reason: "unknown_applicability" as const,
     conditions: {},
-    raw: { fragment: "Vertex response usage schema was not verified during this refresh" },
+    raw: { fragment: "Agent Platform response usage schema was not verified during this refresh" },
   };
 }
 

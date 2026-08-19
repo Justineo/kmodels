@@ -1,13 +1,15 @@
-# Vertex AI
+# Gemini Enterprise Agent Platform
 
 Status: current
 
 ## Boundary
 
-Kmodels catalogs models that Google exposes as managed Vertex AI or Model-as-a-Service APIs. The
-generic Model Garden self-deployment inventory does not create catalog rows. Catalog inclusion and
-price availability are independent: a managed model remains useful even when its current public
-rate cannot be matched.
+Kmodels catalogs models that Google exposes as managed APIs on Gemini Enterprise Agent Platform or
+through its Model-as-a-Service offerings. Agent Platform agents, runtimes, registries, gateways,
+skills, and other non-model resources do not create catalog rows. The generic Model Garden
+self-deployment inventory does not create catalog rows. Catalog inclusion and price availability
+are independent: a managed model remains useful even when its current public rate cannot be
+matched.
 
 The price book covers only costs attributable to a proxied inference request or its result:
 
@@ -27,9 +29,9 @@ Model discovery and pricing are separate sources:
 
 - the Google, partner, and managed-open model indexes and their bounded model cards establish model
   identity, capabilities, lifecycle, availability, and invocation routes;
-- the public Vertex generative AI pricing page establishes rates and their dimensions; and
-- optional first-party grounding guides, Claude web-search documentation, and the Vertex Discovery
-  document establish model applicability and observable usage fields.
+- the public Agent Platform generative AI pricing page establishes rates and their dimensions; and
+- optional first-party grounding guides, Claude web-search documentation, and the Agent Platform
+  API Discovery document establish model applicability and observable usage fields.
 
 The optional authenticated Model Garden API checks known public identities only. It cannot create
 rows, contribute private prices, or retain account data.
@@ -69,8 +71,8 @@ provider refresh itself cannot publish a valid replacement.
 
 ## Charge binding
 
-The canonical topology is the shared `book -> offer -> term -> variant` model. Vertex-specific code
-only maps its dimensions and response fields.
+The canonical topology is the shared `book -> offer -> term -> variant` model. Provider code only
+maps its dimensions and response fields.
 
 - Gemini token usage binds to `GenerateContentResponse.usageMetadata`, including modality details
   and cached-token details.

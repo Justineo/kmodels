@@ -850,10 +850,10 @@ async function fetchGoogleModelGarden(
     },
   );
   if (results.every((result) => result.models.length === 0))
-    throw new Error("Vertex Model Garden API returned no models");
+    throw new Error("Agent Platform Model Garden API returned no models");
   const body = JSON.stringify({ publishers: results });
   if (Buffer.byteLength(body) > source.maxResponseBytes)
-    throw new Error("Vertex Model Garden inventory exceeded byte limit");
+    throw new Error("Agent Platform Model Garden inventory exceeded byte limit");
   return body;
 }
 

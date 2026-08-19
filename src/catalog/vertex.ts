@@ -330,15 +330,15 @@ function usageBindingAvailable(
     });
     return false;
   };
-  if (document === undefined) return unsupported("Vertex Discovery document missing");
+  if (document === undefined) return unsupported("Agent Platform API Discovery document missing");
   let value: unknown;
   try {
     value = JSON.parse(document.body);
   } catch {
-    return unsupported("Vertex Discovery document returned invalid JSON");
+    return unsupported("Agent Platform API Discovery document returned invalid JSON");
   }
   const parsed = vertexDiscoverySchema.safeParse(value);
-  if (!parsed.success) return unsupported("Vertex Discovery schema changed");
+  if (!parsed.success) return unsupported("Agent Platform API Discovery schema changed");
   const discovery = parsed.data;
 
   const usageFields =
@@ -358,7 +358,7 @@ function usageBindingAvailable(
       "trafficType",
     ].every((field) => usageFields[field] !== undefined)
   )
-    return unsupported("Vertex usage schema changed");
+    return unsupported("Agent Platform usage schema changed");
   const trafficTypes = z.object({ enum: z.array(z.string()) }).safeParse(usageFields.trafficType);
   if (
     !trafficTypes.success ||
@@ -370,7 +370,7 @@ function usageBindingAvailable(
       "PROVISIONED_THROUGHPUT",
     ].every((trafficType) => trafficTypes.data.enum.includes(trafficType))
   )
-    return unsupported("Vertex usage traffic types changed");
+    return unsupported("Agent Platform usage traffic types changed");
 
   const groundingFields =
     discovery.schemas.GoogleCloudAiplatformV1beta1GroundingMetadata.properties;
@@ -379,7 +379,7 @@ function usageBindingAvailable(
       (field) => groundingFields[field] !== undefined,
     )
   )
-    return unsupported("Vertex grounding schema changed");
+    return unsupported("Agent Platform grounding schema changed");
   const responseFields =
     discovery.schemas.GoogleCloudAiplatformV1beta1GenerateContentResponse.properties;
   if (
@@ -387,7 +387,7 @@ function usageBindingAvailable(
       (field) => responseFields[field] !== undefined,
     )
   )
-    return unsupported("Vertex response observability schema changed");
+    return unsupported("Agent Platform response observability schema changed");
   return true;
 }
 
@@ -686,7 +686,7 @@ function publisherFamily(
       .get()
       .filter((value): value is string => value !== undefined),
   );
-  if (publishers.length > 1) throw new Error("Vertex model card publisher drifted");
+  if (publishers.length > 1) throw new Error("Agent Platform model card publisher drifted");
   return publishers[0] === undefined ? undefined : [`publishers/${publishers[0]}`];
 }
 
@@ -2399,7 +2399,8 @@ function applyOpenExamples(models: Map<string, Evidence>, documents: LinkedDocum
 
 export function parseVertexCatalog(input: Input): ProviderModel[] {
   const extractor = input.source.extractor;
-  if (extractor.kind !== "vertex-catalog") throw new Error("Wrong Vertex catalog extractor");
+  if (extractor.kind !== "vertex-catalog")
+    throw new Error("Wrong Agent Platform catalog extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const endpointEvidence = reviewedEndpointReferences(input.source.id, bundle.documents);
   const models = new Map<string, Evidence>();
@@ -2433,9 +2434,14 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
   const values = [...models.values()]
     .map((item) => item.model)
     .sort((left, right) => left.model_id.localeCompare(right.model_id));
-  assertItemCount("Vertex model catalog", values.length, extractor.minModels, extractor.maxModels);
   assertItemCount(
-    "Vertex model-card documents",
+    "Agent Platform model catalog",
+    values.length,
+    extractor.minModels,
+    extractor.maxModels,
+  );
+  assertItemCount(
+    "Agent Platform model-card documents",
     modelDocuments,
     extractor.minModelDocuments,
     extractor.maxModelDocuments,
@@ -2445,9 +2451,9 @@ export function parseVertexCatalog(input: Input): ProviderModel[] {
 
 export function parseVertexPricing(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "vertex-pricing")
-    throw new Error("Wrong Vertex pricing extractor");
+    throw new Error("Wrong Agent Platform pricing extractor");
   if (input.catalogModels === undefined)
-    throw new Error("Vertex pricing requires the collected catalog");
+    throw new Error("Agent Platform pricing requires the collected catalog");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, Evidence>();
   for (const target of input.catalogModels) {
@@ -2513,7 +2519,7 @@ export function parseVertexApi(input: Input): ProviderModel[] {
   const models = new Map<string, ProviderModel>();
   for (const publisher of bundle.publishers) {
     const items = recognizeItems({
-      label: "Vertex Model Garden model",
+      label: "Agent Platform Model Garden model",
       items: publisher.models,
       schema: apiItemSchema,
       modelId: (item) => {
@@ -2533,7 +2539,7 @@ export function parseVertexApi(input: Input): ProviderModel[] {
         id === undefined ||
         !modelIdSchema.safeParse(id).success
       )
-        throw new Error("Vertex Model Garden API returned an invalid resource name");
+        throw new Error("Agent Platform Model Garden API returned an invalid resource name");
       const modelStatus = modelStateFromLabel(
         `${item.launchStage ?? ""} ${item.versionState ?? ""}`,
       );
@@ -2551,6 +2557,6 @@ export function parseVertexApi(input: Input): ProviderModel[] {
       });
     }
   }
-  if (models.size === 0) throw new Error("Vertex Model Garden API returned no models");
+  if (models.size === 0) throw new Error("Agent Platform Model Garden API returned no models");
   return [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id));
 }

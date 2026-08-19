@@ -6,9 +6,11 @@ import {
   formatSentenceCase,
   formatTableTask,
   formatTokenCount,
+  modelTaskList,
   primaryStatus,
 } from "../catalog/presentation.ts";
 import type { WebsiteModel } from "../catalog/website-schema.ts";
+import ModelGroupVariation from "./ModelGroupVariation.vue";
 import ModelPriceCell from "./ModelPriceCell.vue";
 import ProviderIcon from "./ProviderIcon.vue";
 import UiIcon from "./UiIcon.vue";
@@ -17,10 +19,19 @@ import UiTooltip from "./UiTooltip.vue";
 type ModelTask = WebsiteModel["tasks"][number];
 type ModelLifecycle = WebsiteModel["status"];
 type ModelReleaseStage = WebsiteModel["release_stage"];
+type PricingCell = WebsiteModel["pricing"]["input"];
+type PricingStatus = WebsiteModel["pricing"]["status"];
 type Shared<T> = { kind: "shared"; value: T } | { kind: "varies" };
+
+const priceColumnDefinitions = [
+  ["input", "input-col", "Input price varies"],
+  ["cache", "cached-col", "Cache price varies"],
+  ["output", "output-col", "Output price varies"],
+] as const;
 
 const props = defineProps<{
   group: ModelGroup<WebsiteModel>;
+  modelName: string;
   providerName: string;
   rowIndex: number;
   alternate: boolean;
@@ -48,39 +59,73 @@ function sharedBy<T>(project: (model: WebsiteModel) => T): Shared<T> {
     : { kind: "varies" };
 }
 
+function variationDescription<T>(
+  label: string,
+  project: (model: WebsiteModel) => T,
+  format: (value: T) => string,
+): string {
+  const values = [...new Set(props.group.models.map((model) => format(project(model))))];
+  return `${label} by version: ${values.join("; ")}.`;
+}
+
+function formatOptionalTokenCount(value: number | undefined): string {
+  return value === undefined ? "Not published" : formatTokenCount(value);
+}
+
+function formatPrice(price: PricingCell): string {
+  return price === undefined ? "Not published" : price.accessibleText;
+}
+
+function formatPricingStatus(status: PricingStatus): string {
+  return status === undefined ? "Not published" : `${status.label} — ${status.description}`;
+}
+
 const firstModel = computed(() => {
   const model = props.group.models[0];
   if (model === undefined) throw new Error("Model group is empty");
   return model;
 });
-const sharedName = computed(() => sharedBy((model) => model.name));
 const sharedTasks = computed(() => sharedBy((model) => model.tasks));
+const variedTasksDescription = computed(() =>
+  variationDescription("Tasks vary", (model) => model, modelTaskList),
+);
 const sharedStatus = computed(() => sharedBy((model) => primaryStatus(model)));
-const variedStatusDescription = computed(
-  () =>
-    `Status varies by version: ${[
-      ...new Set(props.group.models.map((model) => formatSentenceCase(primaryStatus(model)))),
-    ].join(", ")}.`,
+const variedStatusDescription = computed(() =>
+  variationDescription("Status varies", (model) => primaryStatus(model), formatSentenceCase),
 );
-const contextLabel = computed(() => {
-  const context = sharedBy((model) => model.context_tokens);
-  return context.kind === "shared" ? formatTokenCount(context.value) : "Varies";
-});
-const releasedLabel = computed(() => {
-  const released = sharedBy((model) => model.release_date);
-  return released.kind === "shared" ? (released.value ?? "—") : "Varies";
-});
-const sharedPricing = computed(() => {
-  const pricing = sharedBy((model) => model.pricing);
-  return pricing.kind === "shared" ? pricing.value : undefined;
-});
-const hasRepresentativeRate = computed(
-  () =>
-    sharedPricing.value?.input !== undefined ||
-    sharedPricing.value?.cache !== undefined ||
-    sharedPricing.value?.output !== undefined,
+const sharedContext = computed(() => sharedBy((model) => model.context_tokens));
+const variedContextDescription = computed(() =>
+  variationDescription("Context varies", (model) => model.context_tokens, formatOptionalTokenCount),
 );
-const pricingStatus = computed(() => sharedPricing.value?.status);
+const sharedReleased = computed(() => sharedBy((model) => model.release_date));
+const variedReleasedDescription = computed(() =>
+  variationDescription(
+    "Release date varies",
+    (model) => model.release_date,
+    (value) => value ?? "Not published",
+  ),
+);
+const sharedPricingStatus = computed(() => sharedBy((model) => model.pricing.status));
+const variedPricingStatusDescription = computed(() =>
+  variationDescription(
+    "Pricing status varies",
+    (model) => model.pricing.status,
+    formatPricingStatus,
+  ),
+);
+const priceColumns = computed(() =>
+  priceColumnDefinitions.map(([key, className, label]) => ({
+    key,
+    className,
+    value: sharedBy((model) => model.pricing[key]),
+    description: variationDescription(label, (model) => model.pricing[key], formatPrice),
+  })),
+);
+const hasRepresentativeRate = computed(() =>
+  props.group.models.some((model) =>
+    priceColumnDefinitions.some(([key]) => model.pricing[key] !== undefined),
+  ),
+);
 const toggleLabel = computed(
   () =>
     `${props.expanded ? "Collapse" : "Expand"} ${props.group.model_id}, ${props.group.models.length} versions`,
@@ -112,12 +157,18 @@ function filterStatus(): void {
           :aria-label="toggleLabel"
           @click="emit('toggle')"
         >
-          <strong>
-            {{ sharedName.kind === "shared" ? sharedName.value : group.model_id }}
-          </strong>
+          <strong>{{ modelName }}</strong>
           <code>{{ group.model_id }}</code>
         </button>
-        <span class="version-badge version-count-badge"> {{ group.models.length }} versions </span>
+        <button
+          class="version-badge version-count-badge"
+          type="button"
+          :aria-expanded="expanded"
+          :aria-label="toggleLabel"
+          @click="emit('toggle')"
+        >
+          {{ group.models.length }} versions
+        </button>
       </div>
     </td>
     <td class="provider-col">
@@ -132,7 +183,13 @@ function filterStatus(): void {
       </button>
     </td>
     <td class="tasks-col">
-      <span v-if="sharedTasks.kind === 'varies'" class="group-varies">Varies</span>
+      <ModelGroupVariation
+        v-if="sharedTasks.kind === 'varies'"
+        :expanded
+        :toggle-label
+        :description="variedTasksDescription"
+        @toggle="emit('toggle')"
+      />
       <span v-else class="task-list">
         <span v-if="sharedTasks.value.length === 0">—</span>
         <template v-for="task in sharedTasks.value" :key="task">
@@ -150,15 +207,13 @@ function filterStatus(): void {
       </span>
     </td>
     <td class="status-col">
-      <UiTooltip
+      <ModelGroupVariation
         v-if="sharedStatus.kind === 'varies'"
-        class="tooltip-text-trigger table-status-trigger"
-        tabindex="0"
-        :content="variedStatusDescription"
-        :aria-label="variedStatusDescription"
-      >
-        Varies
-      </UiTooltip>
+        :expanded
+        :toggle-label
+        :description="variedStatusDescription"
+        @toggle="emit('toggle')"
+      />
       <button
         v-else
         class="row-status"
@@ -170,33 +225,72 @@ function filterStatus(): void {
         {{ sharedStatus.value }}
       </button>
     </td>
-    <td class="context-col numeric">{{ contextLabel }}</td>
+    <td class="context-col numeric">
+      <template v-if="sharedContext.kind === 'shared'">
+        {{ formatTokenCount(sharedContext.value) }}
+      </template>
+      <ModelGroupVariation
+        v-else
+        :expanded
+        :toggle-label
+        :description="variedContextDescription"
+        @toggle="emit('toggle')"
+      />
+    </td>
     <template v-if="hasRepresentativeRate">
-      <ModelPriceCell class="input-col" :price="sharedPricing?.input" />
-      <ModelPriceCell class="cached-col" :price="sharedPricing?.cache" />
-      <ModelPriceCell class="output-col" :price="sharedPricing?.output" />
+      <template v-for="column in priceColumns" :key="column.key">
+        <ModelPriceCell
+          v-if="column.value.kind === 'shared'"
+          :class="column.className"
+          :price="column.value.value"
+        />
+        <td v-else class="price-cell numeric" :class="column.className">
+          <ModelGroupVariation
+            :expanded
+            :toggle-label
+            :description="column.description"
+            @toggle="emit('toggle')"
+          />
+        </td>
+      </template>
     </template>
-    <td v-else-if="sharedPricing === undefined" class="price-status-cell" colspan="3">
+    <td v-else-if="sharedPricingStatus.kind === 'varies'" class="price-status-cell" colspan="3">
       <span class="price-status-band">
-        <span class="group-varies">Varies</span>
+        <ModelGroupVariation
+          :expanded
+          :toggle-label
+          :description="variedPricingStatusDescription"
+          @toggle="emit('toggle')"
+        />
       </span>
     </td>
-    <td v-else-if="pricingStatus" class="price-status-cell" colspan="3">
+    <td v-else-if="sharedPricingStatus.value" class="price-status-cell" colspan="3">
       <span class="price-status-band">
         <UiTooltip
           class="tooltip-text-trigger table-status-trigger"
           tabindex="0"
-          :content="pricingStatus.description"
-          :aria-label="`Pricing: ${pricingStatus.label}. ${pricingStatus.description}`"
+          :content="sharedPricingStatus.value.description"
+          :aria-label="`Pricing: ${sharedPricingStatus.value.label}. ${sharedPricingStatus.value.description}`"
         >
-          {{ pricingStatus.label }}
+          {{ sharedPricingStatus.value.label }}
         </UiTooltip>
       </span>
     </td>
     <td v-else class="price-status-cell" colspan="3">
       <span class="price-status-band">—</span>
     </td>
-    <td class="released-col numeric">{{ releasedLabel }}</td>
+    <td class="released-col numeric">
+      <template v-if="sharedReleased.kind === 'shared'">
+        {{ sharedReleased.value ?? "—" }}
+      </template>
+      <ModelGroupVariation
+        v-else
+        :expanded
+        :toggle-label
+        :description="variedReleasedDescription"
+        @toggle="emit('toggle')"
+      />
+    </td>
     <td class="disclosure-col">
       <button
         class="disclosure-button group-disclosure"

@@ -20,6 +20,10 @@ const modelGroupRow = readFileSync(
   new URL("../src/components/ModelGroupRow.vue", import.meta.url),
   "utf8",
 );
+const modelGroupVariation = readFileSync(
+  new URL("../src/components/ModelGroupVariation.vue", import.meta.url),
+  "utf8",
+);
 
 function matches(pattern: RegExp, value: string): string[] {
   return [...value.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))].map(
@@ -183,7 +187,10 @@ describe("design token contract", () => {
       4,
     );
     expect(
-      matches(/class="tooltip-text-trigger table-status-trigger"/, `${modelRow}\n${modelGroupRow}`),
+      matches(
+        /class="[^"]*\btooltip-text-trigger\b[^"]*\btable-status-trigger\b[^"]*"/,
+        `${modelRow}\n${modelGroupRow}\n${modelGroupVariation}`,
+      ),
     ).toHaveLength(3);
   });
 
