@@ -802,8 +802,9 @@ read-only summary. Neither surface chooses Peak/Off-peak automatically from the 
 This remains independent from model-detail resolution of a one-time exact rate-plan validity
 boundary; the provider inspector continues to expose every reviewed validity-qualified row.
 
-Generated-data tests require every configured label to match a current
-vocabulary value and its UI projection, and reject duplicate labels inside a
+Configured labels may outlive a volatile vocabulary value and remain dormant
+until that value reappears. Generated-data tests require every projected label
+to agree with its matching configuration and reject duplicate labels inside a
 selector so distinct canonical choices remain distinguishable.
 
 The shared projection still decodes broader plan, capacity, enrollment, allowance, and settlement
