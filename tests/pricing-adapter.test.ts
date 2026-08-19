@@ -344,7 +344,7 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(Object.hasOwn(parsed.conditions, "endpoint")).toBe(false);
   });
 
-  it("registers reviewed provider labels without changing canonical categorical values", () => {
+  it("attaches reviewed labels only to observed categorical values", () => {
     const { source: pricingSource } = pricingManifest();
     const parsedModel = model();
     parsedModel.price_facts = [
@@ -361,6 +361,11 @@ describe("parsed-source canonical pricing adapter", () => {
           dimension: { namespace: "kmodels", value: "operation" },
           value: "provider.event.create",
           label: "Text input",
+        },
+        {
+          dimension: { namespace: "kmodels", value: "operation" },
+          value: "unused_operation",
+          label: "Unused operation",
         },
       ],
     );

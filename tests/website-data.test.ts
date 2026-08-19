@@ -377,8 +377,8 @@ describe("website data", () => {
     );
   }, 90_000);
 
-  it("keeps configured provider labels current and selector choices unambiguous", async () => {
-    const { pricing, publication } = await publicationData();
+  it("keeps projected provider labels consistent and selector choices unambiguous", async () => {
+    const { publication } = await publicationData();
     const providerManifests: readonly ProviderManifest[] = manifests;
     const configuredLabels = new Map(
       providerManifests.flatMap((manifest) =>
@@ -388,17 +388,6 @@ describe("website data", () => {
         ),
       ),
     );
-    const vocabularyAtoms = new Set<string>();
-    for (const vocabulary of pricing.provider_vocabularies)
-      for (const atom of vocabulary.atoms) {
-        if (atom.kind !== "categorical_value") continue;
-        vocabularyAtoms.add(
-          categoricalLabelIdentity(vocabulary.provider_id, atom.dimension, atom.key),
-        );
-      }
-    expect(
-      [...configuredLabels.keys()].filter((identity) => !vocabularyAtoms.has(identity)),
-    ).toEqual([]);
 
     const projectedLabels = new Map<string, string>();
     const projectedOffers = publication.offers.flatMap(({ offers }) => offers);
