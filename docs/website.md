@@ -293,15 +293,21 @@ Status: implemented core; provider pricing convergence is in progress
   shared task, status, and pricing-cell objects in memory. This encoding is
   transport-only and does not weaken closed-schema validation or change UI
   semantics.
-- Request model details only when their inspector opens. Detail assets are
+- After first paint, preload complete details for exact model rows in the
+  current virtual window, including overscan, and refresh as filtering,
+  expansion, or scrolling changes that window. Collapsed group children and
+  models outside the window remain request-on-open. Opening an inspector reuses
+  completed or in-flight work. Detail assets are
   provider-scoped, deterministic chunks capped at 2 MiB uncompressed; large
   providers may own several numbered chunks. Model pricing refers to exact
   provider-local offers in `/ui/offers/<provider>/<chunk>.json` instead of
   copying the same display-ready offer into every applicable model. Standalone
   provider resources use the same offer dictionary. Offer chunks use the same
-  bound and are requested only for the selected model or provider.
+  bound and are requested only for a selected or window-preloaded model, or for
+  a provider inspector.
   Cache completed and in-flight chunks by data version, and retain parsed model
-  details only after they are requested.
+  details after either path. Failed preloads stay silent and are evicted so an
+  explicit open can retry.
 - Provider pricing detail uses
   `/ui/providers/<provider>/pricing/<chunk>.json`. It is requested on demand,
   split into deterministic whole-resource chunks capped at 2 MiB uncompressed,
@@ -333,8 +339,9 @@ Status: implemented core; provider pricing convergence is in progress
   virtualized table. Keep catalog rows outside Vue's deep-reactive graph, and
   build the search index after first paint unless an earlier search needs it.
   After that paint, eagerly load the closed filter popover, inspector, their CSS,
-  and the full closed-schema validator in parallel. Only provider/model JSON
-  details remain interaction-demanded. On coarse touch devices, keep native
+  and the full closed-schema validator in parallel. Only provider pricing and
+  out-of-window model details remain interaction-demanded. On coarse touch
+  devices, keep native
   scrolling for general surfaces; initialize the table's axis-specific
   OverlayScrollbars during the first mount against its real outer and nested
   body viewports.

@@ -14490,6 +14490,17 @@ describe("DashScope adapters", () => {
       reconciliation.filter(({ reason_code }) => reason_code === "cache_rate_normalized"),
     ).toHaveLength(3);
 
+    const markdownModels = parse(
+      pricingSource,
+      await pricingBundle(undefined, { "web-search": await fixture("dashscope/web-search.md") }),
+    );
+    expect(
+      markdownModels
+        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        .filter(({ resource_key }) => resource_key === "web-search")
+        .map(({ offer_key }) => offer_key),
+    ).toEqual(["built-in:singapore", "built-in:china-beijing"]);
+
     const cache = await fixture("dashscope/cache.html");
     const cacheReconciliation: PricingReconciliationItem[] = [];
     const cacheModels = parse(
@@ -14755,7 +14766,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v9",
+      extractorVersion: "dashscope-pricing-v10",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),

@@ -1,3 +1,4 @@
+import googleCloud from "@lobehub/icons-static-svg/icons/googlecloud-color.svg?raw";
 import { describe, expect, it } from "vite-plus/test";
 import {
   formatModelTask,
@@ -114,5 +115,9 @@ describe("SVG sprite", () => {
     expect(spriteSymbols).toContain('<symbol id="provider-kimi"');
     expect(spriteSymbols).toContain('<symbol id="provider-kimi-dark"');
     expect(spriteSymbols).toContain('fill="#1783FF"');
+  });
+
+  it("uses the Google Cloud mark for the Agent Platform", () => {
+    expect(spriteSymbols).toContain(svgSymbol("provider-vertex", googleCloud));
   });
 });

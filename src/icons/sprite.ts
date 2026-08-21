@@ -5,6 +5,7 @@ import cerebras from "@lobehub/icons-static-svg/icons/cerebras-color.svg?raw";
 import cohere from "@lobehub/icons-static-svg/icons/cohere-color.svg?raw";
 import deepSeek from "@lobehub/icons-static-svg/icons/deepseek-color.svg?raw";
 import gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg?raw";
+import googleCloud from "@lobehub/icons-static-svg/icons/googlecloud-color.svg?raw";
 import huggingFace from "@lobehub/icons-static-svg/icons/huggingface-color.svg?raw";
 import kimi from "@lobehub/icons-static-svg/icons/kimi.svg?raw";
 import kimiColor from "@lobehub/icons-static-svg/icons/kimi-color.svg?raw";
@@ -65,7 +66,7 @@ const providerSources = {
   ollama,
   openai: openAi,
   vercel,
-  vertex: gemini,
+  vertex: googleCloud,
   xai,
 } as const satisfies Readonly<Record<ProviderIconId, string>>;
 

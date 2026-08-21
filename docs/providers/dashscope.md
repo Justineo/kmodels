@@ -106,6 +106,8 @@ Built-in web search is a shared provider-service book. Equal scope/rate variants
 with all exact compatible model references instead of copying the same offer into every model. Its
 per-call charge binds to `usage.x_tools.web_search.count`. Search-result content is already included
 in the model's reported input tokens, so it does not need a second raw pricing fact.
+Markdown web-search guides derive regional scope from `Tab` titles; inline heading anchors are
+presentation markup, not section identity.
 
 Token rate bindings use observable response counters:
 
