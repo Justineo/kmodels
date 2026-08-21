@@ -11,6 +11,9 @@ self-deployment inventory does not create catalog rows. Catalog inclusion and pr
 are independent: a managed model remains useful even when its current public rate cannot be
 matched.
 
+The website uses the Google Cloud mark to distinguish this managed platform from the standalone
+Gemini API. Its stable provider ID remains `vertex`.
+
 The price book covers only costs attributable to a proxied inference request or its result:
 
 - online, Priority, Flex, and Batch inference;

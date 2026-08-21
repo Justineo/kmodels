@@ -82,6 +82,7 @@ const detailCache = new Map<string, NonNullable<typeof detailsState.detail>>();
 let detailRequest = "";
 let providerPricingRequest = "";
 let applyingRoute = false;
+let detailPreloadingEnabled = false;
 let virtualItemSize = INITIAL_VIRTUAL_ITEM_SIZE;
 const updateTableHorizontalScrollbar = useOverlayScrollbars(() => ({
   target: tableScrollHost.value,
@@ -480,8 +481,7 @@ async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
   detailsState.loading = true;
   try {
     await afterFirstPaint();
-    const detail = await loadWebsiteModelDetail(props.catalog.data_version, model);
-    detailCache.set(reference, detail);
+    const detail = await cacheModelDetail(model);
     if (detailRequest === reference) detailsState.detail = detail;
   } catch (error) {
     console.error("Failed to load model details", error);
@@ -490,6 +490,19 @@ async function loadModelDetail(model: WebsiteModel | undefined): Promise<void> {
   } finally {
     if (detailRequest === reference) detailsState.loading = false;
   }
+}
+
+async function cacheModelDetail(model: WebsiteModel) {
+  const detail = await loadWebsiteModelDetail(props.catalog.data_version, model);
+  detailCache.set(model.uid, detail);
+  return detail;
+}
+
+function preloadLikelyModelDetails(): void {
+  if (!detailPreloadingEnabled) return;
+  for (const row of virtualRows.value)
+    if (row.kind === "model" && !detailCache.has(row.model.uid))
+      void cacheModelDetail(row.model).catch(() => undefined);
 }
 
 detailsState.close = () => {
@@ -528,6 +541,7 @@ watch(
   },
   { immediate: true },
 );
+watch(virtualRows, preloadLikelyModelDetails, { flush: "post" });
 
 async function loadDeferredUi(): Promise<void> {
   const deferred = [
@@ -538,6 +552,8 @@ async function loadDeferredUi(): Promise<void> {
     preloadWebsiteSchemas(),
   ];
   searchIndex ??= indexModels(models);
+  detailPreloadingEnabled = true;
+  preloadLikelyModelDetails();
   await Promise.all(deferred);
 }
 

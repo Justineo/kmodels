@@ -1398,6 +1398,12 @@ function commercialEvidence(input: ParseInput, bundle: LinkedBundle): Commercial
 const webSearchScopes = new Set(["International", "Global", "Chinese mainland"]);
 const webSearchMarkdownScopes = new Set(["Singapore", "China (Beijing)"]);
 
+function markdownSectionTitle(line: string): string | undefined {
+  const markup =
+    line.match(/^#{1,6}\s+(.+?)\s*$/)?.[1] ?? line.match(/^\s*<Tab\s+title="([^"]+)">\s*$/)?.[1];
+  return markup === undefined ? undefined : text(load(markup.replaceAll("**", "")).root().text());
+}
+
 function mentionedModelIds(body: string, knownIds: Set<string>): Set<string> {
   const normalized = documentText(body);
   const result = new Set(
@@ -1496,13 +1502,9 @@ function webSearchRates(
   if (body === undefined) return [];
   if (markdownDocument(body)) {
     const lines = body.split(/\r?\n/);
-    const supported = lines.findIndex(
-      (line) => text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === "Supported models",
-    );
+    const supported = lines.findIndex((line) => markdownSectionTitle(line) === "Supported models");
     const end = lines.findIndex(
-      (line, index) =>
-        index > supported &&
-        text(line.replace(/^#{1,6}\s+/, "").replaceAll("**", "")) === "Quick start",
+      (line, index) => index > supported && markdownSectionTitle(line) === "Quick start",
     );
     if (supported < 0 || end < 0) {
       input.onPricingReconciliation?.({
@@ -1514,9 +1516,8 @@ function webSearchRates(
     const sections = new Map<string, string[]>();
     let scope: string | undefined;
     for (const line of lines.slice(supported + 1, end)) {
-      const heading = line.match(/^##\s+(.+?)\s*$/)?.[1];
-      if (heading !== undefined) {
-        const candidate = text(heading.replaceAll("**", ""));
+      const candidate = markdownSectionTitle(line);
+      if (candidate !== undefined) {
         scope = webSearchMarkdownScopes.has(candidate) ? candidate : undefined;
         if (scope !== undefined) sections.set(scope, []);
       } else if (scope !== undefined) {

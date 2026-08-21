@@ -136,7 +136,7 @@ function offerChunk(dataVersion: string, values = [pricingOffer()]): WebsiteOffe
 afterEach(() => vi.unstubAllGlobals());
 
 describe("website detail loading", () => {
-  it("evicts failed requests so a later attempt can recover", async () => {
+  it("deduplicates in-flight requests and evicts failures for retry", async () => {
     const dataVersion = "a".repeat(64);
     let attempts = 0;
     vi.stubGlobal("fetch", async () => {
@@ -145,7 +145,12 @@ describe("website detail loading", () => {
       return new Response(JSON.stringify(detailChunk(dataVersion, "Recovered")));
     });
 
-    await expect(loadWebsiteModelDetail(dataVersion, model)).rejects.toThrow("temporary failure");
+    await expect(
+      Promise.all([
+        loadWebsiteModelDetail(dataVersion, model),
+        loadWebsiteModelDetail(dataVersion, model),
+      ]),
+    ).rejects.toThrow("temporary failure");
     await expect(loadWebsiteModelDetail(dataVersion, model)).resolves.toMatchObject({
       description: "Recovered",
     });
