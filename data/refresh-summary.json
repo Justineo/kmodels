@@ -1,8 +1,8 @@
 {
-  "catalog_version": "41e187d8ee4b0b55a5c6d2be30ee08db0d821fe10b7c466b472d6ed1191a3dd3",
-  "generated_at": "2026-08-22T02:22:42.051Z",
+  "catalog_version": "c884aea659b771feee27e9dba68cc3d0dbc4adc3c859bade682779c231f27013",
+  "generated_at": "2026-08-22T03:15:47.977Z",
   "outcome": "changed",
-  "previous_catalog_version": "0aef974691ce368bbe41db18a69a3aa477191b6cc86015e540be2a50195e0f59",
+  "previous_catalog_version": "41e187d8ee4b0b55a5c6d2be30ee08db0d821fe10b7c466b472d6ed1191a3dd3",
   "providers": [
     {
       "attempt": {
@@ -63,7 +63,7 @@
             "source_id": "bedrock-models"
           },
           {
-            "consecutive_failures": 63,
+            "consecutive_failures": 64,
             "last_success_at": "2026-08-19T07:15:30.306Z",
             "message": "The security token included in the request is invalid.",
             "outcome": "fetch_failed",
@@ -297,9 +297,9 @@
             "source_id": "azure-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 87,
             "source_id": "azure-portal-models"
           },
@@ -649,14 +649,8 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-portal-models"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -668,7 +662,7 @@
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "fresh",
       "warning_codes": {
@@ -692,7 +686,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 75,
+            "consecutive_failures": 76,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -836,7 +830,7 @@
             "source_id": "cohere-models"
           },
           {
-            "consecutive_failures": 133,
+            "consecutive_failures": 134,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1660,7 +1654,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1786,
+              "diagnostic_count": 1787,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1709,16 +1703,16 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1786,
+                "unbound": 1787,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 11674,
+              "observed_items": 11675,
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1419,
-                "partner_route_price_not_published": 367,
+                "partner_route_price_not_published": 368,
                 "single_partner_inventory_without_product_evidence": 9816
               },
               "unit": "reviewed source pricing item"
@@ -1944,9 +1938,9 @@
             "source_id": "huggingface-native-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 1419,
             "source_id": "huggingface-hub"
           }
@@ -1977,6 +1971,13 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
                   }
                 ],
                 "path": "routes",
@@ -1994,13 +1995,6 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "image-to-image"
-                  },
-                  {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "image-to-image"
                   }
                 ]
               }
@@ -2012,11 +2006,9 @@
           }
         ],
         "current": 1594,
-        "previous": 1595,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/HiDream-ai/HiDream-I1-Full"
-        ],
+        "previous": 1594,
+        "removed": 0,
+        "removed_model_refs": [],
         "unchanged": 1593
       },
       "pricing": {
@@ -2028,7 +2020,7 @@
         "current_models": 1594,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -1
+          "unknown_models": 0
         },
         "normalized_rate_models": 127,
         "not_applicable_models": 0,
@@ -2066,7 +2058,7 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
@@ -2079,6 +2071,12 @@
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "huggingface-hf-inference"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "huggingface-hub"
           },
           {
             "content_changed": true,
@@ -2097,7 +2095,7 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
@@ -2328,7 +2326,7 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 26,
+            "consecutive_failures": 27,
             "last_success_at": "2026-08-21T00:33:29.022Z",
             "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
             "outcome": "fetch_failed",
@@ -3125,7 +3123,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 51,
+            "consecutive_failures": 52,
             "last_success_at": "2026-08-19T20:04:44.251Z",
             "message": "Vercel model page free pricing disagreed for fish-audio/s1",
             "outcome": "parse_failed",
@@ -3299,7 +3297,7 @@
             "source_id": "vertex-pricing"
           },
           {
-            "consecutive_failures": 61,
+            "consecutive_failures": 62,
             "last_success_at": "2026-08-19T09:10:06.392Z",
             "message": "Google HTTP 400",
             "outcome": "fetch_failed",
@@ -3487,7 +3485,7 @@
     "pricing_retained": 4,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 4,
     "withheld": 0
