@@ -107,11 +107,11 @@ Status: implemented core; provider pricing convergence is in progress
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A
   categorical dimension or exact decimal selector with one possible value resolves internally.
-  A categorical selector whose values carry a recurring daily billing rule exposes one compact UTC
-  rule disclosure below the control. Its values render as separated marker rows rather than an
-  undifferentiated text list. Selecting a value highlights its row and filters rates; the viewer's
-  clock never selects a recurring value. Exact UTC validity instead versions an entire published
-  rate plan.
+  A categorical selector whose values carry a recurring daily or weekly billing rule exposes one
+  compact UTC rule disclosure below the control. Its values render as separated marker rows rather
+  than an undifferentiated text list. Selecting a value highlights its row and filters rates; the
+  viewer's clock never selects a recurring value. Exact UTC validity instead versions an entire
+  published rate plan.
   Model details resolve those exact boundaries against the viewer's clock, show only the current
   plan by default, and expose the next plan through one compact effective-time preview. The preview
   swaps the same rate surface rather than duplicating it. Imprecise year, month, or date validity

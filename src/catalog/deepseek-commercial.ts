@@ -20,6 +20,7 @@ import {
   providerKeyEvidence,
   stripAccountingGaps,
 } from "./pricing-commercial-assembly.ts";
+import { deepseekWeekendOffPeakEffectiveAt } from "./deepseek.ts";
 
 export function applyDeepseekCommercialTopology(
   input: AtomicProviderPricing,
@@ -28,7 +29,7 @@ export function applyDeepseekCommercialTopology(
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
   return {
     ...input,
-    vocabulary: deepseekVocabulary(input.vocabulary),
+    vocabulary: deepseekVocabulary(input.vocabulary, input.observed_at),
     books: input.books.flatMap((book) =>
       book.scope.kind === "models"
         ? [modelBook(book, published.get(book.scope.model_refs[0] ?? ""))]
@@ -37,35 +38,55 @@ export function applyDeepseekCommercialTopology(
   };
 }
 
-function deepseekVocabulary(vocabulary: ProviderPricingVocabulary): ProviderPricingVocabulary {
-  return { ...vocabulary, atoms: vocabulary.atoms.map(deepseekAtom) };
+function deepseekVocabulary(
+  vocabulary: ProviderPricingVocabulary,
+  observedAt: string,
+): ProviderPricingVocabulary {
+  return { ...vocabulary, atoms: vocabulary.atoms.map((atom) => deepseekAtom(atom, observedAt)) };
 }
 
-function deepseekAtom(atom: ProviderAtomRegistryEntry): ProviderAtomRegistryEntry {
+function deepseekAtom(
+  atom: ProviderAtomRegistryEntry,
+  observedAt: string,
+): ProviderAtomRegistryEntry {
   if (
     atom.kind !== "categorical_value" ||
     atom.dimension.namespace !== "kmodels" ||
     atom.dimension.value !== "billing_period"
   )
     return atom;
+  const weekendsAreOffPeak = observedAt >= deepseekWeekendOffPeakEffectiveAt;
   if (atom.key === "peak")
     return {
       ...atom,
       label: "Peak",
-      schedule: {
-        kind: "daily_time_windows",
-        time_zone: "UTC",
-        windows: [
-          { from: "01:00", until: "04:00" },
-          { from: "06:00", until: "10:00" },
-        ],
-      },
+      schedule: weekendsAreOffPeak
+        ? {
+            kind: "weekly_time_windows",
+            time_zone: "UTC",
+            days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+            windows: [
+              { from: "01:00", until: "04:00" },
+              { from: "06:00", until: "10:00" },
+            ],
+          }
+        : {
+            kind: "daily_time_windows",
+            time_zone: "UTC",
+            windows: [
+              { from: "01:00", until: "04:00" },
+              { from: "06:00", until: "10:00" },
+            ],
+          },
     };
   if (atom.key === "off_peak")
     return {
       ...atom,
       label: "Off-peak",
-      schedule: { kind: "daily_time_remainder", time_zone: "UTC" },
+      schedule: {
+        kind: weekendsAreOffPeak ? "weekly_time_remainder" : "daily_time_remainder",
+        time_zone: "UTC",
+      },
     };
   return atom;
 }

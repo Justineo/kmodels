@@ -15,7 +15,7 @@ import {
   standardBillingUnits,
   standardPriceDimensions,
 } from "./pricing-vocabulary.ts";
-import { dailyTimeScheduleSchema } from "./pricing-temporal.ts";
+import { recurringTimeScheduleSchema } from "./pricing-temporal.ts";
 
 const hash = z.string().regex(/^[0-9a-f]{64}$/);
 const nonEmpty = z.string().min(1);
@@ -264,7 +264,7 @@ const websitePricingSelectorSchema = z.discriminatedUnion("kind", [
           key: z.string().min(1),
           label: z.string().min(1),
           value: priceCategoricalValueSchema,
-          schedule: dailyTimeScheduleSchema.optional(),
+          schedule: recurringTimeScheduleSchema.optional(),
         }),
       )
       .min(1),

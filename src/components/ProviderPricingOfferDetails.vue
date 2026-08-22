@@ -1,6 +1,6 @@
 <script setup lang="ts" vapor>
 import { computed } from "vue";
-import { formatDailyTimeSchedule, formatRateUnit } from "../catalog/pricing-presentation.ts";
+import { formatRateUnit, formatRecurringTimeSchedule } from "../catalog/pricing-presentation.ts";
 import type { WebsitePricingOffer, WebsitePricingSelector } from "../catalog/website-schema.ts";
 import ChargeDriverFacts from "./ChargeDriverFacts.vue";
 
@@ -18,7 +18,7 @@ function selectorSummary(selector: WebsitePricingSelector): string {
   if (selector.kind === "categorical")
     return summarize(
       selector.values.map(({ label, schedule }) =>
-        schedule === undefined ? label : `${label} (${formatDailyTimeSchedule(schedule)} UTC)`,
+        schedule === undefined ? label : `${label} (${formatRecurringTimeSchedule(schedule)} UTC)`,
       ),
     );
   if (selector.kind === "boolean") return "Yes or no";

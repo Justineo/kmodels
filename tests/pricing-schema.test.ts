@@ -149,7 +149,7 @@ describe("canonical pricing wire schema", () => {
     ).toThrow("Invalid datetime value");
   });
 
-  it("models recurring daily rules without evaluating the current time", () => {
+  it("models recurring daily and weekly rules without evaluating the current time", () => {
     const atom = {
       kind: "categorical_value",
       key: "peak",
@@ -177,5 +177,22 @@ describe("canonical pricing wire schema", () => {
         },
       }),
     ).toThrow("sorted and non-overlapping");
+
+    const weekly = {
+      ...atom,
+      schedule: {
+        kind: "weekly_time_windows",
+        time_zone: "UTC",
+        days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+        windows: atom.schedule.windows,
+      },
+    };
+    expect(providerAtomRegistryEntrySchema.parse(weekly)).toEqual(weekly);
+    expect(() =>
+      providerAtomRegistryEntrySchema.parse({
+        ...weekly,
+        schedule: { ...weekly.schedule, days: ["friday", "monday"] },
+      }),
+    ).toThrow("sorted and unique");
   });
 });

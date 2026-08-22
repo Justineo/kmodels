@@ -18,6 +18,8 @@ The fetch bundle contains only companions that contribute a current catalog or r
   [Responses](https://api-docs.deepseek.com/api/create-response), and
   [FIM](https://api-docs.deepseek.com/api/create-completion) references for exact operation model
   sets and returned usage fields; and
+- the [Vision guide](https://api-docs.deepseek.com/guides/vision) for the exact image-input model and
+  its image-to-token billing rule; and
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
   current-inventory witness.
 
@@ -41,16 +43,24 @@ conflict because their denominations differ. Kmodels does not infer which curren
 credential; a consumer selects the applicable currency from its own account configuration.
 
 The current price tables publish Peak and Off-peak rows directly inside the model table. They are
-`billing_period` variants: Peak covers the half-open UTC windows `01:00–04:00` and `06:00–10:00`,
-while Off-peak is the remainder of each UTC day. The Chinese table is accepted only when its
-Beijing-time rule maps to the same UTC schedule. The pages publish no effective instant, so Kmodels
-does not infer a validity boundary. Kmodels records the published daily rule and exposes
-Peak/Off-peak as categorical choices; collection never decides a period from its own clock.
+`billing_period` variants. Since `2026-08-22T16:00:00Z`, Peak covers the half-open UTC windows
+`01:00–04:00` and `06:00–10:00` on Monday through Friday, while Off-peak is the weekly remainder;
+Saturday and Sunday in Beijing time are therefore entirely Off-peak. The Chinese table is accepted
+only when its Beijing-time rule maps to the same UTC schedule. Kmodels records the published weekly
+rule and exposes Peak/Off-peak as categorical choices; collection never decides a period from its
+own clock. Older observations before the exact rule-change instant retain the preceding daily
+schedule.
 
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort
 changes quantity rather than rate. FIM, Responses, and Anthropic compatibility do not create new
 offers when they use the same model rates.
+
+`deepseek-v4-flash-vision-exp` owns the same explicit Peak/Off-peak token rates published in its
+model column. Images are converted to tokens from their dimensions and included with text input
+tokens, so the price book does not duplicate that aggregate input usage as a second image rate. The
+Vision guide establishes image input in the model catalog, while verified Chat Completions and
+Responses usage counters remain the charge bindings for the combined billable input-token totals.
 
 DeepSeek publishes no separate generic function-call or web-search-call rate. A tool loop or built-in
 search may cause additional inference requests, but an AI Gateway observes and prices those requests
@@ -104,7 +114,7 @@ there is no fuzzy reconciliation, family inheritance, or comparator fallback.
 ## Presentation
 
 Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors, the compact UTC
-daily rule, the three applicable published rates, and their verified usage counters. They do not
+weekly rule, the three applicable published rates, and their verified usage counters. They do not
 show balance, concurrency, settlement, routing, provisioning, training, storage, or a separate
 web-search price. The website presents rates rather than calculating a total or deciding the
 current billing period; Gateway consumers may select the applicable rule, multiply rates by

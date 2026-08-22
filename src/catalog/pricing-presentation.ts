@@ -36,7 +36,7 @@ import type {
   UnitExpression,
   UnitPrice,
 } from "./pricing-schema.ts";
-import type { DailyTimeSchedule } from "./pricing-temporal.ts";
+import { recurringWeekdays, type RecurringTimeSchedule } from "./pricing-temporal.ts";
 import type { ProviderModel } from "./schema.ts";
 
 type PricingModel = Pick<ProviderModel, "provider_id" | "tasks" | "uid">;
@@ -751,9 +751,36 @@ export function formatCategoricalValue(value: PriceCategoricalValue): string {
       : value.value;
 }
 
-export function formatDailyTimeSchedule(schedule: DailyTimeSchedule): string {
-  if (schedule.kind === "daily_time_remainder") return "All other times";
-  return schedule.windows.map(({ from, until }) => `${from}–${until}`).join(", ");
+export function formatRecurringTimeSchedule(schedule: RecurringTimeSchedule): string {
+  if (schedule.kind === "daily_time_remainder" || schedule.kind === "weekly_time_remainder")
+    return "All other times";
+  const windows = schedule.windows.map(({ from, until }) => `${from}–${until}`).join(", ");
+  return schedule.kind === "weekly_time_windows"
+    ? `${formatRecurringDays(schedule.days)} · ${windows}`
+    : windows;
+}
+
+function formatRecurringDays(days: readonly (typeof recurringWeekdays)[number][]): string {
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+  const ranges: string[] = [];
+  for (let start = 0; start < days.length;) {
+    let end = start;
+    while (
+      end + 1 < days.length &&
+      recurringDayIndex(days[end + 1]) === recurringDayIndex(days[end]) + 1
+    )
+      end += 1;
+    const first = labels[recurringDayIndex(days[start])];
+    const last = labels[recurringDayIndex(days[end])];
+    if (first !== undefined && last !== undefined)
+      ranges.push(start === end ? first : `${first}–${last}`);
+    start = end + 1;
+  }
+  return ranges.join(", ");
+}
+
+function recurringDayIndex(day: (typeof recurringWeekdays)[number] | undefined): number {
+  return day === undefined ? -1 : recurringWeekdays.indexOf(day);
 }
 
 export function formatRateUnit(value: string): string {

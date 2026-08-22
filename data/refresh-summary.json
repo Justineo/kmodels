@@ -1,8 +1,8 @@
 {
-  "catalog_version": "c60216eb03eea0b552614aa84c770227492ff079f7d8624733dfc8ea040f1533",
-  "generated_at": "2026-08-22T22:03:06.228Z",
+  "catalog_version": "a81bae4846f7489a7d8baeca224bfb33df65efa004367edb71c44b0bcc190dc7",
+  "generated_at": "2026-08-22T22:49:24.724Z",
   "outcome": "changed",
-  "previous_catalog_version": "ab9110e9bf79a76574aeb6129eb81b50cc5812e0f3e2957ff6463f37be1d9c77",
+  "previous_catalog_version": "ade76d637d979632dc482f66d20e90819750be31c7edca36fa3229beff215979",
   "providers": [
     {
       "attempt": {
@@ -13,9 +13,575 @@
         "models": {
           "added": 0,
           "added_model_refs": [],
-          "changed": 0,
-          "changed_fields": {},
-          "changed_models": [],
+          "changed": 6,
+          "changed_fields": {
+            "availability": 3,
+            "status": 3
+          },
+          "changed_models": [
+            {
+              "field_changes": [
+                {
+                  "current": "legacy",
+                  "path": "status",
+                  "previous": "active"
+                }
+              ],
+              "fields": [
+                "status"
+              ],
+              "model_ref": "amazon-bedrock/ai21.jamba-1-5-large-v1:0",
+              "previous_status": "active",
+              "status": "legacy"
+            },
+            {
+              "field_changes": [
+                {
+                  "current": "legacy",
+                  "path": "status",
+                  "previous": "active"
+                }
+              ],
+              "fields": [
+                "status"
+              ],
+              "model_ref": "amazon-bedrock/ai21.jamba-1-5-mini-v1:0",
+              "previous_status": "active",
+              "status": "legacy"
+            },
+            {
+              "field_changes": [
+                {
+                  "current": [
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-northeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-northeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-southeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ca-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "il-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-northeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "me-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-gov-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-west-2"
+                    }
+                  ],
+                  "path": "availability",
+                  "previous": [
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "il-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-northeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "me-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-gov-west-1"
+                    }
+                  ]
+                }
+              ],
+              "fields": [
+                "availability"
+              ],
+              "model_ref": "amazon-bedrock/amazon.nova-lite-v1:0"
+            },
+            {
+              "field_changes": [
+                {
+                  "current": [
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-northeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-northeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-southeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "il-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-gov-west-1"
+                    }
+                  ],
+                  "path": "availability",
+                  "previous": [
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "il-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-gov-west-1"
+                    }
+                  ]
+                }
+              ],
+              "fields": [
+                "availability"
+              ],
+              "model_ref": "amazon-bedrock/amazon.nova-micro-v1:0"
+            },
+            {
+              "field_changes": [
+                {
+                  "current": [
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-northeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-northeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-southeast-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "il-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "me-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-gov-west-1"
+                    }
+                  ],
+                  "path": "availability",
+                  "previous": [
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-north-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-south-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "eu-west-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "il-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-east-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/geo",
+                      "region": "us-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "ap-southeast-3"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "eu-west-2"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "me-central-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-east-1"
+                    },
+                    {
+                      "deployment_type": "bedrock-runtime/in-region",
+                      "region": "us-gov-west-1"
+                    }
+                  ]
+                }
+              ],
+              "fields": [
+                "availability"
+              ],
+              "model_ref": "amazon-bedrock/amazon.nova-pro-v1:0"
+            },
+            {
+              "field_changes": [
+                {
+                  "current": "legacy",
+                  "path": "status",
+                  "previous": "active"
+                }
+              ],
+              "fields": [
+                "status"
+              ],
+              "model_ref": "amazon-bedrock/twelvelabs.marengo-embed-2-7-v1:0",
+              "previous_status": "active",
+              "status": "legacy"
+            }
+          ],
           "current": 113,
           "previous": 130,
           "removed": 17,
@@ -38,7 +604,7 @@
             "amazon-bedrock/anthropic.claude-sonnet-4-6",
             "amazon-bedrock/anthropic.claude-sonnet-5"
           ],
-          "unchanged": 113
+          "unchanged": 107
         },
         "outcome": "rejected",
         "pricing": {
@@ -97,7 +663,7 @@
             "source_id": "bedrock-models"
           },
           {
-            "consecutive_failures": 83,
+            "consecutive_failures": 84,
             "last_success_at": "2026-08-19T07:15:30.306Z",
             "message": "The security token included in the request is invalid.",
             "outcome": "fetch_failed",
@@ -342,9 +908,9 @@
             "source_id": "azure-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 87,
             "source_id": "azure-portal-models"
           },
@@ -559,9 +1125,9 @@
             "source_id": "azure-claude-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 172,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -694,8 +1260,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 3,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "azure-portal-models"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -707,7 +1285,7 @@
         "previous": 6,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -731,7 +1309,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 95,
+            "consecutive_failures": 96,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -875,7 +1453,7 @@
             "source_id": "cohere-models"
           },
           {
-            "consecutive_failures": 153,
+            "consecutive_failures": 154,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1398,15 +1976,15 @@
         },
         "sources": [
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
             "parsed_models": 3,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 3,
-              "normalized_facts": 24,
+              "normalized_facts": 36,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 3,
@@ -1416,23 +1994,8 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 5,
+              "diagnostic_count": 2,
               "diagnostics": [
-                {
-                  "disposition": "unsupported",
-                  "reason_code": "catalog_row_unhandled",
-                  "sample": "1M INPUT TOKENS(CACHE HIT) | 1M INPUT TOKENS(CACHE HIT) | 1M INPUT TOKENS(CACHE MISS) | 1M INPUT TOKENS(CACHE MISS)"
-                },
-                {
-                  "disposition": "unsupported",
-                  "reason_code": "catalog_support_claim_drift",
-                  "sample": "FIM Completion（Beta）: Unknown DeepSeek support value: Not supported"
-                },
-                {
-                  "disposition": "unsupported",
-                  "reason_code": "fim_table_claim_drift",
-                  "sample": "deepseek-v4-flash-vision-exp:FIM Completion: Unknown DeepSeek support value: Not supported"
-                },
                 {
                   "disposition": "unbound",
                   "reason_code": "fim_inventory_disagreement"
@@ -1446,36 +2009,33 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 0,
-                "normalized": 24,
+                "normalized": 36,
                 "raw": 0,
                 "unbound": 2,
                 "unresolved": 0,
-                "unsupported": 3
+                "unsupported": 0
               },
-              "observed_items": 29,
+              "observed_items": 38,
               "reason_counts": {
-                "catalog_row_unhandled": 1,
-                "catalog_support_claim_drift": 1,
                 "fim_inventory_disagreement": 1,
-                "fim_table_claim_drift": 1,
                 "model_inventory_disagreement": 1,
-                "price_fact_normalized": 24
+                "price_fact_normalized": 36
               },
               "unit": "reviewed source pricing item"
             },
             "source_id": "deepseek-catalog"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 5,
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
+            "parsed_models": 6,
             "source_id": "deepseek-updates"
           },
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
+            "content_changed": true,
+            "extractor_changed": true,
+            "outcome": "changed",
             "parsed_models": 3,
             "source_id": "deepseek-api"
           }
@@ -1494,9 +2054,9 @@
         "unchanged": 3
       },
       "pricing": {
-        "commercial_hash": "1fdd20f36c22cffd7ccb22408f53cb52b480ece2603701f9882c036dd3b462b6",
+        "commercial_hash": "b1e7be8250e9388e1c55f00f9ecf312b1589d143faf50ba6b921829049d8f7d4",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "1fdd20f36c22cffd7ccb22408f53cb52b480ece2603701f9882c036dd3b462b6"
+        "previous_commercial_hash": "b1e7be8250e9388e1c55f00f9ecf312b1589d143faf50ba6b921829049d8f7d4"
       },
       "pricing_coverage": {
         "current_models": 3,
@@ -1529,7 +2089,7 @@
       },
       "status": "fresh",
       "warning_codes": {
-        "missing_field": 2,
+        "missing_field": 1,
         "scope_limited": 1
       }
     },
@@ -1684,22 +2244,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1550,
+            "parsed_models": 1551,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1550,
+              "model_records": 1551,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1550
+              "unknown_models": 1551
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1789,
+              "diagnostic_count": 1791,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -1744,21 +2304,21 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 10324,
+                "excluded": 10323,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1789,
+                "unbound": 1791,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 12113,
+              "observed_items": 12114,
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1418,
-                "partner_route_price_not_published": 371,
-                "single_partner_inventory_without_product_evidence": 10252
+                "partner_route_price_not_published": 373,
+                "single_partner_inventory_without_product_evidence": 10251
               },
               "unit": "reviewed source pricing item"
             },
@@ -1773,7 +2333,7 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 130,
-              "normalized_facts": 406,
+              "normalized_facts": 408,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 107,
@@ -1830,17 +2390,17 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 203,
+                "normalized": 204,
                 "raw": 0,
                 "unbound": 100,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 305,
+              "observed_items": 306,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 203,
+                "route_price_normalized": 204,
                 "route_price_not_published": 100
               },
               "unit": "reviewed source pricing item"
@@ -1992,19 +2552,67 @@
         ]
       },
       "models": {
-        "added": 1,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/Qwen/Qwen2.5-7B-Instruct-1M"
+          "huggingface/ideogram-ai/ideogram-4-fp8",
+          "huggingface/stabilityai/stable-diffusion-3.5-medium"
         ],
-        "changed": 4,
+        "changed": 9,
         "changed_fields": {
           "capabilities": 4,
-          "limits": 1,
-          "routes": 1,
-          "source_refs": 1,
-          "task_evidence": 1
+          "routes": 5
         },
         "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/qwen-image-edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "qwen/qwen-image-edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/qwen-image/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/qwen-image-edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/qwen-image/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen-Image-Edit"
+          },
           {
             "field_changes": [
               {
@@ -2017,6 +2625,69 @@
               "capabilities"
             ],
             "model_ref": "huggingface/Qwen/Qwen3-30B-A3B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3-vl-30b-a3b-instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3-vl-30b-a3b-instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-VL-30B-A3B-Instruct"
           },
           {
             "field_changes": [
@@ -2034,6 +2705,56 @@
           {
             "field_changes": [
               {
+                "current": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/black-forest-labs/FLUX.2-klein-base-9B"
+          },
+          {
+            "field_changes": [
+              {
                 "current": "unknown",
                 "path": "capabilities.structured_output",
                 "previous": true
@@ -2047,85 +2768,190 @@
           {
             "field_changes": [
               {
-                "path": "task_evidence",
-                "previous": [
-                  {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
-                    "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ]
-              },
-              {
-                "path": "routes",
-                "previous": [
+                "current": [
                   {
                     "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V3",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "groq",
+                    "provider_model_id": "openai/gpt-oss-20b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v3-turbo",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "groq",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "openai/gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "gpt-oss-20b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "openai/gpt-oss-20b",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ]
-              },
-              {
-                "current": false,
-                "path": "capabilities.structured_output",
-                "previous": true
-              },
-              {
-                "current": 64000,
-                "path": "limits.context_tokens",
-                "previous": 163840
-              },
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/openai/gpt-oss-20b"
+          },
+          {
+            "field_changes": [
               {
                 "current": [
-                  "huggingface-router"
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ],
-                "path": "source_refs",
+                "path": "routes",
                 "previous": [
-                  "huggingface-hf-inference",
-                  "huggingface-router"
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               }
             ],
             "fields": [
-              "task_evidence",
-              "routes",
-              "capabilities",
-              "limits",
-              "source_refs"
+              "routes"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3"
+            "model_ref": "huggingface/zai-org/GLM-5.1"
           }
         ],
         "current": 1593,
-        "previous": 1593,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/openai/privacy-filter"
-        ],
-        "unchanged": 1588
+        "previous": 1591,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1582
       },
       "pricing": {
-        "commercial_hash": "ae11590ace20a90ccc8aa43f105dae5d2b12235bc43c29f24fe7ba4bfa921a25",
+        "commercial_hash": "3acfea85a094756f9bd329cf6da36fb1fa7471e06b415bfb06903e29c4a85aca",
         "outcome": "commercial",
-        "previous_commercial_hash": "01ce1f494135e8980c0f6cfe57a4b953e3468b9f004f91e534dbe75b43b95a58"
+        "previous_commercial_hash": "829c58865cb855356443133bc44b05783f7ec0bbce118624b10b2c220259c8e6"
       },
       "pricing_coverage": {
         "current_models": 1593,
         "delta": {
-          "resolved_models": 1,
-          "unknown_models": -1
+          "resolved_models": 0,
+          "unknown_models": 2
         },
         "normalized_rate_models": 125,
         "not_applicable_models": 0,
@@ -2210,11 +3036,7 @@
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_unavailable",
-          "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
           "outcome": "accepted"
         },
@@ -2431,11 +3253,149 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 46,
-            "last_success_at": "2026-08-21T00:33:29.022Z",
-            "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 9,
             "source_id": "kimi-releases"
+          },
+          {
+            "content_changed": true,
+            "contract_finding": {
+              "diagnostic_count": 7,
+              "diagnostics": [
+                {
+                  "affected_items": 12,
+                  "fingerprint": "46b89b71244a070e",
+                  "kind": "unknown_field",
+                  "observed": "array",
+                  "path": "/permission",
+                  "sample_model_ids": [
+                    "kimi-k2.5",
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "5cac759b491ab9d1",
+                  "kind": "unknown_field",
+                  "observed": "boolean",
+                  "observed_value": "true",
+                  "path": "/supports_dynamic_tools",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "d2de0dcf9b46bd01",
+                  "kind": "unknown_field",
+                  "observed": "object",
+                  "path": "/reasoning_efforts",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "1e0bfe10519c56c4",
+                  "kind": "unknown_field",
+                  "observed": "object",
+                  "path": "/think_efforts",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                },
+                {
+                  "affected_items": 12,
+                  "fingerprint": "aaaff6321adbaa87",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/parent",
+                  "sample_model_ids": [
+                    "kimi-k2.5",
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 12,
+                  "fingerprint": "d90fbd39aa93a658",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/root",
+                  "sample_model_ids": [
+                    "kimi-k2.5",
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "a6ffe448ff9b5f9a",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/supports_thinking_type",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 12
+            },
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 12,
+            "source_id": "kimi-api"
+          },
+          {
+            "content_changed": true,
+            "contract_finding": {
+              "diagnostic_count": 3,
+              "diagnostics": [
+                {
+                  "affected_items": 2,
+                  "fingerprint": "46b89b71244a070e",
+                  "kind": "unknown_field",
+                  "observed": "array",
+                  "path": "/permission",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 2,
+                  "fingerprint": "aaaff6321adbaa87",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/parent",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 2,
+                  "fingerprint": "d90fbd39aa93a658",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/root",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 2
+            },
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 2,
+            "source_id": "kimi-china-api"
           }
         ]
       },
@@ -2474,24 +3434,40 @@
       },
       "pricing_publication": "accepted",
       "provider_id": "kimi",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [
-        "persistent_source_failure"
+        "unreviewed_extension"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-china-api"
+          }
+        ],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 9
+        "unchanged": 7
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_fetch_failed": 1
+        "catalog_api_set_mismatch": 2,
+        "missing_field": 3,
+        "scope_limited": 2,
+        "source_contract_extension": 2
       }
     },
     {
@@ -3228,7 +4204,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 71,
+            "consecutive_failures": 72,
             "last_success_at": "2026-08-19T20:04:44.251Z",
             "message": "Vercel model page free pricing disagreed for fish-audio/s1",
             "outcome": "parse_failed",
@@ -3402,7 +4378,7 @@
             "source_id": "vertex-pricing"
           },
           {
-            "consecutive_failures": 81,
+            "consecutive_failures": 82,
             "last_success_at": "2026-08-19T09:10:06.392Z",
             "message": "Google HTTP 400",
             "outcome": "fetch_failed",
@@ -3578,11 +4554,11 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 13,
-    "added_models": 1,
+    "accepted": 14,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 4,
-    "changed_sources": 21,
+    "changed_models": 9,
+    "changed_sources": 25,
     "models": 3516,
     "pricing_accepted": 14,
     "pricing_not_observed": 0,
@@ -3590,9 +4566,9 @@
     "pricing_retained": 4,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
-    "retained": 5,
+    "retained": 4,
     "withheld": 0
   }
 }

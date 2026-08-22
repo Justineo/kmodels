@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { pricingDecimalPattern, pricingLimits } from "./pricing-constants.ts";
-import { dailyTimeScheduleSchema } from "./pricing-temporal.ts";
+import { recurringTimeScheduleSchema } from "./pricing-temporal.ts";
 import { isCanonicalInstant, isPublishedTime } from "./pricing-time.ts";
 import {
   applicabilityResolutionPhases,
@@ -549,7 +549,7 @@ export const providerAtomRegistryEntrySchema = z.union([
     dimension: priceDimensionSchema,
     definition: nonEmptyString,
     label: nonEmptyString.optional(),
-    schedule: dailyTimeScheduleSchema.optional(),
+    schedule: recurringTimeScheduleSchema.optional(),
   }),
 ]);
 

@@ -3550,7 +3550,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v12",
+        extractorVersion: "deepseek-catalog-v14",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3581,6 +3581,7 @@ export const manifests = [
             ["chat-completions", "https://api-docs.deepseek.com/api/create-chat-completion", 1],
             ["responses", "https://api-docs.deepseek.com/api/create-response"],
             ["fim-completion", "https://api-docs.deepseek.com/api/create-completion", 1],
+            ["vision", "https://api-docs.deepseek.com/guides/vision", 1],
             ["model-inventory", "https://api-docs.deepseek.com/api/list-models", 1],
             ["cny-pricing", "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/", 1],
           ]),

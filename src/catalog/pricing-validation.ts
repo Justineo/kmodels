@@ -244,11 +244,11 @@ function validateVocabulary(
     if (atoms.has(key)) fail("vocabulary", "duplicate provider atom key");
     atoms.set(key, atom);
   }
-  validateDailyTimeSchedules(vocabulary);
+  validateRecurringTimeSchedules(vocabulary);
   return atoms;
 }
 
-function validateDailyTimeSchedules(vocabulary: ProviderPricingVocabulary): void {
+function validateRecurringTimeSchedules(vocabulary: ProviderPricingVocabulary): void {
   const groups = new Map<
     string,
     Array<Extract<ProviderAtomRegistryEntry, { kind: "categorical_value" }>>
@@ -261,31 +261,54 @@ function validateDailyTimeSchedules(vocabulary: ProviderPricingVocabulary): void
     else group.push(atom);
   }
   for (const scheduled of groups.values()) {
-    const remainders = scheduled.filter(
-      ({ schedule }) => schedule?.kind === "daily_time_remainder",
+    const recurrences = new Set(
+      scheduled.map(({ schedule }) =>
+        schedule?.kind.startsWith("weekly_") === true ? "weekly" : "daily",
+      ),
     );
-    const windowAtoms = scheduled.filter(({ schedule }) => schedule?.kind === "daily_time_windows");
+    if (recurrences.size !== 1)
+      fail("vocabulary", "a recurring categorical schedule cannot mix daily and weekly rules");
+    const recurrence = [...recurrences][0];
+    const remainderKind =
+      recurrence === "weekly" ? "weekly_time_remainder" : "daily_time_remainder";
+    const windowKind = recurrence === "weekly" ? "weekly_time_windows" : "daily_time_windows";
+    const remainders = scheduled.filter(({ schedule }) => schedule?.kind === remainderKind);
+    const windowAtoms = scheduled.filter(({ schedule }) => schedule?.kind === windowKind);
     if (remainders.length !== 1 || windowAtoms.length === 0)
       fail(
         "vocabulary",
-        "a daily categorical schedule requires window values and one remainder value",
+        "a recurring categorical schedule requires window values and one remainder value",
       );
     const windows = windowAtoms
-      .flatMap((atom) =>
-        atom.schedule?.kind === "daily_time_windows"
-          ? atom.schedule.windows.map((window) => ({ ...window, atom: atom.key }))
-          : [],
-      )
+      .flatMap((atom) => {
+        if (atom.schedule?.kind === "weekly_time_windows") {
+          const { days, windows: weeklyWindows } = atom.schedule;
+          return days.flatMap((day) =>
+            weeklyWindows.map((window) => ({ ...window, atom: atom.key, day })),
+          );
+        }
+        return atom.schedule?.kind === "daily_time_windows"
+          ? atom.schedule.windows.map((window) => ({ ...window, atom: atom.key, day: "daily" }))
+          : [];
+      })
       .sort(
-        (left, right) => compareUtf8(left.from, right.from) || compareUtf8(left.until, right.until),
+        (left, right) =>
+          compareUtf8(left.day, right.day) ||
+          compareUtf8(left.from, right.from) ||
+          compareUtf8(left.until, right.until),
       );
     for (let index = 1; index < windows.length; index += 1) {
       const previous = windows[index - 1];
       const current = windows[index];
-      if (previous !== undefined && current !== undefined && previous.until > current.from)
+      if (
+        previous !== undefined &&
+        current !== undefined &&
+        previous.day === current.day &&
+        previous.until > current.from
+      )
         fail(
           "vocabulary",
-          `daily categorical schedules ${previous.atom} and ${current.atom} overlap`,
+          `recurring categorical schedules ${previous.atom} and ${current.atom} overlap`,
         );
     }
   }

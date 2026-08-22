@@ -457,11 +457,14 @@ Standard dimensions have schema-owned kinds and value grammars. Provider
 dimensions and categorical values are provider-qualified and registered.
 Unknown source applicability is not represented as an exact selector.
 
-A provider-published recurring daily billing rule is metadata on its categorical values, not a
-datetime condition. The bounded form is either one or more sorted, non-overlapping UTC
-`[from, until)` windows or the single remainder of those windows. A scheduled categorical
-partition requires at least one window value and exactly one remainder value. This records rules
-such as Peak and Off-peak without selecting a value from collection time or the viewer's clock.
+A provider-published recurring billing rule is metadata on its categorical values, not a datetime
+condition. The bounded form is either one or more sorted, non-overlapping UTC `[from, until)`
+windows or the single remainder of those windows. A daily rule applies those windows every day. A
+weekly rule additionally carries a sorted, unique weekday set for its windows; its remainder covers
+every other time, including days outside that set. A scheduled categorical partition uses one
+recurrence kind and requires at least one window value and exactly one remainder value. This records
+rules such as Peak and Off-peak without selecting a value from collection time or the viewer's
+clock.
 
 Partial UI evaluation is three-valued:
 
@@ -482,9 +485,9 @@ contract records that fact without asserting currentness. Model details may use
 exact datetime boundaries to select the current rate-plan version without
 rewriting or discarding the published validity.
 
-Recurring daily schedules and published validity are independent: the schedule says which
-categorical value applies within a day, while validity says when that published rule starts or
-stops being offered.
+Recurring schedules and published validity are independent: the schedule says which categorical
+value applies within a day or week, while validity says when that published rule starts or stops
+being offered.
 
 Kmodels does not turn collection time into validity or execute imprecise year,
 month, or date labels as a historical/current query. Model details default to
@@ -795,11 +798,11 @@ resolves labels by provider, dimension, and exact value. Values without a
 reviewed label continue through the shared conservative formatter. Components
 never contain provider- or value-specific label branches.
 
-When a categorical value carries a recurring daily schedule, the compact payload preserves the
-structured rule beside that selector value. Model details show a quiet UTC rule list directly below
-the selector and highlight the chosen row; the provider inspector includes the same rule in its
-read-only summary. Neither surface chooses Peak/Off-peak automatically from the viewer's clock.
-This remains independent from model-detail resolution of a one-time exact rate-plan validity
+When a categorical value carries a recurring daily or weekly schedule, the compact payload
+preserves the structured rule beside that selector value. Model details show a quiet UTC rule list
+directly below the selector and highlight the chosen row; the provider inspector includes the same
+rule in its read-only summary. Neither surface chooses Peak/Off-peak automatically from the viewer's
+clock. This remains independent from model-detail resolution of a one-time exact rate-plan validity
 boundary; the provider inspector continues to expose every reviewed validity-qualified row.
 
 Configured labels may outlive a volatile vocabulary value and remain dormant
