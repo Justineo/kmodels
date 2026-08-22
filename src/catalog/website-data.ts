@@ -40,7 +40,7 @@ import type {
   UsageSignal,
 } from "./pricing-schema.ts";
 import { standardUsageSignalDetails } from "./pricing-vocabulary.ts";
-import type { DailyTimeSchedule } from "./pricing-temporal.ts";
+import type { RecurringTimeSchedule } from "./pricing-temporal.ts";
 import type { Catalog, ProviderModel } from "./schema.ts";
 import {
   websiteCatalogIndexSchema,
@@ -69,7 +69,7 @@ export const WEBSITE_APPLICABILITY_LABEL_MAX_LENGTH = 180;
 const WEBSITE_DETAIL_CHUNK_PAYLOAD_BYTES = WEBSITE_DETAIL_CHUNK_MAX_BYTES - 1024;
 interface CategoricalMetadata {
   label?: string;
-  schedule?: DailyTimeSchedule;
+  schedule?: RecurringTimeSchedule;
 }
 type CategoricalMetadataIndex = ReadonlyMap<string, CategoricalMetadata>;
 type ProviderAtomIndex = ReadonlyMap<string, ProviderAtomRegistryEntry>;
@@ -1083,8 +1083,8 @@ function addCategoricalMetadata(
 }
 
 function sameSchedule(
-  left: DailyTimeSchedule | undefined,
-  right: DailyTimeSchedule | undefined,
+  left: RecurringTimeSchedule | undefined,
+  right: RecurringTimeSchedule | undefined,
 ): boolean {
   if (left === undefined || right === undefined) return left === right;
   return canonicalJsonKey(left) === canonicalJsonKey(right);
@@ -1094,7 +1094,7 @@ function categoricalMetadata(
   labels: CategoricalMetadataIndex,
   dimension: PriceDimension,
   value: PriceCategoricalValue,
-): { label: string; schedule?: DailyTimeSchedule } {
+): { label: string; schedule?: RecurringTimeSchedule } {
   if (value.namespace === "provider") {
     const metadata = labels.get(
       categoricalLabelIdentity(value.provider_id, dimension, value.value),

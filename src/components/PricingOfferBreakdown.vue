@@ -6,7 +6,7 @@ import {
   evaluateApplicability,
   evaluateModelApplicability,
   formatCategoricalValue,
-  formatDailyTimeSchedule,
+  formatRecurringTimeSchedule,
   formatDimension,
   formatRateUnit,
   formatUnitExpression,
@@ -380,7 +380,8 @@ function scheduleRows(selector: WebsitePricingSelector) {
           {
             key,
             label,
-            rule: formatDailyTimeSchedule(schedule),
+            cadence: schedule.kind.startsWith("weekly_") ? "Weekly" : "Daily",
+            rule: formatRecurringTimeSchedule(schedule),
             timeZone: schedule.time_zone,
           },
         ],
@@ -422,7 +423,10 @@ function scheduleRows(selector: WebsitePricingSelector) {
             />
             <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
               <summary>
-                <span>Daily rule · {{ scheduleRows(selector)[0]?.timeZone }}</span>
+                <span
+                  >{{ scheduleRows(selector)[0]?.cadence }} rule ·
+                  {{ scheduleRows(selector)[0]?.timeZone }}</span
+                >
                 <UiIcon name="chevron-right" />
               </summary>
               <dl>

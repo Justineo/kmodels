@@ -40,15 +40,22 @@ const billingPeriodValues = [
     key: "off-peak",
     label: "Off-peak",
     value: { namespace: "provider" as const, provider_id: "test", value: "off_peak" },
-    schedule: { kind: "daily_time_remainder" as const, time_zone: "UTC" as const },
+    schedule: { kind: "weekly_time_remainder" as const, time_zone: "UTC" as const },
   },
   {
     key: "peak",
     label: "Peak",
     value: { namespace: "provider" as const, provider_id: "test", value: "peak" },
     schedule: {
-      kind: "daily_time_windows" as const,
+      kind: "weekly_time_windows" as const,
       time_zone: "UTC" as const,
+      days: [
+        "monday" as const,
+        "tuesday" as const,
+        "wednesday" as const,
+        "thursday" as const,
+        "friday" as const,
+      ],
       windows: [
         { from: "01:00", until: "04:00" },
         { from: "06:00", until: "10:00" },
@@ -148,8 +155,8 @@ describe("provider pricing details", () => {
     expect(html).not.toContain("Select Billing period to see rates.");
     expect(html).toContain('<details class="schedule-rule"');
     expect(html).not.toContain('<details class="schedule-rule" open');
-    expect(html).toContain("Daily rule · UTC");
-    expect(html).toContain("01:00–04:00, 06:00–10:00");
+    expect(html).toContain("Weekly rule · UTC");
+    expect(html).toContain("Mon–Fri · 01:00–04:00, 06:00–10:00");
     expect(html).toContain("All other times");
     expect(html).not.toContain("current period");
   });
@@ -217,7 +224,7 @@ describe("provider pricing details", () => {
     expect(after).not.toContain("New rates");
     expect(after).not.toContain("$0.90");
     expect(after).toContain("Billing period");
-    expect(after).toContain("Daily rule · UTC");
+    expect(after).toContain("Weekly rule · UTC");
     expect(after).not.toContain("Pricing states");
   });
 

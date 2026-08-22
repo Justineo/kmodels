@@ -70,6 +70,8 @@ const cnyPriceRows = [
 type DeepseekCurrency = "CNY" | "USD";
 type BillingPeriod = "off_peak" | "peak";
 
+export const deepseekWeekendOffPeakEffectiveAt = "2026-08-22T16:00:00.000Z";
+
 type ScheduledPricing =
   | { layout: "inline"; table: HtmlTable }
   | { layout: "separate"; effectiveFrom: string; table: HtmlTable };
@@ -77,6 +79,13 @@ type ScheduledPricing =
 function exactId(value: string): string | undefined {
   const parsed = modelIdSchema.safeParse(value.trim());
   return parsed.success ? parsed.data : undefined;
+}
+
+function updateModelId(value: string): string | undefined {
+  const direct = exactId(value);
+  if (direct !== undefined) return direct;
+  const assignment = /^model\s*=\s*['"]([^'"]+)['"]$/.exec(value.trim());
+  return assignment?.[1] === undefined ? undefined : exactId(assignment[1]);
 }
 
 function withoutFootnote(value: string): string {
@@ -111,7 +120,7 @@ function price(value: string, currency: "CNY" | "USD"): string {
 }
 
 function rowLabel(value: HtmlTable["rows"][number]): string {
-  return withoutFootnote(value[1]?.text ?? value[0]?.text ?? "");
+  return withoutFootnote(value[1]?.text ?? value[0]?.text ?? "").replace(/TOKENS\(/giu, "TOKENS (");
 }
 
 function row(table: HtmlTable, label: string): string[] {
@@ -143,7 +152,7 @@ function cell(table: HtmlTable, label: string, column: number): string {
 function support(table: HtmlTable, label: string, columns: number[]): boolean[] {
   return cells(table, label, columns).map((value) => {
     if (value === "✓" || /^Non-thinking mode only$/i.test(value)) return true;
-    if (value === "✗") return false;
+    if (value === "✗" || /^Not supported$/i.test(value)) return false;
     throw new Error(`Unknown DeepSeek support value: ${value}`);
   });
 }
@@ -315,6 +324,41 @@ function responseClaims(input: Input, body: string | undefined): ResponseClaims 
 interface FimClaims {
   modelIds: Set<string>;
   tokenAccounting: boolean;
+}
+
+interface VisionClaims {
+  modelIds: Set<string>;
+}
+
+function visionClaims(input: Input, body: string | undefined): VisionClaims {
+  if (body === undefined) return { modelIds: new Set() };
+  const ids = claim(input, "vision_contract_drift", "Vision", () => {
+    const $ = load(body);
+    const introductions = $("article p")
+      .toArray()
+      .filter((paragraph) =>
+        /model accepts images alongside text/i.test(htmlText($(paragraph).text())),
+      );
+    if (introductions.length !== 1) throw new Error("expected one image-input model claim");
+    const parsed = $(introductions[0])
+      .find("code")
+      .toArray()
+      .map((code) => exactId(htmlText($(code).text())))
+      .filter((id): id is string => id !== undefined);
+    if (parsed.length !== 1) throw new Error("expected one exact vision model ID");
+    const tokenUsage = $("article h2")
+      .toArray()
+      .filter((heading) => htmlText($(heading).text()) === "Token Usage")
+      .map((heading) => htmlText($(heading).nextUntil("h2").text()));
+    if (
+      tokenUsage.length !== 1 ||
+      !/images are converted into tokens based on their dimensions/i.test(tokenUsage[0] ?? "") ||
+      !/billed together with your text tokens/i.test(tokenUsage[0] ?? "")
+    )
+      throw new Error("image token billing claim changed");
+    return new Set(parsed);
+  });
+  return { modelIds: ids ?? new Set() };
 }
 
 function fimClaims(input: Input, body: string | undefined): FimClaims {
@@ -517,6 +561,7 @@ function model(
   chat: ChatClaims,
   responses: ResponseClaims,
   fim: FimClaims,
+  vision: VisionClaims,
   scheduled: ScheduledPricing | undefined,
 ): ProviderModel {
   const value = <T>(reasonCode: string, label: string, parse: (cell: string) => T): T | undefined =>
@@ -532,6 +577,7 @@ function model(
   const hasChatEndpoint = chat.modelIds.has(id);
   const hasResponsesEndpoint = responses.modelIds.has(id);
   const hasFimEndpoint = fim.modelIds.has(id);
+  const hasImageInput = vision.modelIds.has(id);
   const apiEndpoints = [
     ...(hasChatEndpoint ? [chatEndpoint] : []),
     ...(hasResponsesEndpoint ? [responsesEndpoint] : []),
@@ -547,7 +593,7 @@ function model(
     }),
     tasks: ["text_generation"],
     ...(apiEndpoints.length === 0 ? {} : { api_endpoints: apiEndpoints }),
-    modalities: { input: ["text"], output: ["text"] },
+    modalities: { input: hasImageInput ? ["text", "image"] : ["text"], output: ["text"] },
     capabilities: {
       ...unknownCapabilities(),
       ...(reasoning === undefined ? {} : { reasoning }),
@@ -583,6 +629,7 @@ function model(
 }
 
 function scheduledPricing(
+  input: Input,
   body: string,
   currency: DeepseekCurrency,
   inlineTable: HtmlTable,
@@ -614,9 +661,32 @@ function scheduledPricing(
   const hasInlineRows = expectedHeaders.some(
     (label) => inlineTable.rows.filter((item) => rowLabel(item) === label).length > 1,
   );
-  if (hasSchedule && hasInlineRows) return { layout: "inline", table: inlineTable };
+  if (hasSchedule && hasInlineRows) {
+    validateScheduledRule(input, body, currency);
+    return { layout: "inline", table: inlineTable };
+  }
   if (hasSchedule) throw new Error(`DeepSeek ${currency} scheduled price table not found`);
   return;
+}
+
+function validateScheduledRule(input: Input, body: string, currency: DeepseekCurrency): void {
+  const prose = htmlText(load(body)("article").text());
+  const baseRule =
+    currency === "USD"
+      ? /Peak hours are 01:00\s*[-–]\s*04:00 and 06:00\s*[-–]\s*10:00 UTC \(all other hours are off-peak\)/i
+      : /高峰时段为北京时间\s*0?9:00\s*[-–]\s*12:00[、，,和]\s*14:00\s*[-–]\s*18:00（其余为(?:空闲|低谷)时段）/;
+  if (!baseRule.test(prose)) throw new Error(`DeepSeek ${currency} peak-hour rule changed`);
+  if (input.observedAt < deepseekWeekendOffPeakEffectiveAt) return;
+  const weekendRule =
+    currency === "USD"
+      ? /off-peak rates applying throughout the day on weekends \(Saturdays and Sundays, Beijing Time\)/i
+      : /周末（周六、周日）全天不再区分峰谷时段，统一按照低谷时段价格收取调用费用/;
+  const effectiveRule =
+    currency === "USD"
+      ? /Effective 00:00 \(Beijing Time\) on Sunday, August 23, 2026/i
+      : /北京时间\s*2026\s*年\s*8\s*月\s*23\s*日（周日）\s*00:00\s*起/;
+  if (!weekendRule.test(prose) || !effectiveRule.test(prose))
+    throw new Error(`DeepSeek ${currency} weekend rule changed`);
 }
 
 function englishScheduledEffectiveFrom(body: string): string {
@@ -803,7 +873,7 @@ function attachInlineScheduledRates(
 
 function supportValue(value: string): boolean {
   if (value === "✓" || /^Non-thinking mode only$/i.test(value)) return true;
-  if (value === "✗") return false;
+  if (value === "✗" || /^Not supported$/i.test(value)) return false;
   throw new Error(`Unknown DeepSeek support value: ${value}`);
 }
 
@@ -839,7 +909,7 @@ function attachCnyRates(
     diagnostic(input, "unsupported", "cny_price_table_drift", "model table");
     return;
   }
-  const scheduled = scheduledPricing(body, "CNY", table);
+  const scheduled = scheduledPricing(input, body, "CNY", table);
   const effectiveFrom = scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined;
   if (effectiveFrom !== usdEffectiveFrom)
     throw new Error("DeepSeek USD and CNY scheduled pricing effective times disagree");
@@ -894,6 +964,7 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const chat = chatClaims(input, companion(input, bundle, "/api/create-chat-completion"));
   const responses = responseClaims(input, companion(input, bundle, "/api/create-response"));
   const fim = fimClaims(input, companion(input, bundle, "/api/create-completion"));
+  const vision = visionClaims(input, companion(input, bundle, "/guides/vision"));
   const modelTables = htmlTables(bundle.index.body).filter(
     ({ headers, rows }) =>
       headers[0] === "MODEL" && rows.some((item) => rowLabel(item) === "MODEL VERSION"),
@@ -953,14 +1024,16 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     (fim.modelIds.size !== tableFimIds.size || [...fim.modelIds].some((id) => !tableFimIds.has(id)))
   )
     diagnostic(input, "unbound", "fim_inventory_disagreement");
-  const scheduled = scheduledPricing(bundle.index.body, "USD", table);
+  const scheduled = scheduledPricing(input, bundle.index.body, "USD", table);
   const models = columns.map(({ column, id }) =>
-    model(input, table, column, id, chat, responses, fim, scheduled),
+    model(input, table, column, id, chat, responses, fim, vision, scheduled),
   );
   if (scheduled !== undefined) attachScheduledRates(input, models, scheduled, "USD");
   const knownIds = new Set(models.map(({ model_id }) => model_id));
   for (const id of chat.modelIds)
     if (!knownIds.has(id)) diagnostic(input, "unbound", "chat_model_not_in_catalog", id);
+  for (const id of vision.modelIds)
+    if (!knownIds.has(id)) diagnostic(input, "unbound", "vision_model_not_in_catalog", id);
   const inventoryBody = companion(input, bundle, "/api/list-models");
   const inventoryIds =
     inventoryBody === undefined
@@ -1007,7 +1080,7 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
 
 interface Dates {
   release?: string;
-  releaseStage?: "preview";
+  releaseStage?: "experimental" | "preview";
   update?: string;
 }
 
@@ -1040,19 +1113,25 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
       .each((_paragraphIndex, paragraph) => {
         const prose = htmlText($(paragraph).text());
         if (
-          !/(?:model parameter|API model names?|model name|model upgraded|new model|models? .* upgraded|corresponds? to)/i.test(
+          !/(?:model parameter|API model names?|model name|model upgraded|\bnew\b.*\bmodel\b|models? .* upgraded|corresponds? to)/i.test(
             prose,
           )
         )
           return;
         const release =
           !/backward compatibility/i.test(prose) &&
-          /(?:\bAPI now supports\b|\bis our new model\b|\bofficial release\b)/i.test(prose);
-        const releaseStage = /\bpublic beta\b/i.test(prose) ? "preview" : undefined;
+          /(?:\bAPI now supports\b|\bis our new model\b|\bofficial release\b|\bnow available\b)/i.test(
+            prose,
+          );
+        const releaseStage = /\bexperimental model\b/i.test(prose)
+          ? "experimental"
+          : /\bpublic beta\b/i.test(prose)
+            ? "preview"
+            : undefined;
         $(paragraph)
           .find("code")
           .each((_codeIndex, code) => {
-            const id = exactId(htmlText($(code).text()));
+            const id = updateModelId(htmlText($(code).text()));
             if (id === undefined) return;
             const current = dates.get(id) ?? {};
             const released = release ? earliest(current.release, date) : current.release;

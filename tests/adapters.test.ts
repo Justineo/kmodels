@@ -295,7 +295,9 @@ async function deepseekCatalog(
     chat?: string;
     catalog?: string;
     inventory?: string;
+    observedAt?: string;
     responses?: string;
+    vision?: string;
     onPricingReconciliation?: (item: PricingReconciliationItem) => void;
     omit?: readonly string[];
     overrides?: Readonly<Record<string, string>>;
@@ -306,7 +308,9 @@ async function deepseekCatalog(
     chat,
     catalog,
     inventory,
+    observedAt: deepseekObservedAt = observedAt,
     responses,
+    vision,
     onPricingReconciliation,
     omit = [],
     overrides = {},
@@ -331,6 +335,10 @@ async function deepseekCatalog(
         body: overrides["api/create-completion"] ?? (await fixture("deepseek/fim.html")),
       },
       {
+        url: "https://api-docs.deepseek.com/guides/vision",
+        body: vision ?? (await fixture("deepseek/vision.html")),
+      },
+      {
         url: "https://api-docs.deepseek.com/api/list-models",
         body: inventory ?? (await fixture("deepseek/list-models.html")),
       },
@@ -347,7 +355,7 @@ async function deepseekCatalog(
     provider: provider(value),
     source,
     body,
-    observedAt,
+    observedAt: deepseekObservedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
   });
 }
@@ -13438,6 +13446,7 @@ describe("DeepSeek adapters", () => {
       },
       { id: "responses", url: "https://api-docs.deepseek.com/api/create-response" },
       { id: "fim-completion", url: "https://api-docs.deepseek.com/api/create-completion" },
+      { id: "vision", url: "https://api-docs.deepseek.com/guides/vision" },
       {
         id: "model-inventory",
         url: "https://api-docs.deepseek.com/api/list-models",
@@ -13451,6 +13460,7 @@ describe("DeepSeek adapters", () => {
     const models = await deepseekCatalog();
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
       "deepseek-v4-pro",
     ]);
     expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")).toMatchObject({
@@ -13458,6 +13468,7 @@ describe("DeepSeek adapters", () => {
       tasks: ["text_generation"],
       api_endpoints: [
         { name: "Chat Completions", path: "/chat/completions" },
+        { name: "Responses", path: "/responses" },
         { name: "FIM Completion (Beta)", path: "/beta/completions" },
       ],
       modalities: { input: ["text"], output: ["text"] },
@@ -13496,6 +13507,18 @@ describe("DeepSeek adapters", () => {
       { name: "Chat Completions", path: "/chat/completions" },
       { name: "Responses", path: "/responses" },
     ]);
+    expect(
+      models.find(({ model_id }) => model_id === "deepseek-v4-flash-vision-exp"),
+    ).toMatchObject({
+      name: "DeepSeek-V4-Flash-Vision-Exp",
+      tasks: ["text_generation"],
+      modalities: { input: ["text", "image"], output: ["text"] },
+      api_endpoints: [
+        { name: "Chat Completions", path: "/chat/completions" },
+        { name: "Responses", path: "/responses" },
+      ],
+      pricing_state: "numeric",
+    });
   });
 
   it("keeps price-table rows when interface claims drift", async () => {
@@ -13505,7 +13528,7 @@ describe("DeepSeek adapters", () => {
       chat: chat.replace("/chat/completions", "/v2/chat/completions"),
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
-    expect(changedOperation).toHaveLength(2);
+    expect(changedOperation).toHaveLength(3);
     expect(changedOperation.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
     expect(
       changedOperation.every(
@@ -13548,10 +13571,10 @@ describe("DeepSeek adapters", () => {
     const responseItems: PricingReconciliationItem[] = [];
     await expect(
       deepseekCatalog({
-        responses: responses.replace("deepseek-v4-flash", "deepseek-v4-pro"),
+        responses: responses.replace("deepseek-v4-flash-vision-exp", "deepseek-v4-unknown"),
         onPricingReconciliation: (item) => responseItems.push(item),
       }),
-    ).resolves.toHaveLength(2);
+    ).resolves.toHaveLength(3);
     expect(responseItems).toContainEqual(
       expect.objectContaining({ reason_code: "responses_inventory_disagreement" }),
     );
@@ -13566,7 +13589,7 @@ describe("DeepSeek adapters", () => {
         .replace("</table>", '<tr><td colspan="2">NEW FACT</td><td>x</td><td>y</td></tr></table>'),
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
-    expect(models).toHaveLength(2);
+    expect(models).toHaveLength(3);
     expect(
       models
         .find(({ model_id }) => model_id === "deepseek-v4-pro")
@@ -13606,7 +13629,10 @@ describe("DeepSeek adapters", () => {
     const oneColumn = await deepseekCatalog({
       catalog: catalog.replace("deepseek-v4-pro</td>", "invalid model id</td>"),
     });
-    expect(oneColumn.map(({ model_id }) => model_id)).toEqual(["deepseek-v4-flash"]);
+    expect(oneColumn.map(({ model_id }) => model_id)).toEqual([
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
+    ]);
   });
 
   it("localizes malformed inline billing-period labels", async () => {
@@ -13625,6 +13651,22 @@ describe("DeepSeek adapters", () => {
     expect(reconciliation).toContainEqual(
       expect.objectContaining({ reason_code: "scheduled_billing_period_claim_drift" }),
     );
+  });
+
+  it("requires the current weekend rule after its published effective instant", async () => {
+    await expect(deepseekCatalog({ observedAt: "2026-08-23T00:00:00.000Z" })).resolves.toHaveLength(
+      3,
+    );
+    const catalog = await fixture("deepseek/catalog.html");
+    await expect(
+      deepseekCatalog({
+        catalog: catalog.replace(
+          "on weekends (Saturdays and Sundays, Beijing Time)",
+          "on weekdays (Mondays through Fridays, Beijing Time)",
+        ),
+        observedAt: "2026-08-23T00:00:00.000Z",
+      }),
+    ).rejects.toThrow("DeepSeek USD weekend rule changed");
   });
 
   it("preserves exact validity across a separately published price transition", async () => {
@@ -13657,7 +13699,7 @@ describe("DeepSeek adapters", () => {
         inventory: inventory.replaceAll("deepseek-v4-pro", "deepseek-v4-unknown"),
         onPricingReconciliation: (item) => reconciliation.push(item),
       }),
-    ).resolves.toHaveLength(2);
+    ).resolves.toHaveLength(3);
     expect(reconciliation).toContainEqual(
       expect.objectContaining({ reason_code: "model_inventory_disagreement" }),
     );
@@ -13665,6 +13707,7 @@ describe("DeepSeek adapters", () => {
     const withoutCompanions = await deepseekCatalog({ withoutDocuments: true });
     expect(withoutCompanions.map(({ model_id }) => model_id)).toEqual([
       "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
       "deepseek-v4-pro",
     ]);
     expect(withoutCompanions.every(({ price_facts }) => price_facts.length === 6)).toBe(true);
@@ -13677,7 +13720,7 @@ describe("DeepSeek adapters", () => {
     });
     expect(
       sourcePricingReconciliation(models, reconciliation, true).disposition_counts,
-    ).toMatchObject({ normalized: 24, raw: 0, excluded: 0 });
+    ).toMatchObject({ normalized: 36, raw: 0, excluded: 0 });
     expect(models.every(({ raw_price_facts }) => raw_price_facts.length === 0)).toBe(true);
     expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
     expect(reconciliation).toEqual(
@@ -13749,10 +13792,40 @@ describe("DeepSeek adapters", () => {
         }),
       ]),
     );
+    const weekendPricing = assembleParsedProviderPricing(
+      "deepseek",
+      "2026-08-23T00:00:00.000Z",
+      [{ source: catalogSource, models }],
+      models,
+    );
+    expect(weekendPricing?.vocabulary.atoms).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "categorical_value",
+          key: "peak",
+          label: "Peak",
+          schedule: {
+            kind: "weekly_time_windows",
+            time_zone: "UTC",
+            days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+            windows: [
+              { from: "01:00", until: "04:00" },
+              { from: "06:00", until: "10:00" },
+            ],
+          },
+        }),
+        expect.objectContaining({
+          kind: "categorical_value",
+          key: "off_peak",
+          label: "Off-peak",
+          schedule: { kind: "weekly_time_remainder", time_zone: "UTC" },
+        }),
+      ]),
+    );
     expect(
       input?.kind === "rate" ? input.variants.map(({ validity }) => validity).filter(Boolean) : [],
     ).toEqual([]);
-    expect(pricing?.books).toHaveLength(2);
+    expect(pricing?.books).toHaveLength(3);
     expect(pricing?.books.every(({ scope }) => scope.kind === "models")).toBe(true);
     expect(
       pricing?.books
@@ -13815,6 +13888,12 @@ describe("DeepSeek adapters", () => {
       release_date: "2026-04-24",
       updated_date: "2026-07-31",
       release_stage: "preview",
+    });
+    expect(
+      models.find(({ model_id }) => model_id === "deepseek-v4-flash-vision-exp"),
+    ).toMatchObject({
+      release_date: "2026-08-21",
+      release_stage: "experimental",
     });
     expect(models.find(({ model_id }) => model_id === "deepseek-reasoner")).toMatchObject({
       release_date: "2025-01-20",

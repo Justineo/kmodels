@@ -5,6 +5,7 @@
         <td colspan="3">模型</td>
         <td>deepseek-v4-flash<sup>(1)</sup></td>
         <td>deepseek-v4-pro</td>
+        <td>deepseek-v4-flash-vision-exp</td>
       </tr>
       <tr>
         <td rowspan="6">价格</td>
@@ -12,38 +13,48 @@
         <td>空闲时段</td>
         <td>0.05元</td>
         <td>0.15元</td>
+        <td>0.05元</td>
       </tr>
       <tr>
         <td>高峰时段</td>
         <td>0.10元</td>
         <td>0.30元</td>
+        <td>0.10元</td>
       </tr>
       <tr>
         <td rowspan="2">百万tokens输入（缓存未命中）</td>
         <td>空闲时段</td>
         <td>1.5元</td>
         <td>4.5元</td>
+        <td>1.5元</td>
       </tr>
       <tr>
         <td>高峰时段</td>
         <td>3.0元</td>
         <td>9.0元</td>
+        <td>3.0元</td>
       </tr>
       <tr>
         <td rowspan="2">百万tokens输出</td>
         <td>空闲时段</td>
         <td>4.5元</td>
         <td>13.5元</td>
+        <td>4.5元</td>
       </tr>
       <tr>
         <td>高峰时段</td>
         <td>9.0元</td>
         <td>27.0元</td>
+        <td>9.0元</td>
       </tr>
     </table>
     <p>
       空闲时段价格为高峰时段价格的一半。高峰时段为北京时间 9:00 - 12:00、14:00 -
-      18:00（其余为空闲时段）。
+      18:00（其余为空闲时段）。我们将于北京时间2026年8月23日（周日）00:00起，对峰谷计费规则做出调整，周末（周六、周日）全天不再区分峰谷时段，统一按照低谷时段价格收取调用费用。
+    </p>
+    <p>
+      发送给 <code>deepseek-v4-flash-vision-exp</code> 的图片会按其尺寸换算成 token，与文本 token
+      一并计费。换算规则详见图像理解：Token 用量。
     </p>
   </article>
 </main>

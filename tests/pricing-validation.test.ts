@@ -157,6 +157,38 @@ describe("canonical pricing serialized catalog validation", () => {
     );
   });
 
+  it("requires one complete recurrence kind for a weekly categorical partition", () => {
+    const valid = catalog();
+    valid.provider_vocabularies[0]!.atoms = [
+      {
+        kind: "categorical_value",
+        key: "off_peak",
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        definition: "All hours outside the weekday peak windows",
+        schedule: { kind: "weekly_time_remainder", time_zone: "UTC" },
+      },
+      {
+        kind: "categorical_value",
+        key: "peak",
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        definition: "Published weekday peak billing windows",
+        schedule: {
+          kind: "weekly_time_windows",
+          time_zone: "UTC",
+          days: ["monday", "tuesday", "wednesday", "thursday", "friday"],
+          windows: [{ from: "01:00", until: "04:00" }],
+        },
+      },
+    ];
+    expect(() => validatePricingCatalog(valid, core)).not.toThrow();
+
+    const mixed = structuredClone(valid);
+    const remainder = mixed.provider_vocabularies[0]?.atoms[0];
+    if (remainder?.kind !== "categorical_value") throw new Error("Missing schedule fixture");
+    remainder.schedule = { kind: "daily_time_remainder", time_zone: "UTC" };
+    expect(() => validatePricingCatalog(mixed, core)).toThrow("cannot mix daily and weekly rules");
+  });
+
   it("checks the complete graph for I-JSON before using validated canonical serialization", () => {
     const invalid = catalog();
     invalid.books[0]!.scope_observations[0]!.raw = { label: "\ud800" };
