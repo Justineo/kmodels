@@ -5,6 +5,7 @@ import {
   isPricingSource,
   isRequiredPricingSource,
 } from "../src/catalog/pricing-adapter.ts";
+import { validateAdoptedProviderPricingTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import {
   pricingBookId,
   pricingOfferId,
@@ -2154,6 +2155,18 @@ describe("parsed-source canonical pricing adapter", () => {
         .map(({ scope }) => (scope.kind === "provider_resource" ? scope.resource_key : ""))
         .sort(),
     ).toEqual(["code-execution", "web-search"]);
+    if (partition === undefined) throw new Error("Anthropic pricing partition is missing");
+    expect(() => validateAdoptedProviderPricingTopology(partition)).not.toThrow();
+    const incomplete = structuredClone(partition);
+    const incompleteCode = incomplete.books.find(
+      ({ book_key }) => book_key === "service:code-execution",
+    );
+    if (incompleteCode === undefined) throw new Error("Anthropic Code Execution book is missing");
+    for (const offer of incompleteCode.offers)
+      offer.terms = offer.terms.filter(({ kind }) => kind !== "allowance");
+    expect(() => validateAdoptedProviderPricingTopology(incomplete)).toThrow(
+      "anthropic commercial topology changed: expected resource, binding, allowance, received resource, binding",
+    );
   });
 
   it("preserves explicit non-numeric source states", () => {

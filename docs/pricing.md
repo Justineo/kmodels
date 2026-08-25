@@ -849,6 +849,10 @@ bytes.
 For each provider:
 
 - a valid fresh partition advances with its matching catalog slice;
+- a structurally valid candidate must also preserve that provider's adopted commercial topology
+  profile. A topology contraction or expansion is a pricing validation failure until the provider
+  decision, fixtures, and profile are reviewed together, so source drift retains the previously
+  accepted partition instead of failing the generated-data suite after publication;
 - a failed pricing refresh retains the previously accepted pricing partition,
   preserves its verification time, and records the current attempt and reviewed
   failure category plus its sanitized diagnostic reason in the refresh summary; an independently
