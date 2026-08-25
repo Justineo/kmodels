@@ -57,6 +57,7 @@ import {
   isPricingSource,
   isRequiredPricingSource,
 } from "./pricing-adapter.ts";
+import { validateAdoptedProviderPricingTopology } from "./pricing-adopted-topology.ts";
 import {
   publishedModel,
   type ParsedProviderModel,
@@ -696,6 +697,7 @@ function validateProviderPricing(
     },
     { providers: [provider], models, sources },
   );
+  validateAdoptedProviderPricingTopology(pricing);
 }
 
 function pricingTermCount(pricing: ProviderPricingPartition | undefined): number {
