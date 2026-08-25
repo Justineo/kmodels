@@ -3,8 +3,13 @@ import {
   compilePricingSnapshot,
   readPricingCompilationSnapshot,
 } from "../src/catalog/pricing-compilation.ts";
+import {
+  adoptedTopologies,
+  validateAdoptedTopology,
+} from "../src/catalog/pricing-adopted-topology.ts";
 import { validatePricingCatalogEnvelopeMetadata } from "../src/catalog/pricing-envelope.ts";
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { providerPartition } from "../src/catalog/pricing-transition.ts";
 import { validatePricingCatalogInParallel } from "../src/catalog/pricing-validation-parallel.ts";
 import { generatedData } from "./generated-data-context.ts";
 
@@ -19,62 +24,24 @@ describe("provider pricing validation", () => {
   }, 90_000);
 
   it("keeps the adopted commercial topology for every provider", async () => {
-    const { pricing } = await generatedData();
-    const expected = new Map<string, string[]>([
-      ["amazon-bedrock", ["resource", "binding"]],
-      ["anthropic", ["resource", "binding", "allowance"]],
-      ["azure", ["resource", "binding"]],
-      ["cerebras", ["resource", "binding"]],
-      ["cohere", ["binding", "disposition"]],
-      ["dashscope", ["resource", "binding", "disposition"]],
-      ["databricks", ["binding"]],
-      ["deepseek", ["binding"]],
-      ["gemini", ["resource", "relation", "binding"]],
-      ["huggingface", ["binding"]],
-      ["kimi", ["resource", "relation", "binding", "settlement"]],
-      ["llama", []],
-      ["mistral", ["resource", "binding", "disposition"]],
-      ["ollama", ["binding"]],
-      ["openai", ["resource", "binding", "disposition"]],
-      ["vercel", ["resource", "binding"]],
-      ["vertex", ["resource", "relation", "binding"]],
-      ["xai", ["resource", "binding"]],
-    ]);
-
-    const actual = new Map(
-      pricing.data.provider_snapshots.map(({ provider_id }) => {
-        const books = pricing.data.books.filter((book) => book.provider_id === provider_id);
-        const offers = books.flatMap((book) => book.offers);
-        const terms = offers.flatMap((offer) => offer.terms);
-        return [
-          provider_id,
-          [
-            ...(books.some(({ scope }) => scope.kind === "provider_resource") ? ["resource"] : []),
-            ...(books.some(({ resource_edges }) => resource_edges.length > 0) ? ["edge"] : []),
-            ...(offers.some(({ relations }) => relations.length > 0) ? ["relation"] : []),
-            ...(terms.some(
-              (term) =>
-                (term.kind === "rate" &&
-                  term.variants.some(({ charge_binding }) => charge_binding !== undefined)) ||
-                (term.kind === "contribution" &&
-                  term.variants.some(({ charge_bindings }) => charge_bindings.length > 0)),
-            )
-              ? ["binding"]
-              : []),
-            ...(terms.some(({ kind }) => kind === "allowance") ? ["allowance"] : []),
-            ...(terms.some(({ kind }) => kind === "contribution") ? ["contribution"] : []),
-            ...(offers.some(({ settlement }) => settlement.length > 0) ? ["settlement"] : []),
-            ...(pricing.data.model_dispositions.some(({ model_ref }) =>
-              model_ref.startsWith(`${provider_id}/`),
-            )
-              ? ["disposition"]
-              : []),
-          ],
-        ];
-      }),
+    const { catalog, pricing } = await generatedData();
+    const modelProviders = new Map(
+      catalog.models.map(({ uid, provider_id }) => [uid, provider_id]),
     );
+    const modelProvider = (modelRef: string): string => {
+      const providerId = modelProviders.get(modelRef);
+      if (providerId === undefined) throw new Error(`Pricing model ref is unresolved: ${modelRef}`);
+      return providerId;
+    };
 
-    expect(actual).toEqual(expected);
+    const providerIds = pricing.data.provider_snapshots.map(({ provider_id }) => provider_id);
+    expect(providerIds).toEqual([...adoptedTopologies.keys()]);
+    for (const providerId of providerIds) {
+      const partition = providerPartition(pricing.data, providerId, modelProvider);
+      if (partition === undefined)
+        throw new Error(`Provider ${providerId} has no pricing partition`);
+      validateAdoptedTopology(partition);
+    }
   });
 
   it("replays every captured provider with current extractors", async () => {

@@ -1,6 +1,6 @@
 import type { ProviderPricingPartition } from "./pricing-assembly.ts";
 
-export type AdoptedPricingTopologyFeature =
+type TopologyFeature =
   | "resource"
   | "edge"
   | "relation"
@@ -10,7 +10,7 @@ export type AdoptedPricingTopologyFeature =
   | "settlement"
   | "disposition";
 
-const adoptedTopology = new Map<string, readonly AdoptedPricingTopologyFeature[]>([
+export const adoptedTopologies = new Map<string, readonly TopologyFeature[]>([
   ["amazon-bedrock", ["resource", "binding"]],
   ["anthropic", ["resource", "binding", "allowance"]],
   ["azure", ["resource", "binding"]],
@@ -31,12 +31,10 @@ const adoptedTopology = new Map<string, readonly AdoptedPricingTopologyFeature[]
   ["xai", ["resource", "binding"]],
 ]);
 
-export function providerPricingTopology(
-  pricing: ProviderPricingPartition,
-): AdoptedPricingTopologyFeature[] {
+function pricingTopology(pricing: ProviderPricingPartition): TopologyFeature[] {
   const offers = pricing.books.flatMap((book) => book.offers);
   const terms = offers.flatMap((offer) => offer.terms);
-  const result: AdoptedPricingTopologyFeature[] = [];
+  const result: TopologyFeature[] = [];
   if (pricing.books.some(({ scope }) => scope.kind === "provider_resource"))
     result.push("resource");
   if (pricing.books.some(({ resource_edges }) => resource_edges.length > 0)) result.push("edge");
@@ -58,11 +56,11 @@ export function providerPricingTopology(
   return result;
 }
 
-export function validateAdoptedProviderPricingTopology(pricing: ProviderPricingPartition): void {
+export function validateAdoptedTopology(pricing: ProviderPricingPartition): void {
   const providerId = pricing.snapshot.provider_id;
-  const expected = adoptedTopology.get(providerId);
+  const expected = adoptedTopologies.get(providerId);
   if (expected === undefined) throw new Error(`${providerId} has no adopted commercial topology`);
-  const actual = providerPricingTopology(pricing);
+  const actual = pricingTopology(pricing);
   if (
     actual.length === expected.length &&
     actual.every((feature, index) => feature === expected[index])
@@ -73,6 +71,6 @@ export function validateAdoptedProviderPricingTopology(pricing: ProviderPricingP
   );
 }
 
-function format(features: readonly AdoptedPricingTopologyFeature[]): string {
+function format(features: readonly TopologyFeature[]): string {
   return features.length === 0 ? "none" : features.join(", ");
 }
