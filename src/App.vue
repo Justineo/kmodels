@@ -25,8 +25,8 @@ import {
 } from "./catalog/model-groups.ts";
 import {
   formatCount,
+  formatLocalDateTime,
   formatRelativeTime,
-  formatUtcDateTime,
   versionBadgeModelUids,
 } from "./catalog/presentation.ts";
 import type { WebsiteCatalog, WebsiteModel } from "./catalog/website-schema.ts";
@@ -600,7 +600,7 @@ onUnmounted(() => {
         as="a"
         class="generated-at"
         :href="catalogUpdateUrl"
-        :content="formatUtcDateTime(generatedAt)"
+        :content="formatLocalDateTime(generatedAt)"
         aria-label="View this catalog update on GitHub"
       >
         <time :datetime="generatedAt">Updated {{ formatRelativeTime(generatedAt) }}</time>

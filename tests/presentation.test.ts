@@ -2,8 +2,8 @@ import googleCloud from "@lobehub/icons-static-svg/icons/googlecloud-color.svg?r
 import { describe, expect, it } from "vite-plus/test";
 import {
   formatModelTask,
+  formatLocalDateTime,
   formatRelativeTime,
-  formatUtcDateTime,
   formatTableTask,
   versionBadgeModelUids,
 } from "../src/catalog/presentation.ts";
@@ -88,12 +88,13 @@ describe("version presentation", () => {
 });
 
 describe("time presentation", () => {
-  it("uses relative copy for scanning and a localized UTC timestamp for details", () => {
+  it("uses relative copy for scanning and the current time zone for absolute details", () => {
     const observedAt = "2026-08-15T10:33:00.000Z";
     const now = Date.parse("2026-08-16T10:33:00.000Z");
 
     expect(formatRelativeTime(observedAt, now)).toBe("yesterday");
-    expect(formatUtcDateTime(observedAt)).toBe("Aug 15, 2026, 10:33:00 AM UTC");
+    expect(formatLocalDateTime(observedAt, "UTC")).toBe("Aug 15, 2026, 10:33:00 AM UTC");
+    expect(formatLocalDateTime(observedAt, "Asia/Shanghai")).toBe("Aug 15, 2026, 6:33:00 PM GMT+8");
   });
 });
 

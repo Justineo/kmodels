@@ -8,11 +8,6 @@ const compactNumber = new Intl.NumberFormat("en", {
   notation: "compact",
   maximumFractionDigits: 1,
 });
-const exactDateTime = new Intl.DateTimeFormat("en", {
-  dateStyle: "medium",
-  timeStyle: "long",
-  timeZone: "UTC",
-});
 const relativeTime = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 const relativeTimeUnits = [
   [365 * 24 * 60 * 60 * 1_000, "year"],
@@ -28,9 +23,18 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
-export function formatUtcDateTime(value: string): string {
+export function formatLocalDateTime(
+  value: string,
+  timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
+): string {
   const timestamp = Date.parse(value);
-  return Number.isFinite(timestamp) ? exactDateTime.format(timestamp) : value;
+  return Number.isFinite(timestamp)
+    ? new Intl.DateTimeFormat("en", {
+        dateStyle: "medium",
+        timeStyle: "long",
+        timeZone,
+      }).format(timestamp)
+    : value;
 }
 
 export function formatRelativeTime(value: string, now = Date.now()): string {

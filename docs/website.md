@@ -5,7 +5,7 @@ Status: implemented core; provider pricing convergence is in progress
 ## Product shape
 
 - The site is a full-width, full-height precision workspace, not a centered marketing page.
-- One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle. The localized relative generation time shows its complete UTC timestamp in a tooltip and links to the catalog-producing GitHub Actions run when recorded on the commit; otherwise it links to the catalog-producing commit.
+- One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle. The localized relative generation time shows its complete timestamp in the viewer's current time zone in a tooltip and links to the catalog-producing GitHub Actions run when recorded on the commit; otherwise it links to the catalog-producing commit.
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
 - One toolbar keeps model-ID/name search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
@@ -94,7 +94,7 @@ Status: implemented core; provider pricing convergence is in progress
   wrapping radio group; its native keyboard behavior owns arrow keys and must
   not navigate between models. Keyboard focus is shown once on the complete choice surface rather
   than repeated around its native radio. Fresh pricing shows a localized relative verification time;
-  its tooltip provides the complete UTC timestamp. A retained partition
+  its tooltip provides the complete timestamp in the viewer's current time zone. A retained partition
   instead shows one provider-level status note with both the preserved
   verification time and the latest rejected-attempt time plus a reviewed
   explanation. For an unknown model it says that the last verified provider
@@ -113,7 +113,8 @@ Status: implemented core; provider pricing convergence is in progress
   viewer's clock never selects a recurring value. Exact UTC validity instead versions an entire
   published rate plan.
   Model details resolve those exact boundaries against the viewer's clock, show only the current
-  plan by default, and expose the next plan through one compact effective-time preview. The preview
+  plan by default, render its absolute times in the viewer's current time zone, and expose the next
+  plan through one compact effective-time preview. The preview
   swaps the same rate surface rather than duplicating it. Imprecise year, month, or date validity
   remains unresolved and visible as source-published qualification.
   Price-query controls contain only dimensions that can change a rate or leave its numeric state
