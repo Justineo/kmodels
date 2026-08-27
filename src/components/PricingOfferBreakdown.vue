@@ -15,7 +15,7 @@ import {
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
-import { formatSentenceCase } from "../catalog/presentation.ts";
+import { formatLocalDateTime, formatSentenceCase } from "../catalog/presentation.ts";
 import {
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
@@ -239,18 +239,7 @@ function validityNote(validity: WebsitePublishedValidity | undefined): string | 
 }
 
 function formatBoundary(boundary: NonNullable<WebsitePublishedValidity["from"]>): string {
-  return boundary.precision === "datetime" ? formatEffectiveAt(boundary.value) : boundary.value;
-}
-
-function formatEffectiveAt(value: string): string {
-  return new Intl.DateTimeFormat("en", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(new Date(value));
+  return boundary.precision === "datetime" ? formatLocalDateTime(boundary.value) : boundary.value;
 }
 
 function isFixedSelector(selector: WebsitePricingSelector): selector is FixedSelector {
@@ -396,7 +385,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
       <p>
         <strong>{{ viewingUpcoming ? "Previewing new rates" : "New rates" }}</strong>
         <time :datetime="timeline.upcoming.effective_at">
-          {{ formatEffectiveAt(timeline.upcoming.effective_at) }}
+          {{ formatLocalDateTime(timeline.upcoming.effective_at) }}
         </time>
       </p>
       <button type="button" @click="toggleUpcoming">
