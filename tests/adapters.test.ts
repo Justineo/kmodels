@@ -866,6 +866,7 @@ async function huggingFaceFeatherless(
 async function huggingFaceNativePricing(
   catalogModels: ProviderModel[],
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  editZai: (body: string) => string = (body) => body,
 ): Promise<ProviderModel[]> {
   const value = manifest("huggingface");
   const source = huggingFaceNativePricingSource(value);
@@ -884,7 +885,7 @@ async function huggingFaceNativePricing(
         },
         {
           url: "https://docs.z.ai/guides/overview/pricing",
-          body: await fixture("huggingface/native-zai.html"),
+          body: editZai(await fixture("huggingface/native-zai.html")),
         },
         {
           url: "https://console.groq.com/docs/model/openai/gpt-oss-safeguard-20b",
@@ -12315,7 +12316,7 @@ describe("Hugging Face adapter", () => {
     );
   });
 
-  it("joins exact paid native-provider rates without inheriting free promotions", async () => {
+  it("joins exact paid native-provider rates and a bounded Z.ai promotion", async () => {
     const value = manifest("huggingface");
     const baseSource = huggingFaceMappingSource(value);
     if (baseSource.extractor.kind !== "huggingface-mapping")
@@ -12323,6 +12324,7 @@ describe("Hugging Face adapter", () => {
     const modelIds = [
       "deepseek-ai/DeepSeek-V4-Pro-0813",
       "zai-org/GLM-4.7-FP8",
+      "zai-org/GLM-5.3-Flash",
       "zai-org/GLM-4.6V-Flash",
       "openai/gpt-oss-safeguard-20b",
       "CohereLabs/c4ai-command-a-03-2025",
@@ -12360,6 +12362,7 @@ describe("Hugging Face adapter", () => {
             models: {
               conversational: {
                 "zai-org/GLM-4.7-FP8": entry("glm-4.7"),
+                "zai-org/GLM-5.3-Flash": entry("glm-5.3-flash"),
                 "zai-org/GLM-4.6V-Flash": entry("glm-4.6v-flash"),
               },
             },
@@ -12390,15 +12393,17 @@ describe("Hugging Face adapter", () => {
     const native = await huggingFaceNativePricing(mappings, (item) => reconciliation.push(item));
     expect(
       Object.fromEntries(
-        native.map((model) => [
-          model.model_id,
-          model.price_facts.map(({ meter, price, conditions, resolution_policy }) => [
-            meter,
-            price,
-            conditions.route_provider,
-            resolution_policy,
+        native
+          .filter(({ model_id }) => model_id !== "zai-org/GLM-5.3-Flash")
+          .map((model) => [
+            model.model_id,
+            model.price_facts.map(({ meter, price, conditions, resolution_policy }) => [
+              meter,
+              price,
+              conditions.route_provider,
+              resolution_policy,
+            ]),
           ]),
-        ]),
       ),
     ).toEqual({
       "CohereLabs/c4ai-command-a-03-2025": [
@@ -12432,6 +12437,30 @@ describe("Hugging Face adapter", () => {
         ["output_text", "2.2", "zai-org", "native_provider_price_over_huggingface_route_snapshot"],
       ],
     });
+    const glm = native.find(({ model_id }) => model_id === "zai-org/GLM-5.3-Flash");
+    if (glm === undefined) throw new Error("Missing Z.ai promotion fixture model");
+    expect(
+      glm.price_facts.map(({ meter, price, conditions }) => [
+        meter,
+        price,
+        conditions.effective_from,
+        conditions.effective_until,
+        conditions.promotion,
+      ]),
+    ).toEqual([
+      ["input_text", "0.075", undefined, "2026-09-09T16:00:00.000Z", true],
+      ["output_text", "0.25", undefined, "2026-09-09T16:00:00.000Z", true],
+      ["input_text", "0.15", "2026-09-09T16:00:00.000Z", undefined, undefined],
+      ["output_text", "0.50", "2026-09-09T16:00:00.000Z", undefined, undefined],
+    ]);
+    expect(new Set(glm.price_facts.map(({ conditions }) => conditions.route_provider))).toEqual(
+      new Set(["zai-org"]),
+    );
+    expect(new Set(glm.price_facts.map(({ raw_validity }) => raw_validity))).toEqual(
+      new Set([
+        "GLM-5.3-Flash is available at a 50% discount (strikethrough prices are list prices). The promotion ends at 24:00 on September 9, 2026 (UTC+8, Singapore time).",
+      ]),
+    );
     expect(reconciliation).toContainEqual({
       disposition: "ambiguous",
       reason_code: "native_free_conflicts_with_hf_paid_route",
@@ -12477,6 +12506,23 @@ describe("Hugging Face adapter", () => {
       .flatMap((term) => (term.kind === "raw" ? term.variants : []));
     expect(unresolved).toHaveLength(1);
     expect(JSON.stringify(unresolved?.[0]?.possible_scope)).toContain('"value":"zai-org"');
+    const promoted = partition?.books
+      .find(({ book_key }) => book_key === "model:huggingface/zai-org/GLM-5.3-Flash")
+      ?.offers.find(({ offer_key }) => offer_key === "routed-inference");
+    if (promoted === undefined) throw new Error("Missing Z.ai promotional offer");
+    expect(
+      promoted.terms
+        .filter((term) => term.kind === "raw")
+        .flatMap(({ variants }) => variants)
+        .filter(({ impact }) => impact === "base_price"),
+    ).toEqual([]);
+    for (const editZai of [
+      (body: string) => body.replace("promotion ends at 24:00", "promotion has no published end"),
+      (body: string) => body.replace("<del>$0.50</del> ", ""),
+    ]) {
+      const rejected = await huggingFaceNativePricing(mappings, undefined, editZai);
+      expect(rejected.some(({ model_id }) => model_id === "zai-org/GLM-5.3-Flash")).toBe(false);
+    }
   });
 
   it("resolves only the router price fallback covered by exact Featherless rates", async () => {

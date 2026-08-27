@@ -1095,10 +1095,15 @@ interface NativeRoute {
   providerModelId: string;
 }
 
-interface NativePriceRow {
+interface NativePrice {
   input: string;
   output: string;
   locator: string;
+  conditions?: Pick<
+    SourcePriceFact["conditions"],
+    "effective_from" | "effective_until" | "promotion"
+  >;
+  rawValidity?: string;
 }
 
 function nativeDocument(
@@ -1223,7 +1228,7 @@ function pricedToken(value: string): string | undefined {
   return parsed?.[1];
 }
 
-interface FireworksRow extends NativePriceRow {
+interface FireworksRow extends NativePrice {
   slug: string;
   title: string;
 }
@@ -1253,9 +1258,28 @@ function fireworksRows(body: string): FireworksRow[] {
   return [...rows.values()];
 }
 
-function zaiRows(body: string): { prices: Map<string, NativePriceRow>; free: Set<string> } {
+const zaiPromotionClaim =
+  "GLM-5.3-Flash is available at a 50% discount (strikethrough prices are list prices). The promotion ends at 24:00 on September 9, 2026 (UTC+8, Singapore time).";
+const zaiPromotionUntil = "2026-09-09T16:00:00.000Z";
+
+function zaiPrice(
+  cell: ReturnType<ReturnType<typeof load>>,
+): { current: string; list?: string } | undefined {
+  const deleted = cell.find("del");
+  if (deleted.length > 1) return;
+  const currentCell = cell.clone();
+  currentCell.find("del").remove();
+  const current = pricedToken(currentCell.text());
+  if (current === undefined) return;
+  if (deleted.length === 0) return { current };
+  const list = pricedToken(deleted.text());
+  return list === undefined ? undefined : { current, list };
+}
+
+function zaiRows(body: string): { prices: Map<string, NativePrice[]>; free: Set<string> } {
   const $ = load(body);
-  const prices = new Map<string, NativePriceRow>();
+  const hasPromotionClaim = $("main").text().replaceAll(/\s+/g, " ").includes(zaiPromotionClaim);
+  const prices = new Map<string, NativePrice[]>();
   const free = new Set<string>();
   $("table").each((_tableIndex, table) => {
     const headers = $(table)
@@ -1269,33 +1293,54 @@ function zaiRows(body: string): { prices: Map<string, NativePriceRow>; free: Set
     $(table)
       .find("tbody tr")
       .each((_rowIndex, row) => {
-        const cells = $(row)
-          .find("td")
-          .map((_index, cell) => $(cell).text().trim())
-          .get();
-        const model = cells[modelIndex];
-        const rawInput = cells[inputIndex];
-        const rawOutput = cells[outputIndex];
-        if (model === undefined || rawInput === undefined || rawOutput === undefined) return;
+        const cells = $(row).find("td");
+        const model = cells.eq(modelIndex).text().trim();
+        if (model === "") return;
+        const inputCell = cells.eq(inputIndex);
+        const outputCell = cells.eq(outputIndex);
         const key = model.toLowerCase();
-        if (rawInput === "Free" && rawOutput === "Free") {
+        if (inputCell.text().trim() === "Free" && outputCell.text().trim() === "Free") {
           free.add(key);
           return;
         }
-        const inputPrice = pricedToken(rawInput);
-        const outputPrice = pricedToken(rawOutput);
-        if (inputPrice === undefined || outputPrice === undefined) return;
-        prices.set(key, {
-          input: inputPrice,
-          output: outputPrice,
-          locator: `zai:${model}`,
-        });
+        const input = zaiPrice(inputCell);
+        const output = zaiPrice(outputCell);
+        if (input === undefined || output === undefined) return;
+        if (input.list === undefined && output.list === undefined) {
+          prices.set(key, [
+            { input: input.current, output: output.current, locator: `zai:${model}` },
+          ]);
+          return;
+        }
+        if (
+          input.list === undefined ||
+          output.list === undefined ||
+          key !== "glm-5.3-flash" ||
+          !hasPromotionClaim
+        )
+          return;
+        prices.set(key, [
+          {
+            input: input.current,
+            output: output.current,
+            locator: `zai:${model}:promotion`,
+            conditions: { effective_until: zaiPromotionUntil, promotion: true },
+            rawValidity: zaiPromotionClaim,
+          },
+          {
+            input: input.list,
+            output: output.list,
+            locator: `zai:${model}:list`,
+            conditions: { effective_from: zaiPromotionUntil },
+            rawValidity: zaiPromotionClaim,
+          },
+        ]);
       });
   });
   return { prices, free };
 }
 
-function groqSafeguardRow(body: string): NativePriceRow | undefined {
+function groqSafeguardRow(body: string): NativePrice | undefined {
   const $ = load(body);
   const rawText = $.root().text();
   const heading = $("h3")
@@ -1339,8 +1384,8 @@ const cohereProductByModel = new Map([
   ["command-r7b-12-2024", "Command R7B"],
 ] as const);
 
-function cohereRows(body: string): Map<string, NativePriceRow> {
-  const prices = new Map<string, NativePriceRow>();
+function cohereRows(body: string): Map<string, NativePrice> {
+  const prices = new Map<string, NativePrice>();
   const products = parseCoherePublicPricingProducts(body);
   for (const [providerModelId, productName] of cohereProductByModel) {
     const product = products.find(({ modelName }) => modelName === productName);
@@ -1404,7 +1449,7 @@ function cohereRows(body: string): Map<string, NativePriceRow> {
   return prices;
 }
 
-function cohereCommandARow(body: string): NativePriceRow | undefined {
+function cohereCommandARow(body: string): NativePrice | undefined {
   const $ = load(body);
   if ($("h1").filter((_index, element) => $(element).text().trim() === "Command A").length !== 1)
     return;
@@ -1425,9 +1470,9 @@ function nativeRate(
   input: Input,
   route: NativeRoute,
   meter: "input_text" | "output_text",
-  price: string,
-  locator: string,
+  row: NativePrice,
 ): SourcePriceFact {
+  const price = meter === "input_text" ? row.input : row.output;
   return {
     ...publishedRate(
       meter,
@@ -1435,38 +1480,43 @@ function nativeRate(
       "million_tokens",
       input.source.id,
       "Native provider USD per million tokens; Hugging Face routes without markup",
-      { route_provider: route.provider },
+      { route_provider: route.provider, ...row.conditions },
     ),
     source_locator: {
       kind: "provider_key",
-      value: `${locator}:${meter === "input_text" ? "input" : "output"}`,
+      value: `${row.locator}:${meter === "input_text" ? "input" : "output"}`,
     },
+    ...(row.rawValidity === undefined ? {} : { raw_validity: row.rawValidity }),
     resolution_policy: nativePricingAuthority,
   };
 }
 
-function addNativeRow(
+function addNativePrices(
   input: Input,
   models: Map<string, ProviderModel>,
   route: NativeRoute,
-  row: NativePriceRow,
+  ...rows: NativePrice[]
 ): boolean {
-  const expected = { input_text: row.input, output_text: row.output } as const;
-  for (const meter of ["input_text", "output_text"] as const) {
-    const published = routePriceFacts(route.model, route.provider, meter);
-    if (published.some(({ price }) => !decimalsEqual(price, expected[meter]))) {
-      input.onPricingReconciliation?.({
-        disposition: "ambiguous",
-        reason_code: "native_route_price_conflict",
-        sample: diagnosticSample(route.model.model_id, route.provider, meter),
-      });
-      return false;
+  for (const row of rows) {
+    for (const meter of ["input_text", "output_text"] as const) {
+      const published = routePriceFacts(route.model, route.provider, meter);
+      const price = meter === "input_text" ? row.input : row.output;
+      if (published.some((fact) => !decimalsEqual(fact.price, price))) {
+        input.onPricingReconciliation?.({
+          disposition: "ambiguous",
+          reason_code: "native_route_price_conflict",
+          sample: diagnosticSample(route.model.model_id, route.provider, meter),
+        });
+        return false;
+      }
     }
   }
-  const rates = (["input_text", "output_text"] as const).flatMap((meter) =>
-    routePriceFacts(route.model, route.provider, meter).length === 0
-      ? [nativeRate(input, route, meter, expected[meter], row.locator)]
-      : [],
+  const rates = rows.flatMap((row) =>
+    (["input_text", "output_text"] as const).flatMap((meter) =>
+      routePriceFacts(route.model, route.provider, meter).length === 0
+        ? [nativeRate(input, route, meter, row)]
+        : [],
+    ),
   );
   if (rates.length === 0) return true;
   const current = models.get(route.model.model_id);
@@ -1525,7 +1575,7 @@ export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
             normalizeNativeName(title) === normalizeNativeName(modelName)),
       );
       const row = matches.length === 1 ? matches[0] : undefined;
-      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+      if (row !== undefined && addNativePrices(input, models, route, row)) resolved.add(route);
       else if (matches.length > 1)
         input.onPricingReconciliation?.({
           disposition: "ambiguous",
@@ -1540,9 +1590,10 @@ export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
     const rows = zaiRows(zai);
     for (const route of routes.filter(({ provider }) => provider === "zai-org")) {
       const key = route.providerModelId.toLowerCase();
-      const row = rows.prices.get(key);
-      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
-      else if (rows.free.has(key))
+      const matched = rows.prices.get(key);
+      if (matched !== undefined) {
+        if (addNativePrices(input, models, route, ...matched)) resolved.add(route);
+      } else if (rows.free.has(key))
         input.onPricingReconciliation?.({
           disposition: "ambiguous",
           reason_code: "native_free_conflicts_with_hf_paid_route",
@@ -1563,18 +1614,18 @@ export function parseHuggingFaceNativePricing(input: Input): ProviderModel[] {
       ({ provider, providerModelId }) =>
         provider === "groq" && providerModelId === "openai/gpt-oss-safeguard-20b",
     ))
-      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+      if (row !== undefined && addNativePrices(input, models, route, row)) resolved.add(route);
   }
 
   const cohere = nativeDocument(input, bundle, "cohere.com", "/pricing");
   const commandA = nativeDocument(input, bundle, "docs.cohere.com", "/docs/command-a");
   if (cohere !== undefined || commandA !== undefined) {
-    const rows = cohere === undefined ? new Map<string, NativePriceRow>() : cohereRows(cohere);
+    const rows = cohere === undefined ? new Map<string, NativePrice>() : cohereRows(cohere);
     const row = commandA === undefined ? undefined : cohereCommandARow(commandA);
     if (row !== undefined) rows.set("command-a-03-2025", row);
     for (const route of routes.filter(({ provider }) => provider === "cohere")) {
       const row = rows.get(route.providerModelId);
-      if (row !== undefined && addNativeRow(input, models, route, row)) resolved.add(route);
+      if (row !== undefined && addNativePrices(input, models, route, row)) resolved.add(route);
     }
   }
 
