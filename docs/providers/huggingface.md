@@ -75,9 +75,14 @@ rate. When the exact Featherless overlay supplies complete input and output rate
 `featherless-ai` route, those native rates satisfy the router fallback; the missing router fields
 remain a collection diagnostic instead of making the canonical offer incomplete. The same bounded
 resolution applies to a paid Fireworks, Z.ai, Groq, or Cohere rate only when the live partner mapping
-binds the Hugging Face model to the exact native provider model ID. A native free or promotional
-claim never overrides a router route explicitly marked non-free; that disagreement remains a local
-raw unknown. Missing prices without an exact paid join remain local raw unknowns.
+binds the Hugging Face model to the exact native provider model ID. The Z.ai GLM-5.3-Flash
+strikethrough row is accepted only while the same page identifies the deleted amounts as list prices
+and publishes its exact promotion end. Kmodels emits discounted input/output rates through that
+boundary and list rates afterward. A bare native free or promotional claim without numeric request
+rates and an exact validity boundary never overrides a router route explicitly marked non-free;
+that disagreement remains a local raw unknown. Missing prices without an exact paid join remain
+local raw unknowns. Cached-input and cache-storage columns stay outside this overlay because the
+routed product evidence binds only prompt and completion usage counters.
 
 Featherless publishes both per-token and per-million-token fields. Kmodels normalizes the exact
 per-token value and uses it as the deterministic winner when the redundant fields conflict. The
