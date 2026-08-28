@@ -1,8 +1,8 @@
 {
-  "catalog_version": "24056ef2e8cafac91ccf7b51ceb9129a09199c011da0e813f52c73dcba404857",
-  "generated_at": "2026-08-28T09:03:48.736Z",
+  "catalog_version": "88c8769eaf86231d8d2a2e8d78883196e01525365e455d7cedf34cbe8614c15a",
+  "generated_at": "2026-08-28T13:59:57.265Z",
   "outcome": "changed",
-  "previous_catalog_version": "f7a40439dee4f79ead1837d280384386799e872ccd4894b6a1e1d12c30268db7",
+  "previous_catalog_version": "24056ef2e8cafac91ccf7b51ceb9129a09199c011da0e813f52c73dcba404857",
   "providers": [
     {
       "attempt": {
@@ -645,7 +645,7 @@
             "source_id": "bedrock-models"
           },
           {
-            "consecutive_failures": 188,
+            "consecutive_failures": 189,
             "last_success_at": "2026-08-19T07:15:30.306Z",
             "message": "The security token included in the request is invalid.",
             "outcome": "fetch_failed",
@@ -1687,16 +1687,16 @@
         },
         "sources": [
           {
-            "content_changed": false,
-            "extractor_changed": false,
-            "outcome": "unchanged",
-            "parsed_models": 228,
-            "source_id": "azure-models"
-          },
-          {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
+            "parsed_models": 235,
+            "source_id": "azure-models"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
             "parsed_models": 88,
             "source_id": "azure-portal-models"
           },
@@ -1874,15 +1874,15 @@
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 11,
+            "parsed_models": 5,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 11,
-              "normalized_facts": 70,
+              "model_records": 5,
+              "normalized_facts": 40,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 11,
+              "numeric_models": 5,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -1893,9 +1893,9 @@
               "diagnostics": [],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 4,
+                "excluded": 10,
                 "explicit_non_numeric": 0,
-                "normalized": 11,
+                "normalized": 5,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
@@ -1903,8 +1903,8 @@
               },
               "observed_items": 15,
               "reason_counts": {
-                "claude_price_model_not_offered": 4,
-                "claude_public_rate_row": 11
+                "claude_price_model_not_offered": 10,
+                "claude_public_rate_row": 5
               },
               "unit": "reviewed source pricing item"
             },
@@ -1966,7 +1966,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 5496,
+                "excluded": 5590,
                 "explicit_non_numeric": 0,
                 "normalized": 4,
                 "raw": 0,
@@ -1974,11 +1974,11 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 25012,
+              "observed_items": 25106,
               "reason_counts": {
                 "arm_direct_meter_bound": 4,
                 "arm_meter_missing": 19458,
-                "non_base_arm_cost_component": 5496,
+                "non_base_arm_cost_component": 5590,
                 "retail_meter_missing": 54
               },
               "unit": "reviewed source pricing item"
@@ -1988,13 +1988,60 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 3,
+        "added": 14,
+        "added_model_refs": [
+          "azure/claude-fable-5@1",
+          "azure/claude-haiku-4-5@1",
+          "azure/claude-haiku-4-5@2",
+          "azure/claude-opus-4-5@1",
+          "azure/claude-opus-4-6@1",
+          "azure/claude-opus-4-7@1",
+          "azure/claude-opus-4-8@1",
+          "azure/claude-opus-4-8@2",
+          "azure/claude-opus-5@1",
+          "azure/claude-opus-5@2",
+          "azure/claude-sonnet-4-5@1",
+          "azure/claude-sonnet-4-6@1",
+          "azure/claude-sonnet-5@1",
+          "azure/claude-sonnet-5@2"
+        ],
+        "changed": 5,
         "changed_fields": {
-          "availability": 3
+          "availability": 3,
+          "release_stage": 1,
+          "retired_at": 2
         },
         "changed_models": [
+          {
+            "field_changes": [
+              {
+                "path": "retired_at",
+                "previous": "2026-10-19"
+              },
+              {
+                "current": "unknown",
+                "path": "release_stage",
+                "previous": "preview"
+              }
+            ],
+            "fields": [
+              "retired_at",
+              "release_stage"
+            ],
+            "model_ref": "azure/claude-haiku-4-5"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "retired_at",
+                "previous": "2027-04-02"
+              }
+            ],
+            "fields": [
+              "retired_at"
+            ],
+            "model_ref": "azure/claude-mythos-preview"
+          },
           {
             "field_changes": [
               {
@@ -2066,6 +2113,30 @@
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
                     "region": "centralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "southcentralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus3"
                   },
                   {
                     "deployment_type": "DataZoneStandard",
@@ -2249,6 +2320,14 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "brazilsouth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "canadaeast"
                   },
                   {
@@ -2257,7 +2336,47 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "francecentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "germanywestcentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "italynorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "japaneast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "koreacentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "norwayeast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southafricanorth"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -2265,7 +2384,15 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southeastasia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "southindia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "spaincentral"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -2274,6 +2401,10 @@
                   {
                     "deployment_type": "GlobalProvisionedManaged",
                     "region": "switzerlandnorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "switzerlandwest"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -2409,6 +2540,10 @@
                   },
                   {
                     "deployment_type": "ProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
                     "region": "uksouth"
                   }
                 ],
@@ -2477,6 +2612,10 @@
                   {
                     "deployment_type": "Data Zone Standard",
                     "region": "westus3"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "centralus"
                   },
                   {
                     "deployment_type": "DataZoneStandard",
@@ -2960,6 +3099,14 @@
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "francecentral"
                   },
                   {
@@ -2972,11 +3119,19 @@
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "norwayeast"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
                     "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "southcentralus"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
@@ -2993,6 +3148,14 @@
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
                     "region": "westeurope"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus3"
                   },
                   {
                     "deployment_type": "DataZoneStandard",
@@ -3417,6 +3580,10 @@
                   {
                     "deployment_type": "ProvisionedManaged",
                     "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "westus"
                   }
                 ],
                 "path": "availability",
@@ -3540,6 +3707,10 @@
                   {
                     "deployment_type": "Data Zone Standard",
                     "region": "westus3"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "centralus"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
@@ -4119,6 +4290,14 @@
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "eastus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "eastus2"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "francecentral"
                   },
                   {
@@ -4131,11 +4310,19 @@
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "northcentralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "norwayeast"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
                     "region": "polandcentral"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "southcentralus"
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
@@ -4152,6 +4339,14 @@
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
                     "region": "westeurope"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "westus3"
                   },
                   {
                     "deployment_type": "DataZoneStandard",
@@ -4391,11 +4586,19 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "australiaeast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "brazilsouth"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
                     "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "canadaeast"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -4435,6 +4638,10 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "norwayeast"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "polandcentral"
                   },
                   {
@@ -4443,7 +4650,15 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southcentralus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "southeastasia"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "southindia"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -4451,11 +4666,35 @@
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "swedencentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "switzerlandnorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "switzerlandwest"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
+                    "region": "uaenorth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
                     "region": "uksouth"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "westeurope"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "westus"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "westus3"
                   },
                   {
                     "deployment_type": "GlobalStandard",
@@ -4568,6 +4807,10 @@
                   {
                     "deployment_type": "GlobalStandard",
                     "region": "westus3"
+                  },
+                  {
+                    "deployment_type": "ProvisionedManaged",
+                    "region": "westus"
                   }
                 ],
                 "path": "availability",
@@ -4674,6 +4917,10 @@
                   },
                   {
                     "deployment_type": "DataZoneProvisionedManaged",
+                    "region": "centralus"
+                  },
+                  {
+                    "deployment_type": "DataZoneProvisionedManaged",
                     "region": "francecentral"
                   },
                   {
@@ -4951,6 +5198,10 @@
                   {
                     "deployment_type": "GlobalProvisionedManaged",
                     "region": "canadacentral"
+                  },
+                  {
+                    "deployment_type": "GlobalProvisionedManaged",
+                    "region": "centralus"
                   },
                   {
                     "deployment_type": "GlobalProvisionedManaged",
@@ -5129,26 +5380,26 @@
             "model_ref": "azure/gpt-5.6-terra@2026-07-09"
           }
         ],
-        "current": 248,
+        "current": 262,
         "previous": 248,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 245
+        "unchanged": 243
       },
       "pricing": {
-        "commercial_hash": "45ccd5ffdfc3c321ec11f9759b042cb81ecff8bbf6114aeeafd707be7204dc1a",
-        "outcome": "provenance_only",
+        "commercial_hash": "9864e4dfc6ce254dfef3815416eb5c8590b618cad3b0a104f9bebfa905629e1f",
+        "outcome": "commercial",
         "previous_commercial_hash": "45ccd5ffdfc3c321ec11f9759b042cb81ecff8bbf6114aeeafd707be7204dc1a"
       },
       "pricing_coverage": {
-        "current_models": 206,
+        "current_models": 220,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": 0
+          "resolved_models": -6,
+          "unknown_models": 20
         },
-        "normalized_rate_models": 155,
+        "normalized_rate_models": 149,
         "not_applicable_models": 0,
-        "offer_models": 155,
+        "offer_models": 149,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "azure/Cohere-embed-v3-english@1",
@@ -5169,11 +5420,11 @@
           "azure/MAI-Transcribe-1@2026-01-23",
           "azure/Ministral-3B@1",
           "azure/TimeGEN-1@1",
-          "azure/claude-mythos-preview",
-          "azure/gpt-4o-mini-transcribe@2025-03-20"
+          "azure/claude-fable-5",
+          "azure/claude-fable-5@1"
         ],
-        "unknown_model_refs_omitted": 31,
-        "unknown_models": 51
+        "unknown_model_refs_omitted": 51,
+        "unknown_models": 71
       },
       "pricing_publication": "accepted",
       "provider_id": "azure",
@@ -5194,7 +5445,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "azure-portal-models"
+            "source_id": "azure-models"
           },
           {
             "content_changed": true,
@@ -5231,7 +5482,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 200,
+            "consecutive_failures": 201,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5375,7 +5626,7 @@
             "source_id": "cohere-models"
           },
           {
-            "consecutive_failures": 258,
+            "consecutive_failures": 259,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5509,7 +5760,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 70,
+            "consecutive_failures": 71,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5598,22 +5849,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 353,
+            "parsed_models": 356,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 353,
-              "normalized_facts": 3520,
+              "model_records": 356,
+              "normalized_facts": 3568,
               "not_applicable_models": 1,
               "not_published_models": 0,
-              "numeric_models": 350,
+              "numeric_models": 354,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 2
+              "unknown_models": 1
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 38,
+              "diagnostic_count": 34,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -5660,20 +5911,20 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 1,
-                "normalized": 3676,
+                "normalized": 3704,
                 "raw": 0,
-                "unbound": 38,
+                "unbound": 34,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 3715,
+              "observed_items": 3739,
               "reason_counts": {
-                "cache_base_price_not_bound": 16,
-                "cache_rate_normalized": 734,
+                "cache_base_price_not_bound": 12,
+                "cache_rate_normalized": 738,
                 "discontinued_price_not_applicable": 1,
                 "explicit_cache_price_not_public": 8,
                 "implicit_cache_price_not_public": 14,
-                "price_fact_normalized": 2877,
+                "price_fact_normalized": 2901,
                 "web_search_rate_normalized": 65
               },
               "unit": "reviewed source pricing item"
@@ -5681,7 +5932,7 @@
             "source_id": "dashscope-pricing"
           },
           {
-            "consecutive_failures": 1,
+            "consecutive_failures": 2,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -5707,7 +5958,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 520,
+            "parsed_models": 521,
             "source_id": "dashscope-releases"
           },
           {
@@ -5720,13 +5971,618 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 1,
+        "added": 2,
+        "added_model_refs": [
+          "dashscope/qwen-mt-image-2.0",
+          "dashscope/qwen3.8-flash"
+        ],
+        "changed": 103,
         "changed_fields": {
-          "availability": 1
+          "availability": 3,
+          "modalities": 59,
+          "release_stage": 1,
+          "source_refs": 1,
+          "tasks": 95
         },
         "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/aitryon-parsing-v1",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/aitryon-plus",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/animate-anyone-detect-gen2",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/animate-anyone-gen2",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/animate-anyone-template-gen2",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/emo-detect-v1",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/emo-v1",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/emoji-detect-v1",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/emoji-v1",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "audio_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "audio"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/fun-music-preview",
+            "previous_tasks": [
+              "audio_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "audio_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "audio"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/fun-music-v1",
+            "previous_tasks": [
+              "audio_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.0-i2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.0-r2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.0-t2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.0-video-edit",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.1-i2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.1-r2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/happyhorse-1.1-t2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
           {
             "field_changes": [
               {
@@ -5737,7 +6593,23 @@
                   },
                   {
                     "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
                   }
                 ],
                 "path": "availability",
@@ -5745,6 +6617,22 @@
                   {
                     "deployment_type": "model_api",
                     "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ]
               }
@@ -5752,29 +6640,2679 @@
             "fields": [
               "availability"
             ],
-            "model_ref": "dashscope/qwen-audio-3.0-realtime-flash"
+            "model_ref": "dashscope/kimi-k3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/liveportrait",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/liveportrait-detect",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/multimodal-embedding-v1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-2026-03-03",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-pro",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-pro-2026-03-03",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-pro-2026-04-22",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-2.0-pro-2026-06-22",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-3.0",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-3.0-pro",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-edit",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-edit-max",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-edit-max-2026-01-16",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-edit-plus",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-edit-plus-2025-10-30",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-edit-plus-2025-12-15",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-max",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-max-2025-12-30",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-plus",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-image-plus-2026-01-09",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation",
+                  "translation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-mt-image",
+            "previous_tasks": [
+              "image_generation",
+              "translation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "translation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/qwen-mt-lite-us",
+            "previous_tasks": [
+              "translation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "speech_synthesis"
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "audio"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen-voice-design",
+            "previous_tasks": [
+              "speech_synthesis"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "speech_synthesis"
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "audio"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen-voice-enrollment",
+            "previous_tasks": [
+              "speech_synthesis"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "audio",
+                  "video",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "audio",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen3-livetranslate-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "audio",
+                  "video",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "audio",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen3-livetranslate-flash-2025-12-01"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text",
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen3-livetranslate-flash-realtime"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "audio",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "audio"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen3-livetranslate-flash-realtime-2025-09-22"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text",
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen3.5-livetranslate-flash-realtime"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "audio",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "audio"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "audio"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "text"
+                ]
+              }
+            ],
+            "fields": [
+              "modalities"
+            ],
+            "model_ref": "dashscope/qwen3.5-livetranslate-flash-realtime-2026-05-19"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/video-style-transform",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/videoretalk",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.1-kf2v-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.1-t2i-plus",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.1-t2i-turbo",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.1-t2v-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.1-t2v-turbo",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.1-vace-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-animate-mix",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-animate-move",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-i2v-flash",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-i2v-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-kf2v-flash",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.input",
+                "previous": []
+              },
+              {
+                "current": [],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-s2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.2-s2v-detect",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.2-t2i-flash",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.2-t2i-plus",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.2-t2v-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.5-i2i-preview",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.5-i2v-preview",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.5-t2i-preview",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.5-t2v-preview",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-i2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-i2v-flash",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-i2v-us",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.6-image",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-r2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-r2v-flash",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.6-t2i",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-t2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.6-t2v-us",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-i2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-i2v-2026-04-25",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.7-image",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wan2.7-image-pro",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [],
+                "path": "modalities.input",
+                "previous": [
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-r2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-r2v-2026-06-12",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-t2v",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-t2v-2026-04-25",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-t2v-2026-06-12",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wan2.7-videoedit",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text",
+                  "image"
+                ],
+                "path": "modalities.input",
+                "previous": [
+                  "text",
+                  "image",
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "release_stage",
+                "previous": "preview"
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability",
+                "previous": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities",
+              "release_stage",
+              "availability"
+            ],
+            "model_ref": "dashscope/wan3.0-video",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "video_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "video",
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              },
+              {
+                "current": [
+                  {
+                    "deployment_type": "model_api",
+                    "region": "China (Beijing)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  }
+                ],
+                "path": "availability"
+              },
+              {
+                "current": [
+                  "dashscope-video",
+                  "dashscope-releases",
+                  "dashscope-pricing"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "dashscope-video",
+                  "dashscope-releases"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities",
+              "availability",
+              "source_refs"
+            ],
+            "model_ref": "dashscope/wan3.0-video-prime",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "video_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wanx2.0-t2i-turbo",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wanx2.1-imageedit",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wanx2.1-kf2v-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wanx2.1-t2i-plus",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/wanx2.1-t2i-turbo",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wanx2.1-t2v-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wanx2.1-t2v-turbo",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "video_generation"
+                ]
+              },
+              {
+                "current": [
+                  "text"
+                ],
+                "path": "modalities.output",
+                "previous": [
+                  "video"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks",
+              "modalities"
+            ],
+            "model_ref": "dashscope/wanx2.1-vace-plus",
+            "previous_tasks": [
+              "video_generation"
+            ],
+            "tasks": [
+              "text_generation"
+            ]
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "text_generation",
+                  "image_generation"
+                ],
+                "path": "tasks",
+                "previous": [
+                  "image_generation"
+                ]
+              }
+            ],
+            "fields": [
+              "tasks"
+            ],
+            "model_ref": "dashscope/z-image-turbo",
+            "previous_tasks": [
+              "image_generation"
+            ],
+            "tasks": [
+              "text_generation",
+              "image_generation"
+            ]
           }
         ],
-        "current": 394,
+        "current": 396,
         "previous": 394,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 393
+        "unchanged": 291
       },
       "pricing": {
-        "commercial_hash": "06a4044cab369be82e00d2c4af6990418e4ac7a5f8b2b5257a1afbb7692fc9dd",
+        "commercial_hash": "3256e53a6bc9aa211424e80b8ace32d768c8a946e7ad9adb11b8039731171949",
         "outcome": "commercial",
-        "previous_commercial_hash": "f9b75646cfefabba6f607d39dcb16186219784a57b6c83dbe5799d3baba557d7"
+        "previous_commercial_hash": "06a4044cab369be82e00d2c4af6990418e4ac7a5f8b2b5257a1afbb7692fc9dd"
       },
       "pricing_coverage": {
-        "current_models": 376,
+        "current_models": 378,
         "delta": {
-          "resolved_models": 18,
-          "unknown_models": -18
+          "resolved_models": 4,
+          "unknown_models": -2
         },
-        "normalized_rate_models": 350,
+        "normalized_rate_models": 354,
         "not_applicable_models": 0,
-        "offer_models": 350,
+        "offer_models": 354,
         "raw_fact_models": 1,
         "unknown_model_refs": [
           "dashscope/MiniMax-M2.1",
@@ -5782,7 +9320,6 @@
           "dashscope/ZHIPU/GLM-5.3",
           "dashscope/glm-4.5",
           "dashscope/glm-4.5-air",
-          "dashscope/kimi-k3",
           "dashscope/paraformer-realtime-8k-v1",
           "dashscope/paraformer-realtime-v1",
           "dashscope/qwen-long",
@@ -5796,10 +9333,11 @@
           "dashscope/qwen2.5-vl-32b-instruct",
           "dashscope/qwen2.5-vl-3b-instruct",
           "dashscope/qwen2.5-vl-72b-instruct",
-          "dashscope/qwen2.5-vl-7b-instruct"
+          "dashscope/qwen2.5-vl-7b-instruct",
+          "dashscope/qwen3-0.6b"
         ],
-        "unknown_model_refs_omitted": 6,
-        "unknown_models": 26
+        "unknown_model_refs_omitted": 4,
+        "unknown_models": 24
       },
       "pricing_publication": "accepted",
       "provider_id": "dashscope",
@@ -6000,7 +9538,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 101,
+            "consecutive_failures": 102,
             "last_success_at": "2026-08-23T01:29:53.375Z",
             "message": "DeepSeek USD peak-hour rule changed",
             "outcome": "parse_failed",
@@ -6219,22 +9757,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1556,
+            "parsed_models": 1558,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1556,
+              "model_records": 1558,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1556
+              "unknown_models": 1558
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1796,
+              "diagnostic_count": 1798,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -6279,11 +9817,11 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 10700,
+                "excluded": 10698,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1796,
+                "unbound": 1798,
                 "unresolved": 0,
                 "unsupported": 0
               },
@@ -6291,9 +9829,9 @@
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1420,
-                "partner_route_price_not_published": 376,
-                "single_partner_inventory_without_product_evidence": 10628
+                "hf_inference_compute_price_unbound": 1418,
+                "partner_route_price_not_published": 380,
+                "single_partner_inventory_without_product_evidence": 10626
               },
               "unit": "reviewed source pricing item"
             },
@@ -6303,23 +9841,28 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 134,
+            "parsed_models": 133,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 134,
-              "normalized_facts": 412,
+              "model_records": 133,
+              "normalized_facts": 404,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 111,
-              "raw_facts": 104,
+              "numeric_models": 109,
+              "raw_facts": 105,
               "raw_models": 98,
-              "unknown_models": 23
+              "unknown_models": 24
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 105,
+              "diagnostic_count": 106,
               "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "route_price_not_published",
+                  "sample": "zai-org/GLM-5.3-Flash:fireworks-ai"
+                },
                 {
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
@@ -6354,29 +9897,24 @@
                   "disposition": "unbound",
                   "reason_code": "route_price_not_published",
                   "sample": "Qwen/Qwen3.8-2.4T-A95B:fireworks-ai"
-                },
-                {
-                  "disposition": "unbound",
-                  "reason_code": "route_price_not_published",
-                  "sample": "zai-org/GLM-5.3-Flash-BF16:zai-org"
                 }
               ],
               "disposition_counts": {
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 206,
+                "normalized": 202,
                 "raw": 0,
-                "unbound": 104,
+                "unbound": 105,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 312,
+              "observed_items": 309,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 206,
-                "route_price_not_published": 104
+                "route_price_normalized": 202,
+                "route_price_not_published": 105
               },
               "unit": "reviewed source pricing item"
             },
@@ -6416,7 +9954,7 @@
               ],
               "disposition_counts": {
                 "ambiguous": 2,
-                "excluded": 21773,
+                "excluded": 21775,
                 "explicit_non_numeric": 0,
                 "normalized": 68,
                 "raw": 0,
@@ -6424,9 +9962,9 @@
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 21843,
+              "observed_items": 21845,
               "reason_counts": {
-                "featherless_model_not_hf_route": 21772,
+                "featherless_model_not_hf_route": 21774,
                 "featherless_price_normalized": 68,
                 "featherless_price_unit_conflict": 2,
                 "invalid_featherless_model_id": 1
@@ -6454,7 +9992,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 10,
+              "diagnostic_count": 11,
               "diagnostics": [
                 {
                   "disposition": "ambiguous",
@@ -6504,14 +10042,14 @@
                 "normalized": 29,
                 "raw": 0,
                 "unbound": 0,
-                "unresolved": 9,
+                "unresolved": 10,
                 "unsupported": 0
               },
-              "observed_items": 39,
+              "observed_items": 40,
               "reason_counts": {
                 "native_free_conflicts_with_hf_paid_route": 1,
                 "native_route_price_normalized": 29,
-                "native_route_price_not_exactly_joinable": 9
+                "native_route_price_not_exactly_joinable": 10
               },
               "unit": "reviewed source pricing item"
             },
@@ -6521,108 +10059,29 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1420,
+            "parsed_models": 1418,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 1,
+        "added": 5,
         "added_model_refs": [
-          "huggingface/stabilityai/stable-diffusion-3.5-medium"
+          "huggingface/Tongyi-MAI/Z-Image",
+          "huggingface/desklib/ai-text-detector-v1.01",
+          "huggingface/stabilityai/stable-diffusion-3-medium",
+          "huggingface/stabilityai/stable-diffusion-3.5-large",
+          "huggingface/stabilityai/stable-diffusion-3.5-large-turbo"
         ],
-        "changed": 10,
+        "changed": 14,
         "changed_fields": {
-          "capabilities": 4,
-          "routes": 6,
-          "updated_date": 1
+          "capabilities": 9,
+          "limits": 1,
+          "routes": 7
         },
         "changed_models": [
           {
             "field_changes": [
-              {
-                "current": "2026-08-28",
-                "path": "updated_date",
-                "previous": "2026-08-27"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/CIRCL/vulnerability-severity-classification-roberta-base"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.5-397B-A17B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.5-397b-a17b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.5-397B-A17B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "qwen3.5-397b-a17b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "Qwen/Qwen3.5-397B-A17B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen3.5-397B-A17B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3.5-397b-a17b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "ovhcloud",
-                    "provider_model_id": "Qwen3.5-397B-A17B",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "qwen3.5-397b-a17b",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              },
               {
                 "current": "unknown",
                 "path": "capabilities.structured_output",
@@ -6630,10 +10089,9 @@
               }
             ],
             "fields": [
-              "routes",
               "capabilities"
             ],
-            "model_ref": "huggingface/Qwen/Qwen3.5-397B-A17B"
+            "model_ref": "huggingface/Qwen/Qwen3-14B"
           },
           {
             "field_changes": [
@@ -6646,29 +10104,55 @@
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Llama-8B"
+            "model_ref": "huggingface/Qwen/Qwen3-235B-A22B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": false
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-30B-A3B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-8B"
           },
           {
             "field_changes": [
               {
                 "current": [
                   {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V3.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
                     "provider": "featherless-ai",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V3.2",
+                    "provider_model_id": "Qwen/Qwen3.5-397B-A17B",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v3.2",
+                    "provider_model_id": "qwen/qwen3.5-397b-a17b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Qwen3.5-397B-A17B",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6678,14 +10162,244 @@
                 "previous": [
                   {
                     "provider": "featherless-ai",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V3.2",
+                    "provider_model_id": "Qwen/Qwen3.5-397B-A17B",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
                     "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v3.2",
+                    "provider_model_id": "qwen/qwen3.5-397b-a17b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "ovhcloud",
+                    "provider_model_id": "Qwen3.5-397B-A17B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "scaleway",
+                    "provider_model_id": "qwen3.5-397b-a17b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "routes",
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.5-397B-A17B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3.8-2.4T-A95B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/qwen3p8-2p4t-a95b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3.8-2.4t-a95b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "Qwen/Qwen3.8-2.4T-A95B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/qwen3p8-2p4t-a95b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3.8-2.4t-a95b",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "Qwen/Qwen3.8-2.4T-A95B",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ]
+              },
+              {
+                "current": 1000000,
+                "path": "limits.context_tokens",
+                "previous": 1010000
+              }
+            ],
+            "fields": [
+              "routes",
+              "limits"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3.8-2.4T-A95B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/9b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-9b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-9b/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/black-forest-labs/FLUX.2-klein-base-9B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": false,
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "deepseek/deepseek-v4-pro-0813",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6696,121 +10410,25 @@
             "fields": [
               "routes"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V3.2"
+            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Pro-0813"
           },
           {
             "field_changes": [
               {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/deepseek-v4-flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "deepseek/deepseek-v4-flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "deepseek-ai/DeepSeek-V4-Flash-0731",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
               }
             ],
             "fields": [
-              "routes"
+              "capabilities"
             ],
-            "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Flash-0731"
+            "model_ref": "huggingface/google/gemma-3-27b-it"
           },
           {
             "field_changes": [
               {
                 "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/kimi-k2p7-code",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "baseten",
                     "provider_model_id": "moonshotai/Kimi-K2.7-Code",
@@ -6846,6 +10464,37 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "moonshotai/Kimi-K2.7-Code",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/kimi-k2p7-code",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               }
             ],
@@ -6857,78 +10506,58 @@
           {
             "field_changes": [
               {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/speakleash/Bielik-11B-v3.0-Instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": true,
-                "path": "capabilities.structured_output",
-                "previous": false
-              }
-            ],
-            "fields": [
-              "capabilities"
-            ],
-            "model_ref": "huggingface/swiss-ai/Apertus-70B-Instruct-2509"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
                   {
-                    "provider": "replicate",
-                    "provider_model_id": "tencent/hunyuan-image-2.1",
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "text-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "text-to-image"
+                    "task": "conversational"
                   }
                 ],
                 "path": "routes",
                 "previous": [
                   {
-                    "provider": "fal-ai",
-                    "provider_model_id": "fal-ai/hunyuan-image/v2.1/text-to-image",
+                    "provider": "deepinfra",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "text-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "replicate",
-                    "provider_model_id": "tencent/hunyuan-image-2.1",
+                    "provider": "featherless-ai",
+                    "provider_model_id": "zai-org/GLM-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "text-to-image"
+                    "task": "conversational"
                   },
                   {
-                    "provider": "wavespeed",
-                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
+                    "provider": "zai-org",
+                    "provider_model_id": "glm-5.1",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
-                    "task": "text-to-image"
+                    "task": "conversational"
                   }
                 ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
               }
             ],
             "fields": [
-              "routes"
+              "routes",
+              "capabilities"
             ],
-            "model_ref": "huggingface/tencent/HunyuanImage-2.1"
+            "model_ref": "huggingface/zai-org/GLM-5.1"
           },
           {
             "field_changes": [
@@ -6937,6 +10566,20 @@
                   {
                     "provider": "baseten",
                     "provider_model_id": "zai-org/GLM-5.3-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/glm-5p3-flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-5.3-flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6961,13 +10604,6 @@
                   {
                     "provider": "baseten",
                     "provider_model_id": "zai-org/GLM-5.3-Flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-5.3-flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6995,29 +10631,31 @@
             "model_ref": "huggingface/zai-org/GLM-5.3-Flash"
           }
         ],
-        "current": 1598,
-        "previous": 1599,
-        "removed": 2,
+        "current": 1599,
+        "previous": 1598,
+        "removed": 4,
         "removed_model_refs": [
-          "huggingface/HiDream-ai/HiDream-I1-Full",
-          "huggingface/facebook/mbart-large-50-many-to-many-mmt"
+          "huggingface/markussagen/xlm-roberta-longformer-base-4096",
+          "huggingface/michiyasunaga/BioLinkBERT-large",
+          "huggingface/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+          "huggingface/vinai/bertweet-large"
         ],
-        "unchanged": 1587
+        "unchanged": 1580
       },
       "pricing": {
-        "commercial_hash": "4baee86ec434bb60044e5401f7085ef6ddc274589dbfa00fa07c1529f0c850cb",
+        "commercial_hash": "1b046a2c5f25510165cc2e0ae7318053816aa08594be02dc64f9c23a33bbdd06",
         "outcome": "commercial",
-        "previous_commercial_hash": "0a5f631187cc587ef05a7219c04b1496a0e9a02c4bdf6169af6b8c0315d91323"
+        "previous_commercial_hash": "4baee86ec434bb60044e5401f7085ef6ddc274589dbfa00fa07c1529f0c850cb"
       },
       "pricing_coverage": {
-        "current_models": 1598,
+        "current_models": 1599,
         "delta": {
-          "resolved_models": 0,
-          "unknown_models": -1
+          "resolved_models": -1,
+          "unknown_models": 2
         },
-        "normalized_rate_models": 129,
+        "normalized_rate_models": 128,
         "not_applicable_models": 0,
-        "offer_models": 138,
+        "offer_models": 137,
         "raw_fact_models": 13,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
@@ -7041,8 +10679,8 @@
           "huggingface/BAAI/bge-base-en",
           "huggingface/BAAI/bge-base-en-v1.5"
         ],
-        "unknown_model_refs_omitted": 1440,
-        "unknown_models": 1460
+        "unknown_model_refs_omitted": 1442,
+        "unknown_models": 1462
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -7136,9 +10774,9 @@
             "source_id": "kimi-international-catalog"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 11,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -7227,9 +10865,9 @@
             "source_id": "kimi-pricing"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 11,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -7319,7 +10957,7 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 104,
+            "consecutive_failures": 105,
             "last_success_at": "2026-08-22T22:49:24.724Z",
             "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
             "outcome": "fetch_failed",
@@ -7369,26 +11007,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-international-pricing"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "kimi-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 7
+        "unchanged": 9
       },
       "status": "stale",
       "warning_codes": {
@@ -7581,9 +11206,9 @@
             "source_id": "mistral-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 18,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -7703,20 +11328,26 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "mistral-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "mistral-pricing"
           }
         ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -7916,7 +11547,7 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -7933,14 +11564,14 @@
               "observed_items": 1
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 96,
             "source_id": "openai-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 64,
             "source_id": "openai-changelog"
           },
@@ -7959,9 +11590,9 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 96,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -8017,9 +11648,9 @@
             "source_id": "openai-overview"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 72,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -8067,86 +11698,36 @@
             "source_id": "openai-pricing"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 132,
             "source_id": "openai-api"
           }
         ]
       },
       "models": {
-        "added": 2,
-        "added_model_refs": [
-          "openai/gpt-daybreak-blue-latest",
-          "openai/gpt-daybreak-red-latest"
-        ],
-        "changed": 2,
-        "changed_fields": {
-          "source_refs": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/daybreak-blue-latest"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview"
-                ],
-                "path": "source_refs",
-                "previous": [
-                  "openai-models",
-                  "openai-changelog",
-                  "openai-pricing",
-                  "openai-overview"
-                ]
-              }
-            ],
-            "fields": [
-              "source_refs"
-            ],
-            "model_ref": "openai/daybreak-red-latest"
-          }
-        ],
+        "added": 0,
+        "added_model_refs": [],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 103,
-        "previous": 101,
+        "previous": 103,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 99
+        "unchanged": 103
       },
       "pricing": {
         "commercial_hash": "b0de2dd921bbabba6c10c2136ef4213f8327c6db18bfcd0d66f866dfcadbeb02",
-        "outcome": "commercial",
-        "previous_commercial_hash": "59cd6ec09b9b42db92fe79d0dfa789e01964c59ad235d05e32af81c24da76e62"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "b0de2dd921bbabba6c10c2136ef4213f8327c6db18bfcd0d66f866dfcadbeb02"
       },
       "pricing_coverage": {
         "current_models": 88,
         "delta": {
-          "resolved_models": -2,
-          "unknown_models": 4
+          "resolved_models": 0,
+          "unknown_models": 0
         },
         "normalized_rate_models": 78,
         "not_applicable_models": 2,
@@ -8173,38 +11754,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 1,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
-            "source_id": "openai-changelog"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-models"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-overview"
-          },
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "openai-pricing"
+            "source_id": "openai-api"
           }
         ],
         "current": 7,
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
@@ -8228,7 +11791,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 176,
+            "consecutive_failures": 177,
             "last_success_at": "2026-08-19T20:04:44.251Z",
             "message": "Vercel model page free pricing disagreed for fish-audio/s1",
             "outcome": "parse_failed",
@@ -8403,7 +11966,7 @@
             "source_id": "vertex-pricing"
           },
           {
-            "consecutive_failures": 186,
+            "consecutive_failures": 187,
             "last_success_at": "2026-08-19T09:10:06.392Z",
             "message": "Google HTTP 400",
             "outcome": "fetch_failed",
@@ -8580,18 +12143,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 11,
-    "added_models": 3,
+    "added_models": 21,
     "added_sources": 0,
-    "changed_models": 16,
-    "changed_sources": 28,
-    "models": 3543,
+    "changed_models": 122,
+    "changed_sources": 24,
+    "models": 3560,
     "pricing_accepted": 11,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
     "pricing_retained": 7,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 2,
+    "removed_models": 4,
     "removed_sources": 0,
     "retained": 7,
     "withheld": 0
