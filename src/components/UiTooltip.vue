@@ -152,6 +152,10 @@ span.ui-tooltip-trigger {
   width: fit-content;
 }
 
+button.ui-tooltip-trigger {
+  width: fit-content;
+}
+
 .ui-tooltip {
   position: fixed;
   position-area: block-start;
