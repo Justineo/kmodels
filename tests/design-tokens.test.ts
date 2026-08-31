@@ -172,6 +172,7 @@ describe("design token contract", () => {
     expect(tooltip).toMatch(
       /span\.ui-tooltip-trigger\s*\{[^}]*display:\s*inline-block;[^}]*width:\s*fit-content;/s,
     );
+    expect(tooltip).toMatch(/button\.ui-tooltip-trigger\s*\{[^}]*width:\s*fit-content;/s);
   });
 
   it("uses one global dotted treatment for explanatory text triggers", () => {
