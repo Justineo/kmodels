@@ -12,6 +12,22 @@ export const catalogIdsSchema = z.strictObject({
   providers: z.record(z.string().min(1), z.array(z.string().min(1))),
 });
 
+const publishedIdentifierTargetSchema = z.strictObject({
+  model_ref: z.string().min(3),
+  kind: z.enum(["model_id", "alias"]),
+});
+
+export const catalogIdentifiersSchema = z.strictObject({
+  schema_version: z.literal(1),
+  profile: z.literal("identifiers"),
+  catalog_version: hash,
+  generated_at: dateTime,
+  providers: z.record(
+    z.string().min(1),
+    z.record(z.string().min(1), z.array(publishedIdentifierTargetSchema).min(1)),
+  ),
+});
+
 const catalogSummaryModelSchema = providerModelSchema
   .pick({
     model_id: true,
@@ -89,6 +105,7 @@ export const catalogProvidersSchema = z.strictObject({
 });
 
 export type CatalogIds = z.infer<typeof catalogIdsSchema>;
+export type CatalogIdentifiers = z.infer<typeof catalogIdentifiersSchema>;
 export type CatalogSummary = z.infer<typeof catalogSummarySchema>;
 export type CatalogModels = z.infer<typeof catalogModelsSchema>;
 export type PublishedModelVariant = z.infer<typeof publishedModelVariantSchema>;

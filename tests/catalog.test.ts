@@ -10,6 +10,7 @@ import { createPricingCatalogEnvelope } from "../src/catalog/pricing-envelope.ts
 import { prepareCatalogPair } from "../src/catalog/pricing-publication.ts";
 import { projectCatalogPair } from "../src/catalog/projections.ts";
 import {
+  catalogIdentifiersSchema,
   catalogIdsSchema,
   catalogModelsSchema,
   catalogProvidersSchema,
@@ -134,6 +135,7 @@ describe("generated static catalog", () => {
     );
     const websiteDetailAssets = assets.filter(({ fileName }) => fileName.startsWith("ui/details/"));
     const idsAsset = assets.find(({ fileName }) => fileName === "catalog/ids.json");
+    const identifiersAsset = assets.find(({ fileName }) => fileName === "catalog/identifiers.json");
     const modelsAsset = assets.find(({ fileName }) => fileName === "catalog/models.json");
     const summaryAsset = assets.find(({ fileName }) => fileName === "catalog/summary.json");
     const providersAsset = assets.find(({ fileName }) => fileName === "providers/index.json");
@@ -147,6 +149,7 @@ describe("generated static catalog", () => {
     );
     const envelope = catalogEnvelopeSchema.parse(JSON.parse(catalogAsset?.source ?? ""));
     const ids = catalogIdsSchema.parse(JSON.parse(idsAsset?.source ?? ""));
+    const identifiers = catalogIdentifiersSchema.parse(JSON.parse(identifiersAsset?.source ?? ""));
     const published = catalogModelsSchema.parse(JSON.parse(modelsAsset?.source ?? ""));
     const summary = catalogSummarySchema.parse(JSON.parse(summaryAsset?.source ?? ""));
     catalogProvidersSchema.parse(JSON.parse(providersAsset?.source ?? ""));
@@ -188,11 +191,41 @@ describe("generated static catalog", () => {
       const sourceModels = catalog.models.filter(({ provider_id }) => provider_id === provider.id);
       const expectedModelIds = new Set(sourceModels.map(({ model_id }) => model_id));
       const publishedModelIds = ids.providers[provider.id];
+      const publishedIdentifiers = identifiers.providers[provider.id];
       const publishedProvider = published.providers[provider.id];
       expect(publishedModelIds, provider.id).toBeDefined();
+      expect(publishedIdentifiers, provider.id).toBeDefined();
       expect(publishedProvider, provider.id).toBeDefined();
-      if (publishedModelIds === undefined || publishedProvider === undefined) continue;
+      if (
+        publishedModelIds === undefined ||
+        publishedIdentifiers === undefined ||
+        publishedProvider === undefined
+      )
+        continue;
       expectUniqueValues(publishedModelIds, expectedModelIds, provider.id);
+      expectUniqueValues(
+        Object.keys(publishedIdentifiers),
+        sourceModels.flatMap(({ model_id, aliases }) => [model_id, ...aliases]),
+        `${provider.id} identifiers`,
+      );
+      for (const [value, targets] of Object.entries(publishedIdentifiers)) {
+        const expectedTargets = sourceModels.flatMap((model) => [
+          ...(model.model_id === value ? [{ model, kind: "model_id" as const }] : []),
+          ...(model.aliases.includes(value) ? [{ model, kind: "alias" as const }] : []),
+        ]);
+        expect(targets, `${provider.id}/${value}`).toEqual(
+          expectedTargets
+            .map(({ model, kind }) => ({
+              model_ref: model.uid,
+              kind,
+            }))
+            .sort(
+              (left, right) =>
+                left.model_ref.localeCompare(right.model_ref) ||
+                left.kind.localeCompare(right.kind),
+            ),
+        );
+      }
       expectUniqueValues(
         publishedProvider.models.map(({ model_id }) => model_id),
         expectedModelIds,
@@ -242,7 +275,7 @@ describe("generated static catalog", () => {
     expect(website.models).toHaveLength(catalog.models.length);
     expect(websitePricing.pricing).toHaveLength(catalog.models.length);
     expect(websiteDetails.flatMap(({ details }) => details)).toHaveLength(catalog.models.length);
-    expect(assets).toHaveLength(8 + catalog.providers.length * 2 + websiteDetailAssets.length);
+    expect(assets).toHaveLength(9 + catalog.providers.length * 2 + websiteDetailAssets.length);
   });
 
   it("keeps checked-in catalog exports synchronized with their projection contracts", async () => {

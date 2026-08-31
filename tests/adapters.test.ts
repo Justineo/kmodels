@@ -9329,7 +9329,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v17");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v18");
     expect(source.linkedDocuments?.documents?.map(({ id, optional }) => [id, optional])).toEqual([
       ["bedrock-mantle", true],
       ["bedrock-rerank-supported", true],
@@ -9369,6 +9369,35 @@ describe("document adapter", () => {
         reason_code: "optional_catalog_source_drifted",
       }),
     );
+  });
+
+  it("parses separate Bedrock endpoint and API support tables", async () => {
+    const value = manifest("amazon-bedrock");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Bedrock source");
+    const separated = linkedBundle(await fixture("document/bedrock.json"));
+    const separatedCard = separated.documents.find((document) =>
+      document.url.endsWith("model-card-anthropic-claude-haiku-4-5.md"),
+    );
+    if (separatedCard === undefined) throw new Error("Missing Bedrock model card fixture");
+    separatedCard.body = await fixture("bedrock/model-card-separated-tables.md");
+    const separatedModels = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(separated),
+      observedAt,
+    });
+    expect(
+      separatedModels.find(
+        ({ model_id }) => model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
+      ),
+    ).toMatchObject({
+      pricing_state: "numeric",
+      api_endpoints: [
+        { name: "Converse", path: "model/{modelId}/converse" },
+        { name: "Invoke", path: "model/{modelId}/invoke" },
+      ],
+    });
   });
 
   it("adds officially supported Bedrock rerank models absent from model cards", async () => {

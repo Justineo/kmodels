@@ -76,6 +76,13 @@ interface BedrockAvailability {
   deploymentType: DeploymentType;
 }
 
+interface BedrockCardSupport {
+  modalities: ProviderModel["modalities"];
+  apiEndpoints: BedrockApiEndpoint[];
+  modelEndpoints: Set<BedrockModelEndpoint>;
+  endpointEvidenceComplete: boolean;
+}
+
 const rerankApi: BedrockApiEndpoint = {
   name: "Rerank",
   path: "rerank",
@@ -376,7 +383,8 @@ function markdownTable(
   const matches: { header: string[]; rows: string[][] }[] = [];
   for (let index = 0; index + 1 < lines.length; index += 1) {
     const header = markdownCells(lines[index] ?? "");
-    if (!requiredHeaders.every((required) => header.includes(required))) continue;
+    if (header.length === 0 || !requiredHeaders.every((required) => header.includes(required)))
+      continue;
     const separator = markdownCells(lines[index + 1] ?? "");
     if (separator.length < header.length || !separator.every((cell) => /^:?-{3,}:?$/.test(cell)))
       continue;
@@ -406,6 +414,10 @@ function supported(cell: string): boolean {
   return cell.includes("icon-yes.png");
 }
 
+function isCardEndpoint(value: string | undefined): value is BedrockModelEndpoint {
+  return value === "bedrock-runtime" || value === "bedrock-mantle";
+}
+
 function supportedModality(
   cell: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
@@ -423,15 +435,121 @@ function supportedModality(
   return undefined;
 }
 
+function addSupportedApi(
+  apiEndpoints: Map<string, BedrockApiEndpoint>,
+  apiLabel: string,
+  programmaticEndpoint: BedrockModelEndpoint | undefined,
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): void {
+  const definitions = bedrockApiDefinitions.get(apiLabel);
+  const applicable =
+    programmaticEndpoint === undefined
+      ? definitions
+      : definitions?.filter(
+          (definition) => definition.programmaticEndpoint === programmaticEndpoint,
+        );
+  if (applicable === undefined || applicable.length === 0) {
+    onPricingReconciliation?.({
+      disposition: "unsupported",
+      reason_code: "model_card_api_unsupported",
+      sample: apiLabel,
+    });
+    return;
+  }
+  for (const definition of applicable) {
+    const endpoint = { name: apiLabel, ...definition };
+    apiEndpoints.set(`${apiEndpointKey(endpoint)}\0${endpoint.programmaticEndpoint}`, endpoint);
+  }
+}
+
+function cardApiEndpoints(
+  body: string,
+  endpoints: Map<string, BedrockApiEndpoint>,
+): BedrockApiEndpoint[] {
+  const values = [...endpoints.values()];
+  return /^#### \[\s*Rerank API\s*]$/m.test(body) ? [...values, rerankApi] : values;
+}
+
+function splitCardSupport(
+  body: string,
+  modalities: ProviderModel["modalities"],
+  onPricingReconciliation?: ParseInput["onPricingReconciliation"],
+): BedrockCardSupport {
+  const content = section(body, "Endpoints and APIs supported");
+  if (content === undefined)
+    throw new Error("Bedrock model card omitted endpoint and API support tables");
+  const endpointTable = markdownTable(content, ["Endpoint", "Supported"]);
+  if (endpointTable === undefined)
+    throw new Error("Bedrock model card omitted its endpoint support table");
+  const endpointIndex = endpointTable.header.indexOf("Endpoint");
+  const supportedIndex = endpointTable.header.indexOf("Supported");
+  const modelEndpoints = new Set<BedrockModelEndpoint>();
+  let endpointEvidenceComplete = true;
+  let hasKnownEndpoint = false;
+  for (const cells of endpointTable.rows) {
+    const endpointLabel = plain(cells[endpointIndex] ?? "");
+    const isSupported = supported(cells[supportedIndex] ?? "");
+    if (!isCardEndpoint(endpointLabel)) {
+      if (isSupported) {
+        endpointEvidenceComplete = false;
+        onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "model_card_endpoint_unsupported",
+          sample: endpointLabel,
+        });
+      }
+      continue;
+    }
+    hasKnownEndpoint = true;
+    if (isSupported) modelEndpoints.add(endpointLabel);
+  }
+  if (!hasKnownEndpoint)
+    throw new Error("Bedrock model card contained no recognized endpoint support rows");
+
+  const apiEndpoints = new Map<string, BedrockApiEndpoint>();
+  const apiTables = new Set<BedrockModelEndpoint>();
+  const headings = [
+    ...content.matchAll(
+      /^\*\*APIs supported on `(bedrock-runtime|bedrock-mantle)` endpoint\*\*$/gm,
+    ),
+  ];
+  if (headings.length === 0)
+    throw new Error("Bedrock model card omitted its per-endpoint API support tables");
+  for (let index = 0; index < headings.length; index++) {
+    const heading = headings[index];
+    const headingIndex = heading?.index;
+    const endpoint = heading?.[1];
+    if (heading === undefined || headingIndex === undefined || !isCardEndpoint(endpoint))
+      throw new Error("Bedrock model card contained an invalid API support heading");
+    const start = headingIndex + heading[0].length;
+    const end = headings[index + 1]?.index ?? content.length;
+    const table = markdownTable(content.slice(start, end), []);
+    if (table === undefined)
+      throw new Error(`Bedrock model card omitted API support for ${endpoint}`);
+    apiTables.add(endpoint);
+    for (const cells of table.rows)
+      for (let cellIndex = 0; cellIndex < table.header.length; cellIndex++) {
+        const apiLabel = table.header[cellIndex];
+        if (apiLabel !== undefined && supported(cells[cellIndex] ?? ""))
+          addSupportedApi(apiEndpoints, apiLabel, endpoint, onPricingReconciliation);
+      }
+  }
+  if ([...modelEndpoints].some((endpoint) => !apiTables.has(endpoint)))
+    throw new Error("Bedrock model card omitted API support for a supported endpoint");
+  if (modelEndpoints.size === 0 && endpointEvidenceComplete)
+    throw new Error("Bedrock model card contained no supported endpoint");
+  return {
+    modalities,
+    apiEndpoints: cardApiEndpoints(body, apiEndpoints),
+    modelEndpoints,
+    endpointEvidenceComplete,
+  };
+}
+
 function cardTable(
   body: string,
   onPricingReconciliation?: ParseInput["onPricingReconciliation"],
-): {
-  modalities: ProviderModel["modalities"];
-  apiEndpoints: BedrockApiEndpoint[];
-  modelEndpoints: Set<BedrockModelEndpoint>;
-  endpointEvidenceComplete: boolean;
-} {
+): BedrockCardSupport {
   const table = markdownTable(body, ["Input Modalities", "Output Modalities"]);
   if (table === undefined) throw new Error("Bedrock model card omitted its modality table");
   const { header } = table;
@@ -439,42 +557,29 @@ function cardTable(
   const outputIndex = header.indexOf("Output Modalities");
   const apiIndex = header.findIndex((cell) => cell.includes("APIs supported"));
   const endpointIndex = header.findIndex((cell) => cell.includes("Endpoints supported"));
-  if (apiIndex < 0 || endpointIndex < 0)
-    throw new Error("Bedrock model card omitted API or endpoint support");
   const input: Modality[] = [];
   const output: Modality[] = [];
-  const apiEndpoints = new Map<string, BedrockApiEndpoint>();
-  const modelEndpoints = new Set<BedrockModelEndpoint>();
-  let endpointEvidenceComplete = true;
   for (const cells of table.rows) {
     const inputValue = supportedModality(cells[inputIndex] ?? "", onPricingReconciliation);
     const outputValue = supportedModality(cells[outputIndex] ?? "", onPricingReconciliation);
     if (inputValue !== undefined) input.push(inputValue);
     if (outputValue !== undefined) output.push(outputValue);
+  }
+  const modalities = { input: unique(input), output: unique(output) };
+  if (apiIndex < 0 || endpointIndex < 0)
+    return splitCardSupport(body, modalities, onPricingReconciliation);
+
+  const apiEndpoints = new Map<string, BedrockApiEndpoint>();
+  const modelEndpoints = new Set<BedrockModelEndpoint>();
+  let endpointEvidenceComplete = true;
+  for (const cells of table.rows) {
     const apiLabel = tableLabel(cells[apiIndex] ?? "");
-    if (apiLabel !== undefined) {
-      const definitions = bedrockApiDefinitions.get(apiLabel);
-      const isSupported = supported(cells[apiIndex] ?? "");
-      if (definitions === undefined) {
-        if (isSupported)
-          onPricingReconciliation?.({
-            disposition: "unsupported",
-            reason_code: "model_card_api_unsupported",
-            sample: apiLabel,
-          });
-      } else if (isSupported)
-        for (const definition of definitions) {
-          const endpoint = { name: apiLabel, ...definition };
-          apiEndpoints.set(
-            `${apiEndpointKey(endpoint)}\0${endpoint.programmaticEndpoint}`,
-            endpoint,
-          );
-        }
-    }
+    if (apiLabel !== undefined && supported(cells[apiIndex] ?? ""))
+      addSupportedApi(apiEndpoints, apiLabel, undefined, onPricingReconciliation);
     const endpointLabel = tableLabel(cells[endpointIndex] ?? "");
     if (endpointLabel !== undefined) {
       const isSupported = supported(cells[endpointIndex] ?? "");
-      if (endpointLabel !== "bedrock-runtime" && endpointLabel !== "bedrock-mantle") {
+      if (!isCardEndpoint(endpointLabel)) {
         if (isSupported) {
           endpointEvidenceComplete = false;
           onPricingReconciliation?.({
@@ -488,11 +593,9 @@ function cardTable(
   }
   if (modelEndpoints.size === 0 && endpointEvidenceComplete)
     throw new Error("Bedrock model card contained no supported endpoint");
-  if (/^#### \[\s*Rerank API\s*]$/m.test(body))
-    apiEndpoints.set(apiEndpointKey(rerankApi), rerankApi);
   return {
-    modalities: { input: unique(input), output: unique(output) },
-    apiEndpoints: [...apiEndpoints.values()],
+    modalities,
+    apiEndpoints: cardApiEndpoints(body, apiEndpoints),
     modelEndpoints,
     endpointEvidenceComplete,
   };
@@ -525,7 +628,7 @@ function programmaticAccess(body: string, name: string): Map<string, CardId> {
   const result = new Map<string, CardId>();
   for (const cells of table.rows) {
     const endpoint = cells[endpointIndex];
-    if (endpoint !== "bedrock-runtime" && endpoint !== "bedrock-mantle") continue;
+    if (!isCardEndpoint(endpoint)) continue;
     const modelId = cells[idIndex];
     if (modelId === undefined || !modelIdSchema.safeParse(modelId).success) continue;
     const current = result.get(modelId) ?? {

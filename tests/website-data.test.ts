@@ -166,6 +166,9 @@ describe("website data", () => {
       publication.pricing.cells.length,
     );
     const runtimeCatalog = parseWebsiteCatalog(publication.catalog, publication.pricing);
+    expect(runtimeCatalog.models.map(({ aliases }) => aliases)).toEqual(
+      catalog.models.map(({ aliases }) => aliases),
+    );
     for (const { pricing } of runtimeCatalog.models) {
       const hasRepresentativeRate =
         pricing.input !== undefined || pricing.cache !== undefined || pricing.output !== undefined;
@@ -216,6 +219,21 @@ describe("website data", () => {
     expect(new Set(details.map(({ model_ref }) => model_ref))).toEqual(
       new Set(catalog.models.map(({ uid }) => uid)),
     );
+    for (const model of catalog.models) {
+      const detail = details.find(({ model_ref }) => model_ref === model.uid);
+      expect(detail, model.uid).toBeDefined();
+      const projectedAvailability = (detail?.deployment_availability ?? []).flatMap(
+        ({ deployment_type, regions }) =>
+          regions.map((region) => JSON.stringify([region, deployment_type])),
+      );
+      expect(new Set(projectedAvailability), model.uid).toEqual(
+        new Set(
+          (model.availability ?? []).map(({ region, deployment_type }) =>
+            JSON.stringify([region, deployment_type]),
+          ),
+        ),
+      );
+    }
     expect(
       [...publication.details, ...publication.offers].reduce(
         (bytes, chunk) => bytes + Buffer.byteLength(JSON.stringify(chunk)),

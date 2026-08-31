@@ -116,7 +116,7 @@ export function websitePublication(
 
   return {
     catalog: websiteCatalogIndexSchema.parse({
-      schema_version: 3,
+      schema_version: 4,
       data_version: dataVersion,
       generated_at: catalog.generated_at,
       providers: catalog.providers.map(({ id, name }) => ({
@@ -148,6 +148,7 @@ export function websitePublication(
           enumIndex(modelReleaseStages, model.release_stage, "model release stage"),
           model.limits.context_tokens ?? null,
           detailChunk === 0 ? null : detailChunk,
+          model.aliases,
         ];
       }),
     }),
@@ -343,7 +344,7 @@ function websiteDeferredAssets(
         storedDetails,
         (values, chunk) =>
           websiteDetailChunkSchema.parse({
-            schema_version: 5,
+            schema_version: 6,
             data_version: dataVersion,
             provider_id: provider.id,
             chunk,
@@ -602,6 +603,7 @@ function websiteModelDetailFromView(
   atoms: ProviderAtomIndex,
 ): WebsiteModelDetail {
   const pricingDetail = websitePricingDetail(view, model.uid, labels, atoms);
+  const deploymentAvailability = groupedDeploymentAvailability(model);
   return {
     model_ref: model.uid,
     ...(model.updated_date === undefined ? {} : { updated_date: model.updated_date }),
@@ -614,9 +616,28 @@ function websiteModelDetailFromView(
       ? {}
       : { max_output_tokens: model.limits.max_output_tokens }),
     scope: model.scope,
-    ...(model.availability === undefined ? {} : { availability_count: model.availability.length }),
+    ...(model.availability === undefined
+      ? {}
+      : { deployment_availability: deploymentAvailability }),
     ...(pricingDetail === undefined ? {} : { pricing: pricingDetail }),
   };
+}
+
+function groupedDeploymentAvailability(
+  model: ProviderModel,
+): NonNullable<WebsiteModelDetail["deployment_availability"]> {
+  const regionsByDeployment = new Map<string, Set<string>>();
+  for (const { deployment_type, region } of model.availability ?? []) {
+    const regions = regionsByDeployment.get(deployment_type) ?? new Set<string>();
+    regions.add(region);
+    regionsByDeployment.set(deployment_type, regions);
+  }
+  return [...regionsByDeployment]
+    .sort(([left], [right]) => compareUtf8(left, right))
+    .map(([deployment_type, regions]) => ({
+      deployment_type,
+      regions: [...regions].sort(compareUtf8),
+    }));
 }
 
 function websitePricingDetail(

@@ -149,6 +149,8 @@ not used as a substitute for request-level Gateway signals.
 - Each model card is parsed independently. Unknown API or endpoint labels are skipped locally and
   recorded without discarding the rest of the card. A malformed identity, date, or required table
   isolates only that card; valid sibling cards continue.
+- Model-card modality evidence may publish API and endpoint support in the same table or in separate
+  endpoint and per-endpoint API tables. Both layouts bind only recognized endpoints and API paths.
 - Mantle and rerank supplements are additive. Their absence or drift cannot remove Runtime models.
 - Every Price List product, term, and dimension is interpreted independently. Invalid siblings are
   skipped with reconciliation evidence.

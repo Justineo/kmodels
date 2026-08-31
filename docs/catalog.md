@@ -42,6 +42,12 @@ catalog. Consumer profiles use `schema_version` for their contract, while
 - `/catalog/ids.json` is the lean inventory. It maps each provider ID to sorted,
   distinct `model_id` strings. It makes no version, lifecycle, callability, or
   latest-version claim.
+- `/catalog/identifiers.json` is the complete static identifier index. It maps
+  every accepted provider `model_id` and alias to one or more exact model
+  records, retaining whether each edge came from `model_id` or `aliases`.
+  Identifier values are deliberately not unique: one official alias can refer
+  to several exact versions or artifacts. This profile guarantees catalog
+  lookup, not universal callability across routes, regions, or accounts.
 - `/catalog/summary.json` is the flat lightweight metadata inventory. Each
   exact catalog record contains `model_id`, stable provider ID as `provider`,
   `tasks`, lifecycle `status`, and `version` when the provider publishes it
@@ -77,6 +83,10 @@ with provenance.
 - `model_id` is an observed request ID or an explicitly typed source ID. Never derive it from a display name.
 - `version` is kept only when the provider observes it separately. Never concatenate it into, or infer it from, `model_id`.
 - `name` is an independently observed display label.
+- `aliases` contains every accepted provider-published static alternate
+  identifier. It is additive and does not replace or merge the owning row.
+  An alias is not assumed to work on every provider endpoint; invocation
+  context belongs to the separate addressing contract.
 - Merge repeated observations of one tuple. Union additive sets and conditioned facts; apply overlays only to declared fields. Reject incompatible facts from one source.
 - Never merge bare IDs across providers, collapse a canonical ID through an alias, or merge distinct callable IDs that share a display name.
 - An exact catalog ID always owns a row even when another row lists it as an alias.
@@ -131,5 +141,8 @@ with provenance.
   Private, account-scoped, negotiated, or credential-bearing facts never enter
   normalized or raw public pricing.
 - Regional availability is exact `{region, deployment_type}` pairs; never publish independent arrays that create false combinations.
+- A published availability pair is positive evidence only. An absent pair is
+  unsupported only when a provider adapter retains an exhaustive negative or
+  closed-world rule; otherwise it remains unknown.
 - Provider coverage is `fresh`, `stale`, `unavailable`, or `not_configured`, with a machine-readable reason that does not expose private URLs.
 - Warnings use structured codes with optional provider, source, and field context. Aggregate missing authentication, fetch/parse failures, scoped mismatches, and missing-field coverage instead of warning once per row.

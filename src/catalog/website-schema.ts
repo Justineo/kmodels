@@ -159,11 +159,12 @@ const websiteCatalogIndexModelSchema = z.tuple([
   enumIndexSchema(modelReleaseStages),
   z.number().int().nonnegative().nullable(),
   z.number().int().positive().nullable(),
+  z.array(nonEmpty),
 ]);
 
 export const websiteCatalogIndexSchema = z
   .strictObject({
-    schema_version: z.literal(3),
+    schema_version: z.literal(4),
     data_version: hash,
     generated_at: z.string().min(1),
     providers: z.array(
@@ -477,7 +478,14 @@ const websiteModelDetailShape = {
   }),
   max_output_tokens: z.number().int().nonnegative().optional(),
   scope: z.enum(modelScopes),
-  availability_count: z.number().int().nonnegative().optional(),
+  deployment_availability: z
+    .array(
+      z.strictObject({
+        deployment_type: nonEmpty,
+        regions: z.array(nonEmpty).min(1),
+      }),
+    )
+    .optional(),
 };
 
 export const websiteModelDetailSchema = z.strictObject({
@@ -496,7 +504,7 @@ const websiteStoredModelDetailSchema = z.strictObject({
 });
 
 export const websiteDetailChunkSchema = z.strictObject({
-  schema_version: z.literal(5),
+  schema_version: z.literal(6),
   data_version: hash,
   provider_id: nonEmpty,
   chunk: z.number().int().nonnegative(),
@@ -514,6 +522,7 @@ export interface WebsiteCatalogIndexModel {
   model_id: string;
   version?: string;
   name: string;
+  aliases: string[];
   tasks: (typeof modelTasks)[number][];
   release_date?: string;
   status: (typeof modelLifecycles)[number];

@@ -7,7 +7,7 @@ Status: implemented core; provider pricing convergence is in progress
 - The site is a full-width, full-height precision workspace, not a centered marketing page.
 - One compact header shows Kmodels, model/provider totals, generation time, a GitHub repository icon, and a light/dark toggle. The localized relative generation time shows its complete timestamp in the viewer's current time zone in a tooltip and links to the catalog-producing GitHub Actions run when recorded on the commit; otherwise it links to the catalog-producing commit.
 - Keep freshness details and catalog/pricing hashes in machine-readable data rather than persistent chrome.
-- One toolbar keeps model-ID/name search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
+- One toolbar keeps model-ID/name/alias search and a provider selector visible. A secondary popover contains task, lifecycle, and release-stage filters.
 - Keep the provider selector as one alphabetized list using the same provider marks as the table and inspector.
 - When the selected provider has standalone commercial resources, show their
   count as an action that opens a provider-level pricing inspector. This is the
@@ -20,10 +20,18 @@ Status: implemented core; provider pricing convergence is in progress
 
 - Give each inspector fact one home. The header owns provider, display name, and exact request
   identity. Primary lifecycle/release status and catalog scope begin the content in one compact
-  metadata line; Overview does not repeat those fields. Suppress the identifier line
-  when it exactly repeats the display name, while retaining a distinct version.
+  metadata line; Overview does not repeat those fields. Keep the exact model ID as a compact copy
+  control even when it repeats the display name, and show a distinct version beside it without
+  including that separate field in the copied ID.
   Keep task, delivery, limits, dates, availability, modalities, supported
-  capabilities, endpoints, and pricing in their respective sections.
+  capabilities, endpoints, and pricing in their respective sections. Show
+  every provider-published static alias as a compact copy control in a collapsed
+  `Alternate identifiers` disclosure before Overview, using the same visual
+  treatment as the primary model-ID copy control. Show regional availability in a collapsed
+  `Availability details` disclosure, summarized by region and deployment-type
+  counts. Inside, group the documented regions under a readable deployment-type
+  label. Leave unlisted regions unknown rather than presenting the data as an
+  exhaustive support matrix.
 - Keep single-variant provider models as one ordinary row. When the filtered
   result contains multiple exact versions of one `(provider_id, model_id)`,
   show one collapsed parent row with the variant count. Its identity uses the
@@ -243,7 +251,7 @@ Status: implemented core; provider pricing convergence is in progress
 ## Interaction
 
 - `/` focuses search.
-- Search uses a small in-memory index of lowercase IDs and names with spaces and hyphens removed. Match literal substrings only; do not fuzzy-expand or relevance-rank.
+- Search uses a small in-memory index of lowercase IDs, names, and aliases with spaces and hyphens removed. Match literal substrings only; do not fuzzy-expand or relevance-rank.
 - Filters update immediately. Selecting an inline facet replaces only that category and preserves other state.
 - Keep separators between multiple facet values presentational and outside interactive controls.
 - Sortable headings cycle default, ascending, descending, then default.
@@ -372,7 +380,8 @@ Status: implemented core; provider pricing convergence is in progress
   parse either canonical mirror. When either checked-in pack changes, the dev
   server invalidates its in-memory profile; a UI-pack change reloads the page so
   the catalog index, detail schema, and deferred chunks always advance together.
-- `/catalog/models.json`, `/catalog/summary.json`, `/catalog/ids.json`, the
+- `/catalog/models.json`, `/catalog/summary.json`, `/catalog/ids.json`,
+  `/catalog/identifiers.json`, the
   audit-rich `/catalog/index.json`, provider-scoped profiles, and
   `/pricing/index.json` remain explicit public downloads documented in the
   repository, not application dependencies. Build validates both compressed

@@ -67,7 +67,14 @@ export function composeCatalogPair(
 
   let catalog = current;
   let pricing = priorPricing;
-  for (const [providerId, transition] of transitionByProvider) {
+  for (const [providerId, requestedTransition] of transitionByProvider) {
+    const transition =
+      requestedTransition.kind === "fresh" &&
+      current.coverage.some(
+        ({ provider_id, status }) => provider_id === providerId && status === "stale",
+      )
+        ? failedPricingTransition(providerId, current.generated_at, "provider_refresh_failed")
+        : requestedTransition;
     const previousPartition = providerPartition(priorPricing, providerId, modelOwners);
     if (
       transition.kind === "withdraw_pricing" &&
