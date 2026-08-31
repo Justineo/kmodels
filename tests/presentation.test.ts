@@ -118,6 +118,11 @@ describe("SVG sprite", () => {
     expect(spriteSymbols).toContain('fill="#1783FF"');
   });
 
+  it("includes copy feedback controls", () => {
+    expect(spriteSymbols).toContain('<symbol id="ui-copy"');
+    expect(spriteSymbols).toContain('<symbol id="ui-check"');
+  });
+
   it("uses the Google Cloud mark for the Agent Platform", () => {
     expect(spriteSymbols).toContain(svgSymbol("provider-vertex", googleCloud));
   });

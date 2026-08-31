@@ -131,7 +131,7 @@ function parseModel(
   taskLists: Map<string, WebsiteCatalogIndexModel["tasks"]>,
 ): WebsiteCatalogIndexModel {
   const label = `models[${index}]`;
-  const item = tuple(value, 10, label);
+  const item = tuple(value, 11, label);
   const providerIndex = nonnegativeInteger(item[0], `${label}[0]`);
   const providerId = providerIds[providerIndex];
   if (providerId === undefined) throw new Error(`${label} references an unknown provider`);
@@ -149,12 +149,17 @@ function parseModel(
   const detailChunk = item[9] === null ? 0 : positiveInteger(item[9], `${label}[9]`);
   const modelId = nonEmptyString(item[1], `${label}[1]`);
   const name = nullableNonEmptyString(item[3], `${label}[3]`) ?? modelId;
+  if (!Array.isArray(item[10])) throw new Error(`${label}[10] must be an array`);
+  const aliases = item[10].map((alias, aliasIndex) =>
+    nonEmptyString(alias, `${label}[10][${aliasIndex}]`),
+  );
 
   return {
     provider_id: providerId,
     model_id: modelId,
     ...(version === undefined ? {} : { version }),
     name,
+    aliases,
     tasks: sharedTasks,
     ...(releaseDate === undefined ? {} : { release_date: releaseDate }),
     status: enumValue(modelLifecycles, item[6], `${label}[6]`),
@@ -219,7 +224,7 @@ function parseWebsitePricing(value: unknown): {
 export function parseWebsiteCatalog(catalogValue: unknown, pricingValue: unknown): WebsiteCatalog {
   const catalog = record(catalogValue, "catalog");
   exactKeys(catalog, catalogKeys, "catalog");
-  if (catalog.schema_version !== 3) throw new Error("Unsupported website catalog schema");
+  if (catalog.schema_version !== 4) throw new Error("Unsupported website catalog schema");
   const dataVersion = nonEmptyString(catalog.data_version, "catalog.data_version");
   if (!hashPattern.test(dataVersion)) throw new Error("catalog.data_version must be a hash");
   if (!Array.isArray(catalog.providers)) throw new Error("catalog.providers must be an array");

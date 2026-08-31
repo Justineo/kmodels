@@ -15,6 +15,8 @@ This index points to the repository's current decisions. Detailed documents are 
 ## Domain topics
 
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
+- [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
+  tuples, evidence limits, and UI projection.
 - [Collection](docs/collection.md): source trust, scopes, matching, validation, fallback, provenance, and generated data.
 - [Kong AI Gateway](docs/kong-ai-gateway.md): consumer boundary and compatibility evidence.
 - [Website](docs/website.md): information architecture, interaction, visual system, frontend behavior, and security.

@@ -1,11 +1,12 @@
 interface SearchableModel {
   readonly model_id: string;
   readonly name: string;
+  readonly aliases: readonly string[];
 }
 
 interface IndexedModel<T extends SearchableModel> {
   model: T;
-  terms: readonly [string, string];
+  terms: readonly string[];
 }
 
 function normalize(value: string): string {
@@ -18,7 +19,7 @@ function normalize(value: string): string {
 export function indexModels<T extends SearchableModel>(models: readonly T[]): IndexedModel<T>[] {
   return models.map((model) => ({
     model,
-    terms: [normalize(model.model_id), normalize(model.name)],
+    terms: [model.model_id, model.name, ...model.aliases].map(normalize),
   }));
 }
 

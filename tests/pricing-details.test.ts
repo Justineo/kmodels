@@ -12,6 +12,7 @@ const model = {
   provider_id: "test",
   model_id: "model",
   name: "Model",
+  aliases: [],
   tasks: [],
   status: "active",
   release_stage: "stable",

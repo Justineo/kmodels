@@ -19,8 +19,10 @@ import github from "@lobehub/icons-static-svg/icons/github.svg?raw";
 import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
 import arrowUp from "lucide-static/icons/arrow-up.svg?raw";
 import calendarClock from "lucide-static/icons/calendar-clock.svg?raw";
+import check from "lucide-static/icons/check.svg?raw";
 import chevronDown from "lucide-static/icons/chevron-down.svg?raw";
 import chevronRight from "lucide-static/icons/chevron-right.svg?raw";
+import copy from "lucide-static/icons/copy.svg?raw";
 import externalLink from "lucide-static/icons/external-link.svg?raw";
 import listFilter from "lucide-static/icons/list-filter.svg?raw";
 import loaderCircle from "lucide-static/icons/loader-circle.svg?raw";
@@ -37,8 +39,10 @@ const uiSources = {
   "arrow-right": arrowRight,
   "arrow-up": arrowUp,
   "calendar-clock": calendarClock,
+  check,
   "chevron-down": chevronDown,
   "chevron-right": chevronRight,
+  copy,
   "external-link": externalLink,
   github,
   "list-filter": listFilter,

@@ -10,6 +10,7 @@ describe("model details", () => {
       provider_id: "test",
       model_id: "model",
       name: "Model",
+      aliases: ["model-latest"],
       tasks: [],
       status: "active",
       release_stage: "unknown",
@@ -22,6 +23,7 @@ describe("model details", () => {
       modalities: { input: [], output: [] },
       capabilities: unknownCapabilities(),
       scope: "regional_catalog",
+      deployment_availability: [{ deployment_type: "batch", regions: ["east", "west"] }],
     } satisfies WebsiteModelDetail;
 
     const html = await renderComponent(ModelDetails, {
@@ -43,5 +45,18 @@ describe("model details", () => {
     expect(content).toContain('<div class="status-line"');
     expect(content).toContain("active");
     expect(content).toContain("regional catalog");
+    expect(header).toContain("Copy model ID model");
+    expect(header).toContain("#ui-copy");
+    expect(content).toContain('<details class="detail-section detail-disclosure"');
+    expect(content).toContain("Alternate identifiers");
+    expect(content.indexOf("Alternate identifiers")).toBeLessThan(content.indexOf("Overview"));
+    expect(content).toContain("model-latest");
+    expect(content).toContain("Copy alternate identifier model-latest");
+    expect(content).toContain("Availability details");
+    expect(content).toContain("2 observed deployments");
+    expect(content).toContain("2 regions · 1 deployment type");
+    expect(content).toContain("Batch");
+    expect(content).toContain("east, west");
+    expect(content).toContain("A region not listed here may still be available");
   });
 });

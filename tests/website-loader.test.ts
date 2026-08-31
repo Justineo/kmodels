@@ -19,6 +19,7 @@ const model = {
   provider_id: "test",
   model_id: "model",
   name: "Model",
+  aliases: [],
   tasks: [],
   status: "active",
   release_stage: "stable",
@@ -107,7 +108,7 @@ function providerPricingChunk(
 
 function detailChunk(dataVersion: string, description: string): WebsiteDetailChunk {
   return {
-    schema_version: 5,
+    schema_version: 6,
     data_version: dataVersion,
     provider_id: model.provider_id,
     chunk: model.detail_chunk,

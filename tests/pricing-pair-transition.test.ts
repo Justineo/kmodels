@@ -92,21 +92,10 @@ function catalog(name: string): Catalog {
   };
 }
 
-function partition(publication: "fresh" | "retained" = "fresh"): ProviderPricingPartition {
+function partition(label = "Not offered"): ProviderPricingPartition {
   return {
     vocabulary: { provider_id: providerId, atoms: [] },
-    snapshot:
-      publication === "fresh"
-        ? { provider_id: providerId, observed_at: observedAt, publication }
-        : {
-            provider_id: providerId,
-            observed_at: observedAt,
-            publication,
-            refresh_failure: {
-              attempted_at: observedAt,
-              code: "provider_refresh_failed",
-            },
-          },
+    snapshot: { provider_id: providerId, observed_at: observedAt, publication: "fresh" },
     model_dispositions: [
       {
         model_ref: modelRef,
@@ -116,7 +105,7 @@ function partition(publication: "fresh" | "retained" = "fresh"): ProviderPricing
             source_ref: sourceRef,
             locator: { kind: "table", value: "row" },
             establishes_model_ref: modelRef,
-            raw: { label: "Not offered" },
+            raw: { label },
           },
         ],
       },
@@ -169,6 +158,28 @@ describe("paired core/pricing provider transition", () => {
     const result = composeCatalogPair(catalog("old"), catalog("new"), pricing(), []);
     expect(result.catalog.providers[0]?.name).toBe("new");
     expect(result.pricing).toEqual(pricing());
+  });
+
+  it("retains pricing when the provider catalog refresh was rejected", () => {
+    const prior = partition("Prior accepted pricing");
+    const stale = catalog("old");
+    stale.coverage = stale.coverage.map((coverage) => ({
+      ...coverage,
+      status: "stale",
+      reason: "model count dropped by more than 10%",
+    }));
+    const result = composeCatalogPair(catalog("old"), stale, pricing(prior), [
+      { kind: "fresh", partition: partition("Partial candidate pricing") },
+    ]);
+    expect(result.pricing.provider_snapshots[0]).toMatchObject({
+      observed_at: prior.snapshot.observed_at,
+      publication: "retained",
+      refresh_failure: {
+        attempted_at: observedAt,
+        code: "provider_refresh_failed",
+      },
+    });
+    expect(result.pricing.model_dispositions).toEqual(prior.model_dispositions);
   });
 
   it("advances or removes both sides only through explicit transitions", () => {

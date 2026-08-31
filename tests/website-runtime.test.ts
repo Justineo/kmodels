@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { parseWebsiteCatalog } from "../src/catalog/website-runtime.ts";
 
 const catalog = {
-  schema_version: 3,
+  schema_version: 4,
   data_version: "1".repeat(64),
   generated_at: "2026-07-29T00:00:00.000Z",
   providers: [
@@ -19,7 +19,7 @@ const catalog = {
       },
     },
   ],
-  models: [[0, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2]],
+  models: [[0, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2, ["model-latest"]]],
 };
 const pricing = {
   schema_version: 3,
@@ -33,6 +33,7 @@ describe("website runtime catalog parser", () => {
   it("validates both core chunks and derives browser-only fields", () => {
     expect(parseWebsiteCatalog(catalog, pricing).models[0]).toMatchObject({
       uid: "test/model@v1",
+      aliases: ["model-latest"],
       detail_chunk: 2,
       pricing: {
         outcome: "offers",
@@ -43,7 +44,10 @@ describe("website runtime catalog parser", () => {
     });
     expect(
       parseWebsiteCatalog(
-        { ...catalog, models: [[0, "model", "v1", null, [0], "2026-07", 0, 0, 128_000, 2]] },
+        {
+          ...catalog,
+          models: [[0, "model", "v1", null, [0], "2026-07", 0, 0, 128_000, 2, []]],
+        },
         pricing,
       ).models[0]?.name,
     ).toBe("model");
@@ -57,7 +61,7 @@ describe("website runtime catalog parser", () => {
       parseWebsiteCatalog(
         {
           ...catalog,
-          models: [[1, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2]],
+          models: [[1, "model", "v1", "Model", [0], "2026-07", 0, 0, 128_000, 2, []]],
         },
         pricing,
       ),
@@ -75,7 +79,7 @@ describe("website runtime catalog parser", () => {
 
   it("rejects malformed compact rows and missing dictionary entries", () => {
     expect(() => parseWebsiteCatalog({ ...catalog, models: [[0, "model"]] }, pricing)).toThrow(
-      "10-item array",
+      "11-item array",
     );
     expect(() =>
       parseWebsiteCatalog(catalog, {

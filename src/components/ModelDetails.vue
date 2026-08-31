@@ -1,6 +1,7 @@
 <script setup lang="ts" vapor>
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from "vue";
 import {
+  formatSentenceCase,
   formatSnakeCase,
   formatTokenCount,
   modelTaskList,
@@ -32,6 +33,9 @@ const dialog = useTemplateRef<HTMLDialogElement>("dialog");
 const scrollHost = useTemplateRef<HTMLDivElement>("scrollHost");
 const scrollViewport = useTemplateRef<HTMLDivElement>("scrollViewport");
 const closing = ref(false);
+const copiedIdentifier = ref<string>();
+const copyAnnouncement = ref("");
+let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 const updateScrollbars = useOverlayScrollbars(() => ({
   target: scrollHost.value,
   viewport: scrollViewport.value,
@@ -53,23 +57,23 @@ const positiveCapabilities = computed(() => {
   ];
   return labels.filter(([key]) => detail.capabilities[key] === true).map(([, label]) => label);
 });
-const modelIdentifier = computed(() => {
-  const model = props.model;
-  if (model === undefined) return undefined;
-  if (model.name !== model.model_id)
-    return `${model.model_id}${model.version === undefined ? "" : ` · ${model.version}`}`;
-  return model.version === undefined ? undefined : `Version ${model.version}`;
-});
 const deliveryModes = computed(
   () => props.detail?.delivery_modes?.map(formatSnakeCase).join(", ") || "Not published",
 );
+const deploymentAvailability = computed(() => props.detail?.deployment_availability ?? []);
 const availability = computed(() => {
-  const count = props.detail?.availability_count;
+  const groups = props.detail?.deployment_availability;
+  const count = groups?.reduce((total, { regions }) => total + regions.length, 0);
   return count === undefined
     ? "Not published"
     : `${count} observed deployment${count === 1 ? "" : "s"}`;
 });
 const apiEndpoints = computed(() => props.detail?.api_endpoints ?? []);
+const availabilitySummary = computed(() => {
+  const regionCount = new Set(deploymentAvailability.value.flatMap(({ regions }) => regions)).size;
+  const deploymentCount = deploymentAvailability.value.length;
+  return `${regionCount} region${regionCount === 1 ? "" : "s"} · ${deploymentCount} deployment type${deploymentCount === 1 ? "" : "s"}`;
+});
 const detailStatus = computed(() => {
   if (props.detail !== undefined) return formatSnakeCase(props.detail.scope);
   if (props.loading) return "Loading details…";
@@ -79,6 +83,7 @@ const detailStatus = computed(() => {
 watch(
   () => props.model,
   async (model) => {
+    resetCopyFeedback();
     if (model !== undefined) closing.value = false;
     await nextTick();
     const element = dialog.value;
@@ -118,6 +123,34 @@ function requestClose(): void {
 function finishClose(): void {
   if (!closing.value) return;
   emit("close");
+}
+
+function resetCopyFeedback(): void {
+  copiedIdentifier.value = undefined;
+  copyAnnouncement.value = "";
+  if (copyResetTimer !== undefined) clearTimeout(copyResetTimer);
+  copyResetTimer = undefined;
+}
+
+async function copyIdentifier(value: string): Promise<void> {
+  resetCopyFeedback();
+  try {
+    await navigator.clipboard.writeText(value);
+  } catch {
+    copiedIdentifier.value = undefined;
+    copyAnnouncement.value = `Could not copy ${value}`;
+    return;
+  }
+  copiedIdentifier.value = value;
+  copyAnnouncement.value = `Copied ${value}`;
+  copyResetTimer = setTimeout(resetCopyFeedback, 2_000);
+}
+
+function deploymentTypeLabel(value: string): string {
+  return value
+    .split("/")
+    .map((part) => formatSentenceCase(part.replaceAll("-", "_")))
+    .join(" · ");
 }
 
 const arrowKeyControlSelector = [
@@ -169,7 +202,10 @@ function handleKeydown(event: KeyboardEvent): void {
 }
 
 onMounted(() => document.addEventListener("keydown", handleKeydown));
-onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
+onUnmounted(() => {
+  document.removeEventListener("keydown", handleKeydown);
+  resetCopyFeedback();
+});
 </script>
 
 <template>
@@ -189,7 +225,19 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
             {{ providerName }}
           </p>
           <h2 id="details-title">{{ model.name }}</h2>
-          <code v-if="modelIdentifier">{{ modelIdentifier }}</code>
+          <div class="model-identifier-line">
+            <button
+              class="identifier-copy"
+              type="button"
+              :data-copied="copiedIdentifier === model.model_id || undefined"
+              :aria-label="`Copy model ID ${model.model_id}`"
+              @click="copyIdentifier(model.model_id)"
+            >
+              <code>{{ model.model_id }}</code>
+              <UiIcon :name="copiedIdentifier === model.model_id ? 'check' : 'copy'" />
+            </button>
+            <span v-if="model.version">Version {{ model.version }}</span>
+          </div>
         </div>
         <button
           class="icon-button"
@@ -200,6 +248,7 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
           <UiIcon name="x" />
         </button>
       </header>
+      <p class="visually-hidden" aria-live="polite">{{ copyAnnouncement }}</p>
 
       <div ref="scrollHost" class="details-scroll-host" data-overlayscrollbars-initialize>
         <div ref="scrollViewport" class="details-scroll">
@@ -213,6 +262,34 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
 
             <p v-if="detail?.description" class="details-description">{{ detail.description }}</p>
             <p v-if="error" class="unknown-note" role="alert">{{ error }}</p>
+
+            <details v-if="model.aliases.length" class="detail-section detail-disclosure">
+              <summary>
+                <span>Alternate identifiers</span>
+                <small>{{ model.aliases.length }}</small>
+                <UiIcon name="chevron-right" />
+              </summary>
+              <div class="detail-disclosure-body">
+                <ul class="identifier-list">
+                  <li v-for="identifier in model.aliases" :key="identifier">
+                    <button
+                      class="identifier-copy"
+                      type="button"
+                      :data-copied="copiedIdentifier === identifier || undefined"
+                      :aria-label="`Copy alternate identifier ${identifier}`"
+                      @click="copyIdentifier(identifier)"
+                    >
+                      <code>{{ identifier }}</code>
+                      <UiIcon :name="copiedIdentifier === identifier ? 'check' : 'copy'" />
+                    </button>
+                  </li>
+                </ul>
+                <p class="unknown-note">
+                  Other provider-published names for this model. Availability can still depend on
+                  the API and deployment.
+                </p>
+              </div>
+            </details>
 
             <section class="detail-section" aria-labelledby="overview-heading">
               <h3 id="overview-heading">Overview</h3>
@@ -247,6 +324,26 @@ onUnmounted(() => document.removeEventListener("keydown", handleKeydown));
                 </div>
               </dl>
             </section>
+
+            <details v-if="deploymentAvailability.length" class="detail-section detail-disclosure">
+              <summary>
+                <span>Availability details</span>
+                <small>{{ availabilitySummary }}</small>
+                <UiIcon name="chevron-right" />
+              </summary>
+              <div class="detail-disclosure-body">
+                <dl class="availability-list">
+                  <div v-for="entry in deploymentAvailability" :key="entry.deployment_type">
+                    <dt>{{ deploymentTypeLabel(entry.deployment_type) }}</dt>
+                    <dd>{{ entry.regions.join(", ") }}</dd>
+                  </div>
+                </dl>
+                <p class="unknown-note">
+                  Regions where each provider deployment type is documented. A region not listed
+                  here may still be available.
+                </p>
+              </div>
+            </details>
 
             <section v-if="detail" class="detail-section" aria-labelledby="modalities-heading">
               <h3 id="modalities-heading">Modalities & capabilities</h3>

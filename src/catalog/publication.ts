@@ -1,10 +1,12 @@
 import { compareUtf8 } from "./canonical-value.ts";
 import { groupModels } from "./model-groups.ts";
 import {
+  catalogIdentifiersSchema,
   catalogIdsSchema,
   catalogModelsSchema,
   catalogSummarySchema,
   publishedModelVariantSchema,
+  type CatalogIdentifiers,
   type CatalogIds,
   type CatalogModels,
   type CatalogSummary,
@@ -29,6 +31,55 @@ export function catalogIds(catalog: Catalog): CatalogIds {
           ),
         ].sort(compareUtf8),
       ]),
+    ),
+  });
+}
+
+export function catalogIdentifiers(catalog: Catalog): CatalogIdentifiers {
+  return catalogIdentifiersSchema.parse({
+    schema_version: 1,
+    profile: "identifiers",
+    catalog_version: catalog.catalog_version,
+    generated_at: catalog.generated_at,
+    providers: Object.fromEntries(
+      catalog.providers.map((provider) => {
+        type IdentifierTarget = CatalogIdentifiers["providers"][string][string][number];
+        const identifiers = new Map<string, IdentifierTarget[]>();
+        const add = (value: string, target: IdentifierTarget): void => {
+          const targets = identifiers.get(value) ?? [];
+          if (
+            !targets.some(
+              ({ model_ref, kind }) => model_ref === target.model_ref && kind === target.kind,
+            )
+          )
+            targets.push(target);
+          identifiers.set(value, targets);
+        };
+
+        for (const model of catalog.models.filter(
+          ({ provider_id }) => provider_id === provider.id,
+        )) {
+          const target = { model_ref: model.uid };
+          add(model.model_id, { ...target, kind: "model_id" });
+          for (const alias of model.aliases) add(alias, { ...target, kind: "alias" });
+        }
+
+        return [
+          provider.id,
+          Object.fromEntries(
+            [...identifiers]
+              .sort(([left], [right]) => compareUtf8(left, right))
+              .map(([value, targets]) => [
+                value,
+                targets.sort(
+                  (left, right) =>
+                    compareUtf8(left.model_ref, right.model_ref) ||
+                    compareUtf8(left.kind, right.kind),
+                ),
+              ]),
+          ),
+        ];
+      }),
     ),
   });
 }

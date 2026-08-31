@@ -627,13 +627,13 @@ onUnmounted(() => {
     <section class="catalog-section" aria-label="Model catalog">
       <div class="filter-bar">
         <label class="search-field">
-          <span class="visually-hidden">Search model IDs and display names</span>
+          <span class="visually-hidden">Search model IDs, display names, and aliases</span>
           <UiIcon name="search" />
           <input
             ref="searchInput"
             v-model="query"
             type="search"
-            placeholder="Model ID or name…"
+            placeholder="Model ID, name, or alias…"
             autocomplete="off"
           />
           <kbd>/</kbd>
