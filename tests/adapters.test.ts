@@ -1235,7 +1235,8 @@ async function vertexModels(
   });
   const configuredPricing = value.sources.find(({ id }) => id === "vertex-pricing");
   const pricingEntry = allDocuments.find(
-    ([url]) => new URL(url).pathname === "/gemini-enterprise-agent-platform/generative-ai/pricing",
+    ([url]) =>
+      new URL(url).pathname === "/gemini-enterprise-agent-platform/generative-ai/pricing.html",
   );
   if (
     configuredPricing === undefined ||
@@ -1319,7 +1320,7 @@ async function vertexCatalog(
         "lifecycle.html",
       ],
       [
-        "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
         "pricing.html",
       ],
       [
@@ -6466,6 +6467,13 @@ describe("Gemini adapters", () => {
 });
 
 describe("Vertex AI adapters", () => {
+  it("uses the live HTML transport path for Agent Platform pricing", () => {
+    const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
+    expect(pricing).toMatchObject({
+      url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
+    });
+  });
+
   it("joins exact card IDs with lifecycle, capabilities, and multimodal pricing", async () => {
     const models = await vertexCatalog();
     const current = models.find((model) => model.model_id === "gemini-test");
@@ -7144,7 +7152,7 @@ describe("Vertex AI adapters", () => {
           "routes.html",
         ],
         [
-          "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+          "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
           "pricing.html",
         ],
       ],
@@ -7412,7 +7420,7 @@ describe("Vertex AI adapters", () => {
             "routes.html",
           ],
           [
-            "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+            "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
             "pricing.html",
           ],
         ],
@@ -7537,7 +7545,7 @@ describe("Vertex AI adapters", () => {
         "routes.html",
       ],
       [
-        "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+        "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
         "pricing-sizes.html",
       ],
     ]);
@@ -7899,13 +7907,15 @@ describe("Anthropic adapters", () => {
     );
   });
 
-  it("accepts API reference frontmatter before endpoint headings", async () => {
+  it("accepts frontmatter and equivalent API heading syntax", async () => {
     const frontmatter = "---\ntitle: Reference\n---\n\n";
+    const endpoint = async (path: string, method: "get" | "post"): Promise<string> =>
+      `${frontmatter}${(await fixture(path)).replace(/^## /, "# ").replace(`**${method}**`, `**${method.toUpperCase()}**`)}`;
     const models = await anthropicCatalog({
       overrides: {
-        "/docs/en/api/models/list.md": `${frontmatter}${await fixture("anthropic/models-list.md")}`,
-        "/docs/en/api/messages/create.md": `${frontmatter}${await fixture("anthropic/messages.md")}`,
-        "/docs/en/api/messages/batches/create.md": `${frontmatter}${await fixture("anthropic/batches.md")}`,
+        "/docs/en/api/models/list.md": await endpoint("anthropic/models-list.md", "get"),
+        "/docs/en/api/messages/create.md": await endpoint("anthropic/messages.md", "post"),
+        "/docs/en/api/messages/batches/create.md": await endpoint("anthropic/batches.md", "post"),
       },
     });
     expect(models.find(({ model_id }) => model_id === "claude-fable-5")).toMatchObject({
@@ -7966,6 +7976,53 @@ describe("Anthropic adapters", () => {
       effort_control: false,
       computer_use: true,
     });
+  });
+
+  it("accepts a single thinking matrix and supported-model code list", async () => {
+    const overview = (await fixture("anthropic/overview.md"))
+      .replace(" and joins the invitation-only Claude Mythos Preview (`claude-mythos-preview`)", "")
+      .replace(
+        /\| \*\*Extended thinking[^\n]+\n\| \*\*Adaptive thinking[^\n]+/,
+        "| **Thinking**                                  | Adaptive (always on) | Adaptive        | Adaptive               |",
+      )
+      .replace(/\n\| Feature\s+\| Claude Opus 4\.7[\s\S]*?(?=\n\[Pricing])/m, "\n");
+    const codeExecution = (await fixture("anthropic/code-execution-tool.md")).replace(
+      /\| Model\s+\| Tool versions[\s\S]*?\| Claude Opus 4\.1[^\n]+/,
+      "- Supported models: `claude-fable-5`, `claude-mythos-5`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-sonnet-5`, `claude-opus-4-1-20250805`",
+    );
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = await anthropicCatalog({
+      overview,
+      overrides: {
+        "/docs/en/agents-and-tools/tool-use/code-execution-tool.md": codeExecution,
+      },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    expect(
+      models.find(({ model_id }) => model_id === "claude-fable-5")?.capabilities,
+    ).toMatchObject({
+      reasoning: true,
+      code_execution: true,
+    });
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "normalized",
+        reason_code: "code_execution_scope_bound",
+      }),
+    );
+    expect(reconciliation).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason_code: "model_overview_drift" }),
+        expect.objectContaining({
+          reason_code: "capability_contract_drift",
+          sample: "code execution",
+        }),
+        expect.objectContaining({
+          reason_code: "capability_contract_drift",
+          sample: "code execution exception",
+        }),
+      ]),
+    );
   });
 
   it("lets scoped inventory fill gaps without overriding global facts", () => {
@@ -8723,6 +8780,25 @@ describe("xAI adapter", () => {
         reason_code: "voice_service_price_conflict",
       }),
     );
+    const missingPriceItems: PricingReconciliationItem[] = [];
+    const missingPrice = await xaiCatalog(
+      "xai/models-voice-services.txt",
+      (body) => body,
+      (body) =>
+        body.replaceAll(
+          "| Speech to Speech (grok-voice-think-fast-1.0) | $0.05 / min ($3.00 / hr) audio<br />$0.004 / text input |\n",
+          "",
+        ),
+      (item) => missingPriceItems.push(item),
+    );
+    expect(missingPriceItems).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "voice_service_price_drift",
+        sample: "xAI voice pricing omitted grok-voice-think-fast-1.0",
+      }),
+    );
+    expect(() => sourcePricingReconciliation(missingPrice, missingPriceItems, true)).not.toThrow();
     const findings: SourceContractEvidence[] = [];
     await expect(
       xaiCatalog(
@@ -9092,10 +9168,11 @@ describe("xAI adapter", () => {
       expect.arrayContaining([
         expect.objectContaining({
           disposition: "unbound",
-          reason_code: "tool_attachment-search_price_drift",
+          reason_code: "tool_attachment_search_price_drift",
         }),
       ]),
     );
+    expect(() => sourcePricingReconciliation([], items, true)).not.toThrow();
   });
 
   it("does not make account-settlement prose a refresh dependency", async () => {
@@ -11370,6 +11447,40 @@ describe("Vercel adapter", () => {
     expect(model).toMatchObject({ pricing_state: "free", price_facts: [] });
   });
 
+  it("accepts a model page whose only published price column is Free", async () => {
+    const value = manifest("vercel");
+    const configured = value.sources[0];
+    if (configured === undefined || configured.extractor.kind !== "vercel-catalog")
+      throw new Error("Missing Vercel source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "vercel-catalog", minModels: 1, maxModels: 20 },
+    };
+    const body = JSON.stringify({
+      index: { url: source.url, body: await fixture("vercel/normal.json") },
+      documents: [
+        {
+          url: "https://vercel.com/ai-gateway/models/text-1",
+          body: JSON.stringify({
+            title: "Text One",
+            provider: "acme",
+            headers: ["Provider", "Input", "Capabilities"],
+            values: ["Acme", "Free", ""],
+            titles: [[], [], []],
+          }),
+        },
+        ...vercelDocumentation(),
+      ],
+    });
+    const model = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+    })[0];
+    expect(model).toMatchObject({ pricing_state: "free", price_facts: [] });
+  });
+
   it("keeps published rates when a convenience free tag coexists", async () => {
     const model = (
       await vercelCatalog("vercel/pricing.json", (body) =>
@@ -11654,7 +11765,10 @@ describe("Cerebras adapter", () => {
       ["/capabilities/batch.md", "batch", "md"],
     ] as const;
     const body = JSON.stringify({
-      index: { url: configured.url, body: await fixture("cerebras/catalog.md") },
+      index: {
+        url: configured.url,
+        body: options.overrides?.index ?? (await fixture("cerebras/catalog.md")),
+      },
       documents: await Promise.all(
         companions
           .filter(([, name]) => !options.omit?.includes(name))
@@ -11837,6 +11951,16 @@ describe("Cerebras adapter", () => {
         },
       ]),
     );
+  });
+
+  it("treats the Available Models table as stable inventory", async () => {
+    const index = (await fixture("cerebras/catalog.md"))
+      .replace("## Production Models", "## Available Models")
+      .replace(/\n## Preview Models[\s\S]*$/, "");
+    const models = await catalog({ overrides: { index } });
+    expect(models.map(({ model_id, release_stage }) => [model_id, release_stage])).toEqual([
+      ["gpt-oss-120b", "stable"],
+    ]);
   });
 
   it("keeps catalog rows when model cards or commercial companions are unavailable", async () => {
@@ -13744,6 +13868,24 @@ describe("DeepSeek adapters", () => {
     ).rejects.toThrow("DeepSeek USD weekend rule changed");
   });
 
+  it("accepts the recurring weekday form after the weekend transition", async () => {
+    const catalog = (await fixture("deepseek/catalog.html")).replace(
+      /Off-peak rates are half of the peak rates\.[\s\S]*?on weekends \(Saturdays and Sundays, Beijing Time\)\./,
+      "Off-peak rates are half of the peak rates. Peak hours are 01:00 - 04:00 and 06:00 - 10:00 UTC, Monday through Friday (all other hours are off-peak).",
+    );
+    const cny = (await fixture("deepseek/catalog-cny.html")).replace(
+      /空闲时段价格为高峰时段价格的一半。[\s\S]*?统一按照低谷时段价格收取调用费用。/,
+      "空闲时段价格为高峰时段价格的一半。高峰时段为北京时间周一至周五 9:00 - 12:00、14:00 - 18:00（其余为空闲时段）。",
+    );
+    await expect(
+      deepseekCatalog({
+        catalog,
+        observedAt: "2026-09-01T00:00:00.000Z",
+        overrides: { "zh-cn/quick_start/pricing/": cny },
+      }),
+    ).resolves.toHaveLength(3);
+  });
+
   it("preserves exact validity across a separately published price transition", async () => {
     const models = await deepseekCatalog({
       catalog: await fixture("deepseek/catalog-transition.html"),
@@ -14295,6 +14437,34 @@ describe("DashScope adapters", () => {
     ).toBe(false);
   });
 
+  it("takes exact IDs and region availability from recommendation links", () => {
+    const body = [
+      "[![](https://img.alicdn.com/qwen.svg) qwen3.8-max](https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=doc#/doc/?type=model&modelId=qwen3.8-max)",
+      "[![](https://img.alicdn.com/glm.svg) ZHIPU/GLM-5.3 Third-party](https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=doc#/doc/?type=model&modelId=ZHIPU/GLM-5.3&serviceSite=international)",
+      "[![](https://img.alicdn.com/qwen.svg) qwen3.8-max](https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=model#/model-market/detail/qwen3.8-max)",
+    ].join("\n");
+    expect(
+      parse(source("dashscope-recommended", 2, 10), body).map(
+        ({ model_id, availability, api_endpoints }) => ({
+          model_id,
+          availability,
+          api_endpoints,
+        }),
+      ),
+    ).toEqual([
+      {
+        model_id: "qwen3.8-max",
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+      {
+        model_id: "ZHIPU/GLM-5.3",
+        availability: [{ region: "Singapore", deployment_type: "model_api" }],
+        api_endpoints: undefined,
+      },
+    ]);
+  });
+
   it("retains tier, promotion, batch, and explicit and implicit cache prices", async () => {
     const pricingSource = source("dashscope-pricing");
     const pricingBody = await fixture("dashscope/pricing.html");
@@ -14800,6 +14970,24 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("accepts notice-only lifecycle summaries as an empty non-exhaustive observation", () => {
+    const configured = manifest("dashscope").sources.find(({ id }) => id === "dashscope-lifecycle");
+    if (configured === undefined || configured.extractor.kind !== "dashscope-lifecycle")
+      throw new Error("Missing DashScope lifecycle source");
+    expect(configured.extractor.minModels).toBe(0);
+    expect(
+      parse(
+        configured,
+        documentBundle(configured, "<h2>Deprecated models</h2><a>Official notice</a>", [
+          {
+            url: "https://help.aliyun.com/zh/model-studio/model-depreciation",
+            body: "<h2>下线模型列表</h2><a>官网公告</a>",
+          },
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
   it("keeps every source that observes the same exact model", async () => {
     const catalogSource = source("dashscope-text");
     const pricingSource = source("dashscope-pricing");
@@ -15011,7 +15199,8 @@ describe("Kimi adapters", () => {
     expect(source("kimi-openapi")).toMatchObject({
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
-      extractorVersion: "kimi-openapi-v4",
+      extractor: { minModels: 4 },
+      extractorVersion: "kimi-openapi-v5",
     });
     expect(source("kimi-china-openapi")).toMatchObject({
       url: "https://platform.kimi.com/docs/openapi.json",
@@ -15175,8 +15364,13 @@ describe("Kimi adapters", () => {
   it("uses exact OpenAPI model enums without a product-prefix rule", async () => {
     const body = await fixture("kimi/openapi.json");
     const models = parse(source("kimi-openapi"), body);
-    expect(models).toHaveLength(12);
-    expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")).toMatchObject({
+    expect(models.map(({ model_id }) => model_id)).toEqual([
+      "kimi-k2.6",
+      "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
+      "kimi-k3",
+    ]);
+    expect(models.find(({ model_id }) => model_id === "kimi-k2.6")).toMatchObject({
       tasks: ["text_generation"],
       status: "active",
       modalities: { input: ["text"], output: ["text"] },
@@ -15241,7 +15435,7 @@ describe("Kimi adapters", () => {
         "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576.",
         "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
       );
-    expect(parse(source("kimi-china-openapi"), china)).toHaveLength(12);
+    expect(parse(source("kimi-china-openapi"), china)).toHaveLength(4);
   });
 
   it("retains callable and retired IDs only from labeled catalog fields", async () => {

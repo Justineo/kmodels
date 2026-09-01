@@ -1321,7 +1321,8 @@ function toolRates(input: ParseInput, pricing: string): XaiCommercialEvidence["t
     },
   ] as const;
   return definitions.flatMap((definition) => {
-    const value = reviewClaim(input, `tool_${definition.key}_price_drift`, () => {
+    const reasonCode = `tool_${definition.key.replaceAll("-", "_")}_price_drift`;
+    const value = reviewClaim(input, reasonCode, () => {
       requireClaims(pricing, ["Cost / 1k Calls"], "xAI tool-price denominator changed");
       const expectedNames = new Set<string>(definition.names);
       const matches = rows.filter(
@@ -1958,7 +1959,7 @@ function fallbackVoiceModels(
     const rates =
       prices === undefined
         ? []
-        : (reviewClaim(input, `voice_price_${service.name}_drift`, () =>
+        : (reviewClaim(input, "voice_service_price_drift", () =>
             regionalRates(
               voiceRates(prices, service.name, input.source.id),
               regions.get(service.name) ?? [],

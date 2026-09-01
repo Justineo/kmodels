@@ -178,7 +178,7 @@ function model(models: Map<string, ProviderModel>, input: Input, id: string): Pr
 
 function overview(body: string, input: Input, models: Map<string, ProviderModel>): void {
   const featureTables = tables(body).filter((table) => table.headers[0] === "Feature");
-  if (featureTables.length < 2)
+  if (featureTables.length === 0)
     input.onPricingReconciliation?.({
       disposition: "unresolved",
       reason_code: "model_overview_drift",
@@ -193,6 +193,7 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
     const outputs = row(table, "Max output");
     const extended = row(table, "Extended thinking");
     const adaptive = row(table, "Adaptive thinking");
+    const thinkingMode = row(table, "Thinking");
     for (let column = 1; column < table.headers.length; column += 1) {
       const id = ids[column];
       if (id === undefined || !modelIdSchema.safeParse(id).success) continue;
@@ -204,11 +205,15 @@ function overview(body: string, input: Input, models: Map<string, ProviderModel>
       if (alias !== undefined && alias !== id && modelIdSchema.safeParse(alias).success)
         item.aliases = [...new Set([...item.aliases, alias])];
       item.modalities = { input: ["text", "image"], output: ["text"] };
-      const thinking = [extended?.[column], adaptive?.[column]].filter(
+      const thinking = [extended?.[column], adaptive?.[column], thinkingMode?.[column]].filter(
         (value): value is string => value !== undefined,
       );
-      if (thinking.some((value) => value.startsWith("Yes"))) item.capabilities.reasoning = true;
-      else if (thinking.length === 2 && thinking.every((value) => value === "No"))
+      if (thinking.some((value) => /^(?:Yes|Adaptive|Extended)\b/.test(value)))
+        item.capabilities.reasoning = true;
+      else if (
+        thinking.length > 0 &&
+        thinking.every((value) => /^(?:No|Not supported)$/.test(value))
+      )
         item.capabilities.reasoning = false;
       item.limits = {
         ...item.limits,
@@ -426,8 +431,12 @@ function validateEndpoint(
   expected: { name: string; path: string },
   method: "get" | "post" = "post",
 ): void {
-  const header = body.match(/^## (.+)\r?\n\r?\n\*\*(get|post)\*\* `\/([^`]+)`/m);
-  if (header?.[1] !== expected.name || header[2] !== method || header[3] !== expected.path)
+  const header = body.match(/^#{1,2} (.+)\r?\n\r?\n\*\*(get|post)\*\* `\/([^`]+)`/im);
+  if (
+    header?.[1] !== expected.name ||
+    header[2]?.toLowerCase() !== method ||
+    header[3] !== expected.path
+  )
     throw new Error(`Anthropic endpoint document drifted for ${expected.path}`);
 }
 
@@ -547,26 +556,26 @@ function callable(item: ProviderModel): boolean {
   return item.api_endpoints?.some(({ path }) => path === messagesEndpoint.path) === true;
 }
 
+function listedModelIds(body: string): string[] | undefined {
+  const list = body.match(/^- Supported models: (`[^`]+`(?:, `[^`]+`)*)\r?$/m)?.[1];
+  if (list === undefined) return;
+  const ids: string[] = [];
+  for (const match of list.matchAll(/`([^`]+)`/g)) {
+    const parsed = modelIdSchema.safeParse(match[1]);
+    if (!parsed.success) return;
+    ids.push(parsed.data);
+  }
+  return ids.length > 0 && new Set(ids).size === ids.length ? ids : undefined;
+}
+
 function listedModels(
   body: string,
   models: Map<string, ProviderModel>,
   capability: string,
   input: Input,
 ): ProviderModel[] | undefined {
-  const list = body
-    .split(/\r?\n/)
-    .find((line) => line.startsWith("- Supported models:"))
-    ?.match(/^- Supported models: (`[^`]+`(?:, `[^`]+`)*)$/)?.[1];
-  if (list === undefined) {
-    input.onPricingReconciliation?.({
-      disposition: "unresolved",
-      reason_code: "capability_contract_drift",
-      sample: capability,
-    });
-    return;
-  }
-  const ids = [...list.matchAll(/`([^`]+)`/g)].map((match) => modelIdSchema.parse(match[1]));
-  if (ids.length === 0 || new Set(ids).size !== ids.length) {
+  const ids = listedModelIds(body);
+  if (ids === undefined) {
     input.onPricingReconciliation?.({
       disposition: "unresolved",
       reason_code: "capability_contract_drift",
@@ -633,11 +642,23 @@ function capabilities(
     for (const item of supported) item.capabilities.structured_output = structuredSet.has(item);
   }
 
+  const codeIds = listedModelIds(bodies.codeExecution);
   const codeTable = tables(bodies.codeExecution).find(
     (table) => table.headers.join("|") === "Model|Tool versions",
   );
-  if (codeTable === undefined || codeTable.rows.length === 0) drift("code execution");
-  else {
+  if (codeIds !== undefined) {
+    for (const item of supported) item.capabilities.code_execution = false;
+    for (const id of codeIds) {
+      const item = commercialModel(models, id);
+      if (item !== undefined && callable(item)) item.capabilities.code_execution = true;
+      else
+        input.onPricingReconciliation?.({
+          disposition: "unbound",
+          reason_code: "capability_model_unbound",
+          sample: `code execution: ${id}`,
+        });
+    }
+  } else if (codeTable !== undefined && codeTable.rows.length > 0) {
     for (const item of supported) item.capabilities.code_execution = false;
     const resolve = resolver(models);
     for (const values of codeTable.rows) {
@@ -652,11 +673,20 @@ function capabilities(
         });
       }
     }
-  }
+  } else drift("code execution");
   const previewCode = bodies.codeExecution
     .split(/\r?\n/)
     .find((line) => line.includes("code execution is supported on the Claude API"));
-  const previewCodeModels = previewCode === undefined ? [] : mentioned(previewCode, models);
+  const previewModel = models.get("claude-mythos-preview");
+  const previewCodeModels =
+    previewCode === undefined
+      ? []
+      : [
+          ...mentioned(previewCode, models),
+          ...(previewModel !== undefined && previewCode.includes("[Claude Mythos Preview]")
+            ? [previewModel]
+            : []),
+        ];
   if (previewCodeModels.length === 0) drift("code execution exception");
   else
     for (const item of previewCodeModels)
@@ -1343,12 +1373,14 @@ function commercialPricing(
     (table) => table.headers.join("|") === "Model|Tool versions",
   );
   const codeText = text(bodies.codeExecution);
-  const codeIds = new Set<string>();
+  const codeIds = new Set(listedModelIds(bodies.codeExecution) ?? []);
   const codeRefs = new Set<string>();
   for (const values of codeTable?.rows ?? []) {
     const rawId = ids(values[0] ?? "")[0];
     if (rawId !== undefined) codeIds.add(rawId);
-    const item = rawId === undefined ? undefined : commercialModel(models, rawId);
+  }
+  for (const id of codeIds) {
+    const item = commercialModel(models, id);
     if (item !== undefined && callable(item)) codeRefs.add(item.uid);
   }
   const codeAmount = codeText.match(

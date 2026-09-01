@@ -804,7 +804,58 @@ function recommendedMarkdownRoute(raw: string): { endpoint?: ApiEndpoint; region
   };
 }
 
+function recommendedListingTarget(raw: string): { id: string; region: string } {
+  const url = new URL(raw);
+  const regionKey = url.pathname.match(/^\/([a-z0-9-]+)\/?$/)?.[1];
+  const region = regionKey === undefined ? undefined : recommendedWorkspaceRegions.get(regionKey);
+  if (
+    url.protocol !== "https:" ||
+    url.hostname !== "modelstudio.console.alibabacloud.com" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.port !== "" ||
+    region === undefined
+  )
+    throw new Error(`Unsupported DashScope recommended-model listing URL: ${raw}`);
+  const queryOffset = url.hash.indexOf("?");
+  const query =
+    queryOffset < 0 ? new URLSearchParams() : new URLSearchParams(url.hash.slice(queryOffset + 1));
+  const detail = url.hash.match(/\/model-market\/detail\/([^?]+)/)?.[1];
+  const id = exactId(query.get("modelId") ?? decodeURIComponent(detail ?? ""));
+  if (id === undefined)
+    throw new Error(`DashScope recommended-model listing omitted an exact ID: ${raw}`);
+  return { id, region };
+}
+
+function parseDashscopeRecommendedListing(input: ParseInput): Map<string, ProviderModel> {
+  const models = new Map<string, ProviderModel>();
+  const findings: string[] = [];
+  for (const [index, line] of input.body.split(/\r?\n/).entries()) {
+    const url = line.match(/^\[!\[\]\([^)]+\)\s+[^\]]+]\((https:\/\/[^)]+)\)\s*$/)?.[1];
+    if (url === undefined) continue;
+    try {
+      const { id, region } = recommendedListingTarget(url);
+      add(models, {
+        ...baseModel({
+          providerId: input.provider.id,
+          id,
+          name: id,
+          sourceId: input.source.id,
+          observedAt: input.observedAt,
+        }),
+        availability: [{ region, deployment_type: "model_api" }],
+        scope: "regional_catalog",
+      });
+    } catch {
+      findings.push(`/links/${index}`);
+    }
+  }
+  if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
+  return models;
+}
+
 function parseDashscopeRecommendedMarkdown(input: ParseInput): Map<string, ProviderModel> {
+  if (!/Model ID\s*`/.test(input.body)) return parseDashscopeRecommendedListing(input);
   const lines = input.body.split(/\r?\n/);
   const starts = lines.flatMap((line, index) =>
     /^\[!\[\]\([^\n]+\) [^\n]+\]\([^\n]+\)\s*$/.test(line) ? [index] : [],

@@ -41,6 +41,7 @@ or another exact non-numeric price state. Absence of a separate price is unknown
   references establish model identity, lifecycle, tasks, modalities, endpoints, and limits.
 - `https://cohere.com/pricing` is a separate required pricing overlay. Its embedded structured
   model records establish token, embedding, rerank-search, and explicit model-specific free prices.
+  Each newline-delimited record in its Next.js RSC stream is decoded independently.
   Separating it from the model bundle lets catalog identity advance when pricing transport or
   structure is unavailable while the last accepted provider pricing partition remains intact.
 - `https://docs.cohere.com/docs/how-does-cohere-pricing-work.md` establishes the pricing meters and

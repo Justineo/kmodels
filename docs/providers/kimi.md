@@ -36,6 +36,10 @@ fields and valid documented item fields. Kimi currently returns additional field
 `root`, and `permission`; these are accepted only with explicit source-contract diagnostics and are
 not silently promoted into unsupported catalog semantics.
 
+The international and China OpenAPI contracts expose the same four Chat model IDs. Independently
+collected catalogs retain additional current, restricted, and retired identities, so the OpenAPI
+count guard protects this callable set without requiring other catalog IDs to appear there.
+
 Both documentation sites expose stable first-party Markdown, `llms.txt`, and OpenAPI JSON assets
 from a Mintlify-style static documentation build. The OpenAPI asset carries ordinary HTTP cache
 validators; Markdown is fetched from its canonical document URL. The collector relies on exact

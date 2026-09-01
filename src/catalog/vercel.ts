@@ -796,12 +796,15 @@ function modelPageRates(
     throw new Error(`Vercel model page omitted the provider column for ${item.id}`);
   const rates: SourcePriceFact[] = [];
   const raw: SourceRawPricingFact[] = [];
-  const freeHeaders = ["Input", "Output"].filter((header) => cells.get(header) === "Free");
-  const free = freeHeaders.length === 2;
-  if (freeHeaders.length !== 0 && (!free || !item.tags?.includes("free")))
+  const priceHeaders = ["Input", "Output", "Cache", "Web Search"] as const;
+  const prices = priceHeaders
+    .map((header) => cells.get(header))
+    .filter((value) => value !== undefined && value !== "" && value !== "—");
+  const free = prices.length > 0 && prices.every((value) => value === "Free");
+  if (!free && prices.includes("Free"))
     throw new Error(`Vercel model page free pricing disagreed for ${item.id}`);
   const pricePattern = /^\$((?:0|[1-9]\d*)(?:\.\d+)?)\/(M|K|img|MP|sec)(\*)?(?:\+(\d+) more)?$/;
-  for (const header of ["Input", "Output", "Cache", "Web Search"] as const) {
+  for (const header of priceHeaders) {
     const value = cells.get(header);
     if (value === undefined || value === "" || value === "—" || value === "Free") continue;
     const match = value.match(pricePattern);
@@ -1126,12 +1129,13 @@ function model(
     page === undefined
       ? { rates: [], raw: [], free: false }
       : modelPageRates(item, page, pageDetails, input.source.id);
-  const explicitlyFree = tags.includes("free");
+  const catalogFree = tags.includes("free");
+  const explicitlyFree = catalogFree || pagePricing.free;
   input.onPricingReconciliation?.(
     catalogRates.length === 0
       ? {
           disposition: "explicit_non_numeric",
-          reason_code: explicitlyFree ? "catalog_price_free" : "catalog_price_empty",
+          reason_code: catalogFree ? "catalog_price_free" : "catalog_price_empty",
           sample: item.id,
         }
       : { disposition: "normalized", reason_code: "catalog_price_object", sample: item.id },

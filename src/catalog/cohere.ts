@@ -1219,12 +1219,15 @@ function pricingModels($: Document, reconcile?: Reconcile): z.infer<typeof prici
     const frame = z.array(z.unknown()).safeParse(value);
     if (!frame.success) return;
     const payload = z.string().safeParse(frame.data[1]);
-    const colon = payload.success ? payload.data.indexOf(":") : -1;
-    if (!payload.success || colon < 0) return;
-    try {
-      collectPricing(JSON.parse(payload.data.slice(colon + 1)), result);
-    } catch {
-      return;
+    if (!payload.success) return;
+    for (const record of payload.data.split("\n")) {
+      const colon = record.indexOf(":");
+      if (colon < 0) continue;
+      try {
+        collectPricing(JSON.parse(record.slice(colon + 1)), result);
+      } catch {
+        continue;
+      }
     }
   });
   const products = new Map<string, z.infer<typeof pricingModelSchema>>();

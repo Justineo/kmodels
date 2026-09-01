@@ -21,8 +21,8 @@ nor retained as raw pricing facts.
   independent evidence.
 - The [Model Catalog](https://inference-docs.cerebras.ai/models/overview) supplies exact callable
   IDs, maturity, endpoints, features, limits, scheduled lifecycle facts, and structured `ModelInfo`
-  rates. Only model cards linked from its Production and Preview tables are fetched; nearby guides
-  such as model selection are not collector inputs.
+  rates. Model cards linked from Available Models or Production Models are stable; Preview Models
+  are preview. Nearby guides such as model selection are not collector inputs.
 - The fixed [Chat Completions](https://inference-docs.cerebras.ai/api-reference/chat-completions) and
   [Completions](https://inference-docs.cerebras.ai/api-reference/completions) references establish
   request routes and returned token quantities.

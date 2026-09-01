@@ -141,9 +141,12 @@ creation total must not be guessed into the five-minute or one-hour rate.
 
 The stable Markdown pricing page is authoritative for the collected matrix. Dynamic marketing or
 application pages are not refresh dependencies. Markdown frontmatter and other content before a
-reviewed API heading are tolerated, while the exact method and path remain checked. A source wording
-change becomes a localized reconciliation finding; a single unreadable model row or service claim
-does not reject the provider.
+reviewed API heading are tolerated. Endpoint headings may use one or two `#` markers and
+case-varying method labels, while the exact operation name, method, and path remain checked. The
+overview accepts combined or split thinking rows across one or more `Feature` matrices, and
+capability guides may publish exact supported IDs as a list or table. A source wording change
+becomes a localized reconciliation finding; a single unreadable model row or service claim does not
+reject the provider.
 
 `models.dev` and LiteLLM are useful comparison inputs for detecting possible coverage gaps. They do
 not create Anthropic IDs or prices and never override a current official conflict.
