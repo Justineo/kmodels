@@ -73,13 +73,17 @@ If two rows in one source make contradictory capability claims for the same exac
 capability becomes `unknown` and the conflict is reported. The model and every non-conflicting field
 remain available.
 
-The recommendation page adds only exact region and endpoint evidence. Each card is parsed
-independently. A new field, malformed card, unknown route, or route/region contradiction suppresses
-that card and records a contract finding; valid sibling cards survive.
+The recommendation page adds only exact region and endpoint evidence. Detailed cards provide exact
+request routes and regions. Compact listings provide exact model IDs in console links and the
+console path's reviewed region, but no request route; repeated links are merged by exact ID. A
+malformed card or link, unknown route or console region, or route/region contradiction suppresses
+only that item and records a contract finding; valid siblings survive.
 
 Lifecycle and release pages are structured table sources. Malformed dates, cells, or model IDs are
-skipped at row scope and reported. The maintained lifecycle summaries replace the earlier
-announcement-detail path: the collector never depends on unstable announcement DOM or OCR.
+skipped at row scope and reported. The lifecycle summaries may temporarily contain only dated
+notice links and no exact model rows; that is a valid empty non-exhaustive observation and retains
+the last accepted lifecycle facts. The collector never guesses IDs from notice titles or depends on
+unstable announcement DOM or OCR.
 
 The authenticated deployment response requires a complete pagination envelope, but its model rows
 and plan entries are recognized independently. Unknown response fields are ignored, an unknown plan

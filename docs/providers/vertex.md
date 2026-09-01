@@ -32,7 +32,9 @@ Model discovery and pricing are separate sources:
 
 - the Google, partner, and managed-open model indexes and their bounded model cards establish model
   identity, capabilities, lifecycle, availability, and invocation routes;
-- the public Agent Platform generative AI pricing page establishes rates and their dimensions; and
+- the public Agent Platform generative AI pricing page establishes rates and their dimensions; its
+  explicit `.html` transport path is used because the extensionless route does not resolve to the
+  pricing document; and
 - optional first-party grounding guides, Claude web-search documentation, and the Agent Platform
   API Discovery document establish model applicability and observable usage fields.
 

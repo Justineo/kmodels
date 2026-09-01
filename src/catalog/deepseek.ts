@@ -671,12 +671,18 @@ function scheduledPricing(
 
 function validateScheduledRule(input: Input, body: string, currency: DeepseekCurrency): void {
   const prose = htmlText(load(body)("article").text());
-  const baseRule =
+  const recurringRule =
+    currency === "USD"
+      ? /Peak hours are 01:00\s*[-–]\s*04:00 and 06:00\s*[-–]\s*10:00 UTC, Monday through Friday \(all other hours are off-peak\)/i
+      : /高峰时段为北京时间\s*周一至周五\s*0?9:00\s*[-–]\s*12:00[、，,和]\s*14:00\s*[-–]\s*18:00（其余为(?:空闲|低谷)时段）/;
+  const recurring = recurringRule.test(prose);
+  const dailyRule =
     currency === "USD"
       ? /Peak hours are 01:00\s*[-–]\s*04:00 and 06:00\s*[-–]\s*10:00 UTC \(all other hours are off-peak\)/i
       : /高峰时段为北京时间\s*0?9:00\s*[-–]\s*12:00[、，,和]\s*14:00\s*[-–]\s*18:00（其余为(?:空闲|低谷)时段）/;
-  if (!baseRule.test(prose)) throw new Error(`DeepSeek ${currency} peak-hour rule changed`);
-  if (input.observedAt < deepseekWeekendOffPeakEffectiveAt) return;
+  if (!recurring && !dailyRule.test(prose))
+    throw new Error(`DeepSeek ${currency} peak-hour rule changed`);
+  if (input.observedAt < deepseekWeekendOffPeakEffectiveAt || recurring) return;
   const weekendRule =
     currency === "USD"
       ? /off-peak rates applying throughout the day on weekends \(Saturdays and Sundays, Beijing Time\)/i

@@ -48,8 +48,9 @@ The current price tables publish Peak and Off-peak rows directly inside the mode
 Saturday and Sunday in Beijing time are therefore entirely Off-peak. The Chinese table is accepted
 only when its Beijing-time rule maps to the same UTC schedule. Kmodels records the published weekly
 rule and exposes Peak/Off-peak as categorical choices; collection never decides a period from its
-own clock. Older observations before the exact rule-change instant retain the preceding daily
-schedule.
+own clock. The recurring weekday sentence and the dated weekend-transition notice establish the
+same schedule once the transition is effective. Observations before the exact rule-change instant
+retain the preceding daily schedule.
 
 Cache hits and misses partition input. A cache miss already pays the miss rate, so the catalog does
 not invent a cache-write or storage charge. Thinking tokens are part of output, and thinking effort

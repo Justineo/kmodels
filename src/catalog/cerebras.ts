@@ -541,10 +541,10 @@ function modelLink(value: string): { name: string; path: string } {
 function catalogRows(input: Input, body: string): CatalogRow[] {
   const rows = tables(body).flatMap((table) => {
     const releaseStage =
-      table.section === "Production Models"
-        ? "stable"
-        : table.section === "Preview Models"
-          ? "preview"
+      table.section === "Preview Models"
+        ? "preview"
+        : table.section === "Production Models" || table.section === "Available Models"
+          ? "stable"
           : undefined;
     if (releaseStage === undefined) return [];
     const nameIndex = table.headers.indexOf("Model Name");

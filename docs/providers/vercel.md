@@ -52,7 +52,9 @@ on the same inference offer; they do not create separate commercial mechanisms.
 Endpoint prices add `route_provider` and any exact regional condition. The endpoint API wins only
 inside that exact route-qualified scope. Catalog summary rates remain valid outside it. A visible
 model page fills an otherwise empty price object only when its amount, denominator, and route are
-unambiguous. For a compound cell, the primary amount and advertised alternative count must agree
+unambiguous. A page is explicitly free when every non-empty price column says `Free`; models such as
+speech services may legitimately publish only one price column. For a compound cell, the primary
+amount and advertised alternative count must agree
 with the immutable registry before its hover-table rows are normalized. Video rows use the existing
 quality, resolution, and video-input conditions; image rows use quality and resolution; Perplexity
 search rows use the existing context-tier condition. A missing, changed-shape, or disagreeing
