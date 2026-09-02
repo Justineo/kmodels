@@ -85,7 +85,8 @@ refresh mechanically while preserving their exact applicability.
 - Image and video books use direct and, when supported, Batch offers. Output resolution,
   quality, and duration select rate variants; input media components remain additive.
 - Speech to Speech is a model-bound realtime offer. xAI publishes one audio-duration
-  rate rather than separate input/output audio rates, plus a per-text-input-event rate.
+  rate rather than separate input/output audio rates, plus a per-text-input-event rate. An exact
+  `Deprecated` suffix on a pricing row changes neither its ID nor its still-published numeric rate.
 - TTS and STT are provider-resource books because their public request schemas do not
   select public model IDs. REST and streaming STT remain distinct offers because their
   published rates differ.

@@ -3,6 +3,26 @@
 Status: implemented
 
 - GitHub Actions checks every push and pull request.
+- A separate daily `Catalog repair` workflow first runs a deterministic, non-AI gate. The schedule
+  alone never starts Copilot: inference begins only when the latest committed refresh report contains
+  a parser failure, a changed source-contract finding, a rejected provider validation, or a failed
+  pricing validation. The gate excludes only operational states such as fetch failures and missing
+  credentials, plus unresolved pricing by itself. It deliberately does not pre-judge which changed
+  source caused a provider regression; Copilot reviews every listed candidate and decides whether a
+  safe code repair exists. A provider simply not publishing a price is never a repair candidate.
+- The same repair workflow is manually dispatchable from GitHub Actions or with
+  `gh workflow run catalog-repair.lock.yml`. Manual runs use the same issue gate and deduplication
+  rules as scheduled runs.
+- Repair runs are serialized. After an active run finishes, any queued run checks for an open pull
+  request labeled `catalog-repair` and exits before inference when one exists. A repair changes only
+  the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
+  and provider guide. It never changes generated `data/`, weakens a drift guard, or guesses a price.
+  Successful repairs are proposed as one labeled draft pull request for human review; there is no
+  direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
+  fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the
+  ordinary GitHub CLI OAuth token is not an acceptable substitute.
+- Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
+  `.lock.yml`; generated lock files are not reformatted or edited by hand.
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.

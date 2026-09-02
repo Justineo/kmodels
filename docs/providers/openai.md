@@ -74,7 +74,7 @@ rate it publishes. An exact valid model-ID row may create a minimal public row w
 does not list it. Non-ID labels bind only through a unique exact display name or documented alias;
 there is no family inheritance or fuzzy matching.
 
-The same page currently states that `daybreak-blue-latest` and `daybreak-red-latest` route to
+The same page currently states that `gpt-daybreak-blue-latest` and `gpt-daybreak-red-latest` route to
 `gpt-5.6-sol` and `gpt-5.6-cyber`, respectively, with pricing adjusted to the underlying model.
 Kmodels therefore derives the aliases' current rates from those exact targets while preserving all
 four callable IDs as separate catalog identities. If that declaration disappears or stops binding

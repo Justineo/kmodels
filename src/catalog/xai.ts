@@ -1367,7 +1367,7 @@ function voicePrices(input: ParseInput, pricing: string): VoicePrices {
       const rows = new Map(
         [
           ...pricing.matchAll(
-            /^\| Speech to Speech \(([^)]+)\) \| \$([\d.]+) \/ min \(\$[\d.]+ \/ hr\) audio<br\s*\/?>\$([\d.]+) \/ text input \|$/gim,
+            /^\| Speech to Speech \(([^)]+)\)(?: — Deprecated)? \| \$([\d.]+) \/ min \(\$[\d.]+ \/ hr\) audio<br\s*\/?>\$([\d.]+) \/ text input \|$/gim,
           ),
         ].map((match) => {
           const id = modelIdSchema.parse(match[1]);

@@ -1244,7 +1244,7 @@ function openAiFineTunedInferenceFacts(
 function openAiPricingAliases(body: string): Map<string, string> {
   const aliases = new Map<string, string>();
   const match = body.match(
-    /`([^`]+)` and `([^`]+)` are\s+aliases that currently point to `([^`]+)` and\s+`([^`]+)`, respectively\./,
+    /`([^`]+)`\s+and\s+`([^`]+)`\s+are\s+aliases that currently point to\s+`([^`]+)`\s+and\s+`([^`]+)`, respectively\./,
   );
   if (match === null) return aliases;
   const pairs = [

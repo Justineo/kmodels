@@ -2271,7 +2271,11 @@ function parsePrices(
         });
       });
       if (reviewedTables === 0)
-        throw new Error("Bedrock pricing page contained no reviewed OpenAI model tables");
+        onPricingReconciliation?.({
+          disposition: "unsupported",
+          reason_code: "optional_pricing_source_drifted",
+          sample: "Bedrock public pricing page: contained no reviewed OpenAI model tables",
+        });
 
       const stability = page("h2#Stability_AI").first().closest("li[role='tabpanel']");
       if (stability.length === 0)
