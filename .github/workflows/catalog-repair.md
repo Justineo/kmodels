@@ -10,7 +10,10 @@ permissions:
   contents: read
   pull-requests: read
 
-engine: copilot
+engine:
+  id: copilot
+  model: gpt-5.6-luna
+  args: ["--effort=high"]
 
 concurrency:
   group: catalog-repair
