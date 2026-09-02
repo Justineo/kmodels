@@ -36,33 +36,38 @@ safe-outputs:
     fallback-as-issue: false
 
 steps:
-  - name: Check whether repair work is needed
-    id: repair_gate
+  - name: Check for an existing repair
+    id: repair_dedupe
     env:
       GH_TOKEN: ${{ github.token }}
-      KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
     run: |
       if [ "$(gh pr list --state open --label catalog-repair --json number --jq length)" -gt 0 ]; then
         echo '{"type":"noop","message":"An open catalog-repair pull request already exists"}' >> "$GH_AW_SAFE_OUTPUTS"
-        echo "repairable=false" >> "$GITHUB_OUTPUT"
+        echo "blocked=true" >> "$GITHUB_OUTPUT"
       else
-        node scripts/catalog-repair.ts --github-output "$GITHUB_OUTPUT"
+        echo "blocked=false" >> "$GITHUB_OUTPUT"
       fi
 
   - name: Set up pnpm
-    if: steps.repair_gate.outputs.repairable == 'true'
+    if: steps.repair_dedupe.outputs.blocked != 'true'
     uses: pnpm/action-setup@v6
 
   - name: Set up Vite+
-    if: steps.repair_gate.outputs.repairable == 'true'
+    if: steps.repair_dedupe.outputs.blocked != 'true'
     uses: voidzero-dev/setup-vp@v1
     with:
       node-version: 24.18.0
       cache: true
 
   - name: Install dependencies
-    if: steps.repair_gate.outputs.repairable == 'true'
+    if: steps.repair_dedupe.outputs.blocked != 'true'
     run: vp install --frozen-lockfile
+
+  - name: Check whether repair work is needed
+    if: steps.repair_dedupe.outputs.blocked != 'true'
+    env:
+      KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
+    run: node scripts/catalog-repair.ts
 ---
 
 # Review and repair a catalog collection problem
