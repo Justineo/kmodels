@@ -17,6 +17,8 @@ Status: implemented
   request labeled `catalog-repair` and exits before inference when one exists. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
   and provider guide. It never changes generated `data/`, weakens a drift guard, or guesses a price.
+  Repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
+  cost-efficient while retaining deeper analysis for source-drift diagnosis.
   Successful repairs are proposed as one labeled draft pull request for human review; there is no
   direct push or automatic merge. Because this is a personal repository, Copilot inference uses a
   fine-grained personal token with `Copilot Requests: read` stored as `COPILOT_GITHUB_TOKEN`; the
