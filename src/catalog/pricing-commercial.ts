@@ -126,7 +126,7 @@ export function commercialPricingProjection(data: PricingCatalog): CommercialPri
       provider_id: book.provider_id,
       book_key: book.book_key,
       scope: book.scope,
-      resource_edges: book.resource_edges.map(({ observations: _, ...edge }) => edge),
+      resource_edges: book.resource_edges.map(({ observations: _observations, ...edge }) => edge),
       offers: book.offers.map((offer) => commercialOffer(offer, used)),
     };
   });
@@ -168,14 +168,14 @@ function commercialOffer(offer: PricingOffer, used: UsedAtoms): CommercialPricin
     offer_key: offer.offer_key,
     ...(offer.model_refs === undefined ? {} : { model_refs: offer.model_refs }),
     billing_mode: offer.billing_mode,
-    states: offer.states.map(({ observations: _, ...state }) => state),
-    enrollment: offer.enrollment.map(({ observations: _, ...variant }) => variant),
+    states: offer.states.map(({ observations: _observations, ...state }) => state),
+    enrollment: offer.enrollment.map(({ observations: _observations, ...variant }) => variant),
     terms: offer.terms.flatMap((term) => {
       const projected = commercialTerm(term, used);
       return projected === undefined ? [] : [projected];
     }),
-    relations: offer.relations.map(({ observations: _, ...relation }) => relation),
-    settlement: offer.settlement.map(({ observations: _, ...variant }) => variant),
+    relations: offer.relations.map(({ observations: _observations, ...relation }) => relation),
+    settlement: offer.settlement.map(({ observations: _observations, ...variant }) => variant),
   };
   return base;
 }
@@ -207,16 +207,18 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
       term_key: term.term_key,
       kind: "rate",
       meter: term.meter,
-      variants: term.variants.map(({ observations: _, charge_binding, ...variant }) => ({
-        ...variant,
-        ...(charge_binding === undefined
-          ? {}
-          : {
-              charge_binding: (({ observations: _bindingObservations, ...binding }) => binding)(
-                charge_binding,
-              ),
-            }),
-      })),
+      variants: term.variants.map(
+        ({ observations: _observations, charge_binding, ...variant }) => ({
+          ...variant,
+          ...(charge_binding === undefined
+            ? {}
+            : {
+                charge_binding: (({ observations: _bindingObservations, ...binding }) => binding)(
+                  charge_binding,
+                ),
+              }),
+        }),
+      ),
       raw_variants: term.raw_variants.map(commercialRaw),
     };
   }
@@ -244,7 +246,7 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
       id: term.id,
       term_key: term.term_key,
       kind: "allowance",
-      variants: term.variants.map(({ observations: _, ...variant }) => variant),
+      variants: term.variants.map(({ observations: _observations, ...variant }) => variant),
       raw_variants: term.raw_variants.map(commercialRaw),
     };
   }
@@ -262,12 +264,14 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
       id: term.id,
       term_key: term.term_key,
       kind: "contribution",
-      variants: term.variants.map(({ observations: _, charge_bindings, ...variant }) => ({
-        ...variant,
-        charge_bindings: charge_bindings.map(
-          ({ observations: _observations, ...binding }) => binding,
-        ),
-      })),
+      variants: term.variants.map(
+        ({ observations: _observations, charge_bindings, ...variant }) => ({
+          ...variant,
+          charge_bindings: charge_bindings.map(
+            ({ observations: _observations, ...binding }) => binding,
+          ),
+        }),
+      ),
       raw_variants: term.raw_variants.map(commercialRaw),
     };
   }

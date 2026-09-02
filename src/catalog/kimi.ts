@@ -1466,21 +1466,19 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
     });
   }
   extractKimiCommercialFacts(models, input.source.id, evidence);
-  const result = [...models.values()].map(
-    (model): ProviderModel => ({
-      ...model,
-      capabilities: { ...model.capabilities, prompt_cache: true },
-      price_facts: [...model.price_facts].sort((left, right) =>
-        `${left.meter}\0${JSON.stringify(left.conditions)}`.localeCompare(
-          `${right.meter}\0${JSON.stringify(right.conditions)}`,
-        ),
+  const result = [...models.values()].map((model): ProviderModel => ({
+    ...model,
+    capabilities: { ...model.capabilities, prompt_cache: true },
+    price_facts: [...model.price_facts].sort((left, right) =>
+      `${left.meter}\0${JSON.stringify(left.conditions)}`.localeCompare(
+        `${right.meter}\0${JSON.stringify(right.conditions)}`,
       ),
-      raw_price_facts: [
-        ...model.raw_price_facts,
-        ...evidence.bindingGaps.flatMap((gap) => bindingGap(input, extractor, model, gap)),
-      ],
-    }),
-  );
+    ),
+    raw_price_facts: [
+      ...model.raw_price_facts,
+      ...evidence.bindingGaps.flatMap((gap) => bindingGap(input, extractor, model, gap)),
+    ],
+  }));
   for (const model of result) {
     for (const rate of model.price_facts)
       input.onPricingReconciliation?.({
@@ -1671,29 +1669,27 @@ export function parseKimiApi(input: Input): ProviderModel[] {
   });
   if (new Set(items.map(({ id }) => id)).size !== items.length)
     throw new Error("Kimi API returned duplicate model IDs");
-  const models = items.map(
-    (item): ProviderModel => ({
-      ...baseModel({
-        providerId: input.provider.id,
-        id: item.id,
-        name: item.id,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      modalities: {
-        input: [
-          "text",
-          ...(item.supports_image_in === true ? (["image"] as const) : []),
-          ...(item.supports_video_in === true ? (["video"] as const) : []),
-        ],
-        output: ["text"],
-      },
-      capabilities: {
-        ...unknownCapabilities(),
-        reasoning: item.supports_reasoning ?? "unknown",
-      },
-      limits: { context_tokens: item.context_length },
+  const models = items.map((item): ProviderModel => ({
+    ...baseModel({
+      providerId: input.provider.id,
+      id: item.id,
+      name: item.id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
     }),
-  );
+    modalities: {
+      input: [
+        "text",
+        ...(item.supports_image_in === true ? (["image"] as const) : []),
+        ...(item.supports_video_in === true ? (["video"] as const) : []),
+      ],
+      output: ["text"],
+    },
+    capabilities: {
+      ...unknownCapabilities(),
+      reasoning: item.supports_reasoning ?? "unknown",
+    },
+    limits: { context_tokens: item.context_length },
+  }));
   return bounded(input, "kimi-api", models);
 }

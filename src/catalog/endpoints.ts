@@ -42,7 +42,7 @@ export function catalogExportAssets(
     profile: "providers",
     ...metadata,
     providers: Object.fromEntries(
-      providerEntries.map(([id, { models: _, ...provider }]) => [id, provider]),
+      providerEntries.map(([id, { models: _models, ...provider }]) => [id, provider]),
     ),
   });
   return [

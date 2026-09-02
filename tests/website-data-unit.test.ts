@@ -50,14 +50,12 @@ function bindingObservation() {
 type DecimalCondition = Extract<PriceCondition, { kind: "decimal_range" }>;
 
 function numericDetail(ranges: Array<Omit<DecimalCondition, "dimension" | "kind" | "unit">>) {
-  const conditions = ranges.map(
-    (range): DecimalCondition => ({
-      kind: "decimal_range",
-      dimension: durationDimension,
-      unit: secondUnit,
-      ...range,
-    }),
-  );
+  const conditions = ranges.map((range): DecimalCondition => ({
+    kind: "decimal_range",
+    dimension: durationDimension,
+    unit: secondUnit,
+    ...range,
+  }));
   return detail(conditions);
 }
 

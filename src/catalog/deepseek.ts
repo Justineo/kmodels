@@ -1150,22 +1150,20 @@ export function parseDeepseekUpdates(input: Input): ProviderModel[] {
           });
       });
   });
-  const models = [...dates].map(
-    ([id, observed]): ProviderModel => ({
-      ...baseModel({
-        providerId: input.provider.id,
-        id,
-        name: id,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      ...(observed.release === undefined ? {} : { release_date: observed.release }),
-      ...(observed.releaseStage === undefined ? {} : { release_stage: observed.releaseStage }),
-      ...(observed.update === undefined || observed.update === observed.release
-        ? {}
-        : { updated_date: observed.update }),
+  const models = [...dates].map(([id, observed]): ProviderModel => ({
+    ...baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
     }),
-  );
+    ...(observed.release === undefined ? {} : { release_date: observed.release }),
+    ...(observed.releaseStage === undefined ? {} : { release_stage: observed.releaseStage }),
+    ...(observed.update === undefined || observed.update === observed.release
+      ? {}
+      : { updated_date: observed.update }),
+  }));
   const { minModels, maxModels } = input.source.extractor;
   assertItemCount("DeepSeek updates", models.length, minModels, maxModels);
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
