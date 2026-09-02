@@ -857,7 +857,7 @@ function validateRequestAccounting(
 }
 
 function amount(value: string | undefined): string | undefined {
-  return value?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \/ MTok$/)?.[1];
+  return value?.match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?) \/ MTok(?:\d+)?$/)?.[1];
 }
 
 function effective(value: string): SourcePriceFact["conditions"] {
@@ -871,9 +871,14 @@ interface CacheMultipliers {
   fiveMinuteWrite: string;
   oneHourWrite: string;
   read: string;
+  readOverrides: ReadonlyMap<string, string>;
 }
 
-function cached(rate: SourcePriceFact, multipliers: CacheMultipliers): SourcePriceFact[] {
+function cached(
+  rate: SourcePriceFact,
+  multipliers: CacheMultipliers,
+  modelName: string,
+): SourcePriceFact[] {
   const derive = (
     meter: "cache_write_text" | "cache_read_text",
     multiplier: string,
@@ -894,7 +899,7 @@ function cached(rate: SourcePriceFact, multipliers: CacheMultipliers): SourcePri
   return [
     derive("cache_write_text", multipliers.fiveMinuteWrite, 300),
     derive("cache_write_text", multipliers.oneHourWrite, 3600),
-    derive("cache_read_text", multipliers.read),
+    derive("cache_read_text", multipliers.readOverrides.get(modelName) ?? multipliers.read),
   ];
 }
 
@@ -903,11 +908,9 @@ function cacheMultipliers(parsedTables: MarkdownTable[], input: Input): CacheMul
     (candidate) => candidate.headers.join("|") === "Cache operation|Multiplier|Duration",
   );
   if (table === undefined) throw new Error("Anthropic pricing page omitted cache multipliers");
-  const multiplier = (label: string): string => {
-    const value = row(table, label)?.[1]?.match(
-      /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price$/,
-    )?.[1];
-    if (value === undefined)
+  const match = (label: string, pattern: RegExp): RegExpMatchArray => {
+    const value = row(table, label)?.[1]?.match(pattern);
+    if (value === undefined || value === null)
       throw new Error(`Anthropic cache multiplier was not machine-readable for ${label}`);
     input.onPricingReconciliation?.({
       disposition: "normalized",
@@ -915,10 +918,30 @@ function cacheMultipliers(parsedTables: MarkdownTable[], input: Input): CacheMul
     });
     return value;
   };
+  const multiplier = (label: string): string => {
+    const value = match(label, /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price$/)[1];
+    if (value === undefined)
+      throw new Error(`Anthropic cache multiplier was not machine-readable for ${label}`);
+    return value;
+  };
+  const read = match(
+    "Cache read",
+    /^((?:0|[1-9]\d*)(?:\.\d+)?)x base input price(?: \(((?:0|[1-9]\d*)(?:\.\d+)?)x on (Claude .+)\))?$/,
+  );
+  const readValue = read[1];
+  if (readValue === undefined)
+    throw new Error("Anthropic cache multiplier was not machine-readable for Cache read");
+  const overrideValue = read[2];
+  const overrideModels = read[3];
+  const readOverrides =
+    overrideValue === undefined || overrideModels === undefined
+      ? new Map<string, string>()
+      : new Map(overrideModels.split(" and ").map((name) => [name, overrideValue] as const));
   return {
     fiveMinuteWrite: multiplier("5-minute cache write"),
     oneHourWrite: multiplier("1-hour cache write"),
-    read: multiplier("Cache read"),
+    read: readValue,
+    readOverrides,
   };
 }
 
@@ -975,7 +998,9 @@ function pricing(
       sample: "Prompt caching multipliers",
     });
   }
-  const base = parsedTables.find((table) => table.headers[1] === "Base Input Tokens");
+  const base = parsedTables.find(
+    (table) => table.headers[1]?.toLowerCase() === "base input tokens",
+  );
   const batch = parsedTables.find((table) => table.headers[1] === "Batch input");
   const fastTables = parsedTables.filter(
     (table) => table.headers.join("|") === "Model|Input|Output",
@@ -1069,7 +1094,7 @@ function pricing(
     );
     add(item, [
       inputRate,
-      ...(multipliers === undefined ? [] : cached(inputRate, multipliers)),
+      ...(multipliers === undefined ? [] : cached(inputRate, multipliers, item.name)),
       publishedRate(
         "output_text",
         outputPrice,
@@ -1122,7 +1147,7 @@ function pricing(
       );
       add(item, [
         inputRate,
-        ...(multipliers === undefined ? [] : cached(inputRate, multipliers)),
+        ...(multipliers === undefined ? [] : cached(inputRate, multipliers, item.name)),
         publishedRate(
           "output_text",
           outputPrice,

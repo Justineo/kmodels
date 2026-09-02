@@ -78,12 +78,17 @@ Status: implemented core; provider pricing convergence is in progress
   secondary flat-price path. On an exact model row, activating the status opens
   that model's inspector at the pricing section; it does not choose an offer or
   pricing context on the user's behalf.
-- The detail flow is `[Run mode when selectable] → offers → audit exceptions`. The first mechanism in
+- The detail flow is `[Run mode when selectable] → model rates → collapsed add-ons and included
+services → pricing notes`. The first mechanism in
   stable presentation order is the initial browsing focus, not a provider default,
-  recommendation, or cheapest-offer choice. A sole mechanism is named only by its base-rate block.
+  recommendation, or cheapest-offer choice. A sole mechanism is named as the Run mode in the model
+  rate block so a viewer can distinguish Messages, Batch, or another mechanism without inferring it
+  from the rates.
   The selected mechanism remains the context for the entire cost breakdown; exact mechanism
-  references filter its related costs. One continuous rate sheet fully expands the base model,
-  optional services, automatic charges, and independently callable services in that order. Each
+  references filter its related costs. The model rate block is primary. Optional services,
+  automatic charges, included features, and independently callable services are grouped behind one
+  closed disclosure by default because they do not change the base model rates. The disclosure
+  explains that these items are separate and expands them in that order. Each
   offer keeps its price-changing options and meters. Exact rates use the same compact, bordered
   two-column definition-grid structure as Overview and collapse to one column on narrow screens.
   Every rate occupies one column, so an unpaired final rate remains in the left column rather than
@@ -92,10 +97,10 @@ Status: implemented core; provider pricing convergence is in progress
   headings, use the same left-aligned label-over-value hierarchy, and keep each numeric value and
   slash-prefixed unit together. Rates are billed
   separately and never combined
-  into a total. A sole base mechanism uses its reviewed title without a redundant kind label; when
-  Run mode is selectable, the selected choice already names the active base mechanism and its rate
-  block does not repeat that title. Supplementary offers retain `Optional`, `Automatic`, or
-  `Service` labels where the kind changes interpretation. Account plans and capacity are omitted.
+  into a total. When Run mode is selectable, the selected choice already names the active base
+  mechanism and its rate block does not repeat that title. Supplementary offers use the user-facing
+  kinds `Usage add-on`, `Included feature`, `Automatic charge`, or `Separate service`; they do not
+  expose the schema term `optional`. Account plans and capacity are omitted.
   Offer choices show one
   reviewed title; they omit generated book labels, repeated default `Metered pricing` copy, and
   explanatory prose already implied by the control. Multiple mechanism choices form a compact
@@ -110,8 +115,11 @@ Status: implemented core; provider pricing convergence is in progress
   a price or that model-level validation failed.
   Selecting another Run mode resets only the outgoing mechanism's child context, and context
   filtering never hides or reorders the choices above it. Each related offer owns independent child
-  context. Context controls use the shared
-  customizable-select component, remain visible, and rely on their own labels and empty choices.
+  context. Context controls remain visible and rely on their own labels and empty choices. A
+  categorical control with two or three non-scheduled values shows all values as one compact radio
+  group; larger or scheduled sets use the shared customizable-select component. This keeps mutually
+  exclusive request settings such as inference geography explicit rather than hiding the
+  alternatives inside a menu.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A
   categorical dimension or exact decimal selector with one possible value resolves internally.
@@ -150,9 +158,11 @@ Status: implemented core; provider pricing convergence is in progress
   usage-based billing is omitted because the meter, unit, and rate already express it. These rows
   explain what affects cost without accepting usage input,
   multiplying quantities, or presenting an account total.
-  Information priority is meter, amount, and unit; then rate-changing choices; then source
-  exceptions on demand. Fixed metadata, driver definitions, and invariant explanations stay out of
-  model details.
+  Information priority is meter, amount, and unit; then rate-changing choices; then pricing notes on
+  demand. Pricing notes translate unsupported normalized structures into a concise provider
+  condition and user impact; internal reason codes, raw-impact names, and unconditional scope labels
+  are not UI copy. Time allowances use the largest exact readable unit. Fixed metadata, driver
+  definitions, and invariant explanations stay out of model details.
 - Keep the Pricing section mounted after a detail request fails. Show a clear
   unavailable state with an in-place retry instead of removing the section when
   loading ends without a usable detail payload.

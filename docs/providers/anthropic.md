@@ -95,9 +95,12 @@ execution mechanism; separate offers already express the caller's choice, so no 
 exclusivity relation is emitted. The US-only inference multiplier is applied only when the
 generation threshold in pricing agrees with the data-residency contract.
 
-Published cache columns are checked against the published multipliers. Conflicting facts are
-reported and the directly published row remains authoritative. A model without an exact published
-row stays price-unknown; rates are never inherited from a family or replacement model.
+Published cache columns are checked against the published multipliers, including a source-published
+per-model cache-read override. Conflicting facts are reported and the directly published row remains
+authoritative. Pricing-table headings are matched case-insensitively while the exact reviewed
+columns remain required; a trailing numeric note marker on an otherwise exact `MTok` cell is parsed
+only as source annotation. A model without an exact published row stays price-unknown; rates are
+never inherited from a family or replacement model.
 
 ## Request services
 

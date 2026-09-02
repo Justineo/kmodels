@@ -27,16 +27,15 @@ const activeMechanism = computed(
     modelMechanisms.value.find(({ id }) => id === selectedMechanismId.value) ??
     modelMechanisms.value[0],
 );
-const rateOffers = computed(() =>
-  offers.value.filter((offer) => {
-    if (offer.group === "model_mechanism") return offer.id === activeMechanism.value?.id;
-    return (
+const supplementaryOffers = computed(() =>
+  offers.value.filter(
+    (offer) =>
+      offer.group !== "model_mechanism" &&
       offer.group !== "plan_capacity" &&
       (activeMechanism.value === undefined ||
         offer.mechanism_refs === undefined ||
-        offer.mechanism_refs.includes(activeMechanism.value.id))
-    );
-  }),
+        offer.mechanism_refs.includes(activeMechanism.value.id)),
+  ),
 );
 
 watch(
@@ -63,9 +62,10 @@ function offerState(offer: WebsitePricingOffer): string | undefined {
 }
 
 function supplementaryOfferKind(offer: WebsitePricingOffer): string {
-  if (offer.group === "optional_service") return "Optional";
-  if (offer.group === "automatic_component") return "Automatic";
-  return "Service";
+  if (offer.group === "optional_service")
+    return offer.state_summary === "Included" ? "Included feature" : "Usage add-on";
+  if (offer.group === "automatic_component") return "Automatic charge";
+  return "Separate service";
 }
 </script>
 
@@ -145,32 +145,44 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
         </fieldset>
       </section>
 
-      <div v-if="rateOffers.length > 0" class="rate-sheet">
-        <div v-if="!activeMechanism" class="pricing-outcome no-base-offer">
-          <strong>No base model rate</strong>
-        </div>
+      <section v-if="activeMechanism" class="base-rates" aria-labelledby="base-rates-heading">
+        <header class="rate-offer-heading">
+          <h4 id="base-rates-heading" class="section-heading">Model rates</h4>
+          <small v-if="modelMechanisms.length === 1" class="offer-state">
+            Run mode · {{ activeMechanism.title }}
+          </small>
+        </header>
+        <PricingOfferBreakdown :offer="activeMechanism" :model-ref="model.uid" />
+      </section>
 
-        <article
-          v-for="offer in rateOffers"
-          :key="offer.id"
-          class="rate-offer"
-          :data-kind="offer.group"
-        >
-          <header
-            v-if="offer.group !== 'model_mechanism' || modelMechanisms.length === 1"
-            class="rate-offer-heading"
-          >
-            <div>
-              <small v-if="offer.group !== 'model_mechanism'" class="rate-kind">
-                {{ supplementaryOfferKind(offer) }}
-              </small>
-              <h5>{{ offer.title }}</h5>
-            </div>
-            <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
-          </header>
-          <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
-        </article>
+      <div v-else-if="supplementaryOffers.length > 0" class="pricing-outcome no-base-offer">
+        <strong>No base model rate</strong>
       </div>
+
+      <details v-if="supplementaryOffers.length > 0" class="additional-costs">
+        <summary>
+          <strong>Add-ons &amp; included services</strong>
+          <small>Separate from the model rates above</small>
+        </summary>
+
+        <div class="supplementary-list">
+          <article
+            v-for="offer in supplementaryOffers"
+            :key="offer.id"
+            class="rate-offer"
+            :data-kind="offer.group"
+          >
+            <header class="rate-offer-heading">
+              <div>
+                <small class="rate-kind">{{ supplementaryOfferKind(offer) }}</small>
+                <h5>{{ offer.title }}</h5>
+              </div>
+              <small v-if="offerState(offer)" class="offer-state">{{ offerState(offer) }}</small>
+            </header>
+            <PricingOfferBreakdown :offer="offer" :model-ref="model.uid" />
+          </article>
+        </div>
+      </details>
     </template>
   </section>
 </template>
@@ -235,18 +247,48 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
   background: var(--color-surface-hover);
 }
 
-.rate-sheet {
-  margin-top: var(--space-2);
-}
-
-.run-mode + .rate-sheet {
-  margin-top: var(--space-3);
+.base-rates {
+  min-width: 0;
+  margin-top: var(--space-4);
 }
 
 .rate-offer-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.additional-costs {
+  overflow: hidden;
+  margin-top: var(--space-5);
+  border: var(--stroke-hairline) solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.additional-costs > summary {
+  min-height: var(--control-height-comfortable);
+  padding: var(--space-2-5) var(--space-3);
+  cursor: pointer;
+}
+
+.additional-costs > summary small {
+  display: block;
+  margin-top: var(--space-0-5);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-meta);
+  font-weight: var(--font-weight-regular);
+}
+
+.additional-costs[open] > summary {
+  border-bottom: var(--stroke-hairline) solid var(--color-border-subtle);
+}
+
+.supplementary-list {
+  display: grid;
+  gap: var(--space-5);
+  padding: var(--space-4);
+  background: var(--color-surface);
 }
 
 .section-heading,
@@ -332,11 +374,6 @@ function supplementaryOfferKind(offer: WebsitePricingOffer): string {
 
 .rate-offer {
   min-width: 0;
-  margin-top: var(--space-5);
-}
-
-.rate-offer[data-kind="model_mechanism"] {
-  margin-top: 0;
 }
 
 .rate-offer-heading > div {

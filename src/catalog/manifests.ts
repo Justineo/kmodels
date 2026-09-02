@@ -741,7 +741,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "anthropic-catalog" },
-        extractorVersion: "anthropic-catalog-v14",
+        extractorVersion: "anthropic-catalog-v15",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: [
           "model_id",

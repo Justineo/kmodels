@@ -9,6 +9,7 @@ import {
   displayUnitPrice,
   evaluateApplicability,
   fixedOfferStateSelections,
+  formatAllowanceBenefit,
   formatBillingMode,
   formatDenomination,
   formatDimension,
@@ -187,6 +188,24 @@ describe("canonical pricing presentation", () => {
   it("uses a slash for compact rate units", () => {
     expect(formatRateUnit("per 1M tokens")).toBe("/ 1M tokens");
     expect(formatRateUnit("USD / request")).toBe("USD / request");
+  });
+
+  it.each([
+    ["5580000", "1,550 hours"],
+    ["3600", "1 hour"],
+    ["90", "1.5 minutes"],
+  ])("uses the largest exact readable time unit for %s seconds", (value, expected) => {
+    expect(
+      formatAllowanceBenefit({
+        kind: "quantity",
+        quantity: {
+          value: { numerator: value, denominator: "1" },
+          unit: {
+            factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }],
+          },
+        },
+      }),
+    ).toBe(expected);
   });
 
   it("uses concise labels for unit-bearing dimensions", () => {
