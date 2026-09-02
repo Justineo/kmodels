@@ -1210,17 +1210,15 @@ function pricing(
     for (const item of models.values()) {
       if (!atLeastGeneration(item.model_id, pricingGeneration)) continue;
       item.price_facts.push(
-        ...item.price_facts.map(
-          (rate): SourcePriceFact => ({
-            ...rate,
-            price: multiplyDecimal(rate.price, inferenceGeoMultiplier),
-            conditions: { ...rate.conditions, inference_geo: "us" },
-            derived: true,
-            derivation: `${inferenceGeoMultiplier} × ${rate.derivation ?? "published rate"} for US-only inference`,
-            raw_price: undefined,
-            raw_unit: "published inference geography multiplier",
-          }),
-        ),
+        ...item.price_facts.map((rate): SourcePriceFact => ({
+          ...rate,
+          price: multiplyDecimal(rate.price, inferenceGeoMultiplier),
+          conditions: { ...rate.conditions, inference_geo: "us" },
+          derived: true,
+          derivation: `${inferenceGeoMultiplier} × ${rate.derivation ?? "published rate"} for US-only inference`,
+          raw_price: undefined,
+          raw_unit: "published inference geography multiplier",
+        })),
       );
     }
     input.onPricingReconciliation?.({

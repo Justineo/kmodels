@@ -1044,22 +1044,20 @@ export function parseCerebrasLifecycle(input: Input): ProviderModel[] {
     const ids = deprecatedIds(input, update.body);
     if (ids.length === 0) return [];
     const replacementIds = replacements(input, update.body, ids, references);
-    return ids.map(
-      (id): ProviderModel => ({
-        ...baseModel({
-          providerId: input.provider.id,
-          id,
-          name: id,
-          sourceId: input.source.id,
-          observedAt: input.observedAt,
-        }),
-        tasks: ["text_generation"],
-        modalities: { input: ["text"], output: ["text"] },
-        deprecated_at: update.date,
-        status: "deprecated",
-        replacement_model_ids: replacementIds,
+    return ids.map((id): ProviderModel => ({
+      ...baseModel({
+        providerId: input.provider.id,
+        id,
+        name: id,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
       }),
-    );
+      tasks: ["text_generation"],
+      modalities: { input: ["text"], output: ["text"] },
+      deprecated_at: update.date,
+      status: "deprecated",
+      replacement_model_ids: replacementIds,
+    }));
   });
   const known = new Set([...models.map(({ model_id }) => model_id), ...references.paths.values()]);
   for (const model of models)
@@ -1086,19 +1084,17 @@ export function parseCerebrasReleases(input: Input): ProviderModel[] {
       const current = dates.get(id);
       dates.set(id, current === undefined || update.date < current ? update.date : current);
     }
-  const models = [...dates].map(
-    ([id, date]): ProviderModel => ({
-      ...baseModel({
-        providerId: input.provider.id,
-        id,
-        name: id,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      tasks: ["text_generation"],
-      release_date: date,
+  const models = [...dates].map(([id, date]): ProviderModel => ({
+    ...baseModel({
+      providerId: input.provider.id,
+      id,
+      name: id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
     }),
-  );
+    tasks: ["text_generation"],
+    release_date: date,
+  }));
   return bounded(input, "cerebras-releases", models);
 }
 
@@ -1112,17 +1108,15 @@ export function parseCerebrasApi(input: Input): ProviderModel[] {
     rootKeys: Object.keys(inventoryItemSchema.shape),
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
-  const models = items.map(
-    (item): ProviderModel => ({
-      ...baseModel({
-        providerId: input.provider.id,
-        id: item.id,
-        name: item.id,
-        sourceId: input.source.id,
-        observedAt: input.observedAt,
-      }),
-      tasks: ["text_generation"],
+  const models = items.map((item): ProviderModel => ({
+    ...baseModel({
+      providerId: input.provider.id,
+      id: item.id,
+      name: item.id,
+      sourceId: input.source.id,
+      observedAt: input.observedAt,
     }),
-  );
+    tasks: ["text_generation"],
+  }));
   return bounded(input, "cerebras-api", models);
 }

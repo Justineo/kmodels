@@ -197,24 +197,22 @@ function bindResourceBook(book: AtomicPricingBook): AtomicPricingBook {
           return term;
         return {
           ...term,
-          variants: term.variants.map(
-            (variant): AtomicRateVariant => ({
-              ...variant,
-              charge_binding: {
-                signal: { namespace: "kmodels", value: "successful_web_searches" },
-                aggregation: "request",
-                observations: [
-                  {
-                    ...rawEvidence(variant.observation),
-                    locator: {
-                      kind: "provider_key",
-                      value: "responses:usage.x_tools.web_search.count",
-                    },
+          variants: term.variants.map((variant): AtomicRateVariant => ({
+            ...variant,
+            charge_binding: {
+              signal: { namespace: "kmodels", value: "successful_web_searches" },
+              aggregation: "request",
+              observations: [
+                {
+                  ...rawEvidence(variant.observation),
+                  locator: {
+                    kind: "provider_key",
+                    value: "responses:usage.x_tools.web_search.count",
                   },
-                ],
-              },
-            }),
-          ),
+                },
+              ],
+            },
+          })),
         };
       }),
       relations: [],

@@ -77,14 +77,12 @@ export function modelTableRows<T extends GroupableModel>(
     if (!expandedGroupKeys.has(group.key)) return [parent];
     return [
       parent,
-      ...group.models.map(
-        (model): ModelTableRow<T> => ({
-          kind: "model",
-          key: `model:${model.uid}`,
-          model,
-          nested: true,
-        }),
-      ),
+      ...group.models.map((model): ModelTableRow<T> => ({
+        kind: "model",
+        key: `model:${model.uid}`,
+        model,
+        nested: true,
+      })),
     ];
   });
 }

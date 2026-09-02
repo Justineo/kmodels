@@ -585,13 +585,11 @@ function pricingReconciliationRows(source: SourceAttempt): ProviderDetailRow[] {
   ].filter((value): value is string => value !== undefined);
   const rows: ProviderDetailRow[] = [
     ["Reconcile", `\`${source.source_id}\``, summary.join(" · ")],
-    ...evidence.diagnostics.map(
-      ({ disposition, reason_code }): ProviderDetailRow => [
-        "Finding",
-        `\`${source.source_id}\``,
-        `\`${disposition}\` · \`${reason_code}\``,
-      ],
-    ),
+    ...evidence.diagnostics.map(({ disposition, reason_code }): ProviderDetailRow => [
+      "Finding",
+      `\`${source.source_id}\``,
+      `\`${disposition}\` · \`${reason_code}\``,
+    ]),
   ];
   const reasons = Object.entries(evidence.reason_counts ?? {}).sort(
     ([leftCode, leftCount], [rightCode, rightCount]) =>

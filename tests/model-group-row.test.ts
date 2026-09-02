@@ -106,18 +106,16 @@ describe("model group row", () => {
   });
 
   it("makes a varying group-wide pricing status a tooltip-backed expansion control", async () => {
-    const statusModels = models.map(
-      (model, index): WebsiteModel => ({
-        ...model,
-        pricing: {
-          outcome: index === 0 ? "offers" : "unknown",
-          status:
-            index === 0
-              ? { label: "Free", description: "The provider publishes this offer as free." }
-              : { label: "Unknown", description: "No published pricing was found." },
-        },
-      }),
-    );
+    const statusModels = models.map((model, index): WebsiteModel => ({
+      ...model,
+      pricing: {
+        outcome: index === 0 ? "offers" : "unknown",
+        status:
+          index === 0
+            ? { label: "Free", description: "The provider publishes this offer as free." }
+            : { label: "Unknown", description: "No published pricing was found." },
+      },
+    }));
     const $ = await renderGroupRow({ ...group, models: statusModels });
     const pricingStatus = $(".price-status-cell .group-varies-trigger");
 
@@ -130,14 +128,13 @@ describe("model group row", () => {
   });
 
   it("discloses when only some versions publish a representative rate", async () => {
-    const partialModels = models.map(
-      (model, index): WebsiteModel =>
-        index === 0
-          ? model
-          : {
-              ...model,
-              pricing: { outcome: "unknown" },
-            },
+    const partialModels = models.map((model, index): WebsiteModel =>
+      index === 0
+        ? model
+        : {
+            ...model,
+            pricing: { outcome: "unknown" },
+          },
     );
     const $ = await renderGroupRow({ ...group, models: partialModels });
     const inputPrice = $(".input-col .group-varies-trigger");
