@@ -1,6 +1,7 @@
 import googleCloud from "@lobehub/icons-static-svg/icons/googlecloud-color.svg?raw";
 import { describe, expect, it } from "vite-plus/test";
 import {
+  formatDecimal,
   formatModelTask,
   formatLocalDateTime,
   formatRelativeTime,
@@ -35,6 +36,12 @@ function model(tasks: ModelTask[]): ProviderModel {
     source_refs: ["test"],
   };
 }
+
+describe("shared presentation", () => {
+  it("groups exact decimal text without losing precision", () => {
+    expect(formatDecimal("1550.25")).toBe("1,550.25");
+  });
+});
 
 describe("task presentation", () => {
   it.each([

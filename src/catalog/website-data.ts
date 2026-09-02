@@ -1,7 +1,7 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
-import { formatSentenceCase } from "./presentation.ts";
+import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
   displayUnitPrice,
@@ -846,7 +846,7 @@ function websiteOffer(
         ? meterLabel(term.meter, atoms)
         : term.kind === "allowance"
           ? "Allowance"
-          : formatSentenceCase(term.term_key);
+          : formatSentenceCase(term.term_key.replaceAll("-", "_"));
     variants.forEach((variant, index) => {
       const details = [...new Set(variant.observations.flatMap(({ raw }) => rawFactDetails(raw)))];
       unnormalized.push({
@@ -1363,21 +1363,15 @@ function decimalBucketLabel({ lower, upper }: WebsiteDecimalRange): string {
     lower.inclusive &&
     upper.inclusive
   )
-    return formatSelectorDecimal(lower.value);
+    return formatDecimal(lower.value);
   if (lower?.value === "0" && lower.inclusive && upper !== undefined)
-    return `${upper.inclusive ? "≤" : "<"} ${formatSelectorDecimal(upper.value)}`;
+    return `${upper.inclusive ? "≤" : "<"} ${formatDecimal(upper.value)}`;
   if (lower !== undefined && upper === undefined)
-    return `${lower.inclusive ? "≥" : ">"} ${formatSelectorDecimal(lower.value)}`;
+    return `${lower.inclusive ? "≥" : ">"} ${formatDecimal(lower.value)}`;
   if (lower === undefined || upper === undefined) throw new Error("Incomplete decimal bucket");
-  return `${lower.inclusive ? "≥" : ">"} ${formatSelectorDecimal(lower.value)} and ${
+  return `${lower.inclusive ? "≥" : ">"} ${formatDecimal(lower.value)} and ${
     upper.inclusive ? "≤" : "<"
-  } ${formatSelectorDecimal(upper.value)}`;
-}
-
-function formatSelectorDecimal(value: string): string {
-  const [integer = "0", fraction] = value.split(".");
-  const grouped = integer.replace(/\B(?=(?:\d{3})+(?!\d))/g, ",");
-  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+  } ${formatDecimal(upper.value)}`;
 }
 
 function offerStateSummary(offer: PricingOffer, modelRef: string | undefined): string {
@@ -1423,7 +1417,7 @@ function allowanceTarget(
     const term = offer.terms.find(({ id }) => id === ref);
     return term?.kind === "rate" ? meterLabel(term.meter, atoms) : "Rate term";
   });
-  return `Offsets ${[...new Set(labels)].join(", ")}`;
+  return `Applies to ${[...new Set(labels)].join(", ")}`;
 }
 
 function contributionTarget(
@@ -1572,7 +1566,7 @@ function resetLabel(reset: AllowanceReset): string {
   return reset.namespace === "kmodels"
     ? reset.value === "none"
       ? "No reset"
-      : `${formatSentenceCase(reset.value)} reset`
+      : `Resets ${reset.value}`
     : `${reset.provider_id} · ${reset.value}`;
 }
 

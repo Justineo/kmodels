@@ -23,6 +23,12 @@ export function formatCount(value: number): string {
   return new Intl.NumberFormat("en").format(value);
 }
 
+export function formatDecimal(value: string): string {
+  const [integer = "0", fraction] = value.split(".");
+  const grouped = integer.replace(/\B(?=(?:\d{3})+(?!\d))/g, ",");
+  return fraction === undefined ? grouped : `${grouped}.${fraction}`;
+}
+
 export function formatLocalDateTime(
   value: string,
   timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone,

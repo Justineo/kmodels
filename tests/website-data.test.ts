@@ -259,12 +259,21 @@ describe("website data", () => {
     expect(rates.map(({ amount }) => amount)).not.toEqual(
       expect.arrayContaining([expect.stringMatching(/\d\/\d/)]),
     );
+    const allowances = hydratedDetails.flatMap(
+      ({ pricing }) => pricing?.offers.flatMap((offer) => offer.allowances) ?? [],
+    );
+    expect(allowances.length).toBeGreaterThan(0);
+    for (const allowance of allowances) {
+      expect(allowance.value).not.toMatch(/\d\/\d/);
+      expect(allowance.target).not.toMatch(/^Offsets /);
+      expect(allowance.reset).not.toMatch(/ reset$/);
+    }
     expect(
       hydratedDetails.flatMap(
         ({ pricing }) =>
-          pricing?.offers.flatMap(({ allowances }) => allowances.map(({ value }) => value)) ?? [],
+          pricing?.offers.flatMap((offer) => offer.unnormalized.map(({ label }) => label)) ?? [],
       ),
-    ).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
+    ).toContain("Minimum runtime");
 
     expect(
       Math.max(...hydratedDetails.map(({ pricing }) => pricing?.offers.length ?? 0)),

@@ -166,10 +166,11 @@ The model list shows compact representative inference rates. Details show:
 2. its base and related request-cost meter/rate rows; and
 3. only the request dimensions that can change those rates.
 
-The mechanism remains the stable presentation context. One fully expanded rate sheet presents it
-before its related services while keeping their meters separate. Optional services label charges
-that apply only when used; automatic components label charges produced by the mechanism. Only an
-exact `exclusive_with` relation creates a mutually exclusive related-service choice.
+The mechanism remains the stable presentation context. Its model rates remain visible while related
+services are grouped in one closed disclosure by default, with every meter kept separate. Usage
+add-ons label charges that apply only when used; included features distinguish a zero-marginal-charge
+state; automatic charges identify costs produced by the mechanism. Only an exact `exclusive_with`
+relation creates a mutually exclusive related-service choice.
 
 The UI does not expose training, storage, capacity procurement, plan enrollment, or settlement
 topology. It does not ask for usage quantities or show a total. Known parameters that affect the

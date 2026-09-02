@@ -15,7 +15,7 @@ import {
   type PricingSelection,
 } from "../catalog/pricing-presentation.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
-import { formatLocalDateTime, formatSentenceCase } from "../catalog/presentation.ts";
+import { formatLocalDateTime } from "../catalog/presentation.ts";
 import {
   projectWebsitePricingTimeline,
   projectWebsiteRateQuery,
@@ -52,6 +52,7 @@ const displayOffer = computed(() =>
 );
 const selectors = computed(() => displayOffer.value.selectors);
 type FixedSelector = Extract<WebsitePricingSelector, { kind: "categorical" | "decimal_values" }>;
+type CategoricalSelector = Extract<WebsitePricingSelector, { kind: "categorical" }>;
 const configurableSelectors = computed<WebsitePricingSelector[]>(() =>
   selectors.value.filter((selector) => !isFixedSelector(selector)),
 );
@@ -96,8 +97,8 @@ const visibleUnnormalized = computed(() =>
           : scopeCopy(row.possible_scope, row.validity),
     })),
 );
-const incompleteCount = computed(
-  () => visibleUnnormalized.value.filter(({ impact }) => impact === "base_price").length,
+const hasIncompletePricing = computed(() =>
+  visibleUnnormalized.value.some(({ impact }) => impact === "base_price"),
 );
 const showOfferStates = computed(
   () => visibleStates.value.length > 0 && displayOffer.value.states.length > 1,
@@ -376,6 +377,42 @@ function scheduleRows(selector: WebsitePricingSelector) {
         ],
   );
 }
+
+function isInlineChoiceSelector(selector: WebsitePricingSelector): boolean {
+  return (
+    selector.kind === "categorical" &&
+    selector.values.length <= 3 &&
+    selector.values.every(({ schedule }) => schedule === undefined)
+  );
+}
+
+function isInferenceGeo(selector: WebsitePricingSelector): boolean {
+  return selector.dimension.namespace === "kmodels" && selector.dimension.value === "inference_geo";
+}
+
+function selectorOptionLabel(
+  selector: CategoricalSelector,
+  option: CategoricalSelector["values"][number],
+): string {
+  if (!isInferenceGeo(selector)) return option.label;
+  if (option.value.value === "global") return `${option.label} (default)`;
+  if (option.value.value === "us") return "US-only";
+  return option.label;
+}
+
+function noteExplanation(reason: string, impact: string): string {
+  if (impact === "base_price") return "May change the price in the matching context.";
+  if (impact === "allowance") return "May change the included usage in the matching context.";
+  if (reason === "Requires usage aggregation")
+    return "Exact cost depends on usage measured separately by the provider.";
+  if (reason === "Unsupported structure")
+    return "Published condition shown for context; it is not a separate rate.";
+  return "Published provider detail that cannot be expressed as a standalone rate.";
+}
+
+function showNoteScope(scope: ScopeCopy): boolean {
+  return !["All contexts", "Applicability not normalized"].includes(scope.primary);
+}
 </script>
 
 <template>
@@ -396,13 +433,34 @@ function scheduleRows(selector: WebsitePricingSelector) {
     <section v-if="rateSelectors.length > 0" class="pricing-context" aria-label="Pricing options">
       <div class="pricing-selector-grid">
         <div v-for="(selector, index) in rateSelectors" :key="selector.key">
-          <label :for="`${offer.id}-selector-${index}`">
+          <fieldset
+            v-if="selector.kind === 'categorical' && isInlineChoiceSelector(selector)"
+            class="inline-selector"
+          >
+            <legend>{{ selector.label }}</legend>
+            <small v-if="isInferenceGeo(selector)" class="selector-hint">
+              Choose one routing geography for this request.
+            </small>
+            <div class="inline-options">
+              <label v-for="option in selector.values" :key="option.key">
+                <input
+                  type="radio"
+                  :name="`${offer.id}-selector-${index}`"
+                  :value="option.key"
+                  :checked="inputValue(selector.key) === option.key"
+                  @change="setInput(selector.key, option.key)"
+                />
+                <span>{{ selectorOptionLabel(selector, option) }}</span>
+              </label>
+            </div>
+          </fieldset>
+          <label v-else :for="`${offer.id}-selector-${index}`">
             {{ selector.label }}
             <template v-if="'unit' in selector"
               >({{ formatUnitExpression(selector.unit) }})</template
             >
           </label>
-          <template v-if="selector.kind === 'categorical'">
+          <template v-if="selector.kind === 'categorical' && !isInlineChoiceSelector(selector)">
             <UiSelect
               :id="`${offer.id}-selector-${index}`"
               :model-value="inputValue(selector.key)"
@@ -455,7 +513,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
             @update:model-value="setInput(selector.key, $event)"
           />
           <input
-            v-else
+            v-else-if="selector.kind === 'decimal_range'"
             :id="`${offer.id}-selector-${index}`"
             :inputmode="isIntegerSelector(selector) ? 'numeric' : 'decimal'"
             :value="inputValue(selector.key)"
@@ -505,17 +563,13 @@ function scheduleRows(selector: WebsitePricingSelector) {
       <strong>{{ displayOffer.state_summary }}</strong>
     </div>
 
-    <div v-if="incompleteCount > 0" class="pricing-warning" role="status">
-      <strong
-        >{{ incompleteCount }} published rate exception{{
-          incompleteCount === 1 ? "" : "s"
-        }}</strong
-      >
-      <span>Exact rates are shown above. Exceptions are available below.</span>
+    <div v-if="hasIncompletePricing" class="pricing-warning" role="status">
+      <strong>Additional provider conditions may affect this rate</strong>
+      <span>Review the pricing notes before comparing costs.</span>
     </div>
 
     <section v-if="visibleAllowances.length > 0" class="offer-section">
-      <header class="pricing-subheading"><h6>Allowances</h6></header>
+      <header class="pricing-subheading"><h6>Included usage</h6></header>
       <div class="allowance-list">
         <div v-for="allowance in visibleAllowances" :key="allowance.key">
           <div>
@@ -568,17 +622,15 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
     <details v-if="visibleUnnormalized.length > 0" class="pricing-disclosure">
       <summary>
-        <span><UiIcon name="chevron-right" />Source exceptions</span>
+        <span><UiIcon name="chevron-right" />Pricing notes</span>
         <strong>{{ visibleUnnormalized.length }}</strong>
       </summary>
       <div class="raw-fact-list">
         <div v-for="fact in visibleUnnormalized" :key="fact.key">
-          <header>
-            <strong>{{ fact.label }}</strong>
-            <span>{{ fact.reason }}</span>
-          </header>
+          <strong>{{ fact.label }}</strong>
           <small v-for="detail in fact.details ?? []" :key="detail">{{ detail }}</small>
-          <small>{{ formatSentenceCase(fact.impact) }} · {{ fact.scope.primary }}</small>
+          <small>{{ noteExplanation(fact.reason, fact.impact) }}</small>
+          <small v-if="showNoteScope(fact.scope)">Applies when: {{ fact.scope.primary }}</small>
           <small v-if="fact.scope.secondary">{{ fact.scope.secondary }}</small>
         </div>
       </div>
@@ -595,8 +647,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
 .schedule-rule > summary,
 .state-row,
 .allowance-list > div,
-.pricing-disclosure > summary,
-.raw-fact-list header {
+.pricing-disclosure > summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -733,13 +784,51 @@ function scheduleRows(selector: WebsitePricingSelector) {
   gap: var(--space-1);
 }
 
-.pricing-selector-grid label {
+.pricing-selector-grid > div > label,
+.inline-selector legend {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }
 
+.inline-selector {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.inline-selector legend {
+  padding: 0;
+}
+
+.inline-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-height: var(--control-height-default);
+  align-items: center;
+}
+
+.inline-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  cursor: pointer;
+}
+
+.inline-options input {
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+.inline-options span {
+  font-size: var(--font-size-meta);
+}
+
 .pricing-selector-grid :deep(.ui-select-control),
-.pricing-selector-grid input {
+.pricing-selector-grid input:not([type="radio"]) {
   min-width: 0;
   height: var(--control-height-default);
   padding: 0 var(--space-2);
@@ -756,7 +845,7 @@ function scheduleRows(selector: WebsitePricingSelector) {
 }
 
 .pricing-selector-grid :deep(.ui-select-control:has(.ui-select:focus-visible)),
-.pricing-selector-grid input:focus-visible {
+.pricing-selector-grid input:not([type="radio"]):focus-visible {
   border-color: var(--color-accent);
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: calc(var(--stroke-focus) * -1);
@@ -951,10 +1040,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
 
 .pricing-disclosure[open] > summary .ui-icon {
   transform: rotate(90deg);
-}
-
-.raw-fact-list header {
-  gap: var(--space-2);
 }
 
 .raw-fact-list > div > small {

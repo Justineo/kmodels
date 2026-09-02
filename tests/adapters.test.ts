@@ -7730,6 +7730,59 @@ describe("Anthropic adapters", () => {
     });
   });
 
+  it("keeps standard pricing when Anthropic changes header casing and publishes a cache override", async () => {
+    const pricing = (await fixture("anthropic/pricing.md"))
+      .replace("Base Input Tokens", "Base input tokens")
+      .replace(
+        "| Claude Fable 5                             | $10 / MTok        | $12.50 / MTok   | $20 / MTok      | $1 / MTok",
+        "| Claude Fable 5                             | $10 / MTok        | $12.50 / MTok   | $20 / MTok      | $0.25 / MTok1",
+      )
+      .replace(
+        /0\.1x base input price\s*\| Same duration as the preceding write/,
+        "0.1x base input price (0.025x on Claude Fable 5) | Same duration as the preceding write",
+      );
+    const reconciliation: PricingReconciliationItem[] = [];
+    const fable = (
+      await anthropicCatalog({
+        overrides: { "/docs/en/about-claude/pricing.md": pricing },
+        onPricingReconciliation: (item) => reconciliation.push(item),
+      })
+    ).find(({ model_id }) => model_id === "claude-fable-5");
+
+    const price = (meter: "input_text" | "cache_read_text", serviceTier?: string) =>
+      fable?.price_facts.find(
+        ({ meter: candidate, conditions }) =>
+          candidate === meter &&
+          conditions.service_tier === serviceTier &&
+          conditions.inference_geo === undefined,
+      )?.price;
+
+    expect(price("input_text")).toBe("10");
+    expect(price("cache_read_text", "batch")).toBe("0.125");
+    expect(reconciliation.map(({ reason_code }) => reason_code)).not.toEqual(
+      expect.arrayContaining(["pricing_table_drift", "cache_multiplier_drift"]),
+    );
+  });
+
+  it("reports an unreviewed Anthropic cache override shape", async () => {
+    const pricing = (await fixture("anthropic/pricing.md")).replace(
+      /0\.1x base input price\s*\| Same duration as the preceding write/,
+      "0.1x base input price (special case) | Same duration as the preceding write",
+    );
+    const reconciliation: PricingReconciliationItem[] = [];
+
+    await anthropicCatalog({
+      overrides: { "/docs/en/about-claude/pricing.md": pricing },
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+
+    expect(reconciliation).toContainEqual({
+      disposition: "unresolved",
+      reason_code: "cache_multiplier_drift",
+      sample: "Prompt caching multipliers",
+    });
+  });
+
   it("accounts for every reviewed Anthropic pricing row or explicit boundary", async () => {
     const items: PricingReconciliationItem[] = [];
     await anthropicCatalog({ onPricingReconciliation: (item) => items.push(item) });

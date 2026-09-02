@@ -21,18 +21,28 @@ const model = {
   pricing: { outcome: "offers" },
 } satisfies WebsiteModel;
 
-function region(...values: string[]): WebsitePriceApplicability {
+const allContexts: WebsitePriceApplicability = { any_of: [{ all_of: [] }] };
+type TestDimension = "inference_geo" | "region";
+
+function categoricalContext(
+  dimension: TestDimension,
+  ...values: string[]
+): WebsitePriceApplicability {
   return {
     any_of: values.map((value) => ({
       all_of: [
         {
           kind: "categorical",
-          dimension: { namespace: "kmodels", value: "region" },
+          dimension: { namespace: "kmodels", value: dimension },
           values: [{ namespace: "provider", provider_id: "test", value }],
         },
       ],
     })),
   };
+}
+
+function region(...values: string[]): WebsitePriceApplicability {
+  return categoricalContext("region", ...values);
 }
 
 function offer(
@@ -42,8 +52,16 @@ function offer(
     title?: string;
     group?: WebsitePricingOffer["group"];
     mechanismRefs?: string[];
+    selector?: { dimension: TestDimension; values: Array<{ value: string; label: string }> };
   } = {},
 ): WebsitePricingOffer {
+  const selector = options.selector ?? {
+    dimension: "region",
+    values: [
+      { value: "eu", label: "EU" },
+      { value: "us", label: "US" },
+    ],
+  };
   return {
     id: options.id ?? "b".repeat(64),
     title: options.title ?? "On-demand inference",
@@ -53,13 +71,13 @@ function offer(
     state_summary: "Metered pricing",
     selectors: [
       {
-        key: JSON.stringify({ namespace: "kmodels", value: "region" }),
-        label: "Region",
-        dimension: { namespace: "kmodels", value: "region" },
+        key: JSON.stringify({ namespace: "kmodels", value: selector.dimension }),
+        label: selector.dimension === "region" ? "Region" : "Inference geo",
+        dimension: { namespace: "kmodels", value: selector.dimension },
         kind: "categorical",
-        values: ["eu", "us"].map((value) => ({
+        values: selector.values.map(({ value, label }) => ({
           key: JSON.stringify({ namespace: "provider", provider_id: "test", value }),
-          label: value.toUpperCase(),
+          label,
           value: { namespace: "provider", provider_id: "test", value },
         })),
       },
@@ -69,7 +87,10 @@ function offer(
         key: "state:0",
         state: "numeric",
         label: "Numeric",
-        applicability: region("us", "eu"),
+        applicability: categoricalContext(
+          selector.dimension,
+          ...selector.values.map(({ value }) => value),
+        ),
         applicability_label: "US or EU",
       },
     ],
@@ -114,7 +135,8 @@ describe("model pricing details", () => {
     expect(html).not.toContain("<table");
     expect(html).not.toContain("<thead");
     expect(html).not.toContain("Region");
-    expect(html).not.toContain("Run mode");
+    expect(html).toContain("Run mode");
+    expect(html).toContain("On-demand inference");
   });
 
   it("shows only context that changes the price", async () => {
@@ -126,12 +148,61 @@ describe("model pricing details", () => {
     ]);
 
     expect(html).toContain(">Region");
+    expect(html.match(/type="radio"/g)).toHaveLength(2);
+    expect(html).toContain(">US<");
+    expect(html).toContain(">EU<");
     expect(html).not.toContain("Select Region to see rates");
     expect(html).not.toContain("$2");
     expect(html).not.toContain("$3");
   });
 
-  it("expands optional services directly after the base model rates", async () => {
+  it("shows both mutually exclusive inference geographies without hiding them in a menu", async () => {
+    const pricedOffer = offer(
+      [
+        { amount: "$2", scope: categoricalContext("inference_geo", "global") },
+        { amount: "$2.20", scope: categoricalContext("inference_geo", "us") },
+      ],
+      {
+        selector: {
+          dimension: "inference_geo",
+          values: [
+            { value: "global", label: "Global" },
+            { value: "us", label: "US" },
+          ],
+        },
+      },
+    );
+
+    const html = await render([pricedOffer]);
+
+    expect(html).toContain("Choose one routing geography for this request.");
+    expect(html).toContain("Global (default)");
+    expect(html).toContain("US-only");
+    expect(html).not.toContain("ui-select");
+  });
+
+  it("keeps larger categorical choices in a menu", async () => {
+    const values = ["apac", "eu", "other", "us"];
+    const pricedOffer = offer(
+      values.map((value, index) => ({
+        amount: `$${index + 1}`,
+        scope: categoricalContext("region", value),
+      })),
+      {
+        selector: {
+          dimension: "region",
+          values: values.map((value) => ({ value, label: value.toUpperCase() })),
+        },
+      },
+    );
+
+    const html = await render([pricedOffer]);
+
+    expect(html).toContain("ui-select");
+    expect(html).not.toContain('type="radio"');
+  });
+
+  it("groups supplementary services after the base model rates", async () => {
     const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
     const service = offer([{ amount: "$10", scope: region("us", "eu") }], {
       id: "c".repeat(64),
@@ -144,12 +215,14 @@ describe("model pricing details", () => {
 
     expect(html).not.toContain("Base model");
     expect(html).toContain("$2");
-    expect(html).toContain("Optional");
+    expect(html).toContain('<details class="additional-costs"');
+    expect(html).toContain("Add-ons &amp; included services");
+    expect(html).toContain("Usage add-on");
     expect(html).toContain("Web Search");
     expect(html).toContain("$10");
     expect(html.indexOf("$2")).toBeLessThan(html.indexOf("Web Search"));
     expect(html.indexOf("Web Search")).toBeLessThan(html.indexOf("$10"));
-    expect(html).not.toContain("Additional request costs");
+    expect(html).not.toContain("Optional");
   });
 
   it("labels automatic components separately", async () => {
@@ -163,9 +236,56 @@ describe("model pricing details", () => {
 
     const html = await render([mechanism, component]);
 
-    expect(html).toContain("Automatic");
+    expect(html).toContain("Automatic charge");
     expect(html).toContain("Underlying agent execution");
     expect(html).toContain("$0.10");
+  });
+
+  it("presents allowances and raw provider conditions as plain-language pricing notes", async () => {
+    const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    const service = offer([{ amount: "$0.05", scope: region("us", "eu") }], {
+      id: "f".repeat(64),
+      title: "Code Execution",
+      group: "optional_service",
+      mechanismRefs: [mechanism.id],
+    });
+    service.allowances = [
+      {
+        key: "allowance:0",
+        value: "1,550 hours",
+        target: "Applies to Container runtime",
+        reset: "Resets monthly",
+        applicability: allContexts,
+        applicability_label: "All contexts",
+      },
+    ];
+    service.unnormalized_count = 2;
+    service.unnormalized = [
+      {
+        key: "raw:0",
+        label: "Minimum runtime",
+        impact: "informational",
+        reason: "Unsupported structure",
+        possible_scope: allContexts,
+      },
+      {
+        key: "raw:1",
+        label: "Runtime observation",
+        impact: "informational",
+        reason: "Requires usage aggregation",
+        possible_scope: allContexts,
+      },
+    ];
+
+    const html = await render([mechanism, service]);
+
+    expect(html).toContain("Included usage");
+    expect(html).toContain("1,550 hours");
+    expect(html).toContain("Applies to Container runtime · Resets monthly");
+    expect(html).toContain("Pricing notes");
+    expect(html).toContain("Exact cost depends on usage measured separately by the provider.");
+    expect(html).not.toContain("Source exceptions");
+    expect(html).not.toContain("Unsupported structure");
   });
 
   it("shows only costs related to the selected run mode", async () => {

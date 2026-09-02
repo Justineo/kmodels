@@ -1,5 +1,5 @@
 import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
-import { formatSentenceCase } from "./presentation.ts";
+import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { scaleDecimal } from "./pricing.ts";
 import {
   applicabilityContainedIn,
@@ -10,6 +10,7 @@ import {
 import { assertPricingDecimal } from "./pricing-constants.ts";
 import {
   compareRationals,
+  divideRationals,
   multiplyRationals,
   rationalToFiniteDecimal,
   rationalFromDecimal,
@@ -712,6 +713,17 @@ export function formatAllowanceBenefit(value: PriceAllowanceBenefit): string {
   if (value.kind === "credit") return formatDisplayAmount(value.denomination, value.amount);
   if (value.kind === "coverage") return "Covered usage";
   if (value.kind === "rate_substitution") return "Replacement rate";
+  if (standardUnitProduct(value.quantity.unit, "second"))
+    for (const [scale, unit] of [
+      ["3600", "hour"],
+      ["60", "minute"],
+      ["1", "second"],
+    ] as const) {
+      const scaled = divideRationals(value.quantity.value, unitScale(scale));
+      const amount = rationalToFiniteDecimal(scaled);
+      if (amount === undefined || compareRationals(scaled, unitScale("1")) < 0) continue;
+      return `${formatDecimal(amount)} ${unit}${amount === "1" ? "" : "s"}`;
+    }
   const quantity = formatRational(value.quantity.value);
   return `${quantity.text}${quantity.approximate ? "…" : ""} ${formatUnitExpression(value.quantity.unit)}`;
 }
