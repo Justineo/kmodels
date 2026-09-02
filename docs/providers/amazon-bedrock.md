@@ -57,6 +57,8 @@ for reviewed OpenAI and Stability tables that can lead the bulk feeds. The exact
 [Cohere Embed 4 Marketplace page](https://aws.amazon.com/marketplace/pp/prodview-j3fgisven2yrs) is an
 optional product-specific overlay. AWS states that service pricing pages control when an
 informational Price List differs, so an exact page row may replace only the same narrower scope.
+If one reviewed provider panel temporarily contains no recognized pricing table, that drift is
+reported for the panel while a recognized sibling panel can still contribute exact rates.
 
 The [Mantle guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) supplies
 service Regions. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact

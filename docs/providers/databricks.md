@@ -75,7 +75,8 @@ dependency.
 - Open-model rows publish only input, output, cache-read, and embedding rates. Capacity columns are
   recognized as out of scope and discarded.
 - Proprietary-model rows publish only input, output, cache-write, and cache-read rates. The
-  DBU-per-hour Batch column is recognized as out of scope and discarded.
+  DBU-per-hour Batch column is recognized as out of scope and discarded. The reviewed provider
+  groups are OpenAI, Anthropic, Google, and the optional `SpacexAI` group used for Grok rows.
 - Standard pay-per-token uses `service_tier=standard`. Priority is a variant of the same invocation
   offer. The request's tier plus any published region or endpoint condition selects the public
   rate. Account-team enablement is an access prerequisite, not a price dimension, so it is not
@@ -87,6 +88,9 @@ dependency.
   providers' USD prices. Kmodels therefore keeps those Priority variants as `unknown_amount` until
   a Databricks model-qualified DBU row appears. It does not infer a multiplier from Qwen's separate
   two-times row, copy upstream USD rates, or assume a universal DBU-to-USD conversion.
+- An exact model-qualified Priority DBU row is sufficient price evidence even when the support page
+  has not yet listed that endpoint. In that case Kmodels retains only the published
+  `service_tier=priority` condition; it does not invent region, routing, or fallback conditions.
 - Promotion percentages, validity dates, launch targets, and referenced Standard-rate families are
   parsed from first-party footnotes. Model IDs, rates, and dates are not hard-coded.
 - Blank, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only

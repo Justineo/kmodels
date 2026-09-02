@@ -635,9 +635,13 @@ function openPrices(
       const priorityConditions = prioritySupport.get(model.model_id);
       let payPerTokenConditions: SourcePriceFact["conditions"] = { service_tier: "standard" };
       if (priority) {
+        payPerTokenConditions = priorityConditions ?? { service_tier: "priority" };
         if (priorityConditions === undefined)
-          throw new Error(`Databricks priority price named unsupported model ${model.model_id}`);
-        payPerTokenConditions = priorityConditions;
+          onPricingReconciliation?.({
+            disposition: "normalized",
+            reason_code: "priority_price_without_support_listing",
+            sample: model.model_id,
+          });
       }
       const embedding = model.tasks.includes("embeddings");
       const input = rate(
@@ -877,14 +881,21 @@ function partnerPrices(
 ): void {
   const $ = load(body);
   const tables = $("main table");
-  if (tables.length !== 3) throw new Error("Databricks partner pricing tables changed shape");
+  if (tables.length < 3 || tables.length > 4)
+    throw new Error("Databricks partner pricing tables changed shape");
   const providers = new Set<string>();
+  const requiredProviders = new Set(["OpenAI", "Anthropic", "Google"]);
   const pricedModels = new Set<string>();
   const starred = new Set<string>();
   tables.each((_tableIndex, tableElement) => {
     const tableRows = rows($, $(tableElement));
     const provider = tableRows[0]?.[0];
-    if (provider !== "OpenAI" && provider !== "Anthropic" && provider !== "Google")
+    if (
+      provider !== "OpenAI" &&
+      provider !== "Anthropic" &&
+      provider !== "Google" &&
+      provider !== "SpacexAI"
+    )
       throw new Error("Databricks partner pricing group changed");
     providers.add(provider);
     const values = tableRows.filter((row) => row.length === 8 && new Set(row).size > 1);
@@ -946,6 +957,8 @@ function partnerPrices(
   });
   if (providers.size !== tables.length)
     throw new Error("Databricks partner pricing groups changed");
+  if ([...requiredProviders].some((provider) => !providers.has(provider)))
+    throw new Error("Databricks partner pricing groups omitted a required provider");
   applyPriceNotes($, models, rates, pricedModels, starred, onPricingReconciliation);
   const accountBoundary = text($("main").text());
   if (!/committed-use discounts or custom requirements/i.test(accountBoundary))

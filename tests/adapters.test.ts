@@ -4732,38 +4732,40 @@ describe("OpenAI adapters", () => {
         "| --- | --- | --- |",
         "| gpt-5.6-sol | $5.00 | $30.00 |",
         "| gpt-5.6-cyber | $12.50 | $75.00 |",
-        "`daybreak-blue-latest` and `daybreak-red-latest` are",
-        "aliases that currently point to `gpt-5.6-sol` and",
+        "`gpt-daybreak-blue-latest` and `gpt-daybreak-red-latest` ",
+        "  are aliases that currently point to `gpt-5.6-sol` and ",
         "`gpt-5.6-cyber`, respectively.",
       ].join("\n"),
       observedAt,
       catalogModels: [
-        openAiModel("daybreak-blue-latest", ["text_generation"]),
-        openAiModel("daybreak-red-latest", ["text_generation"]),
+        openAiModel("gpt-daybreak-blue-latest", ["text_generation"]),
+        openAiModel("gpt-daybreak-red-latest", ["text_generation"]),
         openAiModel("gpt-5.6-sol", ["text_generation"]),
         openAiModel("gpt-5.6-cyber", ["text_generation"]),
       ],
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
-    expect(models.find(({ model_id }) => model_id === "daybreak-blue-latest")?.price_facts).toEqual(
-      [
-        expect.objectContaining({
-          meter: "input_text",
-          price: "5.00",
-          derived: true,
-          derivation: expect.stringContaining("gpt-5.6-sol"),
-        }),
-        expect.objectContaining({ meter: "output_text", price: "30.00", derived: true }),
-      ],
-    );
-    expect(models.find(({ model_id }) => model_id === "daybreak-red-latest")?.price_facts).toEqual([
+    expect(
+      models.find(({ model_id }) => model_id === "gpt-daybreak-blue-latest")?.price_facts,
+    ).toEqual([
+      expect.objectContaining({
+        meter: "input_text",
+        price: "5.00",
+        derived: true,
+        derivation: expect.stringContaining("gpt-5.6-sol"),
+      }),
+      expect.objectContaining({ meter: "output_text", price: "30.00", derived: true }),
+    ]);
+    expect(
+      models.find(({ model_id }) => model_id === "gpt-daybreak-red-latest")?.price_facts,
+    ).toEqual([
       expect.objectContaining({ meter: "input_text", price: "12.50", derived: true }),
       expect.objectContaining({ meter: "output_text", price: "75.00", derived: true }),
     ]);
     expect(reconciliation).toContainEqual({
       disposition: "normalized",
       reason_code: "documented_alias_price_bound",
-      sample: "daybreak-blue-latest -> gpt-5.6-sol",
+      sample: "gpt-daybreak-blue-latest -> gpt-5.6-sol",
     });
   });
 
@@ -8466,6 +8468,54 @@ describe("Databricks adapters", () => {
     ).toEqual([]);
   });
 
+  it("accepts a new reviewed partner group and an exact Priority price before support docs catch up", async () => {
+    const partner = await fixture("databricks/pricing-partner.html");
+    const fourthTable = `<table>
+      <thead><tr><th>Model</th><th>Endpoint type</th><th>Context Length</th><th>Input</th><th>Output</th><th>Cache writes</th><th>Cache reads</th><th>Batch Inference</th></tr></thead>
+      <tbody>
+        <tr><td colspan="8">SpacexAI</td></tr>
+        <tr><td>Grok 4.6</td><td>Global</td><td>All Lengths</td><td>42.857</td><td>214.286</td><td>n/a</td><td>n/a</td><td>n/a</td></tr>
+      </tbody>
+    </table>`;
+    const open = await fixture("databricks/pricing-open.html");
+    const priorityRow = `<tr>
+      <td>GLM-5.2 (Priority)</td><td>25.000</td><td>70.000</td><td>4.000</td><td>n/a</td><td>n/a</td>
+    </tr>`;
+    const items: PricingReconciliationItem[] = [];
+    const models = await databricksCatalog(
+      {
+        "pricing-partner.html": partner.replace("<p>\n    *NOTE", `${fourthTable}<p>\n    *NOTE`),
+        "pricing-open.html": open.replace("</tbody>", `${priorityRow}</tbody>`),
+      },
+      (item) => items.push(item),
+    );
+    expect(models).toHaveLength(11);
+    expect(
+      models
+        .find(({ model_id }) => model_id === "databricks-glm-5-2")
+        ?.price_facts.filter(({ conditions }) => conditions.service_tier === "priority")
+        .map(({ meter, price }) => [meter, price]),
+    ).toEqual([
+      ["cache_read_text", "4"],
+      ["input_text", "25"],
+      ["output_text", "70"],
+    ]);
+    expect(items).toEqual(
+      expect.arrayContaining([
+        {
+          disposition: "normalized",
+          reason_code: "priority_price_without_support_listing",
+          sample: "databricks-glm-5-2",
+        },
+        {
+          disposition: "excluded",
+          reason_code: "price_row_outside_reviewed_catalog",
+          sample: "Grok 4.6",
+        },
+      ]),
+    );
+  });
+
   it("keeps optional claims local when one companion is unavailable", async () => {
     const withoutPartner = await databricksWithout("pricing-partner.html");
     expect(withoutPartner).toHaveLength(11);
@@ -8760,6 +8810,20 @@ describe("xAI adapter", () => {
     expect(
       models.some(({ model_id }) => ["grok-tts", "grok-stt", "grok-realtime"].includes(model_id)),
     ).toBe(false);
+    const deprecatedPrice = await xaiCatalog(
+      "xai/models-voice-services.txt",
+      (body) => body,
+      (body) =>
+        body.replace(
+          "Speech to Speech (grok-voice-think-fast-1.0) |",
+          "Speech to Speech (grok-voice-think-fast-1.0) — Deprecated |",
+        ),
+    );
+    expect(
+      deprecatedPrice
+        .find(({ model_id }) => model_id === "grok-voice-think-fast-1.0")
+        ?.price_facts.find(({ meter }) => meter === "output_audio"),
+    ).toMatchObject({ price: "0.05", unit: "minute" });
     const items: PricingReconciliationItem[] = [];
     const drifted = await xaiCatalog(
       "xai/models-voice-services.txt",
@@ -9289,7 +9353,7 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v10");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v11");
     expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v2");
     const priceItems: PricingReconciliationItem[] = [];
     const changedPrice = await xaiCatalog(
@@ -9406,7 +9470,7 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v18");
+    expect(source.extractorVersion).toBe("bedrock-catalog-v19");
     expect(source.linkedDocuments?.documents?.map(({ id, optional }) => [id, optional])).toEqual([
       ["bedrock-mantle", true],
       ["bedrock-rerank-supported", true],
@@ -9716,6 +9780,24 @@ describe("document adapter", () => {
       })),
       { disposition: "normalized", reason_code: "pricing_page_cell_bound" },
     ]);
+
+    const withoutOpenAiTables: PricingReconciliationItem[] = [];
+    const isolated = parseSource({
+      provider: provider(value),
+      source,
+      body: body.replaceAll("OpenAI models", "Frontier models"),
+      observedAt,
+      onPricingReconciliation: (item) => withoutOpenAiTables.push(item),
+    });
+    expect(
+      isolated.find(({ model_id }) => model_id === "stability.stable-image-remove-background-v1:0")
+        ?.price_facts,
+    ).toHaveLength(3);
+    expect(withoutOpenAiTables).toContainEqual({
+      disposition: "unsupported",
+      reason_code: "optional_pricing_source_drifted",
+      sample: "Bedrock public pricing page: contained no reviewed OpenAI model tables",
+    });
   });
 
   it("preserves Bedrock OpenAI short- and long-context price ranges", async () => {

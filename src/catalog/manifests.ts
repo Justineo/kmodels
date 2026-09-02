@@ -689,7 +689,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v8",
+        extractorVersion: "openai-pricing-v9",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -910,7 +910,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "bedrock-catalog" },
-        extractorVersion: "bedrock-catalog-v18",
+        extractorVersion: "bedrock-catalog-v19",
         pricingEvidence: firstPartyPricing(
           "billing_catalog",
           "reviewed_unique_join",
@@ -1063,7 +1063,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v9",
+        extractorVersion: "databricks-catalog-v10",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -2758,7 +2758,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v10",
+        extractorVersion: "xai-catalog-v11",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",

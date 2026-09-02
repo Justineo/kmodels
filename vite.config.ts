@@ -134,7 +134,7 @@ export default defineConfig({
     __KMODELS_CATALOG_UPDATE_URL__: JSON.stringify(updatedUrl),
   },
   fmt: {
-    ignorePatterns: ["data/**"],
+    ignorePatterns: ["data/**", ".github/workflows/*.lock.yml"],
   },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
