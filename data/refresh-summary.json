@@ -1,8 +1,8 @@
 {
-  "catalog_version": "d9ede92ca004f45a62763c36490610a399982406c17568bc72cd3cac415db46e",
-  "generated_at": "2026-09-03T04:21:52.889Z",
+  "catalog_version": "d690b4c8f5bbba24949ab07993266b7302e159af1c32ca8cad4049d5444d531b",
+  "generated_at": "2026-09-03T05:36:31.070Z",
   "outcome": "changed",
-  "previous_catalog_version": "8e209b9ad54df27aef814cc17d645ec652e837680574b79bfbb863284440e892",
+  "previous_catalog_version": "d9ede92ca004f45a62763c36490610a399982406c17568bc72cd3cac415db46e",
   "providers": [
     {
       "attempt": {
@@ -90,7 +90,7 @@
             "source_id": "bedrock-models"
           },
           {
-            "consecutive_failures": 293,
+            "consecutive_failures": 294,
             "last_success_at": "2026-08-19T07:15:30.306Z",
             "message": "The security token included in the request is invalid.",
             "outcome": "fetch_failed",
@@ -173,9 +173,9 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 33,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -314,20 +314,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "anthropic-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 2,
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -530,7 +523,7 @@
             "source_id": "azure-public-pricing"
           },
           {
-            "consecutive_failures": 24,
+            "consecutive_failures": 25,
             "last_success_at": "2026-09-01T17:03:47.862Z",
             "message": "Azure Claude pricing page omitted the model price table",
             "outcome": "parse_failed",
@@ -940,9 +933,9 @@
             "source_id": "cerebras-releases"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 2,
             "source_id": "cerebras-api"
           }
@@ -1010,20 +1003,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cerebras-api"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 5,
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 4
+        "unchanged": 5
       },
       "status": "stale",
       "warning_codes": {
@@ -1242,13 +1228,11 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Optional commercial source bundle is incomplete at dashscope-pricing/web-search",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
-            "consecutive_failures": 24,
+            "consecutive_failures": 25,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1271,7 +1255,7 @@
             "source_id": "dashscope-recommended"
           },
           {
-            "consecutive_failures": 24,
+            "consecutive_failures": 25,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1294,7 +1278,7 @@
             "source_id": "dashscope-text"
           },
           {
-            "consecutive_failures": 24,
+            "consecutive_failures": 25,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1384,13 +1368,8 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 3,
+              "diagnostic_count": 2,
               "diagnostics": [
-                {
-                  "disposition": "unbound",
-                  "reason_code": "commercial_companion_missing",
-                  "sample": "/help/en/model-studio/web-search"
-                },
                 {
                   "disposition": "unbound",
                   "reason_code": "cache_model_scope_drift",
@@ -1406,18 +1385,18 @@
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 1,
-                "normalized": 2848,
+                "normalized": 2935,
                 "raw": 0,
-                "unbound": 3,
+                "unbound": 2,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 2852,
+              "observed_items": 2938,
               "reason_counts": {
                 "cache_model_scope_drift": 2,
-                "commercial_companion_missing": 1,
                 "discontinued_price_not_applicable": 1,
-                "price_fact_normalized": 2848
+                "price_fact_normalized": 2848,
+                "web_search_rate_normalized": 87
               },
               "unit": "reviewed source pricing item"
             },
@@ -1457,8 +1436,8 @@
           {
             "field_changes": [
               {
-                "current": [],
-                "path": "availability"
+                "path": "availability",
+                "previous": []
               }
             ],
             "fields": [
@@ -1472,22 +1451,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1511,11 +1490,11 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
+                    "region": "US (Virginia)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
@@ -1530,11 +1509,11 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Japan (Tokyo)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -1558,15 +1537,15 @@
                   },
                   {
                     "deployment_type": "model_api",
+                    "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
                   }
                 ],
                 "path": "availability",
@@ -1581,15 +1560,15 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -1605,22 +1584,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1636,15 +1615,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1655,15 +1634,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1683,15 +1662,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1702,15 +1681,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1730,11 +1709,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1745,11 +1724,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1769,22 +1748,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1800,15 +1779,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1819,15 +1798,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1847,22 +1826,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -1878,15 +1857,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1897,15 +1876,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1925,15 +1904,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1944,15 +1923,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -1972,22 +1951,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2003,11 +1982,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2015,7 +1994,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2026,11 +2005,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2038,7 +2017,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2058,22 +2037,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2089,22 +2068,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2120,22 +2099,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2151,15 +2130,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2170,15 +2149,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2198,15 +2177,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2217,15 +2196,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2245,11 +2224,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2257,7 +2236,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2268,11 +2247,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2280,7 +2259,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2300,11 +2279,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2312,30 +2291,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2343,11 +2314,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -2363,22 +2342,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2394,22 +2373,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2425,22 +2404,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2456,15 +2435,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2475,15 +2454,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2503,15 +2482,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2522,15 +2501,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2550,22 +2529,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2581,22 +2560,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2612,22 +2591,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -2643,15 +2622,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2662,15 +2641,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2690,15 +2669,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2709,15 +2688,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2737,15 +2716,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2756,15 +2735,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2784,15 +2763,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2803,15 +2782,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2831,15 +2810,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2850,15 +2829,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2878,15 +2857,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2897,15 +2876,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2925,15 +2904,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2944,15 +2923,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2972,15 +2951,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -2991,15 +2970,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3019,15 +2998,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3038,15 +3017,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3066,15 +3045,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3085,15 +3064,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3113,15 +3092,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3132,15 +3111,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3160,15 +3139,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3179,15 +3158,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3207,15 +3186,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3226,15 +3205,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3254,30 +3233,30 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -3293,15 +3272,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3312,15 +3291,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3340,15 +3319,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3359,15 +3338,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3387,15 +3366,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3406,15 +3385,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3434,11 +3413,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3446,7 +3425,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3457,11 +3436,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3469,7 +3448,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3489,15 +3468,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3508,15 +3487,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3536,11 +3515,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3548,18 +3527,18 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3567,7 +3546,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -3583,15 +3562,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3602,15 +3581,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3630,15 +3609,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3649,15 +3628,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3677,15 +3656,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3696,15 +3675,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3724,22 +3703,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -3755,15 +3734,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3774,15 +3753,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3802,15 +3781,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3821,15 +3800,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3849,15 +3828,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3868,15 +3847,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3896,15 +3875,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3915,15 +3894,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3943,15 +3922,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3962,15 +3941,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -3990,15 +3969,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4009,15 +3988,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4037,15 +4016,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4056,15 +4035,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4084,15 +4063,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4103,15 +4082,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4131,15 +4110,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4150,15 +4129,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4178,30 +4157,30 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -4217,11 +4196,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4229,7 +4208,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4240,11 +4219,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4252,7 +4231,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4272,30 +4251,30 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Hong Kong (China)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -4311,15 +4290,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4330,15 +4309,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4358,11 +4337,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4370,7 +4349,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4381,11 +4360,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4393,7 +4372,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4413,11 +4392,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4425,7 +4404,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4436,11 +4415,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4448,7 +4427,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4468,15 +4447,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4487,15 +4466,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4515,15 +4494,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4534,15 +4513,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4562,22 +4541,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -4593,15 +4572,15 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4612,15 +4591,15 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Germany (Frankfurt)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4640,11 +4619,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4652,30 +4631,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4683,11 +4654,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -4703,22 +4682,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -4734,11 +4713,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4746,30 +4725,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4777,11 +4748,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -4797,11 +4776,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4809,30 +4788,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4840,11 +4811,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -4860,11 +4839,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4872,7 +4851,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4883,11 +4862,11 @@
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4895,7 +4874,7 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4915,22 +4894,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -4946,22 +4925,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -4977,11 +4956,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -4989,30 +4968,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -5020,11 +4991,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -5040,11 +5019,11 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -5052,30 +5031,22 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "Germany (Frankfurt)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "US (Virginia)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Japan (Tokyo)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
                     "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
@@ -5083,11 +5054,19 @@
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "US (Virginia)"
+                    "region": "Hong Kong (China)"
                   },
                   {
                     "deployment_type": "model_api",
                     "region": "Japan (Tokyo)"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "Singapore"
+                  },
+                  {
+                    "deployment_type": "model_api",
+                    "region": "US (Virginia)"
                   }
                 ]
               }
@@ -5103,22 +5082,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -5134,22 +5113,22 @@
                 "current": [
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   }
                 ],
                 "path": "availability",
                 "previous": [
                   {
                     "deployment_type": "model_api",
-                    "region": "Singapore"
+                    "region": "China (Beijing)"
                   },
                   {
                     "deployment_type": "model_api",
-                    "region": "China (Beijing)"
+                    "region": "Singapore"
                   }
                 ]
               }
@@ -5167,8 +5146,8 @@
         "unchanged": 313
       },
       "pricing": {
-        "commercial_hash": "dcfd88a09e147012733bce8ecb60f40deaca401519181a577518064933eac7e3",
-        "outcome": "provenance_only",
+        "commercial_hash": "0180a45029813f56a64f29298490a849460dd81c114a0c94d91d41afda4cc220",
+        "outcome": "commercial",
         "previous_commercial_hash": "dcfd88a09e147012733bce8ecb60f40deaca401519181a577518064933eac7e3"
       },
       "pricing_coverage": {
@@ -5206,7 +5185,7 @@
         "unknown_model_refs_omitted": 4,
         "unknown_models": 24
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "dashscope",
       "publication": "accepted",
       "signals": [
@@ -5249,7 +5228,7 @@
         "missing_field": 4,
         "scope_limited": 1,
         "source_parse_failed": 3,
-        "source_partial_retention": 6
+        "source_partial_retention": 5
       }
     },
     {
@@ -5674,22 +5653,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1536,
+            "parsed_models": 1532,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1536,
+              "model_records": 1532,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1536
+              "unknown_models": 1532
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1780,
+              "diagnostic_count": 1777,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -5738,16 +5717,16 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1780,
+                "unbound": 1777,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 12477,
+              "observed_items": 12474,
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1399,
-                "partner_route_price_not_published": 381,
+                "hf_inference_compute_price_unbound": 1395,
+                "partner_route_price_not_published": 382,
                 "single_partner_inventory_without_product_evidence": 10625
               },
               "unit": "reviewed source pricing item"
@@ -5763,7 +5742,7 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 135,
-              "normalized_facts": 418,
+              "normalized_facts": 420,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 112,
@@ -5820,17 +5799,17 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 209,
+                "normalized": 210,
                 "raw": 0,
                 "unbound": 106,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 317,
+              "observed_items": 318,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 209,
+                "route_price_normalized": 210,
                 "route_price_not_published": 106
               },
               "unit": "reviewed source pricing item"
@@ -5981,7 +5960,7 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1399,
+            "parsed_models": 1395,
             "source_id": "huggingface-hub"
           }
         ]
@@ -5989,18 +5968,42 @@
       "models": {
         "added": 3,
         "added_model_refs": [
-          "huggingface/microsoft/deberta-v3-large",
-          "huggingface/nasa-impact/nasa-smd-ibm-st-v2",
-          "huggingface/stabilityai/stable-diffusion-3.5-large-turbo"
+          "huggingface/google/bigbird-pegasus-large-pubmed",
+          "huggingface/openai/privacy-filter",
+          "huggingface/sshleifer/distilbart-xsum-12-6"
         ],
-        "changed": 4,
+        "changed": 5,
         "changed_fields": {
-          "routes": 3,
-          "source_refs": 1,
-          "task_evidence": 1,
-          "updated_date": 1
+          "capabilities": 2,
+          "routes": 3
         },
         "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-14B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.structured_output",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "huggingface/Qwen/Qwen3-235B-A22B"
+          },
           {
             "field_changes": [
               {
@@ -6008,6 +6011,13 @@
                   {
                     "provider": "deepinfra",
                     "provider_model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "qwen/qwen3-235b-a22b-instruct-2507",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6032,13 +6042,6 @@
                   {
                     "provider": "deepinfra",
                     "provider_model_id": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "qwen/qwen3-235b-a22b-instruct-2507",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6068,66 +6071,80 @@
           {
             "field_changes": [
               {
-                "current": "2026-09-03",
-                "path": "updated_date",
-                "previous": "2026-09-02"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/Sachin21112004/distilbart-news-summarizer"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
                   {
-                    "kind": "provider_task",
-                    "namespace": "huggingface.task",
-                    "raw_value": "conversational",
-                    "source_ref": "huggingface-hf-inference",
-                    "task": "text_generation"
-                  }
-                ],
-                "path": "task_evidence"
-              },
-              {
-                "current": [
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.6v",
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K3",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   },
                   {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-4.6v-flash",
+                    "provider": "featherless-ai",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "moonshotai/Kimi-K3",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
                   }
                 ],
-                "path": "routes"
-              },
-              {
-                "current": [
-                  "huggingface-router",
-                  "huggingface-hf-inference"
-                ],
-                "path": "source_refs",
+                "path": "routes",
                 "previous": [
-                  "huggingface-router"
+                  {
+                    "provider": "baseten",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "deepinfra",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "fireworks-ai",
+                    "provider_model_id": "accounts/fireworks/models/kimi-k3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "together",
+                    "provider_model_id": "moonshotai/Kimi-K3",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               }
             ],
             "fields": [
-              "task_evidence",
-              "routes",
-              "source_refs"
+              "routes"
             ],
-            "model_ref": "huggingface/zai-org/GLM-4.6V-Flash"
+            "model_ref": "huggingface/moonshotai/Kimi-K3"
           },
           {
             "field_changes": [
@@ -6143,6 +6160,13 @@
                   {
                     "provider": "featherless-ai",
                     "provider_model_id": "zai-org/GLM-4.7-Flash",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  },
+                  {
+                    "provider": "novita",
+                    "provider_model_id": "zai-org/glm-4.7-flash",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
@@ -6172,13 +6196,6 @@
                     "task": "conversational"
                   },
                   {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-4.7-flash",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
                     "provider": "zai-org",
                     "provider_model_id": "glm-4.7-flashx",
                     "source_ref": "huggingface-hf-inference",
@@ -6194,28 +6211,30 @@
             "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
           }
         ],
-        "current": 1579,
-        "previous": 1581,
-        "removed": 5,
+        "current": 1575,
+        "previous": 1579,
+        "removed": 7,
         "removed_model_refs": [
-          "huggingface/Qwen/Qwen2.5-7B-Instruct",
-          "huggingface/facebook/mask2former-swin-large-ade-semantic",
-          "huggingface/google/bigbird-pegasus-large-pubmed",
-          "huggingface/nvidia/mit-b3",
-          "huggingface/sshleifer/distilbart-xsum-12-6"
+          "huggingface/MoritzLaurer/deberta-v3-large-zeroshot-v1.1-all-33",
+          "huggingface/cahya/t5-base-indonesian-summarization-cased",
+          "huggingface/codefuse-ai/F2LLM-v2-0.6B",
+          "huggingface/dragonkue/BGE-m3-ko",
+          "huggingface/facebook/bart-large-mnli",
+          "huggingface/l3cube-pune/indic-sentence-similarity-sbert",
+          "huggingface/newmindai/Mursit-Large-TR-Retrieval"
         ],
-        "unchanged": 1572
+        "unchanged": 1567
       },
       "pricing": {
-        "commercial_hash": "5fca7712043b8e4edc40fe68319215bcf1c28a2f7a3a42c07b6089548dcdb747",
+        "commercial_hash": "97b0e591f67363def57cb515f88b4ade2b4bc72eb011d93ebd18511a1b172375",
         "outcome": "commercial",
-        "previous_commercial_hash": "dd4ded73afb3cd7a45dfcddf73cf0c909d5d7ac5e71e4d5369961b6dab40dd91"
+        "previous_commercial_hash": "5fca7712043b8e4edc40fe68319215bcf1c28a2f7a3a42c07b6089548dcdb747"
       },
       "pricing_coverage": {
-        "current_models": 1579,
+        "current_models": 1575,
         "delta": {
-          "resolved_models": -1,
-          "unknown_models": -1
+          "resolved_models": 0,
+          "unknown_models": -4
         },
         "normalized_rate_models": 131,
         "not_applicable_models": 0,
@@ -6243,8 +6262,8 @@
           "huggingface/AungMoonLord/bert-log-anomaly-detection",
           "huggingface/BAAI/bge-base-en"
         ],
-        "unknown_model_refs_omitted": 1420,
-        "unknown_models": 1440
+        "unknown_model_refs_omitted": 1416,
+        "unknown_models": 1436
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
@@ -6326,7 +6345,7 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 26,
+            "consecutive_failures": 27,
             "last_success_at": "2026-08-31T08:10:37.673Z",
             "message": "Kimi model catalog table structure changed",
             "outcome": "parse_failed",
@@ -7206,28 +7225,26 @@
         ]
       },
       "models": {
-        "added": 1,
-        "added_model_refs": [
-          "vercel/zai/glm-5.3-fast"
-        ],
+        "added": 0,
+        "added_model_refs": [],
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
         "current": 367,
-        "previous": 366,
+        "previous": 367,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 366
+        "unchanged": 367
       },
       "pricing": {
         "commercial_hash": "a8774aa53d0e756a49a99f4e84fd4c738d2367b372cf78ba6fee36ac5b5aa528",
-        "outcome": "commercial",
-        "previous_commercial_hash": "bd28b5fc0c64b5f29a1fafbf754f8583c6aa8b23cfd66eaa72ab67c0e167968f"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "a8774aa53d0e756a49a99f4e84fd4c738d2367b372cf78ba6fee36ac5b5aa528"
       },
       "pricing_coverage": {
         "current_models": 367,
         "delta": {
-          "resolved_models": 1,
+          "resolved_models": 0,
           "unknown_models": 0
         },
         "normalized_rate_models": 353,
@@ -7360,7 +7377,7 @@
             "source_id": "vertex-pricing"
           },
           {
-            "consecutive_failures": 291,
+            "consecutive_failures": 292,
             "last_success_at": "2026-08-19T09:10:06.392Z",
             "message": "Google HTTP 400",
             "outcome": "fetch_failed",
@@ -7629,41 +7646,14 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 2,
-        "changed_fields": {
-          "release_date": 2
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": "2026-09",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "xai/grok-imagine-image-quality@1.0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": "2026-09",
-                "path": "release_date"
-              }
-            ],
-            "fields": [
-              "release_date"
-            ],
-            "model_ref": "xai/grok-imagine-image@1.0"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 22,
         "previous": 22,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 20
+        "unchanged": 22
       },
       "pricing": {
         "commercial_hash": "13e40741cdeba77f817083676ce717158ff1820afdbe2c4754f4fbddbcc5750b",
@@ -7721,18 +7711,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 16,
-    "added_models": 4,
+    "added_models": 3,
     "added_sources": 0,
-    "changed_models": 90,
-    "changed_sources": 27,
-    "models": 3568,
-    "pricing_accepted": 14,
+    "changed_models": 89,
+    "changed_sources": 25,
+    "models": 3564,
+    "pricing_accepted": 15,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 4,
+    "pricing_retained": 3,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 5,
+    "removed_models": 7,
     "removed_sources": 0,
     "retained": 2,
     "withheld": 0
