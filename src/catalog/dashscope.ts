@@ -836,7 +836,13 @@ function parseDashscopeRecommendedListing(input: ParseInput): Map<string, Provid
   const models = new Map<string, ProviderModel>();
   const findings: string[] = [];
   for (const [index, line] of input.body.split(/\r?\n/).entries()) {
-    const url = line.match(/^\[!\[\]\([^)]+\)\s+[^\]]+]\((https:\/\/[^)]+)\)\s*$/)?.[1];
+    const url =
+      line.match(
+        /<strong><a href="(https:\/\/modelstudio\.console\.alibabacloud\.com\/[^"]+)">/,
+      )?.[1] ??
+      line.match(
+        /^\[!\[\]\([^)]+\)\s+[^\]]+]\((https:\/\/modelstudio\.console\.alibabacloud\.com\/[^)]+)\)\s*$/,
+      )?.[1];
     if (url === undefined) continue;
     try {
       const { id, region } = recommendedListingTarget(url);

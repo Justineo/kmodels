@@ -485,7 +485,7 @@ const kimiPricingSource = (
   access: "public",
   format: "markdown",
   stability: "semi_structured",
-  extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 8, maxModels: 20 },
+  extractor: { kind: "kimi-pricing", region, currency, symbol, minModels: 4, maxModels: 20 },
   extractorVersion: "kimi-pricing-v7",
   pricingEvidence: firstPartyPricing("price_book", "exact_id"),
   fields: [
@@ -1655,7 +1655,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "azure-claude-pricing", minModels: 1, maxModels: 50 },
-        extractorVersion: "azure-claude-pricing-v3",
+        extractorVersion: "azure-claude-pricing-v4",
         pricingEvidence: firstPartyPricing(
           "price_book",
           "exact_or_documented_alias",
@@ -3394,7 +3394,7 @@ export const manifests = [
         format: "markdown",
         stability: "documented",
         extractor: { kind: "dashscope-recommended", minModels: 15, maxModels: 60 },
-        extractorVersion: "dashscope-recommended-v5",
+        extractorVersion: "dashscope-recommended-v6",
         fields: ["api_endpoints", "availability"],
         allowedHosts: ["www.alibabacloud.com"],
         maxResponseBytes: mebibytes(1),
@@ -3404,8 +3404,8 @@ export const manifests = [
         optional: true,
         retainOmittedFacts: true,
       },
-      dashscopeCatalogSource("dashscope-text", "text-generation-model/", "text", 70, 180),
-      dashscopeCatalogSource("dashscope-vision", "vision-model/", "vision", 12, 50),
+      dashscopeCatalogSource("dashscope-text", "text-generation-model/", "text", 50, 180),
+      dashscopeCatalogSource("dashscope-vision", "vision-model/", "vision", 5, 50),
       dashscopeCatalogSource("dashscope-image", "image-model", "image", 20, 70),
       dashscopeCatalogSource("dashscope-video", "video-generate-edit-model", "video", 25, 80),
       dashscopeCatalogSource("dashscope-asr", "asr-model/", "asr", 25, 90),
@@ -3634,7 +3634,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "cerebras-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "cerebras-catalog-v13",
+        extractorVersion: "cerebras-catalog-v14",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id"),
         fields: [
           "model_id",
@@ -3662,7 +3662,7 @@ export const manifests = [
         role: "catalog",
         linkedDocuments: {
           indexFormat: "markdown",
-          path: /^\/models\/(?!choose-a-model$)[a-z0-9-]+$/,
+          path: /^\/models\/(?!choose-a-model$)[a-z0-9.-]+$/,
           requestSuffix: ".md",
           minDocuments: 1,
           maxDocuments: 100,
@@ -4101,7 +4101,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v3",
+        extractorVersion: "kimi-catalog-v4",
         fields: [
           "model_id",
           "description",
@@ -4128,7 +4128,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "kimi-catalog", minModels: 15, maxModels: 30 },
-        extractorVersion: "kimi-catalog-v3",
+        extractorVersion: "kimi-catalog-v4",
         fields: [
           "model_id",
           "description",

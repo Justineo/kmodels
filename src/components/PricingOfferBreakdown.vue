@@ -107,7 +107,8 @@ const showPublishedStatus = computed(
   () =>
     displayOffer.value.rates.length === 0 &&
     displayOffer.value.state_summary !== "Metered pricing" &&
-    displayOffer.value.state_summary !== "Incomplete",
+    displayOffer.value.state_summary !== "Incomplete" &&
+    displayOffer.value.state_summary !== "Included",
 );
 const booleanOptions = [
   { value: "true", label: "Yes" },
@@ -378,14 +379,6 @@ function scheduleRows(selector: WebsitePricingSelector) {
   );
 }
 
-function isInlineChoiceSelector(selector: WebsitePricingSelector): boolean {
-  return (
-    selector.kind === "categorical" &&
-    selector.values.length <= 3 &&
-    selector.values.every(({ schedule }) => schedule === undefined)
-  );
-}
-
 function isInferenceGeo(selector: WebsitePricingSelector): boolean {
   return selector.dimension.namespace === "kmodels" && selector.dimension.value === "inference_geo";
 }
@@ -433,41 +426,28 @@ function showNoteScope(scope: ScopeCopy): boolean {
     <section v-if="rateSelectors.length > 0" class="pricing-context" aria-label="Pricing options">
       <div class="pricing-selector-grid">
         <div v-for="(selector, index) in rateSelectors" :key="selector.key">
-          <fieldset
-            v-if="selector.kind === 'categorical' && isInlineChoiceSelector(selector)"
-            class="inline-selector"
-          >
-            <legend>{{ selector.label }}</legend>
-            <small v-if="isInferenceGeo(selector)" class="selector-hint">
-              Choose one routing geography for this request.
-            </small>
-            <div class="inline-options">
-              <label v-for="option in selector.values" :key="option.key">
-                <input
-                  type="radio"
-                  :name="`${offer.id}-selector-${index}`"
-                  :value="option.key"
-                  :checked="inputValue(selector.key) === option.key"
-                  @change="setInput(selector.key, option.key)"
-                />
-                <span>{{ selectorOptionLabel(selector, option) }}</span>
-              </label>
-            </div>
-          </fieldset>
-          <label v-else :for="`${offer.id}-selector-${index}`">
+          <label :for="`${offer.id}-selector-${index}`">
             {{ selector.label }}
             <template v-if="'unit' in selector"
               >({{ formatUnitExpression(selector.unit) }})</template
             >
           </label>
-          <template v-if="selector.kind === 'categorical' && !isInlineChoiceSelector(selector)">
+          <template v-if="selector.kind === 'categorical'">
             <UiSelect
               :id="`${offer.id}-selector-${index}`"
               :model-value="inputValue(selector.key)"
-              :options="selector.values.map(({ key, label }) => ({ value: key, label }))"
+              :options="
+                selector.values.map((option) => ({
+                  value: option.key,
+                  label: selectorOptionLabel(selector, option),
+                }))
+              "
               placeholder="Choose…"
               @update:model-value="setInput(selector.key, $event)"
             />
+            <small v-if="isInferenceGeo(selector)" class="selector-hint">
+              Choose one routing geography for this request.
+            </small>
             <details v-if="scheduleRows(selector).length > 0" class="schedule-rule">
               <summary>
                 <span
@@ -784,51 +764,13 @@ function showNoteScope(scope: ScopeCopy): boolean {
   gap: var(--space-1);
 }
 
-.pricing-selector-grid > div > label,
-.inline-selector legend {
+.pricing-selector-grid > div > label {
   color: var(--color-text-muted);
   font-size: var(--font-size-meta);
 }
 
-.inline-selector {
-  display: grid;
-  min-width: 0;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.inline-selector legend {
-  padding: 0;
-}
-
-.inline-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  min-height: var(--control-height-default);
-  align-items: center;
-}
-
-.inline-options label {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  cursor: pointer;
-}
-
-.inline-options input {
-  margin: 0;
-  accent-color: var(--color-accent);
-}
-
-.inline-options span {
-  font-size: var(--font-size-meta);
-}
-
 .pricing-selector-grid :deep(.ui-select-control),
-.pricing-selector-grid input:not([type="radio"]) {
+.pricing-selector-grid input {
   min-width: 0;
   height: var(--control-height-default);
   padding: 0 var(--space-2);
@@ -845,7 +787,7 @@ function showNoteScope(scope: ScopeCopy): boolean {
 }
 
 .pricing-selector-grid :deep(.ui-select-control:has(.ui-select:focus-visible)),
-.pricing-selector-grid input:not([type="radio"]):focus-visible {
+.pricing-selector-grid input:focus-visible {
   border-color: var(--color-accent);
   outline: var(--stroke-focus) solid var(--color-accent);
   outline-offset: calc(var(--stroke-focus) * -1);

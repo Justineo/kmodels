@@ -513,40 +513,14 @@ interface RetirementNotice {
   id: string;
   date: string;
   replacement: string;
+  series: boolean;
 }
 
-function retiredSeriesNotice(body: string): RetirementNotice | undefined {
-  const chinese = body.match(
-    /`([^`]+)` 系列模型已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
-  );
-  if (
-    chinese?.[1] !== undefined &&
-    chinese[2] !== undefined &&
-    chinese[3] !== undefined &&
-    chinese[4] !== undefined &&
-    chinese[5] !== undefined
-  )
-    return {
-      id: modelIdSchema.parse(chinese[1]),
-      date: modelDate(chinese[2], chinese[3], chinese[4]),
-      replacement: modelIdSchema.parse(chinese[5]),
-    };
-  const english = body.match(
-    /The `([^`]+)` series models were officially discontinued on \*\*([A-Z][a-z]+ \d{1,2}, \d{4})\*\*.*\[([^\]]+)\]/,
-  );
-  const date = english?.[2] === undefined ? undefined : englishDate(english[2]);
-  if (english?.[1] === undefined || date === undefined || english[3] === undefined)
-    return undefined;
-  return {
-    id: modelIdSchema.parse(english[1]),
-    date,
-    replacement: modelIdSchema.parse(english[3]),
-  };
-}
-
-function retiredModelNotice(line: string): RetirementNotice | undefined {
+function retirementNotice(line: string, series: boolean): RetirementNotice | undefined {
   const chinese = line.match(
-    /^>\s*`([^`]+)` 已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
+    series
+      ? /^>\s*`([^`]+)` 系列模型(?:[^\n]*?)已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/
+      : /^>\s*`([^`]+)` 已于 \*\*(\d{4}) 年 (\d{1,2}) 月 (\d{1,2}) 日下线\*\*.*\[([^\]]+)\]/,
   );
   if (
     chinese?.[1] !== undefined &&
@@ -559,9 +533,12 @@ function retiredModelNotice(line: string): RetirementNotice | undefined {
       id: modelIdSchema.parse(chinese[1]),
       date: modelDate(chinese[2], chinese[3], chinese[4]),
       replacement: modelIdSchema.parse(chinese[5]),
+      series,
     };
   const english = line.match(
-    /^>\s*`([^`]+)` was officially discontinued on \*\*([A-Z][a-z]+ \d{1,2}, \d{4})\*\*.*\[([^\]]+)\]/,
+    series
+      ? /^>\s*(?:The )?`([^`]+)` series models(?:[^\n]*?)were officially discontinued on \*\*([A-Z][a-z]+ \d{1,2}, \d{4})\*\*.*\[([^\]]+)\]/
+      : /^>\s*`([^`]+)` was officially discontinued on \*\*([A-Z][a-z]+ \d{1,2}, \d{4})\*\*.*\[([^\]]+)\]/,
   );
   const date = english?.[2] === undefined ? undefined : englishDate(english[2]);
   if (english?.[1] === undefined || date === undefined || english[3] === undefined)
@@ -570,7 +547,30 @@ function retiredModelNotice(line: string): RetirementNotice | undefined {
     id: modelIdSchema.parse(english[1]),
     date,
     replacement: modelIdSchema.parse(english[3]),
+    series,
   };
+}
+
+function retirementNotices(body: string): RetirementNotice[] {
+  const notices = body.split(/\r?\n/).flatMap((line) => {
+    if (!line.startsWith(">")) return [];
+    const notice = retirementNotice(line, false) ?? retirementNotice(line, true);
+    return notice === undefined ? [] : [notice];
+  });
+  if (notices.length === 0) throw new Error("Kimi retirement notices are missing");
+  if (new Set(notices.map(({ id, series }) => `${id}:${series}`)).size !== notices.length)
+    throw new Error("Kimi retirement notices contain duplicate model IDs");
+  return notices;
+}
+
+function modelRetirement(
+  id: string,
+  notices: readonly RetirementNotice[],
+): RetirementNotice | undefined {
+  return (
+    notices.find((notice) => !notice.series && notice.id === id) ??
+    notices.find((notice) => notice.series && (notice.id === id || id.startsWith(`${notice.id}-`)))
+  );
 }
 
 export function parseKimiCatalog(input: Input): ProviderModel[] {
@@ -579,58 +579,29 @@ export function parseKimiCatalog(input: Input): ProviderModel[] {
       (table.headers[0] === "模型名称" && table.headers[1] === "描述") ||
       (table.headers[0] === "Model Name" && table.headers[1] === "Description"),
   );
-  if (tables.length !== 3) throw new Error("Kimi model catalog table structure changed");
-  const restriction = input.body
-    .split(/\r?\n/)
-    .find((line) =>
-      /已停止向新注册用户开放|no longer available to newly registered users/i.test(line),
-    );
-  if (restriction === undefined) throw new Error("Kimi restricted-model notice is missing");
-  const restricted = [...restriction.matchAll(/`([^`]+)`(\s*系列模型|\s+series)?/gi)].map(
-    (match) => ({
-      id: modelIdSchema.parse(match[1]),
-      series: match[2] !== undefined,
-    }),
-  );
-  if (restricted.length === 0) throw new Error("Kimi restricted-model notice omitted model IDs");
-  const retiredNotice = retiredSeriesNotice(input.body);
-  if (retiredNotice === undefined) throw new Error("Kimi retired-series date is missing");
-  const retiredSeries = retiredNotice.id;
-  const retiredAt = retiredNotice.date;
-  const retiredReplacement = retiredNotice.replacement;
+  if (tables.length !== 2) throw new Error("Kimi model catalog table structure changed");
+  const notices = retirementNotices(input.body);
   const models = tables.flatMap((table) =>
     table.rows.map((row) => {
       const id = exactCode(row[0] ?? "");
       const description = row[1]?.trim() || undefined;
       const retired = table.section === "已下线模型" || table.section === "Deprecated Models";
-      if (retired && id !== retiredSeries && !id.startsWith(`${retiredSeries}-`))
-        throw new Error(`Kimi retired table contains ${id} outside ${retiredSeries}`);
-      const legacy = restricted.some(({ id: restrictedId, series }) =>
-        series ? id === restrictedId || id.startsWith(`${restrictedId}-`) : id === restrictedId,
-      );
-      const status: ProviderModel["status"] = retired ? "retired" : legacy ? "legacy" : "active";
+      const retirement = modelRetirement(id, notices);
+      if (retired && retirement === undefined)
+        throw new Error(`Kimi retired table has no retirement notice for ${id}`);
       return catalogModel(
         input,
         id,
         description,
-        status,
-        retired ? retiredAt : undefined,
-        retired ? [retiredReplacement] : [],
+        retired ? "retired" : "active",
+        retirement?.date,
+        retirement === undefined ? [] : [retirement.replacement],
         id.includes("preview") ? "preview" : "unknown",
       );
     }),
   );
-  const retiredLines = input.body
-    .split(/\r?\n/)
-    .filter(
-      (line) =>
-        line.startsWith(">") &&
-        !/系列模型|series models/i.test(line) &&
-        /已于.*下线|was officially discontinued/i.test(line),
-    );
-  for (const line of retiredLines) {
-    const retired = retiredModelNotice(line);
-    if (retired === undefined) throw new Error(`Kimi retired-model notice changed: ${line}`);
+  for (const retired of notices.filter(({ series }) => !series)) {
+    if (models.some(({ model_id }) => model_id === retired.id)) continue;
     models.push(
       catalogModel(input, retired.id, undefined, "retired", retired.date, [retired.replacement]),
     );

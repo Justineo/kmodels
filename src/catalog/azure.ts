@@ -1358,16 +1358,13 @@ function azureClaudeFoundryContract(body: string, parsedTables: readonly Markdow
   const foundry = parsedTables.find(
     (table) =>
       table.section === "Claude in Microsoft Foundry pricing" &&
-      table.headers.includes("Concept") &&
-      table.headers.includes("Details"),
+      headerIndex(table, /^Concept$/i) >= 0 &&
+      headerIndex(table, /^Details$/i) >= 0,
   );
-  const conversion = foundry?.rows.find(
-    (row) => plain(row[foundry.headers.indexOf("Concept")] ?? "") === "Conversion",
-  );
-  const details =
-    conversion === undefined
-      ? ""
-      : plain(conversion[foundry?.headers.indexOf("Details") ?? -1] ?? "");
+  const conceptColumn = foundry === undefined ? -1 : headerIndex(foundry, /^Concept$/i);
+  const detailsColumn = foundry === undefined ? -1 : headerIndex(foundry, /^Details$/i);
+  const conversion = foundry?.rows.find((row) => plain(row[conceptColumn] ?? "") === "Conversion");
+  const details = conversion === undefined ? "" : plain(conversion[detailsColumn] ?? "");
   const section = body.split(/^## Claude in Microsoft Foundry pricing\s*$/m)[1]?.split(/^## /m)[0];
   return (
     /standard per-model, per-feature rates/i.test(details) &&
@@ -1397,22 +1394,22 @@ export function parseAzureClaudePricing(input: Input): ProviderModel[] {
   if (!azureClaudeFoundryContract(input.body, parsedTables))
     throw new Error("Azure Claude delegated-pricing contract drifted");
   const priceColumns = [
-    "Base Input Tokens",
-    "5m Cache Writes",
-    "1h Cache Writes",
-    "Cache Hits & Refreshes",
-    "Output Tokens",
+    /^Base input tokens$/i,
+    /^5m cache writes$/i,
+    /^1h cache writes$/i,
+    /^Cache hits (?:&|and) refreshes$/i,
+    /^Output tokens$/i,
   ];
   const table = parsedTables.find(
     (candidate) =>
       candidate.section === "Model pricing" &&
-      candidate.headers.includes("Model") &&
-      priceColumns.every((header) => candidate.headers.includes(header)),
+      headerIndex(candidate, /^Model$/i) >= 0 &&
+      priceColumns.every((header) => headerIndex(candidate, header) >= 0),
   );
   if (table === undefined || table.rows.length === 0)
     throw new Error("Azure Claude pricing page omitted the model price table");
-  const modelColumn = table.headers.indexOf("Model");
-  const priceColumnIndexes = priceColumns.map((header) => table.headers.indexOf(header));
+  const modelColumn = headerIndex(table, /^Model$/i);
+  const priceColumnIndexes = priceColumns.map((header) => headerIndex(table, header));
 
   const models = new Map<string, ProviderModel>();
   for (const row of table.rows) {

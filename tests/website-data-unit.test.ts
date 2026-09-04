@@ -489,42 +489,43 @@ describe("website data projection", () => {
   it("projects a retained provider failure without audit details", () => {
     const verifiedAt = "2026-07-27T00:00:00.000Z";
     const attemptedAt = "2026-07-28T00:00:00.000Z";
-    const detail = websiteModelDetail(
-      {
-        provider_vocabularies: [],
-        provider_snapshots: [
-          {
-            provider_id: "test",
-            observed_at: verifiedAt,
-            publication: "retained",
-            refresh_failure: {
-              attempted_at: attemptedAt,
-              code: "source_schema_changed",
+    const projected = (code: "source_schema_changed" | "source_unavailable") =>
+      websiteModelDetail(
+        {
+          provider_vocabularies: [],
+          provider_snapshots: [
+            {
+              provider_id: "test",
+              observed_at: verifiedAt,
+              publication: "retained",
+              refresh_failure: { attempted_at: attemptedAt, code },
             },
-          },
-        ],
-        model_dispositions: [],
-        books: [],
-      },
-      baseModel({
-        providerId: "test",
-        id: "model",
-        name: "Model",
-        sourceId: "test-catalog",
-        observedAt: attemptedAt,
-      }),
-    );
+          ],
+          model_dispositions: [],
+          books: [],
+        },
+        baseModel({
+          providerId: "test",
+          id: "model",
+          name: "Model",
+          sourceId: "test-catalog",
+          observedAt: attemptedAt,
+        }),
+      );
 
-    expect(detail.pricing).toMatchObject({
+    expect(projected("source_schema_changed").pricing).toMatchObject({
       snapshot: {
         observed_at: verifiedAt,
         publication: "retained",
         refresh_failure: {
           attempted_at: attemptedAt,
-          message: "A required public pricing source no longer matched its reviewed format.",
+          message: "A public pricing source no longer matched its reviewed format.",
         },
       },
       offers: [],
+    });
+    expect(projected("source_unavailable").pricing?.snapshot).toMatchObject({
+      refresh_failure: { message: "A public pricing source could not be refreshed." },
     });
   });
 });

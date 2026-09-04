@@ -58,7 +58,9 @@ function selectMechanism(offerId: string): void {
 }
 
 function offerState(offer: WebsitePricingOffer): string | undefined {
-  return offer.state_summary === "Metered pricing" ? undefined : offer.state_summary;
+  return offer.state_summary === "Metered pricing" || offer.state_summary === "Included"
+    ? undefined
+    : offer.state_summary;
 }
 
 function supplementaryOfferKind(offer: WebsitePricingOffer): string {

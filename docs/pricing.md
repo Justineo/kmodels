@@ -763,7 +763,7 @@ A numeric cell requires:
 - no possibly applicable raw `base_price` fact;
 - exactly one logical term for the first present meter in the slot's reviewed
   meter precedence;
-- validity-free variants that agree on one exact fiat price and whose combined
+- validity-free variants that agree on one exact price or provider-credit rate and whose combined
   applicability covers the complete numeric-state scope;
 - a non-empty canonical unit expression.
 
@@ -780,7 +780,7 @@ detail-only. The projection never adds terms, compares currencies, converts
 provider credits, or chooses a minimum/maximum.
 
 Representative token rates are displayed per million tokens when bounded exact
-arithmetic succeeds. Other rates prefer one source-native amount and reviewed
+arithmetic succeeds. Non-token rates prefer one source-native amount and reviewed
 fixed-unit scale when every observation establishes that same display and it
 reproduces the canonical price exactly. When observations use different source
 scales or describe a derived result, presentation chooses the first reviewed
@@ -795,8 +795,10 @@ all three price columns and exposes its explanation through the shared tooltip:
 
 - an offer count when several model offers exist;
 - `Varies` for one context-dependent model offer;
-- `Free`, `Quote`, `Unpublished`, `Incomplete`, or `Details` for one
-  non-representative model offer;
+- `Free`, `Quote`, `Unpublished`, or `Incomplete` for one non-numeric model offer;
+- a base-rate count for one exact offer that cannot fit the three summary columns. Exact
+  provider-credit rates and transcription duration are projected directly; a count remains for
+  genuinely composite pricing such as simultaneous realtime message and session-duration charges;
 - `No model offer` when pricing detail exists but no model offer applies;
 - `No offer`: an exact `not_applicable` disposition establishes that no public
   hosted pricing offer applies;
@@ -832,9 +834,8 @@ plans and capacity procurement do not appear in model details.
 Each offer owns its pricing-context controls; a related offer never consumes or resets another
 offer's context. Controls include only dimensions needed to resolve unequal or partially covered
 rates; single-value dimensions resolve internally because they are not user decisions. Exact rate or
-allowance rows appear only when the current partial context proves that they apply. Two- or
-three-value non-scheduled categorical dimensions use an inline radio group; larger and scheduled
-sets use a select. Alternatives
+allowance rows appear only when the current partial context proves that they apply. Every
+categorical pricing-context dimension uses the same select. Alternatives
 whose applicability is still unresolved remain hidden, and the rate section prompts for exactly
 those missing dimensions. Resolved rows do not repeat the chosen context. A single offer state stays
 in the offer summary, while offers with several possible states show the resolved state after

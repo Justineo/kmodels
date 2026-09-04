@@ -36,6 +36,10 @@ Model discovery and pricing remain independent:
 The pricing source explicitly owns both `pricing` and `pricing_inputs`. Accounting contracts are not
 treated as rate evidence. The optional authenticated Model Garden API validates known public
 identities only; it cannot create rows, contribute private prices, or retain account data.
+Its service-account key must be active: an OAuth `invalid_grant` is reported as a credential
+failure and skips only this optional account-scoped validation source. Replacing
+`GOOGLE_SERVICE_ACCOUNT_JSON` with a current key restores it; public catalog and pricing sources do
+not depend on that credential.
 
 Each source owns only its claims. A pricing-page failure does not reject model discovery. A changed
 route guide withholds only that route. A missing accounting field removes only the affected input

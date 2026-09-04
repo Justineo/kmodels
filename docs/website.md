@@ -71,8 +71,11 @@ Status: implemented core; provider pricing convergence is in progress
   the model-level outcome in a tooltip. Use `Varies` for a
   context-dependent price, an offer count for
   several base offers, and retain the exact `Free`, `Quote`,
-  `Unpublished`, `Incomplete`, `No offer`, `Unknown`, `No base offer`, or `Details`
-  distinction. Interactive pricing status keeps the same body size as other table cells; its
+  `Unpublished`, `Incomplete`, `No offer`, `Unknown`, or `No base offer` distinction. An exact offer
+  that cannot fit the three columns shows its applicable base-rate count. Provider credits such as
+  DBUs and transcription duration still appear directly in a semantic column; simultaneous realtime
+  message and session-duration charges remain a count because either single value would omit part of
+  the cost. Interactive pricing status keeps the same body size as other table cells; its
   affordance comes from the dotted underline and interaction states. This status is never owned by
   the input meter. There is no
   secondary flat-price path. On an exact model row, activating the status opens
@@ -116,10 +119,9 @@ services → pricing notes`. The first mechanism in
   Selecting another Run mode resets only the outgoing mechanism's child context, and context
   filtering never hides or reorders the choices above it. Each related offer owns independent child
   context. Context controls remain visible and rely on their own labels and empty choices. A
-  categorical control with two or three non-scheduled values shows all values as one compact radio
-  group; larger or scheduled sets use the shared customizable-select component. This keeps mutually
-  exclusive request settings such as inference geography explicit rather than hiding the
-  alternatives inside a menu.
+  categorical control uses the shared customizable-select component regardless of option count.
+  This gives every pricing-context value the same interaction while keeping specialized labels,
+  such as `Global (default)` and `US-only`, explicit in the menu.
   Configurable controls in the same grid row stay top-aligned when one control includes guidance or
   validation text. A
   categorical dimension or exact decimal selector with one possible value resolves internally.

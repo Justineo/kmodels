@@ -24,6 +24,7 @@ import type {
   PriceRateTerm,
   PricingCatalog,
   PricingOffer,
+  StandardPriceMeter,
   UnitPrice,
 } from "../src/catalog/pricing-schema.ts";
 import type { ProviderModel } from "../src/catalog/schema.ts";
@@ -80,7 +81,7 @@ function model(): ProviderModel {
 
 function term(
   key: string,
-  meter: "input_text" | "input_audio",
+  meter: StandardPriceMeter,
   price: UnitPrice,
   applicability = unconditionalApplicability,
 ): PriceRateTerm {
@@ -452,6 +453,43 @@ describe("canonical pricing presentation", () => {
     expect(
       projectPricingTableCell(catalog([term("squared", "input_text", squared)]), model(), "input"),
     ).toMatchObject({ amount: "$0.000002", displayUnit: "token^2" });
+  });
+
+  it("projects provider credits and transcription rates in their semantic columns", () => {
+    const providerCredit: UnitPrice = {
+      ...tokenPrice,
+      denomination: { kind: "provider_credit", provider_id: "test", code: "DBU" },
+    };
+    expect(
+      projectPricingTableCell(
+        catalog([term("input", "input_text", providerCredit)]),
+        model(),
+        "input",
+      ),
+    ).toMatchObject({
+      amount: "DBU 2",
+      displayUnit: "1M tokens",
+    });
+
+    const transcriptionModel: ProviderModel = {
+      ...model(),
+      tasks: ["transcription"],
+      modalities: { input: ["audio"], output: ["text"] },
+    };
+    const transcriptionPrice: UnitPrice = {
+      ...tokenPrice,
+      per: { factors: [{ unit: { namespace: "kmodels", value: "second" }, power: 1 }] },
+    };
+    expect(
+      projectPricingTableCell(
+        catalog([term("transcription", "transcription", transcriptionPrice)]),
+        transcriptionModel,
+        "input",
+      ),
+    ).toMatchObject({
+      amount: "$0.000002",
+      displayUnit: "second",
+    });
   });
 
   it("keeps token table rates comparable while details may use the source scale", () => {

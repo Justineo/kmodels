@@ -1,14 +1,16 @@
 {
-  "catalog_version": "98ad14f0bd6aef6f409828b8d8e9292fafad4036f735a9ddbe017cdf22964617",
-  "generated_at": "2026-09-04T09:10:19.525Z",
+  "catalog_version": "66b942bbf2f3871305f5b903c1470f1332d0627d3da21d6c36943bc3f9e2e0ca",
+  "generated_at": "2026-09-04T09:22:19.909Z",
   "outcome": "changed",
-  "previous_catalog_version": "bf36687deb4816dd932623043585cab00fc3f4a7f9426b900883091b0a14d7f9",
+  "previous_catalog_version": "76e03c4a41646f4b55b0850f7fa1c79768e2862486487dfb51278701cb14d102",
   "providers": [
     {
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "outcome": "accepted"
+          "failure_code": "source_unavailable",
+          "message": "Optional commercial source bundle is incomplete at bedrock-models/pricing-bedrock",
+          "outcome": "failed"
         },
         "sources": [
           {
@@ -20,13 +22,13 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 124,
-              "normalized_facts": 10629,
+              "normalized_facts": 2092,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 120,
+              "numeric_models": 37,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 4
+              "unknown_models": 87
             },
             "pricing_reconciliation": {
               "basis": "source_item",
@@ -70,24 +72,23 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6767,
+                "excluded": 3869,
                 "explicit_non_numeric": 0,
-                "normalized": 10892,
+                "normalized": 2133,
                 "raw": 0,
                 "unbound": 1,
                 "unresolved": 0,
                 "unsupported": 6
               },
-              "observed_items": 17666,
+              "observed_items": 6009,
               "reason_counts": {
-                "commercial_dimension_bound": 218,
                 "marketplace_product_rate_bound": 46,
                 "model_card_api_unsupported": 5,
                 "model_card_unsupported": 13,
                 "optional_pricing_source_drifted": 1,
-                "price_dimension_bound": 10615,
-                "price_dimension_outside_invocation_scope": 1874,
-                "price_product_absent_from_current_catalog": 4880,
+                "price_dimension_bound": 2074,
+                "price_dimension_outside_invocation_scope": 1458,
+                "price_product_absent_from_current_catalog": 2398,
                 "pricing_input_contract_partial": 1,
                 "pricing_page_cell_bound": 13
               },
@@ -96,10 +97,10 @@
             "source_id": "bedrock-models"
           },
           {
-            "consecutive_failures": 322,
-            "last_success_at": "2026-08-19T07:15:30.306Z",
-            "message": "The security token included in the request is invalid.",
-            "outcome": "fetch_failed",
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 122,
             "source_id": "bedrock-api-us-east-1"
           }
         ]
@@ -107,14 +108,1771 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 78,
+        "changed_fields": {
+          "capabilities": 78,
+          "delivery_modes": 72,
+          "deprecated_at": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-2-lite-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "async"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "batch",
+                  "async"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-2-multimodal-embeddings-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-lite-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-micro-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-premier-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.nova-pro-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.titan-embed-image-v1"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/amazon.titan-embed-text-v2:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/anthropic.claude-opus-4-1-20250805-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/anthropic.claude-opus-4-5-20251101-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/anthropic.claude-opus-4-6-v1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-4-20250514-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/anthropic.claude-sonnet-4-6"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.fine_tuning",
+                "previous": false
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "path": "deprecated_at",
+                "previous": "2026-02-19"
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities",
+              "deprecated_at"
+            ],
+            "model_ref": "amazon-bedrock/cohere.command-r-plus-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.fine_tuning",
+                "previous": false
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.streaming",
+                "previous": true
+              },
+              {
+                "path": "deprecated_at",
+                "previous": "2026-02-19"
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities",
+              "deprecated_at"
+            ],
+            "model_ref": "amazon-bedrock/cohere.command-r-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/deepseek.v3-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/deepseek.v3.1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/deepseek.v3.2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/google.gemma-3-12b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/google.gemma-3-27b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/google.gemma-3-4b-it"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/google.gemma-4-26b-a4b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/google.gemma-4-31b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/google.gemma-4-e2b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-1-405b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-1-70b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-1-8b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-2-11b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-2-1b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-2-3b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-2-90b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama3-3-70b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama4-maverick-17b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/meta.llama4-scout-17b-instruct-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/minimax.minimax-m2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/minimax.minimax-m2.1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/minimax.minimax-m2.5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.devstral-2-123b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.magistral-small-2509"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.ministral-3-14b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.ministral-3-3b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.ministral-3-8b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.prompt_cache",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.mistral-large-3-675b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.mistral-small-2402-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.voxtral-mini-3b-2507"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/mistral.voxtral-small-24b-2507"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/moonshot.kimi-k2-thinking"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/moonshotai.kimi-k2-thinking"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/moonshotai.kimi-k2.5"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/nvidia.nemotron-nano-12b-v2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/nvidia.nemotron-nano-3-30b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/nvidia.nemotron-nano-9b-v2"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/nvidia.nemotron-super-3-120b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-oss-120b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-oss-120b-1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-oss-20b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-oss-20b-1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-oss-safeguard-120b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/openai.gpt-oss-safeguard-20b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-235b-a22b-2507"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-235b-a22b-2507-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-32b"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-32b-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-30b-a3b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-30b-a3b-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-480b-a35b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-480b-a35b-v1:0"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-coder-next"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-next-80b-a3b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-next-80b-a3b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-vl-235b-a22b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/qwen.qwen3-vl-235b-a22b-instruct"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/writer.palmyra-vision-7b"
+          },
+          {
+            "field_changes": [
+              {
+                "path": "delivery_modes",
+                "previous": [
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/xai.grok-4.3"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/zai.glm-4.7"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/zai.glm-4.7-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "streaming"
+                ],
+                "path": "delivery_modes",
+                "previous": [
+                  "streaming",
+                  "batch"
+                ]
+              },
+              {
+                "current": "unknown",
+                "path": "capabilities.batch",
+                "previous": true
+              }
+            ],
+            "fields": [
+              "delivery_modes",
+              "capabilities"
+            ],
+            "model_ref": "amazon-bedrock/zai.glm-5"
+          }
+        ],
         "current": 124,
         "previous": 124,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 124
+        "unchanged": 46
       },
       "pricing": {
         "commercial_hash": "b85d1368ca91c385e8264d0bccbe02cbba9b18d12947ac24cf7b84ec5b47a4f8",
@@ -140,17 +1898,21 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 4
       },
-      "pricing_publication": "accepted",
+      "pricing_publication": "retained",
       "provider_id": "amazon-bedrock",
       "publication": "accepted",
-      "signals": [
-        "persistent_source_failure"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
+        "changed": 2,
         "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "bedrock-api-us-east-1"
+          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -162,13 +1924,13 @@
         "previous": 2,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
-        "inventory_fallback": 1,
+        "catalog_api_set_mismatch": 1,
         "missing_field": 2,
-        "source_fetch_failed": 1
+        "scope_limited": 1
       }
     },
     {
@@ -339,9 +2101,7 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Optional commercial source bundle is incomplete at azure-claude-pricing",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -352,9 +2112,9 @@
             "source_id": "azure-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 88,
             "source_id": "azure-portal-models"
           },
@@ -529,10 +2289,43 @@
             "source_id": "azure-public-pricing"
           },
           {
-            "consecutive_failures": 53,
-            "last_success_at": "2026-09-01T17:03:47.862Z",
-            "message": "Azure Claude pricing page omitted the model price table",
-            "outcome": "parse_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 5,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 5,
+              "normalized_facts": 40,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 5,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 0,
+              "diagnostics": [],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 12,
+                "explicit_non_numeric": 0,
+                "normalized": 5,
+                "raw": 0,
+                "unbound": 0,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 17,
+              "reason_counts": {
+                "claude_price_model_not_offered": 12,
+                "claude_public_rate_row": 5
+              },
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "azure-claude-pricing"
           },
           {
@@ -596,9 +2389,9 @@
         "unchanged": 265
       },
       "pricing": {
-        "commercial_hash": "c51e85b58fca90730bbc2765ce86b3a52092ea2ee11eabcaec0893ce189e59f4",
+        "commercial_hash": "c0547c459d50b9b1a901e3599ec6c4e8ab282c5f8f2cc89fc1babccfd6af818d",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "c51e85b58fca90730bbc2765ce86b3a52092ea2ee11eabcaec0893ce189e59f4"
+        "previous_commercial_hash": "c0547c459d50b9b1a901e3599ec6c4e8ab282c5f8f2cc89fc1babccfd6af818d"
       },
       "pricing_coverage": {
         "current_models": 218,
@@ -606,9 +2399,9 @@
           "resolved_models": 0,
           "unknown_models": 0
         },
-        "normalized_rate_models": 146,
+        "normalized_rate_models": 151,
         "not_applicable_models": 0,
-        "offer_models": 146,
+        "offer_models": 151,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "azure/Cohere-embed-v3-english@1",
@@ -625,34 +2418,25 @@
           "azure/FW-Qwen3.5-397B-A17B@1",
           "azure/Llama-4-Scout-17B-16E-Instruct",
           "azure/Llama-4-Scout-17B-16E-Instruct@4",
-          "azure/MAI-Thinking-1",
           "azure/MAI-Transcribe-1@2026-01-23",
           "azure/Ministral-3B@1",
           "azure/claude-fable-5",
           "azure/claude-fable-5-1@1",
-          "azure/claude-fable-5@1"
+          "azure/claude-fable-5@1",
+          "azure/claude-haiku-4-5@1"
         ],
-        "unknown_model_refs_omitted": 52,
-        "unknown_models": 72
+        "unknown_model_refs_omitted": 47,
+        "unknown_models": 67
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "azure",
       "publication": "accepted",
-      "signals": [
-        "possible_structural_change",
-        "persistent_source_failure"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 2,
+        "changed": 1,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "azure-portal-models"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -664,222 +2448,19 @@
         "previous": 7,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 5
+        "unchanged": 6
       },
       "status": "fresh",
       "warning_codes": {
         "catalog_api_set_mismatch": 1,
         "missing_field": 3,
         "scope_limited": 1,
-        "source_parse_failed": 1,
         "source_partial_retention": 1
       }
     },
     {
       "attempt": {
-        "failure": {
-          "code": "provider_refresh_failed",
-          "message": "API endpoint count dropped by more than 20%"
-        },
-        "models": {
-          "added": 1,
-          "added_model_refs": [
-            "cerebras/qwen-3.8-27b"
-          ],
-          "changed": 3,
-          "changed_fields": {
-            "api_endpoints": 3,
-            "capabilities": 2,
-            "delivery_modes": 1,
-            "description": 1,
-            "limits": 1,
-            "name": 1,
-            "release_stage": 2,
-            "source_refs": 2
-          },
-          "changed_models": [
-            {
-              "field_changes": [
-                {
-                  "path": "api_endpoints",
-                  "previous": [
-                    {
-                      "name": "Chat Completions",
-                      "path": "v1/chat/completions"
-                    },
-                    {
-                      "name": "Completions",
-                      "path": "v1/completions"
-                    }
-                  ]
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.effort_control",
-                  "previous": true
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.prompt_cache",
-                  "previous": true
-                },
-                {
-                  "current": "stable",
-                  "path": "release_stage",
-                  "previous": "preview"
-                },
-                {
-                  "current": [
-                    "cerebras-models",
-                    "cerebras-releases",
-                    "cerebras-api"
-                  ],
-                  "path": "source_refs",
-                  "previous": [
-                    "cerebras-catalog",
-                    "cerebras-models",
-                    "cerebras-releases",
-                    "cerebras-api"
-                  ]
-                }
-              ],
-              "fields": [
-                "api_endpoints",
-                "capabilities",
-                "release_stage",
-                "source_refs"
-              ],
-              "model_ref": "cerebras/gemma-4-31b"
-            },
-            {
-              "field_changes": [
-                {
-                  "current": [
-                    {
-                      "name": "Chat Completions",
-                      "path": "v1/chat/completions"
-                    },
-                    {
-                      "name": "Completions",
-                      "path": "v1/completions"
-                    }
-                  ],
-                  "path": "api_endpoints",
-                  "previous": [
-                    {
-                      "name": "Chat Completions",
-                      "path": "v1/chat/completions"
-                    }
-                  ]
-                }
-              ],
-              "fields": [
-                "api_endpoints"
-              ],
-              "model_ref": "cerebras/gpt-oss-120b"
-            },
-            {
-              "field_changes": [
-                {
-                  "current": "zai-glm-4.7",
-                  "path": "name",
-                  "previous": "Z.ai GLM 4.7"
-                },
-                {
-                  "path": "description",
-                  "previous": "## Documentation Index"
-                },
-                {
-                  "path": "delivery_modes",
-                  "previous": [
-                    "streaming"
-                  ]
-                },
-                {
-                  "path": "api_endpoints",
-                  "previous": [
-                    {
-                      "name": "Chat Completions",
-                      "path": "v1/chat/completions"
-                    }
-                  ]
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.effort_control",
-                  "previous": true
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.prompt_cache",
-                  "previous": true
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.reasoning",
-                  "previous": true
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.streaming",
-                  "previous": true
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.structured_output",
-                  "previous": true
-                },
-                {
-                  "current": "unknown",
-                  "path": "capabilities.tool_call",
-                  "previous": true
-                },
-                {
-                  "path": "limits.context_tokens",
-                  "previous": 131000
-                },
-                {
-                  "path": "limits.max_output_tokens",
-                  "previous": 40000
-                },
-                {
-                  "current": "unknown",
-                  "path": "release_stage",
-                  "previous": "preview"
-                },
-                {
-                  "current": [
-                    "cerebras-lifecycle",
-                    "cerebras-releases"
-                  ],
-                  "path": "source_refs",
-                  "previous": [
-                    "cerebras-catalog",
-                    "cerebras-releases",
-                    "cerebras-api"
-                  ]
-                }
-              ],
-              "fields": [
-                "name",
-                "description",
-                "delivery_modes",
-                "api_endpoints",
-                "capabilities",
-                "limits",
-                "release_stage",
-                "source_refs"
-              ],
-              "model_ref": "cerebras/zai-glm-4.7"
-            }
-          ],
-          "current": 16,
-          "previous": 15,
-          "removed": 0,
-          "removed_model_refs": [],
-          "unchanged": 12
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
           "outcome": "accepted"
         },
@@ -888,45 +2469,38 @@
             "content_changed": false,
             "extractor_changed": false,
             "outcome": "unchanged",
-            "parsed_models": 1,
+            "parsed_models": 2,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1,
-              "normalized_facts": 3,
+              "model_records": 2,
+              "normalized_facts": 6,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 1,
+              "numeric_models": 2,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1,
-              "diagnostics": [
-                {
-                  "disposition": "unsupported",
-                  "reason_code": "catalog_row_claim_drift",
-                  "sample": "Available Models:1: Cerebras model cell is not an exact model link: [Qwen 3.8 27B](/models/qwen-3.8-27b)"
-                }
-              ],
+              "diagnostic_count": 0,
+              "diagnostics": [],
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 0,
                 "explicit_non_numeric": 1,
-                "normalized": 4,
+                "normalized": 7,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
-                "unsupported": 1
+                "unsupported": 0
               },
-              "observed_items": 6,
+              "observed_items": 8,
               "reason_counts": {
                 "batch_rate_not_published": 1,
-                "cache_rate_normalized": 1,
-                "catalog_row_claim_drift": 1,
-                "price_normalized": 2,
+                "cache_rate_normalized": 2,
+                "price_normalized": 4,
                 "pricing_input_contract_bound": 1
               },
               "unit": "reviewed source pricing item"
@@ -993,14 +2567,7 @@
             "parsed_models": 3,
             "source_id": "cerebras-api"
           }
-        ],
-        "validation_issue": {
-          "code": "api_endpoint_count_drop",
-          "current": 2,
-          "message": "API endpoint count dropped by more than 20%",
-          "minimum_ratio": 0.8,
-          "previous": 4
-        }
+        ]
       },
       "models": {
         "added": 0,
@@ -1008,27 +2575,27 @@
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 15,
-        "previous": 15,
+        "current": 16,
+        "previous": 16,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 15
+        "unchanged": 16
       },
       "pricing": {
-        "commercial_hash": "2a56b4d4af6fe72b43dad0d46d0825cf49b284062de84b24e988c1875f3b7897",
+        "commercial_hash": "4058125208822fd4a6de969ffc75de689aed44ac6c512122d1da2c696a9ffc33",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "2a56b4d4af6fe72b43dad0d46d0825cf49b284062de84b24e988c1875f3b7897"
+        "previous_commercial_hash": "4058125208822fd4a6de969ffc75de689aed44ac6c512122d1da2c696a9ffc33"
       },
       "pricing_coverage": {
-        "current_models": 15,
+        "current_models": 16,
         "delta": {
           "resolved_models": 0,
           "unknown_models": 0
         },
-        "normalized_rate_models": 2,
+        "normalized_rate_models": 3,
         "not_applicable_models": 0,
-        "offer_models": 2,
-        "raw_fact_models": 0,
+        "offer_models": 3,
+        "raw_fact_models": 1,
         "unknown_model_refs": [
           "cerebras/deepseek-r1-distill-llama-70b",
           "cerebras/llama-3.3-70b",
@@ -1047,13 +2614,10 @@
         "unknown_model_refs_omitted": 0,
         "unknown_models": 13
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "cerebras",
-      "publication": "retained",
-      "signals": [
-        "drift_guard_triggered",
-        "coverage_regression"
-      ],
+      "publication": "accepted",
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -1072,9 +2636,10 @@
         "removed_source_ids": [],
         "unchanged": 4
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
         "catalog_api_set_mismatch": 1,
+        "missing_field": 4,
         "scope_limited": 1
       }
     },
@@ -1150,9 +2715,9 @@
             "source_id": "cohere-models"
           },
           {
-            "content_changed": true,
+            "content_changed": false,
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 15,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1284,20 +2849,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "cohere-pricing"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 2
+        "unchanged": 3
       },
       "status": "fresh",
       "warning_codes": {
@@ -1315,72 +2873,166 @@
         },
         "sources": [
           {
-            "consecutive_failures": 53,
-            "contract_finding": {
-              "diagnostic_count": 1,
-              "diagnostics": [
-                {
-                  "affected_items": 0,
-                  "expected": "15..60 items",
-                  "fingerprint": "1bb519f8245f8f6c",
-                  "kind": "count_outside_bounds",
-                  "observed": "array",
-                  "observed_value": "0",
-                  "path": "/"
-                }
-              ],
-              "disposition": "reject",
-              "observed_items": 0
-            },
-            "last_success_at": "2026-09-01T17:03:47.862Z",
-            "message": "DashScope recommended-model models contract mismatch: count_outside_bounds at / (expected 15..60 items, observed array)",
-            "outcome": "parse_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 27,
             "source_id": "dashscope-recommended"
           },
           {
-            "consecutive_failures": 53,
+            "content_changed": false,
             "contract_finding": {
-              "diagnostic_count": 1,
+              "diagnostic_count": 26,
               "diagnostics": [
                 {
-                  "affected_items": 63,
-                  "expected": "70..180 items",
-                  "fingerprint": "eac37322fbd40991",
-                  "kind": "count_outside_bounds",
-                  "observed": "array",
-                  "observed_value": "63",
-                  "path": "/"
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "32b31ab9b358f8aa",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/2/rows/0/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "45b012092838254b",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/3/rows/0/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "7828202e5d5a3e1d",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/3/rows/1/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "a689d8eed27e90da",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/3/rows/2/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "4b7cf79b1abe46b0",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/5/rows/0/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "374ff9c85cc7b111",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/5/rows/1/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "44faa51283c7db7c",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/5/rows/10/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "0c139874b8c22b7f",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/5/rows/11/model"
                 }
               ],
-              "disposition": "reject",
-              "observed_items": 63
+              "disposition": "accept_with_signal",
+              "observed_items": 26
             },
-            "last_success_at": "2026-09-01T17:03:47.862Z",
-            "message": "DashScope text models contract mismatch: count_outside_bounds at / (expected 70..180 items, observed array)",
-            "outcome": "parse_failed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 63,
             "source_id": "dashscope-text"
           },
           {
-            "consecutive_failures": 53,
+            "content_changed": false,
             "contract_finding": {
-              "diagnostic_count": 1,
+              "diagnostic_count": 11,
               "diagnostics": [
                 {
-                  "affected_items": 6,
-                  "expected": "12..50 items",
-                  "fingerprint": "0cca48ff954f883c",
-                  "kind": "count_outside_bounds",
-                  "observed": "array",
-                  "observed_value": "6",
-                  "path": "/"
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "e357bddb63759290",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/1/rows/0/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "6271ee1d320cbd89",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/1/rows/1/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "32b31ab9b358f8aa",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/2/rows/0/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "616911524558a2bf",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/2/rows/1/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "521020dcc1af7828",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/2/rows/2/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "45b012092838254b",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/3/rows/0/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "7828202e5d5a3e1d",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/3/rows/1/model"
+                },
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "a689d8eed27e90da",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/tables/3/rows/2/model"
                 }
               ],
-              "disposition": "reject",
-              "observed_items": 6
+              "disposition": "accept_with_signal",
+              "observed_items": 11
             },
-            "last_success_at": "2026-09-01T17:03:47.862Z",
-            "message": "DashScope vision models contract mismatch: count_outside_bounds at / (expected 12..50 items, observed array)",
-            "outcome": "parse_failed",
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 6,
             "source_id": "dashscope-vision"
           },
           {
@@ -1516,7 +3168,7 @@
           },
           {
             "content_changed": true,
-            "extractor_changed": false,
+            "extractor_changed": true,
             "outcome": "changed",
             "parsed_models": 0,
             "source_id": "dashscope-lifecycle"
@@ -1543,11 +3195,11 @@
         "changed": 0,
         "changed_fields": {},
         "changed_models": [],
-        "current": 396,
-        "previous": 396,
+        "current": 375,
+        "previous": 375,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 396
+        "unchanged": 375
       },
       "pricing": {
         "commercial_hash": "b8fdde8b73b35bb6b4f55fe2686ae05d181921f622023fe4f2b08cf043ee23c2",
@@ -1555,7 +3207,7 @@
         "previous_commercial_hash": "b8fdde8b73b35bb6b4f55fe2686ae05d181921f622023fe4f2b08cf043ee23c2"
       },
       "pricing_coverage": {
-        "current_models": 378,
+        "current_models": 374,
         "delta": {
           "resolved_models": 0,
           "unknown_models": 0
@@ -1571,7 +3223,6 @@
           "dashscope/glm-4.5-air",
           "dashscope/paraformer-realtime-8k-v1",
           "dashscope/paraformer-realtime-v1",
-          "dashscope/qwen-long",
           "dashscope/qwen-tts",
           "dashscope/qwen2.5-14b-instruct",
           "dashscope/qwen2.5-14b-instruct-1m",
@@ -1583,31 +3234,23 @@
           "dashscope/qwen2.5-vl-3b-instruct",
           "dashscope/qwen2.5-vl-72b-instruct",
           "dashscope/qwen2.5-vl-7b-instruct",
-          "dashscope/qwen3-0.6b",
-          "dashscope/qwen3-1.7b"
+          "dashscope/wan2.1-i2v-plus",
+          "dashscope/wan2.1-i2v-turbo"
         ],
-        "unknown_model_refs_omitted": 3,
-        "unknown_models": 23
+        "unknown_model_refs_omitted": 0,
+        "unknown_models": 19
       },
       "pricing_publication": "accepted",
       "provider_id": "dashscope",
       "publication": "accepted",
       "signals": [
-        "unreviewed_extension",
-        "coverage_regression",
-        "persistent_source_failure"
+        "unreviewed_extension"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 3,
+        "changed": 2,
         "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "dashscope-lifecycle"
-          },
           {
             "content_changed": true,
             "extractor_changed": false,
@@ -1621,8 +3264,8 @@
             "source_id": "dashscope-releases"
           }
         ],
-        "current": 14,
-        "previous": 14,
+        "current": 13,
+        "previous": 13,
         "removed": 0,
         "removed_source_ids": [],
         "unchanged": 11
@@ -1632,9 +3275,7 @@
         "catalog_api_set_mismatch": 1,
         "missing_field": 4,
         "scope_limited": 1,
-        "source_contract_extension": 1,
-        "source_parse_failed": 3,
-        "source_partial_retention": 5
+        "source_contract_extension": 3
       }
     },
     {
@@ -1937,22 +3578,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 82,
+            "parsed_models": 81,
             "source_id": "gemini-models"
           },
           {
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 82,
+            "parsed_models": 81,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 82,
-              "normalized_facts": 590,
+              "model_records": 81,
+              "normalized_facts": 589,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 40,
+              "numeric_models": 39,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 42
@@ -1975,23 +3616,23 @@
               "disposition_counts": {
                 "ambiguous": 0,
                 "excluded": 82,
-                "explicit_non_numeric": 253,
-                "normalized": 649,
+                "explicit_non_numeric": 252,
+                "normalized": 648,
                 "raw": 0,
                 "unbound": 2,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 986,
+              "observed_items": 984,
               "reason_counts": {
-                "free_tier_not_numeric": 241,
+                "free_tier_not_numeric": 240,
                 "gemma_free_tier_rate": 4,
                 "gemma_paid_tier_unavailable": 4,
                 "non_price_commercial_row": 82,
                 "paid_tier_not_numeric": 8,
                 "pricing_input_contract_bound": 1,
                 "pricing_input_contract_partial": 2,
-                "pricing_rate_bound": 644
+                "pricing_rate_bound": 643
               },
               "unit": "reviewed source pricing item"
             },
@@ -2007,31 +3648,71 @@
         ]
       },
       "models": {
-        "added": 0,
-        "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
-        "current": 82,
+        "added": 1,
+        "added_model_refs": [
+          "gemini/lyria-3.5"
+        ],
+        "changed": 2,
+        "changed_fields": {
+          "replacement_model_ids": 2
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "lyria-3.5-clip-preview"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/lyria-3-clip-preview"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "lyria-3.5"
+                ],
+                "path": "replacement_model_ids",
+                "previous": [
+                  "lyria-3.5-pro-preview"
+                ]
+              }
+            ],
+            "fields": [
+              "replacement_model_ids"
+            ],
+            "model_ref": "gemini/lyria-3-pro-preview"
+          }
+        ],
+        "current": 81,
         "previous": 82,
-        "removed": 0,
-        "removed_model_refs": [],
-        "unchanged": 82
+        "removed": 2,
+        "removed_model_refs": [
+          "gemini/lyria-3.5-clip-preview",
+          "gemini/lyria-3.5-pro-preview"
+        ],
+        "unchanged": 78
       },
       "pricing": {
-        "commercial_hash": "fb064afb49edbb414bc7f238c53de2c37ac5b143a4bf6ad576af1c0a1daac049",
-        "outcome": "provenance_only",
+        "commercial_hash": "c469bfc3abc698bbdc4f8ef6c94ba1c791f02b59b369fbfac59008d7a392f708",
+        "outcome": "commercial",
         "previous_commercial_hash": "fb064afb49edbb414bc7f238c53de2c37ac5b143a4bf6ad576af1c0a1daac049"
       },
       "pricing_coverage": {
-        "current_models": 51,
+        "current_models": 50,
         "delta": {
-          "resolved_models": 0,
+          "resolved_models": -1,
           "unknown_models": 0
         },
-        "normalized_rate_models": 39,
+        "normalized_rate_models": 38,
         "not_applicable_models": 0,
-        "offer_models": 39,
+        "offer_models": 38,
         "raw_fact_models": 0,
         "unknown_model_refs": [
           "gemini/antigravity-preview-05-2026",
@@ -2111,7 +3792,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1786,
+              "diagnostic_count": 1789,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2156,21 +3837,21 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 10694,
+                "excluded": 10648,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1786,
+                "unbound": 1789,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 12480,
+              "observed_items": 12437,
               "reason_counts": {
                 "credential_like_identifier": 1,
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1395,
-                "partner_route_price_not_published": 391,
-                "single_partner_inventory_without_product_evidence": 10622
+                "partner_route_price_not_published": 394,
+                "single_partner_inventory_without_product_evidence": 10576
               },
               "unit": "reviewed source pricing item"
             },
@@ -2185,7 +3866,7 @@
               "custom_quote_models": 0,
               "free_models": 0,
               "model_records": 138,
-              "normalized_facts": 422,
+              "normalized_facts": 426,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 114,
@@ -2242,18 +3923,18 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 212,
+                "normalized": 214,
                 "raw": 0,
                 "unbound": 111,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 325,
+              "observed_items": 327,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 211,
+                "route_price_normalized": 213,
                 "route_price_not_published": 111
               },
               "unit": "reviewed source pricing item"
@@ -2404,23 +4085,20 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1395,
+            "parsed_models": 1396,
             "source_id": "huggingface-hub"
           }
         ]
       },
       "models": {
-        "added": 4,
+        "added": 1,
         "added_model_refs": [
-          "huggingface/Helsinki-NLP/opus-mt-en-ar",
-          "huggingface/google/pegasus-cnn_dailymail",
-          "huggingface/stabilityai/stable-diffusion-3.5-medium",
-          "huggingface/swiss-ai/Apertus-v1.5-70B"
+          "huggingface/Helsinki-NLP/opus-mt-en-ar"
         ],
-        "changed": 9,
+        "changed": 8,
         "changed_fields": {
           "capabilities": 4,
-          "routes": 7,
+          "routes": 6,
           "source_refs": 2,
           "task_evidence": 2
         },
@@ -2495,70 +4173,6 @@
               "source_refs"
             ],
             "model_ref": "huggingface/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "gemma-4-26b-a4b-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "google/gemma-4-26B-A4B-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "google/gemma-4-26b-a4b-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "gemma-4-26b-a4b-it",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/google/gemma-4-26B-A4B-it"
           },
           {
             "field_changes": [
@@ -2791,6 +4405,56 @@
               {
                 "current": [
                   {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/hunyuan-image/v2.1/text-to-image",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "tencent/hunyuan-image-2.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "tencent/hunyuan-image-2.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/hunyuan-image-2.1",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/tencent/HunyuanImage-2.1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
                     "provider": "deepinfra",
                     "provider_model_id": "zai-org/GLM-4.7-Flash",
                     "source_ref": "huggingface-hf-inference",
@@ -2849,153 +4513,33 @@
               "routes"
             ],
             "model_ref": "huggingface/zai-org/GLM-4.7-Flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
-                  {
-                    "provider": "baseten",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "deepinfra",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "fireworks-ai",
-                    "provider_model_id": "accounts/fireworks/models/glm-5p2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "novita",
-                    "provider_model_id": "zai-org/glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "scaleway",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "together",
-                    "provider_model_id": "zai-org/GLM-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  },
-                  {
-                    "provider": "zai-org",
-                    "provider_model_id": "glm-5.2",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "routes"
-            ],
-            "model_ref": "huggingface/zai-org/GLM-5.2"
           }
         ],
         "current": 1580,
-        "previous": 1584,
+        "previous": 1587,
         "removed": 8,
         "removed_model_refs": [
           "huggingface/BAAI/bge-m3",
-          "huggingface/Qwen/Qwen3-VL-Embedding-2B",
-          "huggingface/cointegrated/roberta-large-cola-krishna2020",
-          "huggingface/d0rj/e5-small-en-ru",
+          "huggingface/deepmind/vision-perceiver-conv",
           "huggingface/deepvk/kazRush-kk-ru",
           "huggingface/google/bigbird-pegasus-large-arxiv",
-          "huggingface/hungdang1610/gender",
-          "huggingface/mixedbread-ai/mxbai-colbert-large-v1"
+          "huggingface/human-centered-summarization/financial-summarization-pegasus",
+          "huggingface/microsoft/deberta-large-mnli",
+          "huggingface/mixedbread-ai/mxbai-colbert-large-v1",
+          "huggingface/sshleifer/distilbart-cnn-6-6"
         ],
-        "unchanged": 1567
+        "unchanged": 1571
       },
       "pricing": {
-        "commercial_hash": "db34052ebff361cb40ae8fb49d64efb6e83e07c855e05d9dccd85a76a3b14d89",
+        "commercial_hash": "7028524a6e47ecbfb3dee58d6ce90a782c3b2bf2b01ba64fd4fc1a63c79e7d65",
         "outcome": "commercial",
-        "previous_commercial_hash": "6cf872b32b7d3c89e2d44dec22e417286dfca4de2b6924012b752789e06c5ef0"
+        "previous_commercial_hash": "f9803106d6853ff22a0f3a760eb7b835bd69d5f849e3b5bedaca49d4917a97c5"
       },
       "pricing_coverage": {
         "current_models": 1580,
         "delta": {
-          "resolved_models": 1,
-          "unknown_models": -5
+          "resolved_models": 0,
+          "unknown_models": -7
         },
         "normalized_rate_models": 133,
         "not_applicable_models": 0,
@@ -3080,15 +4624,9 @@
     },
     {
       "attempt": {
-        "failure": {
-          "code": "source_schema_changed",
-          "message": "Kimi model catalog table structure changed"
-        },
-        "outcome": "rejected",
+        "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_schema_changed",
-          "message": "Kimi model catalog table structure changed",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -3170,11 +4708,358 @@
             "source_id": "kimi-china-openapi"
           },
           {
-            "consecutive_failures": 55,
-            "last_success_at": "2026-08-31T08:10:37.673Z",
-            "message": "Kimi model catalog table structure changed",
-            "outcome": "parse_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 19,
             "source_id": "kimi-catalog"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 19,
+            "source_id": "kimi-international-catalog"
+          },
+          {
+            "content_changed": false,
+            "contract_finding": {
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "38220cf0b4b187fd",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/pricing-inputs/web_search.formula.created_fibers"
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 1
+            },
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 4,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 4,
+              "normalized_facts": 18,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 4,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 8,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_input_contract_partial",
+                  "sample": "3/4 Kimi commercial pricing inputs"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_document_rejected",
+                  "sample": "/docs/pricing/chat-k25: Kimi document omitted rows={"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_document_rejected",
+                  "sample": "/docs/pricing/chat-v1: Kimi document omitted rows={"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_web_search_billing_trigger_ambiguous"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_tool_promotion_end_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "web_search_documentation_outdated"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_tools_contract_drift",
+                  "sample": "Kimi Formula-tools commercial contract drifted"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_cached_tokens_not_documented"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 1,
+                "normalized": 19,
+                "raw": 0,
+                "unbound": 8,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 28,
+              "reason_counts": {
+                "batch_cached_tokens_not_documented": 1,
+                "file_service_promotional_free": 1,
+                "formula_tool_promotion_end_not_published": 1,
+                "formula_tools_contract_drift": 1,
+                "formula_web_search_billing_trigger_ambiguous": 1,
+                "price_fact_normalized": 18,
+                "pricing_document_rejected": 2,
+                "pricing_input_contract_partial": 1,
+                "web_search_documentation_outdated": 1,
+                "web_search_service_normalized": 1
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "kimi-pricing"
+          },
+          {
+            "content_changed": false,
+            "contract_finding": {
+              "diagnostic_count": 1,
+              "diagnostics": [
+                {
+                  "affected_items": 1,
+                  "expected": "reviewed source contract",
+                  "fingerprint": "38220cf0b4b187fd",
+                  "kind": "unknown_value",
+                  "observed": "string",
+                  "path": "/pricing-inputs/web_search.formula.created_fibers"
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 1
+            },
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 4,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 4,
+              "normalized_facts": 18,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 4,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 7,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_input_contract_partial",
+                  "sample": "3/4 Kimi commercial pricing inputs"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_document_rejected",
+                  "sample": "/docs/pricing/chat-k25: Kimi document omitted rows={"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "pricing_document_rejected",
+                  "sample": "/docs/pricing/chat-v1: Kimi document omitted rows={"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_web_search_billing_trigger_ambiguous"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "formula_tool_promotion_end_not_published"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "web_search_documentation_outdated"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "batch_cached_tokens_not_documented"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 0,
+                "excluded": 0,
+                "explicit_non_numeric": 12,
+                "normalized": 19,
+                "raw": 0,
+                "unbound": 7,
+                "unresolved": 0,
+                "unsupported": 0
+              },
+              "observed_items": 38,
+              "reason_counts": {
+                "batch_cached_tokens_not_documented": 1,
+                "file_service_promotional_free": 1,
+                "formula_tool_promotion_end_not_published": 1,
+                "formula_tool_promotional_free": 11,
+                "formula_web_search_billing_trigger_ambiguous": 1,
+                "price_fact_normalized": 18,
+                "pricing_document_rejected": 2,
+                "pricing_input_contract_partial": 1,
+                "web_search_documentation_outdated": 1,
+                "web_search_service_normalized": 1
+              },
+              "unit": "reviewed source pricing item"
+            },
+            "source_id": "kimi-international-pricing"
+          },
+          {
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 9,
+            "source_id": "kimi-releases"
+          },
+          {
+            "content_changed": true,
+            "contract_finding": {
+              "diagnostic_count": 7,
+              "diagnostics": [
+                {
+                  "affected_items": 4,
+                  "fingerprint": "46b89b71244a070e",
+                  "kind": "unknown_field",
+                  "observed": "array",
+                  "path": "/permission",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code",
+                    "kimi-k2.7-code-highspeed"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "5cac759b491ab9d1",
+                  "kind": "unknown_field",
+                  "observed": "boolean",
+                  "observed_value": "true",
+                  "path": "/supports_dynamic_tools",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "d2de0dcf9b46bd01",
+                  "kind": "unknown_field",
+                  "observed": "object",
+                  "path": "/reasoning_efforts",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "1e0bfe10519c56c4",
+                  "kind": "unknown_field",
+                  "observed": "object",
+                  "path": "/think_efforts",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                },
+                {
+                  "affected_items": 4,
+                  "fingerprint": "aaaff6321adbaa87",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/parent",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code",
+                    "kimi-k2.7-code-highspeed"
+                  ]
+                },
+                {
+                  "affected_items": 4,
+                  "fingerprint": "d90fbd39aa93a658",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/root",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code",
+                    "kimi-k2.7-code-highspeed"
+                  ]
+                },
+                {
+                  "affected_items": 1,
+                  "fingerprint": "a6ffe448ff9b5f9a",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/supports_thinking_type",
+                  "sample_model_ids": [
+                    "kimi-k3"
+                  ]
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 4
+            },
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 4,
+            "source_id": "kimi-api"
+          },
+          {
+            "content_changed": true,
+            "contract_finding": {
+              "diagnostic_count": 3,
+              "diagnostics": [
+                {
+                  "affected_items": 2,
+                  "fingerprint": "46b89b71244a070e",
+                  "kind": "unknown_field",
+                  "observed": "array",
+                  "path": "/permission",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 2,
+                  "fingerprint": "aaaff6321adbaa87",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/parent",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                },
+                {
+                  "affected_items": 2,
+                  "fingerprint": "d90fbd39aa93a658",
+                  "kind": "unknown_field",
+                  "observed": "string",
+                  "path": "/root",
+                  "sample_model_ids": [
+                    "kimi-k2.6",
+                    "kimi-k2.7-code"
+                  ]
+                }
+              ],
+              "disposition": "accept_with_signal",
+              "observed_items": 2
+            },
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 2,
+            "source_id": "kimi-china-api"
           }
         ]
       },
@@ -3191,47 +5076,60 @@
         "unchanged": 19
       },
       "pricing": {
-        "commercial_hash": "a16c8f779b543a33c8c4b912a72fa7adce557afa62c6f01090763a774ec2d76f",
+        "commercial_hash": "dabc7ceea81f00beb9796a7f0fd7c23b2763189f56bf172d9b5aeaeab9d71176",
         "outcome": "provenance_only",
-        "previous_commercial_hash": "a16c8f779b543a33c8c4b912a72fa7adce557afa62c6f01090763a774ec2d76f"
+        "previous_commercial_hash": "dabc7ceea81f00beb9796a7f0fd7c23b2763189f56bf172d9b5aeaeab9d71176"
       },
       "pricing_coverage": {
-        "current_models": 12,
+        "current_models": 4,
         "delta": {
           "resolved_models": 0,
           "unknown_models": 0
         },
-        "normalized_rate_models": 11,
+        "normalized_rate_models": 4,
         "not_applicable_models": 0,
-        "offer_models": 11,
-        "raw_fact_models": 3,
-        "unknown_model_refs": [
-          "kimi/moonshot-v1-auto"
-        ],
+        "offer_models": 4,
+        "raw_fact_models": 0,
+        "unknown_model_refs": [],
         "unknown_model_refs_omitted": 0,
-        "unknown_models": 1
+        "unknown_models": 0
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "kimi",
-      "publication": "retained",
+      "publication": "accepted",
       "signals": [
-        "possible_structural_change",
-        "persistent_source_failure"
+        "unreviewed_extension"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 2,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-api"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "kimi-china-api"
+          }
+        ],
         "current": 9,
         "previous": 9,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 9
+        "unchanged": 7
       },
-      "status": "stale",
+      "status": "fresh",
       "warning_codes": {
-        "source_parse_failed": 1
+        "catalog_api_set_mismatch": 2,
+        "missing_field": 2,
+        "scope_limited": 2,
+        "source_contract_extension": 4
       }
     },
     {
@@ -4291,10 +6189,10 @@
             "source_id": "vertex-pricing"
           },
           {
-            "consecutive_failures": 320,
-            "last_success_at": "2026-08-19T09:10:06.392Z",
-            "message": "Google HTTP 400",
-            "outcome": "fetch_failed",
+            "content_changed": true,
+            "extractor_changed": false,
+            "outcome": "changed",
+            "parsed_models": 47,
             "source_id": "vertex-model-garden-api"
           }
         ]
@@ -4302,14 +6200,77 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 0,
-        "changed_fields": {},
-        "changed_models": [],
+        "changed": 3,
+        "changed_fields": {
+          "source_refs": 3
+        },
+        "changed_models": [
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "vertex-partner-models",
+                  "vertex-pricing",
+                  "vertex-model-garden-api"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "vertex-partner-models",
+                  "vertex-pricing"
+                ]
+              }
+            ],
+            "fields": [
+              "source_refs"
+            ],
+            "model_ref": "vertex/claude-fable-5-1"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "vertex-google-models",
+                  "vertex-pricing",
+                  "vertex-model-garden-api"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "vertex-google-models",
+                  "vertex-pricing"
+                ]
+              }
+            ],
+            "fields": [
+              "source_refs"
+            ],
+            "model_ref": "vertex/gemini-3.8-flash"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  "vertex-google-models",
+                  "vertex-pricing",
+                  "vertex-model-garden-api"
+                ],
+                "path": "source_refs",
+                "previous": [
+                  "vertex-google-models",
+                  "vertex-pricing"
+                ]
+              }
+            ],
+            "fields": [
+              "source_refs"
+            ],
+            "model_ref": "vertex/gemini-omni-1.1-flash-preview"
+          }
+        ],
         "current": 105,
         "previous": 105,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 105
+        "unchanged": 102
       },
       "pricing": {
         "commercial_hash": "153070ae25f70501ae5434697eba1b8940df12fd97a48b53073ef7d3c46d6197",
@@ -4339,19 +6300,24 @@
       "provider_id": "vertex",
       "publication": "accepted",
       "signals": [
-        "unreviewed_extension",
-        "persistent_source_failure"
+        "unreviewed_extension"
       ],
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 4,
+        "changed": 5,
         "changed_sources": [
           {
             "content_changed": true,
             "extractor_changed": false,
             "field_paths_changed": false,
             "source_id": "vertex-google-models"
+          },
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "vertex-model-garden-api"
           },
           {
             "content_changed": true,
@@ -4376,14 +6342,14 @@
         "previous": 5,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 1
+        "unchanged": 0
       },
       "status": "fresh",
       "warning_codes": {
-        "inventory_fallback": 1,
+        "catalog_api_set_mismatch": 1,
         "missing_field": 3,
-        "source_contract_extension": 1,
-        "source_fetch_failed": 1
+        "scope_limited": 1,
+        "source_contract_extension": 1
       }
     },
     {
@@ -4582,21 +6548,21 @@
   "publication": "partial",
   "schema_version": 2,
   "totals": {
-    "accepted": 16,
-    "added_models": 4,
+    "accepted": 18,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 9,
-    "changed_sources": 27,
-    "models": 3571,
-    "pricing_accepted": 15,
+    "changed_models": 91,
+    "changed_sources": 28,
+    "models": 3550,
+    "pricing_accepted": 17,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 3,
+    "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 18,
-    "removed_models": 8,
+    "removed_models": 10,
     "removed_sources": 0,
-    "retained": 2,
+    "retained": 0,
     "withheld": 0
   }
 }
