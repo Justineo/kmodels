@@ -20,3 +20,5 @@
 | `code-runner`   | 代码执行        |
 
 Formula `moonshot/web-search:latest` 包含资源用量并由平台处理计费；联网搜索价格另见定价页。
+
+- `POST /v1/formulas/{uri}/fibers` — 创建 Fiber；此步骤产生工具调用计费。

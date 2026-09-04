@@ -9,6 +9,7 @@ import type {
   ParsedProviderModel as ProviderModel,
   SourceCommercialPricingFact,
   SourcePriceFact,
+  SourcePricingInputFact,
 } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Modality, type Provider, unknownCapabilities } from "./schema.ts";
@@ -768,6 +769,11 @@ interface ModelGeneration {
   minor: number;
 }
 
+interface RequestAccounting {
+  dataResidencyGeneration: ModelGeneration | undefined;
+  pricingInputs: SourcePricingInputFact[];
+}
+
 function geographyGeneration(body: string, label: string): ModelGeneration {
   const values = new Map<string, ModelGeneration>();
   for (const line of body.split(/\r?\n/)) {
@@ -820,7 +826,7 @@ function validateRequestAccounting(
   messages: string,
   dataResidency: string,
   input: Input,
-): ModelGeneration | undefined {
+): RequestAccounting {
   const contract = (valid: boolean, sample: string): boolean => {
     if (!valid)
       input.onPricingReconciliation?.({
@@ -830,16 +836,27 @@ function validateRequestAccounting(
       });
     return valid;
   };
-  for (const field of [
-    "cache_creation_input_tokens",
-    "cache_read_input_tokens",
-    "inference_geo",
-    "input_tokens",
-    "output_tokens",
-    "server_tool_use",
-    "service_tier",
-  ])
-    contract(messages.includes(`- \`${field}:`), `Messages usage.${field}`);
+  const pricingInputs: SourcePricingInputFact[] = [];
+  const fields: ReadonlyArray<readonly [string, string | undefined]> = [
+    ["cache_creation_input_tokens", undefined],
+    ["cache_read_input_tokens", "cached_input_tokens"],
+    ["inference_geo", "selector.inference_geo"],
+    ["input_tokens", "uncached_input_tokens"],
+    ["output_tokens", "output_tokens"],
+    ["server_tool_use", undefined],
+    ["service_tier", "selector.served_service_tier"],
+  ];
+  for (const [field, signal] of fields) {
+    const available = contract(messages.includes(`- \`${field}:`), `Messages usage.${field}`);
+    if (available && signal !== undefined)
+      pricingInputs.push({
+        key: `messages.usage.${signal}`,
+        channel: "response",
+        locator: { kind: "json_pointer", value: `/usage/${field}` },
+        availability: "conditional",
+        source_ref: input.source.id,
+      });
+  }
 
   const dataResidencyGeneration = reviewedGeographyGeneration(
     dataResidency,
@@ -853,7 +870,7 @@ function validateRequestAccounting(
       dataResidency.includes("return a 400 error"),
     "inference-geography outcomes",
   );
-  return dataResidencyGeneration;
+  return { dataResidencyGeneration, pricingInputs };
 }
 
 function amount(value: string | undefined): string | undefined {
@@ -1327,6 +1344,7 @@ function commercialPricing(
   },
   input: Input,
   models: Map<string, ProviderModel>,
+  pricingInputs: SourcePricingInputFact[],
 ): void {
   const facts: SourceCommercialPricingFact[] = [];
   const callableRefs = [...models.values()].filter(callable).map(({ uid }) => uid);
@@ -1348,11 +1366,38 @@ function commercialPricing(
       "Re-applying a previous `compaction` block incurs no additional compaction cost",
     );
   report(compactionBilling, "compaction_usage_bound", "Compaction iterations");
+  if (compactionBilling)
+    for (const [field, signal] of [
+      ["input_tokens", "uncached_input_tokens"],
+      ["cache_read_input_tokens", "cached_input_tokens"],
+      ["output_tokens", "output_tokens"],
+    ] as const)
+      pricingInputs.push({
+        key: `messages.usage.${signal}`,
+        channel: "response",
+        locator: {
+          kind: "provider_field",
+          value: `usage.iterations[*].${field} grouped by usage.iterations[*].model`,
+        },
+        availability: "conditional",
+        source_ref: input.source.id,
+      });
 
   const searchAmount = bodies.webSearch.match(
     /\$((?:0|[1-9]\d*)(?:\.\d+)?) per 1,000 searches/,
   )?.[1];
   const searchSignal = bodies.webSearch.includes('"web_search_requests"');
+  if (searchSignal)
+    pricingInputs.push({
+      key: "messages.usage.successful_web_searches",
+      channel: "response",
+      locator: {
+        kind: "json_pointer",
+        value: "/usage/server_tool_use/web_search_requests",
+      },
+      availability: "terminal_only",
+      source_ref: input.source.id,
+    });
   if (searchAmount !== undefined) {
     const rate = publishedRate(
       "web_search",
@@ -1375,17 +1420,7 @@ function commercialPricing(
         offerName: "Successful search",
         state: "numeric",
         rates: [rate],
-        raw: searchSignal
-          ? [
-              commercialRaw(
-                "usage-signal",
-                "informational",
-                "unsupported_structure",
-                "usage.server_tool_use.web_search_requests",
-                input.source.id,
-              ),
-            ]
-          : [],
+        raw: [],
       }),
     );
   }
@@ -1512,7 +1547,10 @@ function commercialPricing(
   report(fallbackContract, "fallback_usage_outcome_bound", "Fallback retry usage outcome");
 
   const carrier = [...models.values()].find(({ price_facts }) => price_facts.length > 0);
-  if (carrier !== undefined && facts.length > 0) carrier.commercial_facts = facts;
+  if (carrier !== undefined) {
+    if (facts.length > 0) carrier.commercial_facts = facts;
+    if (pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
+  }
 }
 
 export function parseAnthropicCatalog(input: Input): ProviderModel[] {
@@ -1529,7 +1567,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   const modelIds = document("/docs/en/about-claude/models/model-ids-and-versions.md");
   const modelsList = document("/docs/en/api/models/list.md");
   if (modelIds && modelsList) validateModelIdentityContract(modelIds, modelsList, input);
-  const dataResidencyGeneration = validateRequestAccounting(
+  const requestAccounting = validateRequestAccounting(
     messagesBody,
     document("/docs/en/manage-claude/data-residency.md"),
     input,
@@ -1545,7 +1583,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     pricing(
       pricingBody,
       document("/docs/en/build-with-claude/fast-mode.md"),
-      dataResidencyGeneration,
+      requestAccounting.dataResidencyGeneration,
       input,
       models,
     );
@@ -1583,6 +1621,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
     },
     input,
     models,
+    requestAccounting.pricingInputs,
   );
   return [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid));
 }

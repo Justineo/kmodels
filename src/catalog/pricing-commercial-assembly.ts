@@ -14,6 +14,7 @@ import type {
   ProviderAtomRegistryEntry,
   RawPriceObservation,
   UnitExpression,
+  UsageSignal,
 } from "./pricing-schema.ts";
 
 export function relation(
@@ -119,6 +120,12 @@ export function isStandardUnit(unit: UnitExpression, value: string): boolean {
     unit.factors[0].unit.namespace === "kmodels" &&
     unit.factors[0].unit.value === value
   );
+}
+
+export function standardSignal(
+  value: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
+): Extract<UsageSignal, { namespace: "kmodels" }> {
+  return { namespace: "kmodels", value };
 }
 
 export function unitIdentityKey(unit: UnitExpression): string {

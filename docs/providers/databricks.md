@@ -78,10 +78,11 @@ dependency.
   DBU-per-hour Batch column is recognized as out of scope and discarded. The reviewed provider
   groups are OpenAI, Anthropic, Google, and the optional `SpacexAI` group used for Grok rows.
 - Standard pay-per-token uses `service_tier=standard`. Priority is a variant of the same invocation
-  offer. The request's tier plus any published region or endpoint condition selects the public
-  rate. Account-team enablement is an access prerequisite, not a price dimension, so it is not
-  encoded. A requested Priority tier is not proof of the billed tier when Databricks documents
-  fallback to Standard; response usage is authoritative.
+  offer. Numeric variants are keyed by the tier actually served plus any published region or
+  endpoint condition. Account-team enablement is an access prerequisite, not a price dimension, so
+  it is not encoded. A requested Priority tier is not proof of the billed tier when Databricks
+  documents fallback to Standard, and the documented response tier echoes the request rather than
+  proving the billed fallback outcome.
 - The Priority support page publishes exact eligible Databricks endpoint IDs and says that the tier
   has a per-token premium, but it publishes no amounts for partner models. Its OpenAI and Google
   links are additional product-behavior resources, not a statement that Databricks invoices those
@@ -108,18 +109,47 @@ promotion, and validity remain applicability dimensions rather than separate off
 Databricks provider-resource books, capacity books, settlement facts, allowances, resource edges,
 or offer relations.
 
-Token terms bind to direct response usage:
+The API reference publishes five calculation-input contracts from the non-streaming response:
 
-- input and embedding → `usage.input_tokens`;
-- cache read → `usage.token_details.cache_read_input_tokens`;
-- cache write → `usage.token_details.cache_creation_input_tokens`; and
-- output → `usage.output_tokens`.
+- `usage.prompt_tokens` and `usage.completion_tokens` for aggregate input and generated tokens;
+- `usage.reasoning_tokens` as the reasoning subset, even though Databricks publishes no separate
+  reasoning-token rate;
+- top-level `usage.cache_read_input_tokens` and `usage.cache_creation_input_tokens` for
+  Databricks-hosted Claude endpoints.
 
-The binding documents how a Gateway counts the rate; it does not perform invoice calculation.
+Embedding input binds directly to `usage.prompt_tokens`. Ordinary text output binds directly to
+`usage.completion_tokens`. An input rate with no separately priced cache partition also binds
+directly to `usage.prompt_tokens`. For Claude rows with cache-read or cache-write rates, uncached
+input uses the closed calculation
+`max(0, max(0, prompt_tokens - cache_read_input_tokens) - cache_creation_input_tokens)`; the cache
+rates bind to their corresponding fields. The two optional cache fields use absent-as-zero only
+because the reference limits them to responses where caching is active.
+
+The same fields do not become cache acquisition paths for OpenAI, Google, Grok, or open-model rows:
+the official reference qualifies the top-level cache fields specifically to hosted Claude
+endpoints. Their cache rates retain quantity semantics but remain without an acquisition method.
+Likewise, the aggregate usage object does not split text and image tokens. A model with separate
+text/image input or output rates therefore keeps those modality quantities unbound instead of
+charging the aggregate count more than once.
+
+`usage.prompt_tokens` also resolves context-length conditions. Numeric Standard and Priority
+variants use `served_service_tier`. The documented response `service_tier` only echoes whether
+Priority was requested, while Priority can fall back and be billed as Standard, so it is not
+published as the billed-tier selector. The caller must supply that outcome until Databricks
+publishes a billing-grade field. Region and endpoint-type conditions likewise remain caller-supplied
+because the response exposes no matching field.
+
+The API documents optional token usage in streams but does not define a stable terminal event or
+cumulative reduction. Kmodels therefore publishes no stream acquisition path and does not claim to
+detect interrupted streams. These bindings describe how a consumer can supply quantities to the
+price book; they do not make Kmodels responsible for observing the runtime lifecycle or reconciling
+an invoice.
 
 ## Resilience and refresh
 
 Catalog support tables remain strict where they claim exhaustive identity or invocation contracts.
+Individual response usage fields are field-local contracts: drift removes only the affected
+`pricing_input` and quantity method while preserving independent catalog and rate facts.
 Open, partner, Priority, and delegated Google pages are optional pricing dependencies: a fetch
 failure keeps catalog collection useful but retains the last accepted Databricks pricing partition.
 Within a fetched page, parsing is claim-local; malformed rows and cells do not reject valid siblings.

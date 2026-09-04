@@ -61,6 +61,12 @@ export function canonicalValuesEqual(left: unknown, right: unknown): boolean {
   return left === right || canonicalValueKey(left) === canonicalValueKey(right);
 }
 
+export function uniqueCanonicalValues<T>(values: readonly T[]): T[] {
+  return [...new Map(values.map((value) => [canonicalJson(value), value])).values()].sort(
+    compareCanonicalValues,
+  );
+}
+
 function canonicalValueKey(value: unknown): string {
   return value !== null && typeof value === "object" ? canonicalJsonKey(value) : serialize(value);
 }

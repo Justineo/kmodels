@@ -105,7 +105,7 @@ function groupBy<Key, Value>(
 function validationResult(message: unknown, task: ValidationTask): void {
   if (!isValidationResult(message) || message.providerId !== task.providerId)
     throw new Error("Pricing validation worker returned an invalid result");
-  if (message.error !== undefined) throw new Error(message.error);
+  if (message.error !== undefined) throw new Error(`${task.providerId}: ${message.error}`);
 }
 
 function isValidationResult(value: unknown): value is ValidationResult {

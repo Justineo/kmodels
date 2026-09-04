@@ -71,18 +71,39 @@ offers and service offers contain no enrollment or settlement topology.
 
 ## Usage binding and resilience
 
-- Text input/output/cache rates bind to provider-reported token counters. With caching, uncached
-  input is the input total minus the provider-reported cached partition.
-- OCR binds to `usage_info.pages_processed`.
-- Audio input binds to `usage.prompt_audio_seconds` rather than an invented request duration field.
-- Speech synthesis binds to the submitted `input` character count.
-- Built-in services bind to final connector usage or generated outputs, not tool declarations or
-  streaming start events.
+- The pricing overlay publishes 20 first-party calculation-input contracts independently from the
+  numeric rates. They cover synchronous and terminal-stream completion token counters, cache reads,
+  embedding input tokens, Conversation tokens, OCR pages, transcription/audio-chat seconds, speech
+  input characters, three connector counters, and completed image outputs. Every contract records
+  its request/response/result channel, JSON Pointer or provider-owned derived field, availability,
+  absence-as-zero semantics where documented, and source reference.
+- Chat/FIM text input with caching uses an explicit `prompt_tokens - cached_tokens`, floored at zero.
+  Cache absence is zero because Mistral documents that `cached_tokens` is zero or omitted. Output and
+  cache-read terms consume their direct counters.
+- Conversation input adds `usage.prompt_tokens` and `usage.connector_tokens`; examples show connector
+  tokens are a separate part of total model usage. Conversation output consumes
+  `usage.completion_tokens`. This prevents tool context from disappearing from model-token cost while
+  keeping the per-call tool charge separate.
+- OCR consumes `usage_info.pages_processed`. Transcription and audio chat consume
+  `usage.prompt_audio_seconds`. Speech synthesis consumes a provider-owned accepted-character count
+  derived from the required `SpeechRequest.input`; Kmodels does not guess whether Mistral counts
+  Unicode code points, graphemes, or encoded units.
+- Code execution, ordinary web search, and Document Library retrieval consume the corresponding
+  final `usage.connectors.*` counters. Image generation consumes completed `tool_file` image outputs,
+  not tool declarations, start events, or connector invocations.
 
-The OpenAPI and tool companions are parsed claim by claim. A missing or drifted usage contract
-removes only that `charge_binding`; the numeric rate and all sibling facts remain. Unknown model
-fields, unrelated OpenAPI operations, plan pages, weight metadata, and account billing changes are
-outside the collector's reviewed input and cannot reject the provider.
+The OpenAPI, prompt-caching, and tool companions are parsed field by field. A missing or drifted
+field removes only the affected calculation input and `quantity_methods`; the semantic
+`charge_binding`, numeric rate, and sibling facts remain. The collector no longer creates raw
+`accounting_binding_unavailable:*` or `charge_binding_unavailable` compatibility terms. Unknown
+model fields, unrelated OpenAPI operations, plan pages, weight metadata, and account billing changes
+are outside the collector's reviewed input and cannot reject the provider.
+
+Two published rates intentionally remain semantic-only. Batch output is a downloaded JSONL file,
+but the public Batch guide and OpenAPI do not define a stable per-result usage envelope, so Batch
+bindings have no executable input source. Premium news is priced per call, but the first-party guide
+does not publish a final `web_search_premium` usage-counter example; its binding likewise has no
+`quantity_methods`. These are evidence gaps, not runtime-lifecycle work for Kmodels.
 
 Provider publication remains atomic only at the final validated partition boundary. Individual
 malformed model definitions, pricing cards, labels, rows, currencies, feature values, endpoint

@@ -68,6 +68,52 @@
         }
       }
     },
+    "/v1/responses": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ResponsesRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ResponsesResponse" }
+              },
+              "text/event-stream": {
+                "schema": { "$ref": "#/components/schemas/ResponsesStreamEvent" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/anthropic/v1/messages": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/MessagesRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MessagesResponse" }
+              },
+              "text/event-stream": {
+                "schema": { "$ref": "#/components/schemas/MessagesStreamEvent" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tokenizers/estimate-token-count": {
       "post": {
         "requestBody": {
@@ -145,6 +191,141 @@
             }
           }
         }
+      },
+      "ResponsesRequest": {
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "ID of the model to use. This endpoint currently supports `kimi-k3`.",
+            "example": "kimi-k3"
+          }
+        }
+      },
+      "ResponsesUsage": {
+        "type": "object",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Number of input tokens, including cached tokens."
+          },
+          "input_tokens_details": {
+            "type": "object",
+            "properties": {
+              "cached_tokens": {
+                "type": "integer",
+                "description": "Number of tokens served from the context cache."
+              },
+              "cache_write_tokens": {
+                "type": "integer",
+                "description": "Number of tokens written to the context cache."
+              }
+            }
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Number of output tokens, including reasoning tokens."
+          },
+          "output_tokens_details": {
+            "type": "object",
+            "properties": {
+              "reasoning_tokens": {
+                "type": "integer",
+                "description": "Number of tokens spent on reasoning."
+              }
+            }
+          },
+          "total_tokens": { "type": "integer" }
+        }
+      },
+      "ResponsesResponse": {
+        "type": "object",
+        "properties": {
+          "usage": {
+            "oneOf": [{ "$ref": "#/components/schemas/ResponsesUsage" }, { "type": "null" }]
+          }
+        }
+      },
+      "ResponsesStreamEvent": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["response.completed", "response.incomplete", "response.failed"]
+          },
+          "sequence_number": { "type": "integer" }
+        }
+      },
+      "MessagesRequest": {
+        "type": "object",
+        "properties": {
+          "model": { "type": "string", "enum": ["kimi-k3"], "default": "kimi-k3" }
+        }
+      },
+      "MessagesResponse": {
+        "type": "object",
+        "properties": {
+          "usage": {
+            "type": "object",
+            "properties": {
+              "input_tokens": {
+                "type": "integer",
+                "description": "Input tokens (excluding cache hits)"
+              },
+              "output_tokens": {
+                "type": "integer",
+                "description": "Output tokens (including reasoning tokens)"
+              },
+              "cache_read_input_tokens": {
+                "type": "integer",
+                "description": "Input tokens served from cache"
+              },
+              "cache_creation_input_tokens": {
+                "type": "integer",
+                "description": "Input tokens written to cache"
+              }
+            }
+          }
+        }
+      },
+      "MessagesStreamEvent": {
+        "oneOf": [
+          {
+            "title": "message_delta",
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["message_delta"] },
+              "delta": { "type": "object" },
+              "usage": {
+                "type": "object",
+                "properties": {
+                  "input_tokens": {
+                    "type": "integer",
+                    "description": "Input tokens (excluding cache hits)"
+                  },
+                  "output_tokens": {
+                    "type": "integer",
+                    "description": "Output tokens (including reasoning tokens)"
+                  },
+                  "cache_read_input_tokens": {
+                    "type": "integer",
+                    "description": "Input tokens served from cache"
+                  },
+                  "cache_creation_input_tokens": {
+                    "type": "integer",
+                    "description": "Input tokens written to cache"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "title": "message_stop",
+            "type": "object",
+            "properties": {
+              "type": { "type": "string", "enum": ["message_stop"] }
+            }
+          }
+        ]
       },
       "K3": {
         "allOf": [

@@ -98,6 +98,21 @@ describe("design token contract", () => {
     expect(globalStyles).toMatch(/text-size-adjust:\s*100%;/);
   });
 
+  it("aligns desktop inspector chrome and gives narrow screens a vertical viewport transition", () => {
+    expect(tokenStyles).toMatch(
+      /--layout-details-header-height:\s*calc\(\s*var\(--layout-header-height\) \+ var\(--layout-toolbar-height\) \+ var\(--stroke-hairline\)\s*\);/s,
+    );
+    expect(globalStyles).toMatch(
+      /\.details-header\s*>\s*div\s*\{[^}]*display:\s*grid;[^}]*gap:\s*var\(--space-0-5\);/s,
+    );
+    expect(globalStyles).toMatch(
+      /\.details-header h2\s*\{[^}]*font-size:\s*var\(--font-size-heading\);/s,
+    );
+    expect(globalStyles).toMatch(
+      /@media \(width <= 580px\)\s*\{[\s\S]*?\.details-dialog\[open\]\s*\{[^}]*display:\s*flex;[^}]*height:\s*100dvh;[^}]*align-items:\s*flex-end;[^}]*\}[\s\S]*?\.details-panel\s*\{[^}]*height:\s*100dvh;[^}]*animation-name:\s*reveal-panel-mobile;/,
+    );
+  });
+
   it("keeps every fact-grid item in one column with its own surface", () => {
     expect(`${globalStyles}\n${componentStyles}`).not.toMatch(
       /\.(?:fact-grid|rate-grid)\s*>[^{}]*\{[^}]*grid-column:/s,

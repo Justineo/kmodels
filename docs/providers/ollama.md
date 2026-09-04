@@ -27,20 +27,26 @@ and an exact request/result trigger. The existence of an API alone does not crea
   witnesses. The collector takes their exact-ID union, then requests each reviewed family page and
   `POST /api/show` for claim-local enrichment.
 - A Cloud family page may publish an exact token rate card. It is the current first-party source for
-  model rates. The collector extracts only the numeric input, cached-input, and output amounts and
-  their denominator; plan and credit prose is intentionally not transported into canonical pricing.
+  model rates. The collector extracts numeric input, cached-input, and output amounts, their
+  denominator, and exact named variants such as `Base` and `Peak`; plan and credit prose is
+  intentionally not transported into canonical pricing.
 - The fixed [Cloud guide](https://docs.ollama.com/cloud) supplies route and lifecycle facts,
   including structured retirement tables. Retirement applies to an exact Cloud route and does not
   retire a still-current Library identity.
-- The fixed [native usage guide](https://docs.ollama.com/api/usage) and
-  [OpenAPI document](https://docs.ollama.com/openapi.yaml) independently establish native token
-  counters. Either can preserve the reviewed binding contract if the other is temporarily
-  unavailable.
+- The fixed [native usage guide](https://docs.ollama.com/api/usage),
+  [OpenAPI document](https://docs.ollama.com/openapi.yaml), and
+  [OpenAI-compatibility guide](https://docs.ollama.com/api/openai-compatibility) establish supported
+  routes and public usage behavior.
+- Exact released source from Ollama `v0.33.3` establishes the wire contract that the prose and
+  OpenAPI do not fully describe: native cached-token fields, OpenAI-compatible usage conversion,
+  terminal `include_usage` chunks, and Responses usage events. The tag is deliberately pinned so a
+  moving branch cannot silently change a calculation input; a provider review bumps it.
 
-Collection deliberately does not scan `llms.txt` for commercial-looking pages or fetch pricing,
-terms, compatibility, authentication, capability, and subscription pages. Those surfaces either
-duplicate stronger inputs or describe facts outside the rate-book boundary. The fixed source graph
-keeps refresh deterministic without a brittle content-keyword allowlist.
+Collection deliberately does not scan `llms.txt` for commercial-looking pages or dynamically fetch
+pricing, terms, authentication, capability, and subscription pages. Those surfaces either duplicate
+stronger inputs or describe facts outside the rate-book boundary. The reviewed compatibility page
+is a fixed input. This source graph keeps refresh deterministic without a brittle content-keyword
+allowlist.
 
 ## Catalog and identity rules
 
@@ -60,17 +66,23 @@ keeps refresh deterministic without a brittle content-keyword allowlist.
 
 ## Canonical price book
 
-At the current snapshot, Kimi K3 is the only Ollama Cloud model page with a public numeric rate
-card. It produces one model-scoped `cloud-inference` offer with three shared rate terms:
+Every Cloud family page with a valid public rate card produces one model-scoped `cloud-inference`
+offer. A simple card has up to three shared rate terms; for example, Kimi K3 publishes:
 
 - input text: USD 3 per million tokens;
 - cached input text: USD 0.30 per million tokens;
 - output text: USD 15 per million tokens.
 
-The Pro/Max access gate and extra-usage-credit settlement do not qualify these list rates and are not
-price dimensions. Other Cloud models remain `pricing_state: unknown`; an ordinal Low/Medium/High
-usage class is an allowance-consumption label, not a currency rate or proof that pricing is
-explicitly unpublished. Models without admitted rates do not create empty price books.
+Some pages publish separate `Base` and `Peak` amounts. Kmodels preserves both as exact
+`billing_period` variants. Ollama does not currently publish a first-party schedule or response
+field that says which period applies, so Kmodels does not invent a clock rule or selector source.
+Consumers can display both variants and may select one only when they possess an independently
+authoritative period value. This is a selector gap, not a reason to discard either rate.
+
+The Pro/Max access gate and extra-usage-credit settlement do not qualify list rates and are not price
+dimensions. An ordinal Low/Medium/High usage class is an allowance-consumption label, not a currency
+rate or proof that pricing is explicitly unpublished. Models without admitted rates remain
+`pricing_state: unknown` and do not create empty price books.
 
 The canonical Ollama topology therefore contains only model books with public request rates. It has
 no provider-resource books, subscription rates, local-execution offer, allowance terms, enrollment,
@@ -78,26 +90,39 @@ settlement, or commercial relations.
 
 ## Usage binding
 
+Kmodels publishes calculation inputs, not a runtime request ledger. A consumer captures an Ollama
+response or terminal stream event, resolves one of the published locators, and evaluates the closed
+quantity method. The price book supplies the following alternatives.
+
 Native Generate and Chat responses expose:
 
-- `prompt_eval_count`: input tokens processed;
+- `prompt_eval_count`: total input tokens processed;
+- `prompt_eval_cached_count`: input tokens read from cache;
 - `eval_count`: output tokens generated.
 
-Streaming responses expose these fields on the final `done: true` chunk. Output rates bind to
-`eval_count` for the reviewed native `/api/generate` and `/api/chat` routes. These routes are fixed
-by the same first-party usage/OpenAPI contract as the counters; binding does not depend on a model
-page repeating global endpoint metadata.
+Streaming native responses expose those fields only on the final `done: true` chunk. The same
+quantities are available through Ollama's OpenAI-compatible surfaces:
 
-Ollama publishes a distinct cached-input rate for Kimi K3 but does not publish a native counter that
-separates cached from uncached input. Binding the ordinary input rate to total
-`prompt_eval_count` would risk charging cached tokens at both rates or at the wrong rate. The input
-and cached-input amounts therefore remain visible but unbound; only output is currently exactly
-reconstructable. If a model has an input rate without a separate cache rate, the shared adapter may
-bind it to `prompt_eval_count`.
+- Chat Completions and Completions non-stream responses use `usage.prompt_tokens`,
+  `usage.prompt_tokens_details.cached_tokens`, and `usage.completion_tokens`.
+- Their streams expose the same pointers in the terminal usage chunk only when the request sets
+  `stream_options.include_usage`.
+- Responses non-stream results use `usage.input_tokens`,
+  `usage.input_tokens_details.cached_tokens`, and `usage.output_tokens`.
+- A Responses stream exposes the corresponding fields under `response.usage` on the terminal
+  `response.completed` event.
 
-Failure of both usage-contract witnesses removes only charge bindings through an internal
-accounting-gap marker. It never removes numeric rates, model identities, or sibling price terms, and
-the marker itself is not published.
+For a card with separate input and cached-input prices, the input term binds to
+`max(total_input_tokens - cached_input_tokens, 0)`, the cached-input term binds directly to cached
+tokens, and output binds directly to output tokens. Each native, Chat Completions, Completions, and
+Responses response/stream pairing is a separate alternative method, so fields from two protocols
+cannot be mixed accidentally. A card without a cache rate may bind input directly to total input.
+
+Pricing-input extraction is field-local. Drift in one cached field or one streaming terminal
+contract removes only the affected locators and methods. Rates, identities, and sibling inputs
+survive. Kmodels does not add a raw accounting pseudo-term or claim that a runtime event was
+captured. Ollama's Responses implementation currently emits `reasoning_tokens: 0` with an upstream
+TODO, so Kmodels does not expose it as a trustworthy thinking-token input.
 
 ## Resilience and refresh
 
@@ -105,7 +130,8 @@ the marker itself is not published.
   observed fields are localized; recognized siblings survive.
 - Page tags are used only for exact Cloud identity discovery. Unknown presentation labels do not
   reject the page or provider.
-- Malformed rate fields suppress only that meter. A valid input or output sibling remains published.
+- Malformed rate fields suppress only that meter within that named variant. A valid input, cached,
+  output, Base, or Peak sibling remains published.
 - Absence of a rate card means unknown price, not `not_published`. A previous verified rate is
   removed only when a fresh exhaustive source disproves it under the provider-atomic publication
   rules.

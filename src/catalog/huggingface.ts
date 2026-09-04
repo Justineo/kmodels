@@ -2,6 +2,7 @@ import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { parseCoherePublicPricingProducts } from "./cohere.ts";
+import { extractHuggingFacePricingInputs } from "./huggingface-accounting.ts";
 import { isCredentialLikeIdentifier, modelIdSchema } from "./identity.ts";
 import { baseModel, modelRouteKey } from "./model.ts";
 import { huggingFacePartnerIds, type SourceManifest } from "./manifests.ts";
@@ -13,7 +14,7 @@ import type {
   SourcePriceFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
-import { assertItemCount } from "./source-contract.ts";
+import { assertItemCount, type SourceContractEvidence } from "./source-contract.ts";
 import {
   modalitySchema,
   type Modality,
@@ -29,6 +30,7 @@ interface Input {
   body: string;
   observedAt: string;
   catalogModels?: readonly Pick<ProviderModel, "model_id" | "price_facts" | "routes">[];
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -835,6 +837,14 @@ export function parseHuggingFaceRouter(input: Input): ProviderModel[] {
   }
   assertItemCount("Hugging Face router models", models.length, config.minModels, config.maxModels);
   commercialEvidence(input, bundle);
+  const carrier = [...models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
+  const pricingInputs = extractHuggingFacePricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return models;
 }
 

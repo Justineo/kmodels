@@ -3,6 +3,7 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import { extractOllamaPricingInputs } from "./ollama-accounting.ts";
 import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
@@ -49,6 +50,20 @@ const pageEntrySchema = z
   .object({ model: modelIdSchema, url: z.url(), body: z.unknown() })
   .passthrough();
 const documentSchema = z.object({ url: z.url(), body: z.string().min(1) }).passthrough();
+const pageRateSchema = z
+  .object({
+    billing_period: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]*$/)
+      .optional(),
+    input: z.unknown().optional(),
+    cached: z.unknown().optional(),
+    output: z.unknown().optional(),
+  })
+  .passthrough();
+const pageCostSchema = z
+  .object({ unit: z.literal("1M tokens"), variants: z.array(z.unknown()).min(1) })
+  .passthrough();
 const bundleSchema = z
   .object({
     list: z.unknown(),
@@ -510,24 +525,44 @@ function pagePricing(
         pageModels.add(parsedId.data);
       }
     else if (tags !== undefined) diagnostic(input, "/pages/tags");
-    const cost = Reflect.get(page.body, "cost");
-    if (cost === undefined) continue;
-    if (cost === null || typeof cost !== "object") {
+    const rawCost = Reflect.get(page.body, "cost");
+    if (rawCost === undefined) continue;
+    const cost = pageCostSchema.safeParse(rawCost);
+    if (!cost.success) {
       diagnostic(input, "/pages/cost");
       continue;
     }
     const value = pricingFor(pricing, page.model);
-    for (const [field, meter] of [
-      ["input", "input_text"],
-      ["cached", "cache_read_text"],
-      ["output", "output_text"],
-    ] as const) {
-      const amount = Reflect.get(cost, field);
-      if (typeof amount === "string" && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount))
-        value.rates.push(
-          publishedRate(meter, amount, "million_tokens", input.source.id, "1M tokens", {}),
-        );
-      else if (amount !== undefined) diagnostic(input, `/pages/cost/${field}`);
+    const variants = recognizedRows(input, cost.data.variants, pageRateSchema, () => undefined);
+    const periods = new Set(variants.flatMap(({ billing_period }) => billing_period ?? []));
+    if (periods.size > 1)
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: "billing_period_selector_unavailable",
+        sample: page.model,
+      });
+    for (const variant of variants) {
+      const conditions =
+        variant.billing_period === undefined ? {} : { billing_period: variant.billing_period };
+      for (const [field, meter] of [
+        ["input", "input_text"],
+        ["cached", "cache_read_text"],
+        ["output", "output_text"],
+      ] as const) {
+        const amount = variant[field];
+        if (typeof amount === "string" && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(amount))
+          value.rates.push(
+            publishedRate(
+              meter,
+              amount,
+              "million_tokens",
+              input.source.id,
+              "1M tokens",
+              conditions,
+            ),
+          );
+        else if (amount !== undefined) diagnostic(input, `/pages/cost/variants/${field}`);
+      }
     }
   }
   return { pricing, pageModels };
@@ -550,46 +585,6 @@ function documents(input: ParseInput, bundle: z.infer<typeof bundleSchema>): Map
     else result.set(item.url, item.body);
   }
   return result;
-}
-
-function normalized(body: string): string {
-  return load(body)
-    .root()
-    .text()
-    .replace(/\\([_$*])/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function hasClaim(
-  docs: ReadonlyMap<string, string>,
-  url: string,
-  patterns: readonly RegExp[],
-): boolean {
-  const body = docs.get(url);
-  return body !== undefined && patterns.every((pattern) => pattern.test(normalized(body)));
-}
-
-function usageAccounting(input: ParseInput, docs: ReadonlyMap<string, string>): boolean {
-  const nativeUsage = hasClaim(docs, "https://docs.ollama.com/api/usage.md", [
-    /prompt_eval_count.*input tokens/,
-    /eval_count.*output tokens/,
-    /final chunk.*done.*true/,
-  ]);
-  const openapiUsage = hasClaim(docs, "https://docs.ollama.com/openapi.yaml", [
-    /\/api\/generate:/,
-    /\/api\/chat:/,
-    /prompt_eval_count:/,
-    /eval_count:/,
-    /description: Number of input tokens in the prompt/,
-    /description: Number of output tokens generated in the response/,
-  ]);
-  if (nativeUsage || openapiUsage) return true;
-  input.onPricingReconciliation?.({
-    disposition: "unbound",
-    reason_code: "native_usage_contract_unavailable",
-  });
-  return false;
 }
 
 function retirementRows(body: string): Map<string, Retirement> {
@@ -691,6 +686,16 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
   const result = models
     .map((model) => applyPagePricing(model, pricing.get(model.model_id)))
     .sort((left, right) => left.uid.localeCompare(right.uid));
+  const pricingInputs = extractOllamaPricingInputs({
+    documents: [...docs].map(([url, body]) => ({ url, body })),
+    sourceRef: input.source.id,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { onReconciliation: input.onPricingReconciliation }),
+  });
+  const carrier = result[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   for (const id of pricing.keys())
     if (!ids.has(id))
       input.onPricingReconciliation?.({
@@ -712,16 +717,5 @@ export function parseOllamaCloud(input: ParseInput): ProviderModel[] {
             sample: model.model_id,
           },
     );
-  if (!usageAccounting(input, docs))
-    for (const model of result)
-      if (model.price_facts.length > 0)
-        model.raw_price_facts.push({
-          term_key: "accounting_binding_unavailable:tokens",
-          impact: "informational",
-          reason: "requires_usage_aggregation",
-          conditions: {},
-          source_ref: input.source.id,
-          raw: { fragment: "Native request token counters are unavailable" },
-        });
   return result;
 }

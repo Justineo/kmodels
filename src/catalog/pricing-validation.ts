@@ -16,6 +16,11 @@ import {
   unionApplicabilities,
 } from "./pricing-canonical.ts";
 import { pricingLimits } from "./pricing-constants.ts";
+import {
+  requiredUsageSignals,
+  requiredUsageSignalsForMethod,
+  validateUsageQuantityCalculation,
+} from "./pricing-calculation.ts";
 import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
   type ModelPricingDisposition,
@@ -36,6 +41,7 @@ import {
   type RawPriceFact,
   type RawPricingVariant,
   type UnitExpression,
+  type UsageQuantityCalculation,
   type UsageSignal,
 } from "./pricing-schema.ts";
 import { publishedValiditiesOverlap, publishedValidityIsCoherent } from "./pricing-time.ts";
@@ -604,6 +610,7 @@ function validateRateTerm(
     validateNormalizedVariant(variant, variant.observations, book, context, path, true);
     if (variant.charge_binding !== undefined)
       validateChargeBinding(variant.charge_binding, context, path, variant.price.per);
+    validateRateSelectorSources(variant, context, path);
   }
   term.raw_variants.forEach((variant) => {
     if (
@@ -907,12 +914,172 @@ function validateChargeBinding(
   validateUnitExpression(signalUnit, context, path);
   if (expectedUnit !== undefined && canonicalJson(signalUnit) !== canonicalJson(expectedUnit))
     fail(path, "charge signal unit differs from the rate denominator");
+  for (const input of requiredUsageSignals(binding)) {
+    validateOwnedAtom("usage_signal", input, undefined, context, path);
+    const inputUnit = usageSignalUnit(input, context, path);
+    validateUnitExpression(inputUnit, context, path);
+  }
+  if (binding.quantity_methods !== undefined) {
+    assertSortedUniqueBy(
+      binding.quantity_methods,
+      compareCanonicalValues,
+      `${path} quantity methods`,
+    );
+    for (const method of binding.quantity_methods) {
+      if (method.calculation !== undefined)
+        try {
+          validateUsageQuantityCalculation(method.calculation);
+          validateCalculationUnit(method.calculation, signalUnit, context, path);
+        } catch (error) {
+          fail(path, error instanceof Error ? error.message : "Invalid quantity calculation");
+        }
+      if (method.input_sources === undefined) continue;
+      assertSortedUniqueBy(
+        method.input_sources,
+        compareCanonicalValues,
+        `${path} usage input sources`,
+      );
+      const required = new Set(
+        requiredUsageSignalsForMethod(binding, method).map((signal) => canonicalJson(signal)),
+      );
+      const covered = new Set<string>();
+      for (const source of method.input_sources) {
+        validateOwnedAtom("usage_signal", source.signal, undefined, context, path);
+        validateInputLocator(source, `${path} usage input`);
+        const key = canonicalJson(source.signal);
+        if (!required.has(key)) fail(path, "usage input source does not belong to the method");
+        covered.add(key);
+      }
+      if (covered.size !== required.size)
+        fail(path, "usage input sources do not cover every method input");
+    }
+  }
   if (typeof binding.aggregation !== "string")
     validateOwnedAtom("aggregation", binding.aggregation, undefined, context, path);
   assertSortedUniqueBy(binding.observations, compareRawObservations, `${path} charge observations`);
   context.counts.observations += binding.observations.length;
   for (const observation of binding.observations)
     validateObservationBase(observation, context, path);
+}
+
+function validateCalculationUnit(
+  calculation: UsageQuantityCalculation,
+  outputUnit: UnitExpression,
+  context: ProviderValidation,
+  path: string,
+): void {
+  const units: UnitExpression[] = [];
+  const unitAt = (index: number): UnitExpression => {
+    const unit = units[index];
+    if (unit === undefined) fail(path, "quantity calculation unit reference is out of range");
+    return unit;
+  };
+  const sameUnit = (indexes: readonly number[]): UnitExpression => {
+    const first = unitAt(indexes[0]!);
+    if (indexes.some((index) => canonicalJson(unitAt(index)) !== canonicalJson(first)))
+      fail(path, "quantity calculation combines incompatible units");
+    return first;
+  };
+  for (const node of calculation.nodes) {
+    const unit = (() => {
+      switch (node.op) {
+        case "constant":
+          validateUnitExpression(node.unit, context, path);
+          return node.unit;
+        case "signal":
+          return usageSignalUnit(node.signal, context, path);
+        case "sum":
+          return sameUnit(node.inputs);
+        case "product": {
+          const values = node.inputs.map(unitAt);
+          const quantities = values.filter((value) => !isSingleStandardUnit(value, "item"));
+          if (quantities.length !== 1)
+            fail(path, "quantity product requires one quantity and one or more item counts");
+          return quantities[0]!;
+        }
+        case "subtract_floor_zero":
+          return sameUnit([node.minuend, node.subtrahend]);
+        case "multiply":
+        case "minimum":
+          return unitAt(node.input);
+      }
+    })();
+    units.push(unit);
+  }
+  if (canonicalJson(unitAt(calculation.result)) !== canonicalJson(outputUnit))
+    fail(path, "quantity calculation result unit differs from its output signal");
+}
+
+function validateRateSelectorSources(
+  variant: PriceRateTerm["variants"][number],
+  context: ProviderValidation,
+  path: string,
+): void {
+  if (variant.selector_sources === undefined) return;
+  assertSortedUniqueBy(
+    variant.selector_sources,
+    compareCanonicalValues,
+    `${path} selector sources`,
+  );
+  const dimensions = new Set(
+    variant.applicability.any_of.flatMap(({ all_of }) =>
+      all_of.map(({ dimension }) => canonicalJson(dimension)),
+    ),
+  );
+  for (const source of variant.selector_sources) {
+    const dimensionKey = canonicalJson(source.dimension);
+    if (!dimensions.has(dimensionKey))
+      fail(path, "selector source dimension is absent from applicability");
+    validateOwnedAtom("dimension", source.dimension, undefined, context, path);
+    validateInputLocator(source, `${path} selector input`);
+    const allowedValues = new Set(
+      variant.applicability.any_of.flatMap(({ all_of }) =>
+        all_of.flatMap((condition) =>
+          condition.kind === "categorical" && canonicalJson(condition.dimension) === dimensionKey
+            ? condition.values.map((value) => canonicalJson(value))
+            : [],
+        ),
+      ),
+    );
+    if (source.absent_value !== undefined && !allowedValues.has(canonicalJson(source.absent_value)))
+      fail(path, "selector absent value is absent from applicability");
+    if (source.normalization !== undefined) {
+      if (allowedValues.size === 0)
+        fail(path, "categorical selector normalization requires a categorical condition");
+      assertSortedUnique(
+        source.normalization.entries,
+        ({ source_value }) => [source_value],
+        `${path} selector normalization entries`,
+      );
+      for (const { value } of source.normalization.entries)
+        if (!allowedValues.has(canonicalJson(value)))
+          fail(path, "selector normalization value is absent from applicability");
+    }
+    assertSortedUniqueBy(
+      source.observations,
+      compareRawObservations,
+      `${path} selector source observations`,
+    );
+    context.counts.observations += source.observations.length;
+    for (const observation of source.observations)
+      validateObservationBase(observation, context, path);
+  }
+}
+
+function validateInputLocator(
+  input: {
+    channel: string;
+    locator: { kind: string; value: string; convention_version?: string | undefined };
+  },
+  path: string,
+): void {
+  assertProvenance(input.locator.value, `${path} locator`);
+  if (input.locator.kind === "otel_attribute") {
+    if (input.locator.convention_version === undefined)
+      fail(path, "OTel input locator lacks a convention version");
+    assertNormalizedSemantic(input.locator.convention_version, `${path} OTel convention version`);
+    if (input.channel !== "telemetry") fail(path, "OTel attributes require the telemetry channel");
+  }
 }
 
 function usageSignalUnit(
@@ -938,7 +1105,16 @@ function usageSignalUnit(
     case "cached_input_tokens":
     case "cache_write_tokens":
     case "output_tokens":
+    case "reasoning_output_tokens":
       return one("token");
+    case "input_characters":
+      return one("character");
+    case "processed_pages":
+      return one("page");
+    case "processed_images":
+      return one("image");
+    case "processed_audio_seconds":
+      return one("second");
     case "accepted_requests":
       return one("request");
     case "completed_result_items":
@@ -1365,7 +1541,10 @@ function standardDimensionKind(
   return "categorical";
 }
 
-function isSingleStandardUnit(expression: UnitExpression, value: "token" | "second"): boolean {
+function isSingleStandardUnit(
+  expression: UnitExpression,
+  value: "item" | "token" | "second",
+): boolean {
   return (
     expression.factors.length === 1 &&
     expression.factors[0]?.power === 1 &&

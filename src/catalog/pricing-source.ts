@@ -3,6 +3,9 @@ import {
   priceSourceLocatorSchema,
   rawPriceFactSchema,
   rawPricingReasonSchema,
+  usageInputLocatorSchema,
+  usageInputReductionSchema,
+  usageInputSourceSchema,
 } from "./pricing-schema.ts";
 import { rawPricingImpacts } from "./pricing-vocabulary.ts";
 import { providerModelSchema, type ProviderModel } from "./schema.ts";
@@ -80,6 +83,7 @@ const sourcePriceConditionsInputSchema = z.object({
   operation: z.string().optional(),
   resolution: z.string().optional(),
   quality: z.string().optional(),
+  search_effort: z.string().optional(),
   style: z.string().optional(),
   billing_period: z.string().optional(),
   billing_currency: z.string().optional(),
@@ -204,6 +208,17 @@ export const sourceCommercialPricingFactSchema = z.strictObject({
   raw_price_facts: z.array(sourceRawPricingFactSchema),
 });
 
+export const sourcePricingInputFactSchema = z.strictObject({
+  key: z.string().min(1),
+  channel: usageInputSourceSchema.shape.channel,
+  locator: usageInputLocatorSchema,
+  reduction: usageInputReductionSchema.optional(),
+  absent_value: usageInputSourceSchema.shape.absent_value,
+  selector_absent_value: z.string().min(1).optional(),
+  availability: usageInputSourceSchema.shape.availability,
+  source_ref: z.string().min(1),
+});
+
 export const parsedPricingStateSchema = z.enum([
   "numeric",
   "free",
@@ -229,12 +244,14 @@ export const parsedPricingModelSchema = providerModelSchema
     price_facts: z.array(sourcePriceFactSchema),
     raw_price_facts: z.array(sourceRawPricingFactSchema),
     commercial_facts: z.array(sourceCommercialPricingFactSchema).optional(),
+    pricing_inputs: z.array(sourcePricingInputFactSchema).optional(),
   })
   .strict();
 
 export type SourcePriceFact = z.infer<typeof sourcePriceFactSchema>;
 export type SourceRawPricingFact = z.infer<typeof sourceRawPricingFactSchema>;
 export type SourceCommercialPricingFact = z.infer<typeof sourceCommercialPricingFactSchema>;
+export type SourcePricingInputFact = z.infer<typeof sourcePricingInputFactSchema>;
 export type ParsedPricingState = z.infer<typeof parsedPricingStateSchema>;
 export type ParsedPricingModel = z.infer<typeof parsedPricingModelSchema>;
 export type ParsedProviderModel = ProviderModel & {
@@ -242,6 +259,7 @@ export type ParsedProviderModel = ProviderModel & {
   price_facts: SourcePriceFact[];
   raw_price_facts: SourceRawPricingFact[];
   commercial_facts?: SourceCommercialPricingFact[];
+  pricing_inputs?: SourcePricingInputFact[];
 };
 
 export function sourcePriceFactKey(fact: SourcePriceFact): string {
@@ -294,6 +312,13 @@ export function parsedPricingModel(model: ParsedPricingModel): ParsedPricingMode
             sourceCommercialPricingFactSchema.parse(fact),
           ),
         }),
+    ...(model.pricing_inputs === undefined
+      ? {}
+      : {
+          pricing_inputs: model.pricing_inputs.map((fact) =>
+            sourcePricingInputFactSchema.parse(fact),
+          ),
+        }),
   });
 }
 
@@ -303,6 +328,7 @@ export function publishedModel(model: ParsedProviderModel): ProviderModel {
     price_facts: _priceFacts,
     raw_price_facts: _rawPriceFacts,
     commercial_facts: _commercialFacts,
+    pricing_inputs: _pricingInputs,
     ...published
   } = model;
   return providerModelSchema.parse(published);

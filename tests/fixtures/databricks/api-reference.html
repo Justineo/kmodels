@@ -4,6 +4,11 @@
   <p>The <code>stream</code> field sends partial results using Server-sent events.</p>
   <h2>Embeddings API</h2>
   <p>Embedding tasks map input strings into embedding vectors.</p>
+  <h2>Usage</h2>
+  <p>
+    Responses include a <code>usage</code> sub-message which reports the number of tokens in the
+    request and response. The format of this sub-message is the same across all task types.
+  </p>
   <table>
     <thead>
       <tr>
@@ -21,7 +26,7 @@
       <tr>
         <td>prompt_tokens</td>
         <td>Integer</td>
-        <td>Number of input tokens.</td>
+        <td>Number of tokens from the input prompt(s).</td>
       </tr>
       <tr>
         <td>total_tokens</td>
@@ -36,12 +41,18 @@
       <tr>
         <td>cache_read_input_tokens</td>
         <td>Integer</td>
-        <td>Number of cached input tokens read.</td>
+        <td>
+          Number of input tokens read from the prompt cache. Returned as a top-level usage field for
+          Databricks-hosted Claude endpoints when caching is active.
+        </td>
       </tr>
       <tr>
         <td>cache_creation_input_tokens</td>
         <td>Integer</td>
-        <td>Number of input tokens written to the cache.</td>
+        <td>
+          Number of input tokens written to the prompt cache. Returned as a top-level usage field
+          for Databricks-hosted Claude endpoints when caching is active.
+        </td>
       </tr>
     </tbody>
   </table>

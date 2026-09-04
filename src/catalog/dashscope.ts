@@ -1,9 +1,12 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, type LinkedBundle } from "./bundle.ts";
+import { extractDashscopePricingInputs } from "./dashscope-accounting.ts";
 import {
+  attachDashscopeImageSearchFacts,
+  attachDashscopeTextToImageSearchFacts,
   attachDashscopeWebSearchFacts,
-  type DashscopeWebSearchRate,
+  type DashscopeToolRate,
 } from "./dashscope-commercial-source.ts";
 import {
   htmlColumn as column,
@@ -47,6 +50,8 @@ const pricingBundleSchema = linkedBundleSchema.extend({
 interface CommercialEvidence {
   cacheBody?: string;
   cacheRates: boolean;
+  imageSearchBody?: string;
+  textToImageSearchBody?: string;
   webSearchBody?: string;
 }
 
@@ -1251,10 +1256,7 @@ function rates(
           ? {}
           : { account_eligibility: segment.accountEligibility }),
       };
-      const meters =
-        tasks.includes("video_generation") && /input and output/i.test(effectiveHeader)
-          ? (["input_video", "video_generation"] as const)
-          : [meter(effectiveHeader, table.headings, tasks, rateUnit, conditions)];
+      const meters = [meter(effectiveHeader, table.headings, tasks, rateUnit, conditions)];
       for (const meterName of meters) {
         const base: SourcePriceFact = {
           meter: meterName,
@@ -1439,9 +1441,13 @@ function commercialEvidence(input: ParseInput, bundle: LinkedBundle): Commercial
     "context_cache_rate_drift",
   );
   const webSearchBody = companion(input, bundle, "/help/en/model-studio/web-search");
+  const imageSearchBody = companion(input, bundle, "/help/en/model-studio/image-search");
+  const textToImageSearchBody = companion(input, bundle, "/help/en/model-studio/web-search-image");
   return {
     ...(cacheBody === undefined ? {} : { cacheBody }),
     cacheRates,
+    ...(imageSearchBody === undefined ? {} : { imageSearchBody }),
+    ...(textToImageSearchBody === undefined ? {} : { textToImageSearchBody }),
     ...(webSearchBody === undefined ? {} : { webSearchBody }),
   };
 }
@@ -1503,7 +1509,7 @@ function webSearchRate(
   scope: string,
   models: Map<string, ProviderModel>,
   section: string,
-): DashscopeWebSearchRate[] {
+): DashscopeToolRate[] {
   const price = webSearchPrice(body, scope);
   if (price === undefined) {
     input.onPricingReconciliation?.({
@@ -1549,7 +1555,7 @@ function webSearchRates(
   input: ParseInput,
   body: string | undefined,
   models: Map<string, ProviderModel>,
-): DashscopeWebSearchRate[] {
+): DashscopeToolRate[] {
   if (body === undefined) return [];
   if (markdownDocument(body)) {
     const lines = body.split(/\r?\n/);
@@ -1596,7 +1602,7 @@ function webSearchRates(
     .first()
     .children("section")
     .toArray();
-  const result: DashscopeWebSearchRate[] = [];
+  const result: DashscopeToolRate[] = [];
   for (const section of sections) {
     const scope = text($(section).children("h2").first().text());
     if (!webSearchScopes.has(scope)) {
@@ -1617,6 +1623,63 @@ function webSearchRates(
         sample: scope,
       });
   return result;
+}
+
+function imageSearchRates(
+  input: ParseInput,
+  body: string | undefined,
+  models: Map<string, ProviderModel>,
+  operation: "image_search" | "web_search_image",
+): DashscopeToolRate[] {
+  if (body === undefined) return [];
+  const normalized = documentText(body);
+  const ids = mentionedModelIds(body, new Set(models.keys()));
+  if (ids.size === 0) {
+    input.onPricingReconciliation?.({
+      disposition: "unbound",
+      reason_code: `${operation}_model_scope_unbound`,
+    });
+    return [];
+  }
+  const scopes = [
+    ["Singapore", /Singapore region[^$]{0,120}\$([0-9][0-9,]*(?:\.[0-9]+)?)/i],
+    [
+      "China (Beijing)",
+      /(?:China \(Beijing\)|North China 2 \(Beijing\))[^$]{0,120}\$([0-9][0-9,]*(?:\.[0-9]+)?)/i,
+    ],
+  ] as const;
+  return scopes.flatMap(([scope, pattern]) => {
+    const amount = normalized.match(pattern)?.[1];
+    const price = amount === undefined ? undefined : decimal(amount);
+    if (price === undefined) {
+      input.onPricingReconciliation?.({
+        disposition: "unbound",
+        reason_code: `${operation}_price_unbound`,
+        sample: scope,
+      });
+      return [];
+    }
+    return [...ids].map((modelId) => {
+      const rate = publishedRate(
+        "image_search",
+        price,
+        "thousand_events",
+        input.source.id,
+        `USD per 1,000 ${operation.replaceAll("_", "-")} calls`,
+        {
+          region: scope,
+          deployment_scope: scope === "Singapore" ? "International" : "Chinese mainland",
+          operation,
+        },
+      );
+      input.onPricingReconciliation?.({
+        disposition: "normalized",
+        reason_code: `${operation}_rate_normalized`,
+        sample: `${modelId}:${scope}`,
+      });
+      return { modelId, scope, rate };
+    });
+  });
 }
 
 function cacheModels(input: ParseInput, body: string | undefined): Map<string, Set<string>> {
@@ -1849,6 +1912,16 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     input.source.id,
     webSearchRates(input, evidence.webSearchBody, models),
   );
+  attachDashscopeImageSearchFacts(
+    models,
+    input.source.id,
+    imageSearchRates(input, evidence.imageSearchBody, models, "image_search"),
+  );
+  attachDashscopeTextToImageSearchFacts(
+    models,
+    input.source.id,
+    imageSearchRates(input, evidence.textToImageSearchBody, models, "web_search_image"),
+  );
   for (const [key, idsForRegion] of cache) {
     const [mode = "", region = ""] = key.split("\0");
     for (const id of idsForRegion) {
@@ -1946,6 +2019,14 @@ export function parseDashscopePricing(input: ParseInput): ProviderModel[] {
     if (derived.length > 0)
       models.set(id, merge(model, { ...model, pricing_state: "numeric", price_facts: derived }));
   }
+  const pricingInputs = extractDashscopePricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   if (findings.length > 0) input.onContractFinding?.(contractExtensionEvidence(findings));
   return bounded(models, extractor.minModels, extractor.maxModels, "DashScope pricing");
 }

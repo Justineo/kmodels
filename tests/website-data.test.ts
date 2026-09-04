@@ -269,13 +269,6 @@ describe("website data", () => {
       expect(allowance.reset).not.toMatch(/ reset$/);
     }
     expect(
-      hydratedDetails.flatMap(
-        ({ pricing }) =>
-          pricing?.offers.flatMap((offer) => offer.unnormalized.map(({ label }) => label)) ?? [],
-      ),
-    ).toContain("Minimum runtime");
-
-    expect(
       Math.max(...hydratedDetails.map(({ pricing }) => pricing?.offers.length ?? 0)),
     ).toBeLessThanOrEqual(32);
     expect(

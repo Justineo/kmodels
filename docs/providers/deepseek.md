@@ -17,7 +17,10 @@ The fetch bundle contains only companions that contribute a current catalog or r
 - [Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion),
   [Responses](https://api-docs.deepseek.com/api/create-response), and
   [FIM](https://api-docs.deepseek.com/api/create-completion) references for exact operation model
-  sets and returned usage fields; and
+  sets, returned usage fields, and terminal streaming envelopes;
+- the [Anthropic API guide](https://api-docs.deepseek.com/guides/anthropic_api) for the compatible
+  Messages endpoint and streaming support, but not for usage locators that the guide does not
+  document;
 - the [Vision guide](https://api-docs.deepseek.com/guides/vision) for the exact image-input model and
   its image-to-token billing rule; and
 - the public [Lists Models](https://api-docs.deepseek.com/api/list-models) example as a second
@@ -75,10 +78,15 @@ rate and exact applicability rule. Training, storage, provisioned capacity, subs
 self-hosted execution are also outside the direct request-rate boundary. Excluded facts are not
 published as `unknown` or raw pricing.
 
-## Usage bindings
+## Pricing inputs and calculation methods
 
-Numeric rates remain useful even if an optional interface reference drifts. A charge binding is
-added only for an interface whose current operation and usage schema were verified:
+The price book publishes provider-independent charge signals separately from the provider fields
+that can supply them. Numeric rates therefore remain useful if an optional interface reference
+drifts. Each verified field is an independent `pricing_input`; losing one field removes only that
+locator and any calculation method that requires it, not its sibling fields, endpoint, model, or
+rate.
+
+The current machine-readable input contract is:
 
 | Rate             | Chat Completions           | Responses                                           | FIM                        |
 | ---------------- | -------------------------- | --------------------------------------------------- | -------------------------- |
@@ -86,9 +94,29 @@ added only for an interface whose current operation and usage schema were verifi
 | Cache-miss input | `prompt_cache_miss_tokens` | `input_tokens - input_tokens_details.cached_tokens` | `prompt_cache_miss_tokens` |
 | Output           | `completion_tokens`        | `output_tokens`                                     | `completion_tokens`        |
 
-All bindings aggregate per request. Streaming remains costable only when the terminal usage object
-is available. Reasoning-token fields are subsets used for explanation, not additional charged
-quantities.
+Chat and FIM non-streaming paths are rooted at `/usage`; their terminal stream chunk exposes the
+same usage object immediately before `data: [DONE]`. Responses non-streaming paths are rooted at
+`/usage`; terminal `response.completed`, `response.incomplete`, and `response.failed` events expose
+the full response under `/response`, so their streaming paths are rooted at `/response/usage`.
+Every stream input is marked `terminal_only`.
+
+Chat and FIM cache-miss quantities are direct observations. Responses cache-miss input uses a
+closed, unit-preserving calculation graph: total input tokens minus cached input tokens, floored at
+zero. Kmodels publishes both response and terminal-stream locators as alternative acquisition
+methods. It does not publish an arbitrary expression, CEL program, or provider-key pseudo-expression.
+All bindings aggregate per request.
+
+The Anthropic-compatible endpoint is part of the callable model catalog, but the current first-party
+guide does not define its response or stream usage envelope. Kmodels therefore does not guess a
+Messages usage locator. The same token rates remain semantically applicable to Anthropic-compatible
+requests; a cost consumer must wait for a documented provider input contract before claiming exact
+automatic extraction through that protocol.
+
+Reasoning-token fields are subsets used for explanation, not additional charged quantities. Image
+tokens are already included in input totals, so they do not need a second charge signal. Cache
+creation is automatic and has no published cache-write price. The current pricing table also has no
+separate built-in web-search fee; search can increase ordinary model tokens, which the same inputs
+already capture.
 
 The current price table marks both models as FIM-capable while the operation-specific API reference
 enumerates only `deepseek-v4-pro`. The specific operation controls the binding; the disagreement is
@@ -101,7 +129,8 @@ reported without removing either model or its ordinary rates.
 - A malformed model header, field, support value, billing-period label, price cell, companion
   operation, or usage group suppresses only that exact claim. Valid siblings remain.
 - An optional companion failure cannot erase current IDs or numeric price-table rows. If usage
-  evidence fails, only the affected charge binding is omitted.
+  evidence fails, only the affected pricing-input locator or dependent calculation method is
+  omitted. The semantic charge binding and numeric rate remain.
 - The public model-list witness and optional authenticated inventory report exact-ID disagreements
   but do not override the exhaustive price table.
 - Unknown table rows are reported and ignored. Account-only and otherwise out-of-scope rows are
@@ -115,11 +144,12 @@ there is no fuzzy reconciliation, family inheritance, or comparator fallback.
 ## Presentation
 
 Model details show one PAYG mechanism, billing-currency and Peak/Off-peak selectors, the compact UTC
-weekly rule, the three applicable published rates, and their verified usage counters. They do not
+weekly rule, the three applicable published rates, and their verified pricing-input methods. They do not
 show balance, concurrency, settlement, routing, provisioning, training, storage, or a separate
 web-search price. The website presents rates rather than calculating a total or deciding the
 current billing period; Gateway consumers may select the applicable rule, multiply rates by
-returned usage, and sum requests.
+returned usage, and sum requests. Runtime collection, request lifecycle, ledgers, contract-price
+overrides, and invoice reconciliation remain consumer responsibilities rather than Pricebook data.
 
 ## Comparator audit only
 

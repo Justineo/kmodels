@@ -14,7 +14,6 @@ type MutableFact = Omit<SourceCommercialPricingFact, "source_ref">;
 export function extractGeminiCommercialFacts(
   models: Map<string, ParsedProviderModel>,
   sourceId: string,
-  bindingAvailable: boolean,
 ): void {
   const facts = new Map<string, MutableFact>();
   for (const model of models.values()) {
@@ -32,29 +31,14 @@ export function extractGeminiCommercialFacts(
     model.raw_price_facts = model.raw_price_facts.filter(
       ({ impact, term_key }) => impact !== "allowance" && term_key !== "agent_usage_formula",
     );
-    if (!bindingAvailable && model.price_facts.length > 0)
-      model.raw_price_facts.push(bindingUnavailable(sourceId));
   }
   const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && facts.size > 0)
     carrier.commercial_facts = [...facts.values()].map((fact) => ({
       source_ref: sourceId,
       ...fact,
-      raw_price_facts: bindingAvailable
-        ? fact.raw_price_facts
-        : [...fact.raw_price_facts, bindingUnavailable(sourceId)],
+      raw_price_facts: fact.raw_price_facts,
     }));
-}
-
-function bindingUnavailable(sourceRef: string) {
-  return {
-    source_ref: sourceRef,
-    term_key: "charge_binding_unavailable",
-    impact: "informational" as const,
-    reason: "unknown_applicability" as const,
-    conditions: {},
-    raw: { fragment: "Gemini response usage schema was not verified during this refresh" },
-  };
 }
 
 function groundingFact(

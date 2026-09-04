@@ -6,17 +6,38 @@ import type {
   AtomicRateTerm,
   AtomicRateVariant,
 } from "./pricing-assembly.ts";
+import { canonicalJson } from "./canonical-json.ts";
+import { compareUtf8, uniqueCanonicalValues as uniqueCanonical } from "./canonical-value.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
-import { addAtom, isStandardUnit, withApplicability } from "./pricing-commercial-assembly.ts";
+import {
+  addAtom,
+  isStandardUnit,
+  rawEvidence,
+  standardSignal,
+  withApplicability,
+} from "./pricing-commercial-assembly.ts";
 import type {
   ChargeBinding,
-  NormalizedPriceObservation,
   PriceApplicability,
   PriceCondition,
+  PriceDimension,
   PriceMeter,
+  PriceSelectorSource,
   RawPriceObservation,
   UnitExpression,
+  UsageQuantityMethod,
+  UsageSignal,
 } from "./pricing-schema.ts";
+import {
+  indexPricingInputs,
+  includePricingInputSourceRefs,
+  pricingInputFacts,
+  pricingInputObservation,
+  uniquePricingInputFacts,
+  usageInputSources,
+  type PricingInputIndex,
+} from "./pricing-input.ts";
+import type { SourcePricingInputFact } from "./pricing-source.ts";
 import type { ProviderModel } from "./schema.ts";
 
 type PublishedModel = Pick<ProviderModel, "capabilities" | "tasks" | "uid">;
@@ -24,19 +45,25 @@ type PublishedModel = Pick<ProviderModel, "capabilities" | "tasks" | "uid">;
 const eventUnit: UnitExpression = {
   factors: [{ unit: { namespace: "kmodels", value: "event" }, power: 1 }],
 };
+const tokenUnit: UnitExpression = {
+  factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+};
 
 export function applyOpenAiCommercialTopology(
   input: AtomicProviderPricing,
   models: readonly PublishedModel[],
+  pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
   const modelByRef = new Map(models.map((model) => [model.uid, model]));
+  const inputIndex = indexPricingInputs(pricingInputs);
   const books = input.books
     .filter(admittedBook)
     .map((book) =>
       book.scope.kind === "models"
-        ? splitModelBook(book, modelByRef)
-        : bindResourceBook(book, input),
-    );
+        ? splitModelBook(book, modelByRef, input, inputIndex)
+        : bindResourceBook(book, input, inputIndex),
+    )
+    .map(includePricingInputSourceRefs);
   return { ...input, books };
 }
 
@@ -51,10 +78,19 @@ function admittedBook(book: AtomicPricingBook): boolean {
 function splitModelBook(
   book: AtomicPricingBook,
   models: ReadonlyMap<string, PublishedModel>,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
   const model =
     book.scope.model_refs.length === 1 ? models.get(book.scope.model_refs[0]!) : undefined;
-  return partitionBook(preferPricingPage(book), "usage", modelMechanism(model).name, model);
+  return partitionBook(
+    preferPricingPage(book),
+    "usage",
+    modelMechanism(model).name,
+    model,
+    input,
+    inputIndex,
+  );
 }
 
 function preferPricingPage(book: AtomicPricingBook): AtomicPricingBook {
@@ -140,11 +176,21 @@ function partitionBook(
   sourceOfferKey: string,
   syncName: string,
   model: PublishedModel | undefined,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
   const offers = book.offers.flatMap((offer) => {
     if (offer.offer_key !== sourceOfferKey) return [offer];
-    const sync = partitionOffer(offer, "sync", syncName, "sync", model);
-    const batch = partitionOffer(offer, "batch", "Batch inference", "batch", model);
+    const sync = partitionOffer(offer, "sync", syncName, "sync", model, input, inputIndex);
+    const batch = partitionOffer(
+      offer,
+      "batch",
+      "Batch inference",
+      "batch",
+      model,
+      input,
+      inputIndex,
+    );
     return [sync, batch].filter((candidate): candidate is AtomicPricingOffer =>
       hasCommercialContent(candidate),
     );
@@ -170,6 +216,8 @@ function partitionOffer(
   name: string,
   partition: "sync" | "batch",
   model: PublishedModel | undefined,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingOffer | undefined {
   const states = offer.states.flatMap((state) => {
     const applicability = partitionApplicability(state.applicability, partition);
@@ -182,7 +230,10 @@ function partitionOffer(
       },
     ];
   });
-  const terms = offer.terms.flatMap((term) => partitionTerm(term, partition, model));
+  const rateMeters = offer.terms.flatMap((term) => (term.kind === "rate" ? [term.meter] : []));
+  const terms = offer.terms.flatMap((term) =>
+    partitionTerm(term, partition, model, input, inputIndex, rateMeters),
+  );
   if (states.length === 0 && terms.length === 0) return;
   return {
     ...offer,
@@ -198,6 +249,9 @@ function partitionTerm(
   term: AtomicPricingTerm,
   partition: "sync" | "batch",
   model: PublishedModel | undefined,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+  rateMeters: readonly PriceMeter[],
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => {
@@ -218,8 +272,23 @@ function partitionTerm(
       applicability,
       observation: withApplicability(variant.observation, applicability),
     };
-    const charge_binding = modelChargeBinding(mapped.meter, next, partition);
-    return [{ ...next, ...(charge_binding === undefined ? {} : { charge_binding }) }];
+    const charge_binding = modelChargeBinding(
+      mapped.meter,
+      next,
+      partition,
+      model,
+      input,
+      inputIndex,
+      rateMeters,
+    );
+    const selector_sources = selectorSources(next.applicability, inputIndex, model);
+    return [
+      {
+        ...next,
+        ...(charge_binding === undefined ? {} : { charge_binding }),
+        ...(selector_sources.length === 0 ? {} : { selector_sources }),
+      },
+    ];
   });
   const raw_variants = mapped.raw_variants.flatMap((variant) => {
     if (variant.possible_scope === undefined) return partition === "sync" ? [variant] : [];
@@ -272,49 +341,324 @@ function modelChargeBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
   partition: "sync" | "batch",
+  model: PublishedModel | undefined,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+  rateMeters: readonly PriceMeter[],
 ): ChargeBinding | undefined {
-  const signal = standardModelSignal(meter, variant.price.per);
-  if (signal === undefined) return;
+  const spec = modelSignal(meter, variant.price.per, model, input, rateMeters);
+  if (spec === undefined) return;
+  const quantity =
+    partition === "batch" ? { methods: [], facts: [] } : quantityMethods(spec, inputIndex);
   return {
-    signal: { namespace: "kmodels", value: signal },
+    signal: spec.signal,
     aggregation: partition === "batch" ? "result_item" : "request",
-    observations: [usageObservation(variant.observation, `openapi:${signal}`)],
+    ...(quantity.methods.length === 0 ? {} : { quantity_methods: quantity.methods }),
+    observations: uniqueObservations([
+      rawEvidence(variant.observation),
+      ...quantity.facts.map(pricingInputObservation),
+    ]),
   };
 }
 
-function standardModelSignal(
+interface ModelSignalSpec {
+  signal: UsageSignal;
+  directKeys: string[];
+  derivedUncached?: boolean;
+}
+
+function modelSignal(
   meter: PriceMeter,
   unit: UnitExpression,
-): Extract<ChargeBinding["signal"], { namespace: "kmodels" }>["value"] | undefined {
-  if (meter.namespace !== "kmodels") return;
-  if (meter.value === "input_text" && isStandardUnit(unit, "token")) return "uncached_input_tokens";
-  if (meter.value === "cache_read_text" && isStandardUnit(unit, "token"))
-    return "cached_input_tokens";
+  model: PublishedModel | undefined,
+  input: AtomicProviderPricing,
+  rateMeters: readonly PriceMeter[],
+): ModelSignalSpec | undefined {
+  const standard = (
+    value: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
+    directKeys: string[],
+    derivedUncached = false,
+  ): ModelSignalSpec => ({
+    signal: { namespace: "kmodels", value },
+    directKeys,
+    ...(derivedUncached ? { derivedUncached: true } : {}),
+  });
+  const provider = (key: string, definition: string, directKeys: string[]): ModelSignalSpec => {
+    addAtom(input, {
+      kind: "usage_signal",
+      key,
+      definition,
+      unit: tokenUnit,
+      resolution_phase: "outcome",
+    });
+    return {
+      signal: { namespace: "provider", provider_id: "openai", value: key },
+      directKeys,
+    };
+  };
+  if (meter.namespace === "provider") {
+    if (meter.provider_id !== "openai" || !isStandardUnit(unit, "token")) return;
+    if (meter.value === "cache_read_audio")
+      return provider("cached_input_audio_tokens", "Billable cached audio-input tokens", [
+        "organization.completions.input_cached_audio_tokens",
+      ]);
+    if (meter.value === "cache_read_image")
+      return model?.tasks.includes("image_generation") === true
+        ? provider(
+            "cached_image_prompt_image_tokens",
+            "Billable cached image-input tokens for an image-generation response",
+            [],
+          )
+        : provider("cached_input_image_tokens", "Billable cached image-input tokens", [
+            "organization.completions.input_cached_image_tokens",
+          ]);
+    return;
+  }
+  if (meter.value === "input_text" && isStandardUnit(unit, "token")) {
+    const partitioned = hasMeter(rateMeters, "input_audio") || hasMeter(rateMeters, "input_image");
+    return model?.tasks.includes("image_generation")
+      ? provider(
+          "uncached_image_prompt_text_tokens",
+          "Billable uncached text-input tokens for an image-generation response",
+          [],
+        )
+      : standard(
+          "uncached_input_tokens",
+          [
+            partitioned
+              ? "organization.completions.input_text_tokens"
+              : "organization.completions.input_uncached_tokens",
+          ],
+          !partitioned,
+        );
+  }
+  if (meter.value === "cache_read_text" && isStandardUnit(unit, "token")) {
+    if (model?.tasks.includes("image_generation") === true)
+      return provider(
+        "cached_image_prompt_text_tokens",
+        "Billable cached text-input tokens for an image-generation response",
+        [],
+      );
+    const partitioned =
+      hasMeter(rateMeters, "cache_read_audio") || hasMeter(rateMeters, "cache_read_image");
+    return standard("cached_input_tokens", [
+      ...(partitioned ? [] : ["responses.usage.cached_input_tokens"]),
+      partitioned
+        ? "organization.completions.input_cached_text_tokens"
+        : "organization.completions.input_cached_tokens",
+    ]);
+  }
   if (meter.value === "cache_write_text" && isStandardUnit(unit, "token"))
-    return "cache_write_tokens";
-  if (meter.value === "output_text" && isStandardUnit(unit, "token")) return "output_tokens";
-  if (meter.value === "embedding" && isStandardUnit(unit, "token")) return "input_tokens";
+    return standard("cache_write_tokens", [
+      "responses.usage.cache_write_tokens",
+      "organization.completions.input_cache_write_tokens",
+    ]);
+  if (meter.value === "output_text" && isStandardUnit(unit, "token")) {
+    const partitioned =
+      hasMeter(rateMeters, "output_audio") || hasMeter(rateMeters, "output_image");
+    return standard("output_tokens", [
+      ...(partitioned ? [] : ["responses.usage.output_tokens"]),
+      partitioned
+        ? "organization.completions.output_text_tokens"
+        : "organization.completions.output_tokens",
+    ]);
+  }
+  if (meter.value === "input_audio" && isStandardUnit(unit, "token"))
+    return provider("uncached_input_audio_tokens", "Billable uncached audio-input tokens", [
+      "organization.completions.input_audio_tokens",
+    ]);
+  if (meter.value === "output_audio" && isStandardUnit(unit, "token"))
+    return provider("output_audio_tokens", "Billable audio-output tokens", [
+      "organization.completions.output_audio_tokens",
+    ]);
+  if (meter.value === "input_image" && isStandardUnit(unit, "token"))
+    return provider(
+      "uncached_input_image_tokens",
+      "Billable uncached image-input tokens",
+      model?.tasks.includes("image_generation")
+        ? []
+        : ["organization.completions.input_image_tokens"],
+    );
+  if (meter.value === "output_image" && isStandardUnit(unit, "token"))
+    return provider(
+      "output_image_tokens",
+      "Billable image-output tokens",
+      model?.tasks.includes("image_generation")
+        ? ["responses.image_output_tokens"]
+        : ["organization.completions.output_image_tokens"],
+    );
+  if (meter.value === "output_audio" && isStandardUnit(unit, "character"))
+    return standard("input_characters", ["organization.audio_speeches.characters"]);
+  if (meter.value === "embedding" && isStandardUnit(unit, "token"))
+    return standard("input_tokens", [
+      "responses.embedding_input_tokens",
+      "organization.embeddings.input_tokens",
+    ]);
   if (meter.value === "image_generation" && isStandardUnit(unit, "image"))
-    return "generated_images";
+    return standard("generated_images", [
+      "responses.generated_images",
+      "organization.images.images",
+    ]);
   if (meter.value === "video_generation" && isStandardUnit(unit, "second"))
-    return "generated_seconds";
-  if (meter.value === "transcription" && isStandardUnit(unit, "second")) return "active_seconds";
+    return standard("generated_seconds", ["responses.generated_seconds"]);
+  if (meter.value === "transcription" && isStandardUnit(unit, "second"))
+    return standard("processed_audio_seconds", ["organization.audio_transcriptions.seconds"]);
+}
+
+function hasMeter(meters: readonly PriceMeter[], value: string): boolean {
+  return meters.some((meter) => meter.value === value);
+}
+
+function quantityMethods(
+  spec: ModelSignalSpec,
+  inputIndex: PricingInputIndex,
+): { methods: UsageQuantityMethod[]; facts: SourcePricingInputFact[] } {
+  const methods: UsageQuantityMethod[] = [];
+  const facts: SourcePricingInputFact[] = [];
+  const direct = pricingInputFacts(inputIndex, spec.directKeys);
+  if (direct.length > 0) {
+    methods.push({ input_sources: usageInputSources(spec.signal, direct) });
+    facts.push(...direct);
+  }
+  if (spec.derivedUncached === true) {
+    const total = pricingInputFacts(inputIndex, ["responses.usage.input_tokens"]);
+    const cached = pricingInputFacts(inputIndex, ["responses.usage.cached_input_tokens"]);
+    const written = pricingInputFacts(inputIndex, ["responses.usage.cache_write_tokens"]);
+    if (total.length > 0 && cached.length > 0 && written.length > 0) {
+      const totalSignal = standardSignal("input_tokens");
+      const cachedSignal = standardSignal("cached_input_tokens");
+      const writtenSignal = standardSignal("cache_write_tokens");
+      methods.push({
+        calculation: {
+          nodes: [
+            { op: "signal", signal: totalSignal },
+            { op: "signal", signal: cachedSignal },
+            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+            { op: "signal", signal: writtenSignal },
+            { op: "subtract_floor_zero", minuend: 2, subtrahend: 3 },
+          ],
+          result: 4,
+        },
+        input_sources: [
+          ...usageInputSources(totalSignal, total),
+          ...usageInputSources(cachedSignal, cached),
+          ...usageInputSources(writtenSignal, written),
+        ].sort(compareCanonical),
+      });
+      facts.push(...total, ...cached, ...written);
+    }
+  }
+  return {
+    methods: methods.sort(compareCanonical),
+    facts: uniquePricingInputFacts(facts),
+  };
+}
+
+function selectorSources(
+  applicability: PriceApplicability,
+  inputIndex: PricingInputIndex,
+  model: PublishedModel | undefined,
+): PriceSelectorSource[] {
+  const dimensions = new Map<string, PriceDimension>();
+  for (const { all_of } of applicability.any_of)
+    for (const { dimension } of all_of) dimensions.set(canonicalJson(dimension), dimension);
+  const result: PriceSelectorSource[] = [];
+  for (const dimension of dimensions.values()) {
+    if (dimension.namespace !== "kmodels") continue;
+    const keys =
+      dimension.value === "served_service_tier"
+        ? ["responses.served_service_tier", "organization.completions.service_tier"]
+        : dimension.value === "context_tokens"
+          ? ["responses.usage.input_tokens"]
+          : dimension.value === "quality"
+            ? model?.tasks.includes("image_generation") === true
+              ? ["responses.image_quality"]
+              : []
+            : dimension.value === "resolution"
+              ? model?.tasks.includes("video_generation") === true
+                ? ["responses.video_resolution"]
+                : model?.tasks.includes("image_generation") === true
+                  ? ["responses.image_resolution"]
+                  : []
+              : [];
+    for (const fact of pricingInputFacts(inputIndex, keys))
+      result.push({
+        dimension,
+        channel: fact.channel,
+        locator: fact.locator,
+        availability: fact.availability,
+        ...optionalSelectorNormalization(dimension, applicability, model),
+        observations: [pricingInputObservation(fact)],
+      });
+  }
+  return result.sort(compareCanonical);
+}
+
+function optionalSelectorNormalization(
+  dimension: PriceDimension,
+  applicability: PriceApplicability,
+  model: PublishedModel | undefined,
+): Pick<PriceSelectorSource, "normalization"> | Record<never, never> {
+  if (dimension.namespace !== "kmodels") return {};
+  const entries = applicability.any_of.flatMap(({ all_of }) =>
+    all_of.flatMap((condition) => {
+      if (
+        condition.kind !== "categorical" ||
+        canonicalJson(condition.dimension) !== canonicalJson(dimension)
+      )
+        return [];
+      return condition.values.flatMap((value) => {
+        const sourceValues =
+          dimension.value === "served_service_tier"
+            ? value.value === "standard"
+              ? ["default"]
+              : value.value === "fast"
+                ? ["priority"]
+                : value.value === "flex"
+                  ? ["flex"]
+                  : []
+            : dimension.value === "resolution" && model?.tasks.includes("video_generation") === true
+              ? videoResolutionSourceValues(value.value)
+              : [];
+        return sourceValues.map((source_value) => ({ source_value, value }));
+      });
+    }),
+  );
+  return entries.length === 0
+    ? {}
+    : { normalization: { kind: "categorical_map", entries: uniqueCanonical(entries) } };
+}
+
+function videoResolutionSourceValues(value: string): string[] {
+  if (value === "720p") return ["1280x720", "720x1280"];
+  if (value === "1024p") return ["1024x1792", "1792x1024"];
+  if (value === "1080p") return ["1080x1920", "1920x1080"];
+  return [];
+}
+
+function uniqueObservations(observations: RawPriceObservation[]): RawPriceObservation[] {
+  return uniqueCanonical(observations);
+}
+
+function compareCanonical(left: unknown, right: unknown): number {
+  return compareUtf8(canonicalJson(left), canonicalJson(right));
 }
 
 function bindResourceBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
   const resourceKey = book.scope.resource_key;
   const partitioned = resourceKey.startsWith("fine-tuned-inference:")
-    ? partitionBook(book, "inference", "Fine-tuned model inference", undefined)
+    ? partitionBook(book, "inference", "Fine-tuned model inference", undefined, input, inputIndex)
     : book;
   const offers = partitioned.offers.map((offer) => ({
     ...offer,
     terms: offer.terms.map((term) => {
       if (term.kind !== "rate") return term;
-      const binding = resourceChargeBinding(resourceKey, term, input, offer.offer_key);
+      const binding = resourceChargeBinding(resourceKey, term, input, offer.offer_key, inputIndex);
       return binding === undefined
         ? term
         : {
@@ -334,29 +678,56 @@ function resourceChargeBinding(
   term: AtomicRateTerm,
   input: AtomicProviderPricing,
   offerKey: string,
+  inputIndex: PricingInputIndex,
 ): ((variant: AtomicRateVariant) => ChargeBinding) | undefined {
+  if (
+    resourceKey === "containers" &&
+    term.meter.namespace === "kmodels" &&
+    term.meter.value === "container_runtime"
+  )
+    return (variant) => {
+      const key = "container_session_blocks";
+      addAtom(input, {
+        kind: "usage_signal",
+        key,
+        definition: "Provider-billed 20-minute container session blocks at the selected capacity",
+        unit: variant.price.per,
+        resolution_phase: "account",
+      });
+      return {
+        signal: { namespace: "provider", provider_id: "openai", value: key },
+        aggregation: "session",
+        observations: [rawEvidence(variant.observation)],
+      };
+    };
   if (resourceKey === "file-search" && isUnitTerm(term, "event"))
     return providerBinding(
       input,
       "file_search_calls",
       "Provider-reported File Search call events",
       eventUnit,
-      "openapi:organization.usage.file_search_calls.num_requests",
+      ["organization.file_search_calls.num_requests"],
+      inputIndex,
     );
   if (resourceKey.startsWith("web-search") && isUnitTerm(term, "event"))
-    return (variant) => ({
-      signal: { namespace: "kmodels", value: "successful_web_searches" },
-      aggregation: "request",
-      observations: [
-        usageObservation(variant.observation, "openapi:organization.usage.web_search_calls"),
-      ],
-    });
+    return providerBinding(
+      input,
+      "web_search_calls",
+      "Provider-reported billable Web Search call events",
+      eventUnit,
+      ["organization.web_search_calls.num_requests"],
+      inputIndex,
+    );
   if (resourceKey.startsWith("fine-tuned-inference:"))
     return (variant) => {
       const binding = modelChargeBinding(
         term.meter,
         variant,
         offerKey === "batch" ? "batch" : "sync",
+        undefined,
+        input,
+        inputIndex,
+        [term.meter],
       );
       if (binding === undefined) throw new Error("Fine-tuned inference rate has no exact binding");
       return binding;
@@ -368,7 +739,8 @@ function providerBinding(
   key: string,
   definition: string,
   unit: UnitExpression,
-  locator: string,
+  keys: string[],
+  inputIndex: PricingInputIndex,
 ): (variant: AtomicRateVariant) => ChargeBinding {
   addAtom(input, {
     kind: "usage_signal",
@@ -377,18 +749,20 @@ function providerBinding(
     unit,
     resolution_phase: "outcome",
   });
-  return (variant) => ({
-    signal: { namespace: "provider", provider_id: "openai", value: key },
-    aggregation: "request",
-    observations: [usageObservation(variant.observation, locator)],
-  });
-}
-
-function usageObservation(rate: NormalizedPriceObservation, locator: string): RawPriceObservation {
-  return {
-    source_ref: rate.source_ref,
-    locator: { kind: "provider_key", value: locator },
-    raw: { fragment: locator },
+  const signal = { namespace: "provider", provider_id: "openai", value: key } as const;
+  return (variant) => {
+    const facts = pricingInputFacts(inputIndex, keys);
+    return {
+      signal,
+      aggregation: "request",
+      ...(facts.length === 0
+        ? {}
+        : { quantity_methods: [{ input_sources: usageInputSources(signal, facts) }] }),
+      observations: uniqueObservations([
+        rawEvidence(variant.observation),
+        ...facts.map(pricingInputObservation),
+      ]),
+    };
   };
 }
 

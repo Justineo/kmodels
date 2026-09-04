@@ -2177,11 +2177,37 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
     .sort((left, right) => left.model.localeCompare(right.model));
   const page = normalizedText($.root().text());
   const costCard = /\bCost \/1M tokens\b/.test(page);
-  const amount = (label: "input" | "cached" | "output"): string | undefined =>
-    page.match(new RegExp(`\\$((?:0|[1-9]\\d*)(?:\\.\\d+)?)\\s*${label}\\b`))?.[1];
-  const input = amount("input");
-  const cached = amount("cached");
-  const output = amount("output");
+  const fields = ["input", "cached", "output"] as const;
+  const tiered = new Map<string, Partial<Record<(typeof fields)[number], string>>>();
+  $(".pricing-rate[data-rate]").each((_index, element) => {
+    const rate = $(element).attr("data-rate")?.trim().toLowerCase();
+    const label = normalizedText($(element).parent().children("div").last().text()).toLowerCase();
+    const field = fields.find((candidate) => candidate === label);
+    const amount = normalizedText($(element).text()).match(/^\$((?:0|[1-9]\d*)(?:\.\d+)?)$/)?.[1];
+    if (rate === undefined || !/^[a-z][a-z0-9_-]*$/.test(rate) || amount === undefined) return;
+    if (field === undefined) return;
+    const values = tiered.get(rate) ?? {};
+    values[field] = amount;
+    tiered.set(rate, values);
+  });
+  const variants =
+    tiered.size > 0
+      ? [...tiered]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([billingPeriod, values]) => ({
+            ...(tiered.size === 1 ? {} : { billing_period: billingPeriod }),
+            ...values,
+          }))
+      : [
+          Object.fromEntries(
+            fields.flatMap((field) => {
+              const amount = page.match(
+                new RegExp(`\\$((?:0|[1-9]\\d*)(?:\\.\\d+)?)\\s*${field}\\b`),
+              )?.[1];
+              return amount === undefined ? [] : [[field, amount]];
+            }),
+          ),
+        ];
   return JSON.stringify({
     model: family,
     ...(title === "" ? {} : { title }),
@@ -2190,10 +2216,8 @@ export function normalizeOllamaModelPage(model: string, body: string): string {
       ? {}
       : {
           cost: {
-            ...(input === undefined ? {} : { input }),
-            ...(cached === undefined ? {} : { cached }),
-            ...(output === undefined ? {} : { output }),
             unit: "1M tokens",
+            variants,
           },
         }),
   });

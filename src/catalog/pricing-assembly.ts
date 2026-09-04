@@ -21,6 +21,7 @@ import {
   type OfferRelation,
   type PriceMeter,
   type PriceRateVariant,
+  type PriceSelectorSource,
   type PriceScopeObservation,
   type PriceStateVariant,
   type PricingBook,
@@ -124,6 +125,7 @@ export interface AtomicRateVariant {
   resolution_policy?: string;
   validity?: PublishedValidity;
   charge_binding?: ChargeBinding;
+  selector_sources?: PriceSelectorSource[];
   observation: NormalizedPriceObservation;
 }
 
@@ -476,10 +478,27 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
         applicability,
         ...optional("validity", first.validity),
         ...optional("charge_binding", mergedChargeBinding(items)),
+        ...optional("selector_sources", mergedSelectorSources(items)),
         observations,
       });
   }
   return { variants: result, raw };
+}
+
+function mergedSelectorSources(variants: AtomicRateVariant[]): PriceSelectorSource[] | undefined {
+  const grouped = new Map<string, PriceSelectorSource[]>();
+  for (const source of variants.flatMap(({ selector_sources }) => selector_sources ?? [])) {
+    const { observations: _observations, ...identity } = source;
+    append(grouped, canonicalJson(identity), source);
+  }
+  const sources = [...grouped.values()].map((items) => ({
+    ...items[0]!,
+    observations: sortUnique(
+      items.flatMap(({ observations }) => observations),
+      rawObservationKey,
+    ),
+  }));
+  return sources.length === 0 ? undefined : sortUnique(sources, canonicalJson);
 }
 
 function mergedChargeBinding(variants: AtomicRateVariant[]): ChargeBinding | undefined {

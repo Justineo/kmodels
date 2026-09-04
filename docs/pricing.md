@@ -1,12 +1,12 @@
 # Pricing
 
-Status: shared wire implemented; provider convergence is in progress
+Status: implemented and adopted by the accepted snapshot
 
 This document is the current wire and presentation contract.
 [Commercial topology](commercial-topology.md) defines the narrower admission boundary for an AI
-Gateway rate book. The shared wire is implemented; providers are being re-reviewed against that
-boundary one at a time. Generated artifacts must pass topology and replay-adoption gates before a
-provider convergence pass is current.
+Gateway rate book. The shared wire and configured-provider adapters implement that boundary.
+Generated artifacts must pass topology and replay-adoption gates before a newly implemented adapter
+is adopted by the accepted snapshot.
 
 ## Decision
 
@@ -71,6 +71,13 @@ pricing input cannot safely be persisted has no replay entry, so its accepted
 partition is carried through unchanged. Binding, source, extractor, ownership,
 provenance, completeness, or validation failures abort the compilation rather
 than publishing a partial result.
+
+Source manifests distinguish rate authority from accounting authority. `pricing`
+means that a source publishes price facts and therefore requires reviewed pricing
+evidence; `pricing_inputs` means that it publishes first-party acquisition or
+selector contracts. A public source may own either or both. Both are pricing
+dependencies for refresh, omission, replay, and atomic publication, but an
+accounting-only source does not masquerade as a price book.
 
 The generated-data gate replays every captured provider with the current extractor version and
 verifies that accepted providers still expose their adopted in-boundary resources, relationships,
@@ -231,7 +238,7 @@ The current contract keeps these raw:
 
 - unknown amount, denomination, unit, meter, or applicability;
 - usage aggregation whose accumulation/reset basis is not established;
-- formulas outside reviewed adapter calculations;
+- formulas outside reviewed adapter calculations or the closed quantity-calculation grammar;
 - unsupported graduated, block, or contract structures;
 - conflicts that cannot be localized as one exact normalized value;
 - allowances whose normalized target rate is unavailable;
@@ -403,14 +410,98 @@ comparison, and canonical rational conversion use digit operations or `BigInt`,
 never binary floating-point arithmetic.
 
 A rate variant may additionally bind its commercial meter to one reviewed
-usage signal. The binding records only the signal, aggregation boundary,
-optional exact rational scale, and evidence. Its scaled signal unit must equal
-the rate denominator. Absence of a binding preserves the normalized list price
-while leaving request-cost reconstruction incomplete. API field paths and
-unsupported arithmetic remain evidence or bounded raw facts rather than
-becoming canonical signal identity. Contribution variants use the same binding
-shape and may remain unbound when topology is exact but quantity semantics are
-not.
+usage signal. The signal names the billable result quantity; the aggregation
+boundary says where independent quantities reset. An optional exact rational
+scale converts the reported count without changing its dimension. The final
+quantity unit must equal the rate denominator. Absence of a binding preserves
+the normalized list price while leaving request-cost reconstruction incomplete.
+Contribution variants use the same binding shape and may remain unbound when
+topology is exact but quantity semantics are not.
+
+Without `quantity_methods`, the binding means `quantity = signal × scale` and the
+consumer must supply that signal. When one or more acquisition paths are known,
+`quantity_methods` records them as alternatives. A method may read the binding's
+result signal directly, or use `calculation` to derive it from other signals. This
+matters when, for example, an account report publishes uncached input directly
+while a response requires `input - cached - cache-write`.
+
+`calculation` is a closed, bounded, acyclic node graph. Nodes may read a usage
+signal, introduce an exact unit-qualified constant, sum compatible quantities,
+subtract with a zero floor, multiply by an exact rational, apply an exact
+minimum, or multiply one quantity by one or more item counts. The last operation
+covers results such as requested video seconds per output multiplied by the
+number of successfully returned outputs; `item` operands are count scalars and
+the other operand determines the result unit.
+References point only to earlier nodes, the result is the final node, every node
+contributes to that result, and all other arithmetic combines equal units. These
+constraints make the graph terminating, deterministic, and unit-checkable
+without embedding code. Exact constants cover published included quantities;
+the minimum operation is justified by both Anthropic code execution and OpenAI
+containers.
+
+Kmodels uses this graph as its canonical wire language rather than CEL. A
+consumer may compile the graph to CEL internally, but CEL source is not stored
+in the price book: accepting arbitrary expressions would weaken canonical
+identity, static unit validation, resource limits, and cross-implementation
+evaluation. `pricing-calculation.ts` is the exact-rational reference evaluator.
+It accepts caller-supplied signal quantities, evaluates every satisfiable method,
+rejects inconsistent results from two simultaneously available methods, and
+returns either a resolved quantity/cost, the exact alternative missing-signal
+sets, or `unbound`. It does not collect, persist, or reconcile request usage.
+
+`input_sources`, when present inside a quantity method, is that method's
+machine-readable acquisition contract. Each entry identifies one required signal,
+its request/response/stream/result/account-report/invocation-log/telemetry channel,
+a JSON Pointer, provider field, or versioned OpenTelemetry attribute, and whether
+that value is always, terminal-only, success-only, conditional, or
+reconciliation-only. Several entries for one signal are alternative provider
+locations; every distinct signal required by the method must have at least one.
+Source observations separately prove why Kmodels published the mapping.
+
+A source may apply one closed collection reduction: array length, count of unique non-empty
+strings, or presence as zero/one. It may also declare `absent_value: zero` only when first-party
+semantics prove that an absent member of a filtered collection means a zero count. These operations
+normalize structured provider output into one signal; arithmetic between signals remains in the
+unit-checked quantity graph. Arbitrary paths, predicates, scripts, and provider-specific expression
+languages are not accepted.
+
+Provider adapters add mappings only from independently collected first-party
+pricing-input facts. A missing or drifted accounting field therefore removes only
+that acquisition path; it does not create an informational raw price, erase the
+rate, or suppress another valid path. A method without `input_sources` means the
+calculation is known but the downstream calculator must supply its inputs. A
+binding without methods means only the final semantic quantity is known.
+
+`selector_sources` on a rate variant performs the corresponding job for
+applicability dimensions. It maps an already-present selector such as served tier,
+context tokens, quality, or resolution to a first-party request, response, result,
+or account-report field. A categorical source whose wire spelling differs from the
+price-book value carries a closed `categorical_map`; unmapped source values do not
+select the variant. When first-party semantics explicitly define an omitted
+field as a categorical default, `absent_value` records that already-published
+applicability value. A selector source cannot introduce a selector or mapped
+value that is absent from the variant's applicability. Missing selector mappings
+leave the rate valid and tell the downstream calculator which selector values
+still need to be supplied by route configuration or another authoritative source.
+
+OpenTelemetry GenAI semantic conventions are one input mapping, not the usage
+ontology. The current conventions cover aggregate input/output, cache read and
+write, reasoning output, and text/audio/image token partitions. They do not
+cover every commercial input needed here, including video/document token
+partitions, TTL-qualified cache writes, character/page/image/duration billing,
+tool-specific triggers, container minimums, or every provider's terminal stream
+behavior. Standard Kmodels signals therefore retain stable semantics, and an
+OTel attribute appears only as a versioned `input_sources` locator. Provider
+fields and invocation logs use the same contract without being forced through
+[OTel](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md).
+
+The standard signal vocabulary includes aggregate token and reasoning counts,
+plus shared character, page, image, audio-duration, request, result-item,
+search, generation, runtime, storage-time, and transfer quantities. Modality or
+TTL partitions use provider-owned signals unless at least two providers expose
+the same billable counter semantics. Region, service tier, context, quality, and
+similar selectors stay in applicability rather than being encoded inside a
+signal name unless the source exposes a genuinely distinct counter.
 
 Fixed units canonicalize to reviewed bases with exact scaling. For example,
 `USD 60/hour` and `USD 1/minute` normalize to the same per-second value. A price
@@ -423,8 +514,8 @@ compatible with the allowance quantity. A credit allowance targets the whole
 offer in the same denomination. Empty or ambiguous targets are invalid.
 
 Billing blocks and graduated schedules require a documented aggregation/reset
-basis. Without it they remain raw rather than being presented as ordinary unit
-rates.
+basis. Reviewed minimum rules use the quantity graph; rounding and graduated
+schedules remain raw until enough independent cases establish a shared closed shape.
 
 ### Meters
 

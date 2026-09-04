@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { extractCoherePricingInputs } from "./cohere-accounting.ts";
 import { modelIdSchema } from "./identity.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
@@ -189,46 +190,6 @@ const endpointDefinitions: EndpointDefinition[] = [
   },
 ];
 
-const accountingReferences: readonly {
-  documentPath: string;
-  markers: readonly RegExp[];
-  gap: "policy" | "chat-v2" | "chat-v1" | "embed-v2" | "rerank-v2";
-}[] = [
-  {
-    documentPath: "/docs/how-does-cohere-pricing-work.md",
-    markers: [
-      /billed_units[\s\S]*input_tokens[\s\S]*output_tokens[\s\S]*tokens/,
-      /billed[^\n]*tokens are the tokens that you(?:'|’)re actually[^\n]*billed/i,
-    ],
-    gap: "policy",
-  },
-  {
-    documentPath: "/reference/chat.md",
-    markers: [
-      /The number of billed input tokens[\s\S]*The number of billed output tokens/,
-      /cached_tokens[\s\S]*The number of prompt tokens that hit the inference cache/,
-    ],
-    gap: "chat-v2",
-  },
-  {
-    documentPath: "/reference/chat-v1.md",
-    markers: [/billed_units[\s\S]*input_tokens[\s\S]*output_tokens[\s\S]*tokens/],
-    gap: "chat-v1",
-  },
-  {
-    documentPath: "/reference/embed.md",
-    markers: [
-      /The number of billed images[\s\S]*The number of billed input tokens[\s\S]*The number of billed image tokens/,
-    ],
-    gap: "embed-v2",
-  },
-  {
-    documentPath: "/reference/rerank.md",
-    markers: [/The number of billed search units/, /"billed_units"[\s\S]*"search_units"/],
-    gap: "rerank-v2",
-  },
-];
-
 const apiEndpointFacts = new Map<z.infer<typeof endpointSchema>, ApiEndpointFact>([
   ["chat", { operation: "text_generation" }],
   ["embed", { operation: "embeddings" }],
@@ -389,33 +350,6 @@ function endpointReferences(
     for (const label of definition.labels) byLabel.set(label, reference);
   }
   return { byHref, byLabel };
-}
-
-function validateAccountingReferences(
-  documents: LinkedDocument[],
-  reconcile?: Reconcile,
-): Set<string> {
-  const valid = new Set<string>();
-  for (const reference of accountingReferences) {
-    const matches = documents.filter(
-      (document) => new URL(document.url).pathname === reference.documentPath,
-    );
-    const document = matches[0];
-    if (
-      matches.length !== 1 ||
-      document === undefined ||
-      reference.markers.some((marker) => !marker.test(document.body))
-    ) {
-      reconcile?.({
-        disposition: "unbound",
-        reason_code: "accounting_reference_drift",
-        sample: reference.documentPath,
-      });
-      continue;
-    }
-    valid.add(reference.documentPath);
-  }
-  return valid;
 }
 
 function withEndpoints(current: ProviderModel, values: ApiEndpoint[]): ProviderModel {
@@ -1468,48 +1402,6 @@ function finalizeRetiredPricing(models: Map<string, ProviderModel>): void {
       });
 }
 
-function addAccountingGaps(
-  models: Map<string, ProviderModel>,
-  valid: ReadonlySet<string>,
-  sourceRef: string,
-): void {
-  const gaps = accountingReferences
-    .filter(({ documentPath }) => !valid.has(documentPath))
-    .map(({ gap }) => gap);
-  if (gaps.length === 0) return;
-  for (const current of models.values()) {
-    const paths = new Set(current.api_endpoints?.map(({ path }) => path) ?? []);
-    const relevant = gaps.filter(
-      (gap) =>
-        gap === "policy" ||
-        (gap === "chat-v2" && paths.has("v2/chat")) ||
-        (gap === "chat-v1" && paths.has("v1/chat")) ||
-        (gap === "embed-v2" && paths.has("v2/embed")) ||
-        (gap === "rerank-v2" && paths.has("v2/rerank")),
-    );
-    if (relevant.length === 0) continue;
-    models.set(current.model_id, {
-      ...current,
-      raw_price_facts: [
-        ...current.raw_price_facts,
-        ...relevant.map(
-          (gap) =>
-            ({
-              term_key: `accounting_binding_unavailable:${gap}`,
-              impact: "informational",
-              reason: "unknown_meter",
-              conditions: {},
-              source_ref: sourceRef,
-              raw: {
-                fragment: `The exact Cohere billed-unit binding is unavailable because ${gap} evidence drifted`,
-              },
-            }) satisfies SourceRawPricingFact,
-        ),
-      ],
-    });
-  }
-}
-
 function includesId(value: string, id: string): boolean {
   return [...value.matchAll(/[a-z0-9][a-z0-9._:/-]*/gi)].some(
     (match) => match[0].replace(/[.,;:]+$/, "").toLowerCase() === id.toLowerCase(),
@@ -1636,7 +1528,6 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const models = new Map<string, ProviderModel>();
   const references = endpointReferences(bundle.documents, input.onPricingReconciliation);
-  const accounting = validateAccountingReferences(bundle.documents, input.onPricingReconciliation);
   const modelDocuments = indexedModelDocuments(
     bundle.index,
     bundle.documents,
@@ -1662,14 +1553,25 @@ export function parseCohereCatalog(input: Input): ProviderModel[] {
   }
   applyAliasPricing(models);
   finalizeRetiredPricing(models);
-  addAccountingGaps(models, accounting, input.source.id);
   assertItemCount(
     "Cohere model catalog",
     models.size,
     configuration.minModels,
     configuration.maxModels,
   );
-  return [...models.values()].sort((left, right) => left.model_id.localeCompare(right.model_id));
+  const result = [...models.values()].sort((left, right) =>
+    left.model_id.localeCompare(right.model_id),
+  );
+  const pricingInputs = extractCoherePricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  const carrier = result[0];
+  if (carrier !== undefined && pricingInputs.length > 0)
+    result[0] = { ...carrier, pricing_inputs: pricingInputs };
+  return result;
 }
 
 export function parseCoherePricing(input: Input): ProviderModel[] {

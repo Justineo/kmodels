@@ -6,7 +6,6 @@ import type {
 } from "./pricing-source.ts";
 
 export interface KimiCommercialEvidence {
-  batchCachePartitionUnbound: boolean;
   batchScopeConflicts: string[];
   fileService: boolean;
   formulaModels: string[];
@@ -22,19 +21,6 @@ export function extractKimiCommercialFacts(
   sourceId: string,
   evidence: KimiCommercialEvidence,
 ): void {
-  if (evidence.batchCachePartitionUnbound)
-    for (const model of models.values())
-      if (model.price_facts.some(({ conditions }) => conditions.service_tier === "batch"))
-        model.raw_price_facts.push(
-          raw(
-            "batch_cache_partition_unbound",
-            "informational",
-            "requires_usage_aggregation",
-            "Batch results document prompt and completion tokens but not the cached-token partition required to reconstruct cache-hit and uncached input",
-            sourceId,
-            { region: evidence.region, service_tier: "batch" },
-          ),
-        );
   for (const modelId of evidence.batchScopeConflicts) {
     const model = models.get(modelId);
     if (model !== undefined)

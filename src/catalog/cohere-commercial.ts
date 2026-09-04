@@ -1,3 +1,4 @@
+import { uniqueCanonicalValues as unique } from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
   AtomicPricingTerm,
@@ -6,25 +7,38 @@ import type {
 } from "./pricing-assembly.ts";
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import {
-  accountingGaps,
   addAtom,
   bindRateTerm,
   isStandardUnit,
-  providerKeyEvidence,
-  stripAccountingGaps,
+  rawEvidence,
 } from "./pricing-commercial-assembly.ts";
-import type { ChargeBinding, PriceMeter } from "./pricing-schema.ts";
+import {
+  includePricingInputSourceRefs,
+  indexPricingInputs,
+  pricingInputFacts,
+  pricingInputObservation,
+  usageInputSources,
+  type PricingInputIndex,
+} from "./pricing-input.ts";
+import type { ChargeBinding, PriceMeter, UsageSignal } from "./pricing-schema.ts";
+import type { SourcePricingInputFact } from "./pricing-source.ts";
 
 export function applyCohereCommercialTopology(
   input: AtomicProviderPricing,
   publishedModels: readonly PublishedPricingModel[],
+  pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
   const published = new Map(publishedModels.map((model) => [model.uid, model]));
+  const inputIndex = indexPricingInputs(pricingInputs);
   return {
     ...input,
     books: input.books.flatMap((book) =>
       book.scope.kind === "models"
-        ? [modelBook(book, published.get(book.scope.model_refs[0] ?? ""), input)]
+        ? [
+            includePricingInputSourceRefs(
+              modelBook(book, published.get(book.scope.model_refs[0] ?? ""), input, inputIndex),
+            ),
+          ]
         : [],
     ),
   };
@@ -34,27 +48,26 @@ function modelBook(
   book: AtomicPricingBook,
   model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
   return {
     ...book,
     resource_edges: [],
-    offers: book.offers.flatMap((offer) => {
-      if (offer.offer_key !== "usage") return [];
-      const blocked = accountingGaps(offer.terms);
-      return [
-        {
-          ...offer,
-          offer_key: "hosted-inference",
-          name: "Hosted inference",
-          enrollment: [],
-          terms: stripAccountingGaps(offer.terms).map((term) =>
-            bindTerm(term, model, input, blocked),
-          ),
-          relations: [],
-          settlement: [],
-        },
-      ];
-    }),
+    offers: book.offers.flatMap((offer) =>
+      offer.offer_key === "usage"
+        ? [
+            {
+              ...offer,
+              offer_key: "hosted-inference",
+              name: "Hosted inference",
+              enrollment: [],
+              terms: offer.terms.map((term) => bindTerm(term, model, input, inputIndex)),
+              relations: [],
+              settlement: [],
+            },
+          ]
+        : [],
+    ),
   };
 }
 
@@ -62,9 +75,9 @@ function bindTerm(
   term: AtomicPricingTerm,
   model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
-  blocked: ReadonlySet<string>,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingTerm {
-  return bindRateTerm(term, (meter, variant) => binding(meter, variant, model, input, blocked));
+  return bindRateTerm(term, (meter, variant) => binding(meter, variant, model, input, inputIndex));
 }
 
 function binding(
@@ -72,69 +85,89 @@ function binding(
   variant: AtomicRateVariant,
   model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
-  blocked: ReadonlySet<string>,
+  inputIndex: PricingInputIndex,
 ): ChargeBinding | undefined {
-  if (blocked.has("policy") || meter.namespace !== "kmodels") return;
-  const paths = new Set(model?.api_endpoints?.map(({ path }) => path) ?? []);
-  const locators: string[] = [];
-  let signal: ChargeBinding["signal"] | undefined;
+  const spec = signalSpec(meter, variant, model, input);
+  if (spec === undefined) return;
+  const facts = pricingInputFacts(inputIndex, spec.keys);
+  return {
+    signal: spec.signal,
+    aggregation: "request",
+    ...(facts.length === 0
+      ? {}
+      : { quantity_methods: [{ input_sources: usageInputSources(spec.signal, facts) }] }),
+    observations: unique([rawEvidence(variant.observation), ...facts.map(pricingInputObservation)]),
+  };
+}
 
+function signalSpec(
+  meter: PriceMeter,
+  variant: AtomicRateVariant,
+  model: PublishedPricingModel | undefined,
+  input: AtomicProviderPricing,
+): { signal: UsageSignal; keys: string[] } | undefined {
+  if (meter.namespace !== "kmodels") return;
+  const paths = new Set(model?.api_endpoints?.map(({ path }) => path) ?? []);
   if (
     (meter.value === "input_text" || meter.value === "output_text") &&
     isStandardUnit(variant.price.per, "token")
   ) {
-    const field = meter.value === "input_text" ? "input_tokens" : "output_tokens";
-    signal = { namespace: "kmodels", value: field };
-    if (!blocked.has("chat-v2") && paths.has("v2/chat"))
-      locators.push(`v2/chat:response.usage.billed_units.${field}`);
-    if (!blocked.has("chat-v1") && paths.has("v1/chat"))
-      locators.push(`v1/chat:response.meta.billed_units.${field}`);
-  } else if (meter.value === "embedding" && isStandardUnit(variant.price.per, "token")) {
+    const direction = meter.value === "input_text" ? "input" : "output";
+    return {
+      signal: { namespace: "kmodels", value: `${direction}_tokens` },
+      keys: [
+        ...(paths.has("v2/chat") ? [`chat.v2.${direction}_tokens`] : []),
+        ...(paths.has("v1/chat") ? [`chat.v1.${direction}_tokens`] : []),
+      ],
+    };
+  }
+  if (meter.value === "embedding" && isStandardUnit(variant.price.per, "token")) {
     const image = variant.applicability.any_of.some(({ all_of }) =>
       all_of.some(
         (condition) =>
           condition.kind === "categorical" &&
           condition.dimension.namespace === "kmodels" &&
           condition.dimension.value === "modality" &&
-          condition.values.some(
-            (value) => value.namespace === "kmodels" && value.value === "image",
-          ),
+          condition.values.some(({ value }) => value === "image"),
       ),
     );
-    if (image) {
-      const key = "billed_image_tokens";
-      addAtom(input, {
-        kind: "usage_signal",
-        key,
-        definition: "Cohere Embed image tokens reported in response meta.billed_units",
-        unit: variant.price.per,
-        resolution_phase: "outcome",
-      });
-      signal = { namespace: "provider", provider_id: "cohere", value: key };
-    } else signal = { namespace: "kmodels", value: "input_tokens" };
-    if (!blocked.has("embed-v2") && paths.has("v2/embed"))
-      locators.push(
-        `v2/embed:response.meta.billed_units.${image ? "image_tokens" : "input_tokens"}`,
-      );
-  } else if (meter.value === "rerank") {
-    const key = "billed_search_units";
-    addAtom(input, {
-      kind: "usage_signal",
-      key,
-      definition: "Cohere Rerank search units reported in response meta.billed_units",
-      unit: variant.price.per,
-      resolution_phase: "outcome",
-    });
-    signal = { namespace: "provider", provider_id: "cohere", value: key };
-    if (!blocked.has("rerank-v2") && paths.has("v2/rerank"))
-      locators.push("v2/rerank:response.meta.billed_units.search_units");
+    const signal = image
+      ? providerSignal(
+          input,
+          "billed_image_tokens",
+          "Cohere Embed image tokens reported in response meta.billed_units",
+          variant,
+        )
+      : ({ namespace: "kmodels", value: "input_tokens" } as const);
+    return {
+      signal,
+      keys: paths.has("v2/embed") ? [`embed.v2.${image ? "image_tokens" : "input_tokens"}`] : [],
+    };
   }
+  if (meter.value === "rerank")
+    return {
+      signal: providerSignal(
+        input,
+        "billed_search_units",
+        "Cohere Rerank search units reported in response meta.billed_units",
+        variant,
+      ),
+      keys: paths.has("v2/rerank") ? ["rerank.v2.search_units"] : [],
+    };
+}
 
-  return signal === undefined || locators.length === 0
-    ? undefined
-    : {
-        signal,
-        aggregation: "request",
-        observations: locators.map((locator) => providerKeyEvidence(variant.observation, locator)),
-      };
+function providerSignal(
+  input: AtomicProviderPricing,
+  key: string,
+  definition: string,
+  variant: AtomicRateVariant,
+): Extract<UsageSignal, { namespace: "provider" }> {
+  addAtom(input, {
+    kind: "usage_signal",
+    key,
+    definition,
+    unit: variant.price.per,
+    resolution_phase: "outcome",
+  });
+  return { namespace: "provider", provider_id: input.provider_id, value: key };
 }

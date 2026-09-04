@@ -3,4 +3,19 @@
     usage contains input_tokens, output_tokens, total_tokens, input_tokens_details.cached_tokens,
     and output_tokens_details.reasoning_tokens.
   </p>
+  <p>
+    Session caching reports prompt_tokens_details.cached_tokens,
+    prompt_tokens_details.cache_creation_input_tokens, and
+    prompt_tokens_details.cache_creation.ephemeral_5m_input_tokens. Cache creation fields are absent
+    when no new cache is created.
+  </p>
+  <p>
+    Each x_details entry with x_billing_type=response_api contains input_tokens, output_tokens,
+    input_tokens_details.text_tokens, input_tokens_details.image_tokens,
+    output_tokens_details.text_tokens, and output_tokens_details.reasoning_tokens.
+  </p>
+  <p>
+    The response.completed stream event carries response.usage. Tool counters include
+    x_tools.web_search.count and x_tools.image_search.count.
+  </p>
 </main>

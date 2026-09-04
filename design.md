@@ -23,7 +23,7 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Automation](docs/automation.md): CI, scheduled refresh, deployment, dependencies, and ownership.
 - [Testing](docs/testing.md): test layers, data boundaries, assertion policy, and required validation.
 - [Pricing](docs/pricing.md): canonical current-snapshot price books,
-  request-attributable inference rates, best-effort normalization and raw
+  request-attributable inference rates and calculation-input contracts, best-effort normalization and raw
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,

@@ -5,99 +5,118 @@ Status: current
 ## Boundary
 
 Kmodels catalogs models that Google exposes as managed APIs on Gemini Enterprise Agent Platform or
-through its Model-as-a-Service offerings. Agent Platform agents, runtimes, registries, gateways,
-skills, and other non-model resources do not create catalog rows. The generic Model Garden
-self-deployment inventory does not create catalog rows. Catalog inclusion and price availability
-are independent: a managed model remains useful even when its current public rate cannot be
-matched.
+through its Model-as-a-Service offerings. The provider ID remains `vertex`. Agent Platform agents,
+runtimes, registries, gateways, skills, generic self-deployment inventory, and other non-model
+resources do not create catalog rows.
 
-The website uses the Google Cloud mark to distinguish this managed platform from the standalone
-Gemini API. Its stable provider ID remains `vertex`.
-
-The price book covers only costs attributable to a proxied inference request or its result:
+The price book covers public costs attributable to one proxied inference request or its result:
 
 - online, Priority, Flex, and Batch inference;
 - input, output, cache-read, embedding, image, audio, and video generation rates; and
-- separately metered request components such as grounding, Maps, and Claude web search when the
-  result exposes a reviewed count.
+- independently metered request components such as grounding, Maps, and Claude web search.
 
 Training, retained cache storage, Provisioned Throughput, savings plans, agents, CodeMender,
-AlphaEvolve, model optimization, account allowances, billing export, and settlement are outside the
-AI Gateway rate-book boundary. They are not retained as raw pricing merely because the public page
-mentions them. Cache-read inference is in scope; cache storage over time is not.
+AlphaEvolve, model optimization, account allowances, billing export, and settlement are outside
+this boundary. Cache-read inference is in scope; cache storage over time is not.
+
+Kmodels publishes a price book and calculation-input contracts. It does not own the runtime request
+lifecycle: the Gateway still captures requests, terminal responses or stream events, asynchronous
+results, interruptions, retries, and any account-side reconciliation data.
 
 ## Sources
 
-Model discovery and pricing are separate sources:
+Model discovery and pricing remain independent:
 
-- the Google, partner, and managed-open model indexes and their bounded model cards establish model
-  identity, capabilities, lifecycle, availability, and invocation routes;
-- the public Agent Platform generative AI pricing page establishes rates and their dimensions; its
-  explicit `.html` transport path is used because the extensionless route does not resolve to the
-  pricing document; and
-- optional first-party grounding guides, Claude web-search documentation, and the Agent Platform
-  API Discovery document establish model applicability and observable usage fields.
+- the Google, partner, and managed-open indexes plus bounded model cards establish model identity,
+  capabilities, lifecycle, availability, and invocation routes;
+- the public Agent Platform pricing page establishes rates and applicability; and
+- the Discovery schema and fixed first-party Batch, grounding, Claude, Grok Responses,
+  OpenAI-compatible, Imagen, and Veo documents establish calculation inputs and selectors.
 
-The optional authenticated Model Garden API checks known public identities only. It cannot create
-rows, contribute private prices, or retain account data.
+The pricing source explicitly owns both `pricing` and `pricing_inputs`. Accounting contracts are not
+treated as rate evidence. The optional authenticated Model Garden API validates known public
+identities only; it cannot create rows, contribute private prices, or retain account data.
 
 Each source owns only its claims. A pricing-page failure does not reject model discovery. A changed
-route guide withholds only that route, and a changed usage schema withholds charge bindings while
-preserving the published rates. Previously accepted provider data is retained only when the
-provider refresh itself cannot publish a valid replacement.
+route guide withholds only that route. A missing accounting field removes only the affected input
+or selector method while preserving the semantic charge binding and published rate. Previously
+accepted provider data is retained only when the provider refresh cannot publish a valid
+replacement.
 
 ## Mapping
 
 - Model IDs come from labeled model-card fields or exact Model Garden links. Headings, display
   labels, and approximate dates do not create identity.
 - A family price may apply to multiple IDs only when one model card establishes that family. Other
-  joins require a unique best model match; ambiguous rows remain unmatched rather than widening a
-  price. An explicit unmatched model label also ends the preceding row group, so later continuation
-  rows cannot inherit an unrelated model.
-- The current Cloud pricing page is normalized by semantic heading and table order. Flexible
-  Savings Plan columns are removed before parsing because they are account commitments, not
-  request rates. New unrelated columns and sections are ignored locally.
-- Standard, Priority, Flex, and Batch remain shared `service_tier` values. A combined Flex/Batch
-  heading expands to both only when the row does not distinguish them; `Global (Flex)` and
-  `Global (Batch)` select the exact tier. Row descriptors such as `Batch Input` and explicit
-  `Request Type` cells take the same exact tier instead of overlapping the standard row.
-- Global and non-global values use `deployment_scope`; exact published regions use `region`.
-  Region tabs are part of the table scope: global, multi-region, and regional panels remain
-  disjoint even when the table itself has no Region column.
-  Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
-  independent applicability dimensions. Dated promotional and standard labels retain their
-  published `through`, `beginning`, or `starting` boundary.
-- Direct token rates are normalized per token while preserving the published million-token unit as
-  evidence. Page alternatives are ignored only when a first-party model card gives an exact token
-  equivalence; otherwise the token rate remains normalized and the unresolved alternative remains
-  a bounded base-price fact.
-- Explicit `N/A` cells are local non-numeric evidence. They do not reject another meter, model, or
-  source.
+  joins require a unique best model match; ambiguous rows remain unmatched.
+- Flexible Savings Plan columns are excluded because they are account commitments, not request
+  rates. New unrelated columns and sections are ignored locally.
+- Standard, Priority, Flex, and Batch are shared `service_tier` values. Online conditions become
+  `served_service_tier`; `trafficType` or the equivalent partner response value selects Standard,
+  Priority, or Flex. Batch is a separate offer and uses successful result-item accounting.
+- Global and non-global values use `deployment_scope`; exact locations use `region`. A request
+  location can select an exact region, but it does not infer the wildcard meaning of non-global.
+- Context thresholds, modality, operation, resolution, audio, cache TTL, and effective dates remain
+  independent applicability dimensions.
+- Page alternatives are ignored only when a model card gives an exact token equivalence. Otherwise
+  the token rate stays normalized and the unresolved alternative remains bounded raw evidence.
+- Explicit `N/A` cells are local non-numeric evidence and do not reject another meter or model.
 
-## Charge binding
+## Calculation inputs
 
-The canonical topology is the shared `book -> offer -> term -> variant` model. Provider code only
-maps its dimensions and response fields.
+The current reviewed accounting surface is:
 
-- Gemini token usage binds to `GenerateContentResponse.usageMetadata`, including modality details
-  and cached-token details.
-- Claude token usage binds to `Message.usage`; Grok Responses usage binds to `Response.usage`; and
-  OpenAI-compatible managed-open usage binds to `ChatCompletion.usage`.
-- Grounding and search components bind only to exact returned query/request counts. A published
-  rate without a reviewed observable count remains useful but has no charge binding.
-- Media generation rates remain selectable rate variants even when no exact response usage locator
-  has been reviewed. The rate book does not invent locators.
+- Gemini `generateContent` and terminal stream responses: total and per-modality prompt, cached,
+  candidate, tool-result prompt, and thought tokens; served traffic type; generated inline-image
+  count; Google Search and Image Search query counts; and returned Web, Maps, or Agent Search
+  grounding presence;
+- Gemini Batch Cloud Storage JSONL: the same `usageMetadata` and grounding fields under each
+  successful row's `response`; failed rows do not contribute completed inference usage;
+- embeddings: total plus text, image, video, audio, and document prompt-token details;
+- Claude: input, cache-write, cache-read, output, and web-search-request counts from response usage
+  for non-streaming and streaming calls;
+- Grok Responses: input, cached input, output, reasoning, traffic type, server-side tool count, and
+  source count from a response or terminal `response.completed` event;
+- OpenAI-compatible chat: prompt and completion tokens from a response or final stream usage chunk;
+- Imagen: actual returned `predictions` count and requested output resolution; and
+- Veo: requested duration and actual returned video count, multiplied to produce generated seconds,
+  plus requested resolution and audio selection.
 
-No provider-specific price-book hierarchy is introduced. These bindings, dimensions, and labels
-are provider vocabulary layered on the common canonical model.
+Uncached Gemini input is calculated as prompt input minus cached input with a zero floor, plus tool
+execution results provided back to the model. Grok input subtracts cached input with the same zero
+floor. Gemini image-rate input and cache quantities include image and document modality buckets.
+Text output adds thought tokens; aggregate candidate output is used only when no separately priced
+output modality would be double counted. Thinking is therefore included when the public output
+rate covers it, while the separate reasoning counter remains available as a calculation input.
+
+Grounding mappings intentionally distinguish queries from grounded prompts. Google Search and Image
+Search expose query arrays. Returned Web, Maps, and retrieved-context chunks can establish a
+qualifying grounded request. Agent Platform does not expose the actual number of Google Maps
+queries, so a Maps query-priced rate has a semantic binding but no quantity method; the deprecated
+Maps widget context token is not treated as a query count.
+
+## Known calculation gaps
+
+The following remain explicit downstream inputs rather than invented mappings:
+
+- partner-model Batch result usage, until Google documents its exact result envelope;
+- Claude cache-TTL selection and Claude long-context threshold calculation on Agent Platform;
+- wildcard `deployment_scope` selection from a concrete regional endpoint;
+- actual Google Maps query count;
+- interrupted-stream attribution and retry policy; and
+- invoice, discount, billing-export, or invocation-log reconciliation.
+
+These gaps do not erase rates. A binding without quantity methods states the billable semantic
+quantity; a method without provider input sources states a known calculation whose inputs must be
+supplied by the caller.
 
 ## Refresh behavior
 
-Refresh is deterministic and uses only official pages, public APIs, and optional configured
-credentials. No LLM or OCR participates. HTML layout changes are handled best effort: accept every
-independently understood model and rate, keep unsupported in-boundary facts bounded and local, and
-never fail the provider merely because an unrelated table, column, tag, or usage field changed.
+Refresh is deterministic and uses official pages, public APIs, and optional configured credentials.
+No LLM or OCR participates. Discovery contracts are checked field by field, so one renamed usage
+member removes only contracts that depend on it. The pricing-input reconciliation reports the exact
+bound count against the reviewed surface. Unsupported in-boundary rate facts stay bounded and local;
+unrelated table, route, or accounting drift does not fail the provider.
 
-The pricing source is intentionally allowed a larger response bundle because the Cloud page and
-the first-party applicability guides are large. The bound is a transport safety limit, not a
-schema assertion.
+The pricing bundle has a larger transport bound because the Cloud page and fixed first-party
+documents are large. That bound is a transport safety limit, not a schema assertion.

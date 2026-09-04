@@ -354,6 +354,50 @@ describe("local canonical pricing compilation", () => {
     ).toBeUndefined();
   });
 
+  it("captures public accounting-only dependencies without rate authority", () => {
+    const { pricingEvidence: _pricingEvidence, ...sourceBase } = sourceManifest;
+    const accounting: SourceManifest = {
+      ...sourceBase,
+      id: `${sourceId}-accounting`,
+      fields: ["pricing_inputs"],
+    };
+    const { pricing_evidence: _recordEvidence, ...recordBase } = sourceRecord();
+    const record: SourceRecord = {
+      ...recordBase,
+      id: accounting.id,
+      field_paths: accounting.fields,
+    };
+    const model: ParsedProviderModel = {
+      ...published(),
+      pricing_state: "unknown",
+      price_facts: [],
+      raw_price_facts: [],
+      pricing_inputs: [
+        {
+          key: "response.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+          availability: "terminal_only",
+          source_ref: accounting.id,
+        },
+      ],
+    };
+
+    const captured = capturePricingReplaySources(
+      [{ source: accounting, models: [model] }],
+      [record],
+    );
+
+    expect(captured?.[0]).toMatchObject({
+      source_id: accounting.id,
+      models: [
+        {
+          pricing_inputs: [expect.objectContaining({ source_ref: accounting.id })],
+        },
+      ],
+    });
+  });
+
   it("coalesces pricing split across duplicate source identities", () => {
     const model: ParsedProviderModel = {
       ...published(),

@@ -30,7 +30,6 @@ const services = new Map<string, readonly [string, string, SourcePriceFact["mete
 export function extractVertexCommercialFacts(
   models: Iterable<ParsedProviderModel>,
   sourceId: string,
-  bindingAvailable: boolean,
 ): void {
   const values = [...models];
   const facts = new Map<string, MutableFact>();
@@ -46,17 +45,13 @@ export function extractVertexCommercialFacts(
     model.raw_price_facts = model.raw_price_facts.filter(
       ({ impact, term_key }) => impact !== "allowance" && !term_key.startsWith("grounding_"),
     );
-    if (!bindingAvailable && model.price_facts.length > 0)
-      model.raw_price_facts.push(bindingUnavailable(sourceId));
   }
   const carrier = values.sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && facts.size > 0)
     carrier.commercial_facts = [...facts.values()].map((item) => ({
       source_ref: sourceId,
       ...item,
-      raw_price_facts: bindingAvailable
-        ? item.raw_price_facts
-        : [...item.raw_price_facts, bindingUnavailable(sourceId)],
+      raw_price_facts: item.raw_price_facts,
     }));
 }
 
@@ -77,17 +72,6 @@ function fact(
     pricing_state: "numeric",
     price_facts: [],
     raw_price_facts: [],
-  };
-}
-
-function bindingUnavailable(sourceRef: string) {
-  return {
-    source_ref: sourceRef,
-    term_key: "charge_binding_unavailable",
-    impact: "informational" as const,
-    reason: "unknown_applicability" as const,
-    conditions: {},
-    raw: { fragment: "Agent Platform response usage schema was not verified during this refresh" },
   };
 }
 

@@ -57,6 +57,7 @@ import {
   type SourcePriceFact,
   type SourceRawPricingFact,
   type SourceCommercialPricingFact,
+  type SourcePricingInputFact,
 } from "./pricing-source.ts";
 import { unknownCapabilities } from "./schema.ts";
 
@@ -69,6 +70,7 @@ export type PublishedPricingModel = Pick<
   ParsedProviderModel,
   | "api_endpoints"
   | "capabilities"
+  | "modalities"
   | "model_id"
   | "name"
   | "service_families"
@@ -83,6 +85,17 @@ export function isPricingSource(source: SourceManifest): boolean {
   if (declaresPricing !== (source.pricingEvidence !== undefined))
     throw new Error(`Pricing source policy mismatch for ${source.id}`);
   return declaresPricing && !["account", "workspace", "runtime"].includes(source.scope ?? "global");
+}
+
+export function isPricingInputSource(source: SourceManifest): boolean {
+  return (
+    source.fields.includes("pricing_inputs") &&
+    !["account", "workspace", "runtime"].includes(source.scope ?? "global")
+  );
+}
+
+export function isPricingDependencySource(source: SourceManifest): boolean {
+  return isPricingSource(source) || isPricingInputSource(source);
 }
 
 export function isRequiredPricingSource(source: SourceManifest): boolean {
@@ -192,6 +205,9 @@ export function assembleParsedProviderPricing(
   const commercialFacts = pricingSources.flatMap(({ models }) =>
     models.flatMap(({ commercial_facts }) => commercial_facts ?? []),
   );
+  const pricingInputs = sources
+    .filter(({ source }) => isPricingInputSource(source))
+    .flatMap(({ models }) => models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []));
   const books = [
     ...[...contexts.values()].flatMap(pricingBooks),
     ...commercialPricingBooks(
@@ -210,48 +226,49 @@ export function assembleParsedProviderPricing(
     dispositions,
     books,
   } satisfies AtomicProviderPricing;
-  return assembleProviderPricing(applyCommercialTopology(input, publishedModels));
+  return assembleProviderPricing(applyCommercialTopology(input, publishedModels, pricingInputs));
 }
 
 function applyCommercialTopology(
   input: AtomicProviderPricing,
   publishedModels: readonly PublishedPricingModel[],
+  pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
   switch (input.provider_id) {
     case "amazon-bedrock":
-      return applyBedrockCommercialTopology(input);
+      return applyBedrockCommercialTopology(input, publishedModels, pricingInputs);
     case "anthropic":
-      return applyAnthropicCommercialTopology(input);
+      return applyAnthropicCommercialTopology(input, pricingInputs);
     case "azure":
-      return applyAzureCommercialTopology(input, publishedModels);
+      return applyAzureCommercialTopology(input, publishedModels, pricingInputs);
     case "cerebras":
-      return applyCerebrasCommercialTopology(input, publishedModels);
+      return applyCerebrasCommercialTopology(input, publishedModels, pricingInputs);
     case "cohere":
-      return applyCohereCommercialTopology(input, publishedModels);
+      return applyCohereCommercialTopology(input, publishedModels, pricingInputs);
     case "dashscope":
-      return applyDashscopeCommercialTopology(input);
+      return applyDashscopeCommercialTopology(input, pricingInputs);
     case "databricks":
-      return applyDatabricksCommercialTopology(input);
+      return applyDatabricksCommercialTopology(input, publishedModels, pricingInputs);
     case "deepseek":
-      return applyDeepseekCommercialTopology(input, publishedModels);
+      return applyDeepseekCommercialTopology(input, publishedModels, pricingInputs);
     case "gemini":
-      return applyGeminiCommercialTopology(input);
+      return applyGeminiCommercialTopology(input, publishedModels, pricingInputs);
     case "huggingface":
-      return applyHuggingFaceCommercialTopology(input);
+      return applyHuggingFaceCommercialTopology(input, pricingInputs);
     case "kimi":
-      return applyKimiCommercialTopology(input);
+      return applyKimiCommercialTopology(input, publishedModels, pricingInputs);
     case "mistral":
-      return applyMistralCommercialTopology(input);
+      return applyMistralCommercialTopology(input, publishedModels, pricingInputs);
     case "ollama":
-      return applyOllamaCommercialTopology(input, publishedModels);
+      return applyOllamaCommercialTopology(input, publishedModels, pricingInputs);
     case "openai":
-      return applyOpenAiCommercialTopology(input, publishedModels);
+      return applyOpenAiCommercialTopology(input, publishedModels, pricingInputs);
     case "vercel":
-      return applyVercelCommercialTopology(input);
+      return applyVercelCommercialTopology(input, pricingInputs);
     case "vertex":
-      return applyVertexCommercialTopology(input, publishedModels);
+      return applyVertexCommercialTopology(input, publishedModels, pricingInputs);
     case "xai":
-      return applyXaiCommercialTopology(input, publishedModels);
+      return applyXaiCommercialTopology(input, publishedModels, pricingInputs);
     default:
       return input;
   }
@@ -1148,6 +1165,7 @@ function rateApplicability(
     "operation",
     "resolution",
     "quality",
+    "search_effort",
     "style",
     "capacity",
     "billing_period",
@@ -1162,10 +1180,11 @@ function rateApplicability(
     predicates.push({ kind: "categorical", dimension, values: [atom] });
   }
   if (conditions.service_tier !== undefined) {
-    const dimension: PriceDimension =
-      context.providerId === "openai"
-        ? { namespace: "kmodels", value: "served_service_tier" }
-        : { namespace: "kmodels", value: "service_tier" };
+    const dimension: PriceDimension = ["databricks", "openai", "vercel"].includes(
+      context.providerId,
+    )
+      ? { namespace: "kmodels", value: "served_service_tier" }
+      : { namespace: "kmodels", value: "service_tier" };
     predicates.push({
       kind: "categorical",
       dimension,

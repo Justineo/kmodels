@@ -104,19 +104,85 @@ allowances, or commercial-plan topology.
 
 ## Charge signals
 
-Use exact first-party request/result quantities:
+The `llms.txt` source contributes a reviewed, field-local contract for 54 pricing
+inputs. Each fact records its request, response, terminal stream event, or Batch result
+channel; locator; reduction; availability; and source observation. The compiler binds
+only the facts whose local contract is still present. Drift in one documented field
+therefore removes that quantity method without erasing a sibling rate or substituting
+an unverified raw locator.
 
-| Rate component        | Signal                                                              |
-| --------------------- | ------------------------------------------------------------------- |
-| uncached input tokens | `usage.input_tokens - usage.input_tokens_details.cached_tokens`     |
-| cache-read tokens     | `usage.input_tokens_details.cached_tokens`                          |
-| output tokens         | `usage.output_tokens`                                               |
-| paid tools            | the matching `usage.server_side_tool_usage_details.*_calls` counter |
-| direct images/videos  | accepted input media and completed result count/duration            |
-| Speech to Speech      | accepted/emitted realtime audio duration and text-input events      |
-| TTS                   | accepted input character count                                      |
-| STT                   | accepted audio duration                                             |
+The price book does not collect a runtime ledger. It instead tells a calculator exactly
+which accepted request values, terminal result values, and realized selectors it must
+retain. A calculator may choose any one complete quantity method published on a charge
+binding; alternatives are not additive. Within one method, the closed calculation
+graph defines the arithmetic and enforces signal units.
+
+| Surface           | Published calculator inputs                                                                                            | Calculation and aggregation                                                                                        |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Chat Completions  | prompt text, cached prompt text, prompt image, completion, reasoning, total prompt tokens, and realized service tier   | uncached text = prompt text − cached text; output = completion + reasoning; aggregate per request                  |
+| Chat streaming    | the same usage fields from the terminal usage chunk                                                                    | the same formulas; absence of the terminal chunk leaves the exact quantity unavailable                             |
+| Responses         | aggregate input, cached input, output, and realized service tier                                                       | uncached text = input − cached only for text-only models; output is direct                                         |
+| xAI SDK agent     | uncached prompt text, total prompt, cached prompt text, prompt image, completion, and reasoning tokens                 | direct text/cache/image; output = completion + reasoning                                                           |
+| Batch text        | the corresponding Chat or Responses usage object in each successful result item                                        | the same endpoint-specific formulas, aggregated per result item                                                    |
+| Imagine image     | accepted source-image count, successful output-array length, effective resolution, and effective quality               | input images and completed outputs are additive quantities; resolution and quality select variants                 |
+| Imagine video     | accepted source-image count, accepted source-video duration, completed video duration, and effective output resolution | source media and completed seconds are additive quantities; resolution selects the output variant                  |
+| Batch media       | successful image-result array length or completed video duration in each result item                                   | aggregate per result item; request media and selectors still come from the accepted original request               |
+| Speech to Speech  | accepted input-audio seconds, emitted output-audio seconds, and billable text-input-event count                        | billed audio = accepted input + emitted output, aggregated per session; billable text events are an additive meter |
+| Text to Speech    | accepted REST text billing characters or accepted streaming `text.delta` billing characters                            | provider-owned `tts_utterance` aggregation prevents REST and streaming fragments from being double-counted         |
+| Speech to Text    | successful REST response duration or terminal streaming transcript duration                                            | processed audio seconds, aggregated per REST request or streaming session                                          |
+| Server-side tools | successful Web Search, X Search, Code Execution, and Collections Search counters from `server_side_tool_usage`         | each provider category binds to its own successful-call meter                                                      |
+| Image tool        | completed `image_generation_call` outputs                                                                              | output count is bound per request; resolution and quality stay unresolved                                          |
+
+The endpoint-specific distinctions are intentional:
+
+- Chat reports text and image prompt tokens separately, so the text meter uses
+  `prompt_tokens_details.text_tokens - prompt_tokens_details.cached_tokens`. Its
+  completion count excludes separately reported reasoning, so the billed output meter
+  sums `completion_tokens + completion_tokens_details.reasoning_tokens`.
+- Responses reports aggregate input tokens without a documented text/image split.
+  The input-minus-cache method is therefore offered only for models whose published
+  input modalities are text-only. It is not guessed for multimodal Responses models.
+- The xAI SDK's `prompt_text_tokens` already means uncached prompt text, while
+  `cached_prompt_text_tokens` and `prompt_image_tokens` are separate. It is a direct
+  alternative rather than another subtraction.
+- Long-context selection uses the endpoint's total prompt/input count, not the
+  uncached-text charge quantity. Priority selection uses only the realized response
+  `service_tier`; a requested tier alone does not prove the Priority rate was served.
+- Provider fields are used only when the wire value requires a provider-defined
+  semantic extraction, such as accepted media duration, billable TTS characters, or an
+  SDK result category. They are named, sourced inputs, not an unrestricted `raw`
+  escape hatch.
+
+The closed calculation graph is sufficient for the xAI formulas: direct acquisition,
+array length, sum, and floor-at-zero subtraction. Arbitrary CEL or executable
+expressions are neither required nor published. In particular, kmodels does not invent
+a Unicode string-length rule for TTS because xAI owns the meaning of a billable
+character; the caller supplies the provider-consistent accepted billing-character
+count.
+
+## Deliberate unresolved inputs
+
+- File Attachment Search has a published successful-call rate, but the reviewed public
+  result contract has no stable category counter. Its semantic charge binding remains,
+  without an acquisition method.
+- Multimodal Responses input has no documented text/image token breakdown. Cache and
+  output remain bindable, but input decomposition must come from a more specific
+  first-party signal before it can be automated.
+- A Responses image-generation tool result exposes completed images but not the
+  effective resolution and quality needed to select every Imagine price variant.
+- The pre-generation usage-guideline violation has a published fee but no stable,
+  documented response/error discriminator. Its semantic outcome signal remains
+  unbound.
+- Serving region is a route/request fact supplied by the caller; xAI does not return a
+  realized region beside usage. A missing terminal stream usage event likewise cannot
+  be reconstructed exactly from partial content.
+- `cost_in_usd_ticks` is useful downstream verification evidence, including on terminal
+  streams and Batch results, but it is not a quantity or selector for reconstructing a
+  published rate. Invoice, account, and contract reconciliation stays outside this
+  pre-runtime price book.
 
 Request selectors establish applicability; result fields establish realized quantities
-or tiers. Do not use account cost totals or invoice settlement as a per-request rate
-binding.
+or tiers. A downstream calculator must preserve the selected offer, price-book
+snapshot, accepted request inputs, successful terminal result, and the applicable
+quantity method. Kmodels specifies that input contract; it does not own request
+lifecycle detection, stream completion, ledger persistence, or invoice settlement.

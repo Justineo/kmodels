@@ -7,11 +7,13 @@ import { stableJson } from "./io.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { decimalsEqual, scaleDecimal } from "./pricing.ts";
+import { uniquePricingInputFacts } from "./pricing-input.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
   ParsedProviderModel as ProviderModel,
   SourceCommercialPricingFact,
   SourcePriceFact,
+  SourcePricingInputFact,
   SourceRawPricingFact,
 } from "./pricing-source.ts";
 import {
@@ -262,7 +264,10 @@ const reviewedApiEnumsSchema = z.object({
 
 type BedrockDocuments = z.infer<typeof linkedBundleSchema>["documents"];
 
-function exactDocument(documents: BedrockDocuments, path: string): string | undefined {
+function exactDocument(
+  documents: ReadonlyArray<BedrockDocuments[number]>,
+  path: string,
+): string | undefined {
   const matches = documents.filter((document) => {
     const url = new URL(document.url);
     return url.hostname === "docs.aws.amazon.com" && url.pathname === path;
@@ -2398,6 +2403,316 @@ function parsePrices(
   };
 }
 
+const applyGuardrailUsageFields = [
+  "automatedReasoningPolicyUnits",
+  "contentPolicyImageUnits",
+  "contentPolicyUnits",
+  "contextualGroundingPolicyUnits",
+  "sensitiveInformationPolicyFreeUnits",
+  "sensitiveInformationPolicyUnits",
+  "topicPolicyUnits",
+  "wordPolicyUnits",
+] as const;
+
+function documentIdentifiers(body: string | undefined): ReadonlySet<string> {
+  if (body === undefined) return new Set();
+  const value = load(body).text();
+  return new Set(value.match(/[A-Za-z0-9][A-Za-z0-9]*/g) ?? []);
+}
+
+function hasDocumentContract(
+  body: string | undefined,
+  title: string,
+  fields: readonly string[],
+): boolean {
+  if (body === undefined) return false;
+  const value = load(body).text();
+  const identifiers = documentIdentifiers(body);
+  return value.includes(title) && fields.every((field) => identifiers.has(field));
+}
+
+function pricingInput(
+  sourceRef: string,
+  key: string,
+  channel: SourcePricingInputFact["channel"],
+  locator: SourcePricingInputFact["locator"],
+  availability: SourcePricingInputFact["availability"],
+  absentValue?: "zero",
+): SourcePricingInputFact {
+  return {
+    key,
+    channel,
+    locator,
+    ...(absentValue === undefined ? {} : { absent_value: absentValue }),
+    availability,
+    source_ref: sourceRef,
+  };
+}
+
+function bedrockPricingInputs(
+  documents: ReadonlyArray<BedrockDocuments[number]>,
+  sourceRef: string,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): SourcePricingInputFact[] {
+  const converse = exactDocument(
+    documents,
+    "/bedrock/latest/APIReference/API_runtime_Converse.html",
+  );
+  const stream = exactDocument(
+    documents,
+    "/bedrock/latest/APIReference/API_runtime_ConverseStreamMetadataEvent.html",
+  );
+  const tokenUsage = exactDocument(
+    documents,
+    "/bedrock/latest/APIReference/API_runtime_TokenUsage.html",
+  );
+  const cacheDetail = exactDocument(
+    documents,
+    "/bedrock/latest/APIReference/API_runtime_CacheDetail.html",
+  );
+  const promptCaching = exactDocument(documents, "/bedrock/latest/userguide/prompt-caching.html");
+  const batchResults = exactDocument(
+    documents,
+    "/bedrock/latest/userguide/batch-inference-results.html",
+  );
+  const invocationLogging = exactDocument(
+    documents,
+    "/bedrock/latest/userguide/model-invocation-logging.html",
+  );
+  const applyGuardrail = exactDocument(
+    documents,
+    "/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html",
+  );
+  const invokeGuardrailChecks = exactDocument(
+    documents,
+    "/bedrock/latest/userguide/guardrails-use-invoke-guardrail-checks-using.html",
+  );
+  const facts: SourcePricingInputFact[] = [];
+  const tokenFields = [
+    ["uncached_input_tokens", "inputTokens"],
+    ["output_tokens", "outputTokens"],
+    ["cached_input_tokens", "cacheReadInputTokens"],
+    ["cache_write_tokens", "cacheWriteInputTokens"],
+  ] as const;
+  const hasTokenUsage = hasDocumentContract(tokenUsage, "TokenUsage", []);
+  const tokenUsageIdentifiers = documentIdentifiers(tokenUsage);
+  const promptText = promptCaching === undefined ? "" : load(promptCaching).text();
+  const hasUncachedSemantics =
+    hasTokenUsage &&
+    tokenUsageIdentifiers.has("inputTokens") &&
+    promptText.includes("inputTokens field represents only the non-cached input tokens") &&
+    ["inputTokens", "cacheReadInputTokens", "cacheWriteInputTokens"].every((field) =>
+      documentIdentifiers(promptCaching).has(field),
+    );
+  const converseIdentifiers = documentIdentifiers(converse);
+  const streamIdentifiers = documentIdentifiers(stream);
+  const hasConverse = hasDocumentContract(converse, "Converse", ["usage", "TokenUsage"]);
+  const hasStream = hasDocumentContract(stream, "ConverseStreamMetadataEvent", [
+    "usage",
+    "TokenUsage",
+  ]);
+
+  if (hasConverse)
+    for (const [key, field] of tokenFields)
+      if (
+        tokenUsageIdentifiers.has(field) &&
+        (key !== "uncached_input_tokens" || hasUncachedSemantics)
+      )
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `runtime.converse.${key}`,
+            "response",
+            { kind: "json_pointer", value: `/usage/${field}` },
+            "terminal_only",
+          ),
+        );
+  if (hasStream)
+    for (const [key, field] of tokenFields)
+      if (
+        tokenUsageIdentifiers.has(field) &&
+        (key !== "uncached_input_tokens" || hasUncachedSemantics)
+      )
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `runtime.converse.${key}`,
+            "stream_event",
+            {
+              kind: "provider_field",
+              value: `ConverseStreamMetadataEvent.usage.${field}`,
+            },
+            "terminal_only",
+          ),
+        );
+  if (hasConverse)
+    for (const [key, field] of [
+      ["selector.service_tier", "serviceTier.type"],
+      ["selector.speed", "performanceConfig.latency"],
+    ] as const)
+      if (field.split(".").every((identifier) => converseIdentifiers.has(identifier)))
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `runtime.converse.${key}`,
+            "response",
+            { kind: "json_pointer", value: `/${field.replace(".", "/")}` },
+            "terminal_only",
+          ),
+        );
+  if (hasStream)
+    for (const [key, field] of [
+      ["selector.service_tier", "serviceTier.type"],
+      ["selector.speed", "performanceConfig.latency"],
+    ] as const)
+      if (field.split(".").every((identifier) => streamIdentifiers.has(identifier)))
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `runtime.converse.${key}`,
+            "stream_event",
+            { kind: "provider_field", value: `ConverseStreamMetadataEvent.${field}` },
+            "terminal_only",
+          ),
+        );
+
+  if (
+    hasTokenUsage &&
+    tokenUsageIdentifiers.has("cacheDetails") &&
+    hasDocumentContract(cacheDetail, "CacheDetail", ["inputTokens", "ttl", "5m", "1h"])
+  )
+    for (const ttl of ["5m", "1h"] as const)
+      facts.push(
+        pricingInput(
+          sourceRef,
+          `runtime.converse.cache_write_${ttl}_input_tokens`,
+          "response",
+          {
+            kind: "provider_field",
+            value: `TokenUsage.cacheDetails[ttl=${ttl}].inputTokens`,
+          },
+          "terminal_only",
+          "zero",
+        ),
+        pricingInput(
+          sourceRef,
+          `runtime.converse.cache_write_${ttl}_input_tokens`,
+          "stream_event",
+          {
+            kind: "provider_field",
+            value: `ConverseStreamMetadataEvent.usage.cacheDetails[ttl=${ttl}].inputTokens`,
+          },
+          "terminal_only",
+          "zero",
+        ),
+      );
+
+  if (hasDocumentContract(batchResults, "View the results of a batch inference job", ["manifest"]))
+    for (const [key, field] of [
+      ["input_tokens", "inputTokenCount"],
+      ["output_tokens", "outputTokenCount"],
+    ] as const)
+      if (documentIdentifiers(batchResults).has(field))
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `batch.manifest.${key}`,
+            "result",
+            { kind: "provider_field", value: `manifest.json.out.${field}` },
+            "terminal_only",
+          ),
+        );
+
+  const invocationText = invocationLogging === undefined ? "" : load(invocationLogging).text();
+  if (
+    hasDocumentContract(invocationLogging, "ModelInvocationLog", [
+      "schemaVersion",
+      "region",
+      "requestId",
+      "operation",
+      "modelId",
+      "inputTokenCount",
+      "outputTokenCount",
+    ]) &&
+    invocationText.includes("bedrock-runtime")
+  ) {
+    facts.push(
+      pricingInput(
+        sourceRef,
+        "runtime.invocation_log.input_tokens",
+        "invocation_log",
+        { kind: "json_pointer", value: "/input/inputTokenCount" },
+        "reconciliation_only",
+      ),
+      pricingInput(
+        sourceRef,
+        "runtime.invocation_log.output_tokens",
+        "invocation_log",
+        { kind: "json_pointer", value: "/output/outputTokenCount" },
+        "reconciliation_only",
+      ),
+      pricingInput(
+        sourceRef,
+        "runtime.invocation_log.selector.region",
+        "invocation_log",
+        { kind: "json_pointer", value: "/region" },
+        "reconciliation_only",
+      ),
+    );
+  }
+
+  if (hasDocumentContract(applyGuardrail, "ApplyGuardrail", ["usage"]))
+    for (const field of applyGuardrailUsageFields)
+      if (documentIdentifiers(applyGuardrail).has(field))
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `guardrails.apply.${field}`,
+            "response",
+            { kind: "json_pointer", value: `/usage/${field}` },
+            "terminal_only",
+          ),
+        );
+
+  if (hasDocumentContract(invokeGuardrailChecks, "InvokeGuardrailChecks", ["usage", "textUnits"]))
+    for (const check of ["contentFilter", "promptAttack", "sensitiveInformation"] as const)
+      if (documentIdentifiers(invokeGuardrailChecks).has(check))
+        facts.push(
+          pricingInput(
+            sourceRef,
+            `guardrails.checks.${check}.textUnits`,
+            "response",
+            { kind: "json_pointer", value: `/usage/${check}/textUnits` },
+            "terminal_only",
+          ),
+        );
+
+  const result = uniquePricingInputFacts(facts);
+  const expected = 32;
+  if (
+    [
+      converse,
+      stream,
+      tokenUsage,
+      cacheDetail,
+      promptCaching,
+      batchResults,
+      invocationLogging,
+      applyGuardrail,
+      invokeGuardrailChecks,
+    ].some((body) => body !== undefined)
+  )
+    onPricingReconciliation?.({
+      disposition: result.length === expected ? "normalized" : "unbound",
+      reason_code:
+        result.length === expected
+          ? "pricing_input_contract_bound"
+          : "pricing_input_contract_partial",
+      sample: `${result.length}/${expected} Bedrock pricing inputs`,
+    });
+  return result;
+}
+
 export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   if (input.source.extractor.kind !== "bedrock-catalog")
     throw new Error("Bedrock catalog parser received the wrong extractor");
@@ -2522,6 +2837,12 @@ export function parseBedrockCatalog(input: ParseInput): ProviderModel[] {
   const carrier = result.find(({ price_facts }) => price_facts.length > 0) ?? result[0];
   if (carrier !== undefined && prices.commercialFacts.length > 0)
     carrier.commercial_facts = prices.commercialFacts;
+  const pricingInputs = bedrockPricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onPricingReconciliation,
+  );
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return result;
 }
 

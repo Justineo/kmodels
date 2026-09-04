@@ -1,6 +1,18 @@
 <main>
   <p>
-    usage contains completion_tokens, prompt_tokens, total_tokens, and prompt_tokens_details with
-    cached_tokens.
+    usage contains completion_tokens, prompt_tokens, total_tokens, and
+    prompt_tokens_details.cached_tokens.
   </p>
+  <p>
+    Input details include prompt_tokens_details.text_tokens, prompt_tokens_details.image_tokens,
+    prompt_tokens_details.video_tokens, and prompt_tokens_details.audio_tokens. Output details
+    include completion_tokens_details.text_tokens, completion_tokens_details.reasoning_tokens, and
+    completion_tokens_details.audio_tokens.
+  </p>
+  <p>
+    Explicit cache details include prompt_tokens_details.cache_creation.cache_creation_input_tokens
+    and prompt_tokens_details.cache_creation.ephemeral_5m_input_tokens.
+  </p>
+  <p>Set stream_options.include_usage to receive usage on the final streaming chunk.</p>
+  <p>Set enable_thinking to select thinking mode where the model supports it.</p>
 </main>

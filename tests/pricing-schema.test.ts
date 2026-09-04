@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
+  chargeBindingSchema,
   decimalSchema,
   priceApplicabilitySchema,
   pricingCatalogEnvelopeSchema,
@@ -10,6 +11,7 @@ import {
   rawPriceFactSchema,
   rawPriceObservationSchema,
   unitExpressionSchema,
+  usageQuantityCalculationSchema,
 } from "../src/catalog/pricing-schema.ts";
 
 const unconditional = { any_of: [{ all_of: [] }] };
@@ -127,6 +129,58 @@ describe("canonical pricing wire schema", () => {
   it("bounds canonical decimal coefficients", () => {
     expect(decimalSchema.parse(`0.${"0".repeat(126)}1`)).toHaveLength(129);
     expect(() => decimalSchema.parse(`0.${"0".repeat(127)}1`)).toThrow("exact-integer digit limit");
+  });
+
+  it("accepts only closed and bounded quantity calculations", () => {
+    const signal = { namespace: "kmodels" as const, value: "active_seconds" as const };
+    const calculation = {
+      nodes: [
+        { op: "signal" as const, signal },
+        {
+          op: "minimum" as const,
+          input: 0,
+          value: { numerator: "300", denominator: "1" },
+        },
+      ],
+      result: 1,
+    };
+    expect(usageQuantityCalculationSchema.parse(calculation)).toEqual(calculation);
+    expect(() =>
+      usageQuantityCalculationSchema.parse({
+        nodes: [{ op: "script", source: "usage * 2" }],
+        result: 0,
+      }),
+    ).toThrow();
+    expect(() =>
+      chargeBindingSchema.parse({
+        signal,
+        aggregation: "session",
+        quantity_methods: [
+          {
+            input_sources: [
+              {
+                signal,
+                channel: "telemetry",
+                locator: {
+                  kind: "otel_attribute",
+                  value: "gen_ai.usage.active_seconds",
+                  convention_version: "development-2026-09-03",
+                },
+                availability: "terminal_only",
+              },
+            ],
+          },
+        ],
+        observations: [
+          {
+            source_ref: "pricing",
+            locator: { kind: "table", value: "runtime" },
+            raw: { fragment: "runtime" },
+          },
+        ],
+        extra: true,
+      }),
+    ).toThrow();
   });
 
   it("validates closed calendar labels and canonical UTC instants", () => {

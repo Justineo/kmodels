@@ -3,6 +3,7 @@ import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
+import { extractMistralPricingInputs } from "./mistral-accounting.ts";
 import {
   extractMistralCommercialFacts,
   type MistralPricingCard,
@@ -25,7 +26,6 @@ import {
   type SourceContractEvidence,
 } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
-import { yamlBlock } from "./yaml.ts";
 
 interface Input {
   provider: Provider;
@@ -86,7 +86,6 @@ interface Draft {
 }
 
 type Reconcile = Input["onPricingReconciliation"];
-type AccountingClaim = "conversation" | "ocr" | "speech" | "tokens" | "transcription";
 
 interface DiscountPolicy {
   batch: boolean;
@@ -1144,162 +1143,6 @@ function relatedRate(candidate: SourcePriceFact, selected: SourcePriceFact): boo
   return selected.meter === "input_text" && candidate.meter === "cache_read_text";
 }
 
-function requireYamlBlock(
-  body: string,
-  label: string,
-  indentation: number,
-  markers: readonly RegExp[],
-  forbiddenMarkers: readonly RegExp[] = [],
-): string {
-  const block = yamlBlock(body, label, indentation);
-  if (
-    block === undefined ||
-    markers.some((marker) => !marker.test(block)) ||
-    forbiddenMarkers.some((marker) => marker.test(block))
-  )
-    throw new Error(`Mistral OpenAPI reference drifted: ${label}`);
-  return block;
-}
-
-function usageReferenceMarkers(property = "usage"): RegExp[] {
-  return [
-    new RegExp(`^ {8}${property}:\\s*$`, "m"),
-    /^ {10}\$ref: ["']#\/components\/schemas\/UsageInfo["']\s*$/m,
-  ];
-}
-
-function validateOpenApi(
-  documents: readonly { url: string; body: string }[],
-  reconcile: Reconcile,
-): Set<AccountingClaim> {
-  const matches = documents.filter(({ url }) => {
-    const value = new URL(url);
-    return (
-      value.hostname === "raw.githubusercontent.com" &&
-      value.pathname === "/mistralai/platform-docs-public/main/openapi.yaml" &&
-      value.search === "" &&
-      value.hash === ""
-    );
-  });
-  const document = matches[0];
-  if (matches.length === 0) {
-    reconcile?.({
-      disposition: "unbound",
-      reason_code: "commercial_companion_missing",
-      sample: "/mistralai/platform-docs-public/main/openapi.yaml",
-    });
-    return new Set();
-  }
-  if (
-    matches.length !== 1 ||
-    document === undefined ||
-    !/^openapi:\s+3\.1\.\d+\s*$/m.test(document.body)
-  ) {
-    reconcile?.({
-      disposition: "unbound",
-      reason_code: "accounting_contract_drift",
-      sample: "Mistral OpenAPI reference drifted: document",
-    });
-    return new Set();
-  }
-
-  const valid = new Set<AccountingClaim>();
-  claim(
-    "tokens",
-    reconcile,
-    () => {
-      requireYamlBlock(document.body, "PromptTokensDetails", 4, [/^ {8}cached_tokens:\s*$/m]);
-      const usageInfo = requireYamlBlock(document.body, "UsageInfo", 4, [
-        /^ {8}prompt_tokens:\s*$/m,
-        /^ {8}completion_tokens:\s*$/m,
-        /^ {8}total_tokens:\s*$/m,
-        /^ {8}prompt_audio_seconds:\s*$/m,
-      ]);
-      if (
-        !/^ {8}num_cached_tokens:\s*$/m.test(usageInfo) &&
-        !/^ {8}prompt_tokens?_details:\s*$/m.test(usageInfo)
-      )
-        throw new Error("Mistral OpenAPI reference drifted: UsageInfo");
-      requireYamlBlock(document.body, "ResponseBase", 4, usageReferenceMarkers());
-      requireYamlBlock(document.body, "CompletionChunk", 4, usageReferenceMarkers());
-    },
-    valid,
-  );
-  claim(
-    "ocr",
-    reconcile,
-    () => {
-      requireYamlBlock(document.body, "OCRUsageInfo", 4, [/^ {8}pages_processed:\s*$/m]);
-      requireYamlBlock(document.body, "OCRResponse", 4, [
-        /^ {8}usage_info:\s*$/m,
-        /^ {10}\$ref: ["']#\/components\/schemas\/OCRUsageInfo["']\s*$/m,
-      ]);
-    },
-    valid,
-  );
-  claim(
-    "transcription",
-    reconcile,
-    () => {
-      requireYamlBlock(document.body, "TranscriptionResponse", 4, usageReferenceMarkers());
-      requireYamlBlock(document.body, "TranscriptionStreamDone", 4, usageReferenceMarkers());
-    },
-    valid,
-  );
-  claim(
-    "speech",
-    reconcile,
-    () => {
-      requireYamlBlock(
-        document.body,
-        "SpeechResponse",
-        4,
-        [/^ {8}audio_data:\s*$/m],
-        [/^ {8}usage:\s*$/m],
-      );
-      requireYamlBlock(document.body, "SpeechStreamDone", 4, usageReferenceMarkers());
-    },
-    valid,
-  );
-  claim(
-    "conversation",
-    reconcile,
-    () => {
-      requireYamlBlock(document.body, "ConversationUsageInfo", 4, [
-        /^ {8}prompt_tokens:\s*$/m,
-        /^ {8}completion_tokens:\s*$/m,
-        /^ {8}total_tokens:\s*$/m,
-        /^ {8}connector_tokens:\s*$/m,
-        /^ {8}connectors:\s*$/m,
-      ]);
-      requireYamlBlock(document.body, "ConversationResponse", 4, [
-        /^ {8}usage:\s*$/m,
-        /^ {10}\$ref: ["']#\/components\/schemas\/ConversationUsageInfo["']\s*$/m,
-      ]);
-    },
-    valid,
-  );
-  return valid;
-}
-
-function claim(
-  name: AccountingClaim,
-  reconcile: Reconcile,
-  validate: () => void,
-  valid: Set<AccountingClaim>,
-): void {
-  try {
-    validate();
-    valid.add(name);
-  } catch (error) {
-    reconcile?.({
-      disposition: "unbound",
-      reason_code: "accounting_contract_drift",
-      sample: error instanceof Error ? error.message : name,
-    });
-  }
-}
-
 export function parseMistralCatalog(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "mistral-catalog")
     throw new Error("Wrong Mistral catalog extractor");
@@ -1463,14 +1306,8 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
     );
     if (!observedModels.has(model.uid)) model.pricing_state = "unknown";
   }
-  addAccountingGaps(
-    models,
-    validateOpenApi(bundle.documents, input.onPricingReconciliation),
-    input.source.id,
-  );
   extractMistralCommercialFacts(
     {
-      documents: bundle.documents,
       models,
       sourceId: input.source.id,
       ...(input.onPricingReconciliation === undefined
@@ -1479,6 +1316,14 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
     },
     cards,
   );
+  const pricingInputs = extractMistralPricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  const carrier = [...models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return models
     .filter(
       ({ pricing_state, price_facts, raw_price_facts, commercial_facts }) =>
@@ -1488,38 +1333,6 @@ export function parseMistralPricing(input: Input): ProviderModel[] {
         (commercial_facts?.length ?? 0) > 0,
     )
     .sort((left, right) => left.uid.localeCompare(right.uid));
-}
-
-function addAccountingGaps(
-  models: ProviderModel[],
-  valid: ReadonlySet<AccountingClaim>,
-  sourceId: string,
-): void {
-  for (const model of models) {
-    const claims = new Set(
-      model.price_facts.flatMap(({ meter, unit }): AccountingClaim[] => {
-        if (unit === "character" || unit === "thousand_characters" || unit === "million_characters")
-          return [];
-        if (meter === "input_image") return ["ocr"];
-        if (meter === "input_audio")
-          return [model.tasks.includes("transcription") ? "transcription" : "tokens"];
-        if (meter === "output_audio") return ["speech"];
-        return ["tokens"];
-      }),
-    );
-    for (const name of claims)
-      if (!valid.has(name))
-        model.raw_price_facts.push({
-          term_key: `accounting_binding_unavailable:${name}`,
-          impact: "informational",
-          reason: "unknown_applicability",
-          conditions: {},
-          source_ref: sourceId,
-          raw: {
-            fragment: `The ${name} accounting response contract drifted; published prices remain usable without an exact automatic charge binding`,
-          },
-        });
-  }
 }
 
 function apiOperations(capabilities: z.infer<typeof apiCapabilitiesSchema>): ModelTask[] {

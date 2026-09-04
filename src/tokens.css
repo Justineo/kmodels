@@ -85,7 +85,9 @@
   --layout-table-cell-padding: 12px;
   --layout-sort-control-space: 17px;
   --layout-filter-header-height: 56px;
-  --layout-details-header-height: 88px;
+  --layout-details-header-height: calc(
+    var(--layout-header-height) + var(--layout-toolbar-height) + var(--stroke-hairline)
+  );
   --layout-detail-cell-height: 52px;
   --layout-empty-state-height: 240px;
   --layout-list-row-height: 48px;

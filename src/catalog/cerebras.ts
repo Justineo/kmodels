@@ -1,15 +1,12 @@
 import { z } from "zod";
+import { extractCerebrasPricingInputs } from "./cerebras-accounting.ts";
 import { attachCerebrasBatch } from "./cerebras-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { apiEndpointKey, baseModel } from "./model.ts";
-import { publishedRate, rawPricingFact, scaleDecimal } from "./pricing.ts";
+import { publishedRate, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type {
-  ParsedProviderModel as ProviderModel,
-  SourcePriceFact,
-  SourceRawPricingFact,
-} from "./pricing-source.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import {
   assertItemCount,
   recognizeItems,
@@ -756,48 +753,7 @@ function hasClaims(
   return false;
 }
 
-interface CatalogCommercialEvidence {
-  chatAccounting: boolean;
-  completionsAccounting: boolean;
-  cacheAccounting: boolean;
-  serviceTierAccounting: boolean;
-  batch: boolean;
-}
-
-function commercialEvidence(input: Input, bundle: Bundle): CatalogCommercialEvidence {
-  const chatAccounting = hasClaims(
-    input,
-    bundle,
-    "/api-reference/chat-completions.md",
-    [/prompt_tokens:/, /completion_tokens:/, /total_tokens:/],
-    "chat_usage_contract_drift",
-  );
-  const completionsAccounting = hasClaims(
-    input,
-    bundle,
-    "/api-reference/completions.md",
-    [/prompt_tokens/, /completion_tokens/, /total_tokens/, /cached_tokens/],
-    "completions_usage_contract_drift",
-  );
-  const cacheAccounting = hasClaims(
-    input,
-    bundle,
-    "/capabilities/prompt-caching.md",
-    [
-      /automatically enabled for all users/,
-      /usage\.prompt_tokens_details\.cached_tokens/,
-      /billed at the standard input token rate/,
-      /does not (?:affect|change) billing/,
-    ],
-    "cache_accounting_contract_drift",
-  );
-  const serviceTierAccounting = hasClaims(
-    input,
-    bundle,
-    "/capabilities/service-tiers.md",
-    [/service_tier/, /service_tier_used/, /all service tiers are billed equally/],
-    "service_tier_pricing_contract_drift",
-  );
+function hasBatchOffer(input: Input, bundle: Bundle): boolean {
   const batch = hasClaims(
     input,
     bundle,
@@ -812,17 +768,7 @@ function commercialEvidence(input: Input, bundle: Bundle): CatalogCommercialEvid
     "batch_accounting_contract_drift",
   );
   if (batch) diagnostic(input, "explicit_non_numeric", "batch_rate_not_published");
-  return { chatAccounting, completionsAccounting, cacheAccounting, serviceTierAccounting, batch };
-}
-
-function rawGap(sourceRef: string, key: string, fragment: string): SourceRawPricingFact {
-  return rawPricingFact(
-    sourceRef,
-    `accounting_binding_unavailable:${key}`,
-    "informational",
-    "requires_usage_aggregation",
-    fragment,
-  );
+  return batch;
 }
 
 function reconcileRates(input: Input, models: ProviderModel[]): void {
@@ -883,32 +829,20 @@ export function parseCerebrasCatalog(input: Input): ProviderModel[] {
   const models = rows.map((row) =>
     catalogCard(input, row, cards.get(row.path), cachePolicy, scheduled),
   );
-  const commercial = commercialEvidence(input, bundle);
-  for (const model of models) {
-    const paths = model.api_endpoints?.map(({ path }) => path) ?? [];
-    if (paths.some((path) => path.endsWith("/chat/completions")) && !commercial.chatAccounting)
-      model.raw_price_facts.push(
-        rawGap(input.source.id, "chat", "Chat Completions usage contract is unavailable"),
-      );
-    if (
-      paths.some((path) => /(?:^|\/)v1\/completions$/.test(path)) &&
-      !commercial.completionsAccounting
-    )
-      model.raw_price_facts.push(
-        rawGap(input.source.id, "completions", "Completions usage contract is unavailable"),
-      );
-    if (model.capabilities.prompt_cache === true && !commercial.cacheAccounting)
-      model.raw_price_facts.push(
-        rawGap(input.source.id, "cache", "Cached-token accounting contract is unavailable"),
-      );
-    if (!commercial.serviceTierAccounting)
-      model.raw_price_facts.push(
-        rawGap(input.source.id, "service_tier", "Service-tier price applicability is unavailable"),
-      );
-  }
+  const batch = hasBatchOffer(input, bundle);
+  const pricingInputs = extractCerebrasPricingInputs({
+    documents: bundle.documents,
+    sourceRef: input.source.id,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { onReconciliation: input.onPricingReconciliation }),
+  });
+  const carrier = models.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   const result = bounded(input, "cerebras-catalog", models);
   reconcileRates(input, result);
-  if (commercial.batch) attachCerebrasBatch(result, input.source.id);
+  if (batch) attachCerebrasBatch(result, input.source.id);
   return result;
 }
 

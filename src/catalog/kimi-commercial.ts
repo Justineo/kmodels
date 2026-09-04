@@ -1,3 +1,7 @@
+import {
+  compareCanonicalValues,
+  uniqueCanonicalValues as uniqueCanonical,
+} from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
   AtomicPricingOffer,
@@ -6,6 +10,7 @@ import type {
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
+import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { canonicalizeApplicability, unconditionalApplicability } from "./pricing-canonical.ts";
 import {
   addAtom,
@@ -16,15 +21,31 @@ import {
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
+import {
+  directQuantityMethods as directMethods,
+  emptyQuantityMethods as emptyMethods,
+  includePricingInputSourceRefs,
+  indexPricingInputs,
+  mergeQuantityMethods as mergeMethods,
+  pricingInputFacts,
+  pricingInputObservation,
+  uniquePricingInputFacts,
+  usageInputSources,
+  type BoundQuantityMethods as MethodsAndFacts,
+  type PricingInputIndex,
+} from "./pricing-input.ts";
 import type {
   ChargeBinding,
   PriceApplicability,
+  PriceCategoricalValue,
   PriceCondition,
   PriceMeter,
+  PriceSelectorSource,
   RawPriceObservation,
   UnitExpression,
   UsageSignal,
 } from "./pricing-schema.ts";
+import type { SourcePricingInputFact } from "./pricing-source.ts";
 
 type Mechanism = "sync" | "batch";
 
@@ -33,11 +54,22 @@ interface ModelOffers {
   batch?: string;
 }
 
-export function applyKimiCommercialTopology(input: AtomicProviderPricing): AtomicProviderPricing {
+export function applyKimiCommercialTopology(
+  input: AtomicProviderPricing,
+  publishedModels: readonly PublishedPricingModel[],
+  pricingInputs: readonly SourcePricingInputFact[],
+): AtomicProviderPricing {
+  const published = new Map(publishedModels.map((model) => [model.uid, model]));
+  const inputIndex = indexPricingInputs(pricingInputs);
   const modelOffers = new Map<string, ModelOffers>();
   const books = input.books.map((book) => {
-    if (book.scope.kind !== "models") return bindResourceBook(book, input);
-    const migrated = splitModelBook(book);
+    if (book.scope.kind !== "models") return bindResourceBook(book, input, inputIndex);
+    const modelRef = book.scope.model_refs[0];
+    const migrated = splitModelBook(
+      book,
+      modelRef === undefined ? undefined : published.get(modelRef),
+      inputIndex,
+    );
     const bookId = pricingBookId(input.provider_id, book.book_key);
     const offers: ModelOffers = {};
     if (migrated.offers.some(({ offer_key }) => offer_key === "sync"))
@@ -49,14 +81,18 @@ export function applyKimiCommercialTopology(input: AtomicProviderPricing): Atomi
   });
   for (const book of books)
     if (book.scope.kind === "provider_resource") bindResourceRelations(book, modelOffers);
-  return { ...input, books };
+  return { ...input, books: books.map(includePricingInputSourceRefs) };
 }
 
-function splitModelBook(book: AtomicPricingBook): AtomicPricingBook {
+function splitModelBook(
+  book: AtomicPricingBook,
+  model: PublishedPricingModel | undefined,
+  inputIndex: PricingInputIndex,
+): AtomicPricingBook {
   const offers = book.offers.flatMap((offer) => {
     if (offer.offer_key !== "usage") return [withSettlement(offer, "Kimi API usage")];
-    const sync = partitionOffer(book, offer, "sync");
-    const batch = partitionOffer(book, offer, "batch");
+    const sync = partitionOffer(book, offer, "sync", model, inputIndex);
+    const batch = partitionOffer(book, offer, "batch", model, inputIndex);
     const result = [sync, batch].filter(hasCommercialContent);
     if (sync !== undefined && batch !== undefined && result.length === 2) {
       const bookId = pricingBookId("kimi", book.book_key);
@@ -86,6 +122,8 @@ function partitionOffer(
   book: AtomicPricingBook,
   offer: AtomicPricingOffer,
   mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingOffer | undefined {
   const states = offer.states.flatMap((state) => {
     const applicability = mechanismApplicability(state.applicability, mechanism);
@@ -99,7 +137,9 @@ function partitionOffer(
           },
         ];
   });
-  const terms = offer.terms.flatMap((term) => partitionTerm(book, term, mechanism));
+  const terms = offer.terms.flatMap((term) =>
+    partitionTerm(book, term, mechanism, model, inputIndex),
+  );
   if (states.length === 0 && terms.length === 0) return;
   return withSettlement(
     {
@@ -118,6 +158,8 @@ function partitionTerm(
   book: AtomicPricingBook,
   term: AtomicPricingTerm,
   mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
     const variants = term.variants.flatMap((variant) => partitionRaw(variant, mechanism));
@@ -127,13 +169,18 @@ function partitionTerm(
   const variants = term.variants.flatMap((variant) => {
     const applicability = mechanismApplicability(variant.applicability, mechanism);
     if (applicability === undefined) return [];
-    const charge_binding = modelBinding(book, term.meter, variant, mechanism);
+    const next = {
+      ...variant,
+      applicability,
+      observation: withApplicability(variant.observation, applicability),
+    };
+    const charge_binding = modelBinding(book, term.meter, next, mechanism, model, inputIndex);
+    const selector_sources = selectorSources(applicability, inputIndex);
     return [
       {
-        ...variant,
-        applicability,
-        observation: withApplicability(variant.observation, applicability),
+        ...next,
         ...(charge_binding === undefined ? {} : { charge_binding }),
+        ...(selector_sources.length === 0 ? {} : { selector_sources }),
       },
     ];
   });
@@ -174,15 +221,35 @@ function modelBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
   mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
+  inputIndex: PricingInputIndex,
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels" || !isStandardUnit(variant.price.per, "token")) return;
   const modelRef = book.scope.kind === "models" ? book.scope.model_refs[0] : undefined;
   if (modelRef === undefined) return;
+  const signal = modelSignal(modelRef, meter);
+  if (signal === undefined) return;
   if (mechanism === "batch") {
-    if (modelRef.endsWith("/kimi-k2.7-code") || meter.value !== "output_text") return;
-    return standardBinding("output_tokens", "result_item", variant.observation, "batch:output");
+    if (modelRef.endsWith("/kimi-k2.7-code")) return;
+    const mapped =
+      signal.value === "output_tokens"
+        ? directMethods(signal, ["batch.result.output_tokens"], inputIndex)
+        : emptyMethods();
+    return standardBinding(signal, "result_item", variant.observation, mapped);
   }
-  const signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"] | undefined =
+  return standardBinding(
+    signal,
+    "request",
+    variant.observation,
+    synchronousMethods(model, signal, inputIndex),
+  );
+}
+
+function modelSignal(
+  modelRef: string,
+  meter: PriceMeter,
+): Extract<UsageSignal, { namespace: "kmodels" }> | undefined {
+  const value =
     meter.value === "cache_read_text"
       ? "cached_input_tokens"
       : meter.value === "output_text"
@@ -192,27 +259,92 @@ function modelBinding(
             ? "input_tokens"
             : "uncached_input_tokens"
           : undefined;
-  return signal === undefined
-    ? undefined
-    : standardBinding(signal, "request", variant.observation, `chat:${signal}`);
+  return value === undefined ? undefined : { namespace: "kmodels", value };
 }
 
 function standardBinding(
-  signal: Extract<UsageSignal, { namespace: "kmodels" }>["value"],
+  signal: Extract<UsageSignal, { namespace: "kmodels" }>,
   aggregation: ChargeBinding["aggregation"],
   evidence: RawPriceObservation,
-  locator: string,
+  mapped: MethodsAndFacts,
 ): ChargeBinding {
   return {
-    signal: { namespace: "kmodels", value: signal },
+    signal,
     aggregation,
-    observations: [{ ...rawEvidence(evidence), locator: { kind: "provider_key", value: locator } }],
+    ...(mapped.methods.length === 0 ? {} : { quantity_methods: mapped.methods }),
+    observations: [rawEvidence(evidence), ...mapped.facts.map(pricingInputObservation)].sort(
+      compareCanonicalValues,
+    ),
   };
+}
+
+function synchronousMethods(
+  model: PublishedPricingModel | undefined,
+  signal: Extract<UsageSignal, { namespace: "kmodels" }>,
+  inputIndex: PricingInputIndex,
+): MethodsAndFacts {
+  const endpoints = new Set(model?.api_endpoints?.map(({ path }) => path) ?? []);
+  if (signal.value === "uncached_input_tokens") {
+    return mergeMethods([
+      subtractionMethod("chat", inputIndex),
+      ...(endpoints.has("/v1/responses") ? [subtractionMethod("responses", inputIndex)] : []),
+      ...(endpoints.has("/anthropic/v1/messages")
+        ? [directMethods(signal, usageKeys("messages", signal.value), inputIndex)]
+        : []),
+    ]);
+  }
+  const keys = [
+    ...usageKeys("chat", signal.value),
+    ...(endpoints.has("/v1/responses") ? usageKeys("responses", signal.value) : []),
+    ...(endpoints.has("/anthropic/v1/messages") ? usageKeys("messages", signal.value) : []),
+  ];
+  return directMethods(signal, keys, inputIndex);
+}
+
+function usageKeys(protocol: "chat" | "messages" | "responses", signal: string): string[] {
+  return [`${protocol}.${signal}`, `${protocol}.stream.${signal}`];
+}
+
+function subtractionMethod(
+  protocol: "chat" | "responses",
+  inputIndex: PricingInputIndex,
+): MethodsAndFacts {
+  const totalSignal = standardSignal("input_tokens");
+  const cachedSignal = standardSignal("cached_input_tokens");
+  const total = pricingInputFacts(inputIndex, usageKeys(protocol, totalSignal.value));
+  const cached = pricingInputFacts(inputIndex, usageKeys(protocol, cachedSignal.value));
+  if (total.length === 0 || cached.length === 0) return emptyMethods();
+  return {
+    methods: [
+      {
+        calculation: {
+          nodes: [
+            { op: "signal", signal: totalSignal },
+            { op: "signal", signal: cachedSignal },
+            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+          ],
+          result: 2,
+        },
+        input_sources: [
+          ...usageInputSources(totalSignal, total),
+          ...usageInputSources(cachedSignal, cached),
+        ].sort(compareCanonicalValues),
+      },
+    ],
+    facts: uniquePricingInputFacts([...total, ...cached]),
+  };
+}
+
+function standardSignal(
+  value: "cached_input_tokens" | "input_tokens" | "uncached_input_tokens",
+): Extract<UsageSignal, { namespace: "kmodels" }> {
+  return { namespace: "kmodels", value };
 }
 
 function bindResourceBook(
   book: AtomicPricingBook,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingBook {
   if (book.scope.kind !== "provider_resource") return book;
   const resourceKey = book.scope.resource_key;
@@ -223,8 +355,13 @@ function bindResourceBook(
       return {
         ...term,
         variants: term.variants.map((variant) => {
-          const charge_binding = resourceBinding(resourceKey, offer, variant, input);
-          return charge_binding === undefined ? variant : { ...variant, charge_binding };
+          const charge_binding = resourceBinding(resourceKey, offer, variant, input, inputIndex);
+          const selector_sources = selectorSources(variant.applicability, inputIndex);
+          return {
+            ...variant,
+            ...(charge_binding === undefined ? {} : { charge_binding }),
+            ...(selector_sources.length === 0 ? {} : { selector_sources }),
+          };
         }),
       };
     }),
@@ -237,6 +374,7 @@ function resourceBinding(
   offer: AtomicPricingOffer,
   variant: AtomicRateVariant,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): ChargeBinding | undefined {
   if (resourceKey !== "web-search" || !isStandardUnit(variant.price.per, "event")) return;
   const formula = offer.offer_key === "formula";
@@ -249,8 +387,9 @@ function resourceBinding(
     variant.price.per,
     formula ? "resource" : "request",
     variant.observation,
-    formula ? "formula:web-search-fiber" : "chat:built-in-web-search",
+    formula ? ["web_search.formula.created_fibers"] : ["web_search.chat.billable_calls"],
     "outcome",
+    inputIndex,
   );
 }
 
@@ -303,8 +442,9 @@ function providerBinding(
   unit: UnitExpression,
   aggregation: ChargeBinding["aggregation"],
   evidence: RawPriceObservation,
-  locator: string,
+  inputKeys: readonly string[],
   resolutionPhase: "outcome" | "account",
+  inputIndex: PricingInputIndex,
 ): ChargeBinding {
   addAtom(input, {
     kind: "usage_signal",
@@ -313,11 +453,56 @@ function providerBinding(
     unit,
     resolution_phase: resolutionPhase,
   });
+  const signal = { namespace: "provider", provider_id: input.provider_id, value: key } as const;
+  const mapped = directMethods(signal, inputKeys, inputIndex);
   return {
-    signal: { namespace: "provider", provider_id: input.provider_id, value: key },
+    signal,
     aggregation,
-    observations: [{ ...rawEvidence(evidence), locator: { kind: "provider_key", value: locator } }],
+    ...(mapped.methods.length === 0 ? {} : { quantity_methods: mapped.methods }),
+    observations: [rawEvidence(evidence), ...mapped.facts.map(pricingInputObservation)].sort(
+      compareCanonicalValues,
+    ),
   };
+}
+
+function selectorSources(
+  applicability: PriceApplicability,
+  inputIndex: PricingInputIndex,
+): PriceSelectorSource[] {
+  const condition = applicability.any_of
+    .flatMap(({ all_of }) => all_of)
+    .find(
+      (candidate) =>
+        candidate.kind === "categorical" &&
+        candidate.dimension.namespace === "kmodels" &&
+        candidate.dimension.value === "region",
+    );
+  if (condition?.kind !== "categorical") return [];
+  return uniqueCanonical(
+    condition.values.flatMap((value) => {
+      const region = regionSelector(value);
+      if (region === undefined) return [];
+      return pricingInputFacts(inputIndex, [`request.api_origin.${region.key}`]).map((fact) => ({
+        dimension: condition.dimension,
+        channel: fact.channel,
+        locator: fact.locator,
+        availability: fact.availability,
+        normalization: {
+          kind: "categorical_map" as const,
+          entries: [{ source_value: region.origin, value }],
+        },
+        observations: [pricingInputObservation(fact)],
+      }));
+    }),
+  );
+}
+
+function regionSelector(
+  value: PriceCategoricalValue,
+): { key: "china" | "international"; origin: string } | undefined {
+  const key = value.value.toLowerCase();
+  if (key === "china") return { key: "china", origin: "https://api.moonshot.cn" };
+  if (key === "international") return { key: "international", origin: "https://api.moonshot.ai" };
 }
 
 function withSettlement(offer: AtomicPricingOffer, label: string): AtomicPricingOffer {

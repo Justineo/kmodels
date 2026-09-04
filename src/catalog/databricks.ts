@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema, linkedDocumentBody } from "./bundle.ts";
+import { extractDatabricksPricingInputs } from "./databricks-accounting.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
@@ -11,7 +12,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { modalitySchema, type Modality, type Provider, unknownCapabilities } from "./schema.ts";
 import { classifyModelTasks, normalizeModelTasks } from "./task.ts";
 
@@ -20,6 +21,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -295,25 +297,6 @@ function applyApiSupport(models: ProviderModel[], tasksBody: string, referenceBo
     !/Chat and completion endpoints support streaming responses\./i.test(referenceText)
   )
     throw new Error("Databricks API reference changed");
-  const usageFields = new Set<string>();
-  reference("main table").each((_tableIndex, table) => {
-    const fields = reference(table)
-      .find("tbody tr")
-      .map((_rowIndex, row) => text(reference(row).children("td").first().text()))
-      .get();
-    if (fields.includes("prompt_tokens")) usageFields.add(fields.join("|"));
-  });
-  if (
-    usageFields.size !== 1 ||
-    !usageFields.has(
-      "completion_tokens|prompt_tokens|total_tokens|reasoning_tokens|cache_read_input_tokens|cache_creation_input_tokens",
-    ) ||
-    !/service tier used for the request\. Returns "priority" if priority mode was requested, otherwise "default"/i.test(
-      referenceText,
-    )
-  )
-    throw new Error("Databricks response usage contract changed");
-
   const $ = load(tasksBody);
   if (
     !$("main a")
@@ -1359,6 +1342,15 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
       price_facts: pricing,
     };
   });
+  const pricingInputs = extractDatabricksPricingInputs(
+    apiReference,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  const carrier = result[0];
+  if (carrier !== undefined && pricingInputs.length > 0)
+    result[0] = { ...carrier, pricing_inputs: pricingInputs };
   return result;
 }
 

@@ -8,6 +8,7 @@ export const pricingLimits = {
   dailyTimeWindows: 16,
   unitFactors: 8,
   unitFactorPower: 8,
+  quantityCalculationNodes: 64,
   semanticStringBytes: 512,
   provenanceStringBytes: 4_096,
   exactIntegerDigits: 128,
