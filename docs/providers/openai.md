@@ -90,9 +90,10 @@ Model-card prices are fallbacks. For the same meter, denomination, unit, and app
   becomes bounded raw `conflicting_values`; sibling rates and models continue.
 
 Unknown sections, tiers, table shapes, rows, cells, tools, and modalities are reconciled locally.
-They never reject already parsed tables. A refresh still fails atomically when the required pricing
-source yields no admitted model or service fact at all; that protects the previous verified
-partition from an unrecognizable whole-page rewrite.
+Diagnostic samples are bounded to 256 characters before validation, and unknown content never
+rejects already parsed tables. A refresh still fails atomically when the required pricing source
+yields no admitted model or service fact at all; that protects the previous verified partition from
+an unrecognizable whole-page rewrite.
 
 The normalized selectors are source-backed dimensions shared with other providers:
 

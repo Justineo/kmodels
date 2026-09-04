@@ -689,7 +689,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v9",
+        extractorVersion: "openai-pricing-v10",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],

@@ -726,7 +726,7 @@ function openAiPricingTables(
       onReconciliation?.({
         disposition: "unsupported",
         reason_code: "unreviewed_pricing_tier",
-        sample: line,
+        sample: line.slice(0, 256),
       });
       continue;
     }
@@ -748,7 +748,7 @@ function openAiPricingTables(
       onReconciliation?.({
         disposition: "unsupported",
         reason_code: "unreviewed_pricing_table",
-        sample: headers.join(" | "),
+        sample: headers.join(" | ").slice(0, 256),
       });
       continue;
     }
@@ -761,7 +761,7 @@ function openAiPricingTables(
         onReconciliation?.({
           disposition: "unsupported",
           reason_code: "irregular_pricing_row",
-          sample: normalizedText(lines[index] ?? ""),
+          sample: normalizedText(lines[index] ?? "").slice(0, 256),
         });
       index += 1;
     }
@@ -1325,6 +1325,8 @@ function openAiRegionalProcessingRates(rates: readonly SourcePriceFact[]): Sourc
   });
 }
 
+const openAiPricingSample = (value: string): string => value.slice(0, 256);
+
 function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   if (input.catalogModels === undefined)
     throw new Error("OpenAI pricing requires the collected catalog");
@@ -1377,7 +1379,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
     input.onPricingReconciliation?.({
       disposition: "unsupported",
       reason_code: "unsupported_pricing_cell",
-      ...(sample === "" ? {} : { sample }),
+      ...(sample === "" ? {} : { sample: openAiPricingSample(sample) }),
     });
   };
   for (const table of openAiPricingTables(input.body, input.onPricingReconciliation)) {
@@ -1406,7 +1408,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
             : facts.length === 0
               ? "provider_service_pricing_unmodeled"
               : "provider_service_pricing_bound",
-          ...(row[0] === undefined ? {} : { sample: row[0] }),
+          ...(row[0] === undefined ? {} : { sample: openAiPricingSample(row[0]) }),
         });
       }
       continue;
@@ -1429,13 +1431,13 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
             facts.length === 0
               ? "fine_tuned_inference_pricing_unmodeled"
               : "fine_tuned_inference_pricing_bound",
-          ...(modelId === "" ? {} : { sample: modelId }),
+          ...(modelId === "" ? {} : { sample: openAiPricingSample(modelId) }),
         });
         if (table.headers.includes("Training"))
           input.onPricingReconciliation?.({
             disposition: "excluded",
             reason_code: "commercial_fact_outside_invocation_scope",
-            sample: `${modelId}: training`,
+            sample: openAiPricingSample(`${modelId}: training`),
           });
       }
       continue;
@@ -1452,7 +1454,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "ambiguous",
           reason_code: "documented_alias_ambiguous",
-          sample: rawId,
+          sample: openAiPricingSample(rawId),
         });
         continue;
       }
@@ -1460,7 +1462,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "excluded",
           reason_code: "non_model_pricing_row",
-          ...(rawId === "" ? {} : { sample: rawId }),
+          ...(rawId === "" ? {} : { sample: openAiPricingSample(rawId) }),
         });
         continue;
       }
@@ -1476,7 +1478,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "unsupported",
           reason_code: "unreviewed_pricing_table",
-          sample: table.headers.join(" | "),
+          sample: openAiPricingSample(table.headers.join(" | ")),
         });
         break;
       }
@@ -1486,13 +1488,13 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
             input.onPricingReconciliation?.({
               disposition: "ambiguous",
               reason_code: "pricing_state_conflict_retained",
-              sample: rawId,
+              sample: openAiPricingSample(rawId),
             });
           } else if (target.pricing_state === "free") {
             input.onPricingReconciliation?.({
               disposition: "excluded",
               reason_code: "duplicate_catalog_price",
-              sample: rawId,
+              sample: openAiPricingSample(rawId),
             });
           } else {
             states.set(target.model_id, "free");
@@ -1506,7 +1508,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "unsupported",
           reason_code: "pricing_row_has_no_normalized_rate",
-          sample: rawId,
+          sample: openAiPricingSample(rawId),
         });
         continue;
       }
@@ -1517,7 +1519,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "raw",
           reason_code: "first_party_price_conflict_resolved",
-          sample: rawId,
+          sample: openAiPricingSample(rawId),
         });
         return { ...fact, resolution_policy: "openai_pricing_page_over_model_card" };
       });
@@ -1561,7 +1563,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       input.onPricingReconciliation?.({
         disposition: "unbound",
         reason_code: "documented_alias_price_unbound",
-        sample: `${aliasId} -> ${targetId}`,
+        sample: openAiPricingSample(`${aliasId} -> ${targetId}`),
       });
       continue;
     }
@@ -1583,7 +1585,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
     input.onPricingReconciliation?.({
       disposition: "normalized",
       reason_code: "documented_alias_price_bound",
-      sample: `${aliasId} -> ${targetId}`,
+      sample: openAiPricingSample(`${aliasId} -> ${targetId}`),
     });
   }
   const hasRegionalUplift = /Regional processing .*10% uplift/i.test(input.body);

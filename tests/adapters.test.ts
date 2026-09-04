@@ -4816,6 +4816,31 @@ describe("OpenAI adapters", () => {
     );
   });
 
+  it("bounds unsupported OpenAI pricing table diagnostics", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const reconciliation: PricingReconciliationItem[] = [];
+    parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("openai/pricing-unknown-table.md"),
+      observedAt,
+      catalogModels: [openAiModel("gpt-5.4", ["text_generation"])],
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const tableDiagnostic = reconciliation.find(
+      ({ reason_code }) => reason_code === "unreviewed_pricing_table",
+    );
+    expect(tableDiagnostic).toEqual({
+      disposition: "unsupported",
+      reason_code: "unreviewed_pricing_table",
+      sample: expect.any(String),
+    });
+    expect(tableDiagnostic?.sample).toHaveLength(256);
+    expect(() => sourcePricingReconciliation([], reconciliation, true)).not.toThrow();
+  });
+
   it("derives disjoint regional-processing rates from exact release eligibility", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
