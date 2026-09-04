@@ -20,3 +20,5 @@ Supported models are `kimi-k3`, `kimi-k2.6`, and `kimi-k2.5`.
 | `code-runner`   | Run code                 |
 
 Formula `moonshot/web-search:latest` reports resource usage while the platform handles billing; web-search pricing is documented separately.
+
+- `POST /v1/formulas/{uri}/fibers` — create the Fiber; this step produces the tool_call billing.

@@ -1,3 +1,4 @@
+import { uniqueCanonicalValues as unique } from "./canonical-value.ts";
 import type {
   AtomicPricingBook,
   AtomicPricingOffer,
@@ -6,40 +7,84 @@ import type {
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
+import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
 import { addAtom, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
+import {
+  directQuantityMethods as directMethods,
+  emptyQuantityMethods as emptyMethods,
+  includePricingInputSourceRefs,
+  indexPricingInputs,
+  mergeQuantityMethods as mergeMethods,
+  pricingInputObservation,
+  subtractQuantityMethods as subtractionMethod,
+  sumQuantityMethods as sumMethod,
+  type BoundQuantityMethods as MethodsAndFacts,
+  type PricingInputIndex,
+} from "./pricing-input.ts";
 import type {
   ChargeBinding,
   NormalizedPriceObservation,
   PriceApplicability,
   PriceCondition,
   PriceMeter,
-  RawPriceObservation,
   UnitExpression,
+  UsageSignal,
 } from "./pricing-schema.ts";
+import type { SourcePricingInputFact } from "./pricing-source.ts";
 
 type Mechanism = "sync" | "batch";
 
+const tokenUnit: UnitExpression = {
+  factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+};
+const requestServices = new Set([
+  "code-execution",
+  "web-search",
+  "premium-news",
+  "image-generation",
+  "library-retrieval",
+]);
+
 export function applyMistralCommercialTopology(
   input: AtomicProviderPricing,
+  publishedModels: readonly PublishedPricingModel[],
+  pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
+  const published = new Map(publishedModels.map((model) => [model.uid, model]));
+  const inputIndex = indexPricingInputs(pricingInputs);
   return {
     ...input,
     books: input.books.flatMap((book) => {
-      if (book.scope.kind === "models") return [splitModelBook(book, input)];
-      const resource = requestServiceBook(book, input);
-      return resource === undefined ? [] : [resource];
+      if (book.scope.kind === "models")
+        return [
+          includePricingInputSourceRefs(
+            splitModelBook(book, published.get(book.scope.model_refs[0] ?? ""), input, inputIndex),
+          ),
+        ];
+      return book.scope.kind === "provider_resource" && requestServices.has(book.scope.resource_key)
+        ? [
+            includePricingInputSourceRefs(
+              requestServiceBook(book, book.scope.resource_key, input, inputIndex),
+            ),
+          ]
+        : [];
     }),
   };
 }
 
-function splitModelBook(book: AtomicPricingBook, input: AtomicProviderPricing): AtomicPricingBook {
+function splitModelBook(
+  book: AtomicPricingBook,
+  model: PublishedPricingModel | undefined,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+): AtomicPricingBook {
   return {
     ...book,
     offers: book.offers.flatMap((offer) => {
       if (offer.offer_key !== "usage") return [{ ...offer, relations: [], settlement: [] }];
       return (["sync", "batch"] as const).flatMap((mechanism) => {
-        const partition = partitionOffer(offer, mechanism, input);
+        const partition = partitionOffer(offer, mechanism, model, input, inputIndex);
         return partition === undefined ? [] : [partition];
       });
     }),
@@ -49,7 +94,9 @@ function splitModelBook(book: AtomicPricingBook, input: AtomicProviderPricing): 
 function partitionOffer(
   offer: AtomicPricingOffer,
   mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingOffer | undefined {
   const hasCache = offer.terms.some(
     (term) =>
@@ -63,7 +110,9 @@ function partitionOffer(
       ? []
       : [{ ...state, applicability, observation: normalized(state.observation, applicability) }];
   });
-  const terms = offer.terms.flatMap((term) => partitionTerm(term, mechanism, input, hasCache));
+  const terms = offer.terms.flatMap((term) =>
+    partitionTerm(term, mechanism, model, input, inputIndex, hasCache),
+  );
   if (states.length === 0 && terms.length === 0) return;
   return {
     ...offer,
@@ -80,7 +129,9 @@ function partitionOffer(
 function partitionTerm(
   term: AtomicPricingTerm,
   mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
   hasCache: boolean,
 ): AtomicPricingTerm[] {
   if (term.kind === "raw") {
@@ -96,7 +147,15 @@ function partitionTerm(
       applicability,
       observation: normalized(variant.observation, applicability),
     };
-    const charge_binding = modelBinding(term.meter, next, mechanism, input, hasCache);
+    const charge_binding = modelBinding(
+      term.meter,
+      next,
+      mechanism,
+      model,
+      input,
+      inputIndex,
+      hasCache,
+    );
     return [{ ...next, ...(charge_binding === undefined ? {} : { charge_binding }) }];
   });
   const raw_variants = term.raw_variants.flatMap((variant) => partitionRaw(variant, mechanism));
@@ -134,98 +193,172 @@ function modelBinding(
   meter: PriceMeter,
   variant: AtomicRateVariant,
   mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
   input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
   hasCache: boolean,
 ): ChargeBinding | undefined {
   if (meter.namespace !== "kmodels") return;
   const aggregation = mechanism === "batch" ? "result_item" : "request";
-  if (["input_text", "output_text", "cache_read_text", "embedding"].includes(meter.value)) {
-    if (!isStandardUnit(variant.price.per, "token")) return;
-    const signal =
-      meter.value === "cache_read_text"
-        ? "cached_input_tokens"
-        : meter.value === "output_text"
-          ? "output_tokens"
-          : meter.value === "input_text" && hasCache && mechanism === "sync"
-            ? "uncached_input_tokens"
-            : "input_tokens";
-    return standardBinding(signal, aggregation, variant.observation, `${mechanism}:${signal}`);
+  if (
+    ["input_text", "output_text", "cache_read_text", "embedding"].includes(meter.value) &&
+    isStandardUnit(variant.price.per, "token")
+  ) {
+    const signal = tokenSignal(meter.value, mechanism, hasCache);
+    if (signal === undefined) return;
+    const mapped =
+      mechanism === "batch"
+        ? emptyMethods()
+        : tokenMethods(meter.value, signal, model, input, inputIndex, hasCache);
+    return quantityBinding(signal, aggregation, mapped, variant);
   }
-  if (meter.value === "input_image" && isStandardUnit(variant.price.per, "page"))
-    return providerBinding(
-      input,
-      "pages_processed",
-      "OCR pages reported by response usage_info.pages_processed",
-      variant.price.per,
-      aggregation,
-      variant.observation,
-      "response:usage_info.pages_processed",
-      "outcome",
-    );
-  if (meter.value === "input_audio" && isStandardUnit(variant.price.per, "second"))
-    return providerBinding(
-      input,
-      "audio_seconds",
-      "Billable audio seconds reported by response usage.prompt_audio_seconds",
-      variant.price.per,
-      aggregation,
-      variant.observation,
-      "response:usage.prompt_audio_seconds",
-      "outcome",
-    );
-  if (meter.value === "output_audio" && isStandardUnit(variant.price.per, "character"))
-    return providerBinding(
-      input,
-      "submitted_tts_characters",
-      "Characters submitted in the speech synthesis input",
-      variant.price.per,
-      aggregation,
-      variant.observation,
-      "request:input.length",
-      "request",
+  const media = mediaSignal(meter, variant, mechanism, model, inputIndex);
+  return media === undefined
+    ? undefined
+    : quantityBinding(media.signal, aggregation, media.mapped, variant);
+}
+
+function tokenSignal(
+  meter: string,
+  mechanism: Mechanism,
+  hasCache: boolean,
+): UsageSignal | undefined {
+  if (meter === "cache_read_text") return standardSignal("cached_input_tokens");
+  if (meter === "output_text") return standardSignal("output_tokens");
+  if (meter === "embedding") return standardSignal("input_tokens");
+  if (meter === "input_text")
+    return standardSignal(
+      hasCache && mechanism === "sync" ? "uncached_input_tokens" : "input_tokens",
     );
 }
 
-function standardBinding(
-  value: "cached_input_tokens" | "input_tokens" | "output_tokens" | "uncached_input_tokens",
-  aggregation: ChargeBinding["aggregation"],
-  evidence: RawPriceObservation,
-  locator: string,
-): ChargeBinding {
-  return {
-    signal: { namespace: "kmodels", value },
-    aggregation,
-    observations: [{ ...rawEvidence(evidence), locator: { kind: "provider_key", value: locator } }],
-  };
+function tokenMethods(
+  meter: string,
+  signal: UsageSignal,
+  model: PublishedPricingModel | undefined,
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+  hasCache: boolean,
+): MethodsAndFacts {
+  const paths = endpointPaths(model);
+  if (meter === "cache_read_text")
+    return paths.has("/v1/chat/completions") || paths.has("/v1/fim/completions")
+      ? directMethods(
+          signal,
+          ["completion.response.cached_tokens", "completion.stream.cached_tokens"],
+          inputIndex,
+        )
+      : emptyMethods();
+  if (meter === "embedding")
+    return paths.has("/v1/embeddings")
+      ? directMethods(signal, ["embedding.response.prompt_tokens"], inputIndex)
+      : emptyMethods();
+
+  const completionKeys =
+    paths.has("/v1/chat/completions") || paths.has("/v1/fim/completions")
+      ? [
+          `completion.response.${meter === "output_text" ? "completion_tokens" : "prompt_tokens"}`,
+          `completion.stream.${meter === "output_text" ? "completion_tokens" : "prompt_tokens"}`,
+        ]
+      : [];
+  const completion =
+    meter === "input_text" && hasCache
+      ? subtractionMethod(
+          standardSignal("input_tokens"),
+          completionKeys,
+          standardSignal("cached_input_tokens"),
+          ["completion.response.cached_tokens", "completion.stream.cached_tokens"],
+          inputIndex,
+        )
+      : directMethods(signal, completionKeys, inputIndex);
+  const conversation = paths.has("/v1/conversations")
+    ? meter === "output_text"
+      ? directMethods(signal, ["conversation.response.completion_tokens"], inputIndex)
+      : conversationInputMethod(input, inputIndex)
+    : emptyMethods();
+  return mergeMethods([completion, conversation]);
 }
 
-const requestServices = new Set([
-  "code-execution",
-  "web-search",
-  "premium-news",
-  "image-generation",
-  "library-retrieval",
-]);
+function conversationInputMethod(
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+): MethodsAndFacts {
+  const connector = providerSignal(
+    input,
+    "conversation_connector_tokens",
+    "Connector tokens included in Mistral Conversation input billing",
+    tokenUnit,
+  );
+  return sumMethod(
+    [
+      { signal: standardSignal("input_tokens"), keys: ["conversation.response.prompt_tokens"] },
+      { signal: connector, keys: ["conversation.response.connector_tokens"] },
+    ],
+    inputIndex,
+  );
+}
+
+function mediaSignal(
+  meter: PriceMeter,
+  variant: AtomicRateVariant,
+  mechanism: Mechanism,
+  model: PublishedPricingModel | undefined,
+  inputIndex: PricingInputIndex,
+): { signal: UsageSignal; mapped: MethodsAndFacts } | undefined {
+  const paths = endpointPaths(model);
+  if (meter.value === "input_image" && isStandardUnit(variant.price.per, "page")) {
+    const signal = standardSignal("processed_pages");
+    return {
+      signal,
+      mapped:
+        mechanism === "sync" && paths.has("/v1/ocr")
+          ? directMethods(signal, ["ocr.response.pages_processed"], inputIndex)
+          : emptyMethods(),
+    };
+  }
+  if (meter.value === "input_audio" && isStandardUnit(variant.price.per, "second")) {
+    const signal = standardSignal("processed_audio_seconds");
+    const keys = [
+      ...(paths.has("/v1/audio/transcriptions")
+        ? [
+            "transcription.response.prompt_audio_seconds",
+            "transcription.stream.prompt_audio_seconds",
+          ]
+        : []),
+      ...(paths.has("/v1/chat/completions")
+        ? ["completion.response.prompt_audio_seconds", "completion.stream.prompt_audio_seconds"]
+        : []),
+    ];
+    return {
+      signal,
+      mapped: mechanism === "sync" ? directMethods(signal, keys, inputIndex) : emptyMethods(),
+    };
+  }
+  if (meter.value === "output_audio" && isStandardUnit(variant.price.per, "character")) {
+    const signal = standardSignal("input_characters");
+    return {
+      signal,
+      mapped:
+        mechanism === "sync" && paths.has("/v1/audio/speech")
+          ? directMethods(signal, ["speech.request.input_characters"], inputIndex)
+          : emptyMethods(),
+    };
+  }
+}
 
 function requestServiceBook(
   book: AtomicPricingBook,
+  resourceKey: string,
   input: AtomicProviderPricing,
-): AtomicPricingBook | undefined {
-  if (book.scope.kind !== "provider_resource" || !requestServices.has(book.scope.resource_key))
-    return;
-  const resourceKey = book.scope.resource_key;
-  const blocked = book.offers.some((offer) =>
-    offer.terms.some(
-      (term) => term.kind === "raw" && term.term_key === "charge_binding_unavailable",
-    ),
-  );
+  inputIndex: PricingInputIndex,
+): AtomicPricingBook {
   return {
     ...book,
     resource_edges: [],
     offers: book.offers.map((offer) => ({
       ...offer,
       enrollment: [],
-      terms: offer.terms.map((term) => bindResourceTerm(resourceKey, term, input, blocked)),
+      terms: offer.terms.map((term) => bindResourceTerm(resourceKey, term, input, inputIndex)),
       relations: [],
       settlement: [],
     })),
@@ -236,102 +369,131 @@ function bindResourceTerm(
   resourceKey: string,
   term: AtomicPricingTerm,
   input: AtomicProviderPricing,
-  blocked: boolean,
+  inputIndex: PricingInputIndex,
 ): AtomicPricingTerm {
-  if (term.kind !== "rate" || blocked) return term;
+  if (term.kind !== "rate") return term;
   return {
     ...term,
     variants: term.variants.map((variant) => {
-      const signal = resourceSignal(resourceKey, term.meter, variant);
-      return signal === undefined
-        ? variant
-        : {
-            ...variant,
-            charge_binding: providerBinding(
-              input,
-              signal.key,
-              signal.definition,
-              variant.price.per,
-              signal.aggregation,
-              variant.observation,
-              signal.locator,
-              "outcome",
-            ),
-          };
+      const binding = resourceBinding(resourceKey, term.meter, variant, input, inputIndex);
+      return binding === undefined ? variant : { ...variant, charge_binding: binding };
     }),
   };
 }
 
-function resourceSignal(
+function resourceBinding(
   resourceKey: string,
   meter: PriceMeter,
   variant: AtomicRateVariant,
-):
-  | {
-      key: string;
-      definition: string;
-      aggregation: ChargeBinding["aggregation"];
-      locator: string;
-    }
-  | undefined {
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+): ChargeBinding | undefined {
+  if (resourceKey === "image-generation" && meter.value === "image_generation") {
+    const signal = standardSignal("generated_items");
+    return quantityBinding(
+      signal,
+      "request",
+      directMethods(signal, ["service.image_generation.generated_images"], inputIndex),
+      variant,
+    );
+  }
   if (resourceKey === "code-execution" && isStandardUnit(variant.price.per, "request"))
-    return {
-      key: "completed_code_executions",
-      definition: "Completed code_interpreter executions in final connector usage",
-      aggregation: "request",
-      locator: "response:usage.connectors.code_interpreter",
-    };
-  if (
-    (resourceKey === "web-search" || resourceKey === "premium-news") &&
-    isStandardUnit(variant.price.per, "request")
-  )
-    return {
-      key:
-        resourceKey === "web-search" ? "completed_web_searches" : "completed_premium_news_searches",
-      definition: "Completed provider-executed searches in final connector usage",
-      aggregation: "request",
-      locator: `response:usage.connectors.${resourceKey === "web-search" ? "web_search" : "web_search_premium"}`,
-    };
-  if (
-    resourceKey === "image-generation" &&
-    meter.namespace === "kmodels" &&
-    meter.value === "image_generation"
-  )
-    return {
-      key: "generated_images",
-      definition: "Generated image outputs returned by image_generation",
-      aggregation: "result_item",
-      locator: "response:generated image files",
-    };
+    return providerResourceBinding(
+      input,
+      inputIndex,
+      variant,
+      "completed_code_executions",
+      "Completed Mistral code_interpreter executions",
+      ["service.code_interpreter.completed_calls"],
+    );
+  if (resourceKey === "web-search" && isStandardUnit(variant.price.per, "request"))
+    return providerResourceBinding(
+      input,
+      inputIndex,
+      variant,
+      "completed_web_searches",
+      "Completed Mistral web_search executions",
+      ["service.web_search.completed_calls"],
+    );
+  if (resourceKey === "premium-news" && isStandardUnit(variant.price.per, "request"))
+    return providerResourceBinding(
+      input,
+      inputIndex,
+      variant,
+      "completed_premium_news_searches",
+      "Completed Mistral web_search_premium executions",
+      [],
+    );
   if (resourceKey === "library-retrieval" && isStandardUnit(variant.price.per, "request"))
-    return {
-      key: "document_library_calls",
-      definition: "Completed document_library calls in final connector usage",
-      aggregation: "request",
-      locator: "response:usage.connectors.document_library",
-    };
+    return providerResourceBinding(
+      input,
+      inputIndex,
+      variant,
+      "completed_document_library_calls",
+      "Completed Mistral document_library calls",
+      ["service.document_library.completed_calls"],
+    );
 }
 
-function providerBinding(
+function providerResourceBinding(
+  input: AtomicProviderPricing,
+  inputIndex: PricingInputIndex,
+  variant: AtomicRateVariant,
+  key: string,
+  definition: string,
+  inputKeys: readonly string[],
+): ChargeBinding {
+  const signal = providerSignal(input, key, definition, variant.price.per);
+  return quantityBinding(signal, "request", directMethods(signal, inputKeys, inputIndex), variant);
+}
+
+function providerSignal(
   input: AtomicProviderPricing,
   key: string,
   definition: string,
   unit: UnitExpression,
+): Extract<UsageSignal, { namespace: "provider" }> {
+  addAtom(input, { kind: "usage_signal", key, definition, unit, resolution_phase: "outcome" });
+  return { namespace: "provider", provider_id: input.provider_id, value: key };
+}
+
+function standardSignal(
+  value:
+    | "cached_input_tokens"
+    | "generated_items"
+    | "input_characters"
+    | "input_tokens"
+    | "output_tokens"
+    | "processed_audio_seconds"
+    | "processed_pages"
+    | "uncached_input_tokens",
+): Extract<UsageSignal, { namespace: "kmodels" }> {
+  return { namespace: "kmodels", value };
+}
+
+function quantityBinding(
+  signal: UsageSignal,
   aggregation: ChargeBinding["aggregation"],
-  evidence: RawPriceObservation,
-  locator: string,
-  phase: "outcome" | "request",
+  mapped: MethodsAndFacts,
+  variant: AtomicRateVariant,
 ): ChargeBinding {
-  addAtom(input, { kind: "usage_signal", key, definition, unit, resolution_phase: phase });
   return {
-    signal: { namespace: "provider", provider_id: input.provider_id, value: key },
+    signal,
     aggregation,
-    observations: [{ ...rawEvidence(evidence), locator: { kind: "provider_key", value: locator } }],
+    ...(mapped.methods.length === 0 ? {} : { quantity_methods: mapped.methods }),
+    observations: unique([
+      rawEvidence(variant.observation),
+      ...mapped.facts.map(pricingInputObservation),
+    ]),
   };
 }
 
+function endpointPaths(model: PublishedPricingModel | undefined): ReadonlySet<string> {
+  return new Set(model?.api_endpoints?.map(({ path }) => path) ?? []);
+}
+
 function normalized(
-  observation: RawPriceObservation,
+  observation: AtomicRateVariant["observation"],
   applicability: PriceApplicability,
 ): NormalizedPriceObservation {
   return { ...rawEvidence(observation), establishes_applicability: applicability };

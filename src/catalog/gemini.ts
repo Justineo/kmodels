@@ -13,6 +13,7 @@ import {
   sourceRawPricingFactKey,
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
+  type SourcePricingInputFact,
 } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems } from "./source-contract.ts";
 import {
@@ -70,6 +71,22 @@ interface PriceCandidates {
   unknownUnits: string[];
 }
 
+interface PricingInputContract {
+  key: string;
+  required: ReadonlyArray<readonly [schema: string, property: string]>;
+  requiredEnums?: ReadonlyArray<{
+    schema: string;
+    property: string;
+    values: readonly string[];
+  }>;
+  channel: SourcePricingInputFact["channel"];
+  locator: SourcePricingInputFact["locator"];
+  reduction?: SourcePricingInputFact["reduction"];
+  absent_value?: SourcePricingInputFact["absent_value"];
+  availability: SourcePricingInputFact["availability"];
+  supporting_document?: "batch-api" | "embeddings-api";
+}
+
 const months = new Map([
   ["January", "01"],
   ["February", "02"],
@@ -124,10 +141,7 @@ const discoverySchema = z.object({
   rootUrl: z.literal("https://generativelanguage.googleapis.com/"),
   version: z.literal("v1beta"),
   revision: z.string().regex(/^\d{8}$/),
-  schemas: z.object({
-    GenerateContentResponse: z.object({ properties: z.record(z.string(), z.unknown()) }),
-    UsageMetadata: z.object({ properties: z.record(z.string(), z.unknown()) }),
-  }),
+  schemas: z.record(z.string(), z.unknown()),
 });
 
 function unique<T>(values: T[]): T[] {
@@ -817,7 +831,15 @@ function meterRates(
     [];
   for (const modality of selectedOrText) {
     if (embedding) {
-      rates.push({ meter: "embedding", conditions: { ...baseConditions, modality } });
+      const meter =
+        modality === "audio"
+          ? "input_audio"
+          : modality === "image"
+            ? "input_image"
+            : modality === "video"
+              ? "input_video"
+              : "input_text";
+      rates.push({ meter, conditions: baseConditions });
       continue;
     }
     if (cache) {
@@ -1240,54 +1262,487 @@ function optionalDocument(
   return matches[0]?.body;
 }
 
-function validateDiscovery(body: string): void {
-  const discovery = discoverySchema.parse(JSON.parse(body));
-  const usageFields = discovery.schemas.UsageMetadata.properties;
-  if (
-    ![
-      "promptTokenCount",
-      "cachedContentTokenCount",
-      "candidatesTokenCount",
-      "toolUsePromptTokenCount",
-      "thoughtsTokenCount",
-      "promptTokensDetails",
-      "cacheTokensDetails",
-      "serviceTier",
-    ].every((field) => usageFields[field] !== undefined)
-  )
-    throw new Error("Gemini Discovery usage schema changed");
-  const tiers = z.object({ enum: z.array(z.string()) }).safeParse(usageFields.serviceTier);
-  if (
-    !tiers.success ||
-    !["standard", "flex", "priority"].every((tier) => tiers.data.enum.includes(tier))
-  )
-    throw new Error("Gemini Discovery service tiers changed");
+const geminiUsageModalities = ["TEXT", "IMAGE", "VIDEO", "AUDIO", "DOCUMENT"] as const;
+const expectedInteractionPricingInputs = geminiUsageModalities.length * 3 + 4 + 2;
+const videoPricingInputFields = ["durationSeconds", "resolution", "generateAudio"] as const;
 
-  const responseFields = discovery.schemas.GenerateContentResponse.properties;
-  if (
-    !["usageMetadata", "modelVersion", "responseId", "modelStatus"].every(
-      (field) => responseFields[field] !== undefined,
-    )
-  )
-    throw new Error("Gemini Discovery response observability changed");
+function pricingInputContracts(): PricingInputContract[] {
+  const usage = [
+    scalarUsage("prompt.total", "promptTokenCount"),
+    scalarUsage("cache.total", "cachedContentTokenCount"),
+    scalarUsage("candidates.total", "candidatesTokenCount"),
+    scalarUsage("thoughts", "thoughtsTokenCount"),
+    serviceTierUsage(),
+    ...geminiUsageModalities.flatMap((modality) => [
+      modalityUsage("prompt", "promptTokensDetails", modality),
+      modalityUsage("cache", "cacheTokensDetails", modality),
+      modalityUsage("candidates", "candidatesTokensDetails", modality),
+    ]),
+  ];
+  const contracts: PricingInputContract[] = [
+    ...usage.flatMap(responseAndBatchContracts),
+    ...responseAndBatchContracts(generatedImages()),
+    ...embeddingContracts(),
+    ...generateGroundingContracts(),
+  ];
+  return contracts;
 }
 
-function usageBindingAvailable(
-  body: string | undefined,
-  onReconciliation: Input["onPricingReconciliation"],
-): boolean {
-  if (body === undefined) return true;
-  try {
-    validateDiscovery(body);
-    return true;
-  } catch (error) {
-    onReconciliation?.({
-      disposition: "unbound",
-      reason_code: "usage_binding_contract_drift",
-      sample: error instanceof Error ? error.message : "Gemini Discovery validation failed",
+function scalarUsage(key: string, property: string): PricingInputContract {
+  return {
+    key: `generate.${key}`,
+    required: [
+      ["GenerateContentResponse", "usageMetadata"],
+      ["UsageMetadata", property],
+    ],
+    channel: "response",
+    locator: { kind: "json_pointer", value: `/usageMetadata/${property}` },
+    availability: "terminal_only",
+  };
+}
+
+function serviceTierUsage(): PricingInputContract {
+  return {
+    ...scalarUsage("service_tier", "serviceTier"),
+    requiredEnums: [
+      {
+        schema: "UsageMetadata",
+        property: "serviceTier",
+        values: ["unspecified", "standard", "flex", "priority"],
+      },
+    ],
+  };
+}
+
+function modalityUsage(
+  category: "prompt" | "cache" | "candidates",
+  property: string,
+  modality: (typeof geminiUsageModalities)[number],
+): PricingInputContract {
+  return {
+    key: `generate.${category}.${modality.toLowerCase()}`,
+    required: [
+      ["GenerateContentResponse", "usageMetadata"],
+      ["UsageMetadata", property],
+      ["ModalityTokenCount", "modality"],
+      ["ModalityTokenCount", "tokenCount"],
+    ],
+    requiredEnums: [{ schema: "ModalityTokenCount", property: "modality", values: [modality] }],
+    channel: "response",
+    locator: {
+      kind: "provider_field",
+      value: `GenerateContentResponse.usageMetadata.${property}[modality=${modality}].tokenCount`,
+    },
+    absent_value: "zero",
+    availability: "terminal_only",
+  };
+}
+
+function generatedImages(): PricingInputContract {
+  return {
+    key: "generate.output.images",
+    required: [
+      ["GenerateContentResponse", "candidates"],
+      ["Candidate", "content"],
+      ["Content", "parts"],
+      ["Part", "inlineData"],
+      ["Blob", "mimeType"],
+    ],
+    channel: "response",
+    locator: {
+      kind: "provider_field",
+      value: "GenerateContentResponse.candidates[*].content.parts[*].inlineData[mimeType=image/*]",
+    },
+    reduction: { kind: "array_length" },
+    absent_value: "zero",
+    availability: "success_only",
+  };
+}
+
+function responseAndBatchContracts(contract: PricingInputContract): PricingInputContract[] {
+  const suffix =
+    contract.locator.kind === "json_pointer"
+      ? contract.locator.value.slice(1).replaceAll("/", ".")
+      : contract.locator.value.slice("GenerateContentResponse.".length);
+  const result = (target: string, required: PricingInputContract["required"]) => ({
+    ...contract,
+    required: [...contract.required, ...required],
+    channel: "result" as const,
+    locator: { kind: "provider_field" as const, value: `${target}.${suffix}` },
+    availability: "success_only" as const,
+  });
+  return [
+    contract,
+    { ...contract, channel: "stream_event", availability: "terminal_only" },
+    result("GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response", [
+      ["GenerateContentBatch", "output"],
+      ["GenerateContentBatchOutput", "inlinedResponses"],
+      ["InlinedResponses", "inlinedResponses"],
+      ["InlinedResponse", "response"],
+    ]),
+    {
+      ...result("GenerateContentBatch.output.responsesFile JSONL[*]", [
+        ["GenerateContentBatch", "output"],
+        ["GenerateContentBatchOutput", "responsesFile"],
+      ]),
+      supporting_document: "batch-api",
+    },
+  ];
+}
+
+function embeddingContracts(): PricingInputContract[] {
+  const contracts = [
+    embeddingUsage("total", "promptTokenCount"),
+    ...geminiUsageModalities.map((modality) =>
+      embeddingUsage(modality.toLowerCase(), "promptTokenDetails", modality),
+    ),
+  ];
+  return contracts.flatMap((contract) => {
+    const suffix =
+      contract.locator.kind === "json_pointer"
+        ? contract.locator.value.slice(1).replaceAll("/", ".")
+        : contract.locator.value.slice("EmbedContentResponse.".length);
+    const result = (target: string, required: PricingInputContract["required"]) => ({
+      ...contract,
+      required: [...contract.required, ...required],
+      channel: "result" as const,
+      locator: { kind: "provider_field" as const, value: `${target}.${suffix}` },
+      availability: "success_only" as const,
     });
-    return false;
+    return [
+      contract,
+      result("EmbedContentBatch.output.inlinedResponses.inlinedResponses[*].response", [
+        ["EmbedContentBatch", "output"],
+        ["EmbedContentBatchOutput", "inlinedResponses"],
+        ["InlinedEmbedContentResponses", "inlinedResponses"],
+        ["InlinedEmbedContentResponse", "response"],
+      ]),
+      {
+        ...result("EmbedContentBatch.output.responsesFile JSONL[*]", [
+          ["EmbedContentBatch", "output"],
+          ["EmbedContentBatchOutput", "responsesFile"],
+        ]),
+        supporting_document: "embeddings-api" as const,
+      },
+    ];
+  });
+}
+
+function embeddingUsage(
+  key: string,
+  property: "promptTokenCount" | "promptTokenDetails",
+  modality?: (typeof geminiUsageModalities)[number],
+): PricingInputContract {
+  const filtered = modality === undefined ? "" : `[modality=${modality}].tokenCount`;
+  return {
+    key: `embedding.prompt.${key}`,
+    required: [
+      ["EmbedContentResponse", "usageMetadata"],
+      ["EmbeddingUsageMetadata", property],
+      ...(modality === undefined
+        ? []
+        : ([
+            ["ModalityTokenCount", "modality"],
+            ["ModalityTokenCount", "tokenCount"],
+          ] as const)),
+    ],
+    ...(modality === undefined
+      ? {}
+      : {
+          requiredEnums: [
+            { schema: "ModalityTokenCount", property: "modality", values: [modality] },
+          ],
+        }),
+    channel: "response",
+    locator:
+      modality === undefined
+        ? { kind: "json_pointer", value: "/usageMetadata/promptTokenCount" }
+        : {
+            kind: "provider_field",
+            value: `EmbedContentResponse.usageMetadata.${property}${filtered}`,
+          },
+    ...(modality === undefined ? {} : { absent_value: "zero" as const }),
+    availability: "terminal_only",
+  };
+}
+
+function generateGroundingContracts(): PricingInputContract[] {
+  const base: Pick<PricingInputContract, "required" | "channel" | "availability"> = {
+    required: [
+      ["GenerateContentResponse", "candidates"],
+      ["Candidate", "groundingMetadata"],
+    ],
+    channel: "response" as const,
+    availability: "terminal_only" as const,
+  };
+  const contracts: PricingInputContract[] = [
+    {
+      ...base,
+      key: "generate.grounding.google_search_queries",
+      required: [...base.required, ["GroundingMetadata", "webSearchQueries"]],
+      locator: {
+        kind: "provider_field",
+        value: "GenerateContentResponse.candidates[*].groundingMetadata.webSearchQueries[*]",
+      },
+      reduction: { kind: "count_unique_non_empty_strings" },
+      absent_value: "zero",
+    },
+    {
+      ...base,
+      key: "generate.grounding.google_search_result",
+      required: [
+        ...base.required,
+        ["GroundingMetadata", "groundingChunks"],
+        ["GroundingChunk", "web"],
+        ["Web", "uri"],
+      ],
+      locator: {
+        kind: "provider_field",
+        value: "GenerateContentResponse.candidates[*].groundingMetadata.groundingChunks[*].web.uri",
+      },
+      reduction: { kind: "presence" },
+      absent_value: "zero",
+    },
+    {
+      ...base,
+      key: "generate.grounding.google_maps_result",
+      required: [...base.required, ["GroundingMetadata", "googleMapsWidgetContextToken"]],
+      locator: {
+        kind: "provider_field",
+        value:
+          "GenerateContentResponse.candidates[*].groundingMetadata.googleMapsWidgetContextToken",
+      },
+      reduction: { kind: "presence" },
+      absent_value: "zero",
+    },
+  ];
+  return contracts.flatMap(responseAndBatchContracts);
+}
+
+function extractPricingInputs(
+  bundle: z.infer<typeof linkedBundleSchema>,
+  sourceId: string,
+  onReconciliation: Input["onPricingReconciliation"],
+): SourcePricingInputFact[] {
+  const facts: SourcePricingInputFact[] = [];
+  const discoveryBody = optionalDocument(bundle, "/$discovery/rest");
+  if (discoveryBody !== undefined) {
+    const discovery = parseDiscovery(discoveryBody);
+    if (discovery.success) {
+      const contracts = pricingInputContracts();
+      const supportingDocuments = availableSupportingDocuments(bundle);
+      const before = facts.length;
+      for (const contract of contracts)
+        if (
+          discoveryContractAvailable(discovery.data.schemas, contract) &&
+          (contract.supporting_document === undefined ||
+            supportingDocuments.has(contract.supporting_document))
+        )
+          facts.push(sourcePricingInput(sourceId, contract));
+      if (facts.length - before !== contracts.length)
+        onReconciliation?.({
+          disposition: "unbound",
+          reason_code: "pricing_input_contract_partial",
+          sample: `${contracts.length - (facts.length - before)} Discovery/supporting-document mappings unavailable`,
+        });
+    } else {
+      onReconciliation?.({
+        disposition: "unbound",
+        reason_code: "pricing_input_contract_partial",
+        sample: "Gemini Discovery schema unavailable",
+      });
+    }
   }
+  const interactions = optionalDocument(bundle, "/api/interactions-api");
+  if (interactions !== undefined) {
+    const inputs = interactionPricingInputs(interactions, sourceId);
+    facts.push(...inputs);
+    if (inputs.length !== expectedInteractionPricingInputs)
+      onReconciliation?.({
+        disposition: "unbound",
+        reason_code: "pricing_input_contract_partial",
+        sample: `${expectedInteractionPricingInputs - inputs.length} Interactions mappings unavailable`,
+      });
+  }
+  const video = optionalDocument(bundle, "/gemini-api/docs/video");
+  if (video !== undefined) {
+    const inputs = videoPricingInputs(video, sourceId);
+    facts.push(...inputs);
+    if (inputs.length !== videoPricingInputFields.length)
+      onReconciliation?.({
+        disposition: "unbound",
+        reason_code: "pricing_input_contract_partial",
+        sample: `${videoPricingInputFields.length - inputs.length} video mappings unavailable`,
+      });
+  }
+  onReconciliation?.({
+    disposition: facts.length === 0 ? "unbound" : "normalized",
+    reason_code:
+      facts.length === 0 ? "pricing_input_contract_drift" : "pricing_input_contract_bound",
+    sample: `${facts.length} Gemini pricing inputs`,
+  });
+  return facts.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
+function parseDiscovery(body: string): ReturnType<typeof discoverySchema.safeParse> {
+  try {
+    return discoverySchema.safeParse(JSON.parse(body));
+  } catch {
+    return discoverySchema.safeParse(undefined);
+  }
+}
+
+function discoveryContractAvailable(
+  schemas: Record<string, unknown>,
+  contract: PricingInputContract,
+): boolean {
+  if (
+    !contract.required.every(([schema, property]) =>
+      Object.hasOwn(discoveryProperties(schemas[schema]), property),
+    )
+  )
+    return false;
+  return (contract.requiredEnums ?? []).every(({ schema, property, values }) => {
+    const field = discoveryProperties(schemas[schema])[property];
+    const parsed = z.object({ enum: z.array(z.string()) }).safeParse(field);
+    return parsed.success && values.every((value) => parsed.data.enum.includes(value));
+  });
+}
+
+function discoveryProperties(value: unknown): Record<string, unknown> {
+  const parsed = z.object({ properties: z.record(z.string(), z.unknown()) }).safeParse(value);
+  return parsed.success ? parsed.data.properties : {};
+}
+
+function availableSupportingDocuments(
+  bundle: z.infer<typeof linkedBundleSchema>,
+): ReadonlySet<"batch-api" | "embeddings-api"> {
+  const available = new Set<"batch-api" | "embeddings-api">();
+  const inspect = (
+    key: "batch-api" | "embeddings-api",
+    pathname: string,
+    response: "GenerateContentResponse" | "EmbedContentResponse",
+  ): void => {
+    const body = optionalDocument(bundle, pathname);
+    if (body === undefined) return;
+    const codes = documentedCodes(body);
+    if (codes.has("responsesFile") && codes.has(response)) available.add(key);
+  };
+  inspect("batch-api", "/api/batch-api", "GenerateContentResponse");
+  inspect("embeddings-api", "/api/embeddings", "EmbedContentResponse");
+  return available;
+}
+
+function documentedCodes(body: string): ReadonlySet<string> {
+  const $ = load(body);
+  return new Set(
+    $(".devsite-article-body code")
+      .map((_index, element) => text($(element).text()))
+      .get(),
+  );
+}
+
+function sourcePricingInput(
+  sourceRef: string,
+  contract: PricingInputContract,
+): SourcePricingInputFact {
+  return {
+    key: contract.key,
+    channel: contract.channel,
+    locator: contract.locator,
+    ...(contract.reduction === undefined ? {} : { reduction: contract.reduction }),
+    ...(contract.absent_value === undefined ? {} : { absent_value: contract.absent_value }),
+    availability: contract.availability,
+    source_ref: sourceRef,
+  };
+}
+
+function interactionPricingInputs(body: string, sourceRef: string): SourcePricingInputFact[] {
+  const codes = documentedCodes(body);
+  const fields = [
+    "input_tokens_by_modality",
+    "cached_tokens_by_modality",
+    "output_tokens_by_modality",
+    "total_input_tokens",
+    "total_cached_tokens",
+    "total_output_tokens",
+    "total_thought_tokens",
+    "grounding_tool_count",
+  ];
+  const available = new Set(fields.filter((field) => codes.has(field)));
+  const facts: SourcePricingInputFact[] = [];
+  for (const [category, field] of [
+    ["prompt", "input_tokens_by_modality"],
+    ["cache", "cached_tokens_by_modality"],
+    ["candidates", "output_tokens_by_modality"],
+  ] as const)
+    if (available.has(field))
+      for (const modality of geminiUsageModalities) {
+        const wire = modality.toLowerCase();
+        if (!codes.has(wire)) continue;
+        facts.push({
+          key: `interaction.${category}.${wire}`,
+          channel: "response",
+          locator: {
+            kind: "provider_field",
+            value: `Interaction.usage.${field}[modality=${wire}].tokens`,
+          },
+          absent_value: "zero",
+          availability: "terminal_only",
+          source_ref: sourceRef,
+        });
+      }
+  for (const [key, field] of [
+    ["interaction.prompt.total", "total_input_tokens"],
+    ["interaction.cache.total", "total_cached_tokens"],
+    ["interaction.candidates.total", "total_output_tokens"],
+    ["interaction.thoughts", "total_thought_tokens"],
+  ] as const)
+    if (available.has(field))
+      facts.push({
+        key,
+        channel: "response",
+        locator: { kind: "json_pointer", value: `/usage/${field}` },
+        availability: "terminal_only",
+        source_ref: sourceRef,
+      });
+  if (available.has("grounding_tool_count"))
+    for (const operation of ["google_search", "google_maps"])
+      if (codes.has(operation))
+        facts.push({
+          key: `interaction.grounding.${operation}`,
+          channel: "response",
+          locator: {
+            kind: "provider_field",
+            value: `Interaction.usage.grounding_tool_count[type=${operation}].count`,
+          },
+          absent_value: "zero",
+          availability: "terminal_only",
+          source_ref: sourceRef,
+        });
+  return facts;
+}
+
+function videoPricingInputs(body: string, sourceRef: string): SourcePricingInputFact[] {
+  const codes = documentedCodes(body);
+  return videoPricingInputFields.flatMap((field): SourcePricingInputFact[] => {
+    if (!codes.has(field)) return [];
+    const value =
+      field === "durationSeconds"
+        ? "duration_seconds"
+        : field === "generateAudio"
+          ? "generate_audio"
+          : field;
+    return [
+      {
+        key: `video.request.${value}`,
+        channel: "request",
+        locator: { kind: "provider_field", value: `GenerateVideosConfig.${field}` },
+        availability: "conditional",
+        source_ref: sourceRef,
+      },
+    ];
+  });
 }
 
 function interactionPath(body: string): string {
@@ -1419,10 +1874,15 @@ export function parseGeminiPricing(input: Input): ProviderModel[] {
       return [model.model_id, model] as const;
     }),
   );
-  const discovery = optionalDocument(bundle, "/$discovery/rest");
-  const bindingAvailable = usageBindingAvailable(discovery, input.onPricingReconciliation);
   applyPricing(models, input.source.id, bundle.index.body, input.onPricingReconciliation);
-  extractGeminiCommercialFacts(models, input.source.id, bindingAvailable);
+  extractGeminiCommercialFacts(models, input.source.id);
+  const pricingInputs = extractPricingInputs(
+    bundle,
+    input.source.id,
+    input.onPricingReconciliation,
+  );
+  const carrier = [...models.values()].sort((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return [...models.values()]
     .map((model) => ({ ...model, aliases: [] }))
     .sort((left, right) => left.uid.localeCompare(right.uid));

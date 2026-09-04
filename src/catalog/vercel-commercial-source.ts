@@ -1,5 +1,9 @@
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type { SourceCommercialPricingFact, SourcePriceFact } from "./pricing-source.ts";
+import type {
+  SourceCommercialPricingFact,
+  SourcePriceFact,
+  SourceRawPricingFact,
+} from "./pricing-source.ts";
 
 interface Input {
   documents: ReadonlyMap<string, string>;
@@ -12,24 +16,53 @@ const searchPath = "/docs/ai-gateway/models-and-providers/web-search.md";
 
 export function vercelCommercialFacts(input: Input): SourceCommercialPricingFact[] {
   const body = input.documents.get(searchPath);
-  const markers = [
-    "can be used with any model regardless of the model provider or creator",
-    "Perplexity web search requests are charged at $5 per 1,000 requests",
-    "Exa web search requests are charged at $7 per 1,000 requests",
-    "Additional requested results beyond 10 are charged",
-    "Parallel web search requests are charged at $5 per 1,000 requests",
-    "Additional results beyond 10 are charged",
-  ];
-  if (body === undefined || markers.some((marker) => !body.includes(marker))) {
-    report(input, "unsupported", "generic_search_services_not_observed", searchPath);
+  if (body === undefined) {
+    report(input, "unsupported", "generic_search_guide_not_observed");
     return [];
   }
 
-  report(input, "normalized", "generic_search_services", searchPath);
+  const facts = [
+    ...perplexityFacts(input, body),
+    ...exaFacts(input, body),
+    ...takoFacts(input, body),
+    ...parallelFacts(input, body),
+  ];
+  report(
+    input,
+    facts.length === 9 ? "normalized" : "unsupported",
+    facts.length === 9 ? "generic_search_services" : "generic_search_services_partial",
+  );
+  return facts;
+}
+
+function perplexityFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  if (
+    !has(
+      body,
+      /perplexitySearch/,
+      /Perplexity web search requests are charged at \$5 per 1,000 requests/i,
+    )
+  )
+    return [];
   return [
     commercialFact(input, "perplexity-search", "Perplexity Search", [
       rate("web_search", "5", "thousand_requests", input.sourceId),
     ]),
+  ];
+}
+
+function exaFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  if (
+    !has(
+      body,
+      /exaSearch/,
+      /Exa web search requests are charged at \$7 per 1,000 requests/i,
+      /includes up to 10 results/i,
+      /\$1 per 1,000 additional results/i,
+    )
+  )
+    return [];
+  return [
     commercialFact(input, "exa-search", "Exa Search", [
       rate("web_search", "7", "thousand_requests", input.sourceId),
     ]),
@@ -42,8 +75,75 @@ export function vercelCommercialFacts(input: Input): SourceCommercialPricingFact
           operation: "additional_requested_results",
         }),
       ],
+      [],
       "additional-results",
     ),
+  ];
+}
+
+function takoFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  if (
+    !has(
+      body,
+      /takoSearch/,
+      /\$7 per 1,000 instant or fast requests/i,
+      /\$12 per 1,000 deep requests/i,
+    )
+  )
+    return [];
+  return [
+    ...(["instant", "fast"] as const).map((effort) =>
+      commercialFact(input, "tako-search", "Tako Search", [
+        rate("web_search", "7", "thousand_requests", input.sourceId, {
+          search_effort: effort,
+        }),
+      ]),
+    ),
+    commercialFact(input, "tako-search", "Tako Search", [
+      rate("web_search", "12", "thousand_requests", input.sourceId, {
+        search_effort: "deep",
+      }),
+    ]),
+    ...(has(body, /sources\.data\.includeContents/, /variable export surcharges/i)
+      ? [
+          commercialFact(
+            input,
+            "tako-search",
+            "Tako Search",
+            [],
+            [
+              {
+                term_key: "data_export_surcharge",
+                impact: "base_price",
+                reason: "unknown_amount",
+                conditions: { operation: "data_export" },
+                source_ref: input.sourceId,
+                raw: {
+                  label: "Tako data export surcharge",
+                  fragment:
+                    "Variable export surcharge depends on requested rows and each card's content.export_pricing.",
+                },
+              },
+            ],
+            "data-export",
+          ),
+        ]
+      : []),
+  ];
+}
+
+function parallelFacts(input: Input, body: string): SourceCommercialPricingFact[] {
+  if (
+    !has(
+      body,
+      /parallelSearch/,
+      /Parallel web search requests are charged at \$5 per 1,000 requests/i,
+      /includes up to 10 results per request/i,
+      /\$1 per 1,000 additional results/i,
+    )
+  )
+    return [];
+  return [
     commercialFact(input, "parallel-search", "Parallel Search", [
       rate("web_search", "5", "thousand_requests", input.sourceId),
     ]),
@@ -56,6 +156,7 @@ export function vercelCommercialFacts(input: Input): SourceCommercialPricingFact
           operation: "additional_results",
         }),
       ],
+      [],
       "additional-results",
     ),
   ];
@@ -66,6 +167,7 @@ function commercialFact(
   key: string,
   name: string,
   rates: SourcePriceFact[],
+  rawRates: SourceRawPricingFact[] = [],
   offerKey = "search",
 ): SourceCommercialPricingFact {
   return {
@@ -76,11 +178,16 @@ function commercialFact(
     resource_key: key,
     model_refs: [...input.modelRefs],
     offer_key: offerKey,
-    offer_name: offerKey === "search" ? name : `${name} additional results`,
+    offer_name:
+      offerKey === "search"
+        ? name
+        : offerKey === "additional-results"
+          ? `${name} additional results`
+          : `${name} data export`,
     billing_mode: "usage",
-    pricing_state: "numeric",
+    pricing_state: rates.length > 0 ? "numeric" : "not_published",
     price_facts: rates,
-    raw_price_facts: [],
+    raw_price_facts: rawRates,
   };
 }
 
@@ -105,11 +212,14 @@ function rate(
   };
 }
 
+function has(body: string, ...markers: RegExp[]): boolean {
+  return markers.every((marker) => marker.test(body));
+}
+
 function report(
   input: Input,
   disposition: PricingReconciliationItem["disposition"],
   reasonCode: string,
-  sample: string,
 ): void {
-  input.onPricingReconciliation?.({ disposition, reason_code: reasonCode, sample });
+  input.onPricingReconciliation?.({ disposition, reason_code: reasonCode, sample: searchPath });
 }

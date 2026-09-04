@@ -1,18 +1,15 @@
 import { load } from "cheerio";
 import { z } from "zod";
+import { extractDeepseekPricingInputs } from "./deepseek-accounting.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import { publishedRate, rawPricingFact } from "./pricing.ts";
+import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { canonicalizeInstant } from "./pricing-time.ts";
-import type {
-  ParsedProviderModel as ProviderModel,
-  SourcePriceFact,
-  SourceRawPricingFact,
-} from "./pricing-source.ts";
-import { assertItemCount } from "./source-contract.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
+import { assertItemCount, type SourceContractEvidence } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -20,6 +17,7 @@ interface Input {
   source: SourceManifest;
   body: string;
   observedAt: string;
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -49,6 +47,7 @@ const apiListItemSchema = z.object({
 
 const chatEndpoint = { name: "Chat Completions", path: "/chat/completions" };
 const responsesEndpoint = { name: "Responses", path: "/responses" };
+const anthropicEndpoint = { name: "Anthropic Messages", path: "/anthropic/v1/messages" };
 const fimReferenceEndpoint = { name: "FIM Completion (Beta)", path: "/completions" };
 const fimEndpoint = { name: "FIM Completion (Beta)", path: "/beta/completions" };
 const baseUrls = [
@@ -149,12 +148,21 @@ function cell(table: HtmlTable, label: string, column: number): string {
   return value;
 }
 
-function support(table: HtmlTable, label: string, columns: number[]): boolean[] {
-  return cells(table, label, columns).map((value) => {
-    if (value === "✓" || /^Non-thinking mode only$/i.test(value)) return true;
-    if (value === "✗" || /^Not supported$/i.test(value)) return false;
-    throw new Error(`Unknown DeepSeek support value: ${value}`);
-  });
+function supportedModelIds(
+  input: Input,
+  table: HtmlTable,
+  columns: readonly { column: number; id: string }[],
+  label: string,
+  reasonCode: string,
+): Set<string> {
+  return new Set(
+    columns.flatMap(({ column, id }) =>
+      claim(input, reasonCode, `${id}:${label}`, () => supportValue(cell(table, label, column))) ===
+      true
+        ? [id]
+        : [],
+    ),
+  );
 }
 
 function endpointEvidence(
@@ -228,17 +236,15 @@ interface ChatClaims {
   effortControl: boolean;
   modelIds: Set<string>;
   streaming: boolean;
-  tokenAccounting: boolean;
 }
 
 function chatClaims(input: Input, body: string | undefined): ChatClaims {
-  if (body === undefined)
-    return { effortControl: false, modelIds: new Set(), streaming: false, tokenAccounting: false };
+  if (body === undefined) return { effortControl: false, modelIds: new Set(), streaming: false };
   const evidence = claim(input, "chat_operation_contract_drift", "Chat Completions", () =>
     endpointEvidence(body, chatEndpoint),
   );
   if (evidence === undefined)
-    return { effortControl: false, modelIds: new Set(), streaming: false, tokenAccounting: false };
+    return { effortControl: false, modelIds: new Set(), streaming: false };
   const effortControl =
     claim(input, "chat_reasoning_controls_drift", "reasoning controls", () => {
       const thinking = evidence.propertyValues("thinking");
@@ -272,58 +278,32 @@ function chatClaims(input: Input, body: string | undefined): ChatClaims {
       propertyClaims(
         evidence,
         "include_usage",
-        ["entire request", "choices field will always be an empty array"],
+        [
+          "entire request",
+          "choices array always contains exactly one element",
+          "carries no new content",
+        ],
         "streaming usage contract drifted",
       );
       return true;
     }) === true;
-  const tokenAccounting =
-    claim(input, "chat_usage_contract_drift", "usage", () => {
-      propertyClaims(
-        evidence,
-        "usage",
-        [
-          "completion_tokens",
-          "prompt_tokens",
-          "prompt_cache_hit_tokens",
-          "prompt_cache_miss_tokens",
-          "total_tokens",
-          "reasoning_tokens",
-        ],
-        "usage contract drifted",
-      );
-      return true;
-    }) === true;
-  return { effortControl, modelIds: evidence.modelIds, streaming, tokenAccounting };
+  return { effortControl, modelIds: evidence.modelIds, streaming };
 }
 
 interface ResponseClaims {
   modelIds: Set<string>;
-  tokenAccounting: boolean;
 }
 
 function responseClaims(input: Input, body: string | undefined): ResponseClaims {
-  if (body === undefined) return { modelIds: new Set(), tokenAccounting: false };
+  if (body === undefined) return { modelIds: new Set() };
   const evidence = claim(input, "responses_operation_contract_drift", "Responses", () =>
     endpointEvidence(body, responsesEndpoint),
   );
-  if (evidence === undefined) return { modelIds: new Set(), tokenAccounting: false };
-  const tokenAccounting =
-    claim(input, "responses_usage_contract_drift", "Responses usage", () => {
-      propertyClaims(
-        evidence,
-        "usage",
-        ["input_tokens", "cached_tokens", "output_tokens", "reasoning_tokens", "total_tokens"],
-        "usage contract drifted",
-      );
-      return true;
-    }) === true;
-  return { modelIds: evidence.modelIds, tokenAccounting };
+  return { modelIds: evidence?.modelIds ?? new Set() };
 }
 
 interface FimClaims {
   modelIds: Set<string>;
-  tokenAccounting: boolean;
 }
 
 interface VisionClaims {
@@ -362,28 +342,38 @@ function visionClaims(input: Input, body: string | undefined): VisionClaims {
 }
 
 function fimClaims(input: Input, body: string | undefined): FimClaims {
-  if (body === undefined) return { modelIds: new Set(), tokenAccounting: false };
+  if (body === undefined) return { modelIds: new Set() };
   const evidence = claim(input, "fim_operation_contract_drift", "FIM Completion", () =>
     endpointEvidence(body, fimReferenceEndpoint),
   );
-  if (evidence === undefined) return { modelIds: new Set(), tokenAccounting: false };
-  const tokenAccounting =
-    claim(input, "fim_usage_contract_drift", "FIM usage", () => {
-      propertyClaims(
-        evidence,
-        "usage",
-        [
-          "completion_tokens",
-          "prompt_tokens",
-          "prompt_cache_hit_tokens",
-          "prompt_cache_miss_tokens",
-          "total_tokens",
-        ],
-        "usage contract drifted",
-      );
+  return { modelIds: evidence?.modelIds ?? new Set() };
+}
+
+interface AnthropicClaims {
+  available: boolean;
+  streaming: boolean;
+}
+
+function anthropicClaims(input: Input, body: string | undefined): AnthropicClaims {
+  if (body === undefined) return { available: false, streaming: false };
+  const prose = htmlText(load(body)("article").text());
+  const available =
+    claim(input, "anthropic_operation_contract_drift", "Anthropic Messages", () => {
+      if (
+        !/Using the Anthropic API/i.test(prose) ||
+        !/https:\/\/api\.deepseek\.com\/anthropic/.test(prose) ||
+        !/client\.messages\.create/.test(prose)
+      )
+        throw new Error("expected Anthropic base URL and Messages invocation");
       return true;
     }) === true;
-  return { modelIds: evidence.modelIds, tokenAccounting };
+  const streaming =
+    claim(input, "anthropic_streaming_contract_drift", "Anthropic stream", () => {
+      if (!/stream\s+Fully Supported/i.test(prose))
+        throw new Error("expected fully supported stream field");
+      return true;
+    }) === true;
+  return { available, streaming };
 }
 
 function schemaProperty(element: ReturnType<ReturnType<typeof load>>): string {
@@ -530,8 +520,9 @@ function validateCatalogTable(input: Input, table: HtmlTable, columns: number[])
       if (cells(table, label, columns).some((value) => value !== expected))
         throw new Error(`expected ${expected}`);
     });
-  for (const label of ["Chat Prefix Completion（Beta）", "FIM Completion（Beta）", "Anthropic API"])
-    claim(input, "catalog_support_claim_drift", label, () => support(table, label, columns));
+  claim(input, "catalog_support_claim_drift", "Chat Prefix Completion（Beta）", () =>
+    cells(table, "Chat Prefix Completion（Beta）", columns).map(supportValue),
+  );
 }
 
 function priceFact(
@@ -562,6 +553,8 @@ function model(
   responses: ResponseClaims,
   fim: FimClaims,
   vision: VisionClaims,
+  hasAnthropicEndpoint: boolean,
+  anthropicStreaming: boolean,
   scheduled: ScheduledPricing | undefined,
 ): ProviderModel {
   const value = <T>(reasonCode: string, label: string, parse: (cell: string) => T): T | undefined =>
@@ -582,6 +575,7 @@ function model(
     ...(hasChatEndpoint ? [chatEndpoint] : []),
     ...(hasResponsesEndpoint ? [responsesEndpoint] : []),
     ...(hasFimEndpoint ? [fimEndpoint] : []),
+    ...(hasAnthropicEndpoint ? [anthropicEndpoint] : []),
   ];
   const current: ProviderModel = {
     ...baseModel({
@@ -599,7 +593,9 @@ function model(
       ...(reasoning === undefined ? {} : { reasoning }),
       ...(tools === undefined ? {} : { tool_call: tools }),
       ...(structured === undefined ? {} : { structured_output: structured }),
-      ...(hasChatEndpoint && chat.streaming ? { streaming: true } : {}),
+      ...((hasChatEndpoint && chat.streaming) || (hasAnthropicEndpoint && anthropicStreaming)
+        ? { streaming: true }
+        : {}),
       ...(hasChatEndpoint && chat.effortControl ? { effort_control: true } : {}),
     },
     limits: {
@@ -889,16 +885,6 @@ function thinkingValue(value: string): boolean {
   throw new Error(`Unknown DeepSeek thinking mode: ${value}`);
 }
 
-function rawGap(sourceRef: string, key: string, fragment: string): SourceRawPricingFact {
-  return rawPricingFact(
-    sourceRef,
-    `accounting_binding_unavailable:${key}`,
-    "informational",
-    "requires_usage_aggregation",
-    fragment,
-  );
-}
-
 function attachCnyRates(
   input: Input,
   bundle: Bundle,
@@ -970,6 +956,7 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const chat = chatClaims(input, companion(input, bundle, "/api/create-chat-completion"));
   const responses = responseClaims(input, companion(input, bundle, "/api/create-response"));
   const fim = fimClaims(input, companion(input, bundle, "/api/create-completion"));
+  const anthropic = anthropicClaims(input, companion(input, bundle, "/guides/anthropic_api"));
   const vision = visionClaims(input, companion(input, bundle, "/guides/vision"));
   const modelTables = htmlTables(bundle.index.body).filter(
     ({ headers, rows }) =>
@@ -1001,23 +988,26 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     table,
     columns.map(({ column }) => column),
   );
-  const tableResponseIds = new Set(
-    columns.flatMap(({ column, id }) =>
-      claim(input, "responses_table_claim_drift", `${id}:Responses API`, () =>
-        supportValue(cell(table, "Responses API", column)),
-      ) === true
-        ? [id]
-        : [],
-    ),
+  const tableResponseIds = supportedModelIds(
+    input,
+    table,
+    columns,
+    "Responses API",
+    "responses_table_claim_drift",
   );
-  const tableFimIds = new Set(
-    columns.flatMap(({ column, id }) =>
-      claim(input, "fim_table_claim_drift", `${id}:FIM Completion`, () =>
-        supportValue(cell(table, "FIM Completion（Beta）", column)),
-      ) === true
-        ? [id]
-        : [],
-    ),
+  const tableFimIds = supportedModelIds(
+    input,
+    table,
+    columns,
+    "FIM Completion（Beta）",
+    "fim_table_claim_drift",
+  );
+  const tableAnthropicIds = supportedModelIds(
+    input,
+    table,
+    columns,
+    "Anthropic API",
+    "anthropic_table_claim_drift",
   );
   if (
     responses.modelIds.size > 0 &&
@@ -1032,7 +1022,19 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     diagnostic(input, "unbound", "fim_inventory_disagreement");
   const scheduled = scheduledPricing(input, bundle.index.body, "USD", table);
   const models = columns.map(({ column, id }) =>
-    model(input, table, column, id, chat, responses, fim, vision, scheduled),
+    model(
+      input,
+      table,
+      column,
+      id,
+      chat,
+      responses,
+      fim,
+      vision,
+      anthropic.available && tableAnthropicIds.has(id),
+      anthropic.streaming,
+      scheduled,
+    ),
   );
   if (scheduled !== undefined) attachScheduledRates(input, models, scheduled, "USD");
   const knownIds = new Set(models.map(({ model_id }) => model_id));
@@ -1054,33 +1056,20 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   )
     diagnostic(input, "unbound", "model_inventory_disagreement");
 
-  for (const current of models) {
-    const interfaces = [
-      [chat.modelIds.has(current.model_id), chat.tokenAccounting, "chat"],
-      [responses.modelIds.has(current.model_id), responses.tokenAccounting, "responses"],
-      [fim.modelIds.has(current.model_id), fim.tokenAccounting, "fim"],
-    ] as const;
-    if (!interfaces.some(([applies, accounting]) => applies && accounting))
-      current.raw_price_facts.push(
-        rawGap(
-          input.source.id,
-          "tokens",
-          "No reviewed public interface currently binds the published token rates to response usage fields",
-        ),
-      );
-    else
-      for (const [applies, accounting, key] of interfaces)
-        if (applies && !accounting)
-          current.raw_price_facts.push(
-            rawGap(input.source.id, key, `The ${key} usage contract is unavailable`),
-          );
-  }
   attachCnyRates(
     input,
     bundle,
     models,
     scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined,
   );
+  const pricingInputs = extractDeepseekPricingInputs(
+    bundle.documents,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  const carrier = models.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return bounded(input, models);
 }
 

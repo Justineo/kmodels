@@ -9,13 +9,7 @@ import type {
   SourceRawPricingFact,
 } from "./pricing-source.ts";
 
-interface LinkedDocument {
-  url: string;
-  body: string;
-}
-
 interface Input {
-  documents: readonly LinkedDocument[];
   models: readonly ParsedProviderModel[];
   reconcile?: (item: PricingReconciliationItem) => void;
   sourceId: string;
@@ -119,7 +113,6 @@ export function extractMistralCommercialFacts(
   cards: readonly MistralPricingCard[],
 ): void {
   const facts: SourceCommercialPricingFact[] = [];
-  const bindingEvidence = commercialBindingEvidence(input);
   const agentModels = input.models
     .filter(
       ({ api_endpoints, status }) =>
@@ -128,7 +121,7 @@ export function extractMistralCommercialFacts(
     )
     .map(({ uid }) => uid)
     .sort();
-  for (const card of cards) addCard(input, facts, card, agentModels, bindingEvidence);
+  for (const card of cards) addCard(input, facts, card, agentModels);
   const carrier = [...input.models].sort((left, right) => left.uid.localeCompare(right.uid))[0];
   if (carrier !== undefined && facts.length > 0)
     carrier.commercial_facts = [...(carrier.commercial_facts ?? []), ...facts];
@@ -139,7 +132,6 @@ function addCard(
   facts: SourceCommercialPricingFact[],
   card: MistralPricingCard,
   agentModels: string[],
-  bindingEvidence: ReadonlySet<string>,
 ): void {
   const title = card.title || card.id;
   if (card.id !== "" && !card.id.startsWith("Classifier API model")) return;
@@ -171,14 +163,13 @@ function addCard(
         "usage",
         "numeric",
         rates,
-        bindingEvidence.has(simple.key) ? [] : [bindingUnavailable(input.sourceId, simple.key)],
+        [],
       ),
     );
     normalized(input, rates.length);
     return;
   }
-  if (title === "Libraries")
-    addLibraryRetrieval(input, facts, card, agentModels, bindingEvidence.has("library"));
+  if (title === "Libraries") addLibraryRetrieval(input, facts, card, agentModels);
   else if (card.id === "")
     unresolved(input, title || card.text.slice(0, 128), "unknown_public_pricing_card");
 }
@@ -250,7 +241,6 @@ function addLibraryRetrieval(
   facts: SourceCommercialPricingFact[],
   card: MistralPricingCard,
   modelRefs: string[],
-  bindingAvailable: boolean,
 ): void {
   const row = card.rows.find((candidate) =>
     /Call.*call/i.test(`${candidate.label} ${candidate.suffix ?? ""}`),
@@ -272,7 +262,7 @@ function addLibraryRetrieval(
       "usage",
       "numeric",
       rowRates(input.sourceId, row, "retrieval", "request"),
-      bindingAvailable ? [] : [bindingUnavailable(input.sourceId, "library")],
+      [],
     ),
   );
   normalized(input, 2);
@@ -296,52 +286,6 @@ function rowRates(
       raw_price: price,
     };
   });
-}
-
-function commercialBindingEvidence(input: Input): Set<string> {
-  const root = "/mistralai/platform-docs-public/main/src/content/en/docs/studio";
-  const definitions = [
-    [
-      `${root}/agents/agent-tools/code_interpreter/page.mdx`,
-      "code-execution",
-      [/tool\.execution/, /connectors[\s\S]*code_interpreter/],
-    ],
-    [
-      `${root}/agents/agent-tools/websearch/page.mdx`,
-      "web-search",
-      [/tool\.execution/, /connectors[\s\S]*web_search/],
-    ],
-    [
-      `${root}/agents/agent-tools/websearch/page.mdx`,
-      "premium-news",
-      [/web_search_premium/, /tool\.execution/],
-    ],
-    [
-      `${root}/agents/agent-tools/image_generation/page.mdx`,
-      "image-generation",
-      [/tool\.execution/, /image_generation/],
-    ],
-    [
-      `${root}/libraries/page.mdx`,
-      "library",
-      [/document_library/, /connectors[\s\S]*document_library/],
-    ],
-  ] as const;
-  const valid = new Set<string>();
-  for (const [path, key, markers] of definitions)
-    if (companion(input, path, markers) !== undefined) valid.add(key);
-  return valid;
-}
-
-function bindingUnavailable(sourceRef: string, key: string): SourceRawPricingFact {
-  return {
-    source_ref: sourceRef,
-    term_key: "charge_binding_unavailable",
-    impact: "informational",
-    reason: "unknown_applicability",
-    conditions: {},
-    raw: { label: `${key} usage counter was not verified` },
-  };
 }
 
 function fact(
@@ -372,23 +316,6 @@ function fact(
     price_facts,
     raw_price_facts,
   };
-}
-
-function companion(input: Input, pathname: string, markers: readonly RegExp[]): string | undefined {
-  const matches = input.documents.filter(({ url }) => new URL(url).pathname === pathname);
-  const document = matches[0];
-  if (
-    matches.length === 1 &&
-    document !== undefined &&
-    markers.every((marker) => marker.test(document.body))
-  )
-    return document.body;
-  input.reconcile?.({
-    disposition: "unbound",
-    reason_code:
-      document === undefined ? "commercial_companion_missing" : "commercial_companion_drift",
-    sample: pathname,
-  });
 }
 
 function parseJson<T>(value: string | undefined, schema: z.ZodType<T>): T | undefined {

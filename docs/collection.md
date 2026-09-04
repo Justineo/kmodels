@@ -259,6 +259,11 @@ Status: implemented
   revalidated before use. Any mismatch aborts the entire local compilation.
   Authenticated or otherwise non-public pricing inputs are never persisted;
   providers without replay input keep their exact accepted partitions.
+- A manifest source declares `pricing` when it owns rates and `pricing_inputs`
+  when it owns accounting or selector contracts. Either role makes it a pricing
+  dependency for omission and replay. Only the rate role carries pricing-evidence
+  authority, so an accounting-only API or schema document cannot accidentally
+  claim that it published a price.
 - The refresh summary reports canonical pricing commercial additions,
   removals, changes, provenance-only changes, and retention.
 - `KMODELS_PRICING_RELEASE_INPUT` is a reviewed manual release input for

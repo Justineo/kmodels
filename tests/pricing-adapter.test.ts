@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 import { manifests, type ProviderManifest, type SourceManifest } from "../src/catalog/manifests.ts";
 import {
   assembleParsedProviderPricing,
+  isPricingDependencySource,
+  isPricingInputSource,
   isPricingSource,
   isRequiredPricingSource,
 } from "../src/catalog/pricing-adapter.ts";
@@ -20,6 +22,7 @@ import {
   type ParsedProviderModel,
   type SourceCommercialPricingFact,
   type SourcePriceFact,
+  type SourcePricingInputFact,
 } from "../src/catalog/pricing-source.ts";
 import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
 import { unknownCapabilities, type Catalog, type SourceRecord } from "../src/catalog/schema.ts";
@@ -154,6 +157,37 @@ function tokenRate(price: string, conditions: SourcePriceFact["conditions"]): So
   };
 }
 
+function geminiPricingInput(
+  key: string,
+  channel: SourcePricingInputFact["channel"],
+  value: string,
+): SourcePricingInputFact {
+  return {
+    key,
+    channel,
+    locator: { kind: "provider_field", value },
+    availability: channel === "result" ? "success_only" : "terminal_only",
+    source_ref: sourceRef,
+  };
+}
+
+function bedrockPricingInput(
+  key: string,
+  channel: SourcePricingInputFact["channel"],
+  value: string,
+  availability: SourcePricingInputFact["availability"] = "terminal_only",
+): SourcePricingInputFact {
+  return {
+    key,
+    channel,
+    locator: value.startsWith("/")
+      ? { kind: "json_pointer", value }
+      : { kind: "provider_field", value },
+    availability,
+    source_ref: sourceRef,
+  };
+}
+
 function withPriceSource(value: ParsedProviderModel, sourceId: string): ParsedProviderModel {
   return {
     ...value,
@@ -281,6 +315,21 @@ describe("parsed-source canonical pricing adapter", () => {
           expect(source.pricingEvidence, `${manifest.provider.id}/${source.id}`).toBeUndefined();
         }
       }
+  });
+
+  it("treats accounting contracts as pricing dependencies without inventing rate authority", () => {
+    const providerManifests: readonly ProviderManifest[] = manifests;
+    const accounting = providerManifests
+      .flatMap(({ sources }) => sources)
+      .filter(({ fields }) => fields.includes("pricing_inputs"));
+    expect(accounting.length).toBeGreaterThan(0);
+    for (const source of accounting) {
+      expect(isPricingInputSource(source)).toBe(true);
+      expect(isPricingDependencySource(source)).toBe(true);
+    }
+    const openAiAccounting = accounting.find(({ id }) => id === "openai-accounting");
+    expect(openAiAccounting?.pricingEvidence).toBeUndefined();
+    expect(openAiAccounting === undefined ? true : isPricingSource(openAiAccounting)).toBe(false);
   });
 
   it("keeps Azure pricing overlays optional and account inventory outside pricing", () => {
@@ -741,6 +790,11 @@ describe("parsed-source canonical pricing adapter", () => {
       model_id: id,
       uid: `azure/${id}`,
       service_families: ["Azure OpenAI"],
+      api_endpoints: [
+        { name: "createBatch", path: "openai/v1/batches" },
+        { name: "createChatCompletion", path: "openai/v1/chat/completions" },
+        { name: "createResponse", path: "openai/v1/responses" },
+      ],
       price_facts: rates,
     });
     const baseRates: SourcePriceFact[] = [
@@ -776,11 +830,52 @@ describe("parsed-source canonical pricing adapter", () => {
       },
     ];
     const direct = azure("gpt-test", baseRates);
+    const azureManifest = manifests.find(({ provider }) => provider.id === "azure");
+    const accountingSource = azureManifest?.sources.find(({ id }) => id === "azure-accounting");
+    if (accountingSource === undefined) throw new Error("Azure accounting source is missing");
+    const accounting: ParsedProviderModel = {
+      ...direct,
+      pricing_state: "unknown",
+      price_facts: [],
+      pricing_inputs: [
+        {
+          key: "chat.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "chat.input_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "responses.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "batch.input_tokens",
+          channel: "result",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+      ],
+    };
     const router = azure("model-router", [tokenRate("0.1", {})]);
     const partition = assembleParsedProviderPricing(
       "azure",
       observedAt,
-      [{ source: pricingSource, models: [direct, router] }],
+      [
+        { source: pricingSource, models: [direct, router] },
+        { source: accountingSource, models: [accounting] },
+      ],
       [direct, router],
     );
     const books = partition?.books ?? [];
@@ -790,6 +885,7 @@ describe("parsed-source canonical pricing adapter", () => {
     const batch = directBook?.offers.find(({ offer_key }) => offer_key === "batch");
     const syncInput = sync?.terms.find(({ term_key }) => term_key === "input_text");
     const batchInput = batch?.terms.find(({ term_key }) => term_key === "input_text");
+    expect(batchInput?.source_refs).toEqual([accountingSource.id, sourceRef].sort());
     expect(
       syncInput?.kind === "rate"
         ? syncInput.variants.map(({ charge_binding, applicability }) => ({
@@ -819,12 +915,21 @@ describe("parsed-source canonical pricing adapter", () => {
     );
     expect(batchInput?.kind === "rate" ? batchInput.variants[0] : undefined).toMatchObject({
       charge_binding: {
-        aggregation: "result_item",
+        aggregation: "job",
         signal: {
-          namespace: "provider",
-          provider_id: "azure",
-          value: "batch_result_input_text_kmodels_token_p1",
+          namespace: "kmodels",
+          value: "uncached_input_tokens",
         },
+        quantity_methods: [
+          {
+            input_sources: [
+              expect.objectContaining({
+                channel: "result",
+                locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+              }),
+            ],
+          },
+        ],
       },
     });
     expect(
@@ -842,7 +947,7 @@ describe("parsed-source canonical pricing adapter", () => {
             .map(({ charge_binding }) => charge_binding?.signal.value)
             .sort((left, right) => (left ?? "").localeCompare(right ?? ""))
         : [],
-    ).toEqual(["response_input_image_kmodels_page_p1", "response_input_image_kmodels_token_p1"]);
+    ).toEqual(["input_image_tokens", "processed_pages"]);
 
     expect(books.some(({ scope }) => scope.kind === "provider_resource")).toBe(false);
 
@@ -860,6 +965,307 @@ describe("parsed-source canonical pricing adapter", () => {
               provider_id: "azure",
               value: "router_input_kmodels_token_p1",
             },
+            quantity_methods: expect.any(Array),
+          }),
+        }),
+      ],
+    });
+  });
+
+  it("derives Azure text-token partitions only from complete endpoint-local usage", () => {
+    const { source: pricingSource } = pricingManifest();
+    const rate = (meter: SourcePriceFact["meter"], price: string): SourcePriceFact => ({
+      meter,
+      price,
+      currency: "USD",
+      unit: "million_tokens",
+      conditions: { service_tier: "standard" },
+      source_ref: sourceRef,
+      derived: false,
+    });
+    const input = (
+      key: string,
+      pointer: string,
+      channel: SourcePricingInputFact["channel"] = "response",
+    ): SourcePricingInputFact => ({
+      key,
+      channel,
+      locator: { kind: "json_pointer", value: pointer },
+      availability: "terminal_only",
+      source_ref: sourceRef,
+    });
+    const priced: ParsedProviderModel = {
+      ...model(),
+      provider_id: "azure",
+      model_id: "gpt-audio-test",
+      uid: "azure/gpt-audio-test",
+      api_endpoints: [
+        { name: "createChatCompletion", path: "openai/v1/chat/completions" },
+        { name: "createResponse", path: "openai/v1/responses" },
+      ],
+      price_facts: [
+        rate("input_text", "4"),
+        rate("cache_read_text", "1"),
+        rate("cache_write_text", "5"),
+        rate("input_audio", "8"),
+        rate("output_text", "16"),
+        rate("output_audio", "32"),
+      ],
+      pricing_inputs: [
+        input("chat.input_tokens", "/usage/prompt_tokens"),
+        input("chat.cached_input_tokens", "/usage/prompt_tokens_details/cached_tokens"),
+        input("chat.cache_write_tokens", "/usage/prompt_tokens_details/cache_write_tokens"),
+        input("chat.input_audio_tokens", "/usage/prompt_tokens_details/audio_tokens"),
+        input("chat.output_tokens", "/usage/completion_tokens"),
+        input("chat.output_audio_tokens", "/usage/completion_tokens_details/audio_tokens"),
+        input("responses.input_tokens", "/usage/input_tokens"),
+        input("responses.cached_input_tokens", "/usage/input_tokens_details/cached_tokens"),
+        input("responses.output_tokens", "/usage/output_tokens"),
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source: pricingSource, models: [priced] }],
+      [priced],
+    );
+    const terms = partition?.books[0]?.offers[0]?.terms ?? [];
+    const binding = (key: string) => {
+      const term = terms.find(({ term_key }) => term_key === key);
+      return term?.kind === "rate" ? term.variants[0]?.charge_binding : undefined;
+    };
+    expect(binding("input_text")).toMatchObject({
+      signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+              { op: "signal", signal: { namespace: "kmodels", value: "cached_input_tokens" } },
+              { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+              { op: "signal", signal: { namespace: "kmodels", value: "cache_write_tokens" } },
+              { op: "subtract_floor_zero", minuend: 2, subtrahend: 3 },
+              {
+                op: "signal",
+                signal: {
+                  namespace: "provider",
+                  provider_id: "azure",
+                  value: "input_audio_tokens",
+                },
+              },
+              { op: "subtract_floor_zero", minuend: 4, subtrahend: 5 },
+            ],
+            result: 6,
+          },
+        },
+      ],
+    });
+    expect(binding("output_text")).toMatchObject({
+      signal: { namespace: "kmodels", value: "output_tokens" },
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              { op: "signal", signal: { namespace: "kmodels", value: "output_tokens" } },
+              {
+                op: "signal",
+                signal: {
+                  namespace: "provider",
+                  provider_id: "azure",
+                  value: "output_audio_tokens",
+                },
+              },
+              { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+            ],
+            result: 2,
+          },
+        },
+      ],
+    });
+    expect(binding("cache_read_text")?.quantity_methods?.[0]?.input_sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/cached_tokens" },
+        }),
+        expect.objectContaining({
+          locator: { kind: "json_pointer", value: "/usage/input_tokens_details/cached_tokens" },
+        }),
+      ]),
+    );
+
+    const partial = {
+      ...priced,
+      pricing_inputs: priced.pricing_inputs?.filter(({ key }) => key !== "chat.input_audio_tokens"),
+    };
+    const partialPartition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source: pricingSource, models: [partial] }],
+      [partial],
+    );
+    const partialInput = partialPartition?.books[0]?.offers[0]?.terms.find(
+      ({ term_key }) => term_key === "input_text",
+    );
+    expect(
+      partialInput?.kind === "rate"
+        ? partialInput.variants[0]?.charge_binding?.quantity_methods
+        : undefined,
+    ).toBeUndefined();
+  });
+
+  it("binds Azure image, audio-duration, and video quantities without synthetic locators", () => {
+    const { source: pricingSource } = pricingManifest();
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      unit: SourcePriceFact["unit"],
+      conditions: SourcePriceFact["conditions"] = {},
+    ): SourcePriceFact => ({
+      meter,
+      price: "1",
+      currency: "USD",
+      unit,
+      conditions,
+      source_ref: sourceRef,
+      derived: false,
+    });
+    const input = (
+      key: string,
+      pointer: string,
+      reduction?: SourcePricingInputFact["reduction"],
+    ): SourcePricingInputFact => ({
+      key,
+      channel: key.startsWith("video.") ? "result" : "response",
+      locator: { kind: "json_pointer", value: pointer },
+      ...(reduction === undefined ? {} : { reduction }),
+      availability: "success_only",
+      source_ref: sourceRef,
+    });
+    const image: ParsedProviderModel = {
+      ...model(),
+      provider_id: "azure",
+      model_id: "image-test",
+      uid: "azure/image-test",
+      tasks: ["image_generation"],
+      price_facts: [
+        rate("input_text", "million_tokens"),
+        rate("input_image", "million_tokens"),
+        rate("output_image", "million_tokens"),
+        rate("image_generation", "image", { quality: "low", resolution: "1024x1024" }),
+      ],
+      pricing_inputs: [
+        input("images.input_text_tokens", "/usage/input_tokens_details/text_tokens"),
+        input("images.input_image_tokens", "/usage/input_tokens_details/image_tokens"),
+        input("images.output_image_tokens", "/usage/output_tokens"),
+        input("images.generated_images", "/data", { kind: "array_length" }),
+        input("images.quality", "/quality"),
+        input("images.resolution", "/size"),
+        input("embeddings.input_tokens", "/usage/prompt_tokens"),
+        input("audio.transcription_seconds", "/duration"),
+        input("video.generated_seconds", "/n_seconds"),
+      ],
+    };
+    const transcription: ParsedProviderModel = {
+      ...model(),
+      provider_id: "azure",
+      model_id: "transcription-test",
+      uid: "azure/transcription-test",
+      tasks: ["transcription"],
+      price_facts: [rate("input_audio", "second")],
+    };
+    const embedding: ParsedProviderModel = {
+      ...model(),
+      provider_id: "azure",
+      model_id: "embedding-test",
+      uid: "azure/embedding-test",
+      tasks: ["embeddings"],
+      api_endpoints: [{ name: "createEmbedding", path: "openai/v1/embeddings" }],
+      price_facts: [rate("embedding", "million_tokens")],
+    };
+    const video: ParsedProviderModel = {
+      ...model(),
+      provider_id: "azure",
+      model_id: "video-test",
+      uid: "azure/video-test",
+      tasks: ["video_generation"],
+      price_facts: [rate("video_generation", "second", { resolution: "720p" })],
+    };
+    const partition = assembleParsedProviderPricing(
+      "azure",
+      observedAt,
+      [{ source: pricingSource, models: [image, transcription, embedding, video] }],
+      [image, transcription, embedding, video],
+    );
+    const offer = (uid: string) =>
+      partition?.books.find(({ book_key }) => book_key === `model:${uid}`)?.offers[0];
+    const imageTerms = offer(image.uid)?.terms ?? [];
+    const binding = (key: string) => {
+      const term = imageTerms.find(({ term_key }) => term_key === key);
+      return term?.kind === "rate" ? term.variants[0]?.charge_binding : undefined;
+    };
+    expect(binding("input_text")).toMatchObject({
+      signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+      quantity_methods: [
+        {
+          input_sources: [
+            expect.objectContaining({
+              locator: {
+                kind: "json_pointer",
+                value: "/usage/input_tokens_details/text_tokens",
+              },
+            }),
+          ],
+        },
+      ],
+    });
+    expect(binding("input_image")?.signal).toMatchObject({ value: "input_image_tokens" });
+    expect(binding("output_image")?.signal).toMatchObject({ value: "output_image_tokens" });
+    expect(binding("image_generation")?.signal).toEqual({
+      namespace: "kmodels",
+      value: "generated_images",
+    });
+    const generation = imageTerms.find(({ term_key }) => term_key === "image_generation");
+    expect(generation?.kind === "rate" ? generation.variants[0]?.selector_sources : []).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "quality" },
+          locator: { kind: "json_pointer", value: "/quality" },
+        }),
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "resolution" },
+          locator: { kind: "json_pointer", value: "/size" },
+        }),
+      ]),
+    );
+    expect(offer(transcription.uid)?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "processed_audio_seconds" },
+            quantity_methods: expect.any(Array),
+          }),
+        }),
+      ],
+    });
+    expect(offer(embedding.uid)?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "input_tokens" },
+            quantity_methods: expect.any(Array),
+          }),
+        }),
+      ],
+    });
+    expect(offer(video.uid)?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "result_item",
+            signal: { namespace: "kmodels", value: "generated_seconds" },
+            quantity_methods: expect.any(Array),
           }),
         }),
       ],
@@ -870,6 +1276,38 @@ describe("parsed-source canonical pricing adapter", () => {
     const { source: pricingSource } = pricingManifest();
     const gemini: ParsedProviderModel = {
       ...model(),
+      pricing_inputs: [
+        geminiPricingInput(
+          "generate.prompt.text",
+          "response",
+          "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=TEXT].tokenCount",
+        ),
+        geminiPricingInput(
+          "generate.cache.text",
+          "response",
+          "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=TEXT].tokenCount",
+        ),
+        geminiPricingInput(
+          "generate.service_tier",
+          "response",
+          "GenerateContentResponse.usageMetadata.serviceTier",
+        ),
+        geminiPricingInput(
+          "generate.prompt.text",
+          "result",
+          "GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response.usageMetadata.promptTokensDetails[modality=TEXT].tokenCount",
+        ),
+        geminiPricingInput(
+          "generate.cache.text",
+          "result",
+          "GenerateContentBatch.output.inlinedResponses.inlinedResponses[*].response.usageMetadata.cacheTokensDetails[modality=TEXT].tokenCount",
+        ),
+        geminiPricingInput(
+          "interaction.grounding.google_search",
+          "response",
+          "Interaction.usage.grounding_tool_count[type=google_search].count",
+        ),
+      ],
       price_facts: [
         tokenRate("2", { service_tier: "standard" }),
         tokenRate("4", { service_tier: "priority" }),
@@ -948,13 +1386,14 @@ describe("parsed-source canonical pricing adapter", () => {
       applicability: { any_of: [{ all_of: [] }] },
       charge_binding: {
         aggregation: "result_item",
-        observations: [
+        quantity_methods: [
           expect.objectContaining({
-            locator: expect.objectContaining({
-              value: expect.stringContaining(
-                "batch-result:GenerateContentResponse.usageMetadata.promptTokensDetails",
-              ),
+            calculation: expect.objectContaining({
+              nodes: expect.arrayContaining([
+                expect.objectContaining({ op: "subtract_floor_zero" }),
+              ]),
             }),
+            input_sources: expect.arrayContaining([expect.objectContaining({ channel: "result" })]),
           }),
         ],
         signal: {
@@ -973,7 +1412,7 @@ describe("parsed-source canonical pricing adapter", () => {
     expect(
       searchRate?.kind === "rate" ? searchRate.variants[0]?.charge_binding : undefined,
     ).toMatchObject({
-      aggregation: "result_item",
+      aggregation: "request",
       signal: {
         namespace: "provider",
         provider_id: "gemini",
@@ -988,9 +1427,262 @@ describe("parsed-source canonical pricing adapter", () => {
     ]);
   });
 
+  it("derives Gemini multimodal and embedding quantities from exact response partitions", () => {
+    const { source: pricingSource } = pricingManifest();
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      price: string,
+      unit: SourcePriceFact["unit"] = "million_tokens",
+      conditions: SourcePriceFact["conditions"] = {},
+    ): SourcePriceFact => ({
+      meter,
+      price,
+      currency: "USD",
+      unit,
+      conditions,
+      source_ref: sourceRef,
+      derived: false,
+    });
+    const input = (
+      key: string,
+      value: string,
+      options: Pick<SourcePricingInputFact, "absent_value" | "reduction"> = {},
+    ): SourcePricingInputFact => ({
+      ...geminiPricingInput(key, "response", value),
+      ...options,
+    });
+    const multimodal: ParsedProviderModel = {
+      ...model(),
+      tasks: ["text_generation", "image_generation"],
+      modalities: { input: ["text", "image", "pdf"], output: ["text", "image"] },
+      price_facts: [
+        rate("input_image", "2"),
+        rate("cache_read_image", "0.2"),
+        rate("output_text", "4"),
+        rate("output_image", "8"),
+        rate("image_generation", "0.04", "image"),
+      ],
+      pricing_inputs: [
+        input(
+          "generate.prompt.image",
+          "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=IMAGE].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "generate.prompt.document",
+          "GenerateContentResponse.usageMetadata.promptTokensDetails[modality=DOCUMENT].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "generate.cache.image",
+          "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=IMAGE].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "generate.cache.document",
+          "GenerateContentResponse.usageMetadata.cacheTokensDetails[modality=DOCUMENT].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "generate.candidates.text",
+          "GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=TEXT].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "generate.candidates.image",
+          "GenerateContentResponse.usageMetadata.candidatesTokensDetails[modality=IMAGE].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "generate.candidates.total",
+          "GenerateContentResponse.usageMetadata.candidatesTokenCount",
+        ),
+        input("generate.thoughts", "GenerateContentResponse.usageMetadata.thoughtsTokenCount"),
+        input(
+          "generate.output.images",
+          "GenerateContentResponse.candidates[*].content.parts[*].inlineData[mimeType=image/*]",
+          { absent_value: "zero", reduction: { kind: "array_length" } },
+        ),
+      ],
+    };
+    const embedding: ParsedProviderModel = {
+      ...model(),
+      uid: "gemini/embed-test",
+      model_id: "embed-test",
+      name: "Embed Test",
+      tasks: ["embeddings"],
+      modalities: { input: ["image", "pdf"], output: ["embedding"] },
+      price_facts: [rate("input_image", "0.5")],
+      pricing_inputs: [
+        input(
+          "embedding.prompt.image",
+          "EmbedContentResponse.usageMetadata.promptTokenDetails[modality=IMAGE].tokenCount",
+          { absent_value: "zero" },
+        ),
+        input(
+          "embedding.prompt.document",
+          "EmbedContentResponse.usageMetadata.promptTokenDetails[modality=DOCUMENT].tokenCount",
+          { absent_value: "zero" },
+        ),
+      ],
+    };
+    const video: ParsedProviderModel = {
+      ...model(),
+      uid: "gemini/video-test",
+      model_id: "video-test",
+      name: "Video Test",
+      tasks: ["video_generation"],
+      modalities: { input: ["text", "image"], output: ["video"] },
+      price_facts: [rate("video_generation", "0.4", "second", { audio: true, resolution: "720p" })],
+      pricing_inputs: [
+        {
+          ...geminiPricingInput(
+            "video.request.duration_seconds",
+            "request",
+            "GenerateVideosConfig.durationSeconds",
+          ),
+          availability: "conditional",
+        },
+        {
+          ...geminiPricingInput(
+            "video.request.resolution",
+            "request",
+            "GenerateVideosConfig.resolution",
+          ),
+          availability: "conditional",
+        },
+        {
+          ...geminiPricingInput(
+            "video.request.generate_audio",
+            "request",
+            "GenerateVideosConfig.generateAudio",
+          ),
+          availability: "conditional",
+        },
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "gemini",
+      observedAt,
+      [{ source: pricingSource, models: [multimodal, embedding, video] }],
+      [multimodal, embedding, video],
+    );
+    const offer = (uid: string) =>
+      partition?.books
+        .find(({ book_key }) => book_key === `model:${uid}`)
+        ?.offers.find(({ offer_key }) => offer_key === "sync");
+    const variant = (uid: string, termKey: string) => {
+      const term = offer(uid)?.terms.find(({ term_key }) => term_key === termKey);
+      return term?.kind === "rate" ? term.variants[0] : undefined;
+    };
+    const observationKeys = (uid: string, termKey: string) =>
+      variant(uid, termKey)?.charge_binding?.observations.flatMap(({ locator }) =>
+        locator.kind === "provider_key" && locator.value.startsWith("generate.")
+          ? [locator.value]
+          : [],
+      ) ?? [];
+
+    expect(variant(modelRef, "input_image")?.charge_binding).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "gemini",
+        value: "uncached_input_image_rate_tokens",
+      },
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              expect.objectContaining({ op: "signal" }),
+              expect.objectContaining({ op: "signal" }),
+              { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+              expect.objectContaining({ op: "signal" }),
+              expect.objectContaining({ op: "signal" }),
+              { op: "subtract_floor_zero", minuend: 3, subtrahend: 4 },
+              { op: "sum", inputs: [2, 5] },
+            ],
+            result: 6,
+          },
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({ absent_value: "zero" }),
+          ]),
+        },
+      ],
+    });
+    expect(observationKeys(modelRef, "output_text")).toEqual([
+      "generate.candidates.text",
+      "generate.thoughts",
+    ]);
+    expect(observationKeys(modelRef, "output_image")).toEqual(["generate.candidates.image"]);
+    expect(variant(modelRef, "image_generation")?.charge_binding).toMatchObject({
+      signal: { namespace: "kmodels", value: "generated_images" },
+      quantity_methods: [
+        {
+          input_sources: [
+            expect.objectContaining({
+              reduction: { kind: "array_length" },
+              absent_value: "zero",
+            }),
+          ],
+        },
+      ],
+    });
+    expect(variant("gemini/embed-test", "input_image")?.charge_binding).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "gemini",
+        value: "embedding_input_image_rate_tokens",
+      },
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              expect.objectContaining({ op: "signal" }),
+              expect.objectContaining({ op: "signal" }),
+              { op: "sum", inputs: [0, 1] },
+            ],
+            result: 2,
+          },
+        },
+      ],
+    });
+    expect(variant("gemini/video-test", "video_generation")).toMatchObject({
+      charge_binding: {
+        signal: { namespace: "kmodels", value: "generated_seconds" },
+        aggregation: "result_item",
+        quantity_methods: [
+          {
+            input_sources: [
+              expect.objectContaining({
+                channel: "request",
+                locator: {
+                  kind: "provider_field",
+                  value: "GenerateVideosConfig.durationSeconds",
+                },
+              }),
+            ],
+          },
+        ],
+      },
+      selector_sources: expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "resolution" },
+          locator: { kind: "provider_field", value: "GenerateVideosConfig.resolution" },
+        }),
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "request_audio" },
+          locator: { kind: "provider_field", value: "GenerateVideosConfig.generateAudio" },
+        }),
+      ]),
+    });
+  });
+
   it("separates Vertex execution mechanisms and keeps only request-attributable resources", () => {
     const { source } = pricingManifest();
-    const googleSource = { ...source, id: "vertex-google-models" };
+    const googleSource: SourceManifest = {
+      ...source,
+      id: "vertex-google-models",
+      fields: [...source.fields, "pricing_inputs"],
+    };
     const partnerSource = { ...source, id: "vertex-partner-models" };
     const rate = (
       meter: SourcePriceFact["meter"],
@@ -1007,6 +1699,19 @@ describe("parsed-source canonical pricing adapter", () => {
       source_ref,
       derived: false,
     });
+    const input = (
+      key: string,
+      channel: SourcePricingInputFact["channel"],
+      value: string,
+      options: Pick<SourcePricingInputFact, "absent_value" | "reduction"> = {},
+    ): SourcePricingInputFact => ({
+      key,
+      channel,
+      locator: { kind: "provider_field", value },
+      availability: channel === "result" ? "success_only" : "terminal_only",
+      source_ref: googleSource.id,
+      ...options,
+    });
     const google: ParsedProviderModel = {
       ...model(),
       provider_id: "vertex",
@@ -1018,6 +1723,30 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("input_text", "2", { service_tier: "standard" }, googleSource.id),
         rate("input_text", "4", { service_tier: "priority" }, googleSource.id),
         rate("input_text", "1", { service_tier: "batch" }, googleSource.id),
+      ],
+      pricing_inputs: [
+        input("generate.prompt.text", "response", "response.prompt.text"),
+        input("generate.cache.text", "response", "response.cache.text", {
+          absent_value: "zero",
+        }),
+        input("generate.tool_prompt.text", "response", "response.toolPrompt.text", {
+          absent_value: "zero",
+        }),
+        input("generate.service_tier", "response", "response.trafficType"),
+        input("generate.prompt.text", "result", "result.prompt.text"),
+        input("generate.cache.text", "result", "result.cache.text", {
+          absent_value: "zero",
+        }),
+        input("generate.tool_prompt.text", "result", "result.toolPrompt.text", {
+          absent_value: "zero",
+        }),
+        input("claude.input_tokens", "response", "response.usage.input_tokens"),
+        input(
+          "generate.grounding.google_image_search_queries",
+          "response",
+          "response.imageSearchQueries",
+          { reduction: { kind: "count_unique_non_empty_strings" }, absent_value: "zero" },
+        ),
       ],
       commercial_facts: [
         {
@@ -1243,7 +1972,52 @@ describe("parsed-source canonical pricing adapter", () => {
       variants: [
         expect.objectContaining({
           applicability: { any_of: [{ all_of: [] }] },
-          charge_binding: expect.objectContaining({ aggregation: "result_item" }),
+          charge_binding: expect.objectContaining({
+            aggregation: "result_item",
+            quantity_methods: [
+              expect.objectContaining({
+                input_sources: expect.arrayContaining([
+                  expect.objectContaining({ channel: "result" }),
+                ]),
+              }),
+            ],
+          }),
+        }),
+      ],
+    });
+    const priority =
+      sync?.terms[0]?.kind === "rate"
+        ? sync.terms[0].variants.find(({ applicability }) =>
+            applicability.any_of.some(({ all_of }) =>
+              all_of.some(
+                (condition) =>
+                  condition.kind === "categorical" &&
+                  condition.values.some(({ value }) => value === "priority"),
+              ),
+            ),
+          )
+        : undefined;
+    expect(priority).toMatchObject({
+      charge_binding: {
+        quantity_methods: [
+          expect.objectContaining({
+            calculation: expect.objectContaining({
+              nodes: expect.arrayContaining([
+                expect.objectContaining({ op: "subtract_floor_zero" }),
+              ]),
+            }),
+          }),
+        ],
+      },
+      selector_sources: [
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "served_service_tier" },
+          normalization: {
+            kind: "categorical_map",
+            entries: expect.arrayContaining([
+              expect.objectContaining({ source_value: "ON_DEMAND_PRIORITY" }),
+            ]),
+          },
         }),
       ],
     });
@@ -1259,6 +2033,18 @@ describe("parsed-source canonical pricing adapter", () => {
         expect.objectContaining({
           charge_binding: expect.objectContaining({
             signal: expect.objectContaining({ value: "claude_input_tokens" }),
+            quantity_methods: [
+              expect.objectContaining({
+                input_sources: expect.arrayContaining([
+                  expect.objectContaining({
+                    locator: {
+                      kind: "provider_field",
+                      value: "response.usage.input_tokens",
+                    },
+                  }),
+                ]),
+              }),
+            ],
           }),
         }),
       ],
@@ -1277,6 +2063,15 @@ describe("parsed-source canonical pricing adapter", () => {
                 signal: expect.objectContaining({
                   value: "google_image_search_queries",
                 }),
+                quantity_methods: [
+                  expect.objectContaining({
+                    input_sources: [
+                      expect.objectContaining({
+                        reduction: { kind: "count_unique_non_empty_strings" },
+                      }),
+                    ],
+                  }),
+                ],
               }),
             }),
           ],
@@ -1309,12 +2104,257 @@ describe("parsed-source canonical pricing adapter", () => {
       expect(books.some(({ book_key }) => book_key === bookKey)).toBe(false);
   });
 
+  it("binds Vertex partner, media, and Maps rates only to documented quantities", () => {
+    const { source: baseSource } = pricingManifest();
+    const pricingSource: SourceManifest = {
+      ...baseSource,
+      id: "vertex-pricing-test",
+      fields: [...baseSource.fields, "pricing_inputs"],
+    };
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      unit: SourcePriceFact["unit"],
+      conditions: SourcePriceFact["conditions"] = {},
+    ): SourcePriceFact => ({
+      meter,
+      price: "1",
+      currency: "USD",
+      unit,
+      conditions,
+      source_ref: pricingSource.id,
+      derived: false,
+    });
+    const input = (
+      key: string,
+      channel: SourcePricingInputFact["channel"],
+      value: string,
+      options: Pick<SourcePricingInputFact, "absent_value" | "reduction"> = {},
+    ): SourcePricingInputFact => ({
+      key,
+      channel,
+      locator: { kind: "provider_field", value },
+      availability: channel === "request" ? "conditional" : "terminal_only",
+      source_ref: pricingSource.id,
+      ...options,
+    });
+    const vertexModel = (
+      id: string,
+      tasks: ParsedProviderModel["tasks"],
+      family: string,
+      price_facts: SourcePriceFact[],
+    ): ParsedProviderModel => ({
+      ...model(),
+      provider_id: "vertex",
+      uid: `vertex/${id}`,
+      model_id: id,
+      name: id,
+      tasks,
+      service_families: [family],
+      price_facts,
+      source_refs: [pricingSource.id],
+    });
+    const xai = vertexModel("grok-test", ["text_generation"], "publishers/xai", [
+      rate("input_text", "million_tokens", { service_tier: "priority" }),
+      rate("cache_read_text", "million_tokens"),
+      rate("output_text", "million_tokens"),
+    ]);
+    xai.pricing_inputs = [
+      input("responses.input_tokens", "response", "Response.usage.input_tokens"),
+      input(
+        "responses.cached_input_tokens",
+        "response",
+        "Response.usage.input_tokens_details.cached_tokens",
+        { absent_value: "zero" },
+      ),
+      input("responses.output_tokens", "response", "Response.usage.output_tokens"),
+      input(
+        "responses.served_service_tier",
+        "response",
+        "Response.usage.extra_properties.google.traffic_type",
+      ),
+      input("chat.input_tokens", "response", "ChatCompletion.usage.prompt_tokens"),
+      input("chat.output_tokens", "response", "ChatCompletion.usage.completion_tokens"),
+      input("imagen.response.images", "response", "PredictResponse.predictions", {
+        reduction: { kind: "array_length" },
+        absent_value: "zero",
+      }),
+      input("imagen.request.resolution", "request", "parameters.sampleImageSize"),
+      input("video.request.duration_seconds", "request", "parameters.durationSeconds"),
+      input("video.request.resolution", "request", "parameters.resolution"),
+      input("video.request.generate_audio", "request", "parameters.generateAudio"),
+      input("video.result.videos", "result", "Operation.response.videos", {
+        reduction: { kind: "array_length" },
+        absent_value: "zero",
+      }),
+      input(
+        "generate.grounding.google_maps_result",
+        "response",
+        "GenerateContentResponse.groundingChunks.maps.placeId",
+        { reduction: { kind: "presence" }, absent_value: "zero" },
+      ),
+    ];
+    const chat = vertexModel("open-test", ["text_generation"], "endpoints/openapi/openai", [
+      rate("input_text", "million_tokens"),
+    ]);
+    const image = vertexModel("imagen-test", ["image_generation"], "publishers/google", [
+      rate("image_generation", "image", { resolution: "2k" }),
+    ]);
+    const video = vertexModel("veo-test", ["video_generation"], "publishers/google", [
+      rate("video_generation", "second", { resolution: "1080p", audio: true }),
+    ]);
+    image.commercial_facts = [
+      {
+        source_ref: pricingSource.id,
+        book_key: "service:google-maps",
+        book_name: "Grounding with Google Maps",
+        resource_kind: "service",
+        resource_key: "google-maps",
+        model_refs: [image.uid],
+        offer_key: `request:${image.uid}`,
+        offer_name: "Maps grounding",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          rate("maps_search", "thousand_search_units", { operation: "query" }),
+          rate("maps_search", "thousand_requests", { operation: "grounded_prompt" }),
+        ],
+        raw_price_facts: [],
+      },
+    ];
+    const models = [xai, chat, image, video];
+    const pricing = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [{ source: pricingSource, models }],
+      models,
+    );
+    const modelVariant = (id: string, meter: string) => {
+      const term = pricing?.books
+        .find(({ book_key }) => book_key === `model:vertex/${id}`)
+        ?.offers.find(({ offer_key }) => offer_key === "sync")
+        ?.terms.find(
+          (candidate) =>
+            candidate.kind === "rate" &&
+            candidate.meter.namespace === "kmodels" &&
+            candidate.meter.value === meter,
+        );
+      return term?.kind === "rate" ? term.variants[0] : undefined;
+    };
+
+    expect(modelVariant("grok-test", "input_text")).toMatchObject({
+      charge_binding: {
+        signal: expect.objectContaining({ value: "responses_uncached_input_tokens" }),
+        quantity_methods: [
+          expect.objectContaining({
+            calculation: {
+              nodes: [
+                expect.objectContaining({ op: "signal" }),
+                expect.objectContaining({ op: "signal" }),
+                { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+              ],
+              result: 2,
+            },
+          }),
+        ],
+      },
+      selector_sources: [
+        expect.objectContaining({
+          normalization: expect.objectContaining({
+            entries: expect.arrayContaining([
+              expect.objectContaining({ source_value: "ON_DEMAND_PRIORITY" }),
+            ]),
+          }),
+        }),
+      ],
+    });
+    expect(modelVariant("open-test", "input_text")?.charge_binding).toMatchObject({
+      signal: expect.objectContaining({ value: "chat_input_tokens" }),
+      quantity_methods: [expect.objectContaining({ input_sources: [expect.any(Object)] })],
+    });
+    expect(modelVariant("imagen-test", "image_generation")).toMatchObject({
+      charge_binding: {
+        signal: { namespace: "kmodels", value: "generated_images" },
+        quantity_methods: [
+          expect.objectContaining({
+            input_sources: [expect.objectContaining({ reduction: { kind: "array_length" } })],
+          }),
+        ],
+      },
+      selector_sources: [
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "resolution" },
+          channel: "request",
+        }),
+      ],
+    });
+    expect(modelVariant("veo-test", "video_generation")).toMatchObject({
+      charge_binding: {
+        signal: { namespace: "kmodels", value: "generated_seconds" },
+        aggregation: "job",
+        quantity_methods: [
+          expect.objectContaining({
+            calculation: {
+              nodes: [
+                expect.objectContaining({ op: "signal" }),
+                expect.objectContaining({ op: "signal" }),
+                { op: "product", inputs: [0, 1] },
+              ],
+              result: 2,
+            },
+          }),
+        ],
+      },
+      selector_sources: expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "resolution" },
+        }),
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "request_audio" },
+        }),
+      ]),
+    });
+    const mapVariants = pricing?.books
+      .find(({ book_key }) => book_key === "service:google-maps")
+      ?.offers.flatMap(({ terms }) =>
+        terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+      );
+    const mapVariant = (unit: string) =>
+      mapVariants?.find(({ price }) => price.per.factors[0]?.unit.value === unit);
+    expect(mapVariant("request")?.charge_binding).toMatchObject({
+      quantity_methods: [
+        expect.objectContaining({
+          input_sources: [expect.objectContaining({ reduction: { kind: "presence" } })],
+        }),
+      ],
+    });
+    expect(mapVariant("search_unit")?.charge_binding).not.toHaveProperty("quantity_methods");
+    if (pricing === undefined) throw new Error("Vertex pricing partition was not assembled");
+    const vertex = manifests.find(({ provider }) => provider.id === "vertex");
+    if (vertex === undefined) throw new Error("Vertex manifest is missing");
+    expect(() =>
+      validatePricingCatalog(
+        {
+          provider_vocabularies: [pricing.vocabulary],
+          provider_snapshots: [pricing.snapshot],
+          model_dispositions: pricing.model_dispositions,
+          books: pricing.books,
+        },
+        {
+          providers: [{ ...vertex.provider, source_ids: [pricingSource.id] }],
+          models,
+          sources: [{ ...source(), id: pricingSource.id, provider_id: "vertex", scope: "global" }],
+        },
+      ),
+    ).not.toThrow();
+  });
+
   it("keeps Bedrock request-priced execution and Nova grounding", () => {
     const { source: pricingSource } = pricingManifest();
     const bedrock: ParsedProviderModel = {
       ...model(),
       provider_id: "amazon-bedrock",
       uid: "amazon-bedrock/test-model",
+      api_endpoints: [{ name: "Converse", path: "model/{modelId}/converse" }],
       price_facts: [
         tokenRate("1", { region: "us-east-1", service_tier: "standard" }),
         tokenRate("2", { region: "us-east-1", service_tier: "priority" }),
@@ -1346,6 +2386,35 @@ describe("parsed-source canonical pricing adapter", () => {
           raw_unit: "Requests",
         },
       ],
+      pricing_inputs: [
+        bedrockPricingInput(
+          "runtime.converse.uncached_input_tokens",
+          "response",
+          "/usage/inputTokens",
+        ),
+        bedrockPricingInput(
+          "batch.manifest.input_tokens",
+          "result",
+          "manifest.json.out.inputTokenCount",
+        ),
+        bedrockPricingInput(
+          "runtime.invocation_log.input_tokens",
+          "invocation_log",
+          "/input/inputTokenCount",
+          "reconciliation_only",
+        ),
+        bedrockPricingInput(
+          "runtime.invocation_log.selector.region",
+          "invocation_log",
+          "/region",
+          "reconciliation_only",
+        ),
+        bedrockPricingInput(
+          "runtime.converse.selector.service_tier",
+          "response",
+          "/serviceTier/type",
+        ),
+      ],
     };
     const partition = assembleParsedProviderPricing(
       "amazon-bedrock",
@@ -1363,13 +2432,50 @@ describe("parsed-source canonical pricing adapter", () => {
       const input = offer.terms.find(({ term_key }) => term_key === "input_text");
       if (input?.kind !== "rate") throw new Error("Missing Bedrock input rate");
       expect(input.variants[0]?.charge_binding).toMatchObject({
-        aggregation: offer.offer_key === "batch" ? "result_item" : "attempt",
+        aggregation: offer.offer_key === "batch" ? "job" : "attempt",
         signal: {
-          namespace: "provider",
-          provider_id: "amazon-bedrock",
-          value: "runtime_input_tokens",
+          namespace: "kmodels",
+          value: "input_tokens",
         },
+        quantity_methods: [
+          {
+            input_sources: expect.arrayContaining([
+              expect.objectContaining({
+                channel: offer.offer_key === "batch" ? "result" : "response",
+              }),
+            ]),
+          },
+        ],
       });
+      if (offer.offer_key === "on-demand")
+        expect(input.variants[0]?.selector_sources).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              dimension: { namespace: "kmodels", value: "region" },
+              channel: "invocation_log",
+            }),
+            expect.objectContaining({
+              dimension: { namespace: "kmodels", value: "service_tier" },
+              normalization: {
+                kind: "categorical_map",
+                entries: [
+                  {
+                    source_value:
+                      input.variants[0]?.applicability.any_of[0]?.all_of.some(
+                        (condition) =>
+                          condition.kind === "categorical" &&
+                          condition.dimension.value === "service_tier" &&
+                          condition.values.some(({ value }) => value === "priority"),
+                      ) === true
+                        ? "priority"
+                        : "default",
+                    value: expect.any(Object),
+                  },
+                ],
+              },
+            }),
+          ]),
+        );
       const tiers = input.variants.flatMap(({ applicability }) =>
         applicability.any_of.flatMap(({ all_of }) =>
           all_of.flatMap((condition) =>
@@ -1478,6 +2584,13 @@ describe("parsed-source canonical pricing adapter", () => {
         commercial("agentcore-browser", "cpu", "0.0895", "vCPU-Hours", {}),
         commercial("model-evaluation", "completed-task", "0.21", "Evaluations", {}),
       ],
+      pricing_inputs: [
+        bedrockPricingInput(
+          "guardrails.apply.contentPolicyUnits",
+          "response",
+          "/usage/contentPolicyUnits",
+        ),
+      ],
     };
     const partition = assembleParsedProviderPricing(
       "amazon-bedrock",
@@ -1507,6 +2620,16 @@ describe("parsed-source canonical pricing adapter", () => {
           charge_binding: expect.objectContaining({
             aggregation: "request",
             signal: expect.objectContaining({ value: "guardrail_content_policy_units" }),
+            quantity_methods: [
+              {
+                input_sources: [
+                  expect.objectContaining({
+                    channel: "response",
+                    locator: { kind: "json_pointer", value: "/usage/contentPolicyUnits" },
+                  }),
+                ],
+              },
+            ],
           }),
         }),
       ],
@@ -1581,7 +2704,9 @@ describe("parsed-source canonical pricing adapter", () => {
   it("publishes OpenAI Batch and separately billed services as distinct offers", () => {
     const openAi = manifests.find(({ provider }) => provider.id === "openai");
     const pricingSource = openAi?.sources.find(({ id }) => id === "openai-pricing");
-    if (pricingSource === undefined) throw new Error("OpenAI pricing manifest is missing");
+    const accountingSource = openAi?.sources.find(({ id }) => id === "openai-accounting");
+    if (pricingSource === undefined || accountingSource === undefined)
+      throw new Error("OpenAI pricing manifests are missing");
     const sourceId = pricingSource.id;
     const parsedModel: ParsedProviderModel = {
       ...model(),
@@ -1661,6 +2786,30 @@ describe("parsed-source canonical pricing adapter", () => {
         },
         {
           source_ref: sourceId,
+          book_key: "service:containers",
+          book_name: "Code execution containers",
+          resource_kind: "service",
+          resource_key: "containers",
+          model_refs: ["openai/gpt-test"],
+          offer_key: "runtime",
+          offer_name: "Code execution runtime",
+          billing_mode: "usage",
+          pricing_state: "numeric",
+          price_facts: [
+            {
+              meter: "container_runtime",
+              price: "0.03",
+              currency: "USD",
+              unit: "container_session",
+              conditions: { capacity: "1 GiB" },
+              source_ref: sourceId,
+              derived: false,
+            },
+          ],
+          raw_price_facts: [],
+        },
+        {
+          source_ref: sourceId,
           book_key: "service:fine-tuning:gpt-test",
           book_name: "Fine-tuning gpt-test",
           resource_kind: "service",
@@ -1718,10 +2867,86 @@ describe("parsed-source canonical pricing adapter", () => {
         },
       ],
     };
+    const accountingModel: ParsedProviderModel = {
+      ...parsedModel,
+      pricing_state: "unknown",
+      price_facts: [],
+      raw_price_facts: [],
+      commercial_facts: [],
+      pricing_inputs: [
+        {
+          key: "responses.usage.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "responses.usage.cached_input_tokens",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/input_tokens_details/cached_tokens",
+          },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "responses.usage.cache_write_tokens",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/input_tokens_details/cache_write_tokens",
+          },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "responses.served_service_tier",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/service_tier" },
+          availability: "terminal_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "organization.completions.input_uncached_tokens",
+          channel: "account_report",
+          locator: {
+            kind: "provider_field",
+            value: "organization.usage.completions.results[*].input_uncached_tokens",
+          },
+          availability: "reconciliation_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "organization.file_search_calls.num_requests",
+          channel: "account_report",
+          locator: {
+            kind: "provider_field",
+            value: "organization.usage.file_search_calls.results[*].num_requests",
+          },
+          availability: "reconciliation_only",
+          source_ref: accountingSource.id,
+        },
+        {
+          key: "organization.web_search_calls.num_requests",
+          channel: "account_report",
+          locator: {
+            kind: "provider_field",
+            value: "organization.usage.web_search_calls.results[*].num_requests",
+          },
+          availability: "reconciliation_only",
+          source_ref: accountingSource.id,
+        },
+      ],
+    };
     const partition = assembleParsedProviderPricing(
       "openai",
       observedAt,
-      [{ source: pricingSource, models: [parsedModel] }],
+      [
+        { source: pricingSource, models: [parsedModel] },
+        { source: accountingSource, models: [accountingModel] },
+      ],
       [parsedModel],
     );
     const modelBook = partition?.books.find(({ book_key }) => book_key === "model:openai/gpt-test");
@@ -1735,7 +2960,32 @@ describe("parsed-source canonical pricing adapter", () => {
           charge_binding: {
             signal: { namespace: "kmodels", value: "uncached_input_tokens" },
             aggregation: "request",
+            quantity_methods: expect.arrayContaining([
+              expect.objectContaining({
+                input_sources: [expect.objectContaining({ channel: "account_report" })],
+              }),
+              expect.objectContaining({ calculation: expect.any(Object) }),
+            ]),
           },
+          selector_sources: [
+            expect.objectContaining({
+              dimension: { namespace: "kmodels", value: "served_service_tier" },
+              locator: { kind: "json_pointer", value: "/service_tier" },
+              normalization: {
+                kind: "categorical_map",
+                entries: [
+                  {
+                    source_value: "default",
+                    value: {
+                      namespace: "provider",
+                      provider_id: "openai",
+                      value: "standard",
+                    },
+                  },
+                ],
+              },
+            }),
+          ],
         },
       ],
     });
@@ -1776,6 +3026,11 @@ describe("parsed-source canonical pricing adapter", () => {
                   value: "file_search_calls",
                 },
                 aggregation: "request",
+                quantity_methods: [
+                  expect.objectContaining({
+                    input_sources: [expect.objectContaining({ channel: "account_report" })],
+                  }),
+                ],
               },
             },
           ],
@@ -1785,6 +3040,41 @@ describe("parsed-source canonical pricing adapter", () => {
     const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
     expect(search?.offers[0]?.relations).toEqual([]);
     expect(search?.offers[0]?.terms.some(({ kind }) => kind === "contribution")).toBe(false);
+    expect(search?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          charge_binding: {
+            signal: {
+              namespace: "provider",
+              provider_id: "openai",
+              value: "web_search_calls",
+            },
+          },
+        },
+      ],
+    });
+    const containers = partition?.books.find(({ book_key }) => book_key === "service:containers");
+    expect(containers?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          charge_binding: {
+            signal: {
+              namespace: "provider",
+              provider_id: "openai",
+              value: "container_session_blocks",
+            },
+            aggregation: "session",
+          },
+        },
+      ],
+    });
+    if (containers?.offers[0]?.terms[0]?.kind !== "rate")
+      throw new Error("OpenAI container rate is missing");
+    expect(
+      containers.offers[0].terms[0].variants[0]?.charge_binding?.quantity_methods,
+    ).toBeUndefined();
 
     const training = partition?.books.find(
       ({ book_key }) => book_key === "service:fine-tuning:gpt-test",
@@ -1830,6 +3120,247 @@ describe("parsed-source canonical pricing adapter", () => {
       plansAndCapacity: [],
       standaloneOffers: [],
     });
+  });
+
+  it("binds OpenAI modality, media, character, and duration rates to exact accounting inputs", () => {
+    const openAi = manifests.find(({ provider }) => provider.id === "openai");
+    const pricingSource = openAi?.sources.find(({ id }) => id === "openai-pricing");
+    const accountingSource = openAi?.sources.find(({ id }) => id === "openai-accounting");
+    if (pricingSource === undefined || accountingSource === undefined)
+      throw new Error("OpenAI pricing manifests are missing");
+    const rate = (
+      meter: SourcePriceFact["meter"],
+      unit: SourcePriceFact["unit"],
+      conditions: SourcePriceFact["conditions"] = {},
+    ): SourcePriceFact => ({
+      meter,
+      price: "1",
+      currency: "USD",
+      unit,
+      conditions,
+      source_ref: pricingSource.id,
+      derived: false,
+    });
+    const pricedModel = (
+      id: string,
+      tasks: ParsedProviderModel["tasks"],
+      priceFacts: SourcePriceFact[],
+    ): ParsedProviderModel => ({
+      ...model(),
+      provider_id: "openai",
+      model_id: id,
+      uid: `openai/${id}`,
+      tasks,
+      source_refs: [pricingSource.id],
+      price_facts: priceFacts,
+    });
+    const pricedModels = [
+      pricedModel(
+        "realtime-test",
+        ["speech_to_speech"],
+        [
+          rate("input_text", "million_tokens"),
+          rate("cache_read_text", "million_tokens"),
+          rate("output_text", "million_tokens"),
+          rate("input_audio", "million_tokens"),
+          rate("cache_read_audio", "million_tokens"),
+          rate("output_audio", "million_tokens"),
+          rate("input_image", "million_tokens"),
+          rate("output_image", "million_tokens"),
+        ],
+      ),
+      pricedModel(
+        "image-test",
+        ["image_generation"],
+        [
+          rate("input_text", "million_tokens"),
+          rate("cache_read_text", "million_tokens"),
+          rate("input_image", "million_tokens"),
+          rate("cache_read_image", "million_tokens"),
+          rate("output_image", "million_tokens"),
+          rate("image_generation", "image", { quality: "high", resolution: "1024x1024" }),
+        ],
+      ),
+      pricedModel(
+        "speech-test",
+        ["speech_synthesis"],
+        [rate("output_audio", "million_characters")],
+      ),
+      pricedModel("transcription-test", ["transcription"], [rate("input_audio", "minute")]),
+      pricedModel(
+        "video-test",
+        ["video_generation"],
+        [rate("video_generation", "second", { resolution: "720p" })],
+      ),
+      pricedModel("embedding-test", ["embeddings"], [rate("embedding", "million_tokens")]),
+      pricedModel(
+        "fast-test",
+        ["text_generation"],
+        [rate("input_text", "million_tokens", { service_tier: "fast" })],
+      ),
+    ];
+    const input = (
+      key: string,
+      channel: "response" | "account_report",
+      value: string,
+    ): NonNullable<ParsedProviderModel["pricing_inputs"]>[number] => ({
+      key,
+      channel,
+      locator:
+        channel === "response"
+          ? { kind: "json_pointer", value }
+          : { kind: "provider_field", value },
+      availability: channel === "response" ? "terminal_only" : "reconciliation_only",
+      source_ref: accountingSource.id,
+    });
+    const accountingModel: ParsedProviderModel = {
+      ...pricedModels[0]!,
+      pricing_state: "unknown",
+      price_facts: [],
+      pricing_inputs: [
+        input("responses.usage.input_tokens", "response", "/usage/input_tokens"),
+        input(
+          "responses.usage.cached_input_tokens",
+          "response",
+          "/usage/input_tokens_details/cached_tokens",
+        ),
+        input("responses.usage.output_tokens", "response", "/usage/output_tokens"),
+        input("responses.served_service_tier", "response", "/service_tier"),
+        input("organization.completions.input_text_tokens", "account_report", "input_text"),
+        input(
+          "organization.completions.input_cached_text_tokens",
+          "account_report",
+          "input_cached_text",
+        ),
+        input("organization.completions.output_text_tokens", "account_report", "output_text"),
+        input("organization.completions.input_audio_tokens", "account_report", "input_audio"),
+        input(
+          "organization.completions.input_cached_audio_tokens",
+          "account_report",
+          "input_cached_audio",
+        ),
+        input("organization.completions.output_audio_tokens", "account_report", "output_audio"),
+        input("organization.completions.input_image_tokens", "account_report", "input_image"),
+        input("organization.completions.output_image_tokens", "account_report", "output_image"),
+        input("responses.image_input_text_tokens", "response", "/usage/input/text_tokens"),
+        input("responses.image_input_image_tokens", "response", "/usage/input/image_tokens"),
+        input("responses.image_output_tokens", "response", "/usage/output/image_tokens"),
+        input("responses.generated_images", "response", "/data"),
+        input("organization.images.images", "account_report", "images"),
+        input("responses.image_quality", "response", "/quality"),
+        input("responses.image_resolution", "response", "/size"),
+        input("organization.audio_speeches.characters", "account_report", "characters"),
+        input("organization.audio_transcriptions.seconds", "account_report", "seconds"),
+        input("organization.embeddings.input_tokens", "account_report", "embedding_tokens"),
+        input("responses.generated_seconds", "response", "/seconds"),
+        input("responses.video_resolution", "response", "/size"),
+      ],
+    };
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [
+        { source: pricingSource, models: pricedModels },
+        { source: accountingSource, models: [accountingModel] },
+      ],
+      pricedModels,
+    );
+    const variant = (modelId: string, meter: string) => {
+      const term = partition?.books
+        .find(({ book_key }) => book_key === `model:openai/${modelId}`)
+        ?.offers.find(({ offer_key }) => offer_key === "sync")
+        ?.terms.find((candidate) => candidate.kind === "rate" && candidate.meter.value === meter);
+      if (term?.kind !== "rate") throw new Error(`${modelId}/${meter} rate is missing`);
+      return term.variants[0]!;
+    };
+    const cases: Array<[string, string]> = [
+      ["realtime-test", "input_text"],
+      ["realtime-test", "cache_read_text"],
+      ["realtime-test", "output_text"],
+      ["realtime-test", "input_audio"],
+      ["realtime-test", "cache_read_audio"],
+      ["realtime-test", "output_audio"],
+      ["realtime-test", "input_image"],
+      ["realtime-test", "output_image"],
+      ["image-test", "input_text"],
+      ["image-test", "cache_read_text"],
+      ["image-test", "input_image"],
+      ["image-test", "cache_read_image"],
+      ["image-test", "output_image"],
+      ["image-test", "image_generation"],
+      ["speech-test", "output_audio"],
+      ["transcription-test", "transcription"],
+      ["video-test", "video_generation"],
+      ["embedding-test", "embedding"],
+    ];
+    expect(
+      cases.map(([modelId, meter]) => {
+        const charge = variant(modelId, meter).charge_binding;
+        return [modelId, meter, charge?.signal.value, charge?.quantity_methods?.length];
+      }),
+    ).toEqual([
+      ["realtime-test", "input_text", "uncached_input_tokens", 1],
+      ["realtime-test", "cache_read_text", "cached_input_tokens", 1],
+      ["realtime-test", "output_text", "output_tokens", 1],
+      ["realtime-test", "input_audio", "uncached_input_audio_tokens", 1],
+      ["realtime-test", "cache_read_audio", "cached_input_audio_tokens", 1],
+      ["realtime-test", "output_audio", "output_audio_tokens", 1],
+      ["realtime-test", "input_image", "uncached_input_image_tokens", 1],
+      ["realtime-test", "output_image", "output_image_tokens", 1],
+      ["image-test", "input_text", "uncached_image_prompt_text_tokens", undefined],
+      ["image-test", "cache_read_text", "cached_image_prompt_text_tokens", undefined],
+      ["image-test", "input_image", "uncached_input_image_tokens", undefined],
+      ["image-test", "cache_read_image", "cached_image_prompt_image_tokens", undefined],
+      ["image-test", "output_image", "output_image_tokens", 1],
+      ["image-test", "image_generation", "generated_images", 1],
+      ["speech-test", "output_audio", "input_characters", 1],
+      ["transcription-test", "transcription", "processed_audio_seconds", 1],
+      ["video-test", "video_generation", "generated_seconds", 1],
+      ["embedding-test", "embedding", "input_tokens", 1],
+    ]);
+    for (const meter of ["input_text", "cache_read_text", "output_text"])
+      expect(
+        variant("realtime-test", meter).charge_binding?.quantity_methods?.flatMap(
+          ({ input_sources }) => input_sources?.map(({ channel }) => channel) ?? [],
+        ),
+      ).toEqual(["account_report"]);
+    expect(
+      variant("image-test", "image_generation").selector_sources?.map(
+        ({ dimension }) => dimension.value,
+      ),
+    ).toEqual(["quality", "resolution"]);
+    expect(variant("video-test", "video_generation").selector_sources).toMatchObject([
+      {
+        dimension: { namespace: "kmodels", value: "resolution" },
+        normalization: {
+          kind: "categorical_map",
+          entries: [
+            {
+              source_value: "1280x720",
+              value: { namespace: "provider", provider_id: "openai", value: "720p" },
+            },
+            {
+              source_value: "720x1280",
+              value: { namespace: "provider", provider_id: "openai", value: "720p" },
+            },
+          ],
+        },
+      },
+    ]);
+    expect(variant("fast-test", "input_text").selector_sources).toMatchObject([
+      {
+        dimension: { namespace: "kmodels", value: "served_service_tier" },
+        normalization: {
+          kind: "categorical_map",
+          entries: [
+            {
+              source_value: "priority",
+              value: { namespace: "provider", provider_id: "openai", value: "fast" },
+            },
+          ],
+        },
+      },
+    ]);
   });
 
   it("prefers OpenAI pricing-page rates to broader model-card fallbacks", () => {
@@ -1981,7 +3512,7 @@ describe("parsed-source canonical pricing adapter", () => {
           "usage",
           "numeric",
           [rate("web_search", "10", "thousand_events")],
-          [raw("usage-signal", "informational", "unsupported_structure", "web_search_requests")],
+          [],
         ),
         commercial(
           "web-fetch",
@@ -1997,7 +3528,12 @@ describe("parsed-source canonical pricing adapter", () => {
           "numeric",
           [rate("container_runtime", "0.05", "hour")],
           [
-            raw("minimum-runtime", "informational", "unsupported_structure", "5 minute minimum"),
+            raw(
+              "minimum-runtime",
+              "informational",
+              "unsupported_structure",
+              "5-minute minimum execution time",
+            ),
             raw(
               "monthly-container-allowance",
               "allowance",
@@ -2077,6 +3613,41 @@ describe("parsed-source canonical pricing adapter", () => {
           "distribution",
         ),
       ],
+      pricing_inputs: [
+        ...[
+          ["uncached_input_tokens", "input_tokens"],
+          ["cached_input_tokens", "cache_read_input_tokens"],
+          ["output_tokens", "output_tokens"],
+        ].flatMap(([signal, field]) => [
+          {
+            key: `messages.usage.${signal}`,
+            channel: "response" as const,
+            locator: { kind: "json_pointer" as const, value: `/usage/${field}` },
+            availability: "conditional" as const,
+            source_ref: sourceId,
+          },
+          {
+            key: `messages.usage.${signal}`,
+            channel: "response" as const,
+            locator: {
+              kind: "provider_field" as const,
+              value: `usage.iterations[*].${field} grouped by usage.iterations[*].model`,
+            },
+            availability: "conditional" as const,
+            source_ref: sourceId,
+          },
+        ]),
+        {
+          key: "messages.usage.successful_web_searches",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/server_tool_use/web_search_requests",
+          },
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+      ],
     };
     const partition = assembleParsedProviderPricing(
       "anthropic",
@@ -2088,23 +3659,79 @@ describe("parsed-source canonical pricing adapter", () => {
     const modelBook = partition?.books.find(({ book_key }) => book_key === `model:${modelRef}`);
     const sync = modelBook?.offers.find(({ offer_key }) => offer_key === "sync");
     const batch = modelBook?.offers.find(({ offer_key }) => offer_key === "batch");
+    const inputRate = (offer: typeof sync) =>
+      offer?.terms.find(
+        (term) =>
+          term.kind === "rate" &&
+          term.meter.namespace === "kmodels" &&
+          term.meter.value === "input_text",
+      );
+    const syncInput = inputRate(sync);
+    const batchInput = inputRate(batch);
+    const cacheWrite = sync?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
+    );
     expect({
       offers: modelBook?.offers.map(({ offer_key }) => offer_key).sort(),
       syncAggregation:
-        sync?.terms[0]?.kind === "rate"
-          ? sync.terms[0].variants[0]?.charge_binding?.aggregation
-          : undefined,
+        syncInput?.kind === "rate" ? syncInput.variants[0]?.charge_binding?.aggregation : undefined,
       batchAggregation:
-        batch?.terms[0]?.kind === "rate"
-          ? batch.terms[0].variants[0]?.charge_binding?.aggregation
+        batchInput?.kind === "rate"
+          ? batchInput.variants[0]?.charge_binding?.aggregation
+          : undefined,
+      syncInputs:
+        syncInput?.kind === "rate"
+          ? syncInput.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources
           : undefined,
       exclusive: sync?.relations[0]?.target,
     }).toEqual({
       offers: ["batch", "sync"],
       syncAggregation: "attempt",
       batchAggregation: "result_item",
+      syncInputs: [
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "anthropic",
+            value: "uncached_input_tokens",
+          },
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/input_tokens",
+          },
+          availability: "conditional",
+        },
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "anthropic",
+            value: "uncached_input_tokens",
+          },
+          channel: "response",
+          locator: {
+            kind: "provider_field",
+            value: "usage.iterations[*].input_tokens grouped by usage.iterations[*].model",
+          },
+          availability: "conditional",
+        },
+      ],
       exclusive: undefined,
     });
+    expect(
+      cacheWrite?.kind === "rate" ? cacheWrite.variants[0]?.charge_binding : undefined,
+    ).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "anthropic",
+        value: "cache_write_5m_input_tokens",
+      },
+    });
+    expect(
+      cacheWrite?.kind === "rate"
+        ? cacheWrite.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources
+        : undefined,
+    ).toBeUndefined();
 
     const search = partition?.books.find(({ book_key }) => book_key === "service:web-search");
     expect(search?.offers).toEqual([
@@ -2117,8 +3744,26 @@ describe("parsed-source canonical pricing adapter", () => {
             variants: [
               expect.objectContaining({
                 charge_binding: expect.objectContaining({
-                  signal: { namespace: "kmodels", value: "successful_web_searches" },
+                  signal: {
+                    namespace: "provider",
+                    provider_id: "anthropic",
+                    value: "successful_web_searches",
+                  },
                   aggregation: "request",
+                  quantity_methods: [
+                    {
+                      input_sources: [
+                        expect.objectContaining({
+                          channel: "response",
+                          locator: {
+                            kind: "json_pointer",
+                            value: "/usage/server_tool_use/web_search_requests",
+                          },
+                          availability: "terminal_only",
+                        }),
+                      ],
+                    },
+                  ],
                 }),
               }),
             ],
@@ -2148,7 +3793,41 @@ describe("parsed-source canonical pricing adapter", () => {
       ?.terms.find(({ kind }) => kind === "rate");
     expect(
       codeRate?.kind === "rate" ? codeRate.variants[0]?.charge_binding : undefined,
-    ).toBeUndefined();
+    ).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "anthropic",
+        value: "code_execution_billable_seconds",
+      },
+      aggregation: {
+        namespace: "provider",
+        provider_id: "anthropic",
+        value: "code_execution_container",
+      },
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              {
+                op: "signal",
+                signal: {
+                  namespace: "provider",
+                  provider_id: "anthropic",
+                  value: "code_execution_active_seconds",
+                },
+              },
+              { op: "minimum", input: 0, value: { numerator: "300", denominator: "1" } },
+            ],
+            result: 1,
+          },
+        },
+      ],
+    });
+    expect(
+      code?.offers
+        .find(({ offer_key }) => offer_key === "standalone")
+        ?.terms.filter(({ kind }) => kind === "raw"),
+    ).toEqual([]);
     expect(
       partition?.books
         .filter(({ scope }) => scope.kind === "provider_resource")
@@ -2378,7 +4057,7 @@ describe("parsed-source canonical pricing adapter", () => {
     ).toEqual({ kind: "models", model_refs: [sibling.uid] });
   });
 
-  it("publishes DashScope realtime, Batch, cache, and web-search mechanisms separately", () => {
+  it("publishes DashScope on-demand, Batch, cache, and web-search mechanisms separately", () => {
     const provider = manifests.find(({ provider }) => provider.id === "dashscope");
     const pricingSource = provider?.sources.find(({ id }) => id === "dashscope-pricing");
     if (pricingSource === undefined) throw new Error("DashScope pricing manifest is missing");
@@ -2410,7 +4089,9 @@ describe("parsed-source canonical pricing adapter", () => {
       source_refs: [sourceId],
       price_facts: [
         rate("input_text", "2", { region: "Singapore" }),
-        rate("output_text", "8", { region: "Singapore" }),
+        rate("input_image", "0.3", { region: "Singapore", modality: "image/video" }),
+        rate("output_text", "9", { region: "Singapore", modality: "text" }),
+        rate("output_audio", "30", { region: "Singapore", modality: "audio" }),
         rate("speech_generation", "1", { region: "Singapore" }),
         rate("cache_write_text", "2.5", {
           region: "Singapore",
@@ -2424,6 +4105,108 @@ describe("parsed-source canonical pricing adapter", () => {
         rate("output_text", "4", { region: "Singapore", service_tier: "batch" }),
       ],
       raw_price_facts: [],
+      pricing_inputs: [
+        {
+          key: "chat.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.cached_input_tokens",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/prompt_tokens_details/cached_tokens",
+          },
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.output_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.input_image_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/image_tokens" },
+          absent_value: "zero",
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.input_video_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/video_tokens" },
+          absent_value: "zero",
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.output_text_tokens",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/completion_tokens_details/text_tokens",
+          },
+          absent_value: "zero",
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.output_audio_tokens",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/completion_tokens_details/audio_tokens",
+          },
+          absent_value: "zero",
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "chat.cache_creation_input_tokens",
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/prompt_tokens_details/cache_creation/cache_creation_input_tokens",
+          },
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "batch.chat.input_tokens",
+          channel: "result",
+          locator: { kind: "json_pointer", value: "/response/body/usage/prompt_tokens" },
+          availability: "success_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "batch.chat.output_tokens",
+          channel: "result",
+          locator: { kind: "json_pointer", value: "/response/body/usage/completion_tokens" },
+          availability: "success_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "responses.web_search_count",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/x_tools/web_search/count" },
+          availability: "terminal_only",
+          source_ref: sourceId,
+        },
+        {
+          key: "request.resolved_region",
+          channel: "request",
+          locator: { kind: "provider_field", value: "HttpRequest.resolved_region" },
+          availability: "always",
+          source_ref: sourceId,
+        },
+      ],
       commercial_facts: [
         {
           source_ref: sourceId,
@@ -2466,18 +4249,44 @@ describe("parsed-source canonical pricing adapter", () => {
     ).toMatchObject({
       signal: { namespace: "kmodels", value: "uncached_input_tokens" },
       aggregation: "request",
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+              {
+                op: "signal",
+                signal: { namespace: "kmodels", value: "cached_input_tokens" },
+              },
+              {
+                op: "signal",
+                signal: { namespace: "kmodels", value: "cache_write_tokens" },
+              },
+              { op: "sum", inputs: [1, 2] },
+              { op: "subtract_floor_zero", minuend: 0, subtrahend: 3 },
+            ],
+            result: 4,
+          },
+        },
+      ],
     });
     const cacheRead = sync?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "cache_read_text",
     );
     expect(
       cacheRead?.kind === "rate"
-        ? cacheRead.variants[0]?.charge_binding?.observations.map(({ locator }) => locator.value)
+        ? cacheRead.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources
         : [],
     ).toEqual([
-      "anthropic:usage.cache_read_input_tokens",
-      "chat:usage.prompt_tokens_details.cached_tokens",
-      "responses:usage.input_tokens_details.cached_tokens",
+      {
+        signal: { namespace: "kmodels", value: "cached_input_tokens" },
+        channel: "response",
+        locator: {
+          kind: "json_pointer",
+          value: "/usage/prompt_tokens_details/cached_tokens",
+        },
+        availability: "terminal_only",
+      },
     ]);
     expect(
       sync?.terms.find((term) => term.kind === "rate" && term.meter.value === "cache_write_text"),
@@ -2492,6 +4301,58 @@ describe("parsed-source canonical pricing adapter", () => {
         },
       ],
     });
+    const combinedInput = sync?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_image",
+    );
+    expect(
+      combinedInput?.kind === "rate" ? combinedInput.variants[0]?.charge_binding : undefined,
+    ).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "dashscope",
+        value: "input_image_video_tokens",
+      },
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              expect.objectContaining({ op: "signal" }),
+              expect.objectContaining({ op: "signal" }),
+              { op: "sum", inputs: [0, 1] },
+            ],
+            result: 2,
+          },
+        },
+      ],
+    });
+    const splitOutput = sync?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "output_text",
+    );
+    expect(
+      splitOutput?.kind === "rate" ? splitOutput.variants[0]?.charge_binding : undefined,
+    ).toMatchObject({
+      signal: {
+        namespace: "provider",
+        provider_id: "dashscope",
+        value: "output_text_tokens",
+      },
+    });
+    expect(
+      sync?.terms.find((term) => term.kind === "rate" && term.meter.value === "output_audio"),
+    ).toMatchObject({
+      kind: "rate",
+      variants: [
+        {
+          charge_binding: {
+            signal: {
+              namespace: "provider",
+              provider_id: "dashscope",
+              value: "output_audio_tokens",
+            },
+          },
+        },
+      ],
+    });
     const batchInput = batch?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "input_text",
     );
@@ -2500,7 +4361,7 @@ describe("parsed-source canonical pricing adapter", () => {
       variants: [
         {
           charge_binding: {
-            signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+            signal: { namespace: "kmodels", value: "input_tokens" },
             aggregation: "result_item",
           },
         },
@@ -2522,6 +4383,16 @@ describe("parsed-source canonical pricing adapter", () => {
               charge_binding: {
                 signal: { namespace: "kmodels", value: "successful_web_searches" },
                 aggregation: "request",
+                quantity_methods: [
+                  {
+                    input_sources: [
+                      {
+                        channel: "response",
+                        locator: { kind: "json_pointer", value: "/usage/x_tools/web_search/count" },
+                      },
+                    ],
+                  },
+                ],
               },
             },
           ],

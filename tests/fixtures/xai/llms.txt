@@ -78,6 +78,17 @@ curl https://api.x.ai/v1/videos/generations -d '{"model": "grok-imagine-video-1.
 Each result includes `cost_in_usd_ticks`, and the batch summary exposes
 `total_cost_usd_ticks`.
 
+For chat results, `result.response.usage` contains `prompt_tokens`,
+`prompt_tokens_details.text_tokens`, `prompt_tokens_details.image_tokens`,
+`prompt_tokens_details.cached_tokens`, `completion_tokens`, and
+`completion_tokens_details.reasoning_tokens`.
+
+For Responses results, `result.response.usage` contains `input_tokens`,
+`input_tokens_details.cached_tokens`, and `output_tokens`.
+
+For image requests, use `result.image_response`, which provides `data`, `usage`, and `model`.
+For video requests, use `result.video_response`, which provides `duration`, `usage`, and `model`.
+
 
 ===/developers/model-capabilities/text/streaming===
 # Streaming
@@ -99,6 +110,10 @@ wss://api.x.ai/v1/realtime?model=grok-voice-latest
 
 The Voice API supports `file_search`, `web_search`, `x_search`, and `mcp` server-side tools.
 
+Audio pricing is based on audio duration: audio sent or received is billable.
+Every `conversation.item.create` event is a text input except `function_call_output` items and
+items whose content is `input_audio` or `audio`.
+
 
 ===/developers/model-capabilities/audio/custom-voices===
 # Custom Voices
@@ -119,7 +134,8 @@ Call `POST /v1/responses/compact` with `"model": "grok-4.5"`. The response repor
 # Image Generation Tool
 
 The Responses `image_generation` tool uses `grok-imagine-image-quality` and returns an
-`image_generation_call`. The tool takes no size or format parameters.
+`image_generation_call` whose `result` contains the completed image. The tool takes no size or
+format parameters.
 
 
 ===/developers/faq/security===
@@ -283,6 +299,7 @@ is per-request, after all applicable discounts, and inclusive of all token costs
 1 USD = 10,000,000,000 ticks.
 
 For REST streaming, Cost is only included in the final chunk.
+Set `stream_options: {"include_usage": true}` to receive the terminal usage object.
 
 
 ===/developers/advanced-api-usage/prompt-caching/usage-and-pricing===
@@ -315,8 +332,52 @@ Request `service_tier: "priority"`. You are only billed at the priority rate whe
 
 This value determines your billing. Only successful tool executions are billed.
 
-Agent usage reports `completion_tokens`, cumulative `prompt_tokens`, `reasoning_tokens`,
-`cached_prompt_text_tokens`, and `prompt_image_tokens`.
+Agent usage reports `completion_tokens`, cumulative `prompt_tokens`, uncached
+`prompt_text_tokens`, `reasoning_tokens`, `cached_prompt_text_tokens`, and
+`prompt_image_tokens`.
+
+`server_side_tool_usage` reports these successful billable categories:
+
+* `SERVER_SIDE_TOOL_WEB_SEARCH`
+* `SERVER_SIDE_TOOL_X_SEARCH`
+* `SERVER_SIDE_TOOL_CODE_EXECUTION`
+* `SERVER_SIDE_TOOL_COLLECTIONS_SEARCH`
+
+
+===/developers/rest-api-reference/inference/chat===
+# Chat
+
+Chat Completions response:
+
+```json
+{"object":"chat.completion","service_tier":"priority","usage":{"prompt_tokens":135,"prompt_tokens_details":{"text_tokens":125,"image_tokens":10,"cached_tokens":98},"completion_tokens":48,"completion_tokens_details":{"reasoning_tokens":12}}}
+```
+
+Responses response:
+
+```json
+{"object":"response","service_tier":"default","usage":{"input_tokens":125,"input_tokens_details":{"cached_tokens":98},"output_tokens":48,"output_tokens_details":{"reasoning_tokens":12}}}
+```
+
+
+===/developers/rest-api-reference/inference/images===
+# Images
+
+Image generation and image edit request bodies accept `resolution` and `quality`. The effective
+values include provider defaults. Image edit accepts an `image` object or an `images` array.
+
+Response body: `data` array of completed generated image objects.
+
+
+===/developers/rest-api-reference/inference/videos===
+# Videos
+
+The request body accepts an `image`, a video input, and an effective output `resolution`.
+Video input may be supplied by URL, base64 data, or file ID.
+
+```json
+{"status":"done","video":{"url":"https://example.test/video.mp4","duration":6},"model":"grok-imagine-video"}
+```
 
 
 ===/developers/rest-api-reference/management===
@@ -579,7 +640,16 @@ Your tier is based on cumulative spend. Rate limit tiers apply to text and embed
 
 POST /v1/tts
 
+Text to Speech request body: `text` string containing the characters to convert to speech.
+
+Streaming Text to Speech accepts `text.delta` events followed by `text.done`; billing remains per
+input character.
+
 POST /v1/stt
+
+Speech to Text - REST returns `duration`, the audio duration in seconds.
+
+Streaming Speech to Text ends with `transcript.done`, where duration is always present.
 
 WSS wss://api.x.ai/v1/realtime
 

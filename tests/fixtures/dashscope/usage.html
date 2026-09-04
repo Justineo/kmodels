@@ -4,4 +4,30 @@
   <p>Image generation is billed by the number of images successfully generated.</p>
   <p>Video generation is billed by the number of video seconds successfully generated.</p>
   <p>Free-quota data displayed in the console may be delayed.</p>
+  <p>
+    Native generation usage has input_tokens and output_tokens. Detailed fields are
+    input_tokens_details.text_tokens, input_tokens_details.image_tokens,
+    input_tokens_details.video_tokens, output_tokens_details.text_tokens,
+    output_tokens_details.reasoning_tokens, and output_tokens_details.audio_tokens. Some models
+    instead expose top-level image_tokens, video_tokens, or audio_tokens. Cache fields are
+    prompt_tokens_details.cached_tokens and
+    prompt_tokens_details.cache_creation.cache_creation_input_tokens plus
+    prompt_tokens_details.cache_creation.ephemeral_5m_input_tokens. Streaming and non-streaming
+    responses use the same usage fields. Cache creation fields are absent when explicit caching is
+    not used. Requests may set parameters.enable_thinking.
+  </p>
+  <p>Image results expose usage.image_count, usage.width, usage.height, and usage.size.</p>
+  <p>
+    Video results expose usage.video_duration, usage.duration, usage.input_video_duration,
+    usage.output_video_duration, usage.SR, usage.size, and usage.video_count. Requests may set
+    prompt_extend.
+  </p>
+  <p>
+    TTS results expose characters, input_tokens_details.text_tokens, and
+    output_tokens_details.audio_tokens. Music results expose usage.duration.
+  </p>
+  <p>
+    ASR results may expose usage.duration or usage.seconds. Streaming ASR sentence_end events expose
+    payload.output.usage.duration.
+  </p>
 </main>

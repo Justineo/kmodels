@@ -311,6 +311,194 @@ describe("canonical pricing serialized catalog validation", () => {
     related.books[0]!.offers.sort((left, right) => left.id.localeCompare(right.id));
     expect(() => validatePricingCatalog(related, core)).not.toThrow();
 
+    const calculated = structuredClone(related);
+    const calculatedTerm = calculated.books[0]!.offers.find(
+      ({ offer_key }) => offer_key === "usage",
+    )?.terms[0];
+    if (calculatedTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    calculatedTerm.variants[0]!.charge_binding!.quantity_methods = [
+      {
+        calculation: {
+          nodes: [
+            { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+            { op: "signal", signal: { namespace: "kmodels", value: "cached_input_tokens" } },
+            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+          ],
+          result: 2,
+        },
+        input_sources: [
+          {
+            signal: { namespace: "kmodels", value: "cached_input_tokens" },
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/usage/cached_tokens" },
+            availability: "always",
+          },
+          {
+            signal: { namespace: "kmodels", value: "input_tokens" },
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+            availability: "always",
+          },
+        ],
+      },
+    ];
+    expect(() => validatePricingCatalog(calculated, core)).not.toThrow();
+
+    const product = structuredClone(calculated);
+    const productTerm = product.books[0]!.offers.find(({ offer_key }) => offer_key === "usage")
+      ?.terms[0];
+    if (productTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    productTerm.variants[0]!.charge_binding!.quantity_methods = [
+      {
+        calculation: {
+          nodes: [
+            { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+            { op: "signal", signal: { namespace: "kmodels", value: "generated_items" } },
+            { op: "product", inputs: [0, 1] },
+          ],
+          result: 2,
+        },
+        input_sources: [
+          {
+            signal: { namespace: "kmodels", value: "input_tokens" },
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+            availability: "always",
+          },
+          {
+            signal: { namespace: "kmodels", value: "generated_items" },
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/usage/items" },
+            availability: "always",
+          },
+        ],
+      },
+    ];
+    expect(() => validatePricingCatalog(product, core)).not.toThrow();
+
+    const selected = structuredClone(calculated);
+    const selectedTerm = selected.books[0]!.offers.find(({ offer_key }) => offer_key === "usage")
+      ?.terms[0];
+    if (selectedTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    const selectedVariant = selectedTerm.variants[0]!;
+    const selectedApplicability = {
+      any_of: [
+        {
+          all_of: [
+            {
+              kind: "decimal_range" as const,
+              dimension: { namespace: "kmodels" as const, value: "context_tokens" as const },
+              unit: {
+                factors: [
+                  { unit: { namespace: "kmodels" as const, value: "token" as const }, power: 1 },
+                ],
+              },
+              lower: { value: "100", inclusive: true },
+            },
+          ],
+        },
+      ],
+    };
+    selectedVariant.applicability = selectedApplicability;
+    selectedVariant.observations = selectedVariant.observations.map((item) => ({
+      ...item,
+      establishes_applicability: selectedApplicability,
+    }));
+    selectedVariant.selector_sources = [
+      {
+        dimension: { namespace: "kmodels", value: "context_tokens" },
+        channel: "response",
+        locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        availability: "terminal_only",
+        observations: [
+          {
+            source_ref: sourceRef,
+            locator: { kind: "provider_key", value: "response.usage.input_tokens" },
+            raw: { fragment: "response usage input tokens" },
+          },
+        ],
+      },
+    ];
+    expect(() => validatePricingCatalog(selected, core)).not.toThrow();
+
+    const wronglyNormalized = structuredClone(selected);
+    const wronglyNormalizedTerm = wronglyNormalized.books[0]!.offers.find(
+      ({ offer_key }) => offer_key === "usage",
+    )?.terms[0];
+    if (wronglyNormalizedTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    wronglyNormalizedTerm.variants[0]!.selector_sources![0]!.normalization = {
+      kind: "categorical_map",
+      entries: [
+        {
+          source_value: "long",
+          value: { namespace: "provider", provider_id: providerId, value: "long" },
+        },
+      ],
+    };
+    expect(() => validatePricingCatalog(wronglyNormalized, core)).toThrow(
+      "categorical selector normalization requires a categorical condition",
+    );
+
+    const wrongSelector = structuredClone(selected);
+    const wrongSelectorTerm = wrongSelector.books[0]!.offers.find(
+      ({ offer_key }) => offer_key === "usage",
+    )?.terms[0];
+    if (wrongSelectorTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    wrongSelectorTerm.variants[0]!.selector_sources![0]!.dimension = {
+      namespace: "kmodels",
+      value: "duration_seconds",
+    };
+    expect(() => validatePricingCatalog(wrongSelector, core)).toThrow(
+      "selector source dimension is absent from applicability",
+    );
+
+    const wrongCalculationUnit = structuredClone(calculated);
+    const wrongCalculationTerm = wrongCalculationUnit.books[0]!.offers.find(
+      ({ offer_key }) => offer_key === "usage",
+    )?.terms[0];
+    if (wrongCalculationTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    wrongCalculationTerm.variants[0]!.charge_binding!.quantity_methods![0]!.calculation!.nodes[0] =
+      {
+        op: "signal",
+        signal: { namespace: "kmodels", value: "accepted_requests" },
+      };
+    wrongCalculationTerm.variants[0]!.charge_binding!.quantity_methods![0]!.input_sources![1]!.signal =
+      {
+        namespace: "kmodels",
+        value: "accepted_requests",
+      };
+    expect(() => validatePricingCatalog(wrongCalculationUnit, core)).toThrow(
+      "quantity calculation combines incompatible units",
+    );
+
+    const wrongProduct = structuredClone(product);
+    const wrongProductTerm = wrongProduct.books[0]!.offers.find(
+      ({ offer_key }) => offer_key === "usage",
+    )?.terms[0];
+    if (wrongProductTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    const wrongProductMethod = wrongProductTerm.variants[0]!.charge_binding!.quantity_methods![0]!;
+    wrongProductMethod.calculation!.nodes[1] = {
+      op: "signal",
+      signal: { namespace: "kmodels", value: "accepted_requests" },
+    };
+    wrongProductMethod.input_sources![1]!.signal = {
+      namespace: "kmodels",
+      value: "accepted_requests",
+    };
+    expect(() => validatePricingCatalog(wrongProduct, core)).toThrow(
+      "quantity product requires one quantity and one or more item counts",
+    );
+
+    const incompleteSources = structuredClone(calculated);
+    const incompleteTerm = incompleteSources.books[0]!.offers.find(
+      ({ offer_key }) => offer_key === "usage",
+    )?.terms[0];
+    if (incompleteTerm?.kind !== "rate") throw new Error("fixture term is not a rate");
+    incompleteTerm.variants[0]!.charge_binding!.quantity_methods![0]!.input_sources!.pop();
+    expect(() => validatePricingCatalog(incompleteSources, core)).toThrow(
+      "usage input sources do not cover every method input",
+    );
+
     const wrongSignalUnit = structuredClone(related);
     const wrongSignalTerm = wrongSignalUnit.books[0]!.offers.find(
       ({ offer_key }) => offer_key === "usage",

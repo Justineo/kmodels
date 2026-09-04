@@ -64,6 +64,20 @@ The [Mantle guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-
 service Regions. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
 public ID, but it cannot create global catalog presence or publish account data.
 
+Claim-local accounting companions establish only calculator inputs, independently from the rate
+sources:
+
+- Converse, ConverseStream metadata, TokenUsage, CacheDetail, and prompt-caching references establish
+  terminal input, output, cache-read, cache-write, TTL-specific cache-write, served-tier, and speed
+  fields;
+- the Batch results guide establishes terminal job-manifest input/output totals;
+- the model-invocation-log schema establishes runtime-only input/output counters and Region for
+  reconciliation use;
+- ApplyGuardrail and InvokeGuardrailChecks references establish their exact returned usage fields.
+
+A missing or drifted accounting companion removes only its own input or selector mapping. It does
+not change a numeric rate, create a raw price, or invalidate a sibling accounting path.
+
 Every fixed companion is optional at acquisition time. A temporary page or Price List failure must
 not erase the independently valid model catalog; provider-level pricing coverage and stale-snapshot
 rules decide whether a new price partition can advance.
@@ -127,24 +141,32 @@ claims remain conflicts unless the narrower official-page authority rule resolve
 
 ## Request-cost bindings
 
-Charge bindings describe how a Gateway can apply a published rate; they do not calculate an invoice.
+Charge bindings describe how a downstream calculator can apply a published rate. Kmodels neither
+collects these values nor runs a usage ledger.
 
-| Published meter                       | Request-visible quantity                                                                                                                                                   |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Input/output/cache tokens             | usage.inputTokens, outputTokens, cacheReadInputTokens, and cacheWriteInputTokens, or the corresponding Batch result-item fields                                            |
-| Image/audio/video/request model rates | Counted from the proxied request or completed response according to meter direction                                                                                        |
-| Rerank                                | One search unit per submitted rerank query; a query can include up to 100 document chunks                                                                                  |
-| Guardrails                            | ApplyGuardrail response usage fields such as contentPolicyUnits, topicPolicyUnits, and contentPolicyImageUnits; InvokeGuardrailChecks uses each returned check's textUnits |
-| Intelligent Prompt Routing            | A model invocation whose target is a prompt-router identifier                                                                                                              |
-| Bedrock Web Search                    | The proxied search query                                                                                                                                                   |
-| Nova Web Grounding                    | The realized provider-hosted grounding request                                                                                                                             |
+| Published meter             | Exact input contract                                                                                                                                                                                | Aggregation |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| On-demand input tokens      | Converse/ConverseStream `usage.inputTokens`; this is uncached input when prompt caching is active. A runtime invocation-log input count is an alternative only when no separate cache rate applies. | Attempt     |
+| On-demand output tokens     | Converse/ConverseStream `usage.outputTokens`; runtime invocation log `output.outputTokenCount` is a reconciliation-only alternative.                                                                | Attempt     |
+| Cache read/write tokens     | TokenUsage cache-read/cache-write members. TTL-priced writes use the `cacheDetails` member whose `ttl` is exactly `5m` or `1h`; an absent filtered member is zero.                                  | Attempt     |
+| Batch input/output tokens   | Terminal `manifest.json.out` input/output totals. Per-record `modelOutput` is deliberately not normalized because its shape depends on the selected model invocation type.                          | Job         |
+| Service tier and speed      | Converse response or terminal stream-metadata `serviceTier.type` and `performanceConfig.latency`; returned `default` maps to the published `standard` tier.                                         | Attempt     |
+| Region                      | Route configuration supplied by the consumer, or model invocation-log `region` for reconciliation.                                                                                                  | Attempt     |
+| Guardrails                  | ApplyGuardrail top-level `usage` fields; InvokeGuardrailChecks `usage.<check>.textUnits`.                                                                                                           | Request     |
+| Media and request rates     | A semantic quantity and unit are published, but no provider field is fabricated when model-specific request/response schemas do not establish one.                                                  | Job/attempt |
+| Rerank                      | Provider-billed search units. A request locator is not claimed because documents beyond the first 100 create additional units and the Rerank response exposes no billed counter.                    | Request     |
+| Web Search / Nova Grounding | Realized provider-hosted queries or grounding requests. Tool enablement is not treated as billed usage; the binding remains input-unbound until AWS publishes an exact counter.                     | Request     |
+| Intelligent Prompt Routing  | Accepted invocations addressed to a prompt-router identifier. The semantic binding is retained without embedding an identifier predicate in the canonical wire.                                     | Request     |
 
-On-demand token usage aggregates per attempt. Batch usage aggregates per result item. Request-side
-media and service quantities resolve from the request; generated output and provider-reported usage
-resolve from the outcome.
+The model invocation log contract is intentionally marked `reconciliation_only` and applies only to
+`bedrock-runtime`. It gives a downstream service exact locators for token quantities and Region;
+the log itself also supplies `schemaVersion`, `requestId`, `operation`, and `modelId` for the
+downstream join. Mantle traffic is not falsely covered by that path.
 
-The model invocation log and CUR remain useful audit sources, but account-period CUR quantities are
-not used as a substitute for request-level Gateway signals.
+CUR is not a request-level input. AWS states that CUR aggregates by usage type over an hour or day
+and carries no request identifier. A billing service may join invocation logs to CUR at
+model/usage-type/day grain, but that invoice reconciliation and its account-specific adjustments are
+outside Kmodels.
 
 ## Resilience
 
@@ -165,6 +187,8 @@ not used as a substitute for request-level Gateway signals.
   whether they are aliases, variants, or separate callable models.
 - Unsupported invocation units remain bounded raw facts. Out-of-scope commercial facts are discarded,
   not retained as raw pricing.
+- An unsupported or drifted usage field is not a raw commercial fact. The numeric rate and semantic
+  charge binding remain; only the unavailable `quantity_method` or `selector_source` is omitted.
 - If the accepted provider partition would materially regress, refresh retains the last verified
   pricing snapshot and exposes the failure/staleness in provider metadata.
 

@@ -129,6 +129,10 @@ components:
           type: integer
         prompt_tokens_details:
           $ref: "#/components/schemas/PromptTokensDetails"
+    SpeechRequest:
+      properties:
+        input:
+          type: string
     SpeechResponse:
       properties:
         audio_data:
@@ -145,3 +149,6 @@ components:
       properties:
         usage:
           $ref: "#/components/schemas/UsageInfo"
+    EmbeddingResponse:
+      allOf:
+        - $ref: "#/components/schemas/ResponseBase"

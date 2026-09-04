@@ -30,11 +30,19 @@ import {
   type PricingReconciliationItem,
 } from "../src/catalog/pricing-reconciliation.ts";
 import type { ParsedProviderModel as ProviderModel } from "../src/catalog/pricing-source.ts";
-import { sourceKindSchema, type ModelTask, type Provider } from "../src/catalog/schema.ts";
+import { validatePricingCatalog } from "../src/catalog/pricing-validation.ts";
+import {
+  sourceKindSchema,
+  type Catalog,
+  type ModelTask,
+  type Provider,
+  type SourceRecord,
+} from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import { normalizeModelTasks } from "../src/catalog/task.ts";
 import { reconcileCatalog, validateProvider } from "../src/catalog/validation.ts";
 import { vercelCommercialFacts } from "../src/catalog/vercel-commercial-source.ts";
+import { extractVercelPricingInputs } from "../src/catalog/vercel-accounting.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
 
@@ -211,6 +219,13 @@ function azurePublicPricingSource(minModels: number, maxModels: number): SourceM
   };
 }
 
+function azureAccountingSource(): SourceManifest {
+  const configured = manifest("azure").sources.find(({ id }) => id === "azure-accounting");
+  if (configured === undefined || configured.extractor.kind !== "azure-accounting")
+    throw new Error("Missing Azure accounting source");
+  return configured;
+}
+
 function azurePortalSource(minModels: number, maxModels: number): SourceManifest {
   const configured = manifest("azure").sources.find(({ id }) => id === "azure-portal-models");
   if (configured === undefined || configured.extractor.kind !== "azure-portal-catalog")
@@ -298,6 +313,7 @@ async function deepseekCatalog(
     observedAt?: string;
     responses?: string;
     vision?: string;
+    onContractFinding?: (evidence: SourceContractEvidence) => void;
     onPricingReconciliation?: (item: PricingReconciliationItem) => void;
     omit?: readonly string[];
     overrides?: Readonly<Record<string, string>>;
@@ -311,6 +327,7 @@ async function deepseekCatalog(
     observedAt: deepseekObservedAt = observedAt,
     responses,
     vision,
+    onContractFinding,
     onPricingReconciliation,
     omit = [],
     overrides = {},
@@ -335,6 +352,10 @@ async function deepseekCatalog(
         body: overrides["api/create-completion"] ?? (await fixture("deepseek/fim.html")),
       },
       {
+        url: "https://api-docs.deepseek.com/guides/anthropic_api",
+        body: overrides["guides/anthropic_api"] ?? (await fixture("deepseek/anthropic.html")),
+      },
+      {
         url: "https://api-docs.deepseek.com/guides/vision",
         body: vision ?? (await fixture("deepseek/vision.html")),
       },
@@ -356,6 +377,7 @@ async function deepseekCatalog(
     source,
     body,
     observedAt: deepseekObservedAt,
+    ...(onContractFinding === undefined ? {} : { onContractFinding }),
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
   });
 }
@@ -499,6 +521,7 @@ async function databricksCatalog(
   overrides: Readonly<Record<string, string>> = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
   extraDocuments: readonly { url: string; body: string }[] = [],
+  onContractFinding?: (finding: SourceContractEvidence) => void,
 ): Promise<ProviderModel[]> {
   const value = manifest("databricks");
   const configured = value.sources[0];
@@ -559,6 +582,7 @@ async function databricksCatalog(
     body,
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+    ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
 }
 
@@ -587,6 +611,26 @@ async function vercelCatalog(
   });
 }
 
+async function vercelDocumentedCatalog(path: string): Promise<ProviderModel[]> {
+  const value = manifest("vercel");
+  const configured = value.sources[0];
+  if (configured === undefined || configured.extractor.kind !== "vercel-catalog")
+    throw new Error("Missing Vercel source");
+  const source: SourceManifest = {
+    ...configured,
+    extractor: { kind: "vercel-catalog", minModels: 1, maxModels: 20 },
+  };
+  return parseSource({
+    provider: provider(value),
+    source,
+    body: JSON.stringify({
+      index: { url: source.url, body: await fixture(path) },
+      documents: vercelDocumentation(),
+    }),
+    observedAt,
+  });
+}
+
 function vercelDocumentation(): { url: string; body: string }[] {
   return [
     {
@@ -605,22 +649,81 @@ function vercelDocumentation(): { url: string; body: string }[] {
         "GET /v1/generation?id={generation_id}",
         "Usage events are ingested asynchronously",
         "Allow a few seconds",
+        "`provider_name`",
+        "`native_tokens_prompt`",
+        "`native_tokens_completion`",
+        "`native_tokens_reasoning`",
         "`total_cost`",
         "`upstream_inference_cost`",
         "`native_tokens_cached`",
         "`native_tokens_cache_creation`",
+        "`billable_web_search_calls`",
       ].join("\n"),
     },
     {
       url: "https://vercel.com/docs/ai-gateway/models-and-providers/web-search.md",
       body: [
         "can be used with any model regardless of the model provider or creator",
+        "perplexitySearch vercel:perplexity_search",
         "Perplexity web search requests are charged at $5 per 1,000 requests",
-        "Exa web search requests are charged at $7 per 1,000 requests",
-        "Additional requested results beyond 10 are charged",
-        "Parallel web search requests are charged at $5 per 1,000 requests",
-        "Additional results beyond 10 are charged",
+        "exaSearch numResults num_results vercel:exa_search",
+        "Exa web search requests are charged at $7 per 1,000 requests. Each request includes up to 10 results. Additional requested results beyond 10 are charged at $1 per 1,000 additional results.",
+        "takoSearch effort vercel:tako_search",
+        "Tako Search costs $7 per 1,000 instant or fast requests and $12 per 1,000 deep requests.",
+        "sources.data.includeContents adds variable export surcharges",
+        "parallelSearch maxResults max_results vercel:parallel_search",
+        "Parallel web search requests are charged at $5 per 1,000 requests (includes up to 10 results per request). Additional results beyond 10 are charged at $1 per 1,000 additional results.",
+        "choices[0].message.provider_metadata.gateway.gatewayToolCalls for successful search-call counts",
       ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/models-and-providers/fast-mode.md",
+      body: [
+        "providerMetadata.gateway.routing.speed",
+        "AI Gateway only sets this field to `fast` when the request was genuinely served fast",
+        "the field is omitted for standard speed",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/models-and-providers/service-tiers.md",
+      body: [
+        "providerMetadata.gateway.serviceTier",
+        "AI Gateway bills the request at the tier the provider actually served",
+        "the field is omitted for standard",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/security-and-compliance/regional-inference.md",
+      body: [
+        "confirm the resolved region from the response",
+        "inferenceEndpoint",
+        "geoRegion",
+        "Leave it unset (the `global` default)",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/getting-started/image.md",
+      body: [
+        "experimental_generateImage",
+        "result.images",
+        "Image-only models use result.images",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/modalities/video-generation.md",
+      body: [
+        "experimental_generateVideo",
+        "`duration` | `number` | Video length in seconds",
+        "const { videos, providerMetadata } = await generateVideo",
+      ].join("\n"),
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/modalities/speech-to-text.md",
+      body: "durationInSeconds is the duration of the input audio",
+    },
+    {
+      url: "https://vercel.com/docs/ai-gateway/modalities/reranking.md",
+      body: "const result = await rerank; rerank returns a `ranking` array",
     },
   ] as const;
 }
@@ -797,6 +900,10 @@ const huggingFaceRouterDocuments = [
     "sdk-providers.py",
     "https://raw.githubusercontent.com/huggingface/huggingface_hub/main/src/huggingface_hub/inference/_providers/__init__.py",
   ],
+  [
+    "responses-schema.yaml",
+    "https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml",
+  ],
 ] as const;
 
 async function huggingFaceRouterBody(
@@ -819,6 +926,7 @@ async function huggingFaceRouter(
   edit: (body: string) => string = (body) => body,
   editDocument: (path: string, body: string) => string = (_path, body) => body,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  onContractFinding?: (item: SourceContractEvidence) => void,
 ): Promise<ProviderModel[]> {
   const value = manifest("huggingface");
   const source = huggingFaceRouterSource(value);
@@ -828,6 +936,7 @@ async function huggingFaceRouter(
     body: await huggingFaceRouterBody(edit(await fixture(path)), editDocument),
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+    ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
 }
 
@@ -1071,14 +1180,51 @@ async function geminiCatalog(
       url: pricingSource.url,
       body: overrides["pricing.html"] ?? (await fixture("gemini/pricing.html")),
     },
-    documents: omitPricingDocuments.has("discovery.json")
-      ? []
-      : [
-          {
-            url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
-            body: overrides["discovery.json"] ?? (await fixture("gemini/discovery.json")),
-          },
-        ],
+    documents: [
+      ...(omitPricingDocuments.has("discovery.json")
+        ? []
+        : [
+            {
+              url: "https://generativelanguage.googleapis.com/$discovery/rest?version=v1beta",
+              body: overrides["discovery.json"] ?? (await fixture("gemini/discovery.json")),
+            },
+          ]),
+      ...(omitPricingDocuments.has("interactions-api.html")
+        ? []
+        : [
+            {
+              url: "https://ai.google.dev/api/interactions-api",
+              body:
+                overrides["interactions-api.html"] ??
+                (await fixture("gemini/interactions-api.html")),
+            },
+          ]),
+      ...(omitPricingDocuments.has("video.html")
+        ? []
+        : [
+            {
+              url: "https://ai.google.dev/gemini-api/docs/video",
+              body: overrides["video.html"] ?? (await fixture("gemini/video.html")),
+            },
+          ]),
+      ...(omitPricingDocuments.has("batch-api.html")
+        ? []
+        : [
+            {
+              url: "https://ai.google.dev/api/batch-api",
+              body: overrides["batch-api.html"] ?? (await fixture("gemini/batch-api.html")),
+            },
+          ]),
+      ...(omitPricingDocuments.has("embeddings-api.html")
+        ? []
+        : [
+            {
+              url: "https://ai.google.dev/api/embeddings",
+              body:
+                overrides["embeddings-api.html"] ?? (await fixture("gemini/embeddings-api.html")),
+            },
+          ]),
+    ],
   });
   const priced = parseSource({
     provider: provider(value),
@@ -1106,6 +1252,7 @@ async function geminiCatalog(
       pricing_state: pricing.pricing_state,
       price_facts: pricing.price_facts,
       raw_price_facts: pricing.raw_price_facts,
+      ...(pricing.pricing_inputs === undefined ? {} : { pricing_inputs: pricing.pricing_inputs }),
       ...(pricing.commercial_facts === undefined
         ? {}
         : { commercial_facts: pricing.commercial_facts }),
@@ -1121,6 +1268,53 @@ async function vertexModels(
   index = "<main></main>",
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): Promise<ProviderModel[]> {
+  const pricingAccountingDocuments = [
+    ["https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1", "discovery.json"],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
+      "grounding-search.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-maps",
+      "grounding-maps.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/grounding/grounding-with-vertex-ai-search",
+      "grounding-data.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/batch-inference/new-job-from-cloud-storage",
+      "accounting-batch.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
+      "accounting-claude.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/claude/web-search",
+      "claude-web-search.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+      "accounting-responses.html",
+    ],
+    [
+      "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
+      "accounting-chat.html",
+    ],
+    [
+      "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/generate-images",
+      "accounting-image.html",
+    ],
+    [
+      "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/set-output-resolution",
+      "accounting-image-resolution.html",
+    ],
+    [
+      "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/model-reference/veo-video-generation",
+      "accounting-video.html",
+    ],
+  ] as const;
   const value = manifest("vertex");
   const configured = value.sources[sourceIndex];
   if (configured === undefined || configured.extractor.kind !== "vertex-catalog")
@@ -1251,25 +1445,22 @@ async function vertexModels(
       body: overrides[pricingEntry[1]] ?? (await fixture(`vertex/${pricingEntry[1]}`)),
     },
     documents: await Promise.all(
-      allDocuments
+      [...pricingAccountingDocuments, ...allDocuments]
         .filter(([url]) =>
           [
             "/$discovery/rest",
             "/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
             "/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-maps",
             "/gemini-enterprise-agent-platform/models/grounding/grounding-with-vertex-ai-search",
+            "/gemini-enterprise-agent-platform/models/capabilities/batch-inference/new-job-from-cloud-storage",
+            "/gemini-enterprise-agent-platform/models/partner-models/claude/use-claude",
             "/gemini-enterprise-agent-platform/models/partner-models/claude/web-search",
+            "/gemini-enterprise-agent-platform/models/partner-models/grok/responses",
+            "/gemini-enterprise-agent-platform/models/maas/call-open-model-apis",
+            "/vertex-ai/generative-ai/docs/image/generate-images",
+            "/vertex-ai/generative-ai/docs/image/set-output-resolution",
+            "/vertex-ai/generative-ai/docs/model-reference/veo-video-generation",
           ].includes(new URL(url).pathname),
-        )
-        .concat(
-          sourceIndex === 0
-            ? [
-                [
-                  "https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1",
-                  "discovery.json",
-                ],
-              ]
-            : [],
         )
         .filter(
           ([url], index, values) => values.findIndex(([candidate]) => candidate === url) === index,
@@ -1297,6 +1488,7 @@ async function vertexModels(
       pricing_state: pricing.pricing_state,
       price_facts: pricing.price_facts,
       raw_price_facts: pricing.raw_price_facts,
+      ...(pricing.pricing_inputs === undefined ? {} : { pricing_inputs: pricing.pricing_inputs }),
       ...(pricing.commercial_facts === undefined
         ? {}
         : { commercial_facts: pricing.commercial_facts }),
@@ -1360,6 +1552,7 @@ async function vertexCatalog(
 async function cohereCatalog(
   overrides: {
     chat?: string;
+    chatStream?: string;
     commandARelease?: string;
     commandAPlus?: string;
     index?: string;
@@ -1371,6 +1564,7 @@ async function cohereCatalog(
     transcription?: string;
   } = {},
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+  onContractFinding?: (evidence: SourceContractEvidence) => void,
 ): Promise<ProviderModel[]> {
   const value = manifest("cohere");
   const configured = value.sources[0];
@@ -1406,7 +1600,9 @@ async function cohereCatalog(
     ["https://docs.cohere.com/changelog/command-a", "command-a-release.html"],
     ["https://docs.cohere.com/changelog/command-r-7b/", "command-r7b-release.html"],
     ["https://docs.cohere.com/reference/chat.md", "chat.md"],
+    ["https://docs.cohere.com/reference/chat-stream.md", "chat-stream.md"],
     ["https://docs.cohere.com/reference/chat-v1.md", "chat-v1.md"],
+    ["https://docs.cohere.com/reference/chat-stream-v1.md", "chat-stream-v1.md"],
     ["https://docs.cohere.com/reference/embed.md", "embed.md"],
     ["https://docs.cohere.com/reference/create-embed-job.md", "create-embed-job.md"],
     ["https://docs.cohere.com/reference/rerank.md", "rerank.md"],
@@ -1416,6 +1612,7 @@ async function cohereCatalog(
   ] as const;
   const documentOverrides = new Map<string, string | undefined>([
     ["https://docs.cohere.com/reference/chat.md", overrides.chat],
+    ["https://docs.cohere.com/reference/chat-stream.md", overrides.chatStream],
     ["https://docs.cohere.com/docs/models", overrides.index],
     ["https://docs.cohere.com/docs/command-a-plus", overrides.commandAPlus],
     ["https://docs.cohere.com/changelog/command-a", overrides.commandARelease],
@@ -1443,6 +1640,7 @@ async function cohereCatalog(
     body,
     observedAt,
     ...(onPricingReconciliation === undefined ? {} : { onPricingReconciliation }),
+    ...(onContractFinding === undefined ? {} : { onContractFinding }),
   });
   const configuredPricing = value.sources.find(({ id }) => id === "cohere-pricing");
   if (configuredPricing === undefined) throw new Error("Missing Cohere pricing source");
@@ -1560,6 +1758,11 @@ async function mistralCatalog(
       overrides.openapi,
     ],
     [
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/conversations/advanced/prompt-caching/page.mdx",
+      "prompt-caching.md",
+      undefined,
+    ],
+    [
       "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
       "code-interpreter.mdx",
       undefined,
@@ -1575,7 +1778,7 @@ async function mistralCatalog(
       undefined,
     ],
     [
-      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/libraries/page.mdx",
+      "https://raw.githubusercontent.com/mistralai/platform-docs-public/main/src/content/en/docs/studio/search/libraries/page.mdx",
       "libraries.mdx",
       undefined,
     ],
@@ -1614,6 +1817,7 @@ async function mistralCatalog(
       ...(priced.commercial_facts === undefined
         ? {}
         : { commercial_facts: priced.commercial_facts }),
+      ...(priced.pricing_inputs === undefined ? {} : { pricing_inputs: priced.pricing_inputs }),
     };
   });
 }
@@ -1662,10 +1866,6 @@ async function llamaCatalog(
       "model_list_response.py",
     ],
     [
-      raw("llama-api-python", "src/llama_api_client/types/chat/completion_create_params.py"),
-      "completion_create_params.py",
-    ],
-    [
       raw("llama-api-python", "src/llama_api_client/types/create_chat_completion_response.py"),
       "chat_response.py",
     ],
@@ -1675,10 +1875,6 @@ async function llamaCatalog(
         "src/llama_api_client/types/create_chat_completion_response_stream_chunk.py",
       ),
       "chat_stream_response.py",
-    ],
-    [
-      raw("llama-api-python", "src/llama_api_client/types/moderation_create_response.py"),
-      "moderation_response.py",
     ],
     [
       raw("llama-api-python", "src/llama_api_client/resources/chat/completions.py"),
@@ -1760,7 +1956,18 @@ async function ollamaCloudBody(options: OllamaCloudOptions = {}): Promise<string
   const documents = [
     ["https://docs.ollama.com/openapi.yaml", "openapi.yaml"],
     ["https://docs.ollama.com/api/usage.md", "usage.md"],
+    ["https://docs.ollama.com/api/openai-compatibility.md", "openai-compatibility.md"],
     ["https://docs.ollama.com/cloud.md", "cloud.md"],
+    ["https://raw.githubusercontent.com/ollama/ollama/v0.33.3/api/types.go", "api-types.go"],
+    ["https://raw.githubusercontent.com/ollama/ollama/v0.33.3/openai/openai.go", "openai-types.go"],
+    [
+      "https://raw.githubusercontent.com/ollama/ollama/v0.33.3/openai/responses.go",
+      "responses-types.go",
+    ],
+    [
+      "https://raw.githubusercontent.com/ollama/ollama/v0.33.3/middleware/openai.go",
+      "openai-middleware.go",
+    ],
   ] as const;
   const body = JSON.stringify({
     ...bundle,
@@ -2045,6 +2252,43 @@ describe("Cohere adapters", () => {
         { meter: "output_text", price: "10", unit: "million_tokens" },
       ],
     );
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(11);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "chat.v2.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/billed_units/input_tokens" },
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "chat.v2.input_tokens",
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/delta/usage/billed_units/input_tokens",
+          },
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "chat.v1.output_tokens",
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/response/meta/billed_units/output_tokens",
+          },
+        }),
+        expect.objectContaining({
+          key: "embed.v2.image_tokens",
+          locator: { kind: "json_pointer", value: "/meta/billed_units/image_tokens" },
+        }),
+        expect.objectContaining({
+          key: "rerank.v2.search_units",
+          locator: { kind: "json_pointer", value: "/meta/billed_units/search_units" },
+        }),
+      ]),
+    );
     expect(models.find(({ model_id }) => model_id === "embed-english-v3.0")?.api_endpoints).toEqual(
       [
         { name: "Embed Jobs", path: "v1/embed-jobs" },
@@ -2092,16 +2336,107 @@ describe("Cohere adapters", () => {
     );
     expect(command?.offers.map(({ offer_key }) => offer_key)).toEqual(["hosted-inference"]);
     const production = command?.offers[0];
+    const commandRates = production?.terms.filter((term) => term.kind === "rate") ?? [];
     expect(
-      production?.terms
-        .filter((term) => term.kind === "rate")
-        .map((term) => [term.meter.value, term.variants[0]?.charge_binding?.signal.value]),
+      commandRates.map((term) => [
+        term.meter.value,
+        term.variants[0]?.charge_binding?.signal.value,
+      ]),
     ).toEqual(
       expect.arrayContaining([
         ["input_text", "input_tokens"],
         ["output_text", "output_tokens"],
       ]),
     );
+    const inputSources = commandRates
+      .find(({ meter }) => meter.value === "input_text")
+      ?.variants[0]?.charge_binding?.quantity_methods?.flatMap(
+        ({ input_sources }) => input_sources ?? [],
+      );
+    expect(inputSources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/billed_units/input_tokens" },
+        }),
+        expect.objectContaining({
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/delta/usage/billed_units/input_tokens",
+          },
+          availability: "terminal_only",
+        }),
+      ]),
+    );
+    expect(command?.source_refs).toContain("cohere-models");
+
+    const embed = books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes("cohere/embed-v4.0"),
+    );
+    const embedBindings = embed?.offers[0]?.terms
+      .filter((term) => term.kind === "rate")
+      .flatMap(({ variants }) => variants.map(({ charge_binding }) => charge_binding));
+    expect(embed?.source_refs).toContain("cohere-models");
+    expect(embedBindings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          signal: expect.objectContaining({ value: "input_tokens" }),
+          quantity_methods: [
+            expect.objectContaining({
+              input_sources: [
+                expect.objectContaining({
+                  locator: {
+                    kind: "json_pointer",
+                    value: "/meta/billed_units/input_tokens",
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          signal: expect.objectContaining({ value: "billed_image_tokens" }),
+          quantity_methods: [
+            expect.objectContaining({
+              input_sources: [
+                expect.objectContaining({
+                  locator: {
+                    kind: "json_pointer",
+                    value: "/meta/billed_units/image_tokens",
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      ]),
+    );
+
+    const rerank = books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes("cohere/rerank-v4.0-pro"),
+    );
+    expect(
+      rerank?.offers[0]?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap(({ variants }) => variants.map(({ charge_binding }) => charge_binding)),
+    ).toEqual([
+      expect.objectContaining({
+        signal: expect.objectContaining({ value: "billed_search_units" }),
+        quantity_methods: [
+          expect.objectContaining({
+            input_sources: [
+              expect.objectContaining({
+                locator: {
+                  kind: "json_pointer",
+                  value: "/meta/billed_units/search_units",
+                },
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]);
     expect(production?.relations).toEqual([]);
     expect(production?.settlement).toEqual([]);
     expect(production?.enrollment).toEqual([]);
@@ -2350,25 +2685,38 @@ describe("Cohere adapters", () => {
     ).toHaveLength(2);
   });
 
-  it("isolates drift in billed-unit, account-key, and response evidence", async () => {
+  it("isolates pricing-input drift without turning it into a raw price term", async () => {
     const chat = (await fixture("cohere/chat.md")).replace(
-      "The number of billed input tokens.",
-      "The number of metered input tokens.",
+      '"input_tokens": 5',
+      '"metered_input_tokens": 5',
     );
-    const chatReconciliation: PricingReconciliationItem[] = [];
-    const chatModels = await cohereCatalog({ chat }, (item) => chatReconciliation.push(item));
-    expect(
-      chatModels.find(({ model_id }) => model_id === "command-a-03-2025")?.raw_price_facts,
-    ).toEqual(
+    const reconciliation: PricingReconciliationItem[] = [];
+    const findings: SourceContractEvidence[] = [];
+    const chatModels = await cohereCatalog(
+      { chat },
+      (item) => reconciliation.push(item),
+      (finding) => findings.push(finding),
+    );
+    expect(chatModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(10);
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "pricing_input_contract_partial",
+      sample: "10/11 Cohere pricing inputs",
+    });
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        diagnostics: [
+          expect.objectContaining({
+            path: "/documents/reference/chat.md/usage/billed_units/input_tokens",
+          }),
+        ],
+      }),
+    );
+    expect(chatModels.flatMap(({ raw_price_facts }) => raw_price_facts)).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ term_key: "accounting_binding_unavailable:chat-v2" }),
+        expect.objectContaining({ term_key: expect.stringContaining("accounting_binding") }),
       ]),
     );
-    expect(chatReconciliation).toContainEqual({
-      disposition: "unbound",
-      reason_code: "accounting_reference_drift",
-      sample: "/reference/chat.md",
-    });
     const source = manifest("cohere").sources[0];
     if (source === undefined) throw new Error("Missing Cohere pricing source");
     const chatPricing = assembleParsedProviderPricing(
@@ -2381,11 +2729,25 @@ describe("Cohere adapters", () => {
       chatPricing?.books
         .find(({ scope }) => scope.kind === "models" && scope.model_refs.includes(uid))
         ?.offers.find(({ offer_key }) => offer_key === "hosted-inference");
+    const commandBindings = offerFor("cohere/command-a-03-2025")
+      ?.terms.filter((term) => term.kind === "rate")
+      .flatMap(({ variants }) => variants.map(({ charge_binding }) => charge_binding));
+    expect(commandBindings).toHaveLength(2);
+    expect(commandBindings?.every((binding) => binding !== undefined)).toBe(true);
+    const inputBinding = commandBindings?.find(
+      (binding) => binding?.signal.value === "input_tokens",
+    );
     expect(
-      offerFor("cohere/command-a-03-2025")
-        ?.terms.filter((term) => term.kind === "rate")
-        .flatMap(({ variants }) => variants.map(({ charge_binding }) => charge_binding)),
-    ).toEqual([undefined, undefined]);
+      inputBinding?.quantity_methods?.flatMap(({ input_sources }) => input_sources ?? []),
+    ).toEqual([
+      expect.objectContaining({
+        channel: "stream_event",
+        locator: {
+          kind: "json_pointer",
+          value: "/delta/usage/billed_units/input_tokens",
+        },
+      }),
+    ]);
     expect(
       offerFor("cohere/embed-v4.0")
         ?.terms.filter((term) => term.kind === "rate")
@@ -2393,26 +2755,34 @@ describe("Cohere adapters", () => {
           variants.every(({ charge_binding }) => charge_binding !== undefined),
         ),
     ).toBe(true);
-    const pricingPolicy = (await fixture("cohere/pricing-policy.md")).replace(
-      "actually billed",
-      "approximately counted",
+
+    const chatStream = (await fixture("cohere/chat-stream.md")).replace(
+      '"input_tokens": 5',
+      '"metered_input_tokens": 5',
     );
-    const policyReconciliation: PricingReconciliationItem[] = [];
-    const policyModels = await cohereCatalog({ pricingPolicy }, (item) =>
-      policyReconciliation.push(item),
+    const semanticModels = await cohereCatalog({ chat, chatStream });
+    const semanticPricing = assembleParsedProviderPricing(
+      "cohere",
+      observedAt,
+      [{ source, models: semanticModels }],
+      semanticModels,
     );
+    const semanticInput = semanticPricing?.books
+      .find(
+        ({ scope }) =>
+          scope.kind === "models" && scope.model_refs.includes("cohere/command-a-03-2025"),
+      )
+      ?.offers[0]?.terms.find((term) => term.kind === "rate" && term.meter.value === "input_text");
     expect(
-      policyModels.find(({ model_id }) => model_id === "command-a-03-2025")?.raw_price_facts,
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ term_key: "accounting_binding_unavailable:policy" }),
-      ]),
-    );
-    expect(policyReconciliation).toContainEqual({
-      disposition: "unbound",
-      reason_code: "accounting_reference_drift",
-      sample: "/docs/how-does-cohere-pricing-work.md",
+      semanticInput?.kind === "rate" ? semanticInput.variants[0]?.charge_binding : undefined,
+    ).toMatchObject({
+      signal: { namespace: "kmodels", value: "input_tokens" },
     });
+    expect(
+      semanticInput?.kind === "rate"
+        ? semanticInput.variants[0]?.charge_binding?.quantity_methods
+        : undefined,
+    ).toBeUndefined();
   });
 
   it("keeps independently supported prices when a discovered model page is absent", async () => {
@@ -2438,7 +2808,7 @@ describe("Cohere adapters", () => {
         type: "website",
         source: ["website"],
         retainOmittedFacts: true,
-        fields: expect.arrayContaining(["api_endpoints"]),
+        fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
         linkedDocuments: {
           indexFormat: "markdown",
           discoverySuffix: ".md",
@@ -2448,6 +2818,8 @@ describe("Cohere adapters", () => {
           documents: expect.arrayContaining([
             expect.objectContaining({ id: "pricing-policy" }),
             expect.objectContaining({ id: "api-chat-v2" }),
+            expect.objectContaining({ id: "api-chat-stream-v2" }),
+            expect.objectContaining({ id: "api-chat-stream-v1" }),
             expect.objectContaining({ id: "api-embed-v2" }),
             expect.objectContaining({ id: "api-rerank-v2" }),
           ]),
@@ -2484,6 +2856,46 @@ describe("Mistral adapters", () => {
     const ocr = models.find((model) => model.model_id === "mistral-ocr-4-0");
     const speech = models.find((model) => model.model_id === "voxtral-mini-tts-2603");
     const retired = models.find((model) => model.model_id === "mistral-large-2407");
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(20);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "completion.response.prompt_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          key: "completion.stream.cached_tokens",
+          channel: "stream_event",
+          absent_value: "zero",
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "conversation.response.connector_tokens",
+          locator: { kind: "json_pointer", value: "/usage/connector_tokens" },
+        }),
+        expect.objectContaining({
+          key: "ocr.response.pages_processed",
+          locator: { kind: "json_pointer", value: "/usage_info/pages_processed" },
+        }),
+        expect.objectContaining({
+          key: "speech.request.input_characters",
+          channel: "request",
+          locator: {
+            kind: "provider_field",
+            value: "SpeechRequest.accepted_billing_characters",
+          },
+        }),
+        expect.objectContaining({
+          key: "service.image_generation.generated_images",
+          locator: {
+            kind: "provider_field",
+            value: "ConversationResponse.completed_image_generation_files",
+          },
+        }),
+      ]),
+    );
     expect({
       count: models.length,
       medium: {
@@ -2992,7 +3404,7 @@ describe("Mistral adapters", () => {
 
   it("publishes distinct inference mechanisms and provider-resource price books", async () => {
     const value = manifest("mistral");
-    const source = value.sources[0];
+    const source = value.sources.find(({ id }) => id === "mistral-pricing");
     if (source === undefined) throw new Error("Missing Mistral source");
     const models = await mistralCatalog();
     const pricing = assembleParsedProviderPricing(
@@ -3006,21 +3418,64 @@ describe("Mistral adapters", () => {
       ({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04",
     );
     expect(medium?.offers.map(({ offer_key }) => offer_key)).toEqual(["batch", "sync"]);
-    expect(
-      medium?.offers
-        .find(({ offer_key }) => offer_key === "sync")
-        ?.terms.find(
-          (term) =>
-            term.kind === "rate" &&
-            term.meter.namespace === "kmodels" &&
-            term.meter.value === "cache_read_text",
-        ),
-    ).toMatchObject({
+    const sync = medium?.offers.find(({ offer_key }) => offer_key === "sync");
+    const batch = medium?.offers.find(({ offer_key }) => offer_key === "batch");
+    const syncRates = sync?.terms.filter((term) => term.kind === "rate") ?? [];
+    const input = syncRates.find(({ meter }) => meter.value === "input_text");
+    const cache = syncRates.find(({ meter }) => meter.value === "cache_read_text");
+    expect(cache).toMatchObject({
       kind: "rate",
       variants: expect.arrayContaining([
-        expect.objectContaining({ charge_binding: expect.any(Object) }),
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "cached_input_tokens" },
+            quantity_methods: [
+              {
+                input_sources: expect.arrayContaining([
+                  expect.objectContaining({
+                    channel: "response",
+                    locator: {
+                      kind: "json_pointer",
+                      value: "/usage/prompt_tokens_details/cached_tokens",
+                    },
+                    absent_value: "zero",
+                  }),
+                ]),
+              },
+            ],
+          }),
+        }),
       ]),
     });
+    expect(input?.kind === "rate" ? input.variants[0]?.charge_binding : undefined).toMatchObject({
+      signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+      quantity_methods: expect.arrayContaining([
+        expect.objectContaining({
+          calculation: expect.objectContaining({
+            nodes: expect.arrayContaining([expect.objectContaining({ op: "subtract_floor_zero" })]),
+          }),
+        }),
+        expect.objectContaining({
+          calculation: expect.objectContaining({
+            nodes: expect.arrayContaining([expect.objectContaining({ op: "sum" })]),
+          }),
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              locator: { kind: "json_pointer", value: "/usage/connector_tokens" },
+            }),
+          ]),
+        }),
+      ]),
+    });
+    expect(
+      batch?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap(({ variants }) => variants)
+        .every(
+          ({ charge_binding }) =>
+            charge_binding !== undefined && charge_binding.quantity_methods === undefined,
+        ),
+    ).toBe(true);
     expect(
       medium?.offers.every(
         ({ relations, enrollment, settlement }) =>
@@ -3028,12 +3483,71 @@ describe("Mistral adapters", () => {
       ),
     ).toBe(true);
 
+    const ocrUid = models.find(({ model_id }) => model_id === "mistral-ocr-4-0")?.uid;
+    const ocr = pricing?.books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes(ocrUid ?? ""),
+    );
+    expect(
+      ocr?.offers
+        .find(({ offer_key }) => offer_key === "sync")
+        ?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []))[0]?.charge_binding,
+    ).toMatchObject({
+      signal: { namespace: "kmodels", value: "processed_pages" },
+      quantity_methods: [
+        {
+          input_sources: [
+            expect.objectContaining({
+              locator: { kind: "json_pointer", value: "/usage_info/pages_processed" },
+            }),
+          ],
+        },
+      ],
+    });
+    const speechUid = models.find(({ model_id }) => model_id === "voxtral-mini-tts-2603")?.uid;
+    const speech = pricing?.books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes(speechUid ?? ""),
+    );
+    expect(
+      speech?.offers
+        .find(({ offer_key }) => offer_key === "sync")
+        ?.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []))[0]?.charge_binding,
+    ).toMatchObject({
+      signal: { namespace: "kmodels", value: "input_characters" },
+      quantity_methods: [
+        {
+          input_sources: [
+            expect.objectContaining({
+              locator: {
+                kind: "provider_field",
+                value: "SpeechRequest.accepted_billing_characters",
+              },
+            }),
+          ],
+        },
+      ],
+    });
+
     const code = pricing?.books.find(({ book_key }) => book_key === "service:code-execution");
     expect(code?.offers[0]?.terms[0]).toMatchObject({
       kind: "rate",
       meter: { namespace: "kmodels", value: "code_execution" },
       variants: expect.arrayContaining([
-        expect.objectContaining({ charge_binding: expect.any(Object) }),
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            quantity_methods: [
+              {
+                input_sources: expect.arrayContaining([
+                  expect.objectContaining({
+                    locator: {
+                      kind: "json_pointer",
+                      value: "/usage/connectors/code_interpreter",
+                    },
+                  }),
+                ]),
+              },
+            ],
+          }),
+        }),
       ]),
     });
     expect(code?.offers[0]).toMatchObject({ relations: [], enrollment: [], settlement: [] });
@@ -3060,11 +3574,62 @@ describe("Mistral adapters", () => {
       "service:image-generation",
       "service:library-retrieval",
     ]);
+    const image = pricing?.books.find(({ book_key }) => book_key === "service:image-generation");
+    expect(
+      image?.offers
+        .flatMap(({ terms }) => terms)
+        .flatMap((term) => (term.kind === "rate" ? term.variants : []))[0]?.charge_binding,
+    ).toMatchObject({
+      signal: { namespace: "kmodels", value: "generated_items" },
+      quantity_methods: [
+        {
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              locator: {
+                kind: "provider_field",
+                value: "ConversationResponse.completed_image_generation_files",
+              },
+            }),
+          ]),
+        },
+      ],
+    });
+    const premium = pricing?.books.find(({ book_key }) => book_key === "service:premium-news");
+    expect(
+      premium?.offers
+        .flatMap(({ terms }) => terms)
+        .flatMap((term) => (term.kind === "rate" ? term.variants : []))
+        .every(({ charge_binding }) => charge_binding?.quantity_methods === undefined),
+    ).toBe(true);
+    expect(
+      pricing?.books
+        .flatMap(({ offers }) => offers)
+        .flatMap(({ terms }) => terms)
+        .some(
+          (term) =>
+            term.kind === "raw" &&
+            (term.term_key === "charge_binding_unavailable" ||
+              term.term_key.startsWith("accounting_binding_unavailable:")),
+        ),
+    ).toBe(false);
+    expect(
+      pricing?.books
+        .flatMap(({ offers }) => offers)
+        .flatMap(({ terms }) =>
+          terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+        )
+        .flatMap(({ charge_binding }) => charge_binding?.observations ?? [])
+        .some(
+          ({ locator }) =>
+            locator.kind === "provider_key" &&
+            /^(?:batch|request|response|sync):/.test(locator.value),
+        ),
+    ).toBe(false);
   });
 
   it("keeps a provider-service amount when its execution-counter companion is unavailable", async () => {
     const value = manifest("mistral");
-    const source = value.sources[0];
+    const source = value.sources.find(({ id }) => id === "mistral-pricing");
     if (source === undefined) throw new Error("Missing Mistral source");
     const items: PricingReconciliationItem[] = [];
     const models = await mistralCatalog(
@@ -3086,18 +3651,19 @@ describe("Mistral adapters", () => {
       (term) => term.kind === "rate" && term.meter.value === "code_execution",
     );
     expect(
-      rate?.kind === "rate" && rate.variants.every((variant) => !("charge_binding" in variant)),
+      rate?.kind === "rate" &&
+        rate.variants.every(
+          ({ charge_binding }) =>
+            charge_binding !== undefined && charge_binding.quantity_methods === undefined,
+        ),
     ).toBe(true);
-    expect(code?.offers[0]?.terms).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "raw", term_key: "charge_binding_unavailable" }),
-      ]),
+    expect(code?.offers[0]?.terms).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "raw" })]),
     );
     expect(items).toContainEqual(
       expect.objectContaining({
-        reason_code: "commercial_companion_missing",
-        sample:
-          "/mistralai/platform-docs-public/main/src/content/en/docs/studio/agents/agent-tools/code_interpreter/page.mdx",
+        reason_code: "pricing_input_contract_partial",
+        sample: "19/20 Mistral pricing inputs",
       }),
     );
   });
@@ -3162,20 +3728,54 @@ describe("Mistral adapters", () => {
     const openapiItems: PricingReconciliationItem[] = [];
     const retained = await mistralCatalog({ openapi }, (item) => openapiItems.push(item));
     expect(retained).toHaveLength(6);
+    const retainedInputs = retained.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(retainedInputs).toHaveLength(18);
+    expect(retainedInputs.some(({ key }) => key.endsWith(".cached_tokens"))).toBe(false);
+    expect(retainedInputs.some(({ key }) => key === "completion.response.prompt_tokens")).toBe(
+      true,
+    );
     expect(
       retained.some(({ raw_price_facts }) =>
-        raw_price_facts.some(
-          ({ term_key }) => term_key === "accounting_binding_unavailable:tokens",
+        raw_price_facts.some(({ term_key }) =>
+          term_key.startsWith("accounting_binding_unavailable:"),
         ),
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(openapiItems).toContainEqual(
       expect.objectContaining({
         disposition: "unbound",
-        reason_code: "accounting_contract_drift",
-        sample: "Mistral OpenAPI reference drifted: PromptTokensDetails",
+        reason_code: "pricing_input_contract_partial",
+        sample: "18/20 Mistral pricing inputs",
       }),
     );
+    const value = manifest("mistral");
+    const pricingSource = value.sources.find(({ id }) => id === "mistral-pricing");
+    if (pricingSource === undefined) throw new Error("Missing Mistral pricing source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source: pricingSource, models: retained }],
+      retained,
+      value.pricingCategoricalLabels,
+    );
+    const medium = partition?.books.find(
+      ({ book_key }) => book_key === "model:mistral/mistral-medium-3-5@26.04",
+    );
+    const inputBinding = medium?.offers
+      .find(({ offer_key }) => offer_key === "sync")
+      ?.terms.flatMap((term) =>
+        term.kind === "rate" && term.meter.value === "input_text" ? term.variants : [],
+      )[0]?.charge_binding;
+    expect(
+      inputBinding?.quantity_methods?.some(({ calculation }) =>
+        calculation?.nodes.some(({ op }) => op === "sum"),
+      ),
+    ).toBe(true);
+    expect(
+      inputBinding?.quantity_methods?.some(({ calculation }) =>
+        calculation?.nodes.some(({ op }) => op === "subtract_floor_zero"),
+      ),
+    ).toBe(false);
 
     const modelList = (await fixture("mistral/openapi.yaml")).replace(
       "list_models_v1_models_get",
@@ -3400,6 +4000,8 @@ describe("Mistral adapters", () => {
         id: "mistral-pricing",
         url: "https://mistral.ai/pricing/api/",
         extractor: { kind: "mistral-pricing", minCards: 20, maxCards: 50 },
+        extractorVersion: "mistral-pricing-v2",
+        fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
         type: "website",
         scope: "global",
         role: "overlay",
@@ -3408,10 +4010,16 @@ describe("Mistral adapters", () => {
         linkedDocuments: {
           documents: expect.arrayContaining([
             expect.objectContaining({ id: "api-schema", optional: true, claimLocal: true }),
+            expect.objectContaining({ id: "prompt-caching", optional: true, claimLocal: true }),
             expect.objectContaining({ id: "code-interpreter", optional: true, claimLocal: true }),
             expect.objectContaining({ id: "web-search", optional: true, claimLocal: true }),
             expect.objectContaining({ id: "image-generation", optional: true, claimLocal: true }),
-            expect.objectContaining({ id: "libraries", optional: true, claimLocal: true }),
+            expect.objectContaining({
+              id: "libraries",
+              optional: true,
+              claimLocal: true,
+              url: expect.stringMatching(/\/studio\/search\/libraries\/page\.mdx$/),
+            }),
           ]),
         },
       },
@@ -3738,6 +4346,7 @@ describe("Meta Llama adapters", () => {
       { id: "Llama-Guard-4-12B", pricing: "not_published" },
     ]);
     expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
+    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
     expect(items).toContainEqual({
       disposition: "excluded",
       reason_code: "historical_limited_free_preview",
@@ -3757,6 +4366,9 @@ describe("Meta Llama adapters", () => {
     );
     expect(pricing?.model_dispositions).toEqual([]);
     expect(pricing?.books).toHaveLength(3);
+    expect(
+      pricing?.books.every(({ offers }) => offers.every(({ terms }) => terms.length === 0)),
+    ).toBe(true);
     expect(
       pricing?.books.map(({ scope, offers }) => ({
         scope,
@@ -3787,22 +4399,49 @@ describe("Meta Llama adapters", () => {
     ).not.toContain("tool_call");
   });
 
-  it("isolates hosted accounting and historical-preview drift", async () => {
+  it("audits generic metric envelopes without inventing pricing inputs", async () => {
     const response = (await fixture("llama/chat_response.py")).replace(
       "metrics: Optional[List[Metric]]",
       "measurements: Optional[List[Metric]]",
     );
     const responseItems: PricingReconciliationItem[] = [];
-    await expect(
-      llamaCatalog({ "chat_response.py": response }, (item) => responseItems.push(item)),
-    ).resolves.toHaveLength(12);
+    const responseModels = await llamaCatalog({ "chat_response.py": response }, (item) =>
+      responseItems.push(item),
+    );
+    expect(responseModels).toHaveLength(12);
+    expect(responseModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
     expect(responseItems).toContainEqual(
       expect.objectContaining({
-        reason_code: "chat_accounting_contract_drift",
+        reason_code: "chat_metrics_contract_drift",
         sample: "response metrics",
       }),
     );
 
+    const stream = (await fixture("llama/chat_stream_response.py")).replace(
+      'Literal["start", "complete", "progress", "metrics"]',
+      'Literal["start", "complete", "progress", "usage"]',
+    );
+    const streamItems: PricingReconciliationItem[] = [];
+    const streamModels = await llamaCatalog({ "chat_stream_response.py": stream }, (item) =>
+      streamItems.push(item),
+    );
+    expect(streamModels).toHaveLength(12);
+    expect(streamModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
+    expect(streamItems).toContainEqual(
+      expect.objectContaining({
+        reason_code: "stream_metrics_contract_drift",
+        sample: "stream metrics",
+      }),
+    );
+
+    expect(
+      [...responseModels, ...streamModels]
+        .filter(({ api_endpoints }) => api_endpoints !== undefined)
+        .every(({ pricing_state }) => pricing_state === "not_published"),
+    ).toBe(true);
+  });
+
+  it("isolates historical-preview drift", async () => {
     const launch = (await fixture("llama/llamacon.html")).replace(
       "limited free preview",
       "limited preview",
@@ -3926,9 +4565,11 @@ describe("Meta Llama adapters", () => {
   });
 
   it("declares an exhaustive registry catalog and non-persistent API inventory", () => {
-    expect(manifest("llama").sources).toMatchObject([
+    const sources = manifest("llama").sources;
+    expect(sources).toMatchObject([
       {
         extractor: { kind: "llama-catalog", minModels: 45, maxModels: 60 },
+        extractorVersion: "llama-catalog-v8",
         type: "repository",
         source: ["repository", "website"],
         exhaustive: true,
@@ -3955,22 +4596,12 @@ describe("Meta Llama adapters", () => {
               claimLocal: true,
             }),
             expect.objectContaining({
-              id: "llama-api-chat-params",
-              optional: true,
-              claimLocal: true,
-            }),
-            expect.objectContaining({
               id: "llama-api-chat-response",
               optional: true,
               claimLocal: true,
             }),
             expect.objectContaining({
               id: "llama-api-chat-stream-response",
-              optional: true,
-              claimLocal: true,
-            }),
-            expect.objectContaining({
-              id: "llama-api-moderation-response",
               optional: true,
               claimLocal: true,
             }),
@@ -3999,6 +4630,10 @@ describe("Meta Llama adapters", () => {
         role: "inventory",
       },
     ]);
+    expect(sources[0]?.fields).not.toContain("pricing_inputs");
+    expect(sources[0]?.linkedDocuments?.documents?.map(({ id }) => id)).not.toEqual(
+      expect.arrayContaining(["llama-api-chat-params", "llama-api-moderation-response"]),
+    );
   });
 });
 
@@ -4268,6 +4903,51 @@ describe("OpenAI adapters", () => {
     ).toEqual(new Set(["global_processing"]));
   });
 
+  it("extracts OpenAI pricing inputs independently from the rate source", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-accounting");
+    if (source === undefined || source.extractor.kind !== "openai-accounting")
+      throw new Error("Missing OpenAI accounting source");
+    const findings: SourceContractEvidence[] = [];
+    const [parsedModel] = parseSource({
+      provider: provider(value),
+      source,
+      body: [
+        "components:",
+        "  schemas:",
+        "    ResponseUsage:",
+        "      properties:",
+        "        input_tokens:",
+        "          type: integer",
+        "        input_tokens_details:",
+        "          properties:",
+        "            cached_tokens:",
+        "              type: integer",
+        "            cache_write_tokens:",
+        "              type: integer",
+        "        output_tokens:",
+        "          type: integer",
+        "    UsageWebSearchCallsResult:",
+        "      properties:",
+        "        num_requests:",
+        "          type: integer",
+      ].join("\n"),
+      observedAt,
+      catalogModels: [openAiModel("gpt-test", ["text_generation"])],
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(parsedModel?.pricing_inputs?.map(({ key }) => key)).toEqual([
+      "responses.usage.input_tokens",
+      "responses.usage.cached_input_tokens",
+      "responses.usage.cache_write_tokens",
+      "responses.usage.output_tokens",
+      "organization.web_search_calls.num_requests",
+    ]);
+    expect(parsedModel?.price_facts).toEqual([]);
+    expect(parsedModel?.raw_price_facts).toEqual([]);
+    expect(findings).not.toEqual([]);
+  });
+
   it("distinguishes the standard and batch views behind a price-tier selector", async () => {
     const model = (
       await openAiModelPricing("openai/batch-catalog.json", [
@@ -4505,7 +5185,7 @@ describe("OpenAI adapters", () => {
       tasks: ["transcription"],
     } satisfies ProviderModel;
     const pricingBody = await fixture("openai/pricing.md");
-    const reconciliation: { disposition: string; reason_code: string }[] = [];
+    const reconciliation: PricingReconciliationItem[] = [];
     const parsePricing = (body: string, reconcile = false) =>
       parseSource({
         provider: provider(value),
@@ -4773,7 +5453,7 @@ describe("OpenAI adapters", () => {
     const value = manifest("openai");
     const source = value.sources.find(({ id }) => id === "openai-pricing");
     if (source === undefined) throw new Error("Missing OpenAI pricing source");
-    const reconciliation: { disposition: string; reason_code: string }[] = [];
+    const reconciliation: PricingReconciliationItem[] = [];
     const models = parseSource({
       provider: provider(value),
       source,
@@ -4784,7 +5464,7 @@ describe("OpenAI adapters", () => {
         "| --- | --- | --- |",
         "| gpt-test | $1.00 | $2.00 |",
         "| gpt-test | $1.10 | $2.00 |",
-        "Priority Plus",
+        `Priority ${"Plus ".repeat(60)}`,
         "| Model | Short context input | Short context output |",
         "| --- | --- | --- |",
         "| gpt-other | $3.00 | $4.00 |",
@@ -4814,6 +5494,10 @@ describe("OpenAI adapters", () => {
         }),
       ]),
     );
+    expect(reconciliation.every(({ sample }) => sample === undefined || sample.length <= 256)).toBe(
+      true,
+    );
+    expect(() => sourcePricingReconciliation(models, reconciliation, true)).not.toThrow();
   });
 
   it("derives disjoint regional-processing rates from exact release eligibility", () => {
@@ -5030,6 +5714,118 @@ describe("OpenAI adapters", () => {
 });
 
 describe("Azure adapters", () => {
+  it("extracts fact-local accounting inputs from the reviewed Azure API contracts", async () => {
+    const value = manifest("azure");
+    const source = azureAccountingSource();
+    const [chat, responses, batch, embeddings, media, cache] = await Promise.all([
+      fixture("azure/accounting-chat.html"),
+      fixture("azure/accounting-responses.html"),
+      fixture("azure/accounting-batch.html"),
+      fixture("azure/accounting-embeddings.html"),
+      fixture("azure/accounting-media.html"),
+      fixture("azure/accounting-cache.html"),
+    ]);
+    const bundle = (responseBody = responses): string =>
+      JSON.stringify({
+        index: { url: source.url, body: chat },
+        documents: [
+          {
+            url: "https://learn.microsoft.com/en-us/rest/api/aifoundry/azureopenai/responses",
+            body: responseBody,
+          },
+          {
+            url: "https://learn.microsoft.com/en-us/rest/api/aifoundry/azureopenai/batch",
+            body: batch,
+          },
+          {
+            url: "https://learn.microsoft.com/en-us/rest/api/aifoundry/azureopenai/embeddings",
+            body: embeddings,
+          },
+          {
+            url: "https://learn.microsoft.com/en-us/azure/foundry/openai/reference-preview-latest",
+            body: media,
+          },
+          {
+            url: "https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/prompt-caching",
+            body: cache,
+          },
+        ],
+      });
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: bundle(),
+      observedAt,
+      catalogModels: [azurePricingModel("gpt-test")],
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const inputs = models[0]?.pricing_inputs ?? [];
+    expect(inputs).toHaveLength(30);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "chat.input_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          key: "chat.cache_write_tokens",
+          absent_value: "zero",
+        }),
+        expect.objectContaining({
+          key: "batch.input_tokens",
+          channel: "result",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        }),
+        expect.objectContaining({
+          key: "images.generated_images",
+          reduction: { kind: "array_length" },
+        }),
+        expect.objectContaining({
+          key: "audio.transcription_seconds",
+          availability: "conditional",
+        }),
+        expect.objectContaining({
+          key: "video.generated_seconds",
+          channel: "result",
+        }),
+      ]),
+    );
+    expect(reconciliation).toEqual([
+      {
+        disposition: "normalized",
+        reason_code: "pricing_input_contract_bound",
+        sample: "30/30 Azure pricing inputs",
+      },
+    ]);
+
+    const findings: SourceContractEvidence[] = [];
+    const drifted = parseSource({
+      provider: provider(value),
+      source,
+      body: bundle(responses.replace("<td>cached_tokens</td>", "<td>renamed_tokens</td>")),
+      observedAt,
+      catalogModels: [azurePricingModel("gpt-test")],
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(drifted[0]?.pricing_inputs).toHaveLength(29);
+    expect(
+      drifted[0]?.pricing_inputs?.some(({ key }) => key === "responses.cached_input_tokens"),
+    ).toBe(false);
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          diagnostics: [
+            expect.objectContaining({
+              path: "/documents/azureopenai/responses/openairesponseusageinputtokensdetails/properties/cached_tokens",
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
   it("keeps exact model/version tuples and unions every observed operation", async () => {
     const models = await azureCatalog();
     const model = models.find((candidate) => candidate.uid === "azure/gpt-multi@2026-01-01");
@@ -6006,6 +6802,32 @@ describe("Gemini adapters", () => {
           optional: true,
           claimLocal: true,
         }),
+        expect.objectContaining({
+          id: "interactions-api",
+          url: "https://ai.google.dev/api/interactions-api",
+          format: "html",
+          optional: true,
+          claimLocal: true,
+        }),
+        expect.objectContaining({
+          id: "video",
+          url: "https://ai.google.dev/gemini-api/docs/video",
+          format: "html",
+          optional: true,
+          claimLocal: true,
+        }),
+        expect.objectContaining({
+          id: "batch-api",
+          url: "https://ai.google.dev/api/batch-api",
+          optional: true,
+          claimLocal: true,
+        }),
+        expect.objectContaining({
+          id: "embeddings-api",
+          url: "https://ai.google.dev/api/embeddings",
+          optional: true,
+          claimLocal: true,
+        }),
       ]),
     );
     expect(
@@ -6174,8 +6996,76 @@ describe("Gemini adapters", () => {
       legacy: "thousand_requests",
       current: "thousand_search_units",
       maps: "thousand_search_units",
-      reconciliation: expect.objectContaining({ normalized: 37, explicit_non_numeric: 9 }),
+      reconciliation: expect.objectContaining({ normalized: 38, explicit_non_numeric: 9 }),
     });
+  });
+
+  it("publishes localized GenerateContent, embedding, Batch, and Interactions inputs", async () => {
+    const pricingInputs = (await geminiCatalog()).flatMap(
+      ({ pricing_inputs }) => pricing_inputs ?? [],
+    );
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "generate.prompt.document",
+          channel: "response",
+          absent_value: "zero",
+          locator: expect.objectContaining({
+            value: expect.stringContaining("promptTokensDetails[modality=DOCUMENT].tokenCount"),
+          }),
+        }),
+        expect.objectContaining({
+          key: "generate.candidates.image",
+          channel: "result",
+          absent_value: "zero",
+          locator: expect.objectContaining({
+            value: expect.stringContaining("responsesFile JSONL[*]"),
+          }),
+        }),
+        expect.objectContaining({
+          key: "generate.output.images",
+          channel: "response",
+          reduction: { kind: "array_length" },
+          absent_value: "zero",
+        }),
+        expect.objectContaining({
+          key: "embedding.prompt.document",
+          channel: "result",
+          locator: expect.objectContaining({
+            value: expect.stringContaining("EmbedContentBatch.output.inlinedResponses"),
+          }),
+        }),
+        expect.objectContaining({
+          key: "generate.grounding.google_search_queries",
+          channel: "response",
+          reduction: { kind: "count_unique_non_empty_strings" },
+          absent_value: "zero",
+        }),
+        expect.objectContaining({
+          key: "interaction.grounding.google_search",
+          channel: "response",
+          locator: expect.objectContaining({ value: expect.stringContaining("google_search") }),
+        }),
+        expect.objectContaining({
+          key: "generate.service_tier",
+          channel: "stream_event",
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "video.request.duration_seconds",
+          channel: "request",
+          locator: { kind: "provider_field", value: "GenerateVideosConfig.durationSeconds" },
+        }),
+        expect.objectContaining({
+          key: "video.request.resolution",
+          channel: "request",
+        }),
+        expect.objectContaining({
+          key: "video.request.generate_audio",
+          channel: "request",
+        }),
+      ]),
+    );
   });
 
   it("extracts every labeled model table from a shared detail page", async () => {
@@ -6418,18 +7308,61 @@ describe("Gemini adapters", () => {
     );
     expect(models.find(({ model_id }) => model_id === "gemini-test-preview")).toMatchObject({
       pricing_state: "numeric",
-      raw_price_facts: [expect.objectContaining({ term_key: "charge_binding_unavailable" })],
+      raw_price_facts: [],
     });
-    expect(reconciliation).toContainEqual({
-      disposition: "unbound",
-      reason_code: "usage_binding_contract_drift",
-      sample: "Gemini Discovery usage schema changed",
-    });
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs.some(({ key }) => key === "generate.prompt.total")).toBe(false);
+    expect(pricingInputs.some(({ key }) => key === "generate.cache.total")).toBe(true);
+    expect(reconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "pricing_input_contract_partial",
+        sample: "4 Discovery/supporting-document mappings unavailable",
+      }),
+    );
 
     const omitted = await geminiCatalog({}, undefined, new Set(["discovery.json"]));
     expect(
       omitted.find(({ model_id }) => model_id === "gemini-test-preview")?.raw_price_facts,
     ).not.toEqual([expect.objectContaining({ term_key: "charge_binding_unavailable" })]);
+
+    const interactionDrift = await geminiCatalog({
+      "interactions-api.html": interactionsApi.replace(
+        "<code>total_output_tokens</code>",
+        "<code>total_output_tokens_v2</code>",
+      ),
+    });
+    const interactionInputs = interactionDrift.flatMap(
+      ({ pricing_inputs }) => pricing_inputs ?? [],
+    );
+    expect(interactionInputs.some(({ key }) => key === "interaction.candidates.total")).toBe(false);
+    expect(interactionInputs.some(({ key }) => key === "interaction.prompt.total")).toBe(true);
+
+    const batchDrift = await geminiCatalog({
+      "batch-api.html": (await fixture("gemini/batch-api.html")).replace(
+        "GenerateContentResponse",
+        "GenerateContentResponseV2",
+      ),
+    });
+    const batchInputs = batchDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(
+      batchInputs.some(
+        ({ key, locator }) =>
+          key === "generate.prompt.total" && locator.value.includes("responsesFile JSONL"),
+      ),
+    ).toBe(false);
+    expect(
+      batchInputs.some(
+        ({ key, locator }) =>
+          key === "generate.prompt.total" && locator.value.includes("inlinedResponses"),
+      ),
+    ).toBe(true);
+    expect(
+      batchInputs.some(
+        ({ key, locator }) =>
+          key === "embedding.prompt.total" && locator.value.includes("responsesFile JSONL"),
+      ),
+    ).toBe(true);
   });
 
   it("preserves pricing drift as bounded raw or unbound evidence", async () => {
@@ -6473,7 +7406,22 @@ describe("Vertex AI adapters", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
+      extractorVersion: "vertex-pricing-v3",
+      fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
+    expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
+      expect.arrayContaining([
+        "discovery",
+        "batch",
+        "claude-api",
+        "claude-web-search",
+        "grok-api",
+        "open-api",
+        "image-api",
+        "image-resolution",
+        "video-api",
+      ]),
+    );
   });
 
   it("joins exact card IDs with lifecycle, capabilities, and multimodal pricing", async () => {
@@ -6481,6 +7429,24 @@ describe("Vertex AI adapters", () => {
     const current = models.find((model) => model.model_id === "gemini-test");
     const embedding = models.find((model) => model.model_id === "gemini-embedding-test");
     const retired = models.find((model) => model.model_id === "gemini-old");
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(139);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "generate.prompt.text", channel: "response" }),
+        expect.objectContaining({ key: "generate.prompt.text", channel: "stream_event" }),
+        expect.objectContaining({ key: "generate.prompt.text", channel: "result" }),
+        expect.objectContaining({ key: "generate.tool_prompt.text", channel: "response" }),
+        expect.objectContaining({ key: "generate.grounding.google_search_queries" }),
+        expect.objectContaining({ key: "embedding.prompt.document" }),
+        expect.objectContaining({ key: "claude.cache_write_tokens" }),
+        expect.objectContaining({ key: "responses.reasoning_tokens", channel: "stream_event" }),
+        expect.objectContaining({ key: "chat.output_tokens", channel: "response" }),
+        expect.objectContaining({ key: "imagen.response.images", channel: "response" }),
+        expect.objectContaining({ key: "video.result.videos", channel: "result" }),
+        expect.objectContaining({ key: "request.location", channel: "request" }),
+      ]),
+    );
     expect({
       name: current?.name,
       tasks: current?.tasks,
@@ -7176,11 +8142,7 @@ describe("Vertex AI adapters", () => {
       },
     );
     const byId = new Map(models.map((model) => [model.model_id, model]));
-    expect(
-      byId
-        .get("claude-haiku-4-5")
-        ?.raw_price_facts.filter(({ term_key }) => term_key !== "charge_binding_unavailable"),
-    ).toEqual([]);
+    expect(byId.get("claude-haiku-4-5")?.raw_price_facts).toEqual([]);
     expect(
       byId
         .get("claude-haiku-4-5")
@@ -7198,10 +8160,7 @@ describe("Vertex AI adapters", () => {
     expect(
       byId
         .get("claude-sonnet-4-6")
-        ?.raw_price_facts.filter(
-          ({ impact, term_key }) =>
-            impact === "informational" && term_key !== "charge_binding_unavailable",
-        ),
+        ?.raw_price_facts.filter(({ impact }) => impact === "informational"),
     ).toEqual([
       expect.objectContaining({
         reason: "unsupported_structure",
@@ -7232,21 +8191,11 @@ describe("Vertex AI adapters", () => {
     expect(
       byId
         .get("mistral-ocr-2505")
-        ?.raw_price_facts.filter(({ term_key }) => term_key === "charge_binding_unavailable"),
-    ).toHaveLength(1);
-    expect(
-      byId
-        .get("mistral-ocr-2505")
         ?.price_facts.map(({ meter, price, unit }) => [meter, price, unit]),
     ).toEqual([
       ["input_text", "0.0005", "million_tokens"],
       ["output_text", "0.0005", "million_tokens"],
     ]);
-    expect(
-      byId
-        .get("ocr-converted")
-        ?.raw_price_facts.filter(({ term_key }) => term_key === "charge_binding_unavailable"),
-    ).toHaveLength(1);
     expect(
       byId.get("ocr-converted")?.price_facts.map(({ meter, price, unit }) => [meter, price, unit]),
     ).toEqual([
@@ -7256,7 +8205,7 @@ describe("Vertex AI adapters", () => {
     expect(
       byId
         .get("claude-cache-ambiguous")
-        ?.raw_price_facts.filter(({ term_key }) => term_key !== "charge_binding_unavailable"),
+        ?.raw_price_facts.filter(({ impact }) => impact === "base_price"),
     ).toEqual([
       expect.objectContaining({
         impact: "base_price",
@@ -7463,8 +8412,9 @@ describe("Vertex AI adapters", () => {
           ["unbound", "ambiguous", "unsupported", "unresolved"].includes(disposition) &&
           ![
             "claude_web_search_reference_missing",
+            "claude_web_search_pricing_table_changed",
             "grounding_references_missing",
-            "usage_binding_contract_changed",
+            "grounding_supported_model_unbound",
           ].includes(reason_code),
       ),
     }).toEqual({
@@ -7632,11 +8582,15 @@ describe("Vertex AI adapters", () => {
     const usageDrift = await vertexCatalog({ "discovery.json": discovery }, (item) =>
       reconciliation.push(item),
     );
-    expect(
-      usageDrift.find(({ model_id }) => model_id === "gemini-test")?.raw_price_facts,
-    ).toContainEqual(expect.objectContaining({ term_key: "charge_binding_unavailable" }));
+    const pricingInputs = usageDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(136);
+    expect(pricingInputs.some(({ key }) => key === "generate.cache.total")).toBe(false);
+    expect(pricingInputs.some(({ key }) => key === "generate.prompt.total")).toBe(true);
     expect(reconciliation).toContainEqual(
-      expect.objectContaining({ reason_code: "usage_binding_contract_changed" }),
+      expect.objectContaining({
+        reason_code: "pricing_input_contract_partial",
+        sample: "136/139 Agent Platform pricing inputs",
+      }),
     );
   });
 
@@ -7886,6 +8840,38 @@ describe("Anthropic adapters", () => {
       codeOffers: ["standalone", "web-assisted"],
       codeRate: "0.05",
     });
+    const value = manifest("anthropic");
+    const source = value.sources.find(({ id }) => id === "anthropic-models");
+    if (source === undefined) throw new Error("Missing Anthropic pricing source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    const searchBook = partition?.books.find(({ book_key }) => book_key === "service:web-search");
+    const searchRate = searchBook?.offers
+      .flatMap(({ terms }) => terms)
+      .find(({ kind }) => kind === "rate");
+    expect(searchRate?.kind === "rate" ? searchRate.variants[0]?.charge_binding : undefined).toBe(
+      undefined,
+    );
+    expect(
+      partition?.vocabulary.atoms.some(
+        (atom) => atom.kind === "usage_signal" && atom.key === "successful_web_searches",
+      ),
+    ).toBe(false);
+    const standalone = partition?.books
+      .find(({ book_key }) => book_key === "service:code-execution")
+      ?.offers.find(({ offer_key }) => offer_key === "standalone");
+    const codeRate = standalone?.terms.find(({ kind }) => kind === "rate");
+    expect(codeRate?.kind === "rate" ? codeRate.variants[0]?.charge_binding : undefined).toBe(
+      undefined,
+    );
+    expect(standalone?.terms).toContainEqual(
+      expect.objectContaining({ kind: "raw", term_key: "runtime-observation" }),
+    );
     expect(items).toEqual(
       expect.arrayContaining([
         {
@@ -8191,6 +9177,74 @@ describe("Anthropic adapters", () => {
     });
   });
 
+  it("retains Anthropic prices without inventing a mapping for a drifted usage field", async () => {
+    const body = (await fixture("anthropic/messages.md")).replace(
+      "- `output_tokens: number`",
+      "- `generated_tokens: number`",
+    );
+    const items: PricingReconciliationItem[] = [];
+    const models = await anthropicCatalog({
+      overrides: { "/docs/en/api/messages/create.md": body },
+      onPricingReconciliation: (item) => items.push(item),
+    });
+    const fable = models.find(({ model_id }) => model_id === "claude-fable-5");
+    expect(fable?.price_facts.some(({ meter }) => meter === "output_text")).toBe(true);
+    expect(
+      fable?.raw_price_facts.some(({ term_key }) =>
+        term_key.startsWith("accounting_binding_unavailable:"),
+      ),
+    ).toBe(false);
+    expect(
+      fable?.pricing_inputs?.filter(({ key }) => key === "messages.usage.output_tokens"),
+    ).toEqual([
+      expect.objectContaining({
+        locator: {
+          kind: "provider_field",
+          value: "usage.iterations[*].output_tokens grouped by usage.iterations[*].model",
+        },
+      }),
+    ]);
+
+    const value = manifest("anthropic");
+    const source = value.sources.find(({ id }) => id === "anthropic-models");
+    if (source === undefined) throw new Error("Missing Anthropic pricing source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    const sync = partition?.books
+      .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
+      ?.offers.find(({ offer_key }) => offer_key === "sync");
+    const rate = (meter: "input_text" | "output_text") =>
+      sync?.terms.find((term) => term.kind === "rate" && term.meter.value === meter);
+    const input = rate("input_text");
+    const output = rate("output_text");
+    expect(output?.kind === "rate" ? output.variants[0]?.charge_binding : undefined).toMatchObject({
+      signal: { namespace: "provider", provider_id: "anthropic", value: "output_tokens" },
+    });
+    expect(
+      output?.kind === "rate"
+        ? output.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources
+        : undefined,
+    ).toHaveLength(1);
+    expect(
+      input?.kind === "rate"
+        ? input.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources
+        : undefined,
+    ).toHaveLength(2);
+    expect(
+      sync?.terms.some(({ term_key }) => term_key.startsWith("accounting_binding_unavailable:")),
+    ).toBe(false);
+    expect(items).toContainEqual({
+      disposition: "unresolved",
+      reason_code: "accounting_contract_drift",
+      sample: "Messages usage.output_tokens",
+    });
+  });
+
   it("withholds drifted batch coverage without rejecting synchronous models", async () => {
     const fable = (
       await anthropicCatalog({
@@ -8347,6 +9401,8 @@ describe("Anthropic adapters", () => {
 describe("Databricks adapters", () => {
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v11");
+    expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
     );
@@ -8481,12 +9537,40 @@ describe("Databricks adapters", () => {
     ]);
   });
 
-  it("publishes only request-attributable model inference rates", async () => {
+  it("publishes request-attributable rates with exact response input contracts", async () => {
     const value = manifest("databricks");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Databricks source");
     const models = await databricksCatalog();
     expect(models.flatMap(({ commercial_facts }) => commercial_facts ?? [])).toEqual([]);
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(5);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "response.usage.claude.cache_read_tokens",
+          locator: { kind: "json_pointer", value: "/usage/cache_read_input_tokens" },
+          absent_value: "zero",
+        }),
+        expect.objectContaining({
+          key: "response.usage.claude.cache_write_tokens",
+          locator: { kind: "json_pointer", value: "/usage/cache_creation_input_tokens" },
+          absent_value: "zero",
+        }),
+        expect.objectContaining({
+          key: "response.usage.input_tokens",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          key: "response.usage.output_tokens",
+          locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
+        }),
+        expect.objectContaining({
+          key: "response.usage.reasoning_tokens",
+          locator: { kind: "json_pointer", value: "/usage/reasoning_tokens" },
+        }),
+      ]),
+    );
 
     const partition = assembleParsedProviderPricing(
       value.provider.id,
@@ -8508,6 +9592,127 @@ describe("Databricks adapters", () => {
           variants.every(({ charge_binding }) => charge_binding !== undefined),
         ),
     ).toBe(true);
+
+    const solRates =
+      sol?.offers.flatMap(({ terms }) =>
+        terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+      ) ?? [];
+    expect(solRates.flatMap(({ selector_sources }) => selector_sources ?? [])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "context_tokens" },
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+      ]),
+    );
+    expect(
+      solRates
+        .flatMap(({ applicability }) => applicability.any_of)
+        .flatMap(({ all_of }) => all_of)
+        .some(
+          ({ dimension }) =>
+            dimension.namespace === "kmodels" && dimension.value === "served_service_tier",
+        ),
+    ).toBe(true);
+    expect(
+      solRates
+        .flatMap(({ selector_sources }) => selector_sources ?? [])
+        .some(
+          ({ dimension }) =>
+            dimension.namespace === "kmodels" && dimension.value === "served_service_tier",
+        ),
+    ).toBe(false);
+    expect(
+      solRates
+        .filter(({ charge_binding }) =>
+          ["cached_input_tokens", "cache_write_tokens", "uncached_input_tokens"].includes(
+            charge_binding?.signal.value ?? "",
+          ),
+        )
+        .every(({ charge_binding }) => charge_binding?.quantity_methods === undefined),
+    ).toBe(true);
+
+    const claude = partition?.books.find(
+      ({ scope }) =>
+        scope.kind === "models" &&
+        scope.model_refs.includes("databricks/databricks-claude-sonnet-4-6"),
+    );
+    const claudeInput = claude?.offers
+      .flatMap(({ terms }) => terms)
+      .find(
+        (term) =>
+          term.kind === "rate" &&
+          term.meter.namespace === "kmodels" &&
+          term.meter.value === "input_text",
+      );
+    if (claudeInput?.kind !== "rate") throw new Error("Missing Databricks Claude input rate");
+    expect(
+      claudeInput.variants[0]?.charge_binding?.quantity_methods?.[0]?.calculation?.nodes.map(
+        ({ op }) => op,
+      ),
+    ).toEqual(["signal", "signal", "subtract_floor_zero", "signal", "subtract_floor_zero"]);
+    expect(
+      claudeInput.variants[0]?.charge_binding?.quantity_methods?.[0]?.input_sources?.map(
+        ({ locator }) => locator.value,
+      ),
+    ).toEqual([
+      "/usage/cache_creation_input_tokens",
+      "/usage/cache_read_input_tokens",
+      "/usage/prompt_tokens",
+    ]);
+
+    const flashImage = partition?.books.find(
+      ({ scope }) =>
+        scope.kind === "models" &&
+        scope.model_refs.includes("databricks/databricks-gemini-3-1-flash-image"),
+    );
+    const imageBindings = new Map(
+      flashImage?.offers
+        .flatMap(({ terms }) => terms)
+        .flatMap((term) =>
+          term.kind === "rate"
+            ? [[term.meter.value, term.variants[0]?.charge_binding] as const]
+            : [],
+        ),
+    );
+    expect(imageBindings.get("input_image")).toBeUndefined();
+    expect(imageBindings.get("output_image")).toBeUndefined();
+    expect(imageBindings.get("input_text")).toMatchObject({
+      signal: { namespace: "kmodels", value: "uncached_input_tokens" },
+    });
+    expect(imageBindings.get("input_text")?.quantity_methods).toBeUndefined();
+    expect(imageBindings.get("output_text")).toMatchObject({
+      signal: { namespace: "kmodels", value: "output_tokens" },
+    });
+    expect(imageBindings.get("output_text")?.quantity_methods).toBeUndefined();
+  });
+
+  it("keeps pricing-input contract drift field-local", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const reconciliation: PricingReconciliationItem[] = [];
+    const reference = await fixture("databricks/api-reference.html");
+    const models = await databricksCatalog(
+      { "api-reference.html": reference.replace("reasoning_tokens", "thinking_tokens") },
+      (item) => reconciliation.push(item),
+      [],
+      (finding) => findings.push(finding),
+    );
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(inputs).toHaveLength(4);
+    expect(inputs.some(({ key }) => key === "response.usage.reasoning_tokens")).toBe(false);
+    expect(models.some(({ pricing_state }) => pricing_state === "numeric")).toBe(true);
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        diagnostics: [
+          expect.objectContaining({ path: "/documents/api-reference/reasoning_tokens" }),
+        ],
+      }),
+    );
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "pricing_input_contract_partial",
+      sample: "4/5 Databricks pricing inputs",
+    });
   });
 
   it("reconciles every reviewed Databricks pricing item without unresolved rows", async () => {
@@ -8737,11 +9942,6 @@ describe("Databricks adapters", () => {
         "api-reference.html": reference.replace("Chat Completions API", "Chat API"),
       }),
     ).rejects.toThrow("API reference changed");
-    await expect(
-      databricksCatalog({
-        "api-reference.html": reference.replace("reasoning_tokens", "cached_tokens"),
-      }),
-    ).rejects.toThrow("response usage contract changed");
     const priority = await fixture("databricks/priority-mode.html");
     await expect(
       databricksCatalog({
@@ -8957,6 +10157,31 @@ describe("xAI adapter", () => {
       "grok-voice-think-fast-1.0",
       "grok-voice-think-fast-2.0",
     ]);
+    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(54);
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "responses.usage.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        }),
+        expect.objectContaining({
+          key: "chat.stream.usage.cached_prompt_text_tokens",
+          channel: "stream_event",
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "video.generated_seconds",
+          channel: "result",
+          locator: { kind: "json_pointer", value: "/video/duration" },
+        }),
+        expect.objectContaining({
+          key: "tts.rest.input_characters",
+          locator: { kind: "provider_field", value: "TtsRequest.accepted_billing_characters" },
+        }),
+      ]),
+    );
     expect(models.find(({ model_id }) => model_id === "grok-4.5")).toMatchObject({
       version: "1.0",
       uid: "xai/grok-4.5@1.0",
@@ -9183,6 +10408,18 @@ describe("xAI adapter", () => {
           provider_id: "xai",
           value: "successful_collections_searches",
         },
+        quantity_methods: [
+          {
+            input_sources: [
+              expect.objectContaining({
+                locator: {
+                  kind: "provider_field",
+                  value: "ChatResponse.server_side_tool_usage.SERVER_SIDE_TOOL_COLLECTIONS_SEARCH",
+                },
+              }),
+            ],
+          },
+        ],
       }),
     ]);
     expect(collections?.offers[0]?.relations).toEqual([]);
@@ -9208,6 +10445,139 @@ describe("xAI adapter", () => {
             conditions.context_min_tokens === 200_000,
         ),
     ).toMatchObject({ price: "15", derived: true });
+  });
+
+  it("publishes unit-checked request, result, stream, media, voice, and tool inputs", async () => {
+    const value = manifest("xai");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing xAI pricing source");
+    const models = await xaiCatalog();
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    const rates =
+      partition?.books.flatMap(({ offers }) =>
+        offers.flatMap(({ terms }) =>
+          terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+        ),
+      ) ?? [];
+    const bindings = rates.flatMap(({ charge_binding }) => charge_binding ?? []);
+    const uncached = bindings.find(
+      ({ signal }) => signal.namespace === "kmodels" && signal.value === "uncached_input_tokens",
+    );
+    expect(
+      uncached?.quantity_methods?.some(({ input_sources }) =>
+        input_sources?.some(
+          ({ locator }) =>
+            locator.kind === "provider_field" &&
+            locator.value === "ChatResponse.usage.prompt_text_tokens",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      uncached?.quantity_methods?.some(({ calculation }) =>
+        calculation?.nodes.some(({ op }) => op === "subtract_floor_zero"),
+      ),
+    ).toBe(true);
+    const realtimeAudio = bindings.find(
+      ({ signal }) =>
+        signal.namespace === "provider" && signal.value === "billed_realtime_audio_seconds",
+    );
+    expect(realtimeAudio?.aggregation).toBe("session");
+    expect(
+      realtimeAudio?.quantity_methods?.some(({ calculation }) =>
+        calculation?.nodes.some(({ op }) => op === "sum"),
+      ),
+    ).toBe(true);
+    const ttsCharacters = bindings.find(
+      ({ signal }) => signal.namespace === "kmodels" && signal.value === "input_characters",
+    );
+    expect(ttsCharacters?.aggregation).toEqual({
+      namespace: "provider",
+      provider_id: "xai",
+      value: "tts_utterance",
+    });
+    expect(partition?.vocabulary.atoms).toContainEqual({
+      kind: "aggregation",
+      key: "tts_utterance",
+      definition: "One xAI Text to Speech utterance across REST or streaming fragments",
+    });
+    expect(
+      ttsCharacters?.quantity_methods
+        ?.flatMap(({ input_sources }) => input_sources ?? [])
+        .map(({ locator }) => locator.value),
+    ).toEqual(
+      expect.arrayContaining([
+        "TtsRequest.accepted_billing_characters",
+        "TtsStream.accepted_text_delta_billing_characters",
+      ]),
+    );
+    expect(rates.flatMap(({ selector_sources }) => selector_sources ?? [])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "served_service_tier" },
+          locator: { kind: "json_pointer", value: "/service_tier" },
+        }),
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "resolution" },
+          locator: { kind: "provider_field", value: "VideoRequest.effective_output_resolution" },
+        }),
+      ]),
+    );
+    expect(
+      bindings
+        .flatMap(({ observations }) => observations)
+        .some(
+          ({ locator }) =>
+            locator.kind === "provider_key" &&
+            /^(?:Response\.|ChatCompletion\.|request\.|completed video)/u.test(locator.value),
+        ),
+    ).toBe(false);
+  });
+
+  it("keeps pricing-input contract drift field-local", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const items: PricingReconciliationItem[] = [];
+    const models = await xaiCatalog(
+      "xai/models.txt",
+      (body) => body,
+      (body) => body.replace("uncached\n`prompt_text_tokens`", "uncached\n`future_text_tokens`"),
+      (item) => items.push(item),
+      (item) => findings.push(item),
+    );
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(inputs).toHaveLength(53);
+    expect(inputs.some(({ key }) => key === "sdk.agent.prompt_text_tokens")).toBe(false);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "sdk.agent.cached_prompt_text_tokens" }),
+        expect.objectContaining({ key: "responses.usage.input_tokens" }),
+        expect.objectContaining({ key: "video.generated_seconds" }),
+      ]),
+    );
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              path: expect.stringContaining("sdk.agent.prompt_text_tokens"),
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "pricing_input_contract_partial",
+        sample: "53/54 xAI pricing inputs",
+      }),
+    );
+    expect(models.find(({ model_id }) => model_id === "grok-4.3")?.pricing_state).toBe("numeric");
   });
 
   it("keeps request-attributable rates and excludes account resources", async () => {
@@ -9406,7 +10776,8 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v11");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v12");
+    expect(value.sources[0]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v2");
     const priceItems: PricingReconciliationItem[] = [];
     const changedPrice = await xaiCatalog(
@@ -9523,26 +10894,108 @@ describe("document adapter", () => {
     const value = manifest("amazon-bedrock");
     const source = value.sources[0];
     if (source === undefined) throw new Error("Missing Bedrock source");
-    expect(source.extractorVersion).toBe("bedrock-catalog-v19");
-    expect(source.linkedDocuments?.documents?.map(({ id, optional }) => [id, optional])).toEqual([
-      ["bedrock-mantle", true],
-      ["bedrock-rerank-supported", true],
-      ["bedrock-public-pricing", true],
-      ["bedrock-cohere-embed-v4-marketplace", true],
-      ["pricing-bedrock", true],
-      ["pricing-foundation-models", true],
-      ["pricing-service", true],
+    expect(source.extractorVersion).toBe("bedrock-catalog-v20");
+    expect(
+      source.linkedDocuments?.documents?.map(({ id, optional, claimLocal }) => [
+        id,
+        optional,
+        claimLocal,
+      ]),
+    ).toEqual([
+      ["bedrock-mantle", true, undefined],
+      ["bedrock-rerank-supported", true, undefined],
+      ["bedrock-public-pricing", true, undefined],
+      ["bedrock-cohere-embed-v4-marketplace", true, undefined],
+      ["pricing-bedrock", true, undefined],
+      ["pricing-foundation-models", true, undefined],
+      ["pricing-service", true, undefined],
+      ["bedrock-converse", true, true],
+      ["bedrock-converse-stream-metadata", true, true],
+      ["bedrock-token-usage", true, true],
+      ["bedrock-cache-detail", true, true],
+      ["bedrock-prompt-caching", true, true],
+      ["bedrock-batch-results", true, true],
+      ["bedrock-invocation-logging", true, true],
+      ["bedrock-apply-guardrail", true, true],
+      ["bedrock-invoke-guardrail-checks", true, true],
     ]);
 
     const bundle = linkedBundle(await fixture("document/bedrock.json"));
-    expect(
-      parseSource({
-        provider: provider(value),
-        source,
-        body: JSON.stringify(bundle),
-        observedAt,
-      }),
-    ).toHaveLength(4);
+    const parsed = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(bundle),
+      observedAt,
+    });
+    expect(parsed).toHaveLength(4);
+    const pricingInputs = parsed.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(32);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "runtime.converse.uncached_input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/inputTokens" },
+        }),
+        expect.objectContaining({
+          key: "runtime.converse.cache_write_1h_input_tokens",
+          channel: "stream_event",
+          absent_value: "zero",
+        }),
+        expect.objectContaining({
+          key: "batch.manifest.input_tokens",
+          channel: "result",
+          locator: {
+            kind: "provider_field",
+            value: "manifest.json.out.inputTokenCount",
+          },
+        }),
+        expect.objectContaining({
+          key: "runtime.invocation_log.output_tokens",
+          channel: "invocation_log",
+          availability: "reconciliation_only",
+        }),
+        expect.objectContaining({
+          key: "guardrails.apply.contentPolicyUnits",
+          locator: { kind: "json_pointer", value: "/usage/contentPolicyUnits" },
+        }),
+        expect.objectContaining({
+          key: "guardrails.checks.promptAttack.textUnits",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/promptAttack/textUnits",
+          },
+        }),
+      ]),
+    );
+
+    const drifted = linkedBundle(await fixture("document/bedrock.json"));
+    const tokenUsage = drifted.documents.find(({ url }) => url.endsWith("TokenUsage.html"));
+    if (tokenUsage === undefined) throw new Error("Missing Bedrock TokenUsage fixture");
+    tokenUsage.body = tokenUsage.body.replace("cacheReadInputTokens", "cachedInputTokens");
+    const driftFindings: PricingReconciliationItem[] = [];
+    const driftedModels = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify(drifted),
+      observedAt,
+      onPricingReconciliation: (item) => driftFindings.push(item),
+    });
+    const driftedInputs = driftedModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(driftedInputs).toHaveLength(30);
+    expect(driftedInputs.some(({ key }) => key === "runtime.converse.cached_input_tokens")).toBe(
+      false,
+    );
+    expect(driftedInputs.some(({ key }) => key === "runtime.converse.output_tokens")).toBe(true);
+    expect(driftedModels.find(({ price_facts }) => price_facts.length > 0)).toMatchObject({
+      pricing_state: "numeric",
+      raw_price_facts: [],
+    });
+    expect(driftFindings).toContainEqual({
+      disposition: "unbound",
+      reason_code: "pricing_input_contract_partial",
+      sample: "30/32 Bedrock pricing inputs",
+    });
 
     const mantle = bundle.documents.find(({ url }) => url.endsWith("bedrock-mantle.md"));
     if (mantle === undefined) throw new Error("Missing Bedrock Mantle fixture");
@@ -10995,13 +12448,86 @@ describe("document adapter", () => {
 });
 
 describe("Vercel adapter", () => {
+  it("extracts first-party usage and selector inputs with field-local drift", () => {
+    const restPath = "/docs/ai-gateway/sdks-and-apis/rest-api.md";
+    const documents = new Map(
+      vercelDocumentation().map(({ url, body }) => [new URL(url).pathname, body]),
+    );
+    const reconciliations: PricingReconciliationItem[] = [];
+    const inputs = extractVercelPricingInputs(documents, "vercel-models", undefined, (item) =>
+      reconciliations.push(item),
+    );
+    expect(inputs).toHaveLength(25);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "generation.native_prompt_tokens",
+          locator: { kind: "json_pointer", value: "/data/native_tokens_prompt" },
+        }),
+        expect.objectContaining({ key: "generation.native_cached_tokens" }),
+        expect.objectContaining({
+          key: "gateway.served_speed",
+          selector_absent_value: "standard",
+        }),
+        expect.objectContaining({
+          key: "gateway.served_service_tier",
+          selector_absent_value: "standard",
+        }),
+        expect.objectContaining({
+          key: "gateway.served_region",
+          selector_absent_value: "default",
+        }),
+        expect.objectContaining({
+          key: "image.generated_images",
+          reduction: { kind: "array_length" },
+        }),
+        expect.objectContaining({ key: "transcription.input_audio_seconds" }),
+        expect.objectContaining({
+          key: "rerank.successful_request",
+          reduction: { kind: "presence" },
+        }),
+      ]),
+    );
+    expect(reconciliations).toContainEqual({
+      disposition: "normalized",
+      reason_code: "pricing_input_contract_bound",
+      sample: "25/25 Vercel pricing inputs",
+    });
+
+    const rest = documents.get(restPath);
+    if (rest === undefined) throw new Error("Missing Vercel REST guide fixture");
+    const driftedDocuments = new Map(documents);
+    driftedDocuments.set(restPath, rest.replaceAll("native_tokens_cached", "cached_tokens"));
+    const findings: SourceContractEvidence[] = [];
+    const drifted = extractVercelPricingInputs(driftedDocuments, "vercel-models", (finding) =>
+      findings.push(finding),
+    );
+    expect(drifted).toHaveLength(24);
+    expect(drifted.some(({ key }) => key === "generation.native_cached_tokens")).toBe(false);
+    expect(drifted.some(({ key }) => key === "generation.native_prompt_tokens")).toBe(true);
+    expect(findings).toEqual([
+      expect.objectContaining({
+        diagnostics: [
+          expect.objectContaining({
+            path: `/documents${restPath}/generation.native_cached_tokens`,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it("keeps valid commercial siblings when one first-party claim drifts", () => {
     const documents = new Map(
       vercelDocumentation().map(({ url, body }) => [new URL(url).pathname, body]),
     );
+    const searchGuide = documents.get("/docs/ai-gateway/models-and-providers/web-search.md");
+    if (searchGuide === undefined) throw new Error("Missing Vercel search guide fixture");
     documents.set(
       "/docs/ai-gateway/models-and-providers/web-search.md",
-      "The search products still exist, but their pricing presentation changed.",
+      searchGuide.replace(
+        "Perplexity web search requests are charged at $5 per 1,000 requests",
+        "Perplexity pricing presentation changed",
+      ),
     );
     const reconciliations: PricingReconciliationItem[] = [];
     const facts = vercelCommercialFacts({
@@ -11011,12 +12537,14 @@ describe("Vercel adapter", () => {
       onPricingReconciliation: (item) => reconciliations.push(item),
     });
     expect(facts.map(({ resource_key: key }) => key)).not.toContain("perplexity-search");
-    expect(facts).toEqual([]);
+    expect(facts.map(({ resource_key: key }) => key)).toEqual(
+      expect.arrayContaining(["exa-search", "tako-search", "parallel-search"]),
+    );
     expect(reconciliations).toEqual(
       expect.arrayContaining([
         {
           disposition: "unsupported",
-          reason_code: "generic_search_services_not_observed",
+          reason_code: "generic_search_services_partial",
           sample: "/docs/ai-gateway/models-and-providers/web-search.md",
         },
       ]),
@@ -11288,11 +12816,15 @@ describe("Vercel adapter", () => {
     });
     expect(
       dispositionCounts(reconciliations, ["normalized", "raw", "explicit_non_numeric", "excluded"]),
-    ).toMatchObject({ normalized: 6, raw: 0, explicit_non_numeric: 1 });
+    ).toMatchObject({ normalized: 7, raw: 0, explicit_non_numeric: 1 });
     expect(model?.commercial_facts?.map(({ resource_key: key }) => key)).toEqual([
       "perplexity-search",
       "exa-search",
       "exa-search",
+      "tako-search",
+      "tako-search",
+      "tako-search",
+      "tako-search",
       "parallel-search",
       "parallel-search",
     ]);
@@ -11309,6 +12841,7 @@ describe("Vercel adapter", () => {
         "service:native-web-search",
         "service:perplexity-search",
         "service:exa-search",
+        "service:tako-search",
         "service:parallel-search",
       ]),
     );
@@ -11324,9 +12857,9 @@ describe("Vercel adapter", () => {
             enrollment.length === 0 && relations.length === 0 && settlement.length === 0,
         ),
     ).toBe(true);
-    for (const [bookKey, operation, bound] of [
-      ["service:exa-search", "additional_requested_results", true],
-      ["service:parallel-search", "additional_results", false],
+    for (const [bookKey, operation] of [
+      ["service:exa-search", "additional_requested_results"],
+      ["service:parallel-search", "additional_results"],
     ] as const) {
       const book = pricing?.books.find(({ book_key: key }) => key === bookKey);
       expect(book?.offers.map(({ offer_key: key }) => key)).toEqual(["search"]);
@@ -11339,11 +12872,50 @@ describe("Vercel adapter", () => {
       expect(terms.flatMap(({ raw_variants }) => raw_variants)).toEqual([]);
       const additional = terms.find(({ term_key: key }) => key === `web_search:${operation}`);
       expect(additional?.variants[0]).toEqual(
-        bound
-          ? expect.objectContaining({ charge_binding: expect.any(Object) })
-          : expect.not.objectContaining({ charge_binding: expect.anything() }),
+        expect.objectContaining({ charge_binding: expect.any(Object) }),
       );
+      expect(additional?.variants[0]?.charge_binding?.quantity_methods?.[0]?.calculation).toEqual({
+        nodes: [
+          expect.objectContaining({ op: "signal" }),
+          {
+            op: "constant",
+            value: { numerator: "10", denominator: "1" },
+            unit: {
+              factors: [{ unit: { namespace: "kmodels", value: "item" }, power: 1 }],
+            },
+          },
+          { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+        ],
+        result: 2,
+      });
     }
+    const tako = pricing?.books.find(({ book_key: key }) => key === "service:tako-search");
+    expect(tako?.offers.map(({ offer_key: key }) => key)).toEqual(["search"]);
+    const takoRates = tako?.offers[0]?.terms.find((term) => term.kind === "rate");
+    expect(takoRates).toMatchObject({
+      kind: "rate",
+      variants: expect.arrayContaining([
+        expect.objectContaining({
+          selector_sources: expect.arrayContaining([
+            expect.objectContaining({
+              dimension: { namespace: "kmodels", value: "search_effort" },
+            }),
+          ]),
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "vercel",
+              value: "tako_successful_search_requests",
+            },
+          }),
+        }),
+      ]),
+    });
+    expect(tako?.offers[0]?.terms).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "raw", term_key: "data_export_surcharge" }),
+      ]),
+    );
   });
 
   it("declares endpoint, missing-price page, and commercial-policy collection", () => {
@@ -11355,7 +12927,7 @@ describe("Vercel adapter", () => {
         maxModelPages: 50,
         concurrency: 12,
       },
-      fields: expect.arrayContaining(["pricing", "routes"]),
+      fields: expect.arrayContaining(["pricing", "pricing_inputs", "routes"]),
       linkedDocuments: {
         minDocuments: 0,
         maxDocuments: 0,
@@ -11363,6 +12935,13 @@ describe("Vercel adapter", () => {
           expect.objectContaining({ id: "models-and-providers" }),
           expect.objectContaining({ id: "web-search" }),
           expect.objectContaining({ id: "rest-api" }),
+          expect.objectContaining({ id: "fast-mode" }),
+          expect.objectContaining({ id: "service-tiers" }),
+          expect.objectContaining({ id: "regional-inference" }),
+          expect.objectContaining({ id: "image-generation" }),
+          expect.objectContaining({ id: "video-generation" }),
+          expect.objectContaining({ id: "speech-to-text" }),
+          expect.objectContaining({ id: "reranking" }),
         ]),
       },
     });
@@ -11503,7 +13082,9 @@ describe("Vercel adapter", () => {
     expect(input).toMatchObject({
       kind: "rate",
       variants: expect.arrayContaining([
-        expect.not.objectContaining({ charge_binding: expect.anything() }),
+        expect.objectContaining({
+          charge_binding: expect.not.objectContaining({ quantity_methods: expect.anything() }),
+        }),
       ]),
     });
   });
@@ -11536,11 +13117,11 @@ describe("Vercel adapter", () => {
         .filter(({ meter }) => meter === "input_text")
         .map(({ price, conditions }) => ({ price, conditions })),
     ).toEqual([
-      { price: "1", conditions: { region: "default", service_tier: "standard" } },
-      { price: "2", conditions: { region: "default", service_tier: "fast" } },
-      { price: "1.1", conditions: { region: "eu", service_tier: "standard" } },
-      { price: "1.1", conditions: { region: "us", service_tier: "standard" } },
-      { price: "2.2", conditions: { region: "us", service_tier: "fast" } },
+      { price: "1", conditions: { region: "default", speed: "standard" } },
+      { price: "2", conditions: { region: "default", speed: "fast" } },
+      { price: "1.1", conditions: { region: "eu", speed: "standard" } },
+      { price: "1.1", conditions: { region: "us", speed: "standard" } },
+      { price: "2.2", conditions: { region: "us", speed: "fast" } },
     ]);
   });
 
@@ -11776,6 +13357,157 @@ describe("Vercel adapter", () => {
     });
   });
 
+  it("binds documented media quantities and effective routing selectors", async () => {
+    const value = manifest("vercel");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Vercel source");
+    if (source.source === undefined) throw new Error("Missing Vercel source kinds");
+    const models = await vercelDocumentedCatalog("vercel/pricing.json");
+    const pricing = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    if (pricing === undefined) throw new Error("Missing Vercel pricing");
+
+    const rate = (modelId: string, meter: string) =>
+      pricing.books
+        .find(({ book_key: key }) => key === `model:vercel/${modelId}`)
+        ?.offers.flatMap(({ terms }) => terms)
+        .find(
+          (term) =>
+            term.kind === "rate" &&
+            term.meter.namespace === "kmodels" &&
+            term.meter.value === meter,
+        );
+    const image = rate("acme/image-1", "image_generation");
+    expect(image).toMatchObject({
+      kind: "rate",
+      variants: expect.arrayContaining([
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "generated_images" },
+            quantity_methods: [
+              expect.objectContaining({
+                input_sources: expect.arrayContaining([
+                  expect.objectContaining({
+                    locator: {
+                      kind: "provider_field",
+                      value: "AiSdkGenerateImageResult.images",
+                    },
+                  }),
+                ]),
+              }),
+            ],
+          }),
+        }),
+      ]),
+    });
+    const video = rate("acme/video-1", "video_generation");
+    expect(video).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            aggregation: "job",
+            signal: { namespace: "kmodels", value: "generated_seconds" },
+            quantity_methods: [
+              expect.objectContaining({
+                calculation: {
+                  nodes: [
+                    expect.objectContaining({ op: "signal" }),
+                    expect.objectContaining({ op: "signal" }),
+                    { op: "product", inputs: [0, 1] },
+                  ],
+                  result: 2,
+                },
+              }),
+            ],
+          }),
+        }),
+      ],
+    });
+    const transcription = rate("acme/transcribe-preview", "input_audio");
+    expect(transcription).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "processed_audio_seconds" },
+            quantity_methods: [expect.objectContaining({ input_sources: expect.any(Array) })],
+          }),
+        }),
+      ],
+    });
+
+    const regional = rate("acme/regional-fast-1", "input_text");
+    const selectors =
+      regional?.kind === "rate"
+        ? regional.variants.flatMap(({ selector_sources: sources }) => sources ?? [])
+        : [];
+    expect(selectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "speed" },
+          absent_value: expect.objectContaining({ value: "standard" }),
+        }),
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "region" },
+          absent_value: expect.objectContaining({ value: "default" }),
+        }),
+      ]),
+    );
+    const tiered = rate("acme/text-1", "input_text");
+    const tierSelectors =
+      tiered?.kind === "rate"
+        ? tiered.variants.flatMap(({ selector_sources: sources }) => sources ?? [])
+        : [];
+    expect(tierSelectors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          dimension: { namespace: "kmodels", value: "served_service_tier" },
+          locator: {
+            kind: "provider_field",
+            value: "providerMetadata.gateway.serviceTier",
+          },
+        }),
+      ]),
+    );
+    const sourceRecord: SourceRecord = {
+      id: source.id,
+      provider_id: "vercel",
+      url: source.url,
+      source: source.source,
+      stability: source.stability,
+      scope: source.scope ?? "global",
+      exhaustive: source.exhaustive ?? false,
+      role: source.role ?? "catalog",
+      field_paths: source.fields,
+      ...(source.pricingEvidence === undefined ? {} : { pricing_evidence: source.pricingEvidence }),
+      observed_at: observedAt,
+      content_hash: "1".repeat(64),
+      extractor_version: source.extractorVersion,
+    };
+    const core: Pick<Catalog, "providers" | "models" | "sources"> = {
+      providers: [provider(value)],
+      models,
+      sources: [sourceRecord],
+    };
+    expect(() =>
+      validatePricingCatalog(
+        {
+          provider_vocabularies: [pricing.vocabulary],
+          provider_snapshots: [pricing.snapshot],
+          model_dispositions: pricing.model_dispositions,
+          books: pricing.books,
+        },
+        core,
+      ),
+    ).not.toThrow();
+  });
+
   it("publishes regional inference availability", async () => {
     const model = (await vercelCatalog("vercel/pricing.json")).find(
       ({ model_id }) => model_id === "acme/regional-fast-1",
@@ -11896,8 +13628,12 @@ describe("Cerebras adapter", () => {
       ["/capabilities/prompt-caching.md", "cache", "md"],
       ["/api-reference/chat-completions.md", "chat-completions", "md"],
       ["/api-reference/completions.md", "completions", "md"],
-      ["/capabilities/service-tiers.md", "service-tiers", "md"],
       ["/capabilities/batch.md", "batch", "md"],
+      [
+        "https://raw.githubusercontent.com/Cerebras/cerebras-cloud-sdk-python/main/README.md",
+        "sdk-readme",
+        "md",
+      ],
     ] as const;
     const body = JSON.stringify({
       index: {
@@ -11908,7 +13644,7 @@ describe("Cerebras adapter", () => {
         companions
           .filter(([, name]) => !options.omit?.includes(name))
           .map(async ([path, name, extension]) => ({
-            url: `https://inference-docs.cerebras.ai${path}`,
+            url: path.startsWith("https://") ? path : `https://inference-docs.cerebras.ai${path}`,
             body: options.overrides?.[name] ?? (await fixture(`cerebras/${name}.${extension}`)),
           })),
       ),
@@ -12098,7 +13834,7 @@ describe("Cerebras adapter", () => {
     ]);
   });
 
-  it("keeps catalog rows when model cards or commercial companions are unavailable", async () => {
+  it("keeps catalog rows and avoids raw accounting gaps when companions are unavailable", async () => {
     const missingCard = await catalog({ omit: ["gemma"] });
     expect(missingCard).toHaveLength(3);
     expect(missingCard.find(({ model_id }) => model_id === "gemma-4-31b")).toMatchObject({
@@ -12108,7 +13844,7 @@ describe("Cerebras adapter", () => {
       price_facts: [],
     });
     const onlyCards = await catalog({
-      omit: ["cache", "chat-completions", "completions", "service-tiers", "batch"],
+      omit: ["cache", "chat-completions", "completions", "batch", "sdk-readme"],
     });
     expect(onlyCards).toHaveLength(3);
     expect(
@@ -12118,18 +13854,47 @@ describe("Cerebras adapter", () => {
         ),
       ),
     ).toBe(true);
-    expect(
-      onlyCards.every(({ raw_price_facts }) =>
-        ["chat", "service_tier"].every((gap) =>
-          raw_price_facts.some(
-            ({ term_key }) => term_key === `accounting_binding_unavailable:${gap}`,
-          ),
-        ),
-      ),
-    ).toBe(true);
+    expect(onlyCards.flatMap(({ raw_price_facts }) => raw_price_facts)).toEqual([]);
+    expect(onlyCards.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual([]);
   });
 
-  it("isolates endpoint, price, usage, and service-tier drift", async () => {
+  it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
+    expect(source("cerebras-catalog")).toMatchObject({
+      extractorVersion: "cerebras-catalog-v13",
+      fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
+    });
+    const models = await catalog();
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(inputs).toHaveLength(14);
+    expect(inputs.map(({ key }) => key).sort()).toEqual([
+      "batch.result.input_tokens",
+      "batch.result.output_tokens",
+      "chat.cached_input_tokens",
+      "chat.input_tokens",
+      "chat.output_tokens",
+      "chat.stream.cached_input_tokens",
+      "chat.stream.input_tokens",
+      "chat.stream.output_tokens",
+      "completions.cached_input_tokens",
+      "completions.input_tokens",
+      "completions.output_tokens",
+      "completions.stream.cached_input_tokens",
+      "completions.stream.input_tokens",
+      "completions.stream.output_tokens",
+    ]);
+    expect(inputs.find(({ key }) => key === "chat.stream.output_tokens")).toMatchObject({
+      channel: "stream_event",
+      locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
+      availability: "terminal_only",
+    });
+    expect(inputs.find(({ key }) => key === "batch.result.input_tokens")).toMatchObject({
+      channel: "result",
+      locator: { kind: "json_pointer", value: "/response/usage/prompt_tokens" },
+      availability: "success_only",
+    });
+  });
+
+  it("isolates endpoint, price, and accounting-input drift", async () => {
     async function expectDrift(
       overrides: Readonly<Record<string, string>>,
       reasonCode: string,
@@ -12188,16 +13953,16 @@ describe("Cerebras adapter", () => {
       "per request",
     );
     await expectDrift({ gemma: missingUnit }, "model_card_input_price_drift");
-    const serviceTiers = (await fixture("cerebras/service-tiers.md")).replace(
-      "all service tiers are billed equally",
-      "service tiers may be billed differently",
-    );
-    await expectDrift({ "service-tiers": serviceTiers }, "service_tier_pricing_contract_drift");
     const cache = (await fixture("cerebras/cache.md")).replace(
       "billed at the standard input token rate",
       "billing is unspecified",
     );
-    await expectDrift({ cache }, "cache_accounting_contract_drift");
+    await expectDrift({ cache }, "pricing_input_contract_partial");
+    const sdkReadme = (await fixture("cerebras/sdk-readme.md")).replace(
+      "final chunk",
+      "an unspecified event",
+    );
+    await expectDrift({ "sdk-readme": sdkReadme }, "pricing_input_contract_partial");
     const batch = (await fixture("cerebras/batch.md")).replace(
       "You're only charged for\nrequests that completed.",
       "Billing depends on status.",
@@ -12335,6 +14100,40 @@ describe("Cerebras adapter", () => {
         ["output_text", "output_tokens"],
       ]),
     );
+    const inputTerm = payg?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_text",
+    );
+    const inputBinding =
+      inputTerm?.kind === "rate" ? inputTerm.variants[0]?.charge_binding : undefined;
+    expect(inputBinding?.quantity_methods).toEqual([
+      expect.objectContaining({
+        calculation: {
+          nodes: [
+            { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+            {
+              op: "signal",
+              signal: { namespace: "kmodels", value: "cached_input_tokens" },
+            },
+            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+          ],
+          result: 2,
+        },
+        input_sources: expect.arrayContaining([
+          expect.objectContaining({
+            channel: "response",
+            locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+          }),
+          expect.objectContaining({
+            channel: "stream_event",
+            locator: {
+              kind: "json_pointer",
+              value: "/usage/prompt_tokens_details/cached_tokens",
+            },
+            availability: "terminal_only",
+          }),
+        ]),
+      }),
+    ]);
 
     const batch = resource("batch");
     expect(batch?.scope).toMatchObject({ kind: "provider_resource", model_refs: [] });
@@ -12345,7 +14144,7 @@ describe("Cerebras adapter", () => {
         relations: [],
         settlement: [],
         states: [expect.objectContaining({ state: "not_published" })],
-        terms: [expect.objectContaining({ kind: "raw", term_key: "batch-charge-trigger" })],
+        terms: [],
       }),
     ]);
     expect(
@@ -12472,7 +14271,8 @@ describe("Hugging Face adapter", () => {
         },
       ],
     });
-    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v10");
+    expect(sources[1]?.extractorVersion).toBe("huggingface-router-v11");
+    expect(sources[1]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     expect(sources[1]?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual([
       "pricing",
       "overview",
@@ -12480,6 +14280,7 @@ describe("Hugging Face adapter", () => {
       "responses-api",
       "sdk-inference",
       "sdk-provider-registry",
+      "responses-schema",
     ]);
     expect(sources[2]).toMatchObject({
       extractorVersion: "huggingface-featherless-v1",
@@ -13348,6 +15149,34 @@ describe("Hugging Face adapter", () => {
       { name: "Chat Completions", path: "/v1/chat/completions" },
       { name: "Responses", path: "/v1/responses" },
     ]);
+    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(9);
+    expect(models.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "chat.response.prompt_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          key: "chat.stream.completion_tokens",
+          channel: "stream_event",
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "responses.stream.output_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/response/usage/output_tokens" },
+        }),
+        expect.objectContaining({
+          key: "routing.pinned_provider",
+          channel: "request",
+          locator: {
+            kind: "provider_field",
+            value: "HuggingFaceRequest.pinned_route_provider",
+          },
+        }),
+      ]),
+    );
     expect(model?.release_date).toBeUndefined();
     expect(model?.price_facts.some((rate) => rate.conditions.route_provider === "groq")).toBe(
       false,
@@ -13387,7 +15216,7 @@ describe("Hugging Face adapter", () => {
         "unresolved",
       ]),
     ).toEqual({
-      normalized: 3,
+      normalized: 4,
       raw: 0,
       explicit_non_numeric: 1,
       excluded: 3,
@@ -13436,6 +15265,49 @@ describe("Hugging Face adapter", () => {
           term.variants.every(({ charge_binding }) => charge_binding !== undefined),
       ),
     ).toBe(true);
+    const variants =
+      partition?.books
+        .flatMap(({ offers }) => offers)
+        .flatMap(({ terms }) =>
+          terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+        ) ?? [];
+    expect(
+      variants.flatMap(
+        ({ charge_binding }) =>
+          charge_binding?.quantity_methods?.flatMap(({ input_sources }) => input_sources ?? []) ??
+          [],
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/response/usage/output_tokens" },
+        }),
+      ]),
+    );
+    expect(
+      variants.every(({ selector_sources }) =>
+        selector_sources?.some(
+          ({ dimension, locator }) =>
+            dimension.namespace === "kmodels" &&
+            dimension.value === "route_provider" &&
+            locator.kind === "provider_field" &&
+            locator.value === "HuggingFaceRequest.pinned_route_provider",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      variants
+        .flatMap(({ charge_binding }) => charge_binding?.observations ?? [])
+        .some(
+          ({ locator }) =>
+            locator.kind === "provider_key" && locator.value.startsWith("response:usage."),
+        ),
+    ).toBe(false);
     expect(partition?.books.some(({ scope }) => scope.kind === "provider_resource")).toBe(false);
     expect(
       partition?.books
@@ -13443,6 +15315,62 @@ describe("Hugging Face adapter", () => {
         .every(({ enrollment, relations, settlement }) =>
           [enrollment, relations, settlement].every((values) => (values?.length ?? 0) === 0),
         ),
+    ).toBe(true);
+  });
+
+  it("keeps Hugging Face pricing-input drift field-local", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const models = await huggingFaceRouter(
+      "huggingface/pricing.json",
+      (body) => body,
+      (path, body) =>
+        path === "responses-schema.yaml"
+          ? body.replace("        input_tokens:", "        future_input_tokens:")
+          : body,
+      undefined,
+      (finding) => findings.push(finding),
+    );
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(inputs).toHaveLength(7);
+    expect(inputs.some(({ key }) => key === "responses.response.input_tokens")).toBe(false);
+    expect(inputs.some(({ key }) => key === "responses.stream.input_tokens")).toBe(false);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "chat.response.prompt_tokens" }),
+        expect.objectContaining({ key: "responses.response.output_tokens" }),
+        expect.objectContaining({ key: "routing.pinned_provider" }),
+      ]),
+    );
+    expect(findings).toHaveLength(2);
+
+    const withoutPinnedRoute = await huggingFaceRouter(
+      "huggingface/pricing.json",
+      (body) => body,
+      (path, body) =>
+        path === "overview.md"
+          ? body.replace("appending the provider name", "using an undocumented mechanism")
+          : body,
+    );
+    expect(
+      withoutPinnedRoute
+        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
+        .some(({ key }) => key === "routing.pinned_provider"),
+    ).toBe(false);
+    const value = manifest("huggingface");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source: huggingFaceRouterSource(value), models: withoutPinnedRoute }],
+      withoutPinnedRoute,
+      value.pricingCategoricalLabels,
+    );
+    expect(
+      partition?.books
+        .flatMap(({ offers }) => offers)
+        .flatMap(({ terms }) =>
+          terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+        )
+        .every(({ selector_sources }) => selector_sources === undefined),
     ).toBe(true);
   });
 
@@ -13767,7 +15695,8 @@ describe("DeepSeek adapters", () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      fields: expect.arrayContaining(["api_endpoints"]),
+      extractorVersion: "deepseek-catalog-v15",
+      fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,
         maxDocuments: 0,
@@ -13780,6 +15709,7 @@ describe("DeepSeek adapters", () => {
       },
       { id: "responses", url: "https://api-docs.deepseek.com/api/create-response" },
       { id: "fim-completion", url: "https://api-docs.deepseek.com/api/create-completion" },
+      { id: "anthropic-api", url: "https://api-docs.deepseek.com/guides/anthropic_api" },
       { id: "vision", url: "https://api-docs.deepseek.com/guides/vision" },
       {
         id: "model-inventory",
@@ -13791,7 +15721,45 @@ describe("DeepSeek adapters", () => {
       },
     ]);
     expect(catalogSource.linkedDocuments?.documents?.every(({ optional }) => optional)).toBe(true);
-    const models = await deepseekCatalog();
+    const findings: SourceContractEvidence[] = [];
+    const models = await deepseekCatalog({
+      onContractFinding: (finding) => findings.push(finding),
+    });
+    expect(findings).toEqual([]);
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(inputs).toHaveLength(18);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "chat.cached_input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_cache_hit_tokens" },
+          availability: "success_only",
+        }),
+        expect.objectContaining({
+          key: "chat.stream.uncached_input_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/prompt_cache_miss_tokens" },
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "responses.stream.cached_input_tokens",
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/response/usage/input_tokens_details/cached_tokens",
+          },
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "fim.stream.output_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
+          availability: "terminal_only",
+        }),
+      ]),
+    );
+    expect(inputs.every(({ key }) => !key.startsWith("anthropic."))).toBe(true);
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "deepseek-v4-flash",
       "deepseek-v4-flash-vision-exp",
@@ -13804,6 +15772,7 @@ describe("DeepSeek adapters", () => {
         { name: "Chat Completions", path: "/chat/completions" },
         { name: "Responses", path: "/responses" },
         { name: "FIM Completion (Beta)", path: "/beta/completions" },
+        { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
       ],
       modalities: { input: ["text"], output: ["text"] },
       capabilities: {
@@ -13840,6 +15809,7 @@ describe("DeepSeek adapters", () => {
     expect(models.find(({ model_id }) => model_id === "deepseek-v4-flash")?.api_endpoints).toEqual([
       { name: "Chat Completions", path: "/chat/completions" },
       { name: "Responses", path: "/responses" },
+      { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
     ]);
     expect(
       models.find(({ model_id }) => model_id === "deepseek-v4-flash-vision-exp"),
@@ -13850,6 +15820,7 @@ describe("DeepSeek adapters", () => {
       api_endpoints: [
         { name: "Chat Completions", path: "/chat/completions" },
         { name: "Responses", path: "/responses" },
+        { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
       ],
       pricing_state: "numeric",
     });
@@ -13874,9 +15845,31 @@ describe("DeepSeek adapters", () => {
       expect.objectContaining({ reason_code: "chat_operation_contract_drift" }),
     );
 
+    const findings: SourceContractEvidence[] = [];
     const changedUsage = await deepseekCatalog({
       chat: chat.replace("prompt_cache_hit_tokens", "cached_tokens"),
+      onContractFinding: (finding) => findings.push(finding),
     });
+    expect(findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          diagnostics: [
+            expect.objectContaining({
+              path: "/documents/api/create-chat-completion/chat.cached_input_tokens",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          diagnostics: [
+            expect.objectContaining({
+              path: "/documents/api/create-chat-completion/chat.stream.cached_input_tokens",
+            }),
+          ],
+        }),
+      ]),
+    );
+    expect(findings).toHaveLength(2);
+    expect(changedUsage.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(16);
     expect(
       changedUsage.find(({ model_id }) => model_id === "deepseek-v4-pro")?.api_endpoints,
     ).toContainEqual({ name: "Chat Completions", path: "/chat/completions" });
@@ -13892,14 +15885,71 @@ describe("DeepSeek adapters", () => {
     expect(
       flash?.terms.some(({ term_key }) => term_key.startsWith("accounting_binding_unavailable:")),
     ).toBe(false);
+    const cache = flash?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "cache_read_text",
+    );
+    expect(
+      cache?.kind === "rate"
+        ? cache.variants[0]?.charge_binding?.quantity_methods?.flatMap(
+            ({ input_sources }) => input_sources ?? [],
+          )
+        : [],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "response",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/input_tokens_details/cached_tokens",
+          },
+        }),
+        expect.objectContaining({
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/response/usage/input_tokens_details/cached_tokens",
+          },
+        }),
+      ]),
+    );
     const output = flash?.terms.find(
       (term) => term.kind === "rate" && term.meter.value === "output_text",
     );
     expect(
       output?.kind === "rate"
-        ? output.variants[0]?.charge_binding?.observations.map(({ locator }) => locator.value)
+        ? output.variants[0]?.charge_binding?.quantity_methods?.flatMap(
+            ({ input_sources }) => input_sources ?? [],
+          )
         : [],
-    ).toEqual(["responses:usage.output_tokens"]);
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/completion_tokens" },
+        }),
+        expect.objectContaining({
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/response/usage/output_tokens" },
+        }),
+      ]),
+    );
+
+    const changedAnthropic = await deepseekCatalog({
+      overrides: {
+        "guides/anthropic_api": (await fixture("deepseek/anthropic.html")).replace(
+          "https://api.deepseek.com/anthropic",
+          "https://api.deepseek.com/future-anthropic",
+        ),
+      },
+    });
+    expect(changedAnthropic).toHaveLength(3);
+    expect(changedAnthropic.every(({ price_facts }) => price_facts.length === 12)).toBe(true);
+    expect(
+      changedAnthropic.every(
+        ({ api_endpoints }) =>
+          api_endpoints?.some(({ path }) => path === "/anthropic/v1/messages") !== true,
+      ),
+    ).toBe(true);
 
     const responses = await fixture("deepseek/responses.html");
     const responseItems: PricingReconciliationItem[] = [];
@@ -14070,9 +16120,9 @@ describe("DeepSeek adapters", () => {
     const models = await deepseekCatalog({
       onPricingReconciliation: (item) => reconciliation.push(item),
     });
-    expect(
-      sourcePricingReconciliation(models, reconciliation, true).disposition_counts,
-    ).toMatchObject({ normalized: 36, raw: 0, excluded: 0 });
+    const counts = sourcePricingReconciliation(models, reconciliation, true).disposition_counts;
+    expect(counts).toEqual(expect.objectContaining({ raw: 0, excluded: 0 }));
+    expect(counts.normalized).toBeGreaterThanOrEqual(36);
     expect(models.every(({ raw_price_facts }) => raw_price_facts.length === 0)).toBe(true);
     expect(models.every(({ commercial_facts }) => commercial_facts === undefined)).toBe(true);
     expect(reconciliation).toEqual(
@@ -14113,13 +16163,51 @@ describe("DeepSeek adapters", () => {
       (term) => term.kind === "rate" && term.meter.value === "input_text",
     );
     expect(
-      input?.kind === "rate"
-        ? input.variants[0]?.charge_binding?.observations.map(({ locator }) => locator.value)
-        : [],
-    ).toEqual([
-      "chat:usage.prompt_cache_miss_tokens",
-      "responses:usage.input_tokens - usage.input_tokens_details.cached_tokens",
-    ]);
+      input?.kind === "rate" ? input.variants[0]?.charge_binding?.quantity_methods : [],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              channel: "response",
+              locator: { kind: "json_pointer", value: "/usage/prompt_cache_miss_tokens" },
+            }),
+            expect.objectContaining({
+              channel: "stream_event",
+              locator: { kind: "json_pointer", value: "/usage/prompt_cache_miss_tokens" },
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          calculation: {
+            nodes: [
+              { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+              {
+                op: "signal",
+                signal: { namespace: "kmodels", value: "cached_input_tokens" },
+              },
+              { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+            ],
+            result: 2,
+          },
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              channel: "response",
+              signal: { namespace: "kmodels", value: "input_tokens" },
+              locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+            }),
+            expect.objectContaining({
+              channel: "stream_event",
+              signal: { namespace: "kmodels", value: "cached_input_tokens" },
+              locator: {
+                kind: "json_pointer",
+                value: "/response/usage/input_tokens_details/cached_tokens",
+              },
+            }),
+          ]),
+        }),
+      ]),
+    );
     expect(flash?.terms.some(({ term_key }) => term_key === "cache_write_text")).toBe(false);
     expect(pricing?.vocabulary.atoms).toEqual(
       expect.arrayContaining([
@@ -14313,6 +16401,20 @@ describe("DashScope adapters", () => {
   const pricingDocuments = [
     ["context-cache", "context-cache", "cache.html"],
     ["web-search", "web-search", "web-search.html"],
+    ["image-search", "image-search", "image-search.html"],
+    ["web-search-image", "text-to-image-search", "web-search-image.html"],
+    ["qwen-api-via-openai-chat-completions", "chat-accounting", "chat.html"],
+    ["qwen-api-via-dashscope", "native-accounting", "usage.html"],
+    ["anthropic-api-messages", "anthropic-accounting", "anthropic.html"],
+    ["qwen-api-via-openai-responses", "responses-accounting", "responses.html"],
+    ["batch-interfaces-compatible-with-openai", "batch-accounting", "batch.html"],
+    ["qwen-image-api", "image-accounting", "usage.html"],
+    ["text-to-video-api-reference", "video-accounting", "usage.html"],
+    ["qwen-tts-api", "tts-accounting", "usage.html"],
+    ["fun-music-api", "music-accounting", "usage.html"],
+    ["non-realtime-speech-recognition-user-guide", "asr-accounting", "usage.html"],
+    ["fun-asr-server-events", "asr-stream-accounting", "usage.html"],
+    ["base-url", "base-url", "base-url.html"],
   ] as const;
 
   function source(id: string, minModels = 1, maxModels = 20): SourceManifest {
@@ -14791,7 +16893,7 @@ describe("DashScope adapters", () => {
       models
         .find(({ model_id }) => model_id === "wan2.7-r2v")
         ?.price_facts.map(({ meter }) => meter),
-    ).toEqual(["input_video", "video_generation"]);
+    ).toEqual(["video_generation"]);
     await expect(parsePricing(pricingBody.replace("Free trial", "Contact sales"))).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -14803,6 +16905,288 @@ describe("DashScope adapters", () => {
     await expect(parsePricing(pricingBody.replace("$1.6", "Contact sales"))).resolves.toEqual(
       expect.any(Array),
     );
+  });
+
+  it("publishes field-local accounting inputs for token, tool, media, and regional rates", async () => {
+    const findings: SourceContractEvidence[] = [];
+    const models = parse(source("dashscope-pricing"), await pricingBundle(), undefined, (finding) =>
+      findings.push(finding),
+    );
+    const inputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(findings).toEqual([]);
+    const completeInputCount = inputs.length;
+    expect(completeInputCount).toBeGreaterThan(0);
+    expect(inputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "chat.stream.cached_input_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens_details/cached_tokens" },
+        }),
+        expect.objectContaining({
+          key: "native.cache_creation_input_tokens",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/prompt_tokens_details/cache_creation/cache_creation_input_tokens",
+          },
+        }),
+        expect.objectContaining({
+          key: "anthropic.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        }),
+        expect.objectContaining({
+          key: "anthropic.stream.cache_creation_input_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/cache_creation_input_tokens" },
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "batch.responses.reasoning_tokens",
+          channel: "result",
+          locator: {
+            kind: "json_pointer",
+            value: "/response/body/usage/output_tokens_details/reasoning_tokens",
+          },
+        }),
+        expect.objectContaining({
+          key: "video.billable_seconds",
+          locator: { kind: "json_pointer", value: "/usage/duration" },
+        }),
+        expect.objectContaining({
+          key: "tts.input_characters",
+          locator: { kind: "json_pointer", value: "/usage/characters" },
+        }),
+        expect.objectContaining({
+          key: "request.resolved_region",
+          channel: "request",
+          locator: { kind: "provider_field", value: "HttpRequest.resolved_region" },
+        }),
+        expect.objectContaining({
+          key: "responses.stream.web_search_image_count",
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/response/usage/x_tools/web_search_image/count",
+          },
+        }),
+      ]),
+    );
+
+    const services = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    expect(
+      services
+        .filter(({ resource_key }) => resource_key === "image-search")
+        .flatMap(({ price_facts }) => price_facts)
+        .map(({ meter, price, unit, conditions }) => ({
+          meter,
+          price,
+          unit,
+          region: conditions.region,
+        })),
+    ).toEqual([
+      { meter: "image_search", price: "8", unit: "thousand_events", region: "Singapore" },
+      {
+        meter: "image_search",
+        price: "6.881",
+        unit: "thousand_events",
+        region: "China (Beijing)",
+      },
+    ]);
+    expect(
+      services
+        .filter(({ resource_key }) => resource_key === "text-to-image-search")
+        .flatMap(({ price_facts }) => price_facts)
+        .map(({ meter, price, unit, conditions }) => ({
+          meter,
+          price,
+          unit,
+          region: conditions.region,
+        })),
+    ).toEqual([
+      { meter: "image_search", price: "8", unit: "thousand_events", region: "Singapore" },
+      {
+        meter: "image_search",
+        price: "3.44",
+        unit: "thousand_events",
+        region: "China (Beijing)",
+      },
+    ]);
+
+    const usage = await fixture("dashscope/usage.html");
+    const drifted = parse(
+      source("dashscope-pricing"),
+      await pricingBundle(undefined, {
+        "image-accounting": usage.replace("usage.image_count", "usage.generated_count"),
+      }),
+    ).flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(drifted).toHaveLength(completeInputCount - 1);
+    expect(drifted.some(({ key }) => key === "image.generated_images")).toBe(false);
+    expect(drifted.some(({ key }) => key === "video.generated_videos")).toBe(true);
+
+    const manifestValue = manifest("dashscope");
+    const pricingSource = source("dashscope-pricing");
+    const pricing = assembleParsedProviderPricing(
+      "dashscope",
+      observedAt,
+      [{ source: pricingSource, models }],
+      models,
+      manifestValue.pricingCategoricalLabels,
+    );
+    if (pricing === undefined) throw new Error("DashScope fixture pricing was not assembled");
+    const rate = (modelId: string, meter: string) =>
+      pricing.books
+        .find(({ book_key }) => book_key === `model:dashscope/${modelId}`)
+        ?.offers.flatMap(({ terms }) => terms)
+        .find((term) => term.kind === "rate" && term.meter.value === meter);
+    expect(rate("wan2.7-r2v", "video_generation")).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "dashscope",
+              value: "billable_video_seconds",
+            },
+            aggregation: "job",
+          }),
+        }),
+      ],
+    });
+    expect(rate("fun-asr", "input_audio")).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "processed_audio_seconds" },
+          }),
+        }),
+      ],
+    });
+    expect(rate("qwen3-tts-flash", "input_text")).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "input_characters" },
+          }),
+        }),
+      ],
+    });
+    const embedding = rate("qwen3-vl-embedding", "embedding");
+    expect(
+      embedding?.kind === "rate"
+        ? embedding.variants
+            .map(({ charge_binding }) => charge_binding?.signal.value)
+            .sort((left, right) => String(left).localeCompare(String(right)))
+        : [],
+    ).toEqual(["input_image_video_tokens", "input_text_tokens"]);
+    const textInput = rate("qwen3.7-plus", "input_text");
+    expect(
+      textInput?.kind === "rate"
+        ? textInput.variants.flatMap(
+            ({ charge_binding }) =>
+              charge_binding?.quantity_methods?.flatMap(({ input_sources }) =>
+                input_sources?.map(({ channel, locator }) => ({ channel, locator })),
+              ) ?? [],
+          )
+        : [],
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        },
+      ]),
+    );
+    const nonCacheInput = rate("qwen-mt-lite", "input_text");
+    expect(nonCacheInput).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: { namespace: "kmodels", value: "input_tokens" },
+            quantity_methods: expect.arrayContaining([
+              expect.objectContaining({
+                input_sources: expect.arrayContaining([
+                  expect.objectContaining({
+                    channel: "stream_event",
+                    locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+                  }),
+                ]),
+              }),
+            ]),
+          }),
+        }),
+      ],
+    });
+    const imageSearch = pricing.books.find(({ book_key }) => book_key === "service:image-search");
+    expect(imageSearch?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "dashscope",
+              value: "successful_image_searches",
+            },
+          }),
+        }),
+      ],
+    });
+    const textToImageSearch = pricing.books.find(
+      ({ book_key }) => book_key === "service:text-to-image-search",
+    );
+    expect(textToImageSearch?.offers[0]?.terms[0]).toMatchObject({
+      kind: "rate",
+      variants: [
+        expect.objectContaining({
+          charge_binding: expect.objectContaining({
+            signal: {
+              namespace: "provider",
+              provider_id: "dashscope",
+              value: "successful_web_search_image_calls",
+            },
+          }),
+        }),
+      ],
+    });
+
+    const sourceRecord: SourceRecord = {
+      id: pricingSource.id,
+      provider_id: "dashscope",
+      url: pricingSource.url,
+      source: pricingSource.source ?? ["website"],
+      stability: pricingSource.stability,
+      scope: pricingSource.scope ?? "global",
+      exhaustive: pricingSource.exhaustive ?? false,
+      role: pricingSource.role ?? "catalog",
+      field_paths: pricingSource.fields,
+      ...(pricingSource.pricingEvidence === undefined
+        ? {}
+        : { pricing_evidence: pricingSource.pricingEvidence }),
+      observed_at: observedAt,
+      content_hash: "1".repeat(64),
+      extractor_version: pricingSource.extractorVersion,
+    };
+    const core: Pick<Catalog, "providers" | "models" | "sources"> = {
+      providers: [provider(manifestValue)],
+      models,
+      sources: [sourceRecord],
+    };
+    expect(() =>
+      validatePricingCatalog(
+        {
+          provider_vocabularies: [pricing.vocabulary],
+          provider_snapshots: [pricing.snapshot],
+          model_dispositions: pricing.model_dispositions,
+          books: pricing.books,
+        },
+        core,
+      ),
+    ).not.toThrow();
   });
 
   it("reconstructs reviewed sparse and multi-row Markdown pricing tables", async () => {
@@ -15243,13 +17627,28 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v10",
+      extractorVersion: "dashscope-pricing-v13",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
           expect.objectContaining({ id: "web-search", optional: true }),
+          expect.objectContaining({ id: "image-search", optional: true }),
+          expect.objectContaining({ id: "text-to-image-search", optional: true }),
+          expect.objectContaining({ id: "chat-accounting", optional: true }),
+          expect.objectContaining({ id: "native-accounting", optional: true }),
+          expect.objectContaining({ id: "anthropic-accounting", optional: true }),
+          expect.objectContaining({ id: "responses-accounting", optional: true }),
+          expect.objectContaining({ id: "batch-accounting", optional: true }),
+          expect.objectContaining({ id: "image-accounting", optional: true }),
+          expect.objectContaining({ id: "video-accounting", optional: true }),
+          expect.objectContaining({ id: "tts-accounting", optional: true }),
+          expect.objectContaining({ id: "music-accounting", optional: true }),
+          expect.objectContaining({ id: "asr-accounting", optional: true }),
+          expect.objectContaining({ id: "asr-stream-accounting", optional: true }),
+          expect.objectContaining({ id: "base-url", optional: true }),
         ],
       },
+      fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
       optional: true,
       pricingRequired: true,
       retainOmittedFacts: true,
@@ -15316,6 +17715,32 @@ describe("Kimi adapters", () => {
       ...(onContractFinding === undefined ? {} : { onContractFinding }),
     });
 
+  const chinaOpenApi = (body: string): string =>
+    body
+      .replace("https://api.moonshot.ai", "https://api.moonshot.cn")
+      .replace(
+        "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive.",
+        "显示整个请求的 Token 使用统计；如果流中断，可能无法收到最终用量。",
+      )
+      .replace(
+        "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576.",
+        "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
+      )
+      .replace(
+        "ID of the model to use. This endpoint currently supports `kimi-k3`.",
+        "使用的模型 ID。本接口当前支持 `kimi-k3`。",
+      )
+      .replace(
+        "Number of input tokens, including cached tokens.",
+        "输入 Token 数量，含命中缓存的部分。",
+      )
+      .replace(
+        "Number of output tokens, including reasoning tokens.",
+        "输出 Token 数量，含推理 Token。",
+      )
+      .replaceAll("Input tokens (excluding cache hits)", "输入 Token 数（不含命中缓存的部分）")
+      .replaceAll("Output tokens (including reasoning tokens)", "输出 Token 数（含推理 Token）");
+
   it("uses the documented international API origin", () => {
     expect(value.provider).toMatchObject({
       catalog_scope: "mixed",
@@ -15335,7 +17760,8 @@ describe("Kimi adapters", () => {
       url: "https://platform.kimi.ai/docs/openapi.json",
       allowedHosts: ["platform.kimi.ai"],
       extractor: { minModels: 4 },
-      extractorVersion: "kimi-openapi-v5",
+      extractorVersion: "kimi-openapi-v6",
+      fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
     });
     expect(source("kimi-china-openapi")).toMatchObject({
       url: "https://platform.kimi.com/docs/openapi.json",
@@ -15349,6 +17775,8 @@ describe("Kimi adapters", () => {
     expect(source("kimi-international-pricing")).toMatchObject({
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
+      extractorVersion: "kimi-pricing-v7",
+      fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(source("kimi-releases").linkedDocuments?.documents).toEqual(
       expect.arrayContaining([
@@ -15431,27 +17859,16 @@ describe("Kimi adapters", () => {
       ["/docs/pricing/batch", "pricing-batch"],
       ["/docs/pricing/chat", "pricing-overview"],
       ["/docs/pricing/tools", "tools"],
-      ["/docs/pricing/limits", "limits"],
       ["/docs/api/batch-create", "batch-api"],
-      ["/docs/api/chat", "chat-api"],
-      ["/docs/api/estimate", "estimate"],
-      ["/docs/api/balance", "balance"],
       ["/docs/api/files", "files"],
       ["/docs/api/files-upload", "files-upload"],
       ["/docs/api/files-list", "files-list"],
       ["/docs/api/files-retrieve", "files-retrieve"],
       ["/docs/api/files-delete", "files-delete"],
       ["/docs/api/files-content", "files-content"],
-      ["/docs/guide/use-context-caching-feature-of-kimi-api", "cache"],
       ["/docs/guide/use-web-search", "web-search"],
       ["/docs/guide/use-official-tools", "official-tools"],
       ["/docs/guide/use-batch-api", "batch-guide"],
-      ["/docs/guide/use-batch-inference", "batch-console"],
-      ["/docs/guide/account-and-payments", "account"],
-      ["/docs/guide/org-best-practice", "organization"],
-      ["/docs/guide/product-plans", "product-plans"],
-      ["/docs/introduction", "introduction"],
-      ["/docs/agreement/modeluse", "terms"],
       ["/docs/llms.txt", "llms", "txt"],
     ] as const;
     return parse(
@@ -15498,7 +17915,8 @@ describe("Kimi adapters", () => {
 
   it("uses exact OpenAPI model enums without a product-prefix rule", async () => {
     const body = await fixture("kimi/openapi.json");
-    const models = parse(source("kimi-openapi"), body);
+    const reconciliation: PricingReconciliationItem[] = [];
+    const models = parse(source("kimi-openapi"), body, (item) => reconciliation.push(item));
     expect(models.map(({ model_id }) => model_id)).toEqual([
       "kimi-k2.6",
       "kimi-k2.7-code",
@@ -15521,11 +17939,54 @@ describe("Kimi adapters", () => {
       reasoning: true,
       effort_control: true,
     });
+    expect(models.find(({ model_id }) => model_id === "kimi-k3")?.api_endpoints).toEqual([
+      { name: "Chat Completions", path: "/v1/chat/completions" },
+      { name: "Responses", path: "/v1/responses" },
+      { name: "Anthropic Messages", path: "/anthropic/v1/messages" },
+    ]);
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(16);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "chat.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          key: "responses.cached_input_tokens",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/input_tokens_details/cached_tokens",
+          },
+        }),
+        expect.objectContaining({
+          key: "messages.stream.uncached_input_tokens",
+          channel: "stream_event",
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "request.api_origin.international",
+          locator: { kind: "provider_field", value: "HttpRequest.api_origin" },
+        }),
+      ]),
+    );
+    expect(reconciliation).toContainEqual({
+      disposition: "normalized",
+      reason_code: "pricing_input_contract_bound",
+      sample: "16/16 Kimi OpenAPI pricing inputs",
+    });
     expect(models.find(({ model_id }) => model_id === "kimi-k3")?.limits.max_output_tokens).toBe(
       1_048_576,
     );
     expect(() =>
-      parse(source("kimi-openapi"), body.replace('"kimi-k3"]', '"kimi-k3", "ghost-model"]')),
+      parse(
+        source("kimi-openapi"),
+        body.replace(
+          '"model": { "enum": ["kimi-k3"] },\n              "reasoning_effort"',
+          '"model": { "enum": ["kimi-k3", "ghost-model"] },\n              "reasoning_effort"',
+        ),
+      ),
     ).toThrow("mapping disagrees");
     expect(() =>
       parse(source("kimi-openapi"), body.replace("/v1/chat/completions", "/v1/responses")),
@@ -15539,12 +18000,45 @@ describe("Kimi adapters", () => {
     expect(() => parse(source("kimi-openapi"), body.replace('"function"', '"service"'))).toThrow(
       "tool schema",
     );
-    expect(() =>
-      parse(source("kimi-openapi"), body.replace('"cached_tokens"', '"cache_tokens"')),
-    ).toThrow("usage fields");
-    expect(() =>
-      parse(source("kimi-openapi"), body.replace("if the stream is interrupted", "eventually")),
-    ).toThrow("streaming usage semantics");
+    const cachedDrift = parse(
+      source("kimi-openapi"),
+      body.replace('"cached_tokens"', '"cache_tokens"'),
+    );
+    expect(
+      cachedDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []).map(({ key }) => key),
+    ).not.toContain("chat.cached_input_tokens");
+    expect(
+      cachedDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? []).map(({ key }) => key),
+    ).toContain("chat.stream.cached_input_tokens");
+    const interruptedDrift = parse(
+      source("kimi-openapi"),
+      body.replace("if the stream is interrupted", "eventually"),
+    );
+    expect(
+      interruptedDrift
+        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
+        .filter(({ key }) => key.startsWith("chat.stream.")),
+    ).toEqual([]);
+    const responsesDriftReconciliation: PricingReconciliationItem[] = [];
+    const responsesDrift = parse(
+      source("kimi-openapi"),
+      body.replace(
+        "This endpoint currently supports `kimi-k3`.",
+        "This endpoint supports compatible models.",
+      ),
+      (item) => responsesDriftReconciliation.push(item),
+    );
+    expect(
+      responsesDrift
+        .find(({ model_id }) => model_id === "kimi-k3")
+        ?.api_endpoints?.map(({ path }) => path),
+    ).toEqual(["/v1/chat/completions", "/anthropic/v1/messages"]);
+    expect(responsesDriftReconciliation).toContainEqual(
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "responses_endpoint_contract",
+      }),
+    );
     expect(() =>
       parse(source("kimi-openapi"), body.replace('"low", "high", "max"', '"high", "max"')),
     ).toThrow("reasoning effort");
@@ -15560,17 +18054,16 @@ describe("Kimi adapters", () => {
         body.replace('"supports_video_in": { "type": "boolean" },', ""),
       ),
     ).toThrow("List Models item fields");
-    const china = body
-      .replace("https://api.moonshot.ai", "https://api.moonshot.cn")
-      .replace(
-        "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive.",
-        "显示整个请求的 Token 使用统计；如果流中断，可能无法收到最终用量。",
-      )
-      .replace(
-        "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576.",
-        "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
-      );
-    expect(parse(source("kimi-china-openapi"), china)).toHaveLength(4);
+    const china = chinaOpenApi(body);
+    const chinaModels = parse(source("kimi-china-openapi"), china);
+    expect(chinaModels).toHaveLength(4);
+    expect(chinaModels.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "request.api_origin.china" }),
+        expect.objectContaining({ key: "responses.input_tokens" }),
+        expect.objectContaining({ key: "messages.uncached_input_tokens" }),
+      ]),
+    );
   });
 
   it("retains callable and retired IDs only from labeled catalog fields", async () => {
@@ -15776,7 +18269,11 @@ describe("Kimi adapters", () => {
       ]),
     );
     expect(reconciliation).toContainEqual(
-      expect.objectContaining({ disposition: "unbound", reason_code: "batch_api_contract_drift" }),
+      expect.objectContaining({
+        disposition: "unbound",
+        reason_code: "pricing_input_contract_partial",
+        sample: "2/4 Kimi commercial pricing inputs",
+      }),
     );
   });
 
@@ -15808,12 +18305,12 @@ describe("Kimi adapters", () => {
     });
     expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
       basis: "source_item",
-      observed_items: 64,
+      observed_items: 55,
       disposition_counts: {
-        normalized: 37,
+        normalized: 38,
         explicit_non_numeric: 12,
-        excluded: 7,
-        unbound: 8,
+        excluded: 0,
+        unbound: 5,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
@@ -15827,20 +18324,9 @@ describe("Kimi adapters", () => {
           sample: "China:web_search:event",
         }),
         expect.objectContaining({
-          disposition: "excluded",
-          reason_code: "balance_api_out_of_catalog",
-        }),
-        expect.objectContaining({
-          disposition: "excluded",
-          reason_code: "console_consumption_analysis_out_of_catalog",
-        }),
-        expect.objectContaining({
-          disposition: "unbound",
-          reason_code: "usage_cost_api_not_documented",
-        }),
-        expect.objectContaining({
-          disposition: "unbound",
-          reason_code: "stream_interruption_usage_unavailable",
+          disposition: "normalized",
+          reason_code: "pricing_input_contract_bound",
+          sample: "4/4 Kimi commercial pricing inputs",
         }),
         expect.objectContaining({
           disposition: "explicit_non_numeric",
@@ -15875,38 +18361,33 @@ describe("Kimi adapters", () => {
       sourcePricingReconciliation(international, internationalReconciliation, true),
     ).toMatchObject({
       basis: "source_item",
-      observed_items: 65,
+      observed_items: 55,
       disposition_counts: {
-        normalized: 37,
+        normalized: 38,
         explicit_non_numeric: 12,
-        excluded: 8,
-        unbound: 8,
+        excluded: 0,
+        unbound: 5,
         ambiguous: 0,
         unsupported: 0,
         unresolved: 0,
       },
-    });
-    expect(internationalReconciliation).toContainEqual({
-      disposition: "excluded",
-      reason_code: "tax_at_checkout_out_of_catalog",
     });
   });
 
   it("publishes provider-native inference, search, Formula, and Files topology", async () => {
     const china = await pricing();
     const international = await pricing({ sourceId: "kimi-international-pricing" });
-    const published = [
-      ...new Map([...china, ...international].map((model) => [model.uid, model])).values(),
+    const openapiBody = await fixture("kimi/openapi.json");
+    const openapi = parse(source("kimi-openapi"), openapiBody);
+    const chinaOpenapi = parse(source("kimi-china-openapi"), chinaOpenApi(openapiBody));
+    const sources = [
+      { source: source("kimi-openapi"), models: openapi },
+      { source: source("kimi-china-openapi"), models: chinaOpenapi },
+      { source: source("kimi-pricing"), models: china },
+      { source: source("kimi-international-pricing"), models: international },
     ];
-    const partition = assembleParsedProviderPricing(
-      "kimi",
-      observedAt,
-      [
-        { source: source("kimi-pricing"), models: china },
-        { source: source("kimi-international-pricing"), models: international },
-      ],
-      published,
-    );
+    const published = applyGroups([], sources, true);
+    const partition = assembleParsedProviderPricing("kimi", observedAt, sources, published);
     expect(partition).toBeDefined();
     const books = partition?.books ?? [];
     const k26 = books.find(
@@ -15936,9 +18417,136 @@ describe("Kimi adapters", () => {
         .map((term) => [term.meter.value, term.variants[0]?.charge_binding?.signal.value]),
     ).toEqual(
       expect.arrayContaining([
-        ["cache_read_text", undefined],
-        ["input_text", undefined],
+        ["cache_read_text", "cached_input_tokens"],
+        ["input_text", "uncached_input_tokens"],
         ["output_text", "output_tokens"],
+      ]),
+    );
+    const inputTerm = sync?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_text",
+    );
+    expect(inputTerm?.kind === "rate" ? inputTerm.variants[0]?.charge_binding : undefined).toEqual(
+      expect.objectContaining({
+        quantity_methods: expect.arrayContaining([
+          expect.objectContaining({
+            calculation: expect.objectContaining({
+              nodes: expect.arrayContaining([
+                expect.objectContaining({ op: "subtract_floor_zero" }),
+              ]),
+            }),
+          }),
+        ]),
+      }),
+    );
+    const batchOutput = batch?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "output_text",
+    );
+    expect(
+      batchOutput?.kind === "rate"
+        ? batchOutput.variants[0]?.charge_binding?.quantity_methods
+        : undefined,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              channel: "result",
+              locator: {
+                kind: "json_pointer",
+                value: "/response/body/usage/completion_tokens",
+              },
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(
+      batch?.terms
+        .filter(
+          (term) =>
+            term.kind === "rate" &&
+            (term.meter.value === "cache_read_text" || term.meter.value === "input_text"),
+        )
+        .every(
+          (term) =>
+            term.kind === "rate" &&
+            term.variants.every(
+              ({ charge_binding }) => charge_binding?.quantity_methods === undefined,
+            ),
+        ),
+    ).toBe(true);
+    const k3 = books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes("kimi/kimi-k3"),
+    );
+    const k3Input = k3?.offers
+      .find(({ offer_key }) => offer_key === "sync")
+      ?.terms.find((term) => term.kind === "rate" && term.meter.value === "input_text");
+    const k3Methods =
+      k3Input?.kind === "rate" ? k3Input.variants[0]?.charge_binding?.quantity_methods : undefined;
+    expect(k3Methods).toHaveLength(3);
+    expect(k3Methods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              locator: {
+                kind: "json_pointer",
+                value: "/usage/input_tokens_details/cached_tokens",
+              },
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+            }),
+          ]),
+        }),
+      ]),
+    );
+    const k27 = books.find(
+      ({ scope }) => scope.kind === "models" && scope.model_refs.includes("kimi/kimi-k2.7-code"),
+    );
+    expect(
+      k27?.offers
+        .find(({ offer_key }) => offer_key === "batch")
+        ?.terms.filter((term) => term.kind === "rate")
+        .every((term) => term.kind === "rate" && term.variants[0]?.charge_binding === undefined),
+    ).toBe(true);
+    expect(
+      sync?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap((term) => term.variants)
+        .every(({ selector_sources }) => selector_sources?.length === 1),
+    ).toBe(true);
+    expect(
+      sync?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap((term) => term.variants)
+        .flatMap(({ selector_sources }) => selector_sources ?? []),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          locator: { kind: "provider_field", value: "HttpRequest.api_origin" },
+          normalization: {
+            kind: "categorical_map",
+            entries: [expect.objectContaining({ source_value: "https://api.moonshot.cn" })],
+          },
+        }),
+        expect.objectContaining({
+          normalization: {
+            kind: "categorical_map",
+            entries: [expect.objectContaining({ source_value: "https://api.moonshot.ai" })],
+          },
+        }),
       ]),
     );
     expect(sync?.relations).toEqual(
@@ -15966,6 +18574,18 @@ describe("Kimi adapters", () => {
               value: "emitted_builtin_web_search_calls",
             },
             aggregation: "request",
+            quantity_methods: [
+              expect.objectContaining({
+                input_sources: [
+                  expect.objectContaining({
+                    locator: {
+                      kind: "provider_field",
+                      value: "KimiChatResponse.billable_builtin_web_search_calls",
+                    },
+                  }),
+                ],
+              }),
+            ],
           }),
         }),
       ]),
@@ -15984,6 +18604,18 @@ describe("Kimi adapters", () => {
           charge_binding: expect.objectContaining({
             signal: expect.objectContaining({ value: "formula_web_search_fiber_executions" }),
             aggregation: "resource",
+            quantity_methods: [
+              expect.objectContaining({
+                input_sources: [
+                  expect.objectContaining({
+                    locator: {
+                      kind: "provider_field",
+                      value: "KimiFormulaFiber.created_web_search_fibers",
+                    },
+                  }),
+                ],
+              }),
+            ],
           }),
         }),
       ]),
@@ -16010,11 +18642,6 @@ describe("Kimi adapters", () => {
         reason: "web_search_billing_contract_drift",
       },
     ];
-    const organization = await fixture("kimi/organization.md");
-    cases.push({
-      overrides: { organization: organization.replace("10 分钟", "稍后") },
-      reason: "project_consumption_contract_drift",
-    });
     const officialTools = await fixture("kimi/official-tools.md");
     cases.push({
       overrides: {
@@ -16027,20 +18654,10 @@ describe("Kimi adapters", () => {
       overrides: { "files-upload": files.replace("文件解析服务限时免费", "文件解析服务收费") },
       reason: "files_upload_contract_drift",
     });
-    const terms = await fixture("kimi/terms.md");
-    cases.push({
-      overrides: { terms: terms.replace("网站价格页面公示", "稍后另行说明") },
-      reason: "commercial_terms_drift",
-    });
     const k3 = await fixture("kimi/pricing-k3.md");
     cases.push({
       indexBody: k3.replace("文档已经过时", "文档仍然有效"),
       reason: "web_search_warning_drift",
-    });
-    const llms = await fixture("kimi/llms.txt");
-    cases.push({
-      overrides: { llms: `${llms}\n- [Costs](https://platform.kimi.com/docs/api/costs.md)` },
-      reason: "commercial_index_drift",
     });
     for (const candidate of cases) {
       const reconciliation: PricingReconciliationItem[] = [];
@@ -16085,16 +18702,7 @@ describe("Kimi adapters", () => {
       source("kimi-international-pricing"),
     ];
     const openapi = await fixture("kimi/openapi.json");
-    const chinaOpenapi = openapi
-      .replace("https://api.moonshot.ai", "https://api.moonshot.cn")
-      .replace(
-        "Shows token usage statistics for the entire request; if the stream is interrupted, the final usage chunk may not arrive.",
-        "显示整个请求的 Token 使用统计；如果流中断，可能无法收到最终用量。",
-      )
-      .replace(
-        "The maximum number of tokens to generate for the chat completion. The default varies by model: for Kimi K3 it defaults to 131072 and can be set up to 1048576.",
-        "聊天补全生成的最大 Token 数量。默认值因模型而异：Kimi K3 默认为 131072，最大可设置为 1048576。",
-      );
+    const chinaOpenapi = chinaOpenApi(openapi);
     const catalogs = [
       parse(catalogSources[0] ?? source("kimi-openapi"), openapi),
       parse(catalogSources[1] ?? source("kimi-china-openapi"), chinaOpenapi),
@@ -16154,6 +18762,28 @@ describe("Kimi adapters", () => {
 });
 
 describe("Ollama adapters", () => {
+  it("uses the versioned Cloud rate and usage contract", () => {
+    const value = manifest("ollama");
+    const cloud = ollamaSource("ollama-cloud");
+    expect(cloud).toMatchObject({
+      extractorVersion: "ollama-cloud-v8",
+      fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
+      allowedHosts: expect.arrayContaining(["raw.githubusercontent.com"]),
+    });
+    expect(value.pricingCategoricalLabels).toEqual([
+      {
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        value: "base",
+        label: "Base",
+      },
+      {
+        dimension: { namespace: "kmodels", value: "billing_period" },
+        value: "peak",
+        label: "Peak",
+      },
+    ]);
+  });
+
   it("parses exact curated library IDs and family metadata", async () => {
     const models = await ollamaLibrary();
     expect(models.map(({ model_id }) => model_id)).toEqual([
@@ -16236,10 +18866,37 @@ describe("Ollama adapters", () => {
     expect(
       models.find(({ model_id }) => model_id === "gemini-3-flash-preview")?.retired_at,
     ).toBeUndefined();
+    const pricingInputs = models.flatMap(({ pricing_inputs }) => pricing_inputs ?? []);
+    expect(pricingInputs).toHaveLength(30);
+    expect(pricingInputs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "native.chat.cached_input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/prompt_eval_cached_count" },
+          availability: "success_only",
+        }),
+        expect.objectContaining({
+          key: "openai.chat.stream.cached_input_tokens",
+          channel: "stream_event",
+          locator: {
+            kind: "json_pointer",
+            value: "/usage/prompt_tokens_details/cached_tokens",
+          },
+          availability: "terminal_only",
+        }),
+        expect.objectContaining({
+          key: "openai.responses.stream.output_tokens",
+          channel: "stream_event",
+          locator: { kind: "json_pointer", value: "/response/usage/output_tokens" },
+          availability: "terminal_only",
+        }),
+      ]),
+    );
     expect(sourcePricingReconciliation(models, reconciliation, true)).toMatchObject({
       basis: "source_item",
       disposition_counts: {
-        normalized: 1,
+        normalized: 2,
         raw: 0,
         explicit_non_numeric: 0,
         unbound: 4,
@@ -16251,6 +18908,11 @@ describe("Ollama adapters", () => {
           disposition: "normalized",
           reason_code: "model_token_rate_card",
           sample: "kimi-k3",
+        },
+        {
+          disposition: "normalized",
+          reason_code: "pricing_input_contract_bound",
+          sample: "30/30 Ollama pricing inputs",
         },
         {
           disposition: "unbound",
@@ -16321,9 +18983,56 @@ describe("Ollama adapters", () => {
         .map((term) => [term.meter.value, term.variants[0]?.charge_binding?.signal.value]),
     ).toEqual(
       expect.arrayContaining([
-        ["input_text", undefined],
-        ["cache_read_text", undefined],
+        ["input_text", "uncached_input_tokens"],
+        ["cache_read_text", "cached_input_tokens"],
         ["output_text", "output_tokens"],
+      ]),
+    );
+    const input = cloudOffer?.terms.find(
+      (term) => term.kind === "rate" && term.meter.value === "input_text",
+    );
+    expect(
+      input?.kind === "rate" ? input.variants[0]?.charge_binding?.quantity_methods : [],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          calculation: {
+            nodes: [
+              { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
+              {
+                op: "signal",
+                signal: { namespace: "kmodels", value: "cached_input_tokens" },
+              },
+              { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+            ],
+            result: 2,
+          },
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              channel: "response",
+              locator: { kind: "json_pointer", value: "/prompt_eval_count" },
+            }),
+            expect.objectContaining({
+              channel: "response",
+              locator: { kind: "json_pointer", value: "/prompt_eval_cached_count" },
+            }),
+          ]),
+        }),
+        expect.objectContaining({
+          input_sources: expect.arrayContaining([
+            expect.objectContaining({
+              channel: "stream_event",
+              locator: { kind: "json_pointer", value: "/response/usage/input_tokens" },
+            }),
+            expect.objectContaining({
+              channel: "stream_event",
+              locator: {
+                kind: "json_pointer",
+                value: "/response/usage/input_tokens_details/cached_tokens",
+              },
+            }),
+          ]),
+        }),
       ]),
     );
   });
@@ -16393,10 +19102,21 @@ describe("Ollama adapters", () => {
       title: "kimi-k3",
       tags: [{ model: "kimi-k3" }],
       cost: {
-        input: "3.00",
-        cached: "0.30",
-        output: "15.00",
         unit: "1M tokens",
+        variants: [{ input: "3.00", cached: "0.30", output: "15.00" }],
+      },
+    });
+    const deepseekPage = await fixture("ollama/deepseek-page.html");
+    expect(JSON.parse(normalizeOllamaModelPage("deepseek-v4-flash", deepseekPage))).toEqual({
+      model: "deepseek-v4-flash",
+      title: "deepseek-v4-flash",
+      tags: [{ model: "deepseek-v4-flash" }],
+      cost: {
+        unit: "1M tokens",
+        variants: [
+          { billing_period: "base", input: "0.22", cached: "0.007", output: "0.66" },
+          { billing_period: "peak", input: "0.44", cached: "0.014", output: "1.32" },
+        ],
       },
     });
     expect(
@@ -16411,18 +19131,119 @@ describe("Ollama adapters", () => {
           kimiK3Page.replace("consumes extra usage credits", "uses the included allowance"),
         ),
       ).cost,
-    ).toMatchObject({ input: "3.00", cached: "0.30", output: "15.00" });
+    ).toMatchObject({
+      variants: [expect.objectContaining({ input: "3.00", cached: "0.30", output: "15.00" })],
+    });
     expect(
       JSON.parse(normalizeOllamaModelPage("kimi-k3", kimiK3Page.replace("$0.30", "market rate")))
         .cost,
     ).toEqual({
-      input: "3.00",
-      output: "15.00",
       unit: "1M tokens",
+      variants: [{ input: "3.00", output: "15.00" }],
     });
   });
 
-  it("keeps rates while localizing usage-accounting drift", async () => {
+  it("preserves Base and Peak rates without inventing a period selector", async () => {
+    const body = z
+      .object({ pages: z.array(z.unknown()) })
+      .passthrough()
+      .parse(JSON.parse(await ollamaCloudBody()));
+    body.pages.push({
+      model: "deepseek-v4-flash",
+      url: "https://ollama.com/library/deepseek-v4-flash",
+      body: JSON.parse(
+        normalizeOllamaModelPage("deepseek-v4-flash", await fixture("ollama/deepseek-page.html")),
+      ),
+    });
+    const reconciliation: PricingReconciliationItem[] = [];
+    const value = manifest("ollama");
+    const models = parseSource({
+      provider: provider(value),
+      source: ollamaSource("ollama-cloud"),
+      body: JSON.stringify(body),
+      observedAt,
+      onPricingReconciliation: (item) => reconciliation.push(item),
+    });
+    const facts = models.find(({ model_id }) => model_id === "deepseek-v4-flash")?.price_facts;
+    expect(facts).toHaveLength(6);
+    expect(facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "0.22",
+          conditions: { billing_period: "base" },
+        }),
+        expect.objectContaining({
+          meter: "output_text",
+          price: "1.32",
+          conditions: { billing_period: "peak" },
+        }),
+      ]),
+    );
+    expect(reconciliation).toContainEqual({
+      disposition: "unbound",
+      reason_code: "billing_period_selector_unavailable",
+      sample: "deepseek-v4-flash",
+    });
+    const pricing = assembleParsedProviderPricing(
+      "ollama",
+      observedAt,
+      [{ source: ollamaSource("ollama-cloud"), models }],
+      models,
+    );
+    const offer = pricing?.books
+      .find(
+        ({ scope }) =>
+          scope.kind === "models" && scope.model_refs.includes("ollama/deepseek-v4-flash"),
+      )
+      ?.offers.find(({ offer_key }) => offer_key === "cloud-inference");
+    expect(
+      offer?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap((term) => term.variants)
+        .every(
+          ({ charge_binding, selector_sources }) =>
+            charge_binding !== undefined && selector_sources === undefined,
+        ),
+    ).toBe(true);
+    expect(
+      offer?.terms
+        .filter((term) => term.kind === "rate")
+        .flatMap((term) => term.variants)
+        .map(({ applicability }) => applicability),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          any_of: [
+            {
+              all_of: [
+                {
+                  kind: "categorical",
+                  dimension: { namespace: "kmodels", value: "billing_period" },
+                  values: [{ namespace: "provider", provider_id: "ollama", value: "base" }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          any_of: [
+            {
+              all_of: [
+                {
+                  kind: "categorical",
+                  dimension: { namespace: "kmodels", value: "billing_period" },
+                  values: [{ namespace: "provider", provider_id: "ollama", value: "peak" }],
+                },
+              ],
+            },
+          ],
+        },
+      ]),
+    );
+  });
+
+  it("keeps rates while localizing pricing-input drift", async () => {
     const usage = (await fixture("ollama/usage.md")).replace("final chunk", "later response");
     const usageReconciliation: PricingReconciliationItem[] = [];
     expect(
@@ -16432,10 +19253,63 @@ describe("Ollama adapters", () => {
     ).toHaveLength(5);
     expect(usageReconciliation).toContainEqual({
       disposition: "unbound",
-      reason_code: "native_usage_contract_unavailable",
+      reason_code: "pricing_input_contract_partial",
+      sample: "24/30 Ollama pricing inputs",
     });
     const onlyOpenapi = await ollamaCloud({ documents: { "usage.md": "changed" } });
     expect(onlyOpenapi.find(({ model_id }) => model_id === "kimi-k3")?.price_facts).toHaveLength(3);
+    expect(onlyOpenapi.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(18);
+
+    const types = (await fixture("ollama/api-types.go")).replace(
+      "PromptEvalCachedCount",
+      "FutureCachedCount",
+    );
+    const findings: SourceContractEvidence[] = [];
+    const cachedDrift = await ollamaCloud(
+      { documents: { "api-types.go": types } },
+      undefined,
+      (finding) => findings.push(finding),
+    );
+    expect(cachedDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(26);
+    expect(findings.flatMap(({ diagnostics }) => diagnostics.map(({ path }) => path))).toEqual(
+      expect.arrayContaining([
+        "/pricing-inputs/native.chat.cached_input_tokens",
+        "/pricing-inputs/native.chat.stream.cached_input_tokens",
+        "/pricing-inputs/native.generate.cached_input_tokens",
+        "/pricing-inputs/native.generate.stream.cached_input_tokens",
+      ]),
+    );
+
+    const openAiTypes = (await fixture("ollama/openai-types.go")).replaceAll(
+      "CachedTokens: *r.Metrics.PromptEvalCachedCount",
+      "CachedTokens: *r.Metrics.FutureCachedCount",
+    );
+    const openAiDrift = await ollamaCloud({ documents: { "openai-types.go": openAiTypes } });
+    expect(openAiDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(26);
+    expect(
+      openAiDrift
+        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
+        .some(({ key }) => key === "openai.responses.cached_input_tokens"),
+    ).toBe(true);
+
+    const responseTypes = (await fixture("ollama/responses-types.go")).replace(
+      '"cached_tokens": intValue(r.PromptEvalCachedCount)',
+      '"future_cached_tokens": intValue(r.PromptEvalCachedCount)',
+    );
+    const responseDrift = await ollamaCloud({
+      documents: { "responses-types.go": responseTypes },
+    });
+    expect(responseDrift.flatMap(({ pricing_inputs }) => pricing_inputs ?? [])).toHaveLength(29);
+    expect(
+      responseDrift
+        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
+        .some(({ key }) => key === "openai.responses.cached_input_tokens"),
+    ).toBe(true);
+    expect(
+      responseDrift
+        .flatMap(({ pricing_inputs }) => pricing_inputs ?? [])
+        .some(({ key }) => key === "openai.responses.stream.cached_input_tokens"),
+    ).toBe(false);
   });
 
   it("keeps independent inventory when list or detail enrichment drifts", async () => {

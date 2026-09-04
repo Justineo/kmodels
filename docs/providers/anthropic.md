@@ -51,7 +51,8 @@ The main pricing and accounting sources are:
   [Advisor](https://platform.claude.com/docs/en/agents-and-tools/tool-use/advisor-tool),
   [compaction](https://platform.claude.com/docs/en/build-with-claude/compaction), and
   [fallback credit](https://platform.claude.com/docs/en/build-with-claude/fallback-credit) for
-  request outcome accounting;
+  request outcome accounting. These contracts are extracted as pricing-input facts independently
+  from the rates, not encoded as informational raw prices;
 - [model deprecations](https://platform.claude.com/docs/en/about-claude/model-deprecations), model
   ID/version guidance, release notes, and feature guides for identity, lifecycle, and capability
   facts.
@@ -108,8 +109,10 @@ never inherited from a family or replacement model.
 
 One service offer publishes USD 10 per 1,000 successful searches. The same rate applies in Messages
 and Batches, so duplicating it into sync and Batch offers would add no information. The charge binds
-to `usage.server_tool_use.web_search_requests`; failed searches are not billed. Search-result tokens
-remain ordinary model input usage.
+to the provider-owned successful-search signal and maps it to the terminal response field
+`/usage/server_tool_use/web_search_requests`; failed searches are not billed. Search-result tokens
+remain ordinary model input usage. An interrupted stream that never yields terminal usage remains
+unresolved for the downstream calculator rather than being guessed from emitted tool blocks.
 
 ### Code Execution
 
@@ -121,9 +124,12 @@ Two service states are sufficient:
   version.
 
 The public Messages outcome reports code-execution request count, not billable container duration.
-The rate and known total-cost parameters therefore remain visible, but the runtime rate has no false
-per-request charge binding. Exact cost needs provider accounting or another authoritative duration
-signal.
+The runtime rate therefore binds to an account-phase `code_execution_active_seconds` requirement,
+not to that request count. A closed quantity calculation applies the five-minute minimum per
+provider-owned Code Execution container and produces `code_execution_billable_seconds`. That
+quantity method deliberately has no `input_sources`: exact request cost still requires Anthropic
+accounting or another authoritative duration signal. The former minimum and missing-duration raw
+terms are consumed into this contract; the monthly allowance remains a normalized allowance.
 
 ## Iteration accounting
 
@@ -137,8 +143,19 @@ Advisor, compaction, and server fallback do not need parallel service books:
 When `usage.iterations` is absent, price the response model from top-level usage. When it is present,
 price each typed iteration using that iteration's exact model and do not add the top-level token
 totals again. This handles executor, advisor, compaction, and fallback work through the normal model
-books. Cache-write variants bind only when the response exposes an exact TTL split; a generic cache
-creation total must not be guessed into the five-minute or one-hour rate.
+books. Cache-write variants use a TTL-specific signal only when the price establishes that exact TTL;
+the generic cache-creation response total must not be mapped to either the five-minute or one-hour
+signal.
+
+Each bound token rate publishes one direct quantity method with conditional response mappings for
+the independently evidenced top-level usage field and `usage.iterations[*]` grouped by its reported
+model. If one field drifts, only that mapping disappears; the price and any sibling mapping remain.
+Cache-write rates use distinct five-minute and one-hour signals, but those bindings publish no
+quantity methods: the reviewed response contract exposes only aggregate
+`cache_creation_input_tokens`, not an exact TTL split.
+OTel aggregate token attributes are not attached to these Anthropic-owned signals because they
+cannot preserve both iteration ownership and cache-write TTL; a downstream integration may use
+OTel only after proving those distinctions remain available.
 
 ## Refresh and comparison policy
 

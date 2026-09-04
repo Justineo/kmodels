@@ -1,6 +1,7 @@
 import { load } from "cheerio";
 import { z } from "zod";
 import { linkedBundleSchema } from "./bundle.ts";
+import { extractVertexPricingInputs } from "./vertex-accounting.ts";
 import { extractVertexCommercialFacts } from "./vertex-commercial-source.ts";
 import { modelIdSchema } from "./identity.ts";
 import { modelStateFromLabel } from "./lifecycle.ts";
@@ -15,7 +16,7 @@ import {
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
-import { assertItemCount, recognizeItems } from "./source-contract.ts";
+import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Modality, type ModelTask, type Provider, unknownCapabilities } from "./schema.ts";
 
 interface Input {
@@ -27,6 +28,7 @@ interface Input {
     ProviderModel,
     "aliases" | "model_id" | "name" | "service_families" | "tasks" | "uid" | "version"
   >[];
+  onContractFinding?: (evidence: SourceContractEvidence) => void;
   onPricingReconciliation?: (item: PricingReconciliationItem) => void;
 }
 
@@ -55,55 +57,6 @@ type Selection = ReturnType<LoadedDocument>;
 type ApiEndpoint = NonNullable<ProviderModel["api_endpoints"]>[number];
 type LinkedDocument = { url: string; body: string };
 type Reconcile = Input["onPricingReconciliation"];
-
-const discoveryMethodSchema = z.object({
-  httpMethod: z.enum(["GET", "POST"]),
-  path: z.string().min(1),
-  parameters: z.record(z.string(), z.unknown()).optional(),
-  response: z.object({ $ref: z.string().min(1) }),
-});
-const vertexDiscoverySchema = z.object({
-  rootUrl: z.literal("https://aiplatform.googleapis.com/"),
-  version: z.literal("v1beta1"),
-  revision: z.string().regex(/^\d{8}$/),
-  resources: z.object({
-    publishers: z.object({
-      resources: z.object({
-        models: z.object({ methods: z.record(z.string(), discoveryMethodSchema) }),
-      }),
-    }),
-    projects: z.object({
-      resources: z.object({
-        locations: z.object({
-          resources: z.object({
-            publishers: z.object({
-              resources: z.object({
-                models: z.object({ methods: z.record(z.string(), discoveryMethodSchema) }),
-              }),
-            }),
-          }),
-        }),
-      }),
-    }),
-  }),
-  schemas: z.object({
-    GoogleCloudAiplatformV1beta1PublisherModel: z.object({
-      properties: z.record(z.string(), z.unknown()),
-    }),
-    GoogleCloudAiplatformV1beta1ListPublisherModelsResponse: z.object({
-      properties: z.record(z.string(), z.unknown()),
-    }),
-    GoogleCloudAiplatformV1beta1GenerateContentResponseUsageMetadata: z.object({
-      properties: z.record(z.string(), z.unknown()),
-    }),
-    GoogleCloudAiplatformV1beta1GroundingMetadata: z.object({
-      properties: z.record(z.string(), z.unknown()),
-    }),
-    GoogleCloudAiplatformV1beta1GenerateContentResponse: z.object({
-      properties: z.record(z.string(), z.unknown()),
-    }),
-  }),
-});
 
 const endpoints = {
   generate: {
@@ -316,79 +269,6 @@ function reviewedEndpointReferences(
       reviewed.add(path);
   }
   return reviewed;
-}
-
-function usageBindingAvailable(
-  document: LinkedDocument | undefined,
-  reconcile?: Reconcile,
-): boolean {
-  const unsupported = (sample: string): false => {
-    reconcile?.({
-      disposition: "unsupported",
-      reason_code: "usage_binding_contract_changed",
-      sample,
-    });
-    return false;
-  };
-  if (document === undefined) return unsupported("Agent Platform API Discovery document missing");
-  let value: unknown;
-  try {
-    value = JSON.parse(document.body);
-  } catch {
-    return unsupported("Agent Platform API Discovery document returned invalid JSON");
-  }
-  const parsed = vertexDiscoverySchema.safeParse(value);
-  if (!parsed.success) return unsupported("Agent Platform API Discovery schema changed");
-  const discovery = parsed.data;
-
-  const usageFields =
-    discovery.schemas.GoogleCloudAiplatformV1beta1GenerateContentResponseUsageMetadata.properties;
-  if (
-    ![
-      "promptTokenCount",
-      "cachedContentTokenCount",
-      "candidatesTokenCount",
-      "totalTokenCount",
-      "toolUsePromptTokenCount",
-      "thoughtsTokenCount",
-      "promptTokensDetails",
-      "cacheTokensDetails",
-      "candidatesTokensDetails",
-      "toolUsePromptTokensDetails",
-      "trafficType",
-    ].every((field) => usageFields[field] !== undefined)
-  )
-    return unsupported("Agent Platform usage schema changed");
-  const trafficTypes = z.object({ enum: z.array(z.string()) }).safeParse(usageFields.trafficType);
-  if (
-    !trafficTypes.success ||
-    ![
-      "ON_DEMAND",
-      "ON_DEMAND_PRIORITY",
-      "ON_DEMAND_FLEX",
-      "ON_DEMAND_OFFPEAK",
-      "PROVISIONED_THROUGHPUT",
-    ].every((trafficType) => trafficTypes.data.enum.includes(trafficType))
-  )
-    return unsupported("Agent Platform usage traffic types changed");
-
-  const groundingFields =
-    discovery.schemas.GoogleCloudAiplatformV1beta1GroundingMetadata.properties;
-  if (
-    !["webSearchQueries", "imageSearchQueries", "groundingChunks", "groundingSupports"].every(
-      (field) => groundingFields[field] !== undefined,
-    )
-  )
-    return unsupported("Agent Platform grounding schema changed");
-  const responseFields =
-    discovery.schemas.GoogleCloudAiplatformV1beta1GenerateContentResponse.properties;
-  if (
-    !["usageMetadata", "modelVersion", "responseId", "createTime", "candidates"].every(
-      (field) => responseFields[field] !== undefined,
-    )
-  )
-    return unsupported("Agent Platform response observability schema changed");
-  return true;
 }
 
 function modelDate(value: string): string | undefined {
@@ -2478,10 +2358,6 @@ export function parseVertexPricing(input: Input): ProviderModel[] {
   }
   const document = (path: string): LinkedDocument | undefined =>
     bundle.documents.find((item) => new URL(item.url).pathname === path);
-  const discovery = bundle.documents.find((item) => {
-    const url = new URL(item.url);
-    return url.hostname === "aiplatform.googleapis.com" && url.pathname === "/$discovery/rest";
-  });
   const groundingSearch = document(
     "/gemini-enterprise-agent-platform/models/grounding/grounding-with-google-search",
   )?.body;
@@ -2504,11 +2380,16 @@ export function parseVertexPricing(input: Input): ProviderModel[] {
     groundingReferences,
     input.onPricingReconciliation,
   );
-  extractVertexCommercialFacts(
-    [...models.values()].map(({ model }) => model),
+  const values = [...models.values()].map(({ model }) => model);
+  extractVertexCommercialFacts(values, input.source.id);
+  const pricingInputs = extractVertexPricingInputs(
+    bundle.documents,
     input.source.id,
-    usageBindingAvailable(discovery, input.onPricingReconciliation),
+    input.onContractFinding,
+    input.onPricingReconciliation,
   );
+  const carrier = values.sort((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   return [...models.values()]
     .map(({ model }) => ({ ...model, aliases: [] }))
     .sort((left, right) => left.uid.localeCompare(right.uid));

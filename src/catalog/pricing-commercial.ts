@@ -1,6 +1,8 @@
 import { canonicalJson } from "./canonical-json.ts";
-import { compareUtf8 } from "./canonical-value.ts";
+import { compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
+import { requiredUsageSignals } from "./pricing-calculation.ts";
 import type {
+  ChargeBinding,
   PriceApplicability,
   PriceCondition,
   PriceDimension,
@@ -55,13 +57,21 @@ export type CommercialPricingTerm =
       variants: Array<
         Omit<
           Extract<PricingTerm, { kind: "rate" }>["variants"][number],
-          "observations" | "charge_binding"
+          "observations" | "charge_binding" | "selector_sources"
         > & {
           charge_binding?: Omit<
             NonNullable<
               Extract<PricingTerm, { kind: "rate" }>["variants"][number]["charge_binding"]
             >,
             "observations"
+          >;
+          selector_sources?: Array<
+            Omit<
+              NonNullable<
+                Extract<PricingTerm, { kind: "rate" }>["variants"][number]["selector_sources"]
+              >[number],
+              "observations"
+            >
           >;
         }
       >;
@@ -185,13 +195,7 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
     collectAtom(used, "meter", term.meter);
     term.variants.forEach((variant) => {
       collectApplicability(used, variant.applicability);
-      if (variant.charge_binding !== undefined)
-        collectAtom(used, "usage_signal", variant.charge_binding.signal);
-      if (
-        variant.charge_binding !== undefined &&
-        typeof variant.charge_binding.aggregation !== "string"
-      )
-        collectAtom(used, "aggregation", variant.charge_binding.aggregation);
+      if (variant.charge_binding !== undefined) collectBinding(used, variant.charge_binding);
       variant.price.per.factors.forEach(({ unit }) => collectAtom(used, "unit", unit));
       if (variant.price.denomination.kind === "provider_credit")
         collectProviderKey(
@@ -208,13 +212,20 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
       kind: "rate",
       meter: term.meter,
       variants: term.variants.map(
-        ({ observations: _observations, charge_binding, ...variant }) => ({
+        ({ observations: _observations, charge_binding, selector_sources, ...variant }) => ({
           ...variant,
           ...(charge_binding === undefined
             ? {}
             : {
                 charge_binding: (({ observations: _bindingObservations, ...binding }) => binding)(
                   charge_binding,
+                ),
+              }),
+          ...(selector_sources === undefined
+            ? {}
+            : {
+                selector_sources: selector_sources.map(
+                  ({ observations: _selectorObservations, ...source }) => source,
                 ),
               }),
         }),
@@ -253,11 +264,7 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
   if (term.kind === "contribution") {
     term.variants.forEach((variant) => {
       collectApplicability(used, variant.applicability);
-      variant.charge_bindings.forEach((binding) => {
-        collectAtom(used, "usage_signal", binding.signal);
-        if (typeof binding.aggregation !== "string")
-          collectAtom(used, "aggregation", binding.aggregation);
-      });
+      variant.charge_bindings.forEach((binding) => collectBinding(used, binding));
     });
     term.raw_variants.forEach((variant) => collectRawScope(used, variant));
     return {
@@ -286,6 +293,13 @@ function commercialTerm(term: PricingTerm, used: UsedAtoms): CommercialPricingTe
   };
 }
 
+function collectBinding(used: UsedAtoms, binding: ChargeBinding): void {
+  collectAtom(used, "usage_signal", binding.signal);
+  requiredUsageSignals(binding).forEach((signal) => collectAtom(used, "usage_signal", signal));
+  if (typeof binding.aggregation !== "string")
+    collectAtom(used, "aggregation", binding.aggregation);
+}
+
 function commercialRaw({
   observations,
   ...variant
@@ -297,8 +311,7 @@ function commercialRaw({
 }
 
 function rawFacts(facts: RawPriceFact[]): RawPriceFact[] {
-  const byBytes = new Map(facts.map((fact) => [canonicalJson(fact), fact]));
-  return [...byBytes].sort(([left], [right]) => compareUtf8(left, right)).map(([, fact]) => fact);
+  return uniqueCanonicalValues(facts);
 }
 
 function collectRawScope(used: UsedAtoms, variant: RawPricingVariant): void {

@@ -268,6 +268,9 @@ services → pricing notes`. The first mechanism in
 - Model identity, its disclosure control, and an exact model's pricing status
   open details; the whole row is not a button.
 - The inspector is a non-modal `<dialog>`. Its panel receives pointer input while the catalog remains interactive.
+- On desktop, align the inspector header divider with the bottom of the catalog toolbar. On narrow
+  screens, anchor the full-viewport inspector to the dynamic viewport and transition it vertically;
+  retain the right-edge transition only for the desktop side panel.
 - Up/Down selects the previous/next visible model unless focus is in a control that owns arrow keys. Selection resets inspector scroll. Explicit close and Escape dismiss it.
 - Focus styles use `:focus-visible`, including containers with a focus-visible descendant.
 - The appearance button switches directly between light and dark, labels the destination, and persists the explicit choice. Initial appearance follows the OS.
@@ -404,7 +407,14 @@ services → pricing notes`. The first mechanism in
 - Use Kong dark green `#000F06`, electric lime `#CCFF00`, Bay `#B7BDB5`, white, and the reviewed neutral scale through semantic tokens. Lime marks focus, selection, and active state; it is not decoration.
 - Ground the system in Kong's 2026 brand rules, Apple HIG legibility, Vercel Geist utility patterns, and VoidZero/Vite+ structural restraint.
 - Follow system-font legibility, mono identifiers, tabular numerals, thin borders, crisp planes, compact radii, and low-elevation floating surfaces.
-- Use one compact four-step type scale expressed in `rem`: 11px metadata, 12px body and controls, 15px headings, and 20px inspector titles. Apply the body size to `body`, not the root element, so the `rem` steps retain those browser-relative sizes. Inspector section labels, including Pricing, and fact labels, including rate names, share the metadata treatment; offer titles, fact values, and exact amounts use the body size. Dense selectors and recurring rules also use the metadata size. Prefer weight, color, tracking, and spacing over additional intermediate sizes. Persistent text never drops below the metadata size, and normal browser text adjustment remains enabled.
+- Use one compact four-step type scale expressed in `rem`: 11px metadata, 12px body and controls,
+  15px headings including inspector titles, and 20px standalone fallback titles. Apply the body size
+  to `body`, not the root element, so the `rem` steps retain those browser-relative sizes. Inspector
+  section labels, including Pricing, and fact labels, including rate names, share the metadata
+  treatment; offer titles, fact values, and exact amounts use the body size. Dense selectors and
+  recurring rules also use the metadata size. Prefer weight, color, tracking, and spacing over
+  additional intermediate sizes. Persistent text never drops below the metadata size, and normal
+  browser text adjustment remains enabled.
 - Inside the inspector, use spacing and bounded data surfaces for section hierarchy. Keep the header divider, but do not place horizontal rules between every content section or offer.
 - Create hierarchy with alignment, weight, density, and information order. Do not add gradients, decorative imagery, oversized display type, floating-card composition, or decorative chrome.
 - Reuse Kong's current ICO fallback plus 16px and 32px PNG favicon files.

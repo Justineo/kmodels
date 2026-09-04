@@ -5,6 +5,7 @@ Hugging Face Inference Providers expose serverless inference through a single Hu
 The router automatically selects the fastest available provider for the specified model.
 Use `:cheapest` for the most cost-efficient provider (lowest price per output token), or
 `:preferred` to follow your preference order. A provider can also be selected explicitly.
+You can select the provider of your choice by appending the provider name to the model ID.
 
 `provider="auto"` supports Automatic Failover.
 

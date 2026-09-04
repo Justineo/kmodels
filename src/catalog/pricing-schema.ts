@@ -334,6 +334,109 @@ export const rawPricingVariantSchema = z.strictObject({
   observations: z.array(rawPriceObservationSchema).min(1),
 });
 
+export const usageQuantityNodeSchema = z.discriminatedUnion("op", [
+  z.strictObject({
+    op: z.literal("constant"),
+    value: rationalSchema,
+    unit: unitExpressionSchema,
+  }),
+  z.strictObject({
+    op: z.literal("signal"),
+    signal: usageSignalSchema,
+  }),
+  z.strictObject({
+    op: z.literal("sum"),
+    inputs: z
+      .array(z.number().int().nonnegative())
+      .min(2)
+      .max(pricingLimits.quantityCalculationNodes),
+  }),
+  z.strictObject({
+    op: z.literal("product"),
+    inputs: z
+      .array(z.number().int().nonnegative())
+      .min(2)
+      .max(pricingLimits.quantityCalculationNodes),
+  }),
+  z.strictObject({
+    op: z.literal("subtract_floor_zero"),
+    minuend: z.number().int().nonnegative(),
+    subtrahend: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    op: z.literal("multiply"),
+    input: z.number().int().nonnegative(),
+    factor: rationalSchema,
+  }),
+  z.strictObject({
+    op: z.literal("minimum"),
+    input: z.number().int().nonnegative(),
+    value: rationalSchema,
+  }),
+]);
+
+export const usageQuantityCalculationSchema = z.strictObject({
+  nodes: z.array(usageQuantityNodeSchema).min(1).max(pricingLimits.quantityCalculationNodes),
+  result: z.number().int().nonnegative(),
+});
+
+export const usageInputLocatorSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("json_pointer"),
+    value: nonEmptyString.refine((value) => value.startsWith("/"), {
+      message: "Usage JSON Pointer must start with /",
+    }),
+  }),
+  z.strictObject({
+    kind: z.literal("provider_field"),
+    value: nonEmptyString,
+  }),
+  z.strictObject({
+    kind: z.literal("otel_attribute"),
+    value: nonEmptyString.regex(/^[a-z][a-z0-9_.]*$/),
+    convention_version: nonEmptyString,
+  }),
+]);
+
+export const usageInputReductionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("array_length") }),
+  z.strictObject({ kind: z.literal("count_unique_non_empty_strings") }),
+  z.strictObject({ kind: z.literal("presence") }),
+]);
+
+export const usageInputSourceSchema = z.strictObject({
+  signal: usageSignalSchema,
+  channel: z.enum([
+    "request",
+    "response",
+    "stream_event",
+    "result",
+    "account_report",
+    "invocation_log",
+    "telemetry",
+  ]),
+  locator: usageInputLocatorSchema,
+  reduction: usageInputReductionSchema.optional(),
+  absent_value: z.literal("zero").optional(),
+  availability: z.enum([
+    "always",
+    "terminal_only",
+    "success_only",
+    "conditional",
+    "reconciliation_only",
+  ]),
+});
+
+export const usageQuantityMethodSchema = z
+  .strictObject({
+    calculation: usageQuantityCalculationSchema.optional(),
+    input_sources: z.array(usageInputSourceSchema).min(1).optional(),
+  })
+  .refine(
+    ({ calculation, input_sources }) => calculation !== undefined || input_sources !== undefined,
+    { message: "Quantity method must define a calculation or input sources" },
+  );
+
 export const chargeBindingSchema = z.strictObject({
   signal: usageSignalSchema,
   aggregation: z.union([
@@ -341,6 +444,30 @@ export const chargeBindingSchema = z.strictObject({
     providerOwned(nonEmptyString),
   ]),
   scale: rationalSchema.optional(),
+  quantity_methods: z.array(usageQuantityMethodSchema).min(1).optional(),
+  observations: z.array(rawPriceObservationSchema).min(1),
+});
+
+export const priceSelectorSourceSchema = z.strictObject({
+  dimension: priceDimensionSchema,
+  channel: usageInputSourceSchema.shape.channel,
+  locator: usageInputLocatorSchema,
+  availability: usageInputSourceSchema.shape.availability,
+  absent_value: priceCategoricalValueSchema.optional(),
+  normalization: z
+    .strictObject({
+      kind: z.literal("categorical_map"),
+      entries: z
+        .array(
+          z.strictObject({
+            source_value: nonEmptyString,
+            value: priceCategoricalValueSchema,
+          }),
+        )
+        .min(1)
+        .max(pricingLimits.categoricalValuesPerCondition),
+    })
+    .optional(),
   observations: z.array(rawPriceObservationSchema).min(1),
 });
 
@@ -349,6 +476,7 @@ export const priceRateVariantSchema = z.strictObject({
   applicability: priceApplicabilitySchema,
   validity: publishedValiditySchema.optional(),
   charge_binding: chargeBindingSchema.optional(),
+  selector_sources: z.array(priceSelectorSourceSchema).min(1).optional(),
   observations: z.array(normalizedPriceObservationSchema).min(1),
 });
 
@@ -655,6 +783,12 @@ export type StandardPriceMeter = z.infer<typeof standardPriceMeterSchema>;
 export type UsageSignal = z.infer<typeof usageSignalSchema>;
 export type UnitExpression = z.infer<typeof unitExpressionSchema>;
 export type UnitPrice = z.infer<typeof unitPriceSchema>;
+export type UsageInputSource = z.infer<typeof usageInputSourceSchema>;
+export type UsageInputReduction = z.infer<typeof usageInputReductionSchema>;
+export type UsageQuantityCalculation = z.infer<typeof usageQuantityCalculationSchema>;
+export type UsageQuantityMethod = z.infer<typeof usageQuantityMethodSchema>;
+export type UsageQuantityNode = z.infer<typeof usageQuantityNodeSchema>;
+export type PriceSelectorSource = z.infer<typeof priceSelectorSourceSchema>;
 
 export function emptyPricingCatalog(): PricingCatalog {
   return {

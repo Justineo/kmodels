@@ -25,3 +25,6 @@ usage:
     reasoning_tokens: 10
     rejected_prediction_tokens: 2
 ```
+
+The non-streaming response uses the same `usage.prompt_tokens`,
+`usage.prompt_tokens_details.cached_tokens`, and `usage.completion_tokens` fields.

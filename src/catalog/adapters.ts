@@ -9,6 +9,7 @@ import {
   parseAzurePublicPricing,
   parseAzureRetailPrices,
 } from "./azure.ts";
+import { parseAzureAccounting } from "./azure-accounting.ts";
 import { parseBedrockApi, parseBedrockCatalog } from "./bedrock.ts";
 import {
   parseCerebrasApi,
@@ -50,12 +51,14 @@ import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
 import type { SourceManifest } from "./manifests.ts";
+import { openApiYamlHasPropertyPath } from "./openapi-yaml.ts";
 import { decimalsEqual, multiplyDecimal, publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourcePriceFactKey,
   type ParsedProviderModel as ProviderModel,
   type SourceCommercialPricingFact,
+  type SourcePricingInputFact,
   type SourcePriceFact,
   type SourceRawPricingFact,
 } from "./pricing-source.ts";
@@ -726,7 +729,7 @@ function openAiPricingTables(
       onReconciliation?.({
         disposition: "unsupported",
         reason_code: "unreviewed_pricing_tier",
-        sample: line,
+        sample: line.slice(0, 256),
       });
       continue;
     }
@@ -748,7 +751,7 @@ function openAiPricingTables(
       onReconciliation?.({
         disposition: "unsupported",
         reason_code: "unreviewed_pricing_table",
-        sample: headers.join(" | "),
+        sample: headers.join(" | ").slice(0, 256),
       });
       continue;
     }
@@ -761,7 +764,7 @@ function openAiPricingTables(
         onReconciliation?.({
           disposition: "unsupported",
           reason_code: "irregular_pricing_row",
-          sample: normalizedText(lines[index] ?? ""),
+          sample: normalizedText(lines[index] ?? "").slice(0, 256),
         });
       index += 1;
     }
@@ -1325,6 +1328,188 @@ function openAiRegionalProcessingRates(rates: readonly SourcePriceFact[]): Sourc
   });
 }
 
+interface OpenAiAccountingContract {
+  key: string;
+  schema: string;
+  path: string[];
+  channel: SourcePricingInputFact["channel"];
+  locator: SourcePricingInputFact["locator"];
+  reduction?: SourcePricingInputFact["reduction"];
+  availability: SourcePricingInputFact["availability"];
+}
+
+const openAiAccountingContracts: readonly OpenAiAccountingContract[] = [
+  responseUsage("input_tokens", ["input_tokens"]),
+  responseUsage("cached_input_tokens", ["input_tokens_details", "cached_tokens"]),
+  responseUsage("cache_write_tokens", ["input_tokens_details", "cache_write_tokens"]),
+  responseUsage("output_tokens", ["output_tokens"]),
+  responseField("served_service_tier", "service_tier"),
+  responseField("image_quality", "quality", "ImagesResponse"),
+  responseField("image_resolution", "size", "ImagesResponse"),
+  responseField("generated_images", "data", "ImagesResponse", "/data", ["data"], {
+    kind: "array_length",
+  }),
+  responseField("image_input_tokens", "input_tokens", "ImageGenUsage", "/usage/input_tokens"),
+  responseField(
+    "image_input_text_tokens",
+    "text_tokens",
+    "ImageGenInputUsageDetails",
+    "/usage/input_tokens_details/text_tokens",
+  ),
+  responseField(
+    "image_input_image_tokens",
+    "image_tokens",
+    "ImageGenInputUsageDetails",
+    "/usage/input_tokens_details/image_tokens",
+  ),
+  responseField(
+    "image_output_tokens",
+    "image_tokens",
+    "ImageGenOutputTokensDetails",
+    "/usage/output_tokens_details/image_tokens",
+  ),
+  responseField(
+    "embedding_input_tokens",
+    "prompt_tokens",
+    "CreateEmbeddingResponse",
+    "/usage/prompt_tokens",
+    ["usage", "prompt_tokens"],
+  ),
+  responseField("generated_seconds", "seconds", "VideoResource", "/seconds"),
+  responseField("video_resolution", "size", "VideoResource", "/size"),
+  ...[
+    "input_tokens",
+    "input_cached_tokens",
+    "input_cache_write_tokens",
+    "input_uncached_tokens",
+    "output_tokens",
+    "input_text_tokens",
+    "output_text_tokens",
+    "input_cached_text_tokens",
+    "input_audio_tokens",
+    "input_cached_audio_tokens",
+    "output_audio_tokens",
+    "input_image_tokens",
+    "input_cached_image_tokens",
+    "output_image_tokens",
+    "service_tier",
+  ].map((field) => organizationUsage("completions", "UsageCompletionsResult", field)),
+  organizationUsage("embeddings", "UsageEmbeddingsResult", "input_tokens"),
+  organizationUsage("audio_speeches", "UsageAudioSpeechesResult", "characters"),
+  organizationUsage("audio_transcriptions", "UsageAudioTranscriptionsResult", "seconds"),
+  organizationUsage(
+    "code_interpreter_sessions",
+    "UsageCodeInterpreterSessionsResult",
+    "num_sessions",
+  ),
+  organizationUsage("file_search_calls", "UsageFileSearchCallsResult", "num_requests"),
+  organizationUsage("images", "UsageImagesResult", "images"),
+  organizationUsage("web_search_calls", "UsageWebSearchCallsResult", "num_requests"),
+];
+
+function responseUsage(key: string, path: string[]): OpenAiAccountingContract {
+  return {
+    key: `responses.usage.${key}`,
+    schema: "ResponseUsage",
+    path,
+    channel: "response",
+    locator: {
+      kind: "json_pointer",
+      value: `/usage/${path.join("/")}`,
+    },
+    availability: "terminal_only",
+  };
+}
+
+function responseField(
+  key: string,
+  property: string,
+  schema = "Response",
+  pointer = `/${property}`,
+  path: string[] = [property],
+  reduction?: SourcePricingInputFact["reduction"],
+): OpenAiAccountingContract {
+  return {
+    key: `responses.${key}`,
+    schema,
+    path,
+    channel: "response",
+    locator: { kind: "json_pointer", value: pointer },
+    ...(reduction === undefined ? {} : { reduction }),
+    availability: "terminal_only",
+  };
+}
+
+function organizationUsage(
+  endpoint: string,
+  schema: string,
+  field: string,
+): OpenAiAccountingContract {
+  return {
+    key: `organization.${endpoint}.${field}`,
+    schema,
+    path: [field],
+    channel: "account_report",
+    locator: {
+      kind: "provider_field",
+      value: `organization.usage.${endpoint}.results[*].${field}`,
+    },
+    availability: "reconciliation_only",
+  };
+}
+
+function parseOpenAiAccounting(input: ParseInput): ProviderModel[] {
+  if (input.catalogModels === undefined)
+    throw new Error("OpenAI accounting contract requires the collected catalog");
+  const target = [...input.catalogModels].sort((left, right) =>
+    left.uid.localeCompare(right.uid),
+  )[0];
+  if (target === undefined) throw new Error("OpenAI accounting contract has no catalog carrier");
+  const pricingInputs: SourcePricingInputFact[] = [];
+  for (const contract of openAiAccountingContracts) {
+    if (!openApiYamlHasPropertyPath(input.body, contract.schema, contract.path)) {
+      input.onContractFinding?.(
+        contractExtensionEvidence([
+          `/components/schemas/${contract.schema}/properties/${contract.path.join("/properties/")}`,
+        ]),
+      );
+      continue;
+    }
+    pricingInputs.push({
+      key: contract.key,
+      channel: contract.channel,
+      locator: contract.locator,
+      ...(contract.reduction === undefined ? {} : { reduction: contract.reduction }),
+      availability: contract.availability,
+      source_ref: input.source.id,
+    });
+  }
+  if (pricingInputs.length === 0)
+    throw new Error("OpenAI accounting contract contained no recognized pricing inputs");
+  input.onPricingReconciliation?.({
+    disposition: "normalized",
+    reason_code: "pricing_input_contract_bound",
+    sample: `${pricingInputs.length} accounting fields`,
+  });
+  return [
+    {
+      ...baseModel({
+        providerId: input.provider.id,
+        id: target.model_id,
+        ...(target.version === undefined ? {} : { version: target.version }),
+        name: target.name,
+        sourceId: input.source.id,
+        observedAt: input.observedAt,
+      }),
+      tasks: target.tasks,
+      pricing_state: "unknown",
+      price_facts: [],
+      raw_price_facts: [],
+      pricing_inputs: pricingInputs,
+    },
+  ];
+}
+
 function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
   if (input.catalogModels === undefined)
     throw new Error("OpenAI pricing requires the collected catalog");
@@ -1377,7 +1562,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
     input.onPricingReconciliation?.({
       disposition: "unsupported",
       reason_code: "unsupported_pricing_cell",
-      ...(sample === "" ? {} : { sample }),
+      ...(sample === "" ? {} : { sample: sample.slice(0, 256) }),
     });
   };
   for (const table of openAiPricingTables(input.body, input.onPricingReconciliation)) {
@@ -1476,7 +1661,7 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
         input.onPricingReconciliation?.({
           disposition: "unsupported",
           reason_code: "unreviewed_pricing_table",
-          sample: table.headers.join(" | "),
+          sample: table.headers.join(" | ").slice(0, 256),
         });
         break;
       }
@@ -2151,6 +2336,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseOpenAiDataResidency(input);
     case "openai-pricing":
       return parseOpenAiPricing(input);
+    case "openai-accounting":
+      return parseOpenAiAccounting(input);
     case "anthropic-catalog":
       return parseAnthropicCatalog(input);
     case "anthropic-api":
@@ -2199,6 +2386,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseAzurePublicPricing(input);
     case "azure-claude-pricing":
       return parseAzureClaudePricing(input);
+    case "azure-accounting":
+      return parseAzureAccounting(input);
     case "azure-api":
       return parseAzureApi(input);
     case "gemini-catalog":

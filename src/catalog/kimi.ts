@@ -6,14 +6,14 @@ import {
   extractKimiCommercialFacts,
   type KimiCommercialEvidence,
 } from "./kimi-commercial-source.ts";
+import {
+  extractKimiCommercialPricingInputs,
+  extractKimiOpenApiAccounting,
+} from "./kimi-accounting.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
-import type {
-  ParsedProviderModel as ProviderModel,
-  SourcePriceFact,
-  SourceRawPricingFact,
-} from "./pricing-source.ts";
+import type { ParsedProviderModel as ProviderModel, SourcePriceFact } from "./pricing-source.ts";
 import { assertItemCount, recognizeItems, type SourceContractEvidence } from "./source-contract.ts";
 import { type Provider, unknownCapabilities } from "./schema.ts";
 
@@ -30,57 +30,57 @@ const modelsPath = "/v1/models";
 const chatPath = "/v1/chat/completions";
 const estimatePath = "/v1/tokenizers/estimate-token-count";
 const batchPath = "/v1/batches";
-const batchApiDocument = "/docs/api/batch-create";
-const cacheDocument = "/docs/guide/use-context-caching-feature-of-kimi-api";
 const refSchema = z.string().regex(/^#\/components\/schemas\/[A-Za-z0-9]+$/);
 const openApiSchema = z.object({
   servers: z.array(z.object({ url: z.url() })).length(1),
-  paths: z.object({
-    [modelsPath]: z.object({
-      get: z.object({
-        responses: z.object({
-          "200": z.object({
-            content: z.object({
-              "application/json": z.object({ schema: z.unknown() }),
-            }),
-          }),
-        }),
-      }),
-    }),
-    [chatPath]: z.object({
-      post: z.object({
-        requestBody: z.object({
-          content: z.object({
-            "application/json": z.object({
-              schema: z.object({
-                discriminator: z.object({
-                  propertyName: z.literal("model"),
-                  mapping: z.record(modelIdSchema, refSchema),
-                }),
+  paths: z
+    .object({
+      [modelsPath]: z.object({
+        get: z.object({
+          responses: z.object({
+            "200": z.object({
+              content: z.object({
+                "application/json": z.object({ schema: z.unknown() }),
               }),
             }),
           }),
         }),
-        responses: z.object({
-          "200": z.object({
+      }),
+      [chatPath]: z.object({
+        post: z.object({
+          requestBody: z.object({
             content: z.object({
-              "application/json": z.object({ schema: z.object({ $ref: refSchema }) }),
-              "text/event-stream": z.object({ schema: z.object({ $ref: refSchema }) }),
+              "application/json": z.object({
+                schema: z.object({
+                  discriminator: z.object({
+                    propertyName: z.literal("model"),
+                    mapping: z.record(modelIdSchema, refSchema),
+                  }),
+                }),
+              }),
+            }),
+          }),
+          responses: z.object({
+            "200": z.object({
+              content: z.object({
+                "application/json": z.object({ schema: z.object({ $ref: refSchema }) }),
+                "text/event-stream": z.object({ schema: z.object({ $ref: refSchema }) }),
+              }),
             }),
           }),
         }),
       }),
-    }),
-    [estimatePath]: z.object({
-      post: z.object({
-        requestBody: z.object({
-          content: z.object({
-            "application/json": z.object({ schema: z.object({ $ref: refSchema }) }),
+      [estimatePath]: z.object({
+        post: z.object({
+          requestBody: z.object({
+            content: z.object({
+              "application/json": z.object({ schema: z.object({ $ref: refSchema }) }),
+            }),
           }),
         }),
       }),
-    }),
-  }),
+    })
+    .catchall(z.unknown()),
   components: z.object({ schemas: z.record(z.string(), z.unknown()) }),
 });
 const allOfSchema = z.object({ allOf: z.array(z.unknown()).min(1) });
@@ -92,7 +92,6 @@ const maxCompletionSchema = z.object({
   type: z.literal("integer"),
   description: z.string().min(1),
 });
-const integerPropertySchema = z.object({ type: z.literal("integer") });
 const includeUsageSchema = z.object({
   type: z.literal("boolean"),
   default: z.literal(false),
@@ -273,11 +272,8 @@ function requestFacts(
   if (z.object({ type: z.literal("boolean") }).safeParse(common.stream).success === false)
     throw new Error("Kimi OpenAPI changed streaming schema");
   const includeUsage = includeUsageSchema.parse(properties(common.stream_options).include_usage);
-  if (
-    !/(?:entire request|整个请求)/i.test(includeUsage.description) ||
-    !/(?:interrupted|流中断)/i.test(includeUsage.description)
-  )
-    throw new Error("Kimi OpenAPI changed streaming usage semantics");
+  if (!/(?:entire request|整个请求)/i.test(includeUsage.description))
+    throw new Error("Kimi OpenAPI changed streaming usage scope");
   const toolRef = z.object({ items: referenceSchema }).parse(common.tools).items.$ref;
   const toolType = properties(schemas[componentName(toolRef)]).type;
   if (!enumSchema.parse(toolType).enum.includes("function"))
@@ -306,28 +302,6 @@ function requestFacts(
   };
 }
 
-function usageFields(value: unknown): string[] {
-  const fields = properties(value);
-  for (const field of Object.values(fields)) integerPropertySchema.parse(field);
-  return Object.keys(fields).sort();
-}
-
-function validateUsageSchemas(spec: z.infer<typeof openApiSchema>): void {
-  const response =
-    spec.paths[chatPath].post.responses["200"].content["application/json"].schema.$ref;
-  const stream =
-    spec.paths[chatPath].post.responses["200"].content["text/event-stream"].schema.$ref;
-  const expected = ["cached_tokens", "completion_tokens", "prompt_tokens", "total_tokens"];
-  for (const [label, ref] of [
-    ["response", response],
-    ["stream", stream],
-  ] as const) {
-    const component = properties(spec.components.schemas[componentName(ref)]);
-    if (usageFields(component.usage).join("\0") !== expected.join("\0"))
-      throw new Error(`Kimi OpenAPI changed ${label} usage fields`);
-  }
-}
-
 export function parseKimiOpenApi(input: Input): ProviderModel[] {
   const spec = openApiSchema.parse(JSON.parse(input.body));
   const extractor = input.source.extractor;
@@ -335,7 +309,15 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
   if (spec.servers[0]?.url !== extractor.baseUrl)
     throw new Error("Kimi OpenAPI changed its server");
   validateModelListSchema(spec);
-  validateUsageSchemas(spec);
+  const accounting = extractKimiOpenApiAccounting({
+    spec,
+    sourceRef: input.source.id,
+    baseUrl: extractor.baseUrl,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { onReconciliation: input.onPricingReconciliation }),
+  });
   const mapping =
     spec.paths[chatPath].post.requestBody.content["application/json"].schema.discriminator.mapping;
   const entries = Object.entries(mapping);
@@ -376,6 +358,9 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
   const models = entries.map(([id, ref]) => {
     const observed = facts.get(ref);
     if (observed === undefined) throw new Error(`Kimi OpenAPI omitted ${ref}`);
+    const optionalEndpoints = accounting.endpoints
+      .filter(({ modelIds }) => modelIds.includes(id))
+      .map(({ name, path }) => ({ name, path }));
     return {
       ...baseModel({
         providerId: input.provider.id,
@@ -386,7 +371,7 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
       }),
       tasks: ["text_generation"],
       modalities: { input: ["text"], output: ["text"] },
-      api_endpoints: [{ name: "Chat Completions", path: chatPath }],
+      api_endpoints: [{ name: "Chat Completions", path: chatPath }, ...optionalEndpoints],
       limits: { max_output_tokens: maxOutputs.get(id) },
       capabilities: {
         ...unknownCapabilities(),
@@ -400,6 +385,9 @@ export function parseKimiOpenApi(input: Input): ProviderModel[] {
       status: "active",
     } satisfies ProviderModel;
   });
+  const carrier = models.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && accounting.pricingInputs.length > 0)
+    carrier.pricing_inputs = accounting.pricingInputs;
   return bounded(input, "kimi-openapi", models);
 }
 
@@ -903,32 +891,17 @@ function requireClaims(body: string, claims: readonly RegExp[], message: string)
 
 function commercialIndexPath(path: string): boolean {
   const normalized = path.replace(/\.md$/, "");
-  if (normalized.startsWith("/docs/pricing/")) return true;
+  if (/^\/docs\/pricing\/(?:chat(?:-[a-z0-9-]+)?|batch|tools)$/.test(normalized)) return true;
   if (normalized.startsWith("/docs/api/files")) return true;
   if (
-    /^\/docs\/api\/[^/]*(?:balance|billing|cost|usage|spend|expense|consumption)[^/]*$/.test(
-      normalized,
-    ) ||
-    normalized === "/docs/api/chat" ||
-    normalized === "/docs/api/estimate"
-  )
-    return true;
-  if (
     [
-      "/docs/guide/account-and-payments",
-      "/docs/guide/org-best-practice",
-      "/docs/guide/product-plans",
       "/docs/guide/use-batch-api",
-      "/docs/guide/use-batch-inference",
-      "/docs/guide/use-context-caching-feature-of-kimi-api",
       "/docs/guide/use-official-tools",
       "/docs/guide/use-web-search",
-    ].includes(normalized) ||
-    /^\/docs\/guide\/[^/]*(?:billing|payment|cost|spend|budget)[^/]*$/.test(normalized)
+    ].includes(normalized)
   )
     return true;
-  if (normalized === "/docs/agreement/modeluse") return true;
-  return normalized === "/docs/introduction";
+  return normalized === "/docs/api/batch-create";
 }
 
 function validateCommercialIndex(bundle: LinkedBundle, origin: string): void {
@@ -1036,7 +1009,6 @@ function formulaTools(body: string): string[] {
 }
 
 interface CommercialEvidence extends KimiCommercialEvidence {
-  bindingGaps: Array<"chat" | "cache" | "batch">;
   reconciliation: PricingReconciliationItem[];
 }
 
@@ -1077,16 +1049,6 @@ function commercialEvidence(
 ): CommercialEvidence {
   const china = extractor.region === "China";
   const reconciliation: PricingReconciliationItem[] = [
-    { disposition: "excluded", reason_code: "balance_api_out_of_catalog" },
-    { disposition: "excluded", reason_code: "account_tier_capacity_out_of_catalog" },
-    { disposition: "excluded", reason_code: "project_budget_control_out_of_catalog" },
-    { disposition: "excluded", reason_code: "console_consumption_analysis_out_of_catalog" },
-    { disposition: "excluded", reason_code: "voucher_account_entitlement_out_of_catalog" },
-    { disposition: "excluded", reason_code: "batch_console_tier_out_of_catalog" },
-    { disposition: "excluded", reason_code: "response_exact_cost_not_returned" },
-    { disposition: "unbound", reason_code: "usage_cost_api_not_documented" },
-    { disposition: "unbound", reason_code: "stream_interruption_usage_unavailable" },
-    { disposition: "unbound", reason_code: "enterprise_terms_not_published" },
     { disposition: "unbound", reason_code: "formula_web_search_billing_trigger_ambiguous" },
     { disposition: "unbound", reason_code: "formula_tool_promotion_end_not_published" },
     { disposition: "unbound", reason_code: "web_search_documentation_outdated" },
@@ -1129,30 +1091,6 @@ function commercialEvidence(
         ],
     "Kimi billing contract drifted",
   );
-  const chatUsage = review(
-    "chat_usage_contract_drift",
-    "/docs/api/chat",
-    "Chat Completions",
-    [/prompt_tokens/, /completion_tokens/, /total_tokens/, /cached_tokens/, /include_usage/],
-    "Kimi response-usage contract drifted",
-  );
-  review(
-    "token_estimate_contract_drift",
-    "/docs/api/estimate",
-    "token estimate",
-    [/\/v1\/tokenizers\/estimate-token-count/, /data\.total_tokens/],
-    "Kimi token-estimate contract drifted",
-  );
-  const cacheUsage = review(
-    "cache_accounting_contract_drift",
-    cacheDocument,
-    "context cache",
-    china
-      ? [/对所有模型请求自动启用/, /(?:超过|大于) 256/, /无需手动/]
-      : [/automatically enabled for all model requests/i, /exceed 256/i, /no manual/i],
-    "Kimi context-cache accounting contract drifted",
-  );
-
   const tools = review(
     "web_search_billing_contract_drift",
     "/docs/pricing/tools",
@@ -1245,82 +1183,6 @@ function commercialEvidence(
     ),
   ];
 
-  const ancillary = [
-    [
-      "balance_contract_drift",
-      "/docs/api/balance",
-      "balance API",
-      [/\/v1\/users\/me\/balance/, /available_balance/, /voucher_balance/, /cash_balance/],
-      "Kimi balance API contract drifted",
-    ],
-    [
-      "account_tier_contract_drift",
-      "/docs/pricing/limits",
-      "account limits",
-      china
-        ? [/累计充值金额/, /Tier5/, /代金券不计入累计充值总额/]
-        : [/cumulative recharge amount/i, /Tier5/, /Vouchers do not count/i],
-      "Kimi account-tier contract drifted",
-    ],
-    [
-      "account_billing_contract_drift",
-      "/docs/guide/account-and-payments",
-      "account billing",
-      china
-        ? [/项目日消费预算/, /10 分钟/, /15 元代金券/, /Kimi K3 不支持/]
-        : [/daily spending budget/i, /10 minutes/i, /invoice/i, /account tier/i],
-      "Kimi account-billing contract drifted",
-    ],
-    [
-      "project_consumption_contract_drift",
-      "/docs/guide/org-best-practice",
-      "project consumption",
-      china
-        ? [/月消费预算和日消费预算/, /10 分钟/, /消费分析/]
-        : [/monthly and daily consumption budgets/i, /10 minutes/i, /consumption analysis/i],
-      "Kimi project-consumption contract drifted",
-    ],
-    [
-      "product_plan_contract_drift",
-      "/docs/guide/product-plans",
-      "product plans",
-      china ? [/按量计费模式/, /企业方案/] : [/pay-as-you-go billing/i, /enterprise plans/i],
-      "Kimi product-plan contract drifted",
-    ],
-    [
-      "request_accounting_contract_drift",
-      "/docs/introduction",
-      "billing and rate limits",
-      china
-        ? [/max_completion_tokens/, /实际生成的 (?:Tokens|token)/i, /用户(?:层面|级别)/]
-        : [/max_completion_tokens/, /actual number of Tokens generated/i, /user level/i],
-      "Kimi request-accounting contract drifted",
-    ],
-    [
-      "commercial_terms_drift",
-      "/docs/agreement/modeluse",
-      "commercial terms",
-      china
-        ? [/产品定价、类型/, /官网网页\/订购页面公示为准/, /价格调整说明/, /网站价格页面公示/]
-        : [
-            /pricing set forth on the pricing page or in an applicable Order Form/i,
-            /Pricing Changes/,
-            /after the effective date/i,
-            /Promotions/,
-          ],
-      "Kimi commercial terms drifted",
-    ],
-    [
-      "batch_eligibility_contract_drift",
-      "/docs/guide/use-batch-inference",
-      "Batch console",
-      [/Tier1/, china ? /以上/ : /or above/i],
-      "Kimi Batch account-eligibility contract drifted",
-    ],
-  ] as const;
-  for (const [reasonCode, path, label, claims, message] of ancillary)
-    review(reasonCode, path, label, claims, message);
-
   const batchGuide = review(
     "batch_accounting_contract_drift",
     "/docs/guide/use-batch-api",
@@ -1330,25 +1192,11 @@ function commercialEvidence(
       : [/saving 40%/i, /prompt_tokens/, /completion_tokens/, /total_tokens/],
     "Kimi Batch accounting contract drifted",
   );
-  const batchApi = reviewClaim(reconciliation, "batch_api_contract_drift", () => {
-    const body = companion(bundle, batchApiDocument, "Batch API reference");
-    if (
-      !/^`{3,4}yaml POST \/v1\/batches$/m.test(body) ||
-      !/目前仅支持 \/v1\/chat\/completions|currently only \/v1\/chat\/completions is supported/i.test(
-        body,
-      )
-    )
-      throw new Error("Kimi Batch API reference changed");
-    return body;
-  });
-
   if (batchGuide !== undefined && !batchGuide.includes("cached_tokens"))
     reconciliation.push({
       disposition: "unbound",
       reason_code: "batch_cached_tokens_not_documented",
     });
-  if (!china)
-    reconciliation.push({ disposition: "excluded", reason_code: "tax_at_checkout_out_of_catalog" });
   const batchScopeConflicts: string[] = [];
   if (batchGuide !== undefined) {
     const batchGuideModelIds = new Set(batchGuideModels(batchGuide));
@@ -1377,7 +1225,6 @@ function commercialEvidence(
         }));
   return {
     region: extractor.region,
-    batchCachePartitionUnbound: batchGuide !== undefined && !batchGuide.includes("cached_tokens"),
     batchScopeConflicts,
     fileService: billing !== undefined && fileDocuments.every((document) => document !== undefined),
     formulaModels: formula?.models ?? [],
@@ -1385,11 +1232,6 @@ function commercialEvidence(
     searchModels: search?.models ?? [],
     ...(search?.rate === undefined ? {} : { searchRate: search.rate }),
     webSearchWarning,
-    bindingGaps: [
-      ...(chatUsage === undefined ? (["chat"] as const) : []),
-      ...(cacheUsage === undefined ? (["cache"] as const) : []),
-      ...(batchGuide === undefined || batchApi === undefined ? (["batch"] as const) : []),
-    ],
     reconciliation,
   };
 }
@@ -1399,6 +1241,14 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   if (extractor.kind !== "kimi-pricing") throw new Error("Wrong kimi-pricing extractor");
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
   const documents = [bundle.index, ...bundle.documents];
+  const pricingInputs = extractKimiCommercialPricingInputs({
+    documents,
+    sourceRef: input.source.id,
+    ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
+    ...(input.onPricingReconciliation === undefined
+      ? {}
+      : { onReconciliation: input.onPricingReconciliation }),
+  });
   const models = new Map<string, ProviderModel>();
   const rowReconciliation: PricingReconciliationItem[] = [];
   const modelPricingPaths = new Set([
@@ -1474,11 +1324,10 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
         `${right.meter}\0${JSON.stringify(right.conditions)}`,
       ),
     ),
-    raw_price_facts: [
-      ...model.raw_price_facts,
-      ...evidence.bindingGaps.flatMap((gap) => bindingGap(input, extractor, model, gap)),
-    ],
+    raw_price_facts: model.raw_price_facts,
   }));
+  const carrier = result.toSorted((left, right) => left.uid.localeCompare(right.uid))[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   for (const model of result) {
     for (const rate of model.price_facts)
       input.onPricingReconciliation?.({
@@ -1507,34 +1356,6 @@ export function parseKimiPricing(input: Input): ProviderModel[] {
   for (const item of [...rowReconciliation, ...evidence.reconciliation])
     input.onPricingReconciliation?.(item);
   return bounded(input, "kimi-pricing", result);
-}
-
-function bindingGap(
-  input: Input,
-  extractor: PricingExtractor,
-  model: ProviderModel,
-  gap: CommercialEvidence["bindingGaps"][number],
-): SourceRawPricingFact[] {
-  const applies =
-    gap === "batch"
-      ? model.price_facts.some(({ conditions }) => conditions.service_tier === "batch")
-      : gap === "cache"
-        ? model.price_facts.some(({ meter }) => meter === "cache_read_text")
-        : true;
-  if (!applies) return [];
-  return [
-    {
-      term_key: `kimi_${gap}_charge_binding`,
-      impact: "informational",
-      reason: "unsupported_structure",
-      conditions: {
-        region: extractor.region,
-        ...(gap === "batch" ? { service_tier: "batch" } : {}),
-      },
-      source_ref: input.source.id,
-      raw: { label: `Kimi ${gap} usage evidence could not be refreshed` },
-    },
-  ];
 }
 
 function htmlText(value: string): string {

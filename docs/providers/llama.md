@@ -56,21 +56,33 @@ excluded as historical promotion evidence because it has no current validity per
 It cannot make current calls free. Partner-backed Cerebras or Groq routes mentioned in
 the announcement are also excluded; their current rates belong to those providers.
 
-The Chat response exposes open `{metric, value, unit}` entries rather than documented
-stable meter names. Preserve that as usage-contract evidence, but do not bind input,
-output, cached, or reasoning token meters until Meta publishes exact semantics. The
-Moderations response currently publishes no usage quantity. Caller-defined function
-tools, streaming, structured output, and image input are capabilities, not separate
-charges without official rate evidence.
+The Chat response and stream expose open `{metric, value, unit}` entries, but the
+first-party SDK does not enumerate stable metric names, define their aggregation or
+terminal semantics, or relate them to a billed quantity. Kmodels audits that generic
+envelope as evidence for deliberate non-binding, but publishes no `pricing_inputs`:
+a runtime-selected metric name is not a stable acquisition contract for input,
+output, cached, or reasoning tokens. The Moderations response publishes no usage
+quantity at all. Request fields such as `max_completion_tokens` are controls rather
+than observed billable quantities and are not accounting evidence.
+
+This is an intentional price-book boundary, not an attempt to own the runtime request
+lifecycle. A consumer remains responsible for observing requests and results and for
+supplying quantities. If Meta publishes stable metric names, units, and response or
+stream semantics, the adapter can add field-local `pricing_inputs` and describe any
+required calculation even before a numeric rate exists; a later rate can bind those
+contracts. Until then it must not publish a dynamic provider-field placeholder or
+infer OpenAI-compatible token semantics. Caller-defined function tools, streaming,
+structured output, and image input are capabilities, not separate charges without
+official rate evidence.
 
 ## Resilience and refresh
 
 - Registry identity, family, descriptor uniqueness, count bounds, context rules, and
   required release evidence remain source-level invariants because partial acceptance
   would make the exhaustive catalog misleading.
-- Hosted identities, routes, examples, SDK accounting fields, and the historical
-  preview check are fact-local. Drift emits diagnostics and suppresses only the claim
-  that can no longer be proven.
+- Hosted identities, routes, examples, the generic SDK metric envelope, and the
+  historical preview check are fact-local. Drift emits diagnostics and suppresses
+  only the claim that can no longer be proven.
 - Optional hosted-document omissions retain the last verified affected facts and mark
   the source partial; independently observed registry facts continue to advance.
 - Exact hosted rows are `not_published` only while a reviewed route remains proven.

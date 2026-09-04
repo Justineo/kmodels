@@ -83,7 +83,8 @@
     },
     "GenerateContentResponse": {
       "properties": {
-        "usageMetadata": {},
+        "candidates": { "type": "array" },
+        "usageMetadata": { "$ref": "UsageMetadata" },
         "modelVersion": {},
         "responseId": {},
         "modelStatus": {}
@@ -98,8 +99,46 @@
         "thoughtsTokenCount": {},
         "promptTokensDetails": {},
         "cacheTokensDetails": {},
+        "candidatesTokensDetails": {},
         "serviceTier": { "enum": ["unspecified", "standard", "flex", "priority"] }
       }
-    }
+    },
+    "ModalityTokenCount": {
+      "properties": {
+        "modality": {
+          "enum": ["MODALITY_UNSPECIFIED", "TEXT", "IMAGE", "VIDEO", "AUDIO", "DOCUMENT"]
+        },
+        "tokenCount": {}
+      }
+    },
+    "Candidate": { "properties": { "content": {}, "groundingMetadata": {} } },
+    "Content": { "properties": { "parts": {} } },
+    "Part": { "properties": { "inlineData": {} } },
+    "Blob": { "properties": { "mimeType": {} } },
+    "GroundingMetadata": {
+      "properties": {
+        "groundingChunks": {},
+        "webSearchQueries": {},
+        "googleMapsWidgetContextToken": {}
+      }
+    },
+    "GroundingChunk": { "properties": { "web": {} } },
+    "Web": { "properties": { "uri": {} } },
+    "EmbedContentResponse": { "properties": { "usageMetadata": {} } },
+    "EmbeddingUsageMetadata": {
+      "properties": { "promptTokenCount": {}, "promptTokenDetails": {} }
+    },
+    "GenerateContentBatch": { "properties": { "output": {} } },
+    "GenerateContentBatchOutput": {
+      "properties": { "inlinedResponses": {}, "responsesFile": {} }
+    },
+    "InlinedResponses": { "properties": { "inlinedResponses": {} } },
+    "InlinedResponse": { "properties": { "response": {} } },
+    "EmbedContentBatch": { "properties": { "output": {} } },
+    "EmbedContentBatchOutput": {
+      "properties": { "inlinedResponses": {}, "responsesFile": {} }
+    },
+    "InlinedEmbedContentResponses": { "properties": { "inlinedResponses": {} } },
+    "InlinedEmbedContentResponse": { "properties": { "response": {} } }
   }
 }

@@ -1,6 +1,6 @@
 # Commercial topology
 
-Status: current boundary; provider convergence is in progress
+Status: current boundary; configured-provider adapters implemented
 
 This document defines which public prices Kmodels admits and how every provider maps them into one
 shared model. [Pricing](pricing.md) owns the exact wire. Provider documents own source authority,
@@ -8,10 +8,31 @@ identity matching, and vocabulary mappings.
 
 ## Purpose
 
-Kmodels is an AI Gateway rate book. Its job is to let a consumer reconstruct the public list cost of
-a proxied upstream request, an asynchronous result item, or a provider-hosted component caused by
-that request. It is not a complete representation of everything a provider sells and it is not an
-invoice engine.
+Kmodels is an AI Gateway rate book. Its job is to publish the rates, selectors, required usage
+inputs, and bounded calculation contracts from which a consumer can reconstruct the public list
+cost of a proxied upstream request, an asynchronous result item, or a provider-hosted component
+caused by that request. It does not observe a request lifecycle, store a usage ledger, or reconcile
+an invoice.
+
+The handoff to a calculator is explicit. For each applicable rate variant, Kmodels publishes:
+
+- the exact rate, denominator, applicability, and validity;
+- the final billable usage signal and its aggregation boundary;
+- zero or more alternative quantity methods, including exact source locators and bounded arithmetic;
+- selector sources where the provider returns a value needed to choose the variant; and
+- source observations proving each price, mapping, and calculation.
+
+The calculator supplies one evaluation record containing the chosen route/request selectors and
+the observed signal values it could collect. It may obtain them from an API response, terminal
+stream event, asynchronous result, account report, invocation log, or telemetry. Kmodels reports
+which alternatives are sufficient and which signals remain missing; it does not prescribe how that
+record is captured, stored, retried, or reconciled. Correlation IDs and account-billing joins remain
+downstream operational data unless they are themselves required to select or calculate a public
+rate.
+
+Price books remain provider-owned. Kmodels neither constructs nor promises a continuously updated
+cross-provider identity for an allegedly equivalent model; consumers that need such product
+comparison own that separate, policy-driven mapping.
 
 This boundary is narrower than the wire's representational capacity. Existing shared types may
 decode broader facts while providers converge, but new collection work must not publish a fact only
@@ -107,10 +128,33 @@ A rate separates:
 - the denominator, such as token, request, image, page, or second; and
 - applicability conditions.
 
-A charge binding optionally connects the rate to an exact observable signal and aggregation
-boundary. It says how a Gateway can count the charge; it does not calculate a total. Use a shared
-signal only when providers mean the same counter and trigger. Ordinary caller-defined functions do
-not become billable tool calls unless the provider prices that exact event.
+A charge binding optionally connects the rate to a billable result signal and aggregation boundary.
+Its quantity methods are alternative acquisition paths: each path may consume that signal directly
+or derive it with a bounded exact-rational graph, and may map every required input to first-party
+request, response, stream, result, account-report, invocation-log, or versioned OTel fields. The
+bundled pure evaluator defines the calculation semantics and rejects conflicting results from two
+available paths. The Gateway remains responsible for collecting those inputs and deciding how to
+handle an interrupted or incomplete request.
+
+The graph admits only reviewed operations. Its product form multiplies one quantity by `item`
+counts, for example seconds requested per video by successfully returned videos; it is not a
+general dimensional-expression language.
+
+Provider-field mappings may use only the closed collection reductions defined by the shared wire
+and may treat absence as zero only for an evidenced filtered collection. This keeps source
+extraction declarative and bounded while still covering image counts, successful-result presence,
+and unique search-query counts.
+
+Rate selector sources separately map applicability dimensions to first-party fields. Accounting
+contracts are collected independently from rate tables, so drift removes only the affected input
+or selector mapping and never turns a still-valid price into raw pricing. Use a shared signal only
+when providers mean the same counter and trigger. Ordinary caller-defined functions do not become
+billable tool calls unless the provider prices that exact event.
+
+OpenTelemetry is a supported mapping target, not the canonical signal model. Its GenAI conventions
+cover a useful token subset but not all request-attributable commercial quantities. Kmodels retains
+its own stable usage vocabulary and records OTel attributes only where their published semantics are
+an exact match.
 
 Numeric rates remain useful when their signal is not yet bound. The missing binding is local and
 must not erase the rate or sibling terms.
@@ -145,7 +189,7 @@ applicability, and validity scopes. A provider-specific authority rule may choos
 the exact overlapping claim. Keep losing observations as conflict evidence and show a local warning.
 If no deterministic winner exists, withhold only the disputed value; valid sibling rows survive.
 
-Parsing and reconciliation are fact-local:
+Parsing and source reconciliation are fact-local:
 
 - isolate malformed pages, tables, rows, cells, and newly observed enum values;
 - retain recognized siblings and unknown fields;
@@ -184,7 +228,9 @@ source order, or collection time. Validation proves that references resolve with
 units and bound signals are dimensionally compatible, exact relations are valid, normalized facts
 retain first-party observations, and private/account data cannot enter the public resource.
 
-The wire and UI projection remain shared. Providers are re-reviewed one at a time to remove
-commercial facts outside this boundary, preserve useful invocation facts, harden source parsing,
-refresh generated data, and update their provider guide. A provider retains its currently accepted
-partition until that review and refresh are complete.
+The wire and UI projection remain shared. Each configured provider adapter removes commercial facts
+outside this boundary, preserves useful invocation facts, hardens source parsing, and adds
+calculation and input-source contracts where evidence allows. A provider retains its currently
+accepted partition until a later source refresh and all adoption gates complete. Billing
+reconciliation remains a downstream concern; stable provider, book, offer, term, meter, signal,
+applicability, and source-locator identities are the handoff needed by that downstream service.

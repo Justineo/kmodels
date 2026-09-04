@@ -19,6 +19,7 @@ import {
   type SourceContractEvidence,
 } from "./source-contract.ts";
 import { extractXaiCommercialFacts, type XaiCommercialEvidence } from "./xai-commercial-source.ts";
+import { extractXaiPricingInputs } from "./xai-accounting.ts";
 import {
   modalitySchema,
   type Modality,
@@ -2177,6 +2178,14 @@ export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const models =
     reviewClaim(input, "redirect_price_join_drift", () => redirectedModels(combined)) ?? combined;
   extractXaiCommercialFacts(models, input.source.id, current.evidence);
+  const pricingInputs = extractXaiPricingInputs(
+    llms,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
+  const carrier = models[0];
+  if (carrier !== undefined && pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
   for (const model of models)
     input.onPricingReconciliation?.({
       disposition: model.price_facts.length > 0 ? "normalized" : "unresolved",

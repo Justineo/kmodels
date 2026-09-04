@@ -6,8 +6,10 @@
     price. The deepseek-v4-pro cached-token price is not 20%; use the console price.
   </p>
   <p>
-    Responses report cached_tokens and cache_creation_input_tokens. Batch file calls are not
-    eligible for cache discounts.
+    OpenAI-compatible and DashScope responses report cached_tokens and
+    prompt_tokens_details.cache_creation_input_tokens. Anthropic-compatible responses expose
+    "input_tokens", "output_tokens", cache_read_input_tokens, and cache_creation_input_tokens. Batch
+    file calls are not eligible for cache discounts.
   </p>
   <section>
     <h2>Explicit cache</h2>

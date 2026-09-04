@@ -38,9 +38,12 @@ source owns model identity and does not depend on the pricing page.
 
 `gemini-pricing` independently reads the official pricing page. It is optional and non-exhaustive:
 a failure retains the last verified Gemini pricebook without rejecting fresh model identity. Its
-optional claim-local Discovery document verifies response usage fields used by charge bindings; if
-that companion is temporarily unavailable, the last reviewed binding contract remains usable. If a
-fetched schema is incompatible, rates still refresh and only those bindings are withheld.
+optional claim-local Discovery document verifies GenerateContent, embedding, and Batch result
+fields used by charge bindings. The first-party Interactions API reference independently supplies
+Interactions usage and grounding counters, the GenerateContent Batch and Embeddings API references
+establish the response-file JSONL item types, and the video-generation guide supplies Veo request
+duration, resolution, and audio selectors. A missing or incompatible field removes only that exact
+input mapping; rates, sibling mappings, and model identity still refresh.
 
 The authenticated `/v1beta/models` source is an optional account-scoped inventory overlay enabled
 by `GEMINI_API_KEY`. It enriches existing public rows and never creates the global catalog.
@@ -76,24 +79,35 @@ Account-period free-query allowances are outside the gateway pricebook.
 
 ## Charge bindings
 
-Bindings reference actual first-party response fields rather than invented normalized provider
-keys:
+Bindings reference independently collected first-party request, response, stream, and result fields
+rather than invented normalized provider keys:
 
 - uncached input by modality is prompt/input modality tokens minus the matching cached partition;
+- document input and cache tokens are added to image tokens because Gemini prices document tokens
+  at the image rate;
 - cache read uses the matching cache modality partition;
 - text output is candidate/output tokens plus thinking tokens, because the published output rate
-  includes thinking;
+  includes thinking; aggregate candidate tokens are a fallback only when the offer has no separate
+  non-text output rate;
 - non-text output uses the response modality partition;
-- embedding input uses `EmbedContentResponse.usageMetadata.promptTokenCount`;
+- embedding input uses the matching `EmbeddingUsageMetadata.promptTokenDetails` modality; document
+  embeddings are added to the image-rate quantity;
+- generated-image rates count only image-MIME inline output parts;
+- Veo per-second rates use explicit `GenerateVideosConfig.durationSeconds` once per successful
+  generated-video result item; resolution and generated-audio applicability come from the same
+  request configuration;
 - online service tier uses `UsageMetadata.serviceTier`;
 - Interactions Search/Maps use `usage.grounding_tool_count` filtered by tool type;
-- GenerateContent Search uses `groundingMetadata.webSearchQueries`; Maps uses the grounded-result
-  marker and counts a qualifying grounded prompt.
+- GenerateContent Search query pricing counts unique non-empty
+  `groundingMetadata.webSearchQueries`; older Search request pricing and Maps grounded-prompt pricing
+  use their respective successful grounded-result marker.
 
 Batch locators refer only to each successful inline/file result's contained GenerateContent or
 embedding response, never Interactions usage or the job submission count. A rate whose denominator
 has no exact documented request/result quantity remains unbound; publishing a rate does not require
-fabricating observability.
+fabricating observability. In particular, GenerateContent does not expose an exact Maps query count,
+and a Veo request that omits `durationSeconds` has no exact duration input mapping. Stream interruption
+and usage retention policy remain downstream runtime concerns.
 
 ## Lifecycle and identity
 

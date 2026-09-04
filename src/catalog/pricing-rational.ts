@@ -30,6 +30,23 @@ export function multiplyRationals(left: Rational, right: Rational): Rational {
   );
 }
 
+export function addRationals(left: Rational, right: Rational): Rational {
+  return normalizeRational(
+    BigInt(left.numerator) * BigInt(right.denominator) +
+      BigInt(right.numerator) * BigInt(left.denominator),
+    BigInt(left.denominator) * BigInt(right.denominator),
+  );
+}
+
+export function subtractRationalsFloorZero(left: Rational, right: Rational): Rational {
+  if (compareRationals(left, right) <= 0) return normalizeRational(0n);
+  return normalizeRational(
+    BigInt(left.numerator) * BigInt(right.denominator) -
+      BigInt(right.numerator) * BigInt(left.denominator),
+    BigInt(left.denominator) * BigInt(right.denominator),
+  );
+}
+
 export function divideRationals(left: Rational, right: Rational): Rational {
   if (right.numerator === "0") throw new Error("Cannot divide by zero");
   return normalizeRational(

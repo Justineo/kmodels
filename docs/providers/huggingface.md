@@ -55,6 +55,10 @@ catalog presence, and repository creation time is not treated as model release t
   [Responses guide](https://huggingface.co/docs/inference-providers/en/guides/responses-api), and
   official SDK provider registry are claim-local contract audits. Their absence or prose drift does
   not invalidate independently parsed router rows or rates.
+- The OpenAI OpenAPI document referenced by the Hugging Face Responses guide is the protocol
+  authority for `ResponseUsage`. It can establish Responses quantity locators only while the local
+  Hugging Face compatibility claim also remains present; it cannot establish Hugging Face prices or
+  routes.
 - Featherless's unauthenticated active-model API and pricing documentation provide an exact native
   rate overlay only for already admitted models with a live `featherless-ai` route. Native models
   without such a route are discarded before merge.
@@ -104,10 +108,59 @@ upstream provider's own price book owns that economic cost.
 Chat token rates bind to the official response usage counters. Routing policies such as `auto`,
 `:fastest`, `:cheapest`, `:preferred`, and a pinned `:<provider>` are route-selection behavior, not
 separate offers. Because failover can change the realized backend, an exact per-request rate requires
-the selected or observed route provider.
+the selected route provider. Kmodels publishes an exact selector method for a pinned provider; it
+does not guess the result of a server-side routing policy.
 
 Tool support and structured output are capabilities. They create no price term unless Hugging Face
 publishes a separate request charge; no such surcharge is currently modeled.
+
+## Calculator input contract
+
+The router source publishes nine field-local pricing inputs. These describe what a downstream cost
+calculator must retain; Kmodels does not collect requests, detect completion, or persist a usage
+ledger.
+
+| Surface              | Quantity inputs                                               | Availability                            |
+| -------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| Chat Completions     | `usage.prompt_tokens`, `usage.completion_tokens`              | terminal synchronous response           |
+| Chat streaming       | the same fields in the `include_usage` terminal chunk         | terminal chunk before `[DONE]` only     |
+| Responses            | `usage.input_tokens`, `usage.output_tokens`                   | terminal response                       |
+| Responses streaming  | `response.usage.input_tokens`, `response.usage.output_tokens` | `response.completed` event only         |
+| route-price selector | normalized exact pinned provider                              | accepted request with an exact provider |
+
+The Responses fields are admitted only while both the Hugging Face compatibility statement and the
+referenced OpenAI `ResponseUsage` schema remain present. Chat and Responses are alternative
+quantity methods for the same routed-inference offer; they are never added together. All token
+rates aggregate per request. The prompt/input counter binds to `input_tokens`, and the
+completion/output counter binds to `output_tokens`.
+
+Each rate variant is also conditioned on `route_provider`. The calculator derives
+`HuggingFaceRequest.pinned_route_provider` only from an exact provider choice, either the explicit
+Inference Client provider or a model suffix naming a provider. Policy suffixes and unsuffixed
+requests do not satisfy this selector. A successful request proves quantities, but without the
+selected provider it does not prove which route-specific amount applies.
+
+Pricing-input drift is isolated to the affected method. If one usage field or the provider-selection
+claim disappears, the rate remains visible with its semantic charge binding, but the unverified
+quantity or selector acquisition method is omitted. The compiler never substitutes an invented
+`response:usage.*` raw locator.
+
+## Deliberate unresolved inputs
+
+- Hugging Face does not document a stable response field or header that reports the realized
+  provider after server-side `auto`, `:fastest`, `:cheapest`, or `:preferred` selection and
+  failover. Those calls need a route observation supplied by the caller or remain unpriceable from
+  the public contract alone.
+- A stream without its terminal Chat usage chunk or Responses `response.completed` event has no
+  exact usage quantity. Partial text is not retokenized as billing evidence.
+- Router rows publish one aggregate input-token rate. Although a model may accept images, the public
+  rate and response contract do not expose a separately priced text/image token split.
+- No routed cache-read, cache-write, reasoning, server-tool, regional, service-tier, or Batch rate is
+  published. Their request options or capabilities therefore do not create synthetic price terms.
+- `hf-inference` still lacks the request-level hardware SKU and billed compute duration needed by
+  its documented compute-time formula. Non-chat routes with no exact numeric overlay remain unknown.
+- Account usage pages, credits, provider invoices, and BYOK settlement may verify downstream spend,
+  but they are not rate-formula inputs and remain outside this pre-runtime price book.
 
 ## Resilience and refresh
 

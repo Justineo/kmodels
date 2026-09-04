@@ -49,8 +49,9 @@
   <div class="openapi-schema__list-item">
     <strong class="openapi-schema__property">include_usage</strong>
     <p>
-      The usage field shows token statistics for the entire request, and the choices field will
-      always be an empty array.
+      The last content chunk before the data: [DONE] message carries the token usage statistics for
+      the entire request. Its choices array always contains exactly one element that carries no new
+      content and a non-null finish_reason.
     </p>
   </div>
   <div class="openapi-schema__list-item">

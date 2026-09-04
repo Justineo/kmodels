@@ -184,6 +184,58 @@ describe("pricing commercial projection", () => {
     ]);
   });
 
+  it("keeps provider signals required by a quantity calculation", () => {
+    const value = catalog();
+    value.provider_vocabularies[0]!.atoms.push({
+      kind: "usage_signal",
+      key: "reported_input",
+      definition: "Provider-reported billable input tokens",
+      unit: {
+        factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+      },
+      resolution_phase: "outcome",
+    });
+    const term = value.books[0]!.offers[0]!.terms[0]!;
+    if (term.kind !== "rate") throw new Error("fixture term is not a rate");
+    term.variants[0]!.charge_binding = {
+      signal: { namespace: "kmodels", value: "input_tokens" },
+      aggregation: "request",
+      quantity_methods: [
+        {
+          calculation: {
+            nodes: [
+              {
+                op: "signal",
+                signal: {
+                  namespace: "provider",
+                  provider_id: providerId,
+                  value: "reported_input",
+                },
+              },
+              {
+                op: "multiply",
+                input: 0,
+                factor: { numerator: "2", denominator: "1" },
+              },
+            ],
+            result: 1,
+          },
+        },
+      ],
+      observations: [
+        {
+          source_ref: "pricing",
+          locator: { kind: "provider_key", value: "usage.input" },
+          raw: { fragment: "usage.input × 2" },
+        },
+      ],
+    };
+
+    expect(commercialPricingProjection(value).provider_atoms[0]?.atoms).toContainEqual(
+      expect.objectContaining({ kind: "usage_signal", key: "reported_input" }),
+    );
+  });
+
   it("separates normalized provenance changes from commercial changes", () => {
     const first = catalog();
     const second = structuredClone(first);

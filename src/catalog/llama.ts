@@ -640,18 +640,12 @@ function toolCall(
   return "unknown";
 }
 
-function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundleSchema>): void {
-  const params = optionalDocument(bundle, "/types/chat/completion_create_params.py");
+function auditHostedUsageShape(
+  input: ParseInput,
+  bundle: z.infer<typeof linkedBundleSchema>,
+): void {
   const response = optionalDocument(bundle, "/types/create_chat_completion_response.py");
   const stream = optionalDocument(bundle, "/types/create_chat_completion_response_stream_chunk.py");
-  const moderation = optionalDocument(bundle, "/types/moderation_create_response.py");
-  if (
-    params !== undefined &&
-    (!/messages: Required\[Iterable\[MessageParam\]\]/.test(params) ||
-      !/model: Required\[str\]/.test(params) ||
-      !/max_completion_tokens: int/.test(params))
-  )
-    diagnostic(input, "chat_accounting_contract_drift", "request inputs");
   if (
     response !== undefined &&
     (!/class Metric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
@@ -659,7 +653,7 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
     ) ||
       !/metrics: Optional\[List\[Metric\]\]/.test(response))
   )
-    diagnostic(input, "chat_accounting_contract_drift", "response metrics");
+    diagnostic(input, "chat_metrics_contract_drift", "response metrics");
   if (
     stream !== undefined &&
     (!/class EventMetric\(BaseModel\):[\s\S]*metric: str[\s\S]*value: float[\s\S]*unit: Optional\[str\]/.test(
@@ -668,15 +662,13 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
       !/event_type: Literal\["start", "complete", "progress", "metrics"\]/.test(stream) ||
       !/metrics: Optional\[List\[EventMetric\]\]/.test(stream))
   )
-    diagnostic(input, "stream_accounting_contract_drift", "stream metrics");
-  if (
-    moderation !== undefined &&
-    !/class ModerationCreateResponse\(BaseModel\):[\s\S]*model: str[\s\S]*results: List\[Result\]/.test(
-      moderation,
-    )
-  )
-    diagnostic(input, "moderation_accounting_contract_drift", "moderation response");
+    diagnostic(input, "stream_metrics_contract_drift", "stream metrics");
+}
 
+function auditHostedModelInventory(
+  input: ParseInput,
+  bundle: z.infer<typeof linkedBundleSchema>,
+): void {
   if (
     [
       "/src/llama_api_client/resources/models.py",
@@ -687,7 +679,12 @@ function hostedAccounting(input: ParseInput, bundle: z.infer<typeof linkedBundle
     claim(input, "model_inventory_contract_drift", "generated Models resource", () =>
       hostedModelInventory(bundle),
     );
+}
 
+function auditHistoricalPreview(
+  input: ParseInput,
+  bundle: z.infer<typeof linkedBundleSchema>,
+): void {
   const launch = optionalDocument(bundle, "/blog/llamacon-llama-news/");
   if (launch !== undefined) {
     const historicalPreview =
@@ -816,7 +813,9 @@ export function parseLlamaCatalog(input: ParseInput): ProviderModel[] {
       : claim(input, "hosted_route_drift", "Moderations", () =>
           hostedEndpoint(apiBase, moderations, "Moderations"),
         );
-  hostedAccounting(input, bundle);
+  auditHostedUsageShape(input, bundle);
+  auditHostedModelInventory(input, bundle);
+  auditHistoricalPreview(input, bundle);
   const hosted = hostedEvidence(input, models, {
     asyncChat: optionalDocument(bundle, "/examples/async_chat.py"),
     chat: optionalDocument(bundle, "/examples/chat.py"),

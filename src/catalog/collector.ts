@@ -54,7 +54,7 @@ import {
 } from "./pricing-transition.ts";
 import {
   assembleParsedProviderPricing,
-  isPricingSource,
+  isPricingDependencySource,
   isRequiredPricingSource,
 } from "./pricing-adapter.ts";
 import { validateAdoptedTopology } from "./pricing-adopted-topology.ts";
@@ -797,7 +797,7 @@ async function collectProvider(
       if (role === "inventory") unavailableInventories.push(source);
       else if (source.retainOmittedFacts === true)
         retainedOmissions.push({ source, observed: new Set() });
-      if (isPricingSource(source)) omittedPricingDependencies.add(source.id);
+      if (isPricingDependencySource(source)) omittedPricingDependencies.add(source.id);
     }
     for (const source of manifest.sources) {
       const role = source.role ?? "catalog";
@@ -867,7 +867,7 @@ async function collectProvider(
       let contractFinding: SourceContractEvidence | undefined;
       const pricingReconciliationItems: PricingReconciliationItem[] = [];
       try {
-        if (source.fields.includes("pricing"))
+        if (isPricingDependencySource(source))
           for (const dependency of result.omittedOptionalDependencies ?? [])
             omittedPricingDependencies.add(dependency);
         parsed = parseSource({
@@ -926,7 +926,7 @@ async function collectProvider(
         parsed_models: parsed.length,
         content_changed: contentChanged,
         extractor_changed: extractorChanged,
-        ...(source.fields.includes("pricing")
+        ...(isPricingDependencySource(source)
           ? {
               pricing_extraction: sourcePricingExtraction(parsed),
               pricing_reconciliation: sourcePricingReconciliation(

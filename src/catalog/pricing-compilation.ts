@@ -7,7 +7,7 @@ import { compareUtf8 } from "./canonical-value.ts";
 import { atomicWrite, rootDirectory } from "./io.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
 import {
-  isPricingSource,
+  isPricingDependencySource,
   isRequiredPricingSource,
   type ParsedPricingSource,
   type PublishedPricingModel,
@@ -155,6 +155,23 @@ export const pricingCompilationSnapshotSchema = z
                     ],
                     message: "Pricing compilation commercial fact provenance mismatch",
                   });
+          for (const [inputIndex, pricingInput] of (model.pricing_inputs ?? []).entries())
+            if (pricingInput.source_ref !== source.source_id)
+              context.addIssue({
+                code: "custom",
+                path: [
+                  "providers",
+                  providerIndex,
+                  "sources",
+                  sourceIndex,
+                  "models",
+                  modelIndex,
+                  "pricing_inputs",
+                  inputIndex,
+                  "source_ref",
+                ],
+                message: "Pricing compilation input provenance mismatch",
+              });
         }
       }
     }
@@ -212,6 +229,12 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
         fact,
       ]),
     );
+    const pricingInputs = new Map(
+      [...(current.pricing_inputs ?? []), ...(model.pricing_inputs ?? [])].map((fact) => [
+        JSON.stringify(fact),
+        fact,
+      ]),
+    );
     byUid.set(model.uid, {
       ...current,
       pricing_state: pricingState,
@@ -228,6 +251,13 @@ function replayModels(models: ParsedPricingSource["models"]): PricingReplaySourc
               .sort(([left], [right]) => compareUtf8(left, right))
               .map(([, fact]) => fact),
           }),
+      ...(pricingInputs.size === 0
+        ? {}
+        : {
+            pricing_inputs: [...pricingInputs]
+              .sort(([left], [right]) => compareUtf8(left, right))
+              .map(([, fact]) => fact),
+          }),
     });
   }
   return [...byUid.values()].sort((left, right) => compareUtf8(left.uid, right.uid));
@@ -237,15 +267,15 @@ export function capturePricingReplaySources(
   sources: readonly ParsedPricingSource[],
   sourceRecords: readonly SourceRecord[],
 ): PricingReplaySource[] | undefined {
-  const pricingSources = sources.filter(({ source }) => isPricingSource(source));
+  const dependencies = sources.filter(({ source }) => isPricingDependencySource(source));
   if (
-    pricingSources.length === 0 ||
-    pricingSources.some(({ source }) => source.access !== "public" || source.auth !== undefined)
+    dependencies.length === 0 ||
+    dependencies.some(({ source }) => source.access !== "public" || source.auth !== undefined)
   )
     return undefined;
 
   const records = new Map(sourceRecords.map((source) => [source.id, source]));
-  return pricingSources
+  return dependencies
     .map(({ source, models }) => {
       const record = records.get(source.id);
       if (record === undefined)
@@ -418,6 +448,7 @@ function replayPublishedModels(
         ...(model.version === undefined ? {} : { version: model.version }),
         ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
         capabilities: model.capabilities,
+        modalities: current.modalities,
         ...(model.service_families === undefined
           ? {}
           : { service_families: model.service_families }),
@@ -508,7 +539,7 @@ function replaySources(
 
   return replay.sources.map((source) => {
     const configured = manifestSources.get(source.source_id);
-    if (configured === undefined || !isPricingSource(configured))
+    if (configured === undefined || !isPricingDependencySource(configured))
       throw new Error(`Pricing replay source ${source.source_id} is not configured for pricing`);
     if (configured.access !== "public" || configured.auth !== undefined)
       throw new Error(`Pricing replay source ${source.source_id} is not public`);
@@ -516,11 +547,12 @@ function replaySources(
       throw new Error(`Pricing replay source ${source.source_id} uses a stale extractor`);
     const catalogSource = catalogSources.get(source.source_id);
     const hasClaims = source.models.some(
-      ({ pricing_state, price_facts, raw_price_facts, commercial_facts }) =>
+      ({ pricing_state, price_facts, raw_price_facts, commercial_facts, pricing_inputs }) =>
         pricing_state !== "unknown" ||
         price_facts.length > 0 ||
         raw_price_facts.length > 0 ||
-        (commercial_facts?.length ?? 0) > 0,
+        (commercial_facts?.length ?? 0) > 0 ||
+        (pricing_inputs?.length ?? 0) > 0,
     );
     if (catalogSource === undefined) {
       if (hasClaims)

@@ -6,7 +6,10 @@ Status: current
 
 Cohere contributes only public rates for Cohere-hosted inference that an AI Gateway can attribute
 to one request or result. The canonical partition contains model books with one hosted-inference
-offer, exact rate terms, applicability variants, and optional charge bindings.
+offer, exact rate terms, applicability variants, semantic charge bindings, and provider-documented
+quantity methods. Kmodels is the price-book layer: it publishes which observations a cost service
+must capture, but it does not observe requests, detect interrupted streams, aggregate usage, or
+reconcile invoices.
 
 The following Cohere products are outside the rate-book boundary and are neither normalized nor
 retained as raw commercial facts:
@@ -46,9 +49,11 @@ or another exact non-numeric price state. Absence of a separate price is unknown
   structure is unavailable while the last accepted provider pricing partition remains intact.
 - `https://docs.cohere.com/docs/how-does-cohere-pricing-work.md` establishes the pricing meters and
   that `billed_units`, rather than generic token totals, are the billable usage counters.
-- Chat V2/V1, Embed V2, and Rerank V2 references establish endpoint-local response fields. The
-  authenticated `/v1/models` inventory is optional, account-scoped corroboration and cannot create
-  global models or prices. Enable it with `COHERE_API_KEY`.
+- Chat V2/V1, their streaming references, Embed V2, and Rerank V2 establish endpoint-local
+  response fields. The model source explicitly owns `pricing_inputs` in addition to catalog and
+  model-card pricing facts. The authenticated `/v1/models` inventory is optional, account-scoped
+  corroboration and cannot create global models, prices, or accounting contracts. Enable it with
+  `COHERE_API_KEY`.
 
 Callable IDs come only from labeled Cohere model fields or the exact documented Command A card
 correction. That correction requires agreement between card title and path, one exact SDK ID in an
@@ -68,15 +73,48 @@ rows use the stronger price-book evidence class.
 - Responsive copies of the same structured pricing product must agree. A disagreement removes only
   that product payload and records a local conflict; other products and card rates survive.
 
-Bindings use the exact documented response paths:
+Bindings use Cohere's billed counters, not the similarly named generic token counters. The source
+publishes the following exact acquisition contracts:
 
 - Chat V2: `response.usage.billed_units.input_tokens` and `output_tokens`;
+- Chat V2 streaming: terminal `message-end.delta.usage.billed_units.input_tokens` and
+  `output_tokens`;
 - Chat V1: `response.meta.billed_units.input_tokens` and `output_tokens`;
+- Chat V1 streaming: terminal `stream-end.response.meta.billed_units.input_tokens` and
+  `output_tokens`;
 - Embed V2: `response.meta.billed_units.input_tokens` or `image_tokens`; and
 - Rerank V2: `response.meta.billed_units.search_units`.
 
-A missing or drifted accounting reference removes only the affected binding. The numeric rate and
-unrelated route bindings remain publishable.
+Each price variant keeps a semantic charge signal even if no current response contract resolves
+it. When a matching contract exists, `quantity_methods.input_sources` gives the response or
+terminal-stream JSON Pointer, channel, availability, and aggregation boundary. Text embedding uses
+the standard `input_tokens` signal. Image embedding and reranking retain provider-owned
+`billed_image_tokens` and `billed_search_units` signals because collapsing them into generic token
+or request counters would lose Cohere's billing semantics.
+
+The standard OpenTelemetry GenAI token attributes are not an exact alternative for Cohere. They do
+not identify Cohere's `billed_units` partition, and the current convention has no portable Cohere
+rerank search-unit or image-token field. A runtime may emit the provider JSON values through its
+own telemetry pipeline, but Kmodels does not claim an `otel_attribute` source until a standard
+attribute has the same billing meaning.
+
+A missing or drifted accounting field removes only that input source. It does not create a raw
+price term, erase the semantic charge binding, or invalidate the numeric rate. A completed stream
+has its counters only in the terminal event; Kmodels declares `terminal_only`, leaving interruption
+detection and incomplete-attempt policy to the consuming runtime.
+
+The current exact gaps are:
+
+- the OpenAI-compatible Chat Completions guide does not establish that OpenAI-style usage fields
+  are the authoritative Cohere billed counters, so no compatibility-path quantity method is
+  published;
+- Generate V1 has no reviewed billed-unit acquisition contract in this price book;
+- Embed Jobs are not attached to online Embed rates without an explicit same-price rule, even
+  though their job metadata exposes accounting-looking fields;
+- Cohere Transcribe is published as model-specific free access where documented, while Model Vault
+  instance pricing remains outside request-rate scope; and
+- account reports and invoice reconciliation are runtime or billing-system inputs, not data that
+  Kmodels can produce before invocation.
 
 ## Refresh resilience
 
@@ -86,8 +124,8 @@ and documents are parsed independently:
 - an unknown section or endpoint label is ignored locally rather than rejecting Cohere;
 - a missing discovered model page is reported as a partial source and removes only facts owned by
   that page;
-- an API-reference drift removes that endpoint and its charge binding while preserving the model
-  and rate;
+- an API-reference drift removes only the affected quantity input while preserving endpoint
+  identity, the semantic charge binding, and the rate;
 - malformed embedded pricing frames and unsupported products, units, or meters are isolated;
 - an additive Models API field, malformed row, or new endpoint value is signaled and isolated
   without rejecting recognized sibling rows or known endpoint facts;
@@ -98,5 +136,5 @@ and documents are parsed independently:
 Because the source is not exhaustive, omission does not prove model removal. Provider-atomic
 publication retains the previously accepted Cohere pricing partition if the required pricing
 overlay is unavailable or the assembled partition fails validation. Missing optional accounting
-or release companions removes only their local facts or bindings; missing optional discovered
+or release companions removes only their local facts or methods; missing optional discovered
 cards does not block independently refreshed central prices.

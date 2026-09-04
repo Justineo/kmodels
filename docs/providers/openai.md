@@ -31,6 +31,10 @@ that call and are excluded.
 | [`/api/docs/models/all`](https://developers.openai.com/api/docs/models/all) and its HTML cards                            | Optional card-local price fallback where the Markdown rendering omits tier state |
 | [Changelog](https://developers.openai.com/api/docs/changelog)                                                             | Exact public model release dates                                                 |
 | [Pricing](https://developers.openai.com/api/docs/pricing)                                                                 | Current public amount authority and provider-service rates                       |
+| [Official OpenAPI](https://github.com/openai/openai-openapi/blob/master/openapi.yaml)                                     | Optional response and Organization Usage pricing-input contracts                 |
+| [Batch guide](https://developers.openai.com/api/docs/guides/batch)                                                        | Asynchronous result and output-file accounting contract evidence                 |
+| [Fast mode](https://developers.openai.com/api/docs/guides/fast-mode)                                                      | Fast request and returned served-tier semantics                                  |
+| [Flex processing](https://developers.openai.com/api/docs/guides/flex-processing)                                          | Flex request-tier and processing semantics                                       |
 | [Deprecations](https://developers.openai.com/api/docs/deprecations)                                                       | Non-exhaustive lifecycle dates and replacements                                  |
 | [Your data](https://developers.openai.com/api/docs/guides/your-data)                                                      | Exact endpoint and regional-processing eligibility                               |
 | Authenticated `GET /v1/models`                                                                                            | Optional account-scoped positive inventory evidence                              |
@@ -39,9 +43,10 @@ No community catalog supplies production facts. `models.dev` and LiteLLM are inv
 only.
 
 The model crawl fetches only the model index and discovered model cards. General documentation
-indexes, guide pages, and the OpenAPI repository are not atomic dependencies of the catalog. They
-change independently, were not used to extract model rows, and previously allowed an unrelated
-transport or documentation change to stall the entire provider.
+indexes and guide pages are not atomic dependencies of the catalog. The OpenAPI repository is a
+separate optional pricing-input source: it never creates model identity or rates, and its absence or
+field-level drift removes only the affected input mapping. It cannot stall or erase the required
+pricing-page partition.
 
 ## Identity and catalog extraction
 
@@ -106,9 +111,49 @@ Batch is a separate result-item mechanism. Standard, Flex, and Fast remain varia
 inference. Returned usage selects cache, modality, generated quantity, and served-tier rates; a
 request selector alone is not treated as final billed usage.
 
+The optional accounting contract maps Responses usage, image-generation usage, embedding usage,
+video result duration/resolution, and Organization Usage result fields into charge quantity methods.
+Text uncached input has two exact alternatives where available: the Organization Usage
+aggregate `input_uncached_tokens` counter, or the response calculation
+`input_tokens - cached_tokens - cache_write_tokens` with a zero floor. Completion audio/image token
+partitions, image-generation output tokens, speech characters, transcription seconds,
+generated-image counts, and Web/File Search request counts use provider fields whose schemas
+establish those exact units. Reasoning usage remains a reported subset of output tokens and is not
+charged twice.
+
+When a model publishes distinct text, audio, or image token rates, Kmodels does not reuse aggregate
+response totals for the text term. It binds the text, audio, image, and cached partitions only to
+their matching Organization Usage counters. This prevents one multimodal quantity from being
+charged under two modality rates.
+
+The image-generation response reports total text/image input partitions but does not split either
+partition into uncached and cache-read quantities. Because the pricing page publishes different
+rates for those quantities, Kmodels publishes semantic charge bindings for all four input terms but
+no input-source method. The downstream calculator must supply those billable partitions from a more
+authoritative source. Kmodels does not mislabel the response totals as uncached usage.
+
+Rate variants also expose source mappings for selectors that the contracts actually return:
+served service tier, response input-token context, image quality/size, and video size. Deployment
+scope, account eligibility, and tool operation remain required route/request inputs because the
+accounting response does not establish them at the needed scope. Organization Usage mappings are
+marked reconciliation-only; they are an aggregate calculation path, not a request lifecycle or an
+invoice reconciliation feature inside Kmodels.
+The served-tier selector also publishes the response normalization proven by OpenAI's contract:
+`default` selects Standard, `flex` selects Flex, and returned `priority` selects Fast mode. Request
+`auto`, Scale Tier, and access-controlled tiers do not select a public-list variant unless the
+provider publishes and Kmodels admits a matching schedule.
+Video result sizes are likewise normalized to the pricing table's size classes: `1280x720` and
+`720x1280` select `720p`; `1024x1792` and `1792x1024` select `1024p`; and `1080x1920` and
+`1920x1080` select `1080p`. An unreviewed size remains unmapped instead of being guessed from its
+dimensions.
+
 ## Direct provider services
 
 Web Search and File Search calls are separate service books because they have their own event rates.
+Their provider-owned charge signals map to Organization Usage `num_requests`, rather than assuming
+that emitted or successful tool-call events have the same billing semantics. Those mappings are
+reconciliation-only; a request-time calculator still needs an equally authoritative per-request
+counter if it cannot wait for the account report.
 Web Search content tokens are additional model input usage. Kmodels does not create a contribution
 edge merely to repeat that prose: ordinary input-token accounting already prices provider-reported
 content tokens when they are included in input usage. The current fixed 8,000-token rule for the
@@ -117,9 +162,11 @@ the exact billable block can be bound without double-counting response input tok
 
 Container prices remain a separate code-execution service with memory as applicability. The
 published table states a 20-minute session schedule while the current prose states per-minute
-billing with a five-minute minimum for eligible sessions. The numeric schedule is retained and the
-minimum is a `base_price` raw term; Kmodels does not invent proration or claim a charge binding that
-the observed usage fields cannot establish.
+billing with a five-minute minimum for eligible sessions. The numeric schedule binds to a
+provider-owned count of billed 20-minute session blocks, which makes the calculator's required input
+explicit but intentionally has no source mapping. The five-minute eligible-session minimum remains
+a `base_price` raw term; Kmodels does not invent proration or reuse the Code Interpreter account
+counter for Hosted Shell.
 
 Fine-tuned input, cached-input, and output rates form a direct `fine-tuned-inference:<base>` service.
 Standard and Batch are split into the same synchronous/result-item mechanisms used by ordinary
@@ -149,10 +196,12 @@ code execution, and fine-tuned inference are named provider services. Training a
 appear as plans, standalone offers, or advanced raw details.
 
 A Gateway can calculate the public-list portion of a request from the returned model, served tier,
-token/cache breakdown, generated quantity or duration, and emitted tool events. Container duration,
-the regional uplift cutoff, and search-content accounting remain visibly partial where the public
-request/response signals do not prove the exact billable quantity. Account Costs data may reconcile
-actual spend later, but it is neither a public rate source nor a request-time routing input.
+token/cache and modality breakdown, generated quantity or duration, and the published quantity
+methods. Batch output-file locations, container proration, regional deployment scope,
+account-eligibility selectors, and the fixed Web Search content-token block remain explicit required
+inputs or localized raw limitations where the reviewed contracts do not yet prove an exact mapping.
+Organization Usage may calculate or compare grouped public-list cost later; actual spend, discounts,
+credits, and invoice reconciliation remain outside Kmodels.
 
 Model books use separate synchronous and Batch offers, but do not add redundant `exclusive_with`
 edges: the mechanisms already select different executions. Service-book `model_refs` fully express

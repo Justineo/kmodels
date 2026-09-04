@@ -21,6 +21,42 @@
       "body": "# Inference using Responses API\n\n## Supported Regions and Endpoints\n\n| Region Name | Region | Endpoint |\n| --- | --- | --- |\n| US East (N. Virginia) | us-east-1 | bedrock-mantle.us-east-1.api.aws |"
     },
     {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Converse.html",
+      "body": "<main><h1>Converse</h1><pre><code>{ usage: TokenUsage, performanceConfig: { latency }, serviceTier: { type } }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ConverseStreamMetadataEvent.html",
+      "body": "<main><h1>ConverseStreamMetadataEvent</h1><pre><code>{ usage: TokenUsage, performanceConfig: { latency }, serviceTier: { type } }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_TokenUsage.html",
+      "body": "<main><h1>TokenUsage</h1><pre><code>{ inputTokens, outputTokens, totalTokens, cacheReadInputTokens, cacheWriteInputTokens, cacheDetails }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CacheDetail.html",
+      "body": "<main><h1>CacheDetail</h1><p>TTL duration has valid values <code>5m</code> and <code>1h</code>.</p><pre><code>{ inputTokens, ttl }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/prompt-caching.html",
+      "body": "<main><h1>Prompt caching for faster model inference</h1><p>When prompt caching is enabled, the inputTokens field represents only the non-cached input tokens.</p><code>total input tokens = inputTokens + cacheReadInputTokens + cacheWriteInputTokens</code></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-results.html",
+      "body": "<main><h1>View the results of a batch inference job</h1><p>A terminal <code>manifest.json.out</code> contains aggregate counters.</p><pre><code>{ totalRecordCount, processedRecordCount, successRecordCount, errorRecordCount, inputTokenCount, outputTokenCount }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/model-invocation-logging.html",
+      "body": "<main><h1>Model invocation logging</h1><p>Only calls through the bedrock-runtime endpoint are captured.</p><pre><code>{ schemaType: ModelInvocationLog, schemaVersion: 1.0, region, requestId, operation, modelId, input: { inputTokenCount }, output: { outputTokenCount } }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ApplyGuardrail.html",
+      "body": "<main><h1>ApplyGuardrail</h1><pre><code>{ usage: { automatedReasoningPolicyUnits, contentPolicyImageUnits, contentPolicyUnits, contextualGroundingPolicyUnits, sensitiveInformationPolicyFreeUnits, sensitiveInformationPolicyUnits, topicPolicyUnits, wordPolicyUnits } }</code></pre></main>"
+    },
+    {
+      "url": "https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails-use-invoke-guardrail-checks-using.html",
+      "body": "<main><h1>Using the InvokeGuardrailChecks API</h1><pre><code>{ usage: { contentFilter: { textUnits }, promptAttack: { textUnits }, sensitiveInformation: { textUnits } } }</code></pre></main>"
+    },
+    {
       "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrockFoundationModels/current/index.json",
       "body": "{\"offerCode\":\"AmazonBedrockFoundationModels\",\"products\":{\"HAIKUOUTPUT\":{\"sku\":\"HAIKUOUTPUT\",\"attributes\":{\"regionCode\":\"us-east-1\",\"usagetype\":\"USE1-MP:USE1_OutputTokenCount-Units\",\"servicename\":\"Claude Haiku 4.5 (Amazon Bedrock Edition)\"}},\"HAIKUGLOBAL\":{\"sku\":\"HAIKUGLOBAL\",\"attributes\":{\"regionCode\":\"us-east-1\",\"usagetype\":\"USE1-MP:USE1_InputTokenCount_Global-Units\",\"servicename\":\"Claude Haiku 4.5 (Amazon Bedrock Edition)\"}},\"HAIKUBATCH\":{\"sku\":\"HAIKUBATCH\",\"attributes\":{\"regionCode\":\"us-east-1\",\"usagetype\":\"USE1-MP:USE1_InputTokenCount_Global_Batch-Units\",\"servicename\":\"Claude Haiku 4.5 (Amazon Bedrock Edition)\"}}},\"terms\":{\"OnDemand\":{\"HAIKUOUTPUT\":{\"HAIKUOUTPUT.TERM\":{\"effectiveDate\":\"2026-07-01T00:00:00Z\",\"priceDimensions\":{\"HAIKUOUTPUT.DIM\":{\"description\":\"AWS Marketplace software usage|us-east-1|Million Response Tokens\",\"unit\":\"1M tokens\",\"pricePerUnit\":{\"USD\":\"5.0000000000\"}}}}},\"HAIKUGLOBAL\":{\"HAIKUGLOBAL.TERM\":{\"effectiveDate\":\"2026-07-01T00:00:00Z\",\"priceDimensions\":{\"HAIKUGLOBAL.DIM\":{\"description\":\"AWS Marketplace software usage|us-east-1|Million Input Tokens Global\",\"unit\":\"1M tokens\",\"pricePerUnit\":{\"USD\":\"1.0000000000\"}}}}},\"HAIKUBATCH\":{\"HAIKUBATCH.TERM\":{\"effectiveDate\":\"2026-07-01T00:00:00Z\",\"priceDimensions\":{\"HAIKUBATCH.DIM\":{\"description\":\"AWS Marketplace software usage|us-east-1|Million Batch Input Tokens Global\",\"unit\":\"1M tokens\",\"pricePerUnit\":{\"USD\":\"0.5000000000\"}}}}}}}}"
     },

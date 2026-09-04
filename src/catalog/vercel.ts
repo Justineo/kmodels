@@ -26,6 +26,7 @@ import {
 } from "./schema.ts";
 import { classifyModelTasks, orderedTasks } from "./task.ts";
 import { vercelCommercialFacts } from "./vercel-commercial-source.ts";
+import { extractVercelPricingInputs } from "./vercel-accounting.ts";
 
 interface Input {
   provider: Provider;
@@ -594,7 +595,7 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
   const baseConditions: SourcePriceFact["conditions"] = {
     route_provider: endpoint.provider_name,
     region: hasRegionalPricing ? "default" : undefined,
-    service_tier: hasFast ? "standard" : undefined,
+    speed: hasFast ? "standard" : undefined,
   };
   const transcriptionAudioPrice =
     item.type === "transcription" ? value.audio_input_token_cost : undefined;
@@ -674,7 +675,7 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
         route_provider: endpoint.provider_name,
         region: region.provider_region ?? region.geo_region,
         deployment_scope: region.scope,
-        service_tier: hasFast ? "standard" : undefined,
+        speed: hasFast ? "standard" : undefined,
       },
       !specializedInput,
     );
@@ -951,7 +952,7 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
     value.fast !== undefined || regional.some(([, prices]) => prices.fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
     region: regional.length === 0 ? undefined : "default",
-    service_tier: hasFast ? "standard" : undefined,
+    speed: hasFast ? "standard" : undefined,
   };
   if (transcriptionAudioPrice !== undefined)
     rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId, baseConditions));
@@ -964,17 +965,17 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
   if (value.fast !== undefined)
     addUsageRates(rates, value.fast, sourceId, inputMeter, outputMeter, {
       region: regional.length === 0 ? undefined : "default",
-      service_tier: "fast",
+      speed: "fast",
     });
   for (const [region, prices] of regional) {
     addUsageRates(rates, prices, sourceId, inputMeter, outputMeter, {
       region,
-      service_tier: hasFast ? "standard" : undefined,
+      speed: hasFast ? "standard" : undefined,
     });
     if (prices.fast !== undefined)
       addUsageRates(rates, prices.fast, sourceId, inputMeter, outputMeter, {
         region,
-        service_tier: "fast",
+        speed: "fast",
       });
   }
 
@@ -1396,9 +1397,17 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       ? {}
       : { onPricingReconciliation: input.onPricingReconciliation }),
   });
+  const pricingInputs = extractVercelPricingInputs(
+    documentation,
+    input.source.id,
+    input.onContractFinding,
+    input.onPricingReconciliation,
+  );
   const carrier = result.find(({ price_facts: rates }) => rates.length > 0) ?? result[0];
-  if (carrier !== undefined && commercialFacts.length > 0)
-    carrier.commercial_facts = commercialFacts;
+  if (carrier !== undefined) {
+    if (commercialFacts.length > 0) carrier.commercial_facts = commercialFacts;
+    if (pricingInputs.length > 0) carrier.pricing_inputs = pricingInputs;
+  }
   return result;
 }
 

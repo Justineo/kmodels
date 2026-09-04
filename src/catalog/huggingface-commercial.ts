@@ -5,20 +5,38 @@ import type {
   AtomicRateVariant,
   AtomicRawVariant,
 } from "./pricing-assembly.ts";
-import { rawEvidence } from "./pricing-commercial-assembly.ts";
+import { rawEvidence, isStandardUnit } from "./pricing-commercial-assembly.ts";
 import { applicabilityContainedIn } from "./pricing-canonical.ts";
-import type { ChargeBinding } from "./pricing-schema.ts";
+import {
+  includePricingInputSourceRefs,
+  indexPricingInputs,
+  pricingInputFacts,
+  pricingInputObservation,
+  usageInputSources,
+  type PricingInputIndex,
+} from "./pricing-input.ts";
+import type {
+  ChargeBinding,
+  PriceApplicability,
+  PriceSelectorSource,
+  UsageSignal,
+} from "./pricing-schema.ts";
+import type { SourcePricingInputFact } from "./pricing-source.ts";
 
-const featherlessAuthority = "featherless_native_price_over_huggingface_route_snapshot";
-const nativeProviderAuthority = "native_provider_price_over_huggingface_route_snapshot";
+const nativePricingAuthorities = new Set([
+  "featherless_native_price_over_huggingface_route_snapshot",
+  "native_provider_price_over_huggingface_route_snapshot",
+]);
 
 export function applyHuggingFaceCommercialTopology(
   input: AtomicProviderPricing,
+  pricingInputs: readonly SourcePricingInputFact[],
 ): AtomicProviderPricing {
-  return { ...input, books: input.books.flatMap(modelBook) };
+  const inputIndex = indexPricingInputs(pricingInputs);
+  return { ...input, books: input.books.flatMap((book) => modelBook(book, inputIndex)) };
 }
 
-function modelBook(book: AtomicPricingBook): AtomicPricingBook[] {
+function modelBook(book: AtomicPricingBook, inputIndex: PricingInputIndex): AtomicPricingBook[] {
   if (book.scope.kind !== "models") return [];
   const offers = book.offers.flatMap((offer) => {
     if (offer.offer_key !== "usage") return [];
@@ -46,7 +64,7 @@ function modelBook(book: AtomicPricingBook): AtomicPricingBook[] {
         });
         return unresolved.length === 0 ? [] : [{ ...term, variants: unresolved }];
       }
-      return [bindTerm(term)];
+      return [bindTerm(term, inputIndex)];
     });
     return [
       {
@@ -61,7 +79,9 @@ function modelBook(book: AtomicPricingBook): AtomicPricingBook[] {
       },
     ];
   });
-  return offers.length === 0 ? [] : [{ ...book, offers, resource_edges: [] }];
+  return offers.length === 0
+    ? []
+    : [includePricingInputSourceRefs({ ...book, offers, resource_edges: [] })];
 }
 
 function nativeRoutePricingComplete(
@@ -81,58 +101,82 @@ function nativeRoutePricingComplete(
   return (
     covers("input_text") &&
     covers("output_text") &&
-    rates.some(
-      (term) =>
-        term.variants.some(
-          (variant) =>
-            variant.resolution_policy === featherlessAuthority &&
-            applicabilityContainedIn(scope, variant.applicability),
-        ) ||
-        term.variants.some(
-          (variant) =>
-            variant.resolution_policy === nativeProviderAuthority &&
-            applicabilityContainedIn(scope, variant.applicability),
-        ),
+    rates.some((term) =>
+      term.variants.some(
+        (variant) =>
+          variant.resolution_policy !== undefined &&
+          nativePricingAuthorities.has(variant.resolution_policy) &&
+          applicabilityContainedIn(scope, variant.applicability),
+      ),
     )
   );
 }
 
-function bindTerm(term: AtomicPricingTerm): AtomicPricingTerm {
+function bindTerm(term: AtomicPricingTerm, inputIndex: PricingInputIndex): AtomicPricingTerm {
   if (term.kind !== "rate" || term.meter.namespace !== "kmodels") return term;
-  const signal =
+  const direction =
     term.meter.value === "input_text"
-      ? "input_tokens"
+      ? "input"
       : term.meter.value === "output_text"
-        ? "output_tokens"
+        ? "output"
         : undefined;
-  if (signal === undefined) return term;
+  if (direction === undefined) return term;
+  const signal = { namespace: "kmodels", value: `${direction}_tokens` } as const;
   return {
     ...term,
-    variants: term.variants.map((variant) => ({
-      ...variant,
-      charge_binding: binding(signal, variant),
-    })),
+    variants: term.variants.map((variant) => {
+      if (!isStandardUnit(variant.price.per, "token")) return variant;
+      const selector_sources = routeSelectorSources(variant.applicability, inputIndex);
+      return {
+        ...variant,
+        charge_binding: binding(direction, signal, variant, inputIndex),
+        ...(selector_sources.length === 0 ? {} : { selector_sources }),
+      };
+    }),
   };
 }
 
 function binding(
-  signal: "input_tokens" | "output_tokens",
+  direction: "input" | "output",
+  signal: UsageSignal,
   variant: AtomicRateVariant,
+  inputIndex: PricingInputIndex,
 ): ChargeBinding {
+  const facts = pricingInputFacts(inputIndex, [
+    `chat.response.${direction === "input" ? "prompt" : "completion"}_tokens`,
+    `chat.stream.${direction === "input" ? "prompt" : "completion"}_tokens`,
+    `responses.response.${direction}_tokens`,
+    `responses.stream.${direction}_tokens`,
+  ]);
   return {
-    signal: { namespace: "kmodels", value: signal },
+    signal,
     aggregation: "request",
-    observations: [
-      {
-        ...rawEvidence(variant.observation),
-        locator: {
-          kind: "provider_key",
-          value:
-            signal === "input_tokens"
-              ? "response:usage.prompt_tokens"
-              : "response:usage.completion_tokens",
-        },
-      },
-    ],
+    ...(facts.length === 0
+      ? {}
+      : { quantity_methods: [{ input_sources: usageInputSources(signal, facts) }] }),
+    observations: [rawEvidence(variant.observation), ...facts.map(pricingInputObservation)],
   };
+}
+
+function routeSelectorSources(
+  applicability: PriceApplicability,
+  inputIndex: PricingInputIndex,
+): PriceSelectorSource[] {
+  const dimension = { namespace: "kmodels", value: "route_provider" } as const;
+  const selectsRoute = applicability.any_of.some(({ all_of }) =>
+    all_of.some(
+      (condition) =>
+        condition.kind === "categorical" &&
+        condition.dimension.namespace === dimension.namespace &&
+        condition.dimension.value === dimension.value,
+    ),
+  );
+  if (!selectsRoute) return [];
+  return pricingInputFacts(inputIndex, ["routing.pinned_provider"]).map((fact) => ({
+    dimension,
+    channel: fact.channel,
+    locator: fact.locator,
+    availability: fact.availability,
+    observations: [pricingInputObservation(fact)],
+  }));
 }
