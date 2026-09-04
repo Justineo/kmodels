@@ -4,6 +4,7 @@ import { manifests, type ProviderManifest } from "./manifests.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
 import { compareRationals, rationalFromDecimal } from "./pricing-rational.ts";
 import {
+  applicableRateCount,
   displayUnitPrice,
   evaluateApplicability,
   evaluateModelApplicability,
@@ -578,9 +579,22 @@ function pricingStatus(view: ModelPricingView, modelRef: string, labels: Categor
       label: "Varies",
       description: "Price varies by request context. Open model details to choose the options.",
     };
+  const rateCount = applicableRateCount(offer, modelRef);
+  if (rateCount === 1)
+    return {
+      label: "1 rate",
+      description:
+        "This model has one exact base rate that does not map to Input, Cache, or Output. Open model details to see it.",
+    };
+  if (rateCount > 1)
+    return {
+      label: `${rateCount} rates`,
+      description: `This model has ${rateCount} simultaneous base rates, so one Input, Cache, or Output number would omit part of the cost. Open model details to see them.`,
+    };
   return {
-    label: "Details",
-    description: "Pricing exists but does not map to one representative table rate.",
+    label: "Pricing",
+    description:
+      "Exact pricing is available but cannot be represented by the Input, Cache, and Output summary. Open model details to see it.",
   };
 }
 
@@ -767,9 +781,9 @@ function websiteSnapshot(snapshot: ProviderPricingSnapshot | undefined) {
 function refreshFailureMessage(code: PricingRefreshFailureCode): string {
   switch (code) {
     case "source_unavailable":
-      return "A required public pricing source could not be fetched.";
+      return "A public pricing source could not be refreshed.";
     case "source_schema_changed":
-      return "A required public pricing source no longer matched its reviewed format.";
+      return "A public pricing source no longer matched its reviewed format.";
     case "pricing_validation_failed":
       return "The refreshed pricing data did not pass validation.";
     case "provider_refresh_failed":

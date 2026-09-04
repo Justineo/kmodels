@@ -401,12 +401,24 @@ async function cloudJson(
     } catch {
       throw new TransientFetchError(`${label} transport failure`);
     }
-    if (response.status === 429 || response.status >= 500)
-      throw new TransientFetchError(`${label} HTTP ${response.status}`, retryDelay(response));
-    if (!response.ok) throw new Error(`${label} HTTP ${response.status}`);
     const body = await response.text();
     if (Buffer.byteLength(body) > maxResponseBytes)
       throw new Error("Cloud response exceeded byte limit");
+    if (response.status === 429 || response.status >= 500)
+      throw new TransientFetchError(`${label} HTTP ${response.status}`, retryDelay(response));
+    if (!response.ok) {
+      let code: string | undefined;
+      try {
+        const parsed: unknown = JSON.parse(body);
+        if (parsed !== null && typeof parsed === "object") {
+          const error = Reflect.get(parsed, "error");
+          if (typeof error === "string" && /^[a-z][a-z0-9_]+$/.test(error)) code = error;
+        }
+      } catch {
+        // The status remains sufficient when the error body is not JSON.
+      }
+      throw new Error(`${label} HTTP ${response.status}${code === undefined ? "" : ` (${code})`}`);
+    }
     try {
       return JSON.parse(body);
     } catch {
@@ -779,7 +791,7 @@ async function googleAccessToken(
   const assertion = `${unsigned}.${signature.toString("base64url")}`;
   const token = googleTokenSchema.parse(
     await cloudJson(
-      "Google",
+      "Google OAuth",
       new URL(account.token_uri),
       1024 * 1024,
       ["Accept: application/json"],
@@ -832,7 +844,7 @@ async function fetchGoogleModelGarden(
         url.searchParams.set("listAllVersions", "false");
         if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
         const page = googleModelsPageSchema.parse(
-          await cloudJson("Google", url, source.maxResponseBytes, [
+          await cloudJson("Google Model Garden", url, source.maxResponseBytes, [
             "Accept: application/json",
             `Authorization: Bearer ${credential.token}`,
             `x-goog-user-project: ${credential.project}`,

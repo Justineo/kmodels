@@ -63,6 +63,9 @@ reported for the panel while a recognized sibling panel can still contribute exa
 The [Mantle guide](https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html) supplies
 service Regions. Optional authenticated ListFoundationModels data from us-east-1 may enrich an exact
 public ID, but it cannot create global catalog presence or publish account data.
+It uses the standard AWS credential chain. Long-lived access keys require the access-key ID and
+secret; temporary credentials additionally require `AWS_SESSION_TOKEN`. Rejected or revoked
+credentials skip only this regional inventory overlay.
 
 Claim-local accounting companions establish only calculator inputs, independently from the rate
 sources:

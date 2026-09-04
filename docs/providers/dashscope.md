@@ -108,6 +108,10 @@ console path's reviewed region, but no request route; repeated links are merged 
 malformed card or link, unknown route or console region, or route/region contradiction suppresses
 only that item and records a contract finding; valid siblings survive.
 
+The text and vision task pages are non-exhaustive curated catalogs. Their drift floors track the
+current published inventories (at least 50 text IDs and 5 vision IDs); the larger pricing and
+deployment sources remain independent and are not truncated to those curated lists.
+
 Lifecycle and release pages are structured table sources. Malformed dates, cells, or model IDs are
 skipped at row scope and reported. The lifecycle summaries may temporarily contain only dated
 notice links and no exact model rows; that is a valid empty non-exhaustive observation and retains

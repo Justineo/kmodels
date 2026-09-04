@@ -13834,6 +13834,51 @@ describe("Cerebras adapter", () => {
     ]);
   });
 
+  it("accepts dotted model-card paths from the catalog", async () => {
+    const value = manifest("cerebras");
+    const configured = source("cerebras-catalog");
+    const models = parseSource({
+      provider: provider(value),
+      source: configured,
+      body: JSON.stringify({
+        index: {
+          url: configured.url,
+          body: [
+            "# Model Catalog",
+            "",
+            "## Available Models",
+            "",
+            "| Model Name | Model ID |",
+            "| --- | --- |",
+            "| [Qwen 3.8 27B](/models/qwen-3.8-27b) | `qwen-3.8-27b` |",
+          ].join("\n"),
+        },
+        documents: [
+          {
+            url: "https://inference-docs.cerebras.ai/models/qwen-3.8-27b.md",
+            body: await fixture("cerebras/qwen-3.8-27b.md"),
+          },
+        ],
+      }),
+      observedAt,
+    });
+
+    expect(models).toMatchObject([
+      {
+        model_id: "qwen-3.8-27b",
+        name: "Qwen 3.8 27B",
+        api_endpoints: [
+          { name: "Chat Completions", path: "v1/chat/completions" },
+          { name: "Completions", path: "v1/completions" },
+        ],
+        price_facts: [
+          expect.objectContaining({ meter: "input_text", price: "0.99" }),
+          expect.objectContaining({ meter: "output_text", price: "1.49" }),
+        ],
+      },
+    ]);
+  });
+
   it("keeps catalog rows and avoids raw accounting gaps when companions are unavailable", async () => {
     const missingCard = await catalog({ omit: ["gemma"] });
     expect(missingCard).toHaveLength(3);
@@ -13860,7 +13905,7 @@ describe("Cerebras adapter", () => {
 
   it("extracts field-local response, terminal-stream, and Batch result inputs", async () => {
     expect(source("cerebras-catalog")).toMatchObject({
-      extractorVersion: "cerebras-catalog-v13",
+      extractorVersion: "cerebras-catalog-v14",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     const models = await catalog();
@@ -16676,7 +16721,7 @@ describe("DashScope adapters", () => {
 
   it("takes exact IDs and region availability from recommendation links", () => {
     const body = [
-      "[![](https://img.alicdn.com/qwen.svg) qwen3.8-max](https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=doc#/doc/?type=model&modelId=qwen3.8-max)",
+      '<strong><a href="https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=doc#/doc/?type=model&modelId=qwen3.8-max">qwen3.8-max</a></strong>',
       "[![](https://img.alicdn.com/glm.svg) ZHIPU/GLM-5.3 Third-party](https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=doc#/doc/?type=model&modelId=ZHIPU/GLM-5.3&serviceSite=international)",
       "[![](https://img.alicdn.com/qwen.svg) qwen3.8-max](https://modelstudio.console.alibabacloud.com/ap-southeast-1?tab=model#/model-market/detail/qwen3.8-max)",
     ].join("\n");
@@ -17624,6 +17669,16 @@ describe("DashScope adapters", () => {
     expect(
       markdownSources.every(({ format, url }) => format === "markdown" && url.endsWith(".md")),
     ).toBe(true);
+    expect(source("dashscope-recommended")).toMatchObject({
+      extractorVersion: "dashscope-recommended-v6",
+      retainOmittedFacts: true,
+    });
+    expect(value.sources.find(({ id }) => id === "dashscope-text")?.extractor).toMatchObject({
+      minModels: 50,
+    });
+    expect(value.sources.find(({ id }) => id === "dashscope-vision")?.extractor).toMatchObject({
+      minModels: 5,
+    });
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
@@ -17770,11 +17825,12 @@ describe("Kimi adapters", () => {
     });
     expect(source("kimi-international-catalog")).toMatchObject({
       url: "https://platform.kimi.ai/docs/models",
-      extractorVersion: "kimi-catalog-v3",
+      extractorVersion: "kimi-catalog-v4",
     });
     expect(source("kimi-international-pricing")).toMatchObject({
       url: "https://platform.kimi.ai/docs/pricing/chat-k3",
       scope: "region",
+      extractor: { minModels: 4 },
       extractorVersion: "kimi-pricing-v7",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
@@ -18069,13 +18125,15 @@ describe("Kimi adapters", () => {
   it("retains callable and retired IDs only from labeled catalog fields", async () => {
     const body = await fixture("kimi/models.md");
     const models = parse(source("kimi-catalog"), body);
-    expect(models).toHaveLength(18);
+    expect(models).toHaveLength(19);
     expect(models.find(({ model_id }) => model_id === "kimi-k3")).toMatchObject({
       limits: { context_tokens: 1_000_000 },
       modalities: { input: ["text", "image"], output: ["text"] },
     });
     expect(models.find(({ model_id }) => model_id === "kimi-k2.5")).toMatchObject({
-      status: "legacy",
+      status: "retired",
+      retired_at: "2026-08-31",
+      replacement_model_ids: ["kimi-k3"],
     });
     expect(
       models.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits.context_tokens,
@@ -18085,26 +18143,14 @@ describe("Kimi adapters", () => {
       retired_at: "2025-11-11",
       replacement_model_ids: ["kimi-k3"],
     });
-    const changedRestriction = parse(
-      source("kimi-catalog"),
-      body.replace(
-        "`kimi-k2.5` 和 `moonshot-v1` 系列模型",
-        "`kimi-k2.6` 和 `moonshot-v1-8k-vision` 系列模型",
-      ),
-    );
-    expect(changedRestriction.find(({ model_id }) => model_id === "kimi-k2.5")?.status).toBe(
-      "active",
-    );
-    expect(changedRestriction.find(({ model_id }) => model_id === "kimi-k2.6")?.status).toBe(
-      "legacy",
-    );
-    expect(changedRestriction.find(({ model_id }) => model_id === "moonshot-v1-8k")?.status).toBe(
-      "active",
-    );
-    expect(
-      changedRestriction.find(({ model_id }) => model_id === "moonshot-v1-8k-vision-preview")
-        ?.status,
-    ).toBe("legacy");
+    expect(models.find(({ model_id }) => model_id === "moonshot-v1-auto")).toMatchObject({
+      status: "retired",
+      retired_at: "2026-08-31",
+    });
+    expect(models.find(({ model_id }) => model_id === "kimi-k2-thinking")).toMatchObject({
+      status: "retired",
+      retired_at: "2026-05-25",
+    });
     const changedReplacement = parse(
       source("kimi-catalog"),
       body.replaceAll("[kimi-k3]", "[kimi-k2.6]"),
@@ -18123,7 +18169,7 @@ describe("Kimi adapters", () => {
     expect(international.map(({ model_id }) => model_id)).toEqual(
       models.map(({ model_id }) => model_id),
     );
-    expect(international.find(({ model_id }) => model_id === "kimi-k2.5")?.status).toBe("legacy");
+    expect(international.find(({ model_id }) => model_id === "kimi-k2.5")?.status).toBe("retired");
     expect(
       international.find(({ model_id }) => model_id === "kimi-k2.7-code-highspeed")?.limits
         .context_tokens,

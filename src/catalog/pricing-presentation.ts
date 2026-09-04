@@ -91,7 +91,13 @@ interface PricingTableCell {
   accessibleText: string;
 }
 
-const inputMeters = ["input_text", "input_image", "input_audio", "input_video"] as const;
+const inputMeters = [
+  "input_text",
+  "input_image",
+  "input_audio",
+  "input_video",
+  "transcription",
+] as const;
 const cacheMeters = ["cache_read_text", "cache_write_text"] as const;
 const outputMeters = [
   "output_text",
@@ -394,10 +400,7 @@ export function projectPricingTableCellFromView(
     if (
       selected.length === 0 ||
       selected.some(
-        (variant) =>
-          variant.validity !== undefined ||
-          variant.price.denomination.kind !== "fiat" ||
-          variant.price.per.factors.length === 0,
+        (variant) => variant.validity !== undefined || variant.price.per.factors.length === 0,
       )
     )
       return undefined;
@@ -416,6 +419,17 @@ export function projectPricingTableCellFromView(
     );
   }
   return undefined;
+}
+
+export function applicableRateCount(offer: PricingOffer, modelRef: string): number {
+  const context = withModelSelection(fixedOfferStateSelections(offer, modelRef), modelRef);
+  return offer.terms.filter(
+    (term) =>
+      isRateTerm(term) &&
+      term.variants.some(
+        ({ applicability }) => evaluateApplicability(applicability, context).state !== "false",
+      ),
+  ).length;
 }
 
 export function offerConditions(offer: PricingOffer): PriceCondition[] {

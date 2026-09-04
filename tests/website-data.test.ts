@@ -180,6 +180,18 @@ describe("website data", () => {
       ),
     );
     expect(amounts).not.toEqual(expect.arrayContaining([expect.stringMatching(/\d\/\d/)]));
+    const byUid = new Map(runtimeCatalog.models.map((model) => [model.uid, model]));
+    expect(byUid.get("openai/whisper-1")?.pricing.input).toMatchObject({
+      amount: "$0.006",
+      displayUnit: "minute",
+    });
+    expect(byUid.get("databricks/databricks-bge-large-en")?.pricing.output).toMatchObject({
+      amount: "DBU 1.429",
+      displayUnit: "1M tokens",
+    });
+    expect(byUid.get("vercel/spacexai/grok-voice-think-fast-1.0")?.pricing.status).toMatchObject({
+      label: "2 rates",
+    });
   }, 90_000);
 
   it("publishes audit-free details in bounded provider chunks", async () => {

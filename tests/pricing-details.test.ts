@@ -52,9 +52,11 @@ function offer(
     title?: string;
     group?: WebsitePricingOffer["group"];
     mechanismRefs?: string[];
+    stateSummary?: WebsitePricingOffer["state_summary"];
     selector?: { dimension: TestDimension; values: Array<{ value: string; label: string }> };
   } = {},
 ): WebsitePricingOffer {
+  const stateSummary = options.stateSummary ?? "Metered pricing";
   const selector = options.selector ?? {
     dimension: "region",
     values: [
@@ -68,7 +70,7 @@ function offer(
     group: options.group ?? "model_mechanism",
     ...(options.mechanismRefs === undefined ? {} : { mechanism_refs: options.mechanismRefs }),
     billing_mode: { label: "Usage" },
-    state_summary: "Metered pricing",
+    state_summary: stateSummary,
     selectors: [
       {
         key: JSON.stringify({ namespace: "kmodels", value: selector.dimension }),
@@ -85,8 +87,8 @@ function offer(
     states: [
       {
         key: "state:0",
-        state: "numeric",
-        label: "Numeric",
+        state: stateSummary === "Included" ? "included" : "numeric",
+        label: stateSummary === "Included" ? "Included" : "Numeric",
         applicability: categoricalContext(
           selector.dimension,
           ...selector.values.map(({ value }) => value),
@@ -148,7 +150,8 @@ describe("model pricing details", () => {
     ]);
 
     expect(html).toContain(">Region");
-    expect(html.match(/type="radio"/g)).toHaveLength(2);
+    expect(html).toContain("ui-select");
+    expect(html).not.toContain('type="radio"');
     expect(html).toContain(">US<");
     expect(html).toContain(">EU<");
     expect(html).not.toContain("Select Region to see rates");
@@ -156,7 +159,7 @@ describe("model pricing details", () => {
     expect(html).not.toContain("$3");
   });
 
-  it("shows both mutually exclusive inference geographies without hiding them in a menu", async () => {
+  it("labels mutually exclusive inference geographies explicitly", async () => {
     const pricedOffer = offer(
       [
         { amount: "$2", scope: categoricalContext("inference_geo", "global") },
@@ -178,10 +181,11 @@ describe("model pricing details", () => {
     expect(html).toContain("Choose one routing geography for this request.");
     expect(html).toContain("Global (default)");
     expect(html).toContain("US-only");
-    expect(html).not.toContain("ui-select");
+    expect(html).toContain("ui-select");
+    expect(html).not.toContain('type="radio"');
   });
 
-  it("keeps larger categorical choices in a menu", async () => {
+  it("uses the same select for larger categorical choices", async () => {
     const values = ["apac", "eu", "other", "us"];
     const pricedOffer = offer(
       values.map((value, index) => ({
@@ -239,6 +243,24 @@ describe("model pricing details", () => {
     expect(html).toContain("Automatic charge");
     expect(html).toContain("Underlying agent execution");
     expect(html).toContain("$0.10");
+  });
+
+  it("does not repeat the Included state for included features", async () => {
+    const mechanism = offer([{ amount: "$2", scope: region("us", "eu") }]);
+    const included = offer([], {
+      id: "e".repeat(64),
+      title: "Prompt caching",
+      group: "optional_service",
+      mechanismRefs: [mechanism.id],
+      stateSummary: "Included",
+    });
+
+    const html = await render([mechanism, included]);
+
+    expect(html).toContain("Included feature");
+    expect(html).toContain("Prompt caching");
+    expect(html).not.toContain("published-status");
+    expect(html).not.toContain('<small class="offer-state">Included</small>');
   });
 
   it("presents allowances and raw provider conditions as plain-language pricing notes", async () => {

@@ -526,7 +526,7 @@ interface CatalogRow {
 }
 
 function modelLink(value: string): { name: string; path: string } {
-  const match = value.match(/^\[([^\]]+)]\((\/models\/[a-z0-9-]+)\)$/);
+  const match = value.match(/^\[([^\]]+)]\((\/models\/[a-z0-9.-]+)\)$/);
   if (match?.[1] === undefined || match[2] === undefined)
     throw new Error(`Cerebras model cell is not an exact model link: ${value}`);
   return {
