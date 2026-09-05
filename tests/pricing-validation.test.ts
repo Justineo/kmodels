@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { unconditionalApplicability } from "../src/catalog/pricing-canonical.ts";
+import { pricingLimits } from "../src/catalog/pricing-constants.ts";
 import {
   pricingBookId,
   pricingOfferId,
@@ -122,6 +123,9 @@ function catalog(): PricingCatalog {
 }
 
 describe("canonical pricing serialized catalog validation", () => {
+  it("allows applicability evidence up to the provider resource budget", () => {
+    expect(pricingLimits.providerApplicabilityBytes).toBe(pricingLimits.providerPricingBytes);
+  });
   it("accepts a canonical provider-local numeric catalog", () => {
     expect(() => validatePricingCatalog(catalog(), core)).not.toThrow();
   });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { manifests } from "../src/catalog/manifests.ts";
 import {
   compilePricingSnapshot,
   readPricingCompilationSnapshot,
@@ -44,18 +45,41 @@ describe("provider pricing validation", () => {
     }
   });
 
-  it("replays every captured provider with current extractors", async () => {
+  it("replays current extractor inputs and preserves obsolete captured partitions", async () => {
     const { catalog, pricing } = await generatedData();
     const current = prepareCatalogPair(catalog, pricing);
     const snapshot = await readPricingCompilationSnapshot(current);
     if (snapshot === undefined) throw new Error("Pricing replay input is missing");
 
     const compiled = await compilePricingSnapshot(current, snapshot);
-    expect(compiled.replayedProviders).toEqual(
-      snapshot.providers.map(({ provider_id }) => provider_id),
-    );
+    for (const captured of snapshot.providers) {
+      const manifest = manifests.find(({ provider }) => provider.id === captured.provider_id);
+      if (manifest === undefined) throw new Error(`Missing manifest for ${captured.provider_id}`);
+      const obsolete = captured.sources.some((source) => {
+        const configured = manifest.sources.find(({ id }) => id === source.source_id);
+        return configured !== undefined && configured.extractorVersion !== source.extractor_version;
+      });
+      expect(compiled.preservedProviders.includes(captured.provider_id), captured.provider_id).toBe(
+        obsolete,
+      );
+      expect(compiled.replayedProviders.includes(captured.provider_id), captured.provider_id).toBe(
+        !obsolete,
+      );
+    }
     expect([...compiled.replayedProviders, ...compiled.preservedProviders].sort()).toEqual(
       pricing.data.provider_snapshots.map(({ provider_id }) => provider_id).sort(),
     );
+    const modelProviders = new Map(
+      catalog.models.map(({ uid, provider_id }) => [uid, provider_id]),
+    );
+    const modelProvider = (ref: string): string => {
+      const providerId = modelProviders.get(ref);
+      if (providerId === undefined) throw new Error(`Unresolved model ${ref}`);
+      return providerId;
+    };
+    for (const providerId of compiled.preservedProviders)
+      expect(providerPartition(compiled.candidate.pricing.data, providerId, modelProvider)).toEqual(
+        providerPartition(pricing.data, providerId, modelProvider),
+      );
   }, 300_000);
 });

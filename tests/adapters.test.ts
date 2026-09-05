@@ -9401,7 +9401,7 @@ describe("Anthropic adapters", () => {
 describe("Databricks adapters", () => {
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v11");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v12");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -10045,6 +10045,100 @@ describe("Databricks adapters", () => {
           .replace("GLM-5.2", "Future GLM"),
       }),
     ).resolves.toHaveLength(11);
+  });
+
+  it("reads tiered DBU tables without mixing hourly compute or guessing annotated rates", async () => {
+    const items: PricingReconciliationItem[] = [];
+    const models = await databricksCatalog(
+      {
+        "pricing-open.html": await fixture("databricks/pricing-open-tiered.html"),
+        "pricing-partner.html": await fixture("databricks/pricing-partner-tiered.html"),
+      },
+      (item) => items.push(item),
+    );
+    const gte = models.find(({ model_id }) => model_id === "databricks-gte-large-en");
+    expect(gte).toBeDefined();
+    expect(gte?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "embedding",
+        price: "1.857",
+        currency: "DBU",
+        unit: "million_tokens",
+        conditions: { service_tier: "standard" },
+      }),
+    ]);
+    const glm = models.find(({ model_id }) => model_id === "databricks-glm-5-2");
+    expect(glm).toBeDefined();
+    expect(glm?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          meter: "input_text",
+          price: "20",
+          conditions: { service_tier: "standard" },
+        }),
+        expect.objectContaining({
+          meter: "input_text",
+          price: "35",
+          conditions: { service_tier: "priority" },
+        }),
+      ]),
+    );
+    const sol = models.find(({ model_id }) => model_id === "databricks-gpt-5-6-sol");
+    expect(sol).toBeDefined();
+    expect(sol?.price_facts).toEqual([]);
+    expect(sol?.raw_price_facts).toHaveLength(12);
+    expect(sol?.raw_price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reason: "unknown_applicability",
+          conditions: { service_tier: "priority" },
+          raw: expect.objectContaining({
+            amount: "114.286",
+            denomination: "DBU",
+            meter: "Input",
+            fragment: expect.stringContaining("10% uplift"),
+            conditions: expect.arrayContaining([
+              { dimension: "row_qualifier", value: "Short context" },
+            ]),
+          }),
+        }),
+      ]),
+    );
+    expect(sol?.raw_price_facts.some(({ reason }) => reason === "unknown_amount")).toBe(false);
+    const claude = models.find(({ model_id }) => model_id === "databricks-claude-sonnet-4");
+    expect(claude).toBeDefined();
+    expect(claude?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "cache_read_text",
+        price: "4.286",
+      }),
+    );
+    expect(claude?.raw_price_facts).toContainEqual(
+      expect.objectContaining({
+        raw: expect.objectContaining({ amount: "53.571", meter: "Cache write" }),
+      }),
+    );
+    expect(items.filter(({ reason_code }) => reason_code.endsWith("pricing_rejected"))).toEqual([]);
+    expect(
+      models.flatMap(({ price_facts }) => price_facts).every(({ unit }) => unit !== "hour"),
+    ).toBe(true);
+  });
+
+  it("rejects an unrecognized tiered table without publishing a partial page", async () => {
+    const open = await fixture("databricks/pricing-open-tiered.html");
+    const items: PricingReconciliationItem[] = [];
+    const models = await databricksCatalog(
+      {
+        "pricing-open.html": open.replace("Priority Pay Per Token", "Future Pay Per Token"),
+      },
+      (item) => items.push(item),
+    );
+    const gte = models.find(({ model_id }) => model_id === "databricks-gte-large-en");
+    expect(gte).toBeDefined();
+    expect(gte?.price_facts).toEqual([]);
+    expect(items).toContainEqual(
+      expect.objectContaining({ reason_code: "open_model_pricing_rejected" }),
+    );
   });
 
   it("parses workspace endpoints only as a scoped inventory", async () => {

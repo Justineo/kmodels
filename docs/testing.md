@@ -12,24 +12,45 @@ Status: implemented
   are intentionally updated together.
 - Generated-data tests read the accepted catalog/pricing pair through
   `tests/generated-data-context.ts`. They validate schemas, referential integrity, projection
-  parity, security boundaries, and named resource or coverage calibrations. They must not encode
+  parity, security boundaries, and explicit resource budgets. They must not encode
   the current existence, price, status, or variant count of an otherwise volatile provider record.
 - Production build validation checks that the already-validated pair can be consumed and
   materialized. It is not a substitute for unit or adapter behavior tests.
 
 The generated-data file list is defined once in `tests/generated-data-tests.ts` and consumed by Vite+
 configuration and the test-boundary guard. Adding a test that reads durable generated state
-requires adding it to that list.
+requires adding it to that list. The boundary guard follows test helpers, static imports,
+re-exports, dynamic imports, and URL paths recursively, including nested test directories.
+
+Both test projects block unmocked Fetch, Node HTTP(S), and child-process transports. Transport
+tests provide local responses explicitly; a fixture containing an official URL does not authorize
+a request to that URL. Unit-test filesystem reads also reject the repository's generated `data/`
+directory, including indirect default-path reads through production helpers. Temporary directories,
+reviewed fixtures, repository source files, and pinned dependency assets remain valid inputs.
+Time-dependent behavior uses explicit instants or a controlled clock. Environment stubs are restored
+after each test, including failures.
 
 ## Assertions
 
 - Assert public behavior and durable invariants. Do not copy the implementation into the expected
   value when a smaller relational assertion expresses the contract.
-- Use exact counts for controlled fixtures, fixed vocabularies, and explicitly reviewed resource
-  budgets. For live provider catalogs, compare projections back to their source catalog or use a
-  named, documented calibration range instead of today's count.
+- Use exact counts for controlled fixtures and fixed vocabularies. For generated provider catalogs,
+  compare projections back to the same source snapshot. Do not require minimum model, variant, or
+  observation counts, complete optional-field coverage, a fixed union of source IDs or service
+  families, or the presence of a particular pricing feature. Naming a changing count a calibration
+  does not make it stable. Completeness and drift belong to the collector's source contracts and
+  previous/candidate validation; tests exercise those rules with fixed inputs.
+- Keep explicit upper bounds on payload size, chunk size, offer count, and preview length: those
+  protect consumer resource contracts. Test their behavior with synthetic inputs and verify the
+  current published assets stay within the same bounds.
 - Test provider-specific parsing and presentation examples against fixtures or synthetic pricing.
   Generated-data tests should apply the same invariant to every applicable provider or model.
+  This includes table-cell amounts and statuses and model-specific selector examples: a current
+  price, model ID, or context threshold must not become a scheduled-refresh requirement. Keep
+  these examples in adapter, pricing-presentation, and website projection unit tests.
+- Generated pricing replay checks current extractor inputs against their manifests and verifies
+  obsolete-input providers keep their exact accepted partitions. An extractor bump must not require
+  a live data refresh merely to validate code changes.
 - Exercise applicability budgets on both sides of the boundary. Equal-value claims that exceed one
   applicability must remain normalized as deterministic bounded shards with complete observations;
   a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.

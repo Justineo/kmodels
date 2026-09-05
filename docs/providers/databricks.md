@@ -72,9 +72,21 @@ dependency.
 
 ## Pricing parsing and conflict rules
 
-- Open-model rows publish only input, output, cache-read, and embedding rates. Capacity columns are
-  recognized as out of scope and discarded.
-- Proprietary-model rows publish only input, output, cache-write, and cache-read rates. The
+- Current pricing pages separate Standard and Priority DBU-per-million-token tables from hourly
+  Provisioned Throughput and Batch Inference tables. Read the reviewed token headers and their
+  column order, including the optional row qualifier and one-hour cache-write column; discard
+  hourly compute tables. Comma-separated version labels expand to exact catalog matches.
+- Unqualified token cells normalize to numeric rates. New regional-uplift and promotion markers,
+  context/modality row qualifiers, and cache-write duration alternatives retain their published
+  amounts, column labels, tier, qualifiers, and pricing notes as raw facts until their complete
+  applicability can be normalized. Never strip a footnote marker and publish an unconditional
+  rate. An observed Priority amount, including a raw conditional amount, suppresses the fallback
+  claim that no Priority amount was published. Stage a complete tiered page before applying it so
+  a changed table cannot leave a partially interpreted page behind.
+- The reviewed combined-table layout remains supported by deterministic fixtures. Its open-model
+  rows publish only input, output, cache-read, and embedding rates. Capacity columns are
+  recognized as out of scope and discarded. Its proprietary-model rows publish only input,
+  output, cache-write, and cache-read rates. The
   DBU-per-hour Batch column is recognized as out of scope and discarded. The reviewed provider
   groups are OpenAI, Anthropic, Google, and the optional `SpacexAI` group used for Grok rows.
 - Standard pay-per-token uses `service_tier=standard`. Priority is a variant of the same invocation
@@ -92,10 +104,11 @@ dependency.
 - An exact model-qualified Priority DBU row is sufficient price evidence even when the support page
   has not yet listed that endpoint. In that case Kmodels retains only the published
   `service_tier=priority` condition; it does not invent region, routing, or fallback conditions.
-- Promotion percentages, validity dates, launch targets, and referenced Standard-rate families are
-  parsed from first-party footnotes. Model IDs, rates, and dates are not hard-coded.
-- Blank, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only
-  that amount. A malformed pricing page loses only that page; catalog identity and the independent
+- Reviewed combined-table promotion percentages, validity dates, launch targets, and referenced
+  Standard-rate families are parsed from first-party footnotes. New tiered-table annotations use
+  the raw fallback above. Model IDs, rates, and dates are not hard-coded.
+- Blank, `-`, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only
+  that numeric amount; tiered tables retain its raw evidence. A malformed pricing page loses only that page; catalog identity and the independent
   pricing page survive.
 - Rows bind through a unique reviewed label. Zero-match rows are out-of-catalog observations;
   ambiguous matches are never guessed.

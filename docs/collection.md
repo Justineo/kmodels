@@ -256,7 +256,8 @@ Status: implemented
   metadata comes from the current accepted canonical pair rather than being
   duplicated in the input. Source IDs, extractor versions, content hashes,
   ownership, provenance, and required pricing-source completeness are
-  revalidated before use. Any mismatch aborts the entire local compilation.
+  revalidated before use. An obsolete extractor preserves that provider's accepted partition until
+  collection captures fresh input; other binding or source-contract mismatches abort compilation.
   Authenticated or otherwise non-public pricing inputs are never persisted;
   providers without replay input keep their exact accepted partitions.
 - A manifest source declares `pricing` when it owns rates and `pricing_inputs`
