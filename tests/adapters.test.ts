@@ -9245,6 +9245,69 @@ describe("Anthropic adapters", () => {
     });
   });
 
+  it("binds independent Anthropic cache TTL buckets and isolates a missing counter", async () => {
+    const models = await anthropicCatalog();
+    const value = manifest("anthropic");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Anthropic source");
+    const partition = assembleParsedProviderPricing(
+      value.provider.id,
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    const sync = partition?.books
+      .find(({ book_key }) => book_key === "model:anthropic/claude-fable-5")
+      ?.offers.find(({ offer_key }) => offer_key === "sync");
+    if (sync === undefined) throw new Error("Missing Messages offer");
+    const writes = sync.terms.filter(
+      (term) => term.kind === "rate" && term.meter.value === "cache_write_text",
+    );
+    expect(writes.map(({ term_key }) => term_key)).toEqual(
+      expect.arrayContaining([expect.stringMatching(/:5m$/), expect.stringMatching(/:1h$/)]),
+    );
+    for (const term of writes) {
+      if (term.kind !== "rate") throw new Error("Expected a rate");
+      for (const variant of term.variants) {
+        expect(
+          variant.applicability.any_of
+            .flatMap(({ all_of }) => all_of)
+            .some(({ dimension }) => dimension.value === "cache_ttl_seconds"),
+        ).toBe(false);
+        expect(variant.charge_binding?.quantity_methods?.[0]?.input_sources).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              locator: {
+                kind: "json_pointer",
+                value: `/usage/cache_creation/ephemeral_${term.term_key.endsWith(":5m") ? "5m" : "1h"}_input_tokens`,
+              },
+            }),
+          ]),
+        );
+      }
+    }
+    const drifted = await anthropicCatalog({
+      overrides: {
+        "/docs/en/build-with-claude/prompt-caching.md": (
+          await fixture("anthropic/prompt-caching.md")
+        ).replaceAll("ephemeral_1h_input_tokens", "unreviewed_input_tokens"),
+      },
+    });
+    const inputs = drifted.flatMap((model) => model.pricing_inputs ?? []);
+    expect(inputs.some(({ key }) => key === "messages.usage.cache_write_5m_input_tokens")).toBe(
+      true,
+    );
+    expect(inputs.some(({ key }) => key === "messages.usage.cache_write_1h_input_tokens")).toBe(
+      false,
+    );
+    expect(
+      drifted
+        .find(({ model_id }) => model_id === "claude-fable-5")
+        ?.price_facts.some(({ meter }) => meter === "cache_write_text"),
+    ).toBe(true);
+  });
+
   it("withholds drifted batch coverage without rejecting synchronous models", async () => {
     const fable = (
       await anthropicCatalog({

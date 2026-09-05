@@ -822,9 +822,97 @@ function atLeastGeneration(id: string, threshold: ModelGeneration): boolean {
   );
 }
 
+const promptCacheUsageSchema = z.object({
+  usage: z
+    .object({
+      cache_creation: z.record(z.string(), z.unknown()).optional(),
+      iterations: z
+        .array(
+          z
+            .object({
+              cache_creation: z.record(z.string(), z.unknown()).optional(),
+            })
+            .passthrough(),
+        )
+        .optional(),
+    })
+    .passthrough(),
+});
+type PromptCacheUsage = z.infer<typeof promptCacheUsageSchema>["usage"];
+
+function cacheWriteAccountingInputs(promptCaching: string, input: Input): SourcePricingInputFact[] {
+  const pricingInputs: SourcePricingInputFact[] = [];
+  const usageExamples = promptCacheUsageExamples(promptCaching);
+  const hasCachePartitionContract =
+    /cache_creation_input_tokens[\s\S]{0,100}equals the sum of the values in the[\s\S]{0,30}cache_creation/.test(
+      promptCaching,
+    );
+  for (const ttl of ["5m", "1h"] as const) {
+    const field = `ephemeral_${ttl}_input_tokens`;
+    const available =
+      hasCachePartitionContract &&
+      usageExamples.some((usage) => isCacheTokenCount(usage.cache_creation?.[field]));
+    if (!available) {
+      input.onPricingReconciliation?.({
+        disposition: "unresolved",
+        reason_code: "accounting_contract_drift",
+        sample: `Messages usage.cache_creation.${field}`,
+      });
+      continue;
+    }
+    pricingInputs.push({
+      key: `messages.usage.cache_write_${ttl}_input_tokens`,
+      channel: "response",
+      locator: { kind: "json_pointer", value: `/usage/cache_creation/${field}` },
+      availability: "conditional",
+      source_ref: input.source.id,
+    });
+    if (
+      usageExamples.some((usage) =>
+        usage.iterations?.some((iteration) => isCacheTokenCount(iteration.cache_creation?.[field])),
+      )
+    )
+      pricingInputs.push({
+        key: `messages.usage.cache_write_${ttl}_input_tokens`,
+        channel: "response",
+        locator: {
+          kind: "provider_field",
+          value: `usage.iterations[*].cache_creation.${field} grouped by usage.iterations[*].model`,
+        },
+        availability: "conditional",
+        source_ref: input.source.id,
+      });
+  }
+
+  return pricingInputs;
+}
+
+function promptCacheUsageExamples(markdown: string): PromptCacheUsage[] {
+  const usageExamples: PromptCacheUsage[] = [];
+  for (const match of markdown.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)) {
+    const usage = parsePromptCacheUsage(match[1] ?? "");
+    if (usage !== undefined) usageExamples.push(usage);
+  }
+  return usageExamples;
+}
+
+function parsePromptCacheUsage(example: string): PromptCacheUsage | undefined {
+  try {
+    const parsed = promptCacheUsageSchema.safeParse(JSON.parse(example));
+    return parsed.success ? parsed.data.usage : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isCacheTokenCount(value: unknown): boolean {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
 function validateRequestAccounting(
   messages: string,
   dataResidency: string,
+  promptCaching: string,
   input: Input,
 ): RequestAccounting {
   const contract = (valid: boolean, sample: string): boolean => {
@@ -857,6 +945,8 @@ function validateRequestAccounting(
         source_ref: input.source.id,
       });
   }
+
+  pricingInputs.push(...cacheWriteAccountingInputs(promptCaching, input));
 
   const dataResidencyGeneration = reviewedGeographyGeneration(
     dataResidency,
@@ -1570,6 +1660,7 @@ export function parseAnthropicCatalog(input: Input): ProviderModel[] {
   const requestAccounting = validateRequestAccounting(
     messagesBody,
     document("/docs/en/manage-claude/data-residency.md"),
+    document("/docs/en/build-with-claude/prompt-caching.md"),
     input,
   );
   const models = new Map<string, ProviderModel>();
