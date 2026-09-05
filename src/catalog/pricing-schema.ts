@@ -373,6 +373,13 @@ export const usageQuantityNodeSchema = z.discriminatedUnion("op", [
     input: z.number().int().nonnegative(),
     value: rationalSchema,
   }),
+  z.strictObject({
+    op: z.literal("round_up"),
+    input: z.number().int().nonnegative(),
+    increment: rationalSchema.refine((value) => value.numerator !== "0", {
+      message: "Billing increment must be positive",
+    }),
+  }),
 ]);
 
 export const usageQuantityCalculationSchema = z.strictObject({

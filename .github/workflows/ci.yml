@@ -35,3 +35,8 @@ jobs:
 
       - name: Build
         run: vp run build
+
+      - name: Build and verify portable pricing package
+        run: |
+          vp run package:build
+          vp run package:check

@@ -62,6 +62,17 @@ export function compareRationals(left: Rational, right: Rational): -1 | 0 | 1 {
   return difference < 0n ? -1 : difference > 0n ? 1 : 0;
 }
 
+export function roundUpRational(value: Rational, increment: Rational): Rational {
+  if (increment.numerator === "0") throw new Error("Billing increment must be positive");
+  const scaledValue = BigInt(value.numerator) * BigInt(increment.denominator);
+  const scaledIncrement = BigInt(value.denominator) * BigInt(increment.numerator);
+  const incrementCount = (scaledValue + scaledIncrement - 1n) / scaledIncrement;
+  return normalizeRational(
+    incrementCount * BigInt(increment.numerator),
+    BigInt(increment.denominator),
+  );
+}
+
 export function rationalToFiniteDecimal(value: Rational): string | undefined {
   let denominator = BigInt(value.denominator);
   let twos = 0;
