@@ -7,8 +7,14 @@ import { pathToFileURL } from "node:url";
 import { createContext, SourceTextModule } from "node:vm";
 import { build } from "vite-plus";
 import { z } from "zod";
-import { conformanceSchema, type ConformanceSuite } from "../tests/pricing-conformance.ts";
-import { createCalculator } from "../src/pricing/index.ts";
+import {
+  conformanceDataset,
+  conformanceErrorData,
+  conformanceSchema,
+  type ConformanceCase,
+  type ConformanceSuite,
+} from "../tests/pricing-conformance.ts";
+import { calculationEnvelopeSchema, createCalculator } from "../src/pricing/index.ts";
 
 const expectedPackageFiles = [
   "package/CONTRACT.md",
@@ -31,6 +37,13 @@ interface RuntimeCalculator {
   calculate(input: unknown): unknown;
 }
 
+const runtimeResultSchema = z.looseObject({
+  status: z.string(),
+  subtotals: z.unknown(),
+  totals: z.unknown().optional(),
+  unresolved: z.array(z.looseObject({ code: z.string() })),
+});
+
 await checkPricingPackage();
 
 async function checkPricingPackage(): Promise<void> {
@@ -47,7 +60,7 @@ async function checkPricingPackage(): Promise<void> {
     console.log(
       `Packed package: ${expectedPackageFiles.length} expected files; ` +
         `${suite.cases.length} calculations and ${suite.errors.length} errors verified in Node and browser; ` +
-        "no bundled provider data or transport.",
+        "synthetic conformance data only; no transport or Node dependency in the runtime.",
     );
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
@@ -90,8 +103,15 @@ async function checkPackageContents(packageDirectory: string): Promise<void> {
 async function readConformanceSuite(packageDirectory: string): Promise<ConformanceSuite> {
   const fixturePath = join(packageDirectory, "conformance.json");
   const suite = conformanceSchema.parse(JSON.parse(await readFile(fixturePath, "utf8")));
-  for (const dataset of Object.values(suite.datasets)) {
-    for (const provider of dataset.providers) {
+  const envelopes = [
+    ...Object.values(suite.datasets),
+    ...suite.errors.flatMap((vector) => {
+      const inline = calculationEnvelopeSchema.safeParse(vector.data);
+      return inline.success ? [inline.data] : [];
+    }),
+  ];
+  for (const envelope of envelopes) {
+    for (const provider of envelope.providers) {
       assert.equal(
         provider.snapshot.provider_id,
         "example",
@@ -152,20 +172,37 @@ async function bundleForBrowser(entryPath: string): Promise<string> {
 
 function checkRuntimeConformance(moduleExports: unknown, suite: ConformanceSuite): void {
   for (const testCase of suite.cases) {
-    const dataset = suite.datasets[testCase.dataset];
+    const dataset = conformanceDataset(suite, testCase.dataset);
     const calculator = loadRuntimeCalculator(moduleExports, dataset);
     const actual = calculator.calculate(testCase.request);
-    const expected = createCalculator(dataset).calculate(testCase.request);
-    assert.equal(JSON.stringify(actual), JSON.stringify(expected), testCase.name);
+    assertExpectedResult(actual, testCase);
+    const reference = createCalculator(dataset).calculate(testCase.request);
+    assert.equal(JSON.stringify(actual), JSON.stringify(reference), testCase.name);
   }
   for (const testCase of suite.errors) {
-    const dataset = testCase.data ?? suite.datasets[testCase.dataset ?? ""];
+    const dataset = conformanceErrorData(suite, testCase);
     const actualCode = capturedErrorCode(() => {
       const calculator = loadRuntimeCalculator(moduleExports, dataset);
       if (testCase.request !== undefined) calculator.calculate(testCase.request);
     });
     assert.equal(actualCode, testCase.expectedCode, testCase.name);
   }
+}
+
+function assertExpectedResult(actual: unknown, testCase: ConformanceCase): void {
+  const result = runtimeResultSchema.parse(actual);
+  assert.equal(result.status, testCase.expected.status, testCase.name);
+  assert.deepEqual(result.subtotals, testCase.expected.subtotals, testCase.name);
+  assert.deepEqual(
+    [...new Set(result.unresolved.map((gap) => gap.code))].sort(),
+    [...testCase.expected.unresolvedCodes].sort(),
+    testCase.name,
+  );
+  assert.equal(
+    result.totals !== undefined,
+    result.status === "calculated" || result.status === "estimated",
+    testCase.name,
+  );
 }
 
 function loadRuntimeCalculator(moduleExports: unknown, priceData: unknown): RuntimeCalculator {

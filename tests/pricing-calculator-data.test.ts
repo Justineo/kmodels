@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { calculationExport } from "../src/catalog/pricing-calculator-export.ts";
+import {
+  calculationExport,
+  calculationExportAssets,
+} from "../src/catalog/pricing-calculator-export.ts";
 import { calculationCoverage } from "../src/catalog/pricing-calculation-coverage.ts";
 import {
   validatePriceData,
@@ -43,6 +46,27 @@ describe("calculation exports", () => {
       expectObservationFragmentsOmitted(envelope);
     }
   }, 90_000);
+  it("rejects empty, duplicated and unknown provider selections", async () => {
+    const { catalog, pricing } = await generatedData();
+    const providerId = pricing.data.provider_snapshots[0]?.provider_id;
+    if (providerId === undefined) throw new Error("Missing provider snapshot");
+    for (const selection of [[], [providerId, providerId], ["example/missing"]]) {
+      expect(() => calculationExport(catalog, pricing, selection)).toThrow(
+        "complete provider partitions",
+      );
+    }
+  });
+  it("publishes the index, coverage and per-provider calculation assets", async () => {
+    const { catalog, pricing } = await generatedData();
+    const fileNames = calculationExportAssets(catalog, pricing).map(({ fileName }) => fileName);
+    expect(fileNames).toEqual([
+      "pricing/calculation/index.json",
+      "pricing/calculation/coverage.json",
+      ...pricing.data.provider_snapshots.map(
+        ({ provider_id }) => `pricing/calculation/providers/${provider_id}.json`,
+      ),
+    ]);
+  }, 90_000);
 });
 
 function expectExportedOffers(
@@ -75,6 +99,7 @@ function expectOfferMatchesCanonical(exported: CalculationOffer, canonical: Pric
 }
 
 function expectTermMatchesCanonical(exported: CalculationTerm, canonical: PricingTerm): void {
+  expect(exported.kind).toBe(canonical.kind);
   expect(exported.variants.length).toBe(canonical.variants.length);
   if (canonical.kind === "allowance" && exported.kind === "allowance") {
     expect(

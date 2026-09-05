@@ -2,6 +2,11 @@
   "name": "@kmodels/pricing",
   "version": "0.1.0",
   "description": "Exact request pricing with caller-owned price data",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Justineo/kmodels.git",
+    "directory": "packages/pricing"
+  },
   "files": [
     "dist",
     "schema.json",
@@ -15,7 +20,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./schema.json": "./schema.json",
     "./request.schema.json": "./request.schema.json",

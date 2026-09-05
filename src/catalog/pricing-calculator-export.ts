@@ -12,6 +12,7 @@ import type {
 } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 import { calculationCoverage } from "./pricing-calculation-coverage.ts";
+import { validatePriceData } from "../pricing/validation.ts";
 
 export function calculationExport(
   catalog: Catalog,
@@ -147,7 +148,7 @@ export function calculationExportAssets(
   pricing: PricingCatalogEnvelope,
 ): Array<{ fileName: string; source: string }> {
   if (pricing.data.provider_snapshots.length === 0) return [];
-  const envelope = calculationExport(catalog, pricing);
+  const envelope = validatePriceData(calculationExport(catalog, pricing));
   return [
     { fileName: "pricing/calculation/index.json", source: canonicalJson(envelope) },
     {

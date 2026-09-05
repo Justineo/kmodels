@@ -23,6 +23,13 @@ export interface ObservedUsageQuantity {
 
 export type QuantityBinding = Omit<ChargeBinding, "observations">;
 
+export class UsageQuantityConflictError extends Error {
+  constructor() {
+    super("Quantity methods resolved to conflicting values");
+    this.name = "UsageQuantityConflictError";
+  }
+}
+
 export type ChargeQuantityEvaluation =
   | { kind: "resolved"; value: Rational }
   | { kind: "missing_input"; alternatives: UsageSignal[][] };
@@ -128,7 +135,7 @@ export function evaluateChargeQuantity(
     };
   const quantity = resolved[0]!;
   if (resolved.some((value) => compareRationals(value, quantity) !== 0))
-    throw new Error("Quantity methods resolved to conflicting values");
+    throw new UsageQuantityConflictError();
   return {
     kind: "resolved",
     value: binding.scale === undefined ? quantity : multiplyRationals(quantity, binding.scale),

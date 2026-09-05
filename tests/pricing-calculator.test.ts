@@ -9,7 +9,11 @@ import {
   type CalculationRequest,
   type CalculationTerm,
 } from "../src/pricing/index.ts";
-import { conformanceSchema } from "./pricing-conformance.ts";
+import {
+  conformanceDataset,
+  conformanceErrorData,
+  conformanceSchema,
+} from "./pricing-conformance.ts";
 
 const conformance = conformanceSchema.parse(
   JSON.parse(
@@ -54,9 +58,7 @@ describe("portable conformance", () => {
   for (const vector of conformance.errors)
     it(vector.name, () =>
       expectPricingError(() => {
-        const calculator = createCalculator(
-          vector.data ?? conformance.datasets[vector.dataset ?? ""],
-        );
+        const calculator = createCalculator(conformanceErrorData(conformance, vector));
         if (vector.request !== undefined) {
           calculateUnvalidatedRequest(calculator, vector.request);
         }
@@ -64,7 +66,7 @@ describe("portable conformance", () => {
     );
   for (const vector of conformance.cases)
     it(vector.name, () => {
-      const result = createCalculator(conformance.datasets[vector.dataset]).calculate(
+      const result = createCalculator(conformanceDataset(conformance, vector.dataset)).calculate(
         vector.request,
       );
       expect(result.status).toBe(vector.expected.status);
@@ -106,6 +108,18 @@ describe("calculator boundaries", () => {
         { namespace: "kmodels", value: "input_tokens" },
       ],
     ]);
+  });
+  it("keeps referenced rates discoverable for unbound contributions", () => {
+    const supplied = structuredClone(conformance.datasets["contribution"]);
+    const inference = supplied?.providers[0]?.books[0]?.offers[0];
+    const contribution = inference?.terms.find((term) => term.kind === "contribution");
+    if (inference === undefined || contribution?.kind !== "contribution")
+      throw new Error("Missing contribution fixture");
+    for (const variant of contribution.variants) variant.charge_bindings = [];
+    const requirements = createCalculator(supplied).requirements({ offerRef: inference.id });
+    const requirement = requirements.charges.find((charge) => charge.termRef === contribution.id);
+    expect(requirement?.targetRateRefs).toEqual(contribution.variants[0]?.target_rate_refs);
+    expect(requirements.gaps.map(({ code }) => code)).toContain("unbound_charge");
   });
   it("rejects unsupported schemas, dangling links, invalid rationals and incompatible units", () => {
     expectPricingError(

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ExactIntegerLimitError } from "../catalog/pricing-rational.ts";
 import type { CalculationRequest, SelectionRequest } from "./schema.ts";
 import type { Calculator, CalculationResult, OfferEntry } from "./types.ts";
 import { PricingError } from "./errors.ts";
@@ -17,23 +18,26 @@ export function createCalculator(priceData: unknown): Calculator {
   const snapshot = createPricingSnapshot(priceData);
   return Object.freeze({
     listOffers(input: OfferFilter = {}): OfferEntry[] {
-      return listMatchingOffers(snapshot, parseRequest(offerFilterSchema, input));
+      return guarded(() => listMatchingOffers(snapshot, parseRequest(offerFilterSchema, input)));
     },
     requirements(input: SelectionRequest) {
-      return discoverRequirements(snapshot, input);
+      return guarded(() => discoverRequirements(snapshot, input));
     },
     calculate(input: CalculationRequest): CalculationResult {
-      try {
-        return evaluateRequest(snapshot, input);
-      } catch (error) {
-        if (error instanceof PricingError) throw error;
-        throw new PricingError(
-          "ARITHMETIC_LIMIT",
-          error instanceof Error ? error.message : "Calculation failed",
-        );
-      }
+      return guarded(() => evaluateRequest(snapshot, input));
     },
   });
+}
+
+function guarded<T>(action: () => T): T {
+  try {
+    return action();
+  } catch (error) {
+    if (error instanceof PricingError) throw error;
+    if (error instanceof ExactIntegerLimitError)
+      throw new PricingError("ARITHMETIC_LIMIT", error.message);
+    throw error;
+  }
 }
 
 function listMatchingOffers(snapshot: PricingSnapshot, filter: OfferFilter): OfferEntry[] {

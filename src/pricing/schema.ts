@@ -183,8 +183,12 @@ export const componentSchema = z.strictObject({
     .default([]),
   relatedComponents: z.array(text).max(256).default([]),
 });
+const rfc3339Instant = z
+  .string()
+  .max(64)
+  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/);
 export const calculationRequestSchema = z.strictObject({
-  evaluatedAt: text,
+  evaluatedAt: rfc3339Instant,
   components: z.array(componentSchema).min(1).max(1024),
 });
 

@@ -27,7 +27,7 @@ export function relatedComponents(
 }
 
 export function rejectDuplicateContributions(
-  charges: Charge[],
+  charges: readonly Charge[],
   components: ReadonlyMap<string, CalculationComponent>,
 ): void {
   for (const charge of charges) {
@@ -35,11 +35,16 @@ export function rejectDuplicateContributions(
     const component = components.get(charge.componentId);
     if (component === undefined) throw new PricingError("INVALID_COMPOSITION", "Missing component");
     for (const otherCharge of charges) {
-      if (
-        otherCharge.componentId === charge.componentId ||
-        otherCharge.rateTermRef !== charge.rateTermRef
-      )
+      if (otherCharge === charge || otherCharge.rateTermRef !== charge.rateTermRef) continue;
+      if (otherCharge.componentId === charge.componentId) {
+        if (otherCharge.termRef === otherCharge.rateTermRef) {
+          throw new PricingError(
+            "INVALID_COMPOSITION",
+            "A contribution and its referenced rate would charge the same component twice",
+          );
+        }
         continue;
+      }
       const otherComponent = components.get(otherCharge.componentId);
       if (otherComponent !== undefined && componentsAreLinked(component, otherComponent)) {
         throw new PricingError(

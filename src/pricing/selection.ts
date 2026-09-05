@@ -4,6 +4,7 @@ import {
   unionApplicabilities,
   unconditionalApplicability,
 } from "../catalog/pricing-canonical.ts";
+import { pricingLimits } from "../catalog/pricing-constants.ts";
 import { evaluateApplicability } from "../catalog/pricing-presentation.ts";
 import { publishedValidityStatus } from "../catalog/pricing-time.ts";
 import {
@@ -58,6 +59,7 @@ export interface Gap {
 
 interface VariantSelection<T> {
   variant?: T;
+  scope?: PriceApplicability;
   gap?: "missing_selector" | "conflicting_variants";
   dimensions: PriceDimension[];
 }
@@ -112,8 +114,13 @@ export function selectVariants<T extends Qualified>(
   const haveSameSemantics = possibleVariants.every(
     (variant) => canonicalJson(semantics(variant)) === representativeSemantics,
   );
-  if (haveSameSemantics && matchedVariants[0] !== undefined)
-    return { variant: matchedVariants[0], dimensions: [] };
+  if (haveSameSemantics && matchedVariants[0] !== undefined) {
+    return {
+      variant: matchedVariants[0],
+      scope: matchedVariants[0].applicability,
+      dimensions: [],
+    };
+  }
 
   const missingDimensions = uniqueCanonicalValues(
     possibleVariants.flatMap(
@@ -137,9 +144,16 @@ export function selectVariants<T extends Qualified>(
     remainingOfferScope !== undefined &&
     variantsCoverScope(remainingOfferScope, remainingVariantScopes)
   ) {
-    return { variant: representative, dimensions: [] };
+    const scope = boundedUnion(possibleVariants.map((variant) => variant.applicability));
+    return { variant: representative, ...(scope === undefined ? {} : { scope }), dimensions: [] };
   }
   return { gap: "missing_selector", dimensions: missingDimensions };
+}
+
+function boundedUnion(scopes: readonly PriceApplicability[]): PriceApplicability | undefined {
+  const clauses = uniqueCanonicalValues(scopes.flatMap((scope) => scope.any_of));
+  if (clauses.length > pricingLimits.applicabilityClauses) return undefined;
+  return unionApplicabilities([{ any_of: clauses }]);
 }
 
 function remainingScope(
@@ -160,7 +174,8 @@ function remainingScope(
 
 function variantsCoverScope(target: PriceApplicability, variants: PriceApplicability[]): boolean {
   if (variants.length === 0) return false;
-  if (applicabilityContainedIn(target, unionApplicabilities(variants))) return true;
+  const union = boundedUnion(variants);
+  if (union !== undefined && applicabilityContainedIn(target, union)) return true;
   const cells = applicabilityCells([target, ...variants]);
   if (cells === undefined) return false;
   return cells.every((selectors) => {

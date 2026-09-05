@@ -1,10 +1,12 @@
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import {
   evaluateChargeQuantity,
+  UsageQuantityConflictError,
   type ChargeQuantityEvaluation,
 } from "../catalog/pricing-calculation.ts";
 import { evaluateApplicability } from "../catalog/pricing-presentation.ts";
 import { multiplyRationals } from "../catalog/pricing-rational.ts";
+import type { PriceApplicability } from "../catalog/pricing-schema.ts";
 import type {
   CalculationBinding,
   CalculationComponent,
@@ -39,10 +41,24 @@ import {
 import { componentInputs, validateOfferQuantities, validateSelectorVocabulary } from "./request.ts";
 import { componentsAreLinked, relatedComponents } from "./composition.ts";
 
+export interface EvaluatedCharge extends Charge {
+  price: CalculationRate["price"];
+}
+
+export interface DeferredCharge {
+  componentId: string;
+  offerRef: string;
+  termRef: string;
+  rateTermRef: string;
+  price: CalculationRate["price"];
+  linkedComponentIds: string[];
+}
+
 export interface ComponentResult {
-  charges: Charge[];
+  charges: EvaluatedCharge[];
   gaps: Gap[];
   allowances: PendingAllowance[];
+  deferred: DeferredCharge[];
   hasKnownAmount: boolean;
 }
 
@@ -68,9 +84,12 @@ class ComponentEvaluator {
     charges: [],
     gaps: [],
     allowances: [],
+    deferred: [],
     hasKnownAmount: false,
   };
   private state: CalculationOffer["states"][number] | undefined;
+  private stateScope: PriceApplicability | undefined;
+  private statesExcludeSelectors = false;
   private aggregation: CalculationBinding["aggregation"] | undefined;
 
   constructor(
@@ -122,6 +141,7 @@ class ComponentEvaluator {
     if (selection.gap !== undefined)
       this.recordGap(selection.gap, undefined, { dimensions: selection.dimensions });
     this.state = selection.variant;
+    this.stateScope = selection.scope;
     const selectedState = this.state?.state;
     switch (selectedState) {
       case "numeric":
@@ -131,6 +151,8 @@ class ComponentEvaluator {
         this.result.hasKnownAmount = true;
         return;
       case undefined:
+        this.statesExcludeSelectors =
+          this.owner.offer.states.length > 0 && selection.gap === undefined;
         this.recordGap("unknown_price");
         return;
       default:
@@ -138,7 +160,12 @@ class ComponentEvaluator {
     }
   }
 
+  private get pricesNumeric(): boolean {
+    return this.state?.state === "numeric";
+  }
+
   private resolveAggregation(): CalculationBinding["aggregation"] | undefined {
+    if (this.component.aggregation !== undefined) return this.component.aggregation;
     const boundaries: CalculationBinding["aggregation"][] = [];
     for (const term of this.owner.offer.terms) {
       if (term.kind !== "rate" && term.kind !== "contribution") continue;
@@ -147,40 +174,33 @@ class ComponentEvaluator {
       }
     }
     const distinctBoundaries = uniqueCanonicalValues(boundaries);
-    if (this.component.aggregation !== undefined) return this.component.aggregation;
     if (distinctBoundaries.length === 1) return distinctBoundaries[0];
     return undefined;
   }
 
-  private evaluateRate(term: CalculationRateTerm): void {
-    const variants = this.currentVariants(term.variants, term.id, this.state?.state === "numeric");
-    const selection = selectVariants(
-      variants,
-      this.selectors,
-      pricingSemantics,
-      this.state?.applicability,
-    );
+  private selectCurrentVariant<T extends NormalizedVariant>(
+    variants: readonly T[],
+    termRef: string,
+  ): T | undefined {
+    const current = this.currentVariants(variants, termRef, this.pricesNumeric);
+    const selection = selectVariants(current, this.selectors, pricingSemantics, this.stateScope);
     if (selection.gap !== undefined)
-      this.recordGap(selection.gap, term.id, { dimensions: selection.dimensions });
-    if (selection.variant === undefined) return;
-    if (this.state?.state === "free" || this.state?.state === "included") {
-      this.recordGap("conflicting_variants", term.id);
-      return;
+      this.recordGap(selection.gap, termRef, { dimensions: selection.dimensions });
+    if (selection.variant === undefined || this.statesExcludeSelectors) return undefined;
+    if (this.state !== undefined && !this.pricesNumeric) {
+      this.recordGap("conflicting_variants", termRef, { reason: this.state.state });
+      return undefined;
     }
-    this.recordCharge(term.id, term.id, selection.variant, selection.variant.charge_binding);
+    return selection.variant;
+  }
+
+  private evaluateRate(term: CalculationRateTerm): void {
+    const rate = this.selectCurrentVariant(term.variants, term.id);
+    if (rate !== undefined) this.recordCharge(term.id, term.id, rate, rate.charge_binding);
   }
 
   private evaluateContribution(term: CalculationContributionTerm): void {
-    const variants = this.currentVariants(term.variants, term.id, this.state?.state === "numeric");
-    const selection = selectVariants(
-      variants,
-      this.selectors,
-      pricingSemantics,
-      this.state?.applicability,
-    );
-    if (selection.gap !== undefined)
-      this.recordGap(selection.gap, term.id, { dimensions: selection.dimensions });
-    const contribution = selection.variant;
+    const contribution = this.selectCurrentVariant(term.variants, term.id);
     if (contribution === undefined) return;
     if (contribution.charge_bindings.length === 0) this.recordGap("unbound_charge", term.id);
 
@@ -188,6 +208,7 @@ class ComponentEvaluator {
       const rateTerm = this.snapshot.rates.get(rateRef);
       if (rateTerm === undefined)
         throw new PricingError("INVALID_DATA", "Missing contribution target");
+      this.recordRawGaps(rateTerm, term.id);
       const currentRates = this.currentVariants(rateTerm.variants, term.id, true);
       const selectedRate = selectVariants(currentRates, this.selectors, (rate) => rate.price);
       if (selectedRate.gap !== undefined) {
@@ -216,8 +237,19 @@ class ComponentEvaluator {
       this.aggregation === undefined ||
       canonicalJson(this.aggregation) !== canonicalJson(binding.aggregation)
     ) {
-      if (!this.hasLinkedAggregation(binding.aggregation))
+      const linkedComponentIds = this.linkedComponentsWithAggregation(binding.aggregation);
+      if (linkedComponentIds.length === 0) {
         this.recordGap("unsupported_aggregation", termRef);
+      } else {
+        this.result.deferred.push({
+          componentId: this.component.id,
+          offerRef: this.owner.offer.id,
+          termRef,
+          rateTermRef,
+          price: rate.price,
+          linkedComponentIds,
+        });
+      }
       return;
     }
     const chargeKey = canonicalJson([rateTermRef, pricingSemantics(binding)]);
@@ -246,20 +278,34 @@ class ComponentEvaluator {
       denomination: rate.price.denomination,
       evidence: uniqueCanonicalValues([...rate.evidence, ...binding.evidence]),
       allowances: [],
+      price: rate.price,
     });
     this.result.hasKnownAmount = true;
   }
 
-  private hasLinkedAggregation(aggregation: CalculationBinding["aggregation"]): boolean {
-    for (const other of this.components.values()) {
-      if (other.offerRef !== this.component.offerRef || other.aggregation === undefined) continue;
+  private linkedComponentsWithAggregation(
+    aggregation: CalculationBinding["aggregation"],
+  ): string[] {
+    const aggregationKey = canonicalJson(aggregation);
+    const linked: string[] = [];
+    for (const other of this.linkedComponents()) {
       if (
-        componentsAreLinked(this.component, other) &&
-        canonicalJson(other.aggregation) === canonicalJson(aggregation)
+        other.offerRef === this.component.offerRef &&
+        other.aggregation !== undefined &&
+        canonicalJson(other.aggregation) === aggregationKey
       )
-        return true;
+        linked.push(other.id);
     }
-    return false;
+    return linked;
+  }
+
+  private linkedComponents(): CalculationComponent[] {
+    const linked: CalculationComponent[] = [];
+    for (const other of this.components.values()) {
+      if (other !== this.component && componentsAreLinked(this.component, other))
+        linked.push(other);
+    }
+    return linked;
   }
 
   private collectAllowances(): void {
@@ -291,7 +337,8 @@ class ComponentEvaluator {
   }
 
   private checkOfferRelations(): void {
-    const related = relatedComponents(this.component, this.components);
+    relatedComponents(this.component, this.components);
+    const linkedOfferRefs = new Set(this.linkedComponents().map((other) => other.offerRef));
     for (const relation of this.currentVariants(this.owner.offer.relations)) {
       if (relation.kind === "compatible_with") continue;
       const applicability = evaluateApplicability(relation.applicability, this.selectors);
@@ -302,7 +349,7 @@ class ComponentEvaluator {
         continue;
       }
       for (const offerRef of relation.target.offer_refs) {
-        const linked = related.some((target) => target.offerRef === offerRef);
+        const linked = linkedOfferRefs.has(offerRef);
         if (relation.kind === "exclusive_with" && linked) {
           throw new PricingError(
             "INVALID_COMPOSITION",
@@ -316,15 +363,15 @@ class ComponentEvaluator {
     }
   }
 
-  private recordRawGaps(term: CalculationTerm): void {
+  private recordRawGaps(term: CalculationTerm, gapTermRef = term.id): void {
     for (const variant of rawTermVariants(term)) {
       if (variant.impact === "informational") continue;
       const scope = {
         applicability: variant.possible_scope ?? { any_of: [{ all_of: [] }] },
         ...(variant.validity === undefined ? {} : { validity: variant.validity }),
       };
-      if (this.currentVariants([scope], term.id).length > 0) {
-        this.recordGap("unsupported_structure", term.id, { reason: variant.reason });
+      if (this.currentVariants([scope], gapTermRef).length > 0) {
+        this.recordGap("unsupported_structure", gapTermRef, { reason: variant.reason });
       }
     }
   }
@@ -370,8 +417,8 @@ function calculateBoundQuantity(
   try {
     return evaluateChargeQuantity(binding, quantities);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Quantity calculation failed";
-    const code = message.includes("conflicting") ? "CONFLICTING_QUANTITIES" : "ARITHMETIC_LIMIT";
-    throw new PricingError(code, message);
+    if (error instanceof UsageQuantityConflictError)
+      throw new PricingError("CONFLICTING_QUANTITIES", error.message);
+    throw error;
   }
 }

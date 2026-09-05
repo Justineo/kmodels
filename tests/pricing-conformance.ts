@@ -23,15 +23,31 @@ export const conformanceSchema = z.strictObject({
   ),
   errors: z
     .array(
-      z.strictObject({
-        name: z.string(),
-        dataset: z.string().optional(),
-        data: z.unknown().optional(),
-        request: z.unknown().optional(),
-        expectedCode: z.enum(errorCodes),
-      }),
+      z
+        .strictObject({
+          name: z.string(),
+          dataset: z.string().optional(),
+          data: z.unknown().optional(),
+          request: z.unknown().optional(),
+          expectedCode: z.enum(errorCodes),
+        })
+        .refine((vector) => (vector.dataset === undefined) !== (vector.data === undefined), {
+          message: "Error vectors name exactly one of dataset or data",
+        }),
     )
     .default([]),
 });
 
 export type ConformanceSuite = z.infer<typeof conformanceSchema>;
+export type ConformanceCase = ConformanceSuite["cases"][number];
+export type ConformanceError = ConformanceSuite["errors"][number];
+
+export function conformanceDataset(suite: ConformanceSuite, name: string): unknown {
+  const dataset = suite.datasets[name];
+  if (dataset === undefined) throw new Error(`Unknown conformance dataset: ${name}`);
+  return dataset;
+}
+
+export function conformanceErrorData(suite: ConformanceSuite, vector: ConformanceError): unknown {
+  return vector.dataset === undefined ? vector.data : conformanceDataset(suite, vector.dataset);
+}

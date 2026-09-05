@@ -1,4 +1,4 @@
-import { canonicalJson } from "../catalog/canonical-value.ts";
+import { assertIJsonValue, canonicalJson } from "../catalog/canonical-value.ts";
 import { pricingLimits } from "../catalog/pricing-constants.ts";
 import {
   calculationEnvelopeSchema,
@@ -12,6 +12,7 @@ import {
   type CalculationTerm,
 } from "./schema.ts";
 import { PricingError } from "./errors.ts";
+import { pricingSemantics } from "./selection.ts";
 import { validateBinding } from "./validation-quantity.ts";
 import { unitKey, validateProviderProperties } from "./validation-vocabulary.ts";
 
@@ -35,19 +36,20 @@ export function validatePriceData(input: unknown): CalculationEnvelope {
   ) {
     throw new PricingError("UNSUPPORTED_SCHEMA", "Supported calculation schema: 1.0");
   }
-  const parsed = calculationEnvelopeSchema.safeParse(input);
-  if (!parsed.success) throw new PricingError("INVALID_DATA", parsed.error.message);
   try {
+    assertIJsonValue(input);
+    const parsed = calculationEnvelopeSchema.safeParse(input);
+    if (!parsed.success) throw new Error(parsed.error.message);
     requireUniqueIds(parsed.data.providers.map(({ snapshot }) => snapshot.provider_id));
     const globalIds = new Set<string>();
     for (const provider of parsed.data.providers) validateProvider(provider, globalIds);
+    return parsed.data;
   } catch (error) {
     throw new PricingError(
       "INVALID_DATA",
       error instanceof Error ? error.message : "Invalid pricing semantics",
     );
   }
-  return parsed.data;
 }
 
 function validateProvider(provider: CalculationProvider, globalIds: Set<string>): void {
@@ -182,6 +184,12 @@ function validateContribution(
   contribution: CalculationContribution,
   references: ProviderReferences,
 ): void {
+  const bindingKeys = new Set<string>();
+  for (const binding of contribution.charge_bindings) {
+    const key = canonicalJson(pricingSemantics(binding));
+    if (bindingKeys.has(key)) throw new Error("Contribution repeats a charge binding");
+    bindingKeys.add(key);
+  }
   for (const rateRef of contribution.target_rate_refs) {
     const targetRate = references.terms.get(rateRef);
     if (targetRate?.kind !== "rate" || targetRate.variants.length === 0)

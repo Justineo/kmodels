@@ -1,6 +1,13 @@
 import { isNonNegativeDecimal, pricingLimits } from "./pricing-constants.ts";
 import type { Rational } from "./pricing-schema.ts";
 
+export class ExactIntegerLimitError extends Error {
+  constructor() {
+    super("Exact-integer digit limit exceeded");
+    this.name = "ExactIntegerLimitError";
+  }
+}
+
 export function normalizeRational(numerator: bigint, denominator = 1n): Rational {
   if (numerator < 0n || denominator <= 0n) throw new Error("Pricing rationals are non-negative");
   if (numerator === 0n) return { numerator: "0", denominator: "1" };
@@ -13,7 +20,7 @@ export function normalizeRational(numerator: bigint, denominator = 1n): Rational
     normalized.numerator.length > pricingLimits.exactIntegerDigits ||
     normalized.denominator.length > pricingLimits.exactIntegerDigits
   )
-    throw new Error("Exact-integer digit limit exceeded");
+    throw new ExactIntegerLimitError();
   return normalized;
 }
 

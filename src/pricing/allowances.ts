@@ -1,14 +1,12 @@
 import { canonicalJson, uniqueCanonicalValues } from "../catalog/canonical-value.ts";
 import {
-  compareRationals,
   multiplyRationals,
   normalizeRational,
   subtractRationalsFloorZero,
 } from "../catalog/pricing-rational.ts";
-import type { CalculationAllowance, CalculationComponent, CalculationRate } from "./schema.ts";
-import type { Charge } from "./types.ts";
+import type { CalculationAllowance, CalculationComponent } from "./schema.ts";
+import type { EvaluatedCharge } from "./component-evaluation.ts";
 import type { Gap } from "./selection.ts";
-import type { PricingSnapshot } from "./snapshot.ts";
 
 export interface PendingAllowance {
   component: CalculationComponent;
@@ -17,20 +15,22 @@ export interface PendingAllowance {
 }
 
 interface AllowanceAllocation extends PendingAllowance {
-  charges: Charge[];
+  charges: EvaluatedCharge[];
   componentIds: Set<string>;
 }
 
 export function applyAllowances(
-  snapshot: PricingSnapshot,
   allowances: PendingAllowance[],
-  charges: Charge[],
+  charges: EvaluatedCharge[],
   gaps: Gap[],
 ): void {
+  const unresolvedComponents = new Set(
+    gaps.flatMap((gap) => (gap.componentId === undefined ? [] : [gap.componentId])),
+  );
   const allocations = allowances.map((allowance) => allocateAllowance(allowance, charges));
   for (const allocation of allocations) {
-    let problem = allocationProblem(allocation, allocations, gaps);
-    if (problem === undefined) problem = applyBenefit(snapshot, allocation);
+    let problem = allocationProblem(allocation, allocations, unresolvedComponents);
+    if (problem === undefined) problem = applyBenefit(allocation);
     if (problem !== undefined) {
       gaps.push({
         code: "unsupported_structure",
@@ -48,7 +48,10 @@ export function applyAllowances(
   }
 }
 
-function allocateAllowance(allowance: PendingAllowance, charges: Charge[]): AllowanceAllocation {
+function allocateAllowance(
+  allowance: PendingAllowance,
+  charges: EvaluatedCharge[],
+): AllowanceAllocation {
   const componentIds = new Set([allowance.component.id, ...allowance.component.relatedComponents]);
   const target = allowance.variant.target;
   const matchingCharges = charges.filter((charge) => {
@@ -62,12 +65,12 @@ function allocateAllowance(allowance: PendingAllowance, charges: Charge[]): Allo
 function allocationProblem(
   allocation: AllowanceAllocation,
   allocations: AllowanceAllocation[],
-  gaps: Gap[],
+  unresolvedComponents: ReadonlySet<string>,
 ): string | undefined {
   if (allocation.charges.length === 0) {
     return "Allowance target has no resolved charge in this component or its explicit links";
   }
-  if (hasUnresolvedInputs(allocation, gaps)) {
+  if ([...allocation.componentIds].some((id) => unresolvedComponents.has(id))) {
     return "Allowance allocation needs all target charges to resolve";
   }
   if (
@@ -81,25 +84,7 @@ function allocationProblem(
   return undefined;
 }
 
-function hasUnresolvedInputs(allocation: AllowanceAllocation, gaps: Gap[]): boolean {
-  const unresolvedInputCodes: Gap["code"][] = [
-    "missing_quantity",
-    "unbound_charge",
-    "missing_selector",
-    "unknown_price",
-  ];
-  return gaps.some(
-    (gap) =>
-      gap.componentId !== undefined &&
-      allocation.componentIds.has(gap.componentId) &&
-      unresolvedInputCodes.includes(gap.code),
-  );
-}
-
-function applyBenefit(
-  snapshot: PricingSnapshot,
-  allocation: AllowanceAllocation,
-): string | undefined {
+function applyBenefit(allocation: AllowanceAllocation): string | undefined {
   const benefit = allocation.variant.benefit;
   if (benefit.kind === "coverage") {
     for (const charge of allocation.charges) charge.amount = normalizeRational(0n);
@@ -110,15 +95,11 @@ function applyBenefit(
     return "Allowance allocation across multiple charges is not established";
   }
   if (benefit.kind === "quantity") {
-    const rate = findChargedRate(snapshot, charge);
-    if (
-      rate === undefined ||
-      canonicalJson(rate.price.per) !== canonicalJson(benefit.quantity.unit)
-    ) {
+    if (canonicalJson(charge.price.per) !== canonicalJson(benefit.quantity.unit)) {
       return "Allowance quantity unit does not match its target charge";
     }
     const billableQuantity = subtractRationalsFloorZero(charge.quantity, benefit.quantity.value);
-    charge.amount = multiplyRationals(billableQuantity, rate.price.value);
+    charge.amount = multiplyRationals(billableQuantity, charge.price.value);
     return undefined;
   }
   if (
@@ -129,13 +110,4 @@ function applyBenefit(
     return undefined;
   }
   return "Allowance substitution or denomination is not established for this component";
-}
-
-function findChargedRate(snapshot: PricingSnapshot, charge: Charge): CalculationRate | undefined {
-  const rateTerm = snapshot.rates.get(charge.rateTermRef);
-  return rateTerm?.variants.find((rate) => {
-    if (canonicalJson(rate.price.denomination) !== canonicalJson(charge.denomination)) return false;
-    const grossAmount = multiplyRationals(rate.price.value, charge.quantity);
-    return compareRationals(grossAmount, charge.grossAmount) === 0;
-  });
 }

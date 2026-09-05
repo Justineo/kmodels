@@ -41,7 +41,8 @@ export function discoverRequirements(
     resourceEdges: book.resource_edges,
     gaps: [],
   };
-  for (const term of offer.terms) collectTermRequirements(result, term, request.selectors);
+  for (const term of offer.terms)
+    collectTermRequirements(snapshot, result, term, request.selectors);
   for (const state of offer.states) {
     if (["numeric", "free", "included"].includes(state.state)) continue;
     if (evaluateApplicability(state.applicability, request.selectors).state === "false") continue;
@@ -52,8 +53,28 @@ export function discoverRequirements(
 }
 
 function collectTermRequirements(
+  snapshot: PricingSnapshot,
   result: Requirements,
   term: CalculationTerm,
+  selectors: Selector[],
+): void {
+  collectRawGaps(result, term, term.id, selectors);
+  if (term.kind === "raw") return;
+  for (const variant of term.variants) {
+    if (evaluateApplicability(variant.applicability, selectors).state === "false") continue;
+    collectVariantRequirements(result, term, variant);
+    if (!("target_rate_refs" in variant)) continue;
+    for (const rateRef of variant.target_rate_refs) {
+      const rateTerm = snapshot.rates.get(rateRef);
+      if (rateTerm !== undefined) collectRawGaps(result, rateTerm, term.id, selectors);
+    }
+  }
+}
+
+function collectRawGaps(
+  result: Requirements,
+  term: CalculationTerm,
+  gapTermRef: string,
   selectors: Selector[],
 ): void {
   for (const variant of rawTermVariants(term)) {
@@ -65,16 +86,10 @@ function collectTermRequirements(
       continue;
     result.gaps.push({
       offerRef: result.offerRef,
-      termRef: term.id,
+      termRef: gapTermRef,
       code: "unsupported_structure",
       reason: variant.reason,
     });
-  }
-  if (term.kind === "raw") return;
-  for (const variant of term.variants) {
-    if (evaluateApplicability(variant.applicability, selectors).state !== "false") {
-      collectVariantRequirements(result, term, variant);
-    }
   }
 }
 
@@ -88,6 +103,7 @@ function collectVariantRequirements(
     kind: term.kind,
     applicability: variant.applicability,
     ...(variant.validity === undefined ? {} : { validity: variant.validity }),
+    ...("target_rate_refs" in variant ? { targetRateRefs: variant.target_rate_refs } : {}),
   };
   const bindings = variantBindings(variant);
   if (bindings.length === 0) {
@@ -100,7 +116,6 @@ function collectVariantRequirements(
   for (const binding of bindings) {
     result.charges.push({
       ...chargeRequirement,
-      ...("target_rate_refs" in variant ? { targetRateRefs: variant.target_rate_refs } : {}),
       binding,
       alternatives: requiredUsageSignalAlternatives(binding),
     });

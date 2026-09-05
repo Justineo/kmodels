@@ -32,7 +32,7 @@ Canonical and packaged evaluation share rational arithmetic, quantity graphs, ap
 
 ## Code organization
 
-The package entry point in `src/pricing/calculator.ts` initializes the snapshot and exposes the public methods. `snapshot.ts` owns the immutable data index and term traversal; `requirements.ts` owns discovery. Request validation is in `request.ts`, while `validation.ts`, `validation-vocabulary.ts`, and `validation-quantity.ts` validate supplied price data.
+The package entry point `src/pricing/index.ts` re-exports the public surface; `src/pricing/calculator.ts` initializes the snapshot and exposes the instance methods, and `errors.ts` defines the stable error codes. `snapshot.ts` owns the immutable data index and term traversal; `requirements.ts` owns discovery. Request validation is in `request.ts`, while `validation.ts`, `validation-vocabulary.ts`, and `validation-quantity.ts` validate supplied price data.
 
 `evaluation.ts` assembles request results. `component-evaluation.ts` handles one billing instance, `composition.ts` checks component relationships, and `allowances.ts` applies supported benefits. `selection.ts` resolves applicability and validity. Public result/interface types live in `types.ts`; wire schemas remain in `schema.ts`.
 

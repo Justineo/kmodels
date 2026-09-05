@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { canonicalJson } from "../catalog/canonical-value.ts";
+import { assertIJsonValue, canonicalJson } from "../catalog/canonical-value.ts";
 import { requiredUsageSignals } from "../catalog/pricing-calculation.ts";
 import { canonicalizeInstant } from "../catalog/pricing-time.ts";
 import type { PriceCondition } from "../catalog/pricing-schema.ts";
@@ -15,9 +15,17 @@ import { getOffer, termBindings, type IndexedOffer, type PricingSnapshot } from 
 import { signalUnit, validateCondition } from "./validation-vocabulary.ts";
 
 export function parseRequest<T extends z.ZodType>(schema: T, input: unknown): z.output<T> {
-  const parsed = schema.safeParse(input);
-  if (!parsed.success) throw new PricingError("INVALID_REQUEST", parsed.error.message);
-  return parsed.data;
+  try {
+    assertIJsonValue(input);
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) throw new Error(parsed.error.message);
+    return parsed.data;
+  } catch (error) {
+    throw new PricingError(
+      "INVALID_REQUEST",
+      error instanceof Error ? error.message : "Invalid request",
+    );
+  }
 }
 
 export function prepareCalculationRequest(snapshot: PricingSnapshot, input: unknown) {
