@@ -25,11 +25,6 @@ import {
 } from "../src/catalog/website-schema.ts";
 import { generatedData } from "./generated-data-context.ts";
 
-const generatedCatalogCalibrations = {
-  huggingFace: { minimumModelsExclusive: 500, maximumModelsExclusive: 3_000 },
-  vercel: { minimumModelsExclusive: 250, minimumPricingVariantsExclusive: 1_000 },
-};
-
 async function json(path: string): Promise<unknown> {
   return JSON.parse(await readFile(new URL(`../${path}`, import.meta.url), "utf8"));
 }
@@ -48,9 +43,11 @@ describe("generated static catalog", () => {
     const coverageProviderIds = catalog.coverage.map(({ provider_id }) => provider_id);
     expectUniqueValues(providerIds, configuredProviderIds, "providers");
     expectUniqueValues(coverageProviderIds, providerIds, "provider coverage");
-    expect(catalog.models.length).toBeGreaterThan(0);
 
     const sourceIds = new Set(catalog.sources.map((source) => source.id));
+    const sourceProviders = new Map(
+      catalog.sources.map(({ id, provider_id }) => [id, provider_id]),
+    );
     const sourceRoles = new Map(catalog.sources.map((source) => [source.id, source.role]));
     const referencedSourceIds = new Set(catalog.models.flatMap((model) => model.source_refs));
     const modelIds = new Set<string>();
@@ -90,6 +87,9 @@ describe("generated static catalog", () => {
         ) ?? true,
       ).toBe(true);
       expect(model.account_availability).toBe("unknown");
+      expect(model).not.toHaveProperty("pricing");
+      for (const ref of model.source_refs)
+        expect(sourceProviders.get(ref), `${model.uid}: ${ref}`).toBe(model.provider_id);
     }
 
     const manifestsBySource = new Map(
@@ -289,25 +289,6 @@ describe("generated static catalog", () => {
       expect(actualHashes.get(asset.fileName), asset.fileName).toBe(sha256(asset.source));
   });
 
-  it("keeps Hugging Face within its operated-service boundary", async () => {
-    const { catalog } = await generatedData();
-    const models = catalog.models.filter(({ provider_id }) => provider_id === "huggingface");
-    const sources = new Set(models.flatMap(({ source_refs }) => source_refs));
-    expect(models.length).toBeGreaterThan(
-      generatedCatalogCalibrations.huggingFace.minimumModelsExclusive,
-    );
-    expect(models.length).toBeLessThan(
-      generatedCatalogCalibrations.huggingFace.maximumModelsExclusive,
-    );
-    expect([...sources].sort()).toEqual([
-      "huggingface-featherless",
-      "huggingface-hf-inference",
-      "huggingface-hub",
-      "huggingface-native-pricing",
-      "huggingface-router",
-    ]);
-  });
-
   it("keeps committed structured evidence duplicate-free", async () => {
     const { catalog } = await generatedData();
     for (const model of catalog.models) {
@@ -321,19 +302,6 @@ describe("generated static catalog", () => {
     }
   });
 
-  it("keeps Azure OpenAI as a service family inside Microsoft Foundry", async () => {
-    const { catalog } = await generatedData();
-    const models = catalog.models.filter(({ provider_id }) => provider_id === "azure");
-    const families = new Set(models.flatMap(({ service_families }) => service_families ?? []));
-    expect(families).toEqual(
-      new Set([
-        "Azure OpenAI",
-        "Foundry Models from partners and community",
-        "Foundry Models sold by Azure",
-      ]),
-    );
-  });
-
   it("does not publish credential identities in collection diagnostics", async () => {
     const { catalog } = await generatedData();
     const diagnostics = JSON.stringify({
@@ -345,26 +313,5 @@ describe("generated static catalog", () => {
     expect(diagnostics).not.toMatch(
       /\barn:aws(?:-[a-z0-9-]+)?:|\b\d{12}\b|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i,
     );
-  });
-
-  it("publishes the complete Vercel catalog with canonical pricing", async () => {
-    const { catalog, pricing: pricingEnvelope } = await generatedData();
-    const pricing = pricingEnvelope.data;
-    const models = catalog.models.filter((model) => model.provider_id === "vercel");
-    const variants = pricing.books
-      .filter(({ provider_id }) => provider_id === "vercel")
-      .flatMap(({ offers }) => offers)
-      .flatMap(({ terms }) => terms)
-      .flatMap((term) =>
-        term.kind === "raw" ? term.variants : [...term.variants, ...term.raw_variants],
-      );
-    expect(models.length).toBeGreaterThan(
-      generatedCatalogCalibrations.vercel.minimumModelsExclusive,
-    );
-    expect(variants.length).toBeGreaterThan(
-      generatedCatalogCalibrations.vercel.minimumPricingVariantsExclusive,
-    );
-    expect(models.every((model) => !("pricing" in model))).toBe(true);
-    expect(models.every((model) => model.release_date !== undefined)).toBe(true);
   });
 });

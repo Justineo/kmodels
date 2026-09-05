@@ -147,6 +147,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "unit",
+          setupFiles: ["./tests/setup.ts", "./tests/setup-unit.ts"],
           include: ["tests/**/*.test.ts"],
           exclude: generatedDataTests,
         },
@@ -155,6 +156,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: "generated",
+          setupFiles: ["./tests/setup.ts"],
           include: generatedDataTests,
           isolate: false,
           fileParallelism: false,

@@ -470,6 +470,18 @@ describe("canonical pricing presentation", () => {
       amount: "DBU 2",
       displayUnit: "1M tokens",
     });
+    const embeddingModel: ProviderModel = {
+      ...model(),
+      tasks: ["embeddings"],
+      modalities: { input: ["text"], output: ["embedding"] },
+    };
+    expect(
+      projectPricingTableCell(
+        catalog([term("embedding", "embedding", providerCredit)]),
+        embeddingModel,
+        "output",
+      ),
+    ).toMatchObject({ amount: "DBU 2", displayUnit: "1M tokens" });
 
     const transcriptionModel: ProviderModel = {
       ...model(),

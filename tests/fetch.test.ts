@@ -1,7 +1,9 @@
 import { generateKeyPairSync } from "node:crypto";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { fetchSource } from "../src/catalog/fetch.ts";
 import { manifests, type SourceManifest } from "../src/catalog/manifests.ts";
+
+afterEach(() => vi.unstubAllEnvs());
 
 vi.mock("node:child_process", () => ({
   execFile: (...arguments_: unknown[]) => {
@@ -103,6 +105,5 @@ describe("authenticated cloud fetch", () => {
     if (source === undefined) throw new Error("Missing Vertex Model Garden source");
 
     await expect(fetchSource(source)).rejects.toThrow("Google OAuth HTTP 400 (invalid_grant)");
-    vi.unstubAllEnvs();
   });
 });

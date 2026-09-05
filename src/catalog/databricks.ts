@@ -433,6 +433,11 @@ function identity(value: string): string[] {
 }
 
 function alternatives(value: string): string[] {
+  if (value.includes(",")) {
+    const [first = "", ...rest] = value.replace(/[＊*⌖]/g, "").split(/\s*,\s*/);
+    const prefix = first.match(/^(.*?)(\d+(?:\.\d+)*)(.*)$/);
+    if (prefix?.[1] !== undefined) return [first, ...rest.map((part) => `${prefix[1]}${part}`)];
+  }
   const parts = value.replace(/\*/g, "").split(/\s*\/\s*/);
   if (parts.length < 2) return [value.replace(/\*/g, "")];
   const first = parts[0]?.match(/^(.*?)(\d+(?:\.\d+)*)\s*$/);
@@ -578,6 +583,150 @@ function add(
   rates.set(id, modelRates);
 }
 
+function tieredPrices(
+  inputModels: ProviderModel[],
+  body: string,
+  sourceId: string,
+  targetRates: Map<string, Map<string, SourcePriceFact>>,
+  prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
+  onPricingReconciliation?: (item: PricingReconciliationItem) => void,
+): Set<string> | undefined {
+  const $ = load(body);
+  const tables = $("main table");
+  if (!/Pay Per Token \(DBU Per 1M Tokens\)/.test(tables.find("thead").text())) return undefined;
+  const models = inputModels.map<ProviderModel>((model) => ({ ...model, raw_price_facts: [] }));
+  const rates = new Map<string, Map<string, SourcePriceFact>>();
+  const notes = $("main p, main li")
+    .filter((_index, element) => $(element).closest("table").length === 0)
+    .map((_index, element) => text($(element).text()))
+    .get()
+    .filter((value) => /⌖|promotion|discount|token modalities/i.test(value))
+    .join("\n");
+  const exactPriority = new Set<string>();
+  let tokenTables = 0;
+  tables.each((_index, element) => {
+    const table = $(element);
+    const headers = table
+      .find("thead th")
+      .map((_index, cell) => text($(cell).text()))
+      .get();
+    if (headers[0] !== "Model") throw new Error("Databricks tiered pricing header changed");
+    const qualifier = headers[1] === "";
+    const headingIndex = qualifier ? 2 : 1;
+    const heading = headers[headingIndex] ?? "";
+    if (/^(?:Provisioned Throughput|Batch Inference) \(DBU Per Hour\)$/.test(heading)) {
+      onPricingReconciliation?.({
+        disposition: "excluded",
+        reason_code: "account_compute_pricing",
+        sample: heading,
+      });
+      return;
+    }
+    const tier = heading.match(/^(Standard|Priority) Pay Per Token \(DBU Per 1M Tokens\)$/)?.[1];
+    const columns = headers.slice(headingIndex + 1);
+    if (
+      tier === undefined ||
+      ![
+        "Input|Output|Cache read",
+        "Input|Output|Cache read|Cache write",
+        "Input|Output|Cache read|Cache write|Cache write (1hr)",
+      ].includes(columns.join("|"))
+    )
+      throw new Error("Databricks tiered token pricing columns changed");
+    tokenTables += 1;
+    for (const row of rows($, table)) {
+      if (row.length !== 1 + Number(qualifier) + columns.length)
+        throw new Error("Databricks tiered token pricing row changed");
+      const label = row[0] ?? "";
+      const targets = matched(models, label, true);
+      if (targets.length === 0) {
+        onPricingReconciliation?.({
+          disposition: "excluded",
+          reason_code: "price_row_outside_reviewed_catalog",
+          sample: label,
+        });
+        continue;
+      }
+      const context = qualifier ? (row[1] ?? "") : "";
+      // New annotations and row qualifiers must not become unconditional rates.
+      const conditional = /[*⌖]/.test(label) || context !== "";
+      let added = 0;
+      let raw = 0;
+      for (const model of targets) {
+        for (const [index, column] of columns.entries()) {
+          const amount = row[1 + Number(qualifier) + index] ?? "";
+          if (amount === "" || /^(?:-|n\/a|coming soon)$/i.test(amount)) continue;
+          const conditions =
+            tier === "Priority"
+              ? (prioritySupport.get(model.model_id) ?? { service_tier: "priority" })
+              : { service_tier: "standard" };
+          const meter =
+            column === "Input"
+              ? model.tasks.includes("embeddings")
+                ? "embedding"
+                : "input_text"
+              : column === "Output"
+                ? "output_text"
+                : column === "Cache read"
+                  ? "cache_read_text"
+                  : "cache_write_text";
+          if (
+            conditional ||
+            (column.startsWith("Cache write") && columns.includes("Cache write (1hr)")) ||
+            decimal(amount) === undefined
+          ) {
+            raw += 1;
+            model.raw_price_facts.push({
+              term_key: `${meter}_${index}`,
+              impact: "base_price",
+              reason: decimal(amount) === undefined ? "unknown_amount" : "unknown_applicability",
+              conditions,
+              source_ref: sourceId,
+              raw: {
+                label,
+                amount,
+                denomination: "DBU",
+                unit: "1M tokens",
+                meter: column,
+                conditions: [
+                  { dimension: "service_tier", value: tier },
+                  ...(context === "" ? [] : [{ dimension: "row_qualifier", value: context }]),
+                ],
+                ...(notes === "" ? {} : { fragment: notes }),
+              },
+            });
+          } else {
+            const value = rate(
+              meter,
+              amount,
+              "million_tokens",
+              sourceId,
+              `DBU / 1M ${column} tokens`,
+              conditions,
+            );
+            if (value !== undefined) add(rates, model.model_id, value);
+          }
+          added += 1;
+          if (tier === "Priority") exactPriority.add(model.model_id);
+        }
+      }
+      onPricingReconciliation?.({
+        disposition: added === 0 ? "explicit_non_numeric" : raw > 0 ? "raw" : "normalized",
+        reason_code: added === 0 ? "non_numeric_price_row" : "tiered_model_price_row",
+        sample: label,
+      });
+    }
+  });
+  if (tokenTables === 0) throw new Error("Databricks tiered token pricing tables are missing");
+  for (const model of inputModels) {
+    const parsed = models.find(({ uid }) => uid === model.uid);
+    if (parsed !== undefined) model.raw_price_facts.push(...parsed.raw_price_facts);
+    for (const value of rates.get(model.model_id)?.values() ?? [])
+      add(targetRates, model.model_id, value);
+  }
+  return exactPriority;
+}
+
 function openPrices(
   models: ProviderModel[],
   body: string,
@@ -586,6 +735,15 @@ function openPrices(
   prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
 ): Set<string> {
+  const tiered = tieredPrices(
+    models,
+    body,
+    sourceId,
+    rates,
+    prioritySupport,
+    onPricingReconciliation,
+  );
+  if (tiered !== undefined) return tiered;
   const $ = load(body);
   const table = $("main table").first();
   if (table.length === 0) throw new Error("Databricks open-model pricing table is missing");
@@ -860,8 +1018,18 @@ function partnerPrices(
   body: string,
   sourceId: string,
   rates: Map<string, Map<string, SourcePriceFact>>,
+  prioritySupport: ReadonlyMap<string, SourcePriceFact["conditions"]>,
   onPricingReconciliation?: (item: PricingReconciliationItem) => void,
-): void {
+): Set<string> {
+  const tiered = tieredPrices(
+    models,
+    body,
+    sourceId,
+    rates,
+    prioritySupport,
+    onPricingReconciliation,
+  );
+  if (tiered !== undefined) return tiered;
   const $ = load(body);
   const tables = $("main table");
   if (tables.length < 3 || tables.length > 4)
@@ -951,6 +1119,7 @@ function partnerPrices(
     reason_code: "account_specific_discount",
     sample: "Committed-use discount or custom requirements",
   });
+  return new Set();
 }
 
 function priorityModels(
@@ -1291,7 +1460,15 @@ export function parseDatabricksCatalog(input: Input): ProviderModel[] {
   const partner = document(bundle, "/product/pricing/proprietary-foundation-model-serving");
   if (partner !== undefined)
     try {
-      partnerPrices(models, partner, input.source.id, rates, input.onPricingReconciliation);
+      for (const id of partnerPrices(
+        models,
+        partner,
+        input.source.id,
+        rates,
+        priority,
+        input.onPricingReconciliation,
+      ))
+        exactPriority.add(id);
     } catch (error) {
       input.onPricingReconciliation?.({
         disposition: "unsupported",
