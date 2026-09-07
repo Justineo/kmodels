@@ -15,13 +15,13 @@ import {
 } from "./pricing-commercial-assembly.ts";
 import {
   calculatedQuantityMethods,
+  directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
   pricingInputFacts,
   pricingInputObservation,
   uniquePricingInputFacts,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -205,14 +205,14 @@ function quantityMethods(
   if (meter === "input_text") return inputMethods(signal, model, inputIndex, rateMeters);
   if (meter === "output_text" && hasMeter(rateMeters, "output_image")) return emptyMethods();
   if (meter === "embedding")
-    return directMethods(signal, "response.usage.input_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.input_tokens"], inputIndex);
   if (meter === "output_text")
-    return directMethods(signal, "response.usage.output_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.output_tokens"], inputIndex);
   if (!isClaude(model)) return emptyMethods();
   if (meter === "cache_read_text")
-    return directMethods(signal, "response.usage.claude.cache_read_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.claude.cache_read_tokens"], inputIndex);
   if (meter === "cache_write_text")
-    return directMethods(signal, "response.usage.claude.cache_write_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.claude.cache_write_tokens"], inputIndex);
   return emptyMethods();
 }
 
@@ -242,11 +242,14 @@ function inputMethods(
       : []),
   ];
   if (partitions.length === 0)
-    return directMethods(signal, "response.usage.input_tokens", inputIndex);
+    return directMethods(signal, ["response.usage.input_tokens"], inputIndex);
   if (!isClaude(model)) return emptyMethods();
 
   const total = pricingInputFacts(inputIndex, ["response.usage.input_tokens"]);
-  const partitionFacts = partitions.map(({ key }) => pricingInputFacts(inputIndex, [key]));
+  const partitionInputs = partitions.map(({ signal: partition, key }) => ({
+    signal: partition,
+    facts: pricingInputFacts(inputIndex, [key]),
+  }));
   const totalSignal = standardSignal("input_tokens");
   const nodes: UsageQuantityNode[] = [{ op: "signal", signal: totalSignal }];
   let result = 0;
@@ -258,22 +261,8 @@ function inputMethods(
   }
   return calculatedQuantityMethods({ nodes, result }, [
     { signal: totalSignal, facts: total },
-    ...partitions.map(({ signal: partition }, index) => ({
-      signal: partition,
-      facts: partitionFacts[index] ?? [],
-    })),
+    ...partitionInputs,
   ]);
-}
-
-function directMethods(
-  signal: UsageSignal,
-  key: string,
-  inputIndex: PricingInputIndex,
-): MethodsAndFacts {
-  const facts = pricingInputFacts(inputIndex, [key]);
-  return facts.length === 0
-    ? emptyMethods()
-    : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
 }
 
 function isClaude(model: PublishedModel | undefined): boolean {

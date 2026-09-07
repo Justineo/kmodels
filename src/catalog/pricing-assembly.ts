@@ -503,15 +503,13 @@ function mergedSelectorSources(variants: AtomicRateVariant[]): PriceSelectorSour
 }
 
 function mergedChargeBinding(variants: AtomicRateVariant[]): ChargeBinding | undefined {
-  const bindings = variants.flatMap(({ charge_binding }) =>
-    charge_binding === undefined ? [] : [charge_binding],
-  );
-  const first = bindings[0];
-  if (first === undefined) return;
+  // The grouping key already guarantees identical binding semantics.
+  const binding = variants[0]?.charge_binding;
+  if (binding === undefined) return;
   return {
-    ...first,
+    ...binding,
     observations: sortUnique(
-      bindings.flatMap(({ observations }) => observations),
+      variants.flatMap(({ charge_binding }) => charge_binding?.observations ?? []),
       rawObservationKey,
     ),
   };
@@ -1311,23 +1309,23 @@ function assertPrecompactionLimit(prepared: PreparedProvider): void {
   const projection = precompactionProjection(prepared);
   if (canonicalJsonBytes(projection).byteLength > pricingLimits.providerPrecompactionBytes)
     throw new Error("Provider precompaction byte limit exceeded");
+  const variantCount =
+    projection.states.length +
+    projection.rates.length +
+    projection.allowances.length +
+    projection.contributions.length +
+    projection.raw_variants.length;
   const counts = {
     books: projection.books.length,
     offers: projection.offers.length,
     terms: projection.terms.length,
-    variants:
-      projection.states.length +
-      projection.rates.length +
-      projection.allowances.length +
-      projection.contributions.length +
-      projection.raw_variants.length,
+    variants: variantCount,
     observations:
       projection.scope_observations.length +
       projection.relation_observations.length +
       projection.charge_observations.length +
       projection.disposition_observations.length +
-      projection.states.length +
-      projection.rates.length +
+      variantCount +
       projection.rates.reduce(
         (count, rate) =>
           count +
@@ -1337,18 +1335,15 @@ function assertPrecompactionLimit(prepared: PreparedProvider): void {
           ),
         0,
       ) +
-      projection.allowances.length +
       projection.contributions.reduce(
         (count, variant) =>
           count +
-          1 +
           variant.charge_bindings.reduce(
             (total, binding) => total + binding.observations.length,
             0,
           ),
         0,
-      ) +
-      projection.raw_variants.length,
+      ),
   };
   if (
     counts.books > pricingLimits.booksPerProvider ||

@@ -1,4 +1,9 @@
-import { compareCanonicalValues, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
+import {
+  canonicalJsonKey,
+  compareCanonicalValues,
+  compareUtf8,
+  uniqueCanonicalValues,
+} from "./canonical-value.ts";
 import type { AtomicPricingBook } from "./pricing-assembly.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import type {
@@ -24,17 +29,17 @@ export function mergeQuantityMethods(
   values: readonly BoundQuantityMethods[],
 ): BoundQuantityMethods {
   const methods = uniqueCanonicalValues(values.flatMap(({ methods }) => methods));
+  const mappedCalculations = new Set<string>();
+  for (const { calculation, input_sources } of methods) {
+    if (calculation !== undefined && input_sources !== undefined)
+      mappedCalculations.add(canonicalJsonKey(calculation));
+  }
   return {
     methods: methods.filter(
       (method) =>
         method.input_sources !== undefined ||
-        !methods.some(
-          (candidate) =>
-            candidate.input_sources !== undefined &&
-            candidate.calculation !== undefined &&
-            method.calculation !== undefined &&
-            compareCanonicalValues(candidate.calculation, method.calculation) === 0,
-        ),
+        method.calculation === undefined ||
+        !mappedCalculations.has(canonicalJsonKey(method.calculation)),
     ),
     facts: uniquePricingInputFacts(values.flatMap(({ facts }) => facts)),
   };

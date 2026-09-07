@@ -8,13 +8,12 @@ import type {
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { bindRateTerm, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
 import {
+  directQuantityMethods,
   mergeQuantityMethods,
   subtractQuantityMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
-  pricingInputFacts,
   pricingInputObservation,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -116,31 +115,28 @@ function uncachedInputMethods(inputIndex: PricingInputIndex): MethodsAndFacts {
   const cachedSignal = standardSignal("cached_input_tokens");
   return mergeQuantityMethods(
     protocols.flatMap((protocol) =>
-      ["response", "stream_event"].map((channel) => {
-        const suffix = channel === "response" ? "" : ".stream";
-        return subtractQuantityMethods(
+      ["", ".stream"].map((suffix) =>
+        subtractQuantityMethods(
           totalSignal,
           [`${protocol}${suffix}.input_tokens`],
           cachedSignal,
           [`${protocol}${suffix}.cached_input_tokens`],
           inputIndex,
-        );
-      }),
+        ),
+      ),
     ),
   );
 }
 
 function directMethods(signal: UsageSignal, inputIndex: PricingInputIndex): MethodsAndFacts {
-  const facts = pricingInputFacts(
-    inputIndex,
+  return directQuantityMethods(
+    signal,
     protocols.flatMap((protocol) => [
       `${protocol}.${signal.value}`,
       `${protocol}.stream.${signal.value}`,
     ]),
+    inputIndex,
   );
-  return facts.length === 0
-    ? { methods: [], facts: [] }
-    : { methods: [{ input_sources: usageInputSources(signal, facts) }], facts };
 }
 
 function standardSignal(
