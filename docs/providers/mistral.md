@@ -93,7 +93,8 @@ offers and service offers contain no enrollment or settlement topology.
   not tool declarations, start events, or connector invocations.
 
 The OpenAPI, prompt-caching, and tool companions are parsed field by field. A missing or drifted
-field removes only the affected calculation input and `quantity_methods`; the semantic
+field removes only that input locator. Independently known calculations and their surviving
+locators remain; the caller must supply any unmapped required signal. The semantic
 `charge_binding`, numeric rate, and sibling facts remain. The collector no longer creates raw
 `accounting_binding_unavailable:*` or `charge_binding_unavailable` compatibility terms. Unknown
 model fields, unrelated OpenAPI operations, plan pages, weight metadata, and account billing changes

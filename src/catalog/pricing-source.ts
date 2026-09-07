@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonicalJson } from "./canonical-value.ts";
 import {
   priceSourceLocatorSchema,
   rawPriceFactSchema,
@@ -66,7 +67,7 @@ export const sourcePriceMeters = [
   "subscription",
 ] as const;
 
-const sourcePriceConditionsInputSchema = z.object({
+const sourcePriceConditionsInputSchema = z.strictObject({
   region: z.string().optional(),
   endpoint: z.string().optional(),
   deployment_scope: z.string().optional(),
@@ -103,7 +104,7 @@ const sourcePriceConditionsSchema = sourcePriceConditionsInputSchema.transform((
 );
 
 export const sourcePriceFactSchema = z
-  .object({
+  .strictObject({
     meter: z.enum(sourcePriceMeters),
     price: decimal,
     currency: z.string().min(1),
@@ -263,11 +264,22 @@ export type ParsedProviderModel = ProviderModel & {
 };
 
 export function sourcePriceFactKey(fact: SourcePriceFact): string {
-  return `${fact.meter}\0${fact.currency}\0${fact.unit}\0${JSON.stringify(fact.conditions)}`;
+  return canonicalJson([fact.meter, fact.currency, fact.unit, definedProperties(fact.conditions)]);
 }
 
 export function sourceRawPricingFactKey(fact: SourceRawPricingFact): string {
-  return `${fact.term_key}\0${fact.impact}\0${fact.reason}\0${fact.resolution_policy ?? ""}\0${JSON.stringify(fact.conditions)}\0${JSON.stringify(fact.raw)}`;
+  return canonicalJson([
+    fact.term_key,
+    fact.impact,
+    fact.reason,
+    fact.resolution_policy ?? "",
+    definedProperties(fact.conditions),
+    definedProperties(fact.raw),
+  ]);
+}
+
+function definedProperties(value: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function parsedPriceFact(fact: SourcePriceFact): SourcePriceFact {

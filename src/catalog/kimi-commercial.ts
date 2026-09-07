@@ -22,6 +22,7 @@ import {
 } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import {
+  subtractQuantityMethods,
   directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
@@ -29,8 +30,6 @@ import {
   mergeQuantityMethods as mergeMethods,
   pricingInputFacts,
   pricingInputObservation,
-  uniquePricingInputFacts,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -311,28 +310,13 @@ function subtractionMethod(
 ): MethodsAndFacts {
   const totalSignal = standardSignal("input_tokens");
   const cachedSignal = standardSignal("cached_input_tokens");
-  const total = pricingInputFacts(inputIndex, usageKeys(protocol, totalSignal.value));
-  const cached = pricingInputFacts(inputIndex, usageKeys(protocol, cachedSignal.value));
-  if (total.length === 0 || cached.length === 0) return emptyMethods();
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            { op: "signal", signal: totalSignal },
-            { op: "signal", signal: cachedSignal },
-            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-          ],
-          result: 2,
-        },
-        input_sources: [
-          ...usageInputSources(totalSignal, total),
-          ...usageInputSources(cachedSignal, cached),
-        ].sort(compareCanonicalValues),
-      },
-    ],
-    facts: uniquePricingInputFacts([...total, ...cached]),
-  };
+  return subtractQuantityMethods(
+    totalSignal,
+    usageKeys(protocol, totalSignal.value),
+    cachedSignal,
+    usageKeys(protocol, cachedSignal.value),
+    inputIndex,
+  );
 }
 
 function standardSignal(

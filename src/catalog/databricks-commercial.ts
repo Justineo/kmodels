@@ -14,6 +14,7 @@ import {
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import {
+  calculatedQuantityMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
@@ -246,8 +247,6 @@ function inputMethods(
 
   const total = pricingInputFacts(inputIndex, ["response.usage.input_tokens"]);
   const partitionFacts = partitions.map(({ key }) => pricingInputFacts(inputIndex, [key]));
-  if (total.length === 0 || partitionFacts.some((facts) => facts.length === 0))
-    return emptyMethods();
   const totalSignal = standardSignal("input_tokens");
   const nodes: UsageQuantityNode[] = [{ op: "signal", signal: totalSignal }];
   let result = 0;
@@ -257,21 +256,13 @@ function inputMethods(
     nodes.push({ op: "subtract_floor_zero", minuend: result, subtrahend });
     result = nodes.length - 1;
   }
-  const facts = uniquePricingInputFacts([...total, ...partitionFacts.flat()]);
-  return {
-    methods: [
-      {
-        calculation: { nodes, result },
-        input_sources: [
-          ...usageInputSources(totalSignal, total),
-          ...partitions.flatMap(({ signal: partition }, index) =>
-            usageInputSources(partition, partitionFacts[index] ?? []),
-          ),
-        ].sort(compareCanonicalValues),
-      },
-    ],
-    facts,
-  };
+  return calculatedQuantityMethods({ nodes, result }, [
+    { signal: totalSignal, facts: total },
+    ...partitions.map(({ signal: partition }, index) => ({
+      signal: partition,
+      facts: partitionFacts[index] ?? [],
+    })),
+  ]);
 }
 
 function directMethods(

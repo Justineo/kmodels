@@ -31,6 +31,7 @@ import type {
   UsageSignal,
 } from "./pricing-schema.ts";
 import {
+  calculatedQuantityMethods,
   emptyQuantityMethods as emptyMethods,
   indexPricingInputs,
   mergeQuantityMethods as mergeMethods,
@@ -580,19 +581,7 @@ function calculationMethod(
     signal,
     facts: pricingInputs(inputIndex, keys, mechanism),
   }));
-  if (mapped.some(({ facts }) => facts.length === 0)) return emptyMethods();
-  const facts = mapped.flatMap(({ facts: values }) => values);
-  return {
-    methods: [
-      {
-        calculation,
-        input_sources: uniqueCanonical(
-          mapped.flatMap(({ signal, facts: values }) => usageInputSources(signal, values)),
-        ),
-      },
-    ],
-    facts,
-  };
+  return calculatedQuantityMethods(calculation, mapped);
 }
 
 function sourceFamilies(mechanism: Mechanism): readonly ("generate" | "interaction")[] {

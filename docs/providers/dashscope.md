@@ -176,6 +176,13 @@ Token rate bindings use those observable counters:
 - cache writes → cache-creation input tokens; and
 - output → output tokens.
 
+The subtraction paths remain gated on their protocol contracts: Chat/native totals include an
+explicit cache-creation partition, while some Responses counters use a different partition.
+Those paths currently reuse shared token signals, so publishing an unevidenced subtraction path
+could produce conflicting quantities from the same inputs. The collector therefore withholds an
+incomplete subtraction path until that protocol's field semantics are established. Known modality
+sums retain their calculation and any surviving locators when an accounting field drifts.
+
 Batch has no cache discount, so Batch input binds directly to each successful result item's total
 input counter. Thinking tokens remain a separately observable diagnostic signal but are not added a
 second time when Alibaba bills them inside output tokens. Character-priced TTS binds directly to

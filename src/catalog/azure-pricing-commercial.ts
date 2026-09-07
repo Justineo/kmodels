@@ -17,6 +17,7 @@ import {
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
 import {
+  calculatedQuantityMethods,
   indexPricingInputs,
   includePricingInputSourceRefs,
   mergeQuantityMethods as mergeMethods,
@@ -613,7 +614,6 @@ function subtractionMethod(
     signal,
     facts: pricingInputFacts(inputIndex, [key]),
   }));
-  if (mapped.some(({ facts }) => facts.length === 0)) return { methods: [], facts: [] };
   const nodes: NonNullable<UsageQuantityMethod["calculation"]>["nodes"] = [
     { op: "signal", signal: mapped[0]!.signal },
   ];
@@ -623,18 +623,7 @@ function subtractionMethod(
     nodes.push({ op: "subtract_floor_zero", minuend: result, subtrahend: nodes.length - 1 });
     result = nodes.length - 1;
   }
-  const facts = mapped.flatMap(({ facts: values }) => values);
-  return {
-    methods: [
-      {
-        calculation: { nodes, result },
-        input_sources: mapped
-          .flatMap(({ signal, facts: values }) => usageInputSources(signal, values))
-          .sort(compareCanonicalValues),
-      },
-    ],
-    facts,
-  };
+  return calculatedQuantityMethods({ nodes, result }, mapped);
 }
 
 function selectorSources(

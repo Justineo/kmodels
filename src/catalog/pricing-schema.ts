@@ -383,8 +383,8 @@ export const usageQuantityCalculationSchema = z.strictObject({
 export const usageInputLocatorSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("json_pointer"),
-    value: nonEmptyString.refine((value) => value.startsWith("/"), {
-      message: "Usage JSON Pointer must start with /",
+    value: nonEmptyString.refine((value) => value.startsWith("/") && !/~(?![01])/u.test(value), {
+      message: "Usage JSON Pointer must start with / and use only ~0 or ~1 escapes",
     }),
   }),
   z.strictObject({

@@ -106,7 +106,9 @@ Batch locators refer only to each successful inline/file result's contained Gene
 embedding response, never Interactions usage or the job submission count. A rate whose denominator
 has no exact documented request/result quantity remains unbound; publishing a rate does not require
 fabricating observability. In particular, GenerateContent does not expose an exact Maps query count,
-and a Veo request that omits `durationSeconds` has no exact duration input mapping. Stream interruption
+and a Veo request that omits `durationSeconds` has no exact duration input mapping. Known modality
+subtraction, document/image sums, and output/thinking sums remain alongside surviving locators if
+an accounting field drifts. The caller must supply unmapped required signals. Stream interruption
 and usage retention policy remain downstream runtime concerns.
 
 ## Lifecycle and identity

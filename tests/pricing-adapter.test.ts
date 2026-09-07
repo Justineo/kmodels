@@ -8,6 +8,7 @@ import {
   isRequiredPricingSource,
 } from "../src/catalog/pricing-adapter.ts";
 import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
+import { evaluateChargeQuantity } from "../src/catalog/pricing-calculation.ts";
 import {
   pricingBookId,
   pricingOfferId,
@@ -972,7 +973,7 @@ describe("parsed-source canonical pricing adapter", () => {
     });
   });
 
-  it("derives Azure text-token partitions only from complete endpoint-local usage", () => {
+  it("retains Azure text-token equations and endpoint-local acquisition paths through drift", () => {
     const { source: pricingSource } = pricingManifest();
     const rate = (meter: SourcePriceFact["meter"], price: string): SourcePriceFact => ({
       meter,
@@ -1036,8 +1037,8 @@ describe("parsed-source canonical pricing adapter", () => {
     };
     expect(binding("input_text")).toMatchObject({
       signal: { namespace: "kmodels", value: "uncached_input_tokens" },
-      quantity_methods: [
-        {
+      quantity_methods: expect.arrayContaining([
+        expect.objectContaining({
           calculation: {
             nodes: [
               { op: "signal", signal: { namespace: "kmodels", value: "input_tokens" } },
@@ -1057,13 +1058,13 @@ describe("parsed-source canonical pricing adapter", () => {
             ],
             result: 6,
           },
-        },
-      ],
+        }),
+      ]),
     });
     expect(binding("output_text")).toMatchObject({
       signal: { namespace: "kmodels", value: "output_tokens" },
-      quantity_methods: [
-        {
+      quantity_methods: expect.arrayContaining([
+        expect.objectContaining({
           calculation: {
             nodes: [
               { op: "signal", signal: { namespace: "kmodels", value: "output_tokens" } },
@@ -1079,8 +1080,8 @@ describe("parsed-source canonical pricing adapter", () => {
             ],
             result: 2,
           },
-        },
-      ],
+        }),
+      ]),
     });
     expect(binding("cache_read_text")?.quantity_methods?.[0]?.input_sources).toEqual(
       expect.arrayContaining([
@@ -1106,11 +1107,56 @@ describe("parsed-source canonical pricing adapter", () => {
     const partialInput = partialPartition?.books[0]?.offers[0]?.terms.find(
       ({ term_key }) => term_key === "input_text",
     );
+    if (partialInput?.kind !== "rate") throw new Error("Missing partial Azure input rate");
+    const partialBinding = partialInput.variants[0]?.charge_binding;
+    if (partialBinding === undefined) throw new Error("Missing partial Azure input binding");
+    expect(partialBinding.quantity_methods).toHaveLength(2);
+    for (const method of partialBinding.quantity_methods ?? []) {
+      expect(method.calculation).toEqual(binding("input_text")?.quantity_methods?.[0]?.calculation);
+      expect(method.input_sources).toBeDefined();
+      expect(
+        method.input_sources?.some(({ signal }) => signal.value === "input_audio_tokens"),
+      ).toBe(false);
+    }
     expect(
-      partialInput?.kind === "rate"
-        ? partialInput.variants[0]?.charge_binding?.quantity_methods
-        : undefined,
-    ).toBeUndefined();
+      partialBinding.quantity_methods?.flatMap(({ input_sources }) => input_sources ?? []),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          locator: { kind: "json_pointer", value: "/usage/prompt_tokens" },
+        }),
+        expect.objectContaining({
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+        }),
+      ]),
+    );
+    expect(partialBinding.observations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          locator: { kind: "provider_key", value: "chat.input_tokens" },
+        }),
+      ]),
+    );
+    expect(
+      evaluateChargeQuantity(partialBinding, [
+        {
+          signal: { namespace: "kmodels", value: "input_tokens" },
+          value: { numerator: "1000", denominator: "1" },
+        },
+        {
+          signal: { namespace: "kmodels", value: "cached_input_tokens" },
+          value: { numerator: "200", denominator: "1" },
+        },
+        {
+          signal: { namespace: "kmodels", value: "cache_write_tokens" },
+          value: { numerator: "50", denominator: "1" },
+        },
+        {
+          signal: { namespace: "provider", provider_id: "azure", value: "input_audio_tokens" },
+          value: { numerator: "100", denominator: "1" },
+        },
+      ]),
+    ).toEqual({ kind: "resolved", value: { numerator: "650", denominator: "1" } });
   });
 
   it("binds Azure image, audio-duration, and video quantities without synthetic locators", () => {

@@ -162,7 +162,8 @@ an invoice.
 
 Catalog support tables remain strict where they claim exhaustive identity or invocation contracts.
 Individual response usage fields are field-local contracts: drift removes only the affected
-`pricing_input` and quantity method while preserving independent catalog and rate facts.
+`pricing_input` locator while retaining the known Claude cache subtraction and any surviving
+mappings. The caller must supply missing signals; independent catalog and rate facts remain.
 Open, partner, Priority, and delegated Google pages are optional pricing dependencies: a fetch
 failure keeps catalog collection useful but retains the last accepted Databricks pricing partition.
 Within a fetched page, parsing is claim-local; malformed rows and cells do not reject valid siblings.

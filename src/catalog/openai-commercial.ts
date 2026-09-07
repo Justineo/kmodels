@@ -29,6 +29,7 @@ import type {
   UsageSignal,
 } from "./pricing-schema.ts";
 import {
+  calculatedQuantityMethods,
   indexPricingInputs,
   includePricingInputSourceRefs,
   pricingInputFacts,
@@ -524,29 +525,28 @@ function quantityMethods(
     const total = pricingInputFacts(inputIndex, ["responses.usage.input_tokens"]);
     const cached = pricingInputFacts(inputIndex, ["responses.usage.cached_input_tokens"]);
     const written = pricingInputFacts(inputIndex, ["responses.usage.cache_write_tokens"]);
-    if (total.length > 0 && cached.length > 0 && written.length > 0) {
-      const totalSignal = standardSignal("input_tokens");
-      const cachedSignal = standardSignal("cached_input_tokens");
-      const writtenSignal = standardSignal("cache_write_tokens");
-      methods.push({
-        calculation: {
-          nodes: [
-            { op: "signal", signal: totalSignal },
-            { op: "signal", signal: cachedSignal },
-            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-            { op: "signal", signal: writtenSignal },
-            { op: "subtract_floor_zero", minuend: 2, subtrahend: 3 },
-          ],
-          result: 4,
-        },
-        input_sources: [
-          ...usageInputSources(totalSignal, total),
-          ...usageInputSources(cachedSignal, cached),
-          ...usageInputSources(writtenSignal, written),
-        ].sort(compareCanonical),
-      });
-      facts.push(...total, ...cached, ...written);
-    }
+    const totalSignal = standardSignal("input_tokens");
+    const cachedSignal = standardSignal("cached_input_tokens");
+    const writtenSignal = standardSignal("cache_write_tokens");
+    const derived = calculatedQuantityMethods(
+      {
+        nodes: [
+          { op: "signal", signal: totalSignal },
+          { op: "signal", signal: cachedSignal },
+          { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+          { op: "signal", signal: writtenSignal },
+          { op: "subtract_floor_zero", minuend: 2, subtrahend: 3 },
+        ],
+        result: 4,
+      },
+      [
+        { signal: totalSignal, facts: total },
+        { signal: cachedSignal, facts: cached },
+        { signal: writtenSignal, facts: written },
+      ],
+    );
+    methods.push(...derived.methods);
+    facts.push(...derived.facts);
   }
   return {
     methods: methods.sort(compareCanonical),

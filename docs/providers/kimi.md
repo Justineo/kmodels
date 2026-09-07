@@ -108,8 +108,9 @@ semantics; the provider JSON and normalized-field locators remain canonical.
 
 ## Missing evidence and raw policy
 
-Absence of an acquisition path does not turn a valid rate into raw pricing. The current structured
-partial cases are:
+Absence of an acquisition path does not turn a valid rate into raw pricing. Chat and Responses
+cache-subtraction equations retain their known signals and surviving locators after field drift;
+the caller must supply missing inputs. The current structured partial cases are:
 
 - Responses streaming has no typed terminal usage envelope in the OpenAPI contract.
 - The Responses `web_search` tool is documented operationally, but the current price prose binds an

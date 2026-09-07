@@ -15,6 +15,7 @@ import type {
   UsageQuantityNode,
   UsageSignal,
 } from "./pricing-schema.ts";
+import { rationalSchema } from "./pricing-schema.ts";
 
 export interface ObservedUsageQuantity {
   signal: UsageSignal;
@@ -49,8 +50,11 @@ export function validateUsageQuantityCalculation(calculation: UsageQuantityCalcu
       (node.op === "minimum" && node.value.numerator === "0")
     )
       throw new Error(`Quantity calculation ${node.op} value must be positive`);
-    if (node.op === "signal" && !signals.add(canonicalJson(node.signal)))
-      throw new Error("Quantity calculation repeats a usage signal");
+    if (node.op === "signal") {
+      const key = canonicalJson(node.signal);
+      if (signals.has(key)) throw new Error("Quantity calculation repeats a usage signal");
+      signals.add(key);
+    }
   }
 
   const reachable = new Set<number>();
@@ -94,7 +98,7 @@ export function evaluateChargeQuantity(
   for (const input of observed) {
     const key = canonicalJson(input.signal);
     if (values.has(key)) throw new Error("Observed usage contains a duplicate signal");
-    values.set(key, input.value);
+    values.set(key, rationalSchema.parse(input.value));
   }
 
   const resolved: Rational[] = [];

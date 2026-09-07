@@ -108,8 +108,8 @@ The `llms.txt` source contributes a reviewed, field-local contract for 54 pricin
 inputs. Each fact records its request, response, terminal stream event, or Batch result
 channel; locator; reduction; availability; and source observation. The compiler binds
 only the facts whose local contract is still present. Drift in one documented field
-therefore removes that quantity method without erasing a sibling rate or substituting
-an unverified raw locator.
+therefore removes that locator without erasing a known calculation, surviving mappings, or a
+sibling rate. Unmapped required signals remain caller inputs; no unverified raw locator is added.
 
 The price book does not collect a runtime ledger. It instead tells a calculator exactly
 which accepted request values, terminal result values, and realized selectors it must

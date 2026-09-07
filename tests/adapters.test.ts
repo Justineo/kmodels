@@ -3771,10 +3771,17 @@ describe("Mistral adapters", () => {
         calculation?.nodes.some(({ op }) => op === "sum"),
       ),
     ).toBe(true);
+    const cacheCalculation = inputBinding?.quantity_methods?.find(({ calculation }) =>
+      calculation?.nodes.some(({ op }) => op === "subtract_floor_zero"),
+    );
+    expect(cacheCalculation).toBeDefined();
+    expect(cacheCalculation?.input_sources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ signal: { namespace: "kmodels", value: "input_tokens" } }),
+      ]),
+    );
     expect(
-      inputBinding?.quantity_methods?.some(({ calculation }) =>
-        calculation?.nodes.some(({ op }) => op === "subtract_floor_zero"),
-      ),
+      cacheCalculation?.input_sources?.some(({ signal }) => signal.value === "cached_input_tokens"),
     ).toBe(false);
 
     const modelList = (await fixture("mistral/openapi.yaml")).replace(
@@ -19553,6 +19560,59 @@ describe("Ollama adapters", () => {
 });
 
 describe("provider drift validation", () => {
+  it("merges reordered pricing facts while retaining distinct raw source evidence", () => {
+    const configured = manifest("vercel").sources[0];
+    if (configured === undefined) throw new Error("Missing Vercel source");
+    const source: SourceManifest = { ...configured, fields: ["pricing"] };
+    const price: ProviderModel["price_facts"][number] = {
+      meter: "input_text",
+      price: "1",
+      currency: "USD",
+      unit: "million_tokens",
+      conditions: { region: "us", service_tier: "standard" },
+      source_ref: "catalog",
+      derived: false,
+    };
+    const raw: ProviderModel["raw_price_facts"][number] = {
+      term_key: "special-input",
+      impact: "base_price",
+      reason: "unsupported_structure",
+      conditions: price.conditions,
+      source_ref: "catalog",
+      raw: { amount: "1", unit: "special token block" },
+    };
+    const current: ProviderModel = {
+      ...baseModel({
+        providerId: "vercel",
+        id: "acme/model",
+        name: "Model",
+        sourceId: "catalog",
+        observedAt,
+      }),
+      pricing_state: "numeric",
+      price_facts: [price],
+      raw_price_facts: [raw],
+    };
+    const conditions = { service_tier: "standard", region: "us", endpoint: undefined };
+    const incoming: ProviderModel = {
+      ...current,
+      price_facts: [{ ...price, price: "2", conditions, source_ref: source.id }],
+      raw_price_facts: [
+        { ...raw, conditions, raw: { unit: "special token block", amount: "1" } },
+        { ...raw, source_ref: source.id },
+      ],
+      source_refs: [source.id],
+    };
+
+    const merged = applyGroups([current], [{ source, models: [incoming] }], false)[0];
+    if (merged === undefined) throw new Error("Missing merged model");
+    expect(merged.price_facts).toEqual(incoming.price_facts);
+    expect(merged.raw_price_facts).toHaveLength(2);
+    expect(merged.raw_price_facts.map(({ source_ref }) => source_ref).sort()).toEqual(
+      ["catalog", source.id].sort(),
+    );
+  });
+
   it("lets a non-exhaustive supplement create only identities absent from exact IDs and aliases", () => {
     const source = manifest("openai").sources.find(({ id }) => id === "openai-deprecations");
     if (source === undefined) throw new Error("Missing OpenAI supplement source");

@@ -139,6 +139,8 @@ Vercel contracts do not establish an exact public input for:
 - native-search context tier and media flags such as generated audio or voice control; or
 - interrupted-stream finalization and attempt deduplication.
 
+Known video-duration multiplication retains its calculation and surviving request/result locators
+when a companion field drifts; the caller supplies the missing duration or successful-output count.
 These are input-contract gaps, not reasons to drop exact public rates. Account totals and invoice
 reconciliation are deliberately excluded rather than labeled missing.
 

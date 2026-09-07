@@ -78,9 +78,10 @@ Accounting facts are endpoint-gated. A Chat locator is not attached to a model t
 Responses, and image, audio, or video locators are attached only to a matching model task. When
 Azure publishes separately priced cache or audio input, uncached text is calculated within one API
 family as `total input - cached input - cache write - audio input`, floored at zero. Separately
-priced text output is similarly `total output - audio output`. A partial family never contributes a
-calculation method, so fields from Chat and Responses cannot be combined into a plausible but false
-quantity.
+priced text output is similarly `total output - audio output`. Each API family retains its known
+calculation and only its independently verified input locators, even when that mapping is partial.
+Chat and Responses remain separate acquisition methods; missing signals must be supplied by the
+caller rather than filled with a field from another family.
 
 The current Azure contracts do not establish an exact response selector for priority versus
 standard deployment pricing, a request/result field for region or deployment scope, a filtered

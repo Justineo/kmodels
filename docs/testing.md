@@ -51,9 +51,15 @@ after each test, including failures.
 - Generated pricing replay checks current extractor inputs against their manifests and verifies
   obsolete-input providers keep their exact accepted partitions. An extractor bump must not require
   a live data refresh merely to validate code changes.
+  A current replay rejected by the adopted-topology gate may preserve only an already-retained,
+  valid accepted partition with an explicit compilation failure report; fresh failures still abort.
 - Exercise applicability budgets on both sides of the boundary. Equal-value claims that exceed one
   applicability must remain normalized as deterministic bounded shards with complete observations;
   a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.
+- Keep equal-price accounting contracts scoped through assembly: different signals, formulas, or
+  mappings must survive, and an unbound scope must not inherit a sibling's binding. Drift tests
+  preserve independently known calculations and partial input mappings, while quantity evaluation
+  still reports every missing signal.
 - Treat projection closure and interaction budgets as behavior: shared resource books must not leak
   sibling-model offers, every provider pricing row must expose readable applicability, model-detail
   offer counts stay bounded, provider loading is chunk/offer-lazy, deferred offers match their

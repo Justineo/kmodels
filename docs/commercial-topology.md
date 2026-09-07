@@ -140,6 +140,12 @@ The graph admits only reviewed operations. Its product form multiplies one quant
 counts, for example seconds requested per video by successfully returned videos; it is not a
 general dimensional-expression language.
 
+Keep an independently established formula when a source field disappears. Its calculation lists all
+required signals, while optional input mappings retain whichever acquisition paths remain known.
+Missing mappings do not mean zero usage or an unknown rate. Equal list prices with different signals,
+scales, formulas, or selector mappings keep their scoped variants rather than losing or widening
+those contracts during compaction. Variants within one term are alternatives for that charge.
+
 Provider-field mappings may use only the closed collection reductions defined by the shared wire
 and may treat absence as zero only for an evidenced filtered collection. This keeps source
 extraction declarative and bounded while still covering image counts, successful-result presence,
