@@ -9,14 +9,13 @@ import type {
 import type { PublishedPricingModel } from "./pricing-adapter.ts";
 import { bindRateTerm, isStandardUnit, rawEvidence } from "./pricing-commercial-assembly.ts";
 import {
+  subtractQuantityMethods,
   directQuantityMethods as directMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
-  pricingInputFacts,
   pricingInputObservation,
   uniquePricingInputFacts,
-  usageInputSources,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -231,28 +230,13 @@ function uncachedInputMethods(
 function responsesUncachedInput(inputIndex: PricingInputIndex): MethodsAndFacts {
   const totalSignal = standardSignal("input_tokens");
   const cachedSignal = standardSignal("cached_input_tokens");
-  const total = pricingInputFacts(inputIndex, usageKeys("responses", "input_tokens"));
-  const cached = pricingInputFacts(inputIndex, usageKeys("responses", "cached_input_tokens"));
-  if (total.length === 0 || cached.length === 0) return emptyMethods();
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            { op: "signal", signal: totalSignal },
-            { op: "signal", signal: cachedSignal },
-            { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-          ],
-          result: 2,
-        },
-        input_sources: [
-          ...usageInputSources(totalSignal, total),
-          ...usageInputSources(cachedSignal, cached),
-        ].sort(compareCanonicalValues),
-      },
-    ],
-    facts: uniquePricingInputFacts([...total, ...cached]),
-  };
+  return subtractQuantityMethods(
+    totalSignal,
+    usageKeys("responses", "input_tokens"),
+    cachedSignal,
+    usageKeys("responses", "cached_input_tokens"),
+    inputIndex,
+  );
 }
 
 function standardSignal(

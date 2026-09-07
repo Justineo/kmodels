@@ -111,8 +111,9 @@ The following remain explicit downstream inputs rather than invented mappings:
 - invoice, discount, billing-export, or invocation-log reconciliation.
 
 These gaps do not erase rates. A binding without quantity methods states the billable semantic
-quantity; a method without provider input sources states a known calculation whose inputs must be
-supplied by the caller.
+quantity. Known token arithmetic and video-duration multiplication retain every independently
+verified input locator when a companion field drifts. A partial or absent provider mapping leaves
+the remaining calculation inputs to the caller; missing signals never imply zero.
 
 ## Refresh behavior
 

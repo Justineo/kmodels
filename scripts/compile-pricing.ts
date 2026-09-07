@@ -2,15 +2,17 @@ import {
   compilePricingSnapshot,
   readPricingCompilationSnapshot,
 } from "../src/catalog/pricing-compilation.ts";
-import { commitCatalogPair, recoverCatalogPair } from "../src/catalog/pricing-publication.ts";
+import { commitCatalogPair, readCatalogPairMirrors } from "../src/catalog/pricing-publication.ts";
 
-const pair = await recoverCatalogPair();
-if (pair === undefined) throw new Error("No accepted catalog pair is available");
+const pair = await readCatalogPairMirrors();
+if (pair === undefined) throw new Error("No checked-out catalog pair is available");
 
 const input = await readPricingCompilationSnapshot(pair);
 if (input === undefined) throw new Error("No pricing compilation input is available");
 
 const result = await compilePricingSnapshot(pair, input);
+for (const failure of result.replayFailures)
+  console.warn(`Preserved ${failure.provider_id} accepted pricing: ${failure.reason}`);
 if (result.replayedProviders.length > 0) await commitCatalogPair(result.candidate);
 console.log(
   [

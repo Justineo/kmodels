@@ -19,6 +19,7 @@ import {
 } from "./pricing-commercial-assembly.ts";
 import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
 import {
+  calculatedQuantityMethods,
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
@@ -717,26 +718,20 @@ function videoMethods(
   );
   const durationFacts = pricingInputFacts(inputIndex, ["video.request.duration_seconds"]);
   const videoFacts = pricingInputFacts(inputIndex, ["video.result.videos"]);
-  if (durationFacts.length === 0 || videoFacts.length === 0) return emptyMethods();
-  return {
-    methods: [
-      {
-        calculation: {
-          nodes: [
-            { op: "signal", signal: duration },
-            { op: "signal", signal: videos },
-            { op: "product", inputs: [0, 1] },
-          ],
-          result: 2,
-        },
-        input_sources: uniqueCanonical([
-          ...usageInputSources(duration, durationFacts),
-          ...usageInputSources(videos, videoFacts),
-        ]),
-      },
+  return calculatedQuantityMethods(
+    {
+      nodes: [
+        { op: "signal", signal: duration },
+        { op: "signal", signal: videos },
+        { op: "product", inputs: [0, 1] },
+      ],
+      result: 2,
+    },
+    [
+      { signal: duration, facts: durationFacts },
+      { signal: videos, facts: videoFacts },
     ],
-    facts: [...durationFacts, ...videoFacts],
-  };
+  );
 }
 
 function calculationMethod(
@@ -749,19 +744,7 @@ function calculationMethod(
     signal,
     facts: mechanismFacts(inputIndex, keys, mechanism),
   }));
-  if (mapped.some(({ facts }) => facts.length === 0)) return emptyMethods();
-  const facts = mapped.flatMap(({ facts: values }) => values);
-  return {
-    methods: [
-      {
-        calculation,
-        input_sources: uniqueCanonical(
-          mapped.flatMap(({ signal, facts: values }) => usageInputSources(signal, values)),
-        ),
-      },
-    ],
-    facts,
-  };
+  return calculatedQuantityMethods(calculation, mapped);
 }
 
 function mechanismFacts(

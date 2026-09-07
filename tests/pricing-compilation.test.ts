@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import type { ProviderManifest, SourceManifest } from "../src/catalog/manifests.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import { validateAdoptedTopology } from "../src/catalog/pricing-adopted-topology.ts";
 import {
   capturePricingReplaySources,
   compilePricingSnapshot,
@@ -186,7 +187,173 @@ function replaySource(price: string): PricingReplaySource {
   };
 }
 
+function xaiReplayCase(publication: "fresh" | "retained", includeAcceptedResource = true) {
+  const id = "xai";
+  const source: SourceManifest = { ...sourceManifest, id: "xai-pricing" };
+  const manifest: ProviderManifest = {
+    provider: { ...providerManifest.provider, id },
+    sources: [source],
+  };
+  const model: ProviderModel = {
+    ...published(),
+    provider_id: id,
+    uid: "xai/test-model",
+    source_refs: [source.id],
+  };
+  const replayModel: ParsedPricingModel = {
+    ...parsed("1"),
+    provider_id: id,
+    uid: model.uid,
+    price_facts: parsed("1").price_facts.map((fact) => ({ ...fact, source_ref: source.id })),
+  };
+  const completeModel: ParsedPricingModel = {
+    ...replayModel,
+    commercial_facts: [
+      {
+        source_ref: source.id,
+        book_key: "service:web-search",
+        book_name: "Web search",
+        resource_kind: "service",
+        resource_key: "web-search",
+        model_refs: [model.uid],
+        offer_key: "execution",
+        offer_name: "Web search execution",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [
+          {
+            meter: "web_search",
+            price: "5",
+            currency: "USD",
+            unit: "thousand_events",
+            conditions: {},
+            source_ref: source.id,
+            derived: false,
+          },
+        ],
+        raw_price_facts: [],
+      },
+    ],
+  };
+  const partition = assembleParsedProviderPricing(
+    id,
+    observedAt,
+    [{ source, models: [includeAcceptedResource ? completeModel : replayModel] }],
+    [model],
+  );
+  if (partition === undefined) throw new Error("Missing xAI test pricing");
+  if (includeAcceptedResource) validateAdoptedTopology(partition);
+  const original = candidate("1").catalog;
+  const attemptedAt = "2026-07-30T01:00:00.000Z";
+  const current = prepareCatalogPair(
+    {
+      ...original,
+      generated_at: publication === "retained" ? attemptedAt : observedAt,
+      providers: original.providers.map((provider) => ({
+        ...provider,
+        id,
+        source_ids: [source.id],
+      })),
+      models: [model],
+      sources: [{ ...sourceRecord(), id: source.id, provider_id: id }],
+      coverage: original.coverage.map((coverage) => ({ ...coverage, provider_id: id })),
+    },
+    {
+      provider_vocabularies: [partition.vocabulary],
+      provider_snapshots: [
+        publication === "fresh"
+          ? partition.snapshot
+          : {
+              ...partition.snapshot,
+              publication,
+              refresh_failure: {
+                attempted_at: attemptedAt,
+                code: "pricing_validation_failed",
+              },
+            },
+      ],
+      model_dispositions: partition.model_dispositions,
+      books: partition.books,
+    },
+  );
+  const snapshot = createPricingCompilationSnapshot(current, [
+    {
+      provider_id: id,
+      sources: [
+        {
+          source_id: source.id,
+          extractor_version: source.extractorVersion,
+          content_hash: contentHash,
+          models: [replayModel],
+        },
+      ],
+    },
+  ]);
+  return { current, snapshot, manifest };
+}
+
 describe("local canonical pricing compilation", () => {
+  it("rejects fresh replay that removes an adopted provider resource", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("fresh");
+
+    await expect(compilePricingSnapshot(current, snapshot, [manifest])).rejects.toThrow(
+      "xai commercial topology changed",
+    );
+  });
+
+  it("keeps an already retained accepted partition when replay loses its adopted resource", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("retained");
+
+    const compiled = await compilePricingSnapshot(current, snapshot, [manifest]);
+
+    expect(compiled.replayedProviders).toEqual([]);
+    expect(compiled.preservedProviders).toEqual(["xai"]);
+    expect(compiled.replayFailures).toEqual([
+      {
+        provider_id: "xai",
+        reason: "xai commercial topology changed: expected resource, binding, received binding",
+      },
+    ]);
+    expect(compiled.candidate).toBe(current);
+    expect(compiled.candidate.pricing.data.provider_snapshots).toEqual(
+      current.pricing.data.provider_snapshots,
+    );
+  });
+
+  it("does not retain an accepted partition that also fails its adopted topology", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("retained", false);
+
+    await expect(compilePricingSnapshot(current, snapshot, [manifest])).rejects.toThrow(
+      "xai commercial topology changed",
+    );
+  });
+
+  it("does not treat retained replay provenance failures as recoverable topology drift", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("retained");
+    const invalid = {
+      ...current,
+      catalog: {
+        ...current.catalog,
+        sources: current.catalog.sources.map((source) => ({ ...source, provider_id: "other" })),
+      },
+    };
+
+    await expect(compilePricingSnapshot(invalid, snapshot, [manifest])).rejects.toThrow(
+      "does not match the catalog",
+    );
+  });
+
+  it("does not hide invalid observations behind a retained topology failure", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("retained");
+    const rate = snapshot.providers[0]?.sources[0]?.models[0]?.price_facts[0];
+    if (rate === undefined) throw new Error("Missing replay test rate");
+    rate.raw_price = "x".repeat(8_193);
+
+    await expect(compilePricingSnapshot(current, snapshot, [manifest])).rejects.toThrow(
+      "byte limit",
+    );
+  });
+
   it("reassembles pricing from bounded parsed inputs without fetching", async () => {
     const current = candidate("1");
     const snapshot = createPricingCompilationSnapshot(current, [
@@ -260,6 +427,54 @@ describe("local canonical pricing compilation", () => {
         { ...providerManifest, sources: [sourceManifest, requiredSource] },
       ]),
     ).rejects.toThrow(`missing required source ${requiredSource.id}`);
+  });
+
+  it("requires accounting-only sources declared necessary for replay", async () => {
+    const current = candidate("1");
+    const snapshot = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [replaySource("1")] },
+    ]);
+    const { pricingEvidence: _pricingEvidence, ...sourceBase } = sourceManifest;
+    const requiredAccounting: SourceManifest = {
+      ...sourceBase,
+      id: `${sourceId}-accounting`,
+      fields: ["pricing_inputs"],
+    };
+
+    await expect(
+      compilePricingSnapshot(current, snapshot, [
+        { ...providerManifest, sources: [sourceManifest, requiredAccounting] },
+      ]),
+    ).rejects.toThrow(`missing required source ${requiredAccounting.id}`);
+  });
+
+  it("does not revive retired catalog models from pricing-source placeholder metadata", async () => {
+    const accepted = candidate("1");
+    const current = prepareCatalogPair(
+      {
+        ...accepted.catalog,
+        models: accepted.catalog.models.map((model) => ({ ...model, status: "retired" })),
+      },
+      accepted.pricing.data,
+    );
+    const snapshot = createPricingCompilationSnapshot(current, [
+      { provider_id: providerId, sources: [replaySource("1")] },
+    ]);
+    const baseModelSource: SourceManifest = {
+      ...sourceManifest,
+      pricingEvidence: {
+        authority: "first_party",
+        kind: "price_book",
+        binding: "base_model_id",
+        currentness: "current_snapshot",
+      },
+    };
+
+    await expect(
+      compilePricingSnapshot(current, snapshot, [
+        { ...providerManifest, sources: [baseModelSource] },
+      ]),
+    ).rejects.toThrow(`Pricing replay for ${providerId} produced nothing`);
   });
 
   it("replays retained inputs even when a failed refresh observed new source bytes", async () => {
@@ -396,6 +611,25 @@ describe("local canonical pricing compilation", () => {
         },
       ],
     });
+  });
+
+  it("rejects mismatched accounting provenance during capture", () => {
+    const model: ParsedPricingModel = {
+      ...parsed("1"),
+      pricing_inputs: [
+        {
+          key: "response.input_tokens",
+          channel: "response",
+          locator: { kind: "json_pointer", value: "/usage/input_tokens" },
+          availability: "terminal_only",
+          source_ref: "another-source",
+        },
+      ],
+    };
+
+    expect(() =>
+      capturePricingReplaySources([{ source: sourceManifest, models: [model] }], [sourceRecord()]),
+    ).toThrow(`Pricing compilation source ${sourceId} has mismatched provenance`);
   });
 
   it("coalesces pricing split across duplicate source identities", () => {

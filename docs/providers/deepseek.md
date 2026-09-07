@@ -83,8 +83,8 @@ published as `unknown` or raw pricing.
 The price book publishes provider-independent charge signals separately from the provider fields
 that can supply them. Numeric rates therefore remain useful if an optional interface reference
 drifts. Each verified field is an independent `pricing_input`; losing one field removes only that
-locator and any calculation method that requires it, not its sibling fields, endpoint, model, or
-rate.
+locator, not a known calculation, sibling field, endpoint, model, or rate. The uncached-input
+equation and surviving mappings remain available; an unmapped signal is an explicit caller input.
 
 The current machine-readable input contract is:
 
@@ -129,8 +129,8 @@ reported without removing either model or its ordinary rates.
 - A malformed model header, field, support value, billing-period label, price cell, companion
   operation, or usage group suppresses only that exact claim. Valid siblings remain.
 - An optional companion failure cannot erase current IDs or numeric price-table rows. If usage
-  evidence fails, only the affected pricing-input locator or dependent calculation method is
-  omitted. The semantic charge binding and numeric rate remain.
+  evidence fails, only the affected pricing-input locator is omitted. Known arithmetic, surviving
+  mappings, the semantic charge binding, and the numeric rate remain.
 - The public model-list witness and optional authenticated inventory report exact-ID disagreements
   but do not override the exhaustive price table.
 - Unknown table rows are reported and ignored. Account-only and otherwise out-of-scope rows are

@@ -252,6 +252,13 @@ Status: implemented
   refresh; projection-only changes use `vp run prepare:assets`. Parser or
   extractor changes still require collection because raw response bodies are
   intentionally not retained.
+- Capture a complete public parsed pricing bundle before canonical assembly. Assembly or validation
+  failure retains those inputs for local repair while retaining the accepted provider prices. Check
+  source ownership and provenance during capture, so one malformed provider input cannot abort
+  publication of independent providers. Parsed rate fields and qualifiers are closed: an unsupported
+  commercial condition must become an explicit raw fact, never silently disappear into an
+  unconditional rate. Source-fact identities compare condition and raw-field objects independently
+  of property insertion order.
 - Compilation input is bound to the accepted catalog core. Provider snapshot
   metadata comes from the current accepted canonical pair rather than being
   duplicated in the input. Source IDs, extractor versions, content hashes,
@@ -260,9 +267,17 @@ Status: implemented
   collection captures fresh input; other binding or source-contract mismatches abort compilation.
   Authenticated or otherwise non-public pricing inputs are never persisted;
   providers without replay input keep their exact accepted partitions.
+  Replay uses model identity, lifecycle, tasks, and capabilities from the bound accepted catalog;
+  pricing or accounting carriers cannot overwrite them with placeholder metadata.
+- Offline replay checks the adopted commercial topology before accepting each real provider's
+  rebuilt partition. A topology failure for a fresh snapshot aborts compilation. If the snapshot
+  was already retained, compilation may keep its exact accepted partition only after that partition
+  passes the same topology gate; it reports the provider and bounded failure reason. Observation
+  time, retention metadata, and parsed repair inputs remain unchanged. Binding, provenance, schema,
+  and assembly failures still abort compilation rather than using this fallback.
 - A manifest source declares `pricing` when it owns rates and `pricing_inputs`
   when it owns accounting or selector contracts. Either role makes it a pricing
-  dependency for omission and replay. Only the rate role carries pricing-evidence
+  dependency for omission, required-source completeness, and replay. Only the rate role carries pricing-evidence
   authority, so an accounting-only API or schema document cannot accidentally
   claim that it published a price.
 - The refresh summary reports canonical pricing commercial additions,
@@ -307,12 +322,14 @@ remain authoritative during collection and recovery; canonical and derived
 mirrors are repaired from that pointer after interruption. Once
 those mirrors are durable, superseded local snapshots are removed. Git history
 retains published pairs, while ignored crash-recovery state stays bounded to
-the only pair it can recover. The
-committed mirrors define the pair in a checkout, so `vp run prepare:assets`
-reads them directly and regenerates projections without letting stale ignored
-local state replace newer fetched or pulled data. `vp run compile:pricing`
-instead reassembles canonical pricing first and then publishes the resulting
-pair and projections. A reviewed pricing withdrawal may temporarily leave a
+the only pair it can recover. The committed mirrors define the pair in a checkout. Both
+`vp run prepare:assets` and `vp run compile:pricing` read and validate those mirrors directly;
+neither restores an ignored recovery snapshot over checked-out files. `prepare:assets` regenerates
+projections, while `compile:pricing` checks the parsed input against the checked-out catalog,
+reassembles canonical pricing, and then publishes the resulting pair and projections. An invalid
+pair or mismatched compilation input fails before publication and leaves the mirrors unchanged.
+Crash recovery is reserved for collection and explicit recovery, where the local accepted-pair
+pointer is authoritative. A reviewed pricing withdrawal may temporarily leave a
 safe pricing-only source record in the catalog; the next successful fresh
 provider publication prunes it.
 

@@ -65,8 +65,9 @@ policy. A calculator may use any published alternative that is present in its ev
 | Batch result item    | total input           | `/response/usage/prompt_tokens`              | successful item only |
 | Batch result item    | output                | `/response/usage/completion_tokens`          | successful item only |
 
-Chat and Completions contracts are field-local. Drift in one field removes only the affected input
-method; it does not erase the model, rate, endpoint, or sibling quantity. Missing terminal usage after
+Chat and Completions contracts are field-local. Drift in one field removes only its locator;
+known cache subtraction and surviving input mappings remain. The caller must supply the unmapped
+quantity. The model, rate, endpoint, and sibling quantities are preserved. Missing terminal usage after
 an interrupted stream is a downstream capture outcome, not a Kmodels lifecycle problem.
 
 `usage.image_tokens` and `usage.completion_tokens_details.reasoning_tokens` are breakdowns of the

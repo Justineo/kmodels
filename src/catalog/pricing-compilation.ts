@@ -13,13 +13,16 @@ import {
   type PublishedPricingModel,
 } from "./pricing-adapter.ts";
 import type { ProviderPricingPartition } from "./pricing-assembly.ts";
+import { adoptedTopologies, validateAdoptedTopology } from "./pricing-adopted-topology.ts";
 import { pricingLimits } from "./pricing-constants.ts";
 import { prepareCatalogPairInParallel, type CatalogPairCandidate } from "./pricing-publication.ts";
 import {
   emptyPricingCatalog,
+  pricingCatalogSchema,
   type PricingCatalog,
   type ProviderPricingSnapshot,
 } from "./pricing-schema.ts";
+import { validatePricingCatalog } from "./pricing-validation.ts";
 import { parsedPricingModel, parsedPricingModelSchema } from "./pricing-source.ts";
 import { providerPartition } from "./pricing-transition.ts";
 import type { SourceRecord } from "./schema.ts";
@@ -185,6 +188,7 @@ export interface PricingCompilationResult {
   candidate: CatalogPairCandidate;
   replayedProviders: string[];
   preservedProviders: string[];
+  replayFailures: Array<{ provider_id: string; reason: string }>;
 }
 
 interface CompilationTask {
@@ -284,12 +288,15 @@ export function capturePricingReplaySources(
         throw new Error(`Pricing compilation source ${source.id} has mixed provider ownership`);
       if (
         models.some(
-          ({ price_facts, raw_price_facts, commercial_facts }) =>
+          ({ price_facts, raw_price_facts, commercial_facts, pricing_inputs }) =>
             price_facts.some(({ source_ref }) => source_ref !== source.id) ||
             raw_price_facts.some(({ source_ref }) => source_ref !== source.id) ||
-            (commercial_facts ?? []).some(({ price_facts: rates, raw_price_facts: raw }) =>
-              [...rates, ...raw].some(({ source_ref }) => source_ref !== source.id),
-            ),
+            (commercial_facts ?? []).some(
+              ({ source_ref, price_facts: rates, raw_price_facts: raw }) =>
+                source_ref !== source.id ||
+                [...rates, ...raw].some(({ source_ref }) => source_ref !== source.id),
+            ) ||
+            (pricing_inputs ?? []).some(({ source_ref }) => source_ref !== source.id),
         )
       )
         throw new Error(`Pricing compilation source ${source.id} has mismatched provenance`);
@@ -354,14 +361,6 @@ export async function compilePricingSnapshot(
   providerManifests: readonly ProviderManifest[] = manifests,
 ): Promise<PricingCompilationResult> {
   validateCompilationBinding(snapshot, current);
-  if (snapshot.providers.length === 0)
-    return {
-      candidate: current,
-      replayedProviders: [],
-      preservedProviders: current.pricing.data.provider_snapshots.map(
-        ({ provider_id }) => provider_id,
-      ),
-    };
   const modelOwners = new Map(
     current.catalog.models.map(({ uid, provider_id }) => [uid, provider_id]),
   );
@@ -381,6 +380,14 @@ export async function compilePricingSnapshot(
   const tasks: CompilationTask[] = [];
   const replayedProviders: string[] = [];
   const preservedProviders: string[] = [];
+  const replayFailures: PricingCompilationResult["replayFailures"] = [];
+  const acceptedPartition = (providerId: string): ProviderPricingPartition => {
+    const partition = providerPartition(current.pricing.data, providerId, modelProvider);
+    if (partition === undefined)
+      throw new Error(`Pricing provider ${providerId} has no accepted partition`);
+    if (adoptedTopologies.has(providerId)) validateAdoptedTopology(partition);
+    return partition;
+  };
 
   for (const providerSnapshot of current.pricing.data.provider_snapshots) {
     const providerId = providerSnapshot.provider_id;
@@ -388,10 +395,7 @@ export async function compilePricingSnapshot(
     const manifest = manifestByProvider.get(providerId);
     if (manifest === undefined) throw new Error(`Pricing provider ${providerId} is not configured`);
     if (replay === undefined || !replayUsesCurrentExtractors(replay, manifest)) {
-      const partition = providerPartition(current.pricing.data, providerId, modelProvider);
-      if (partition === undefined)
-        throw new Error(`Pricing provider ${providerId} has no accepted partition`);
-      partitions.set(providerId, partition);
+      partitions.set(providerId, acceptedPartition(providerId));
       preservedProviders.push(providerId);
       continue;
     }
@@ -400,13 +404,9 @@ export async function compilePricingSnapshot(
       providerId,
       snapshot: providerSnapshot,
       sources: replaySources(replay, manifest, providerSnapshot, current),
-      models: replayPublishedModels(
-        replay,
-        current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
-      ),
+      models: current.catalog.models.filter(({ provider_id }) => provider_id === providerId),
       categoricalLabels: manifest.pricingCategoricalLabels,
     });
-    replayedProviders.push(providerId);
   }
 
   for (const partition of await compileProviderPricing(
@@ -414,8 +414,30 @@ export async function compilePricingSnapshot(
       .map((task) => ({ task, weight: compilationWeight(task) }))
       .sort((left, right) => right.weight - left.weight)
       .map(({ task }) => task),
-  ))
-    partitions.set(partition.snapshot.provider_id, partition);
+  )) {
+    const providerId = partition.snapshot.provider_id;
+    if (adoptedTopologies.has(providerId)) {
+      try {
+        validateAdoptedTopology(partition);
+      } catch (error) {
+        if (partition.snapshot.publication !== "retained") throw error;
+        const rejected = pricingCatalogSchema.parse(pricingCatalogFromPartitions([partition]));
+        validatePricingCatalog(rejected, current.catalog);
+        partitions.set(providerId, acceptedPartition(providerId));
+        preservedProviders.push(providerId);
+        replayFailures.push({
+          provider_id: providerId,
+          reason: (error instanceof Error ? error.message : String(error)).slice(
+            0,
+            pricingLimits.semanticStringBytes,
+          ),
+        });
+        continue;
+      }
+    }
+    partitions.set(providerId, partition);
+    replayedProviders.push(providerId);
+  }
 
   const pricing = pricingCatalogFromPartitions(
     current.pricing.data.provider_snapshots.map(({ provider_id }) => {
@@ -426,37 +448,16 @@ export async function compilePricingSnapshot(
     }),
   );
   return {
-    candidate: await prepareCatalogPairInParallel(current.catalog, pricing),
-    replayedProviders,
-    preservedProviders,
+    candidate:
+      replayedProviders.length === 0
+        ? current
+        : await prepareCatalogPairInParallel(current.catalog, pricing),
+    replayedProviders: replayedProviders.sort(compareUtf8),
+    preservedProviders: preservedProviders.sort(compareUtf8),
+    replayFailures: replayFailures.sort((left, right) =>
+      compareUtf8(left.provider_id, right.provider_id),
+    ),
   };
-}
-
-function replayPublishedModels(
-  replay: PricingReplayProvider,
-  catalogModels: readonly PublishedPricingModel[],
-): PublishedPricingModel[] {
-  const models = new Map(catalogModels.map((model) => [model.uid, model]));
-  for (const source of replay.sources)
-    for (const model of source.models) {
-      const current = models.get(model.uid);
-      if (current === undefined) continue;
-      models.set(model.uid, {
-        model_id: model.model_id,
-        uid: model.uid,
-        name: current.name,
-        ...(model.version === undefined ? {} : { version: model.version }),
-        ...(model.api_endpoints === undefined ? {} : { api_endpoints: model.api_endpoints }),
-        capabilities: model.capabilities,
-        modalities: current.modalities,
-        ...(model.service_families === undefined
-          ? {}
-          : { service_families: model.service_families }),
-        status: model.status,
-        tasks: model.tasks,
-      });
-    }
-  return [...models.values()].sort((left, right) => compareUtf8(left.uid, right.uid));
 }
 
 function compilationWeight(task: CompilationTask): number {

@@ -107,6 +107,42 @@ describe("website pricing query", () => {
     expect(result.unresolved_dimensions).toEqual([{ namespace: "kmodels", value: "region" }]);
   });
 
+  it("keeps context when equal unit prices use different quantity rules", () => {
+    const value = offer([
+      { amount: "$2", scope: region("us") },
+      { amount: "$2", scope: region("eu") },
+    ]);
+    for (const [index, row] of value.rates.entries())
+      row.driver = {
+        label: "Active runtime",
+        definition: "Billable runtime",
+        aggregation: "Request",
+        resolution_phase: "outcome",
+        quantity_key: String(index + 1).repeat(64),
+      };
+    const unresolved = projectWebsiteRateQuery(value, modelRef, []);
+    expect(unresolved.rates).toEqual([]);
+    expect(unresolved.unresolved_dimensions).toEqual([{ namespace: "kmodels", value: "region" }]);
+
+    const selected = projectWebsiteRateQuery(value, modelRef, [
+      {
+        kind: "categorical",
+        dimension: { namespace: "kmodels", value: "region" },
+        value: { namespace: "provider", provider_id: "test", value: "eu" },
+      },
+    ]);
+    expect(selected.rates).toHaveLength(1);
+    expect(selected.rates[0]?.row.key).toBe(value.rates[1]?.key);
+    expect(selected.unresolved_dimensions).toEqual([]);
+
+    const [us, eu] = value.rates;
+    if (us?.driver === undefined || eu === undefined) throw new Error("fixture rates are missing");
+    eu.driver = us.driver;
+    const invariant = projectWebsiteRateQuery(value, modelRef, []);
+    expect(invariant.rates).toHaveLength(1);
+    expect(invariant.unresolved_dimensions).toEqual([]);
+  });
+
   it("projects current and next exact-datetime rate plans", () => {
     const transition = "2026-08-16T16:00:00.000Z";
     const current = offer([{ amount: "$2", scope: region("us", "eu") }], {

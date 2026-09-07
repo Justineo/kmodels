@@ -15,6 +15,7 @@ import type {
   ProviderAtomRegistryEntry,
   RawPricingVariant,
   UnitExpression,
+  UsageInputSource,
 } from "../src/catalog/pricing-schema.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
 
@@ -365,6 +366,75 @@ describe("website data projection", () => {
       aggregation_definition: "Usage aggregated for one workspace",
       resolution_phase: "account",
     });
+  });
+
+  it("preserves quantity semantics for comparison without publishing acquisition contracts", () => {
+    const signal = { namespace: "kmodels" as const, value: "active_seconds" as const };
+    const binding: ChargeBinding = {
+      signal,
+      aggregation: "request",
+      observations: [bindingObservation()],
+    };
+    const driver = (value: ChargeBinding) => {
+      const result = detail(
+        [
+          {
+            kind: "decimal_range",
+            dimension: durationDimension,
+            unit: secondUnit,
+            lower: { value: "0", inclusive: true },
+          },
+        ],
+        [],
+        { rateBinding: value },
+      ).pricing?.offers[0]?.rates[0]?.driver;
+      if (result === undefined) throw new Error("fixture driver is missing");
+      return result;
+    };
+    const inputSource = (locator: string): UsageInputSource => ({
+      signal,
+      channel: "response",
+      locator: { kind: "json_pointer", value: locator },
+      availability: "terminal_only",
+    });
+    const direct = (locator: string): ChargeBinding => ({
+      ...binding,
+      quantity_methods: [
+        {
+          input_sources: [inputSource(locator)],
+        },
+      ],
+    });
+    expect(driver(direct("/usage/seconds"))).toEqual(driver(direct("/metrics/runtime")));
+    expect(driver({ ...binding, scale: { numerator: "1", denominator: "1" } })).toEqual(
+      driver(binding),
+    );
+    const scaled = driver({ ...binding, scale: { numerator: "2", denominator: "1" } });
+    expect(scaled.quantity_key).toMatch(/^[0-9a-f]{64}$/);
+    expect(scaled).not.toEqual(driver(binding));
+
+    const minimum = (seconds: string, locator: string): ChargeBinding => ({
+      ...binding,
+      quantity_methods: [
+        {
+          input_sources: [inputSource(locator)],
+          calculation: {
+            nodes: [
+              { op: "signal", signal },
+              { op: "minimum", input: 0, value: { numerator: seconds, denominator: "1" } },
+            ],
+            result: 1,
+          },
+        },
+      ],
+    });
+    const fiveMinutes = driver(minimum("300", "/usage/seconds"));
+    expect(fiveMinutes.quantity_key).toMatch(/^[0-9a-f]{64}$/);
+    expect(fiveMinutes).toEqual(driver(minimum("300", "/metrics/runtime")));
+    expect(fiveMinutes).not.toEqual(driver(minimum("600", "/usage/seconds")));
+    expect(fiveMinutes).not.toHaveProperty("quantity_methods");
+    expect(JSON.stringify(fiveMinutes)).not.toContain("/usage/seconds");
+    expect(JSON.stringify(fiveMinutes)).not.toContain("minimum");
   });
 
   it("uses reviewed provider vocabulary labels and keeps a generic fallback", () => {

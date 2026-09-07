@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { setTimeout as wait } from "node:timers/promises";
 import { parseSource } from "./adapters.ts";
+import { canonicalJson, compareUtf8 } from "./canonical-value.ts";
 import { mapConcurrentByKey } from "./concurrency.ts";
 import { deliveryModeEvidenceKey, normalizeDeliveryModes } from "./delivery.ts";
 import {
@@ -60,6 +61,8 @@ import {
 import { validateAdoptedTopology } from "./pricing-adopted-topology.ts";
 import {
   publishedModel,
+  sourcePriceFactKey,
+  sourceRawPricingFactKey,
   type ParsedProviderModel,
   type SourcePriceFact,
   type SourceRawPricingFact,
@@ -216,17 +219,13 @@ function optional<T>(
   return incoming === undefined || (fillOnly && current !== undefined) ? current : incoming;
 }
 
-function priceFactKey(fact: SourcePriceFact): string {
-  return `${fact.meter}\0${fact.currency}\0${fact.unit}\0${JSON.stringify(fact.conditions)}`;
-}
-
 function mergePriceFacts(
   current: ParsedProviderModel,
   incoming: ParsedProviderModel,
 ): SourcePriceFact[] {
   if (incoming.price_facts.length === 0) return incoming.price_facts;
-  return mergeBy(current.price_facts, incoming.price_facts, priceFactKey).sort((left, right) =>
-    priceFactKey(left).localeCompare(priceFactKey(right)),
+  return mergeBy(current.price_facts, incoming.price_facts, sourcePriceFactKey).sort(
+    (left, right) => compareUtf8(sourcePriceFactKey(left), sourcePriceFactKey(right)),
   );
 }
 
@@ -235,8 +234,10 @@ function mergeRawPriceFacts(
   incoming: ParsedProviderModel,
 ): SourceRawPricingFact[] {
   if (incoming.raw_price_facts.length === 0) return incoming.raw_price_facts;
-  return mergeBy(current.raw_price_facts, incoming.raw_price_facts, JSON.stringify).sort(
-    (left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)),
+  const key = (fact: SourceRawPricingFact) =>
+    canonicalJson([fact.source_ref, sourceRawPricingFactKey(fact)]);
+  return mergeBy(current.raw_price_facts, incoming.raw_price_facts, key).sort((left, right) =>
+    compareUtf8(key(left), key(right)),
   );
 }
 
@@ -1101,6 +1102,15 @@ async function collectProvider(
         pricingFailure = "source_unavailable";
         throw new Error(`Pricing source bundle is incomplete at ${missingPricingSource.id}`);
       }
+      try {
+        pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
+      } catch (error) {
+        warnings.push({
+          code: "pricing_replay_input_invalid",
+          provider_id: manifest.provider.id,
+          message: message(error),
+        });
+      }
       pricing = assembleParsedProviderPricing(
         manifest.provider.id,
         observedAt,
@@ -1109,15 +1119,6 @@ async function collectProvider(
         manifest.pricingCategoricalLabels,
       );
       if (pricing !== undefined) {
-        try {
-          pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
-        } catch (error) {
-          warnings.push({
-            code: "pricing_replay_input_invalid",
-            provider_id: manifest.provider.id,
-            message: message(error),
-          });
-        }
         validateProviderPricing(pricing, provider, models, [...sourceById.values()]);
       }
     } catch (error) {
@@ -1180,6 +1181,15 @@ async function collectProvider(
       .every(({ id }) => fetchedPricingSourceIds.has(id));
     if (hasPrevious && omittedPricingDependencies.size === 0 && hasCompletePricingBundle) {
       try {
+        try {
+          pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
+        } catch (error) {
+          warnings.push({
+            code: "pricing_replay_input_invalid",
+            provider_id: manifest.provider.id,
+            message: message(error),
+          });
+        }
         pricing = assembleParsedProviderPricing(
           manifest.provider.id,
           observedAt,
@@ -1188,7 +1198,6 @@ async function collectProvider(
           manifest.pricingCategoricalLabels,
         );
         if (pricing !== undefined) {
-          pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
           validateProviderPricing(
             pricing,
             providerRecord(manifest, oldModels, oldCoverage?.last_successful_sync_at),

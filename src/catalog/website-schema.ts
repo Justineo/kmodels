@@ -313,6 +313,7 @@ const websiteChargeDriverSchema = z.strictObject({
   aggregation: nonEmpty,
   aggregation_definition: nonEmpty.optional(),
   resolution_phase: z.enum(applicabilityResolutionPhases),
+  quantity_key: hash.optional(),
 });
 
 const websiteRateRowSchema = z.strictObject({

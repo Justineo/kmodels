@@ -4,6 +4,7 @@ import {
   applicabilitiesOverlap,
   applicabilityContainedIn,
   canonicalizeApplicability,
+  rateVariantIdentity,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
 import { pricingLimits } from "./pricing-constants.ts";
@@ -458,7 +459,7 @@ function assembleRateVariants(variants: AtomicRateVariant[]): {
       raw.push(toRawAtomic(item, "base_price", "conflicting_values", item.applicability));
       continue;
     }
-    append(grouped, canonicalJson([item.price, ...optionalValue(item.validity)]), item);
+    append(grouped, canonicalJson(rateVariantIdentity(item)), item);
   }
   const result: PriceRateVariant[] = [];
   for (const group of grouped.values()) {
@@ -507,9 +508,6 @@ function mergedChargeBinding(variants: AtomicRateVariant[]): ChargeBinding | und
   );
   const first = bindings[0];
   if (first === undefined) return;
-  const identity = ({ observations: _observations, ...binding }: ChargeBinding) =>
-    canonicalJson(binding);
-  if (bindings.some((binding) => identity(binding) !== identity(first))) return;
   return {
     ...first,
     observations: sortUnique(
@@ -1060,11 +1058,11 @@ function sortStates(states: PriceStateVariant[]): PriceStateVariant[] {
 }
 
 function sortRateVariants(variants: PriceRateVariant[]): PriceRateVariant[] {
-  return sortByCanonicalKey(variants, ({ price, validity, charge_binding, applicability }) => [
-    price,
-    ...optionalValue(validity),
-    ...optionalValue(charge_binding),
-    applicability,
+  return sortByCanonicalKey(variants, (variant) => [
+    variant.price,
+    ...optionalValue(variant.validity),
+    variant.applicability,
+    rateVariantIdentity(variant),
   ]);
 }
 
@@ -1228,6 +1226,7 @@ function precompactionProjection(prepared: PreparedProvider) {
                       : chargeBindingIdentity(variant.charge_binding),
                   ),
                   ...optional("validity", variant.validity),
+                  ...optional("selector_sources", variant.selector_sources),
                   observation: variant.observation,
                 }))
               : [],
@@ -1279,7 +1278,7 @@ function precompactionProjection(prepared: PreparedProvider) {
               ? term.input.variants.map((variant) => ({
                   term_id: term.id,
                   target_rate_refs: variant.target_rate_refs,
-                  charge_bindings: variant.charge_bindings.map(chargeBindingIdentity),
+                  charge_bindings: variant.charge_bindings,
                   applicability: variant.applicability,
                   ...optional("validity", variant.validity),
                   observation: variant.observation,
@@ -1320,6 +1319,7 @@ function assertPrecompactionLimit(prepared: PreparedProvider): void {
       projection.states.length +
       projection.rates.length +
       projection.allowances.length +
+      projection.contributions.length +
       projection.raw_variants.length,
     observations:
       projection.scope_observations.length +
@@ -1328,7 +1328,26 @@ function assertPrecompactionLimit(prepared: PreparedProvider): void {
       projection.disposition_observations.length +
       projection.states.length +
       projection.rates.length +
+      projection.rates.reduce(
+        (count, rate) =>
+          count +
+          (rate.selector_sources ?? []).reduce(
+            (total, source) => total + source.observations.length,
+            0,
+          ),
+        0,
+      ) +
       projection.allowances.length +
+      projection.contributions.reduce(
+        (count, variant) =>
+          count +
+          1 +
+          variant.charge_bindings.reduce(
+            (total, binding) => total + binding.observations.length,
+            0,
+          ),
+        0,
+      ) +
       projection.raw_variants.length,
   };
   if (

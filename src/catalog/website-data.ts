@@ -1,4 +1,5 @@
-import { canonicalJsonKey, compareUtf8 } from "./canonical-value.ts";
+import { canonicalJsonHash } from "./canonical-json.ts";
+import { canonicalJsonKey, compareUtf8, uniqueCanonicalValues } from "./canonical-value.ts";
 import { modelLifecycles, modelReleaseStages, modelTasks } from "./catalog-vocabulary.ts";
 import { manifests, type ProviderManifest } from "./manifests.ts";
 import { formatDecimal, formatSentenceCase } from "./presentation.ts";
@@ -1488,6 +1489,7 @@ function chargeDriver(
 ): NonNullable<WebsitePricingOffer["rates"][number]["driver"]> {
   const signal = usageSignalDetails(binding.signal, atoms);
   const aggregation = aggregationDetails(binding.aggregation, atoms);
+  const quantityKey = quantitySemanticsKey(binding);
   return {
     label: signal.label,
     definition: signal.definition,
@@ -1496,7 +1498,29 @@ function chargeDriver(
       ? {}
       : { aggregation_definition: aggregation.definition }),
     resolution_phase: signal.resolution_phase,
+    ...(quantityKey === undefined ? {} : { quantity_key: quantityKey }),
   };
+}
+
+function quantitySemanticsKey(binding: ChargeBinding): string | undefined {
+  const scale =
+    binding.scale?.numerator === "1" && binding.scale.denominator === "1"
+      ? undefined
+      : binding.scale;
+  const calculations = uniqueCanonicalValues(
+    binding.quantity_methods?.flatMap(({ calculation }) => {
+      if (calculation === undefined) return [];
+      const onlyNode = calculation.nodes.length === 1 ? calculation.nodes[0] : undefined;
+      if (
+        onlyNode?.op === "signal" &&
+        canonicalJsonKey(onlyNode.signal) === canonicalJsonKey(binding.signal)
+      )
+        return [];
+      return [calculation];
+    }) ?? [],
+  );
+  if (scale === undefined && calculations.length === 0) return;
+  return canonicalJsonHash({ ...(scale === undefined ? {} : { scale }), calculations });
 }
 
 function usageSignalDetails(signal: UsageSignal, atoms: ProviderAtomIndex) {

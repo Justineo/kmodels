@@ -12,6 +12,7 @@ import {
   applicabilityContainedIn,
   canonicalizeApplicability,
   normalizeUnitExpression,
+  rateVariantIdentity,
   selectorWeight,
   unionApplicabilities,
 } from "./pricing-canonical.ts";
@@ -535,12 +536,13 @@ function validateTerm(
         canonicalJson(variant.price),
         ...optionalComponent(variant.validity),
         canonicalJson(variant.applicability),
+        canonicalJson(rateVariantIdentity(variant)),
       ],
       `${path} variants`,
     );
     assertBoundedApplicabilityGroups(
       term.variants,
-      (variant) => canonicalJson([variant.price, ...optionalComponent(variant.validity)]),
+      (variant) => canonicalJson(rateVariantIdentity(variant)),
       `${path} variant grouping key`,
     );
     assertSortedUniqueBy(term.raw_variants, compareRawVariants, `${path} raw variants`);
@@ -942,16 +944,12 @@ function validateChargeBinding(
       const required = new Set(
         requiredUsageSignalsForMethod(binding, method).map((signal) => canonicalJson(signal)),
       );
-      const covered = new Set<string>();
       for (const source of method.input_sources) {
         validateOwnedAtom("usage_signal", source.signal, undefined, context, path);
         validateInputLocator(source, `${path} usage input`);
         const key = canonicalJson(source.signal);
         if (!required.has(key)) fail(path, "usage input source does not belong to the method");
-        covered.add(key);
       }
-      if (covered.size !== required.size)
-        fail(path, "usage input sources do not cover every method input");
     }
   }
   if (typeof binding.aggregation !== "string")

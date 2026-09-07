@@ -46,6 +46,21 @@ Pair publication also refreshes the derived UI and export packs described in
 resources; the export-pack pricing entry decodes to the exact canonical
 envelope.
 
+The same small core covers the principal strategies:
+
+| Strategy                                             | Representation                                                       |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Input, output, cache read/write                      | Separate rate terms, exact units, distinct billable signals          |
+| Batch or another invocation mechanism                | A separate offer with its own aggregation boundary                   |
+| Context tiers, region, quality, modality, currency   | Applicability-qualified variants, with selector mappings where known |
+| Included quantity, minimum runtime, count × duration | A bounded exact quantity calculation beside the rate                 |
+| Separately billed search, tools, media               | Service or model rate terms with their own measured quantity         |
+| Unsupported formula or unknown billing rule          | A localized raw fact retaining the published parameters and evidence |
+
+Selectors choose the applicable rule; signals supply its measured inputs; the calculation produces
+the billable quantity. They remain distinct parts of one rate contract. A parameter changes neither
+model identity nor the logical term merely because its value changes.
+
 ## Local compilation
 
 Canonical pricing is compiled from a bounded intermediate input, not owned by
@@ -65,12 +80,18 @@ When one source describes the same exact model identity in several
 operation-specific records, compilation coalesces those records and preserves
 the union of distinct normalized rate facts and bounded source-native raw
 facts; conflicting non-unknown pricing states abort capture.
+Replay takes published model metadata from the bound catalog. Minimal pricing or accounting carriers
+cannot overwrite the catalog's endpoints, capabilities, or lifecycle. Complete public inputs are
+captured before assembly so a failed normalization can still be repaired offline.
 The input stores no response bodies, descriptions, credentials,
 authenticated-source facts, or private identifiers. A provider whose complete
 pricing input cannot safely be persisted has no replay entry, so its accepted
 partition is carried through unchanged. Binding, source, extractor, ownership,
-provenance, completeness, or validation failures abort the compilation rather
-than publishing a partial result.
+provenance, completeness, or structural validation failures abort compilation. Each replayed
+partition must also pass the provider's adopted-topology gate before publication. A topology failure
+for an already-retained provider preserves its valid accepted partition and is reported separately
+in the compilation result; it does not erase admitted services or reset the observation time. The
+captured input remains available for repair. The same failure for a fresh provider aborts compilation.
 
 Source manifests distinguish rate authority from accounting authority. `pricing`
 means that a source publishes price facts and therefore requires reviewed pricing
@@ -448,6 +469,8 @@ It accepts caller-supplied signal quantities, evaluates every satisfiable method
 rejects inconsistent results from two simultaneously available methods, and
 returns either a resolved quantity/cost, the exact alternative missing-signal
 sets, or `unbound`. It does not collect, persist, or reconcile request usage.
+Caller quantities must be bounded, non-negative reduced rationals; malformed values are rejected
+before evaluation, including on the direct-signal path.
 
 `input_sources`, when present inside a quantity method, is that method's
 machine-readable acquisition contract. Each entry identifies one required signal,
@@ -455,7 +478,9 @@ its request/response/stream/result/account-report/invocation-log/telemetry chann
 a JSON Pointer, provider field, or versioned OpenTelemetry attribute, and whether
 that value is always, terminal-only, success-only, conditional, or
 reconciliation-only. Several entries for one signal are alternative provider
-locations; every distinct signal required by the method must have at least one.
+locations. A calculation may retain mappings for only a subset of its inputs; the graph remains the
+complete list of required signals. Unmapped inputs require caller-supplied authoritative quantities
+and never default to zero. The presence of `input_sources` is not a completeness claim.
 Source observations separately prove why Kmodels published the mapping.
 
 A source may apply one closed collection reduction: array length, count of unique non-empty
@@ -471,6 +496,11 @@ that acquisition path; it does not create an informational raw price, erase the
 rate, or suppress another valid path. A method without `input_sources` means the
 calculation is known but the downstream calculator must supply its inputs. A
 binding without methods means only the final semantic quantity is known.
+An independently established calculation survives partial or entirely missing field mappings, along
+with every mapping and observation that remains valid. A formula whose counter semantics themselves
+depend on missing evidence is withheld; adapters do not invent interchangeable meanings for different
+protocols. A missing required source makes the provider bundle incomplete and retains the accepted
+partition, while a fetched source with a drifted individual field loses only that field mapping.
 
 `selector_sources` on a rate variant performs the corresponding job for
 applicability dimensions. It maps an already-present selector such as served tier,
@@ -689,6 +719,14 @@ combining them would exceed an applicability bound. Unequal overlapping normaliz
 only the connected affected component falls back to raw, while disjoint
 variants in the same logical term remain normalized. Equivalent source
 grouping therefore does not cause ID churn or duplicate UI rows.
+
+For rate compaction, equality includes the charge signal, aggregation, scale, calculation methods,
+and selector mappings, excluding their audit observations. Equal amounts do not justify dropping
+different contracts or extending a binding into an unbound region. Matching contracts still merge
+their evidence; distinct contracts retain their original applicability. Variants of one logical
+term are alternative assertions about the same charge, never additional charges to sum. A cost
+consumer must resolve the applicable contract and reject inconsistent available calculations before
+adding that term once. The rate-only website may compact equivalent display rows independently.
 
 Adapters may fill a missing applicability dimension only through a reviewed
 provider rule that identifies the source's unqualified base row against an

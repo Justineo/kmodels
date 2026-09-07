@@ -99,7 +99,7 @@ export function isPricingDependencySource(source: SourceManifest): boolean {
 }
 
 export function isRequiredPricingSource(source: SourceManifest): boolean {
-  return (!source.optional || source.pricingRequired === true) && isPricingSource(source);
+  return (!source.optional || source.pricingRequired === true) && isPricingDependencySource(source);
 }
 
 interface OfferBuilder {

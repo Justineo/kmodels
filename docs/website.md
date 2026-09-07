@@ -139,7 +139,11 @@ services → pricing notes`. The first mechanism in
   partially covered. When every still-possible variant of one rate has the same
   amount, denomination, unit, driver, and validity and together covers the
   complete remaining numeric offer-state scope, that invariant rate appears
-  immediately without repeating invariant dimensions. Unresolved unequal or
+  immediately without repeating invariant dimensions. Driver equality includes a compact quantity
+  identity for exact scaling and calculation rules, so equal unit prices with different minimums or
+  quantity formulas keep their required context. Acquisition field locations and evidence do not
+  affect this identity; the browser receives neither those mappings nor the calculation graph.
+  Unresolved unequal or
   partial alternatives remain hidden until their required controls are chosen; the control labels
   and empty choices communicate that requirement without a repeated section heading or prompt.
   Account enrollment, settlement, capacity, and plan selectors are outside the Gateway

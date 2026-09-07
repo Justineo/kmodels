@@ -113,7 +113,9 @@ request selector alone is not treated as final billed usage.
 
 The optional accounting contract maps Responses usage, image-generation usage, embedding usage,
 video result duration/resolution, and Organization Usage result fields into charge quantity methods.
-Text uncached input has two exact alternatives where available: the Organization Usage
+The known uncached-input equation remains available with surviving locators when an accounting
+field drifts; unmapped required signals remain caller inputs. Text uncached input has two exact
+alternatives where available: the Organization Usage
 aggregate `input_uncached_tokens` counter, or the response calculation
 `input_tokens - cached_tokens - cache_write_tokens` with a zero floor. Completion audio/image token
 partitions, image-generation output tokens, speech characters, transcription seconds,

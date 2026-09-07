@@ -174,11 +174,44 @@ describe("usage quantity calculation", () => {
       validateUsageQuantityCalculation({
         nodes: [
           { op: "signal", signal: total },
+          { op: "signal", signal: { ...total } },
+          { op: "sum", inputs: [0, 1] },
+        ],
+        result: 2,
+      }),
+    ).toThrow("repeats a usage signal");
+    expect(() =>
+      validateUsageQuantityCalculation({
+        nodes: [
+          { op: "signal", signal: total },
           { op: "signal", signal: cached },
         ],
         result: 1,
       }),
     ).toThrow("unused nodes");
+  });
+
+  it.each([
+    { numerator: "-1", denominator: "1" },
+    { numerator: "1", denominator: "0" },
+    { numerator: "01", denominator: "1" },
+    { numerator: "2", denominator: "4" },
+    { numerator: "0", denominator: "2" },
+    { numerator: "1".repeat(129), denominator: "1" },
+  ])("rejects invalid observed quantities before resolving a charge: %j", (value) => {
+    expect(() => evaluateChargeQuantity(binding(total), [{ signal: total, value }])).toThrow();
+    expect(() =>
+      evaluateChargeQuantity(
+        binding(total, {
+          nodes: [
+            { op: "signal", signal: total },
+            { op: "minimum", input: 0, value: rationalFromDecimal("100") },
+          ],
+          result: 1,
+        }),
+        [{ signal: total, value }],
+      ),
+    ).toThrow();
   });
 
   it("selects any complete quantity method and rejects conflicting observations", () => {
