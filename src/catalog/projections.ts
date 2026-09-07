@@ -1,6 +1,7 @@
 import { createAssetPack, type EncodedAssetPack } from "./asset-pack.ts";
 import { catalogExportAssets, websiteAssets } from "./endpoints.ts";
 import { sha256 } from "./io.ts";
+import { calculationExportAssets } from "./pricing-calculator-export.ts";
 import type { PricingCatalogEnvelope } from "./pricing-schema.ts";
 import type { Catalog } from "./schema.ts";
 
@@ -30,6 +31,7 @@ export async function projectCatalogPair(input: ProjectionInput): Promise<PairPr
   const exportAssets = [
     ...catalogExportAssets(input.catalog, input.catalogAssetSource),
     { fileName: "pricing/index.json", source: input.pricingAssetSource },
+    ...calculationExportAssets(input.catalog, input.pricing),
   ];
   const [ui, exports] = await Promise.all([
     createAssetPack("ui", input.pairId, dataVersion, uiAssets),

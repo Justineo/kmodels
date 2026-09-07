@@ -89,11 +89,9 @@ export function assertIJsonValue(value: unknown): void {
       continue;
     }
     if (typeof current !== "object") throw new Error("Value is not valid JSON");
-    const prototype = Object.getPrototypeOf(current);
-    if (
-      (prototype !== Object.prototype && prototype !== null) ||
-      Object.getOwnPropertySymbols(current).length > 0
-    )
+    const prototype: unknown = Object.getPrototypeOf(current);
+    const isPlainObject = prototype === null || Object.getPrototypeOf(prototype) === null;
+    if (!isPlainObject || Object.getOwnPropertySymbols(current).length > 0)
       throw new Error("Value is not valid JSON");
     for (const [key, item] of Object.entries(current)) {
       assertIJsonString(key);

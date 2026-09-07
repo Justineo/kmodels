@@ -1,3 +1,5 @@
+import { standardDimensionKind } from "./pricing-dimension-kind.ts";
+import { standardUsageSignalUnit } from "./pricing-signal-unit.ts";
 import {
   assertIJsonValue,
   canonicalJsonFromValidated as canonicalJson,
@@ -1001,6 +1003,7 @@ function validateCalculationUnit(
           return sameUnit([node.minuend, node.subtrahend]);
         case "multiply":
         case "minimum":
+        case "round_up":
           return unitAt(node.input);
       }
     })();
@@ -1094,49 +1097,7 @@ function usageSignalUnit(
     if (atom?.kind !== "usage_signal") fail(path, "charge signal has no unit definition");
     return atom.unit;
   }
-  const one = (
-    value: Extract<UnitExpression["factors"][number]["unit"], { namespace: "kmodels" }>["value"],
-  ): UnitExpression => ({
-    factors: [{ unit: { namespace: "kmodels", value }, power: 1 }],
-  });
-  switch (signal.value) {
-    case "input_tokens":
-    case "uncached_input_tokens":
-    case "cached_input_tokens":
-    case "cache_write_tokens":
-    case "output_tokens":
-    case "reasoning_output_tokens":
-      return one("token");
-    case "input_characters":
-      return one("character");
-    case "processed_pages":
-      return one("page");
-    case "processed_images":
-      return one("image");
-    case "processed_audio_seconds":
-      return one("second");
-    case "accepted_requests":
-      return one("request");
-    case "completed_result_items":
-    case "generated_items":
-      return one("item");
-    case "successful_web_searches":
-      return one("event");
-    case "generated_images":
-      return one("image");
-    case "generated_seconds":
-    case "active_seconds":
-      return one("second");
-    case "stored_byte_seconds":
-      return {
-        factors: [
-          { unit: { namespace: "kmodels", value: "byte" }, power: 1 },
-          { unit: { namespace: "kmodels", value: "second" }, power: 1 },
-        ],
-      };
-    case "transferred_bytes":
-      return one("byte");
-  }
+  return standardUsageSignalUnit(signal);
 }
 
 function validateProviderLinks(context: ProviderValidation): void {
@@ -1521,24 +1482,6 @@ function rawVariantGroupKey(variant: RawPricingVariant): string {
     ...optionalComponent(variant.possible_scope),
     ...optionalComponent(variant.validity),
   ]);
-}
-
-function standardDimensionKind(
-  dimension: Extract<PriceDimension, { namespace: "kmodels" }>["value"],
-): PriceCondition["kind"] {
-  if (["request_audio", "voice_control", "video_input", "promotion"].includes(dimension))
-    return "boolean";
-  if (
-    [
-      "cache_ttl_seconds",
-      "duration_seconds",
-      "context_tokens",
-      "input_tokens",
-      "output_tokens",
-    ].includes(dimension)
-  )
-    return "decimal_range";
-  return "categorical";
 }
 
 function isSingleStandardUnit(

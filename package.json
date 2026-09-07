@@ -12,6 +12,8 @@
     "collect:fixtures": "vp test --run tests/adapters.test.ts",
     "compile:pricing": "node scripts/compile-pricing.ts",
     "prepare:assets": "node scripts/prepare-assets.ts",
+    "package:build": "vp pack && node scripts/pricing-package-schema.ts && vp fmt packages/pricing/schema.json packages/pricing/request.schema.json packages/pricing/conformance.json",
+    "package:check": "node --experimental-vm-modules scripts/check-pricing-package.ts",
     "deploy": "void deploy --dir dist --skip-build",
     "preview": "vp preview",
     "report:refresh": "node scripts/report-refresh.ts",

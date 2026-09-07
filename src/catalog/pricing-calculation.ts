@@ -1,10 +1,10 @@
-import { canonicalJson } from "./canonical-json.ts";
-import { compareCanonicalValues, uniqueCanonicalValues } from "./canonical-value.ts";
+import { canonicalJson, compareCanonicalValues, uniqueCanonicalValues } from "./canonical-value.ts";
 import {
   addRationals,
   compareRationals,
   multiplyRationals,
   subtractRationalsFloorZero,
+  roundUpRational,
 } from "./pricing-rational.ts";
 import type {
   ChargeBinding,
@@ -19,6 +19,15 @@ import type {
 export interface ObservedUsageQuantity {
   signal: UsageSignal;
   value: Rational;
+}
+
+export type QuantityBinding = Omit<ChargeBinding, "observations">;
+
+export class UsageQuantityConflictError extends Error {
+  constructor() {
+    super("Quantity methods resolved to conflicting values");
+    this.name = "UsageQuantityConflictError";
+  }
 }
 
 export type ChargeQuantityEvaluation =
@@ -49,8 +58,13 @@ export function validateUsageQuantityCalculation(calculation: UsageQuantityCalcu
       (node.op === "minimum" && node.value.numerator === "0")
     )
       throw new Error(`Quantity calculation ${node.op} value must be positive`);
-    if (node.op === "signal" && !signals.add(canonicalJson(node.signal)))
-      throw new Error("Quantity calculation repeats a usage signal");
+    if (node.op === "round_up" && node.increment.numerator === "0")
+      throw new Error("Billing increment must be positive");
+    if (node.op === "signal") {
+      const key = canonicalJson(node.signal);
+      if (signals.has(key)) throw new Error("Quantity calculation repeats a usage signal");
+      signals.add(key);
+    }
   }
 
   const reachable = new Set<number>();
@@ -67,27 +81,27 @@ export function validateUsageQuantityCalculation(calculation: UsageQuantityCalcu
     throw new Error("Quantity calculation contains unused nodes");
 }
 
-export function requiredUsageSignals(binding: ChargeBinding): UsageSignal[] {
+export function requiredUsageSignals(binding: QuantityBinding): UsageSignal[] {
   return uniqueCanonicalValues(
     quantityMethods(binding).flatMap((method) => methodUsageSignals(binding, method)),
   );
 }
 
-export function requiredUsageSignalAlternatives(binding: ChargeBinding): UsageSignal[][] {
+export function requiredUsageSignalAlternatives(binding: QuantityBinding): UsageSignal[][] {
   return uniqueCanonicalValues(
     quantityMethods(binding).map((method) => methodUsageSignals(binding, method)),
   );
 }
 
 export function requiredUsageSignalsForMethod(
-  binding: ChargeBinding,
+  binding: QuantityBinding,
   method: UsageQuantityMethod,
 ): UsageSignal[] {
   return methodUsageSignals(binding, method);
 }
 
 export function evaluateChargeQuantity(
-  binding: ChargeBinding,
+  binding: QuantityBinding,
   observed: readonly ObservedUsageQuantity[],
 ): ChargeQuantityEvaluation {
   const values = new Map<string, Rational>();
@@ -121,18 +135,18 @@ export function evaluateChargeQuantity(
     };
   const quantity = resolved[0]!;
   if (resolved.some((value) => compareRationals(value, quantity) !== 0))
-    throw new Error("Quantity methods resolved to conflicting values");
+    throw new UsageQuantityConflictError();
   return {
     kind: "resolved",
     value: binding.scale === undefined ? quantity : multiplyRationals(quantity, binding.scale),
   };
 }
 
-function quantityMethods(binding: ChargeBinding): UsageQuantityMethod[] {
+function quantityMethods(binding: QuantityBinding): UsageQuantityMethod[] {
   return binding.quantity_methods ?? [{}];
 }
 
-function methodUsageSignals(binding: ChargeBinding, method: UsageQuantityMethod): UsageSignal[] {
+function methodUsageSignals(binding: QuantityBinding, method: UsageQuantityMethod): UsageSignal[] {
   if (method.calculation === undefined) return [binding.signal];
   validateUsageQuantityCalculation(method.calculation);
   return method.calculation.nodes
@@ -194,6 +208,9 @@ function evaluateCalculation(
         value = compareRationals(input, node.value) < 0 ? node.value : input;
         break;
       }
+      case "round_up":
+        value = roundUpRational(referencedValue(values, node.input), node.increment);
+        break;
     }
     if (value === undefined) throw new Error("Quantity calculation input was not resolved");
     values.push(value);
@@ -219,6 +236,7 @@ function nodeReferences(node: UsageQuantityNode): number[] {
       return [node.minuend, node.subtrahend];
     case "multiply":
     case "minimum":
+    case "round_up":
       return [node.input];
   }
 }

@@ -44,7 +44,9 @@ They advance as one accepted pair. The canonical pricing endpoint is
 Pair publication also refreshes the derived UI and export packs described in
 [Collection](collection.md). They are delivery artifacts, not canonical pricing
 resources; the export-pack pricing entry decodes to the exact canonical
-envelope.
+envelope. A separate [calculation export and pure package](pricing-calculator.md) preserve the
+commercial semantics without observation fragments. Their versioned portable schema is independent
+of canonical audit delivery and price refreshes do not require npm releases.
 
 ## Local compilation
 
@@ -428,7 +430,8 @@ while a response requires `input - cached - cache-write`.
 `calculation` is a closed, bounded, acyclic node graph. Nodes may read a usage
 signal, introduce an exact unit-qualified constant, sum compatible quantities,
 subtract with a zero floor, multiply by an exact rational, apply an exact
-minimum, or multiply one quantity by one or more item counts. The last operation
+minimum, round up to a positive exact billing increment, or multiply one quantity by one or more
+item counts. The product operation
 covers results such as requested video seconds per output multiplied by the
 number of successfully returned outputs; `item` operands are count scalars and
 the other operand determines the result unit.
@@ -437,7 +440,9 @@ contributes to that result, and all other arithmetic combines equal units. These
 constraints make the graph terminating, deterministic, and unit-checkable
 without embedding code. Exact constants cover published included quantities;
 the minimum operation is justified by both Anthropic code execution and OpenAI
-containers.
+containers. `round_up` computes `ceil(input / increment) × increment`, with no floating-point
+conversion. Its unit is the input unit; minimum and rounding compose in graph order within the
+published aggregation instance. No intermediate money rounding is implied.
 
 Kmodels uses this graph as its canonical wire language rather than CEL. A
 consumer may compile the graph to CEL internally, but CEL source is not stored
@@ -514,8 +519,9 @@ compatible with the allowance quantity. A credit allowance targets the whole
 offer in the same denomination. Empty or ambiguous targets are invalid.
 
 Billing blocks and graduated schedules require a documented aggregation/reset
-basis. Reviewed minimum rules use the quantity graph; rounding and graduated
-schedules remain raw until enough independent cases establish a shared closed shape.
+basis. Reviewed minimum and positive-increment rounding rules use the bounded quantity graph.
+A provider block remains raw when its eligibility, increment or boundary is not established; the
+availability of `round_up` does not supply that missing evidence. Graduated schedules remain raw.
 
 ### Meters
 

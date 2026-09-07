@@ -26,6 +26,8 @@ This index points to the repository's current decisions. Detailed documents are 
   request-attributable inference rates and calculation-input contracts, best-effort normalization and raw
   fallback, compact UI projections, exact catalog binding, provider-atomic collection, and
   crash-consistent pair publication.
+- [Portable pricing calculator](docs/pricing-calculator.md): caller-owned calculation exports, pure ESM package, exact evaluation, and language-neutral conformance.
+- [Request-charge audit](docs/pricing-audit.md): evidence-backed mechanism coverage and explicit gaps across all 18 providers.
 - [Commercial topology](docs/commercial-topology.md): the shared model/offer/term contract,
   invocation-cost admission boundary, charge binding, presentation, conflict resolution, and
   resilient refresh. Provider adapters converge to this boundary one at a time;

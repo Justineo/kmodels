@@ -42,6 +42,8 @@ The main pricing and accounting sources are:
 
 - [detailed pricing](https://platform.claude.com/docs/en/about-claude/pricing) for model, Batch,
   Fast, cache, geography, and published tool rates;
+- [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching) for nested
+  five-minute/one-hour cache-write counters and mixed-TTL iteration accounting;
 - [Web Search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool) for the
   successful-search rate and `usage.server_tool_use.web_search_requests`;
 - [Code Execution](https://platform.claude.com/docs/en/agents-and-tools/tool-use/code-execution-tool)
@@ -90,8 +92,10 @@ Each exact model has two offers when supported:
 - `sync`: ordinary Messages inference;
 - `batch`: Message Batches.
 
-Cache TTL, Fast speed, inference geography, and dated validity are shared rate dimensions rather
-than separate provider-specific schemas. Batch is an offer because it is a distinct asynchronous
+Fast speed, inference geography, and dated validity are shared rate dimensions. Exact five-minute
+and one-hour cache-write rates become separate logical terms with TTL-specific quantity signals,
+because one request may contain both TTLs. A global TTL selector must not select only one charge.
+Unrecognized or incomplete TTL prices keep their original qualified/raw scope. Batch is an offer because it is a distinct asynchronous
 execution mechanism; separate offers already express the caller's choice, so no redundant
 exclusivity relation is emitted. The US-only inference multiplier is applied only when the
 generation threshold in pricing agrees with the data-residency contract.
@@ -150,9 +154,14 @@ signal.
 Each bound token rate publishes one direct quantity method with conditional response mappings for
 the independently evidenced top-level usage field and `usage.iterations[*]` grouped by its reported
 model. If one field drifts, only that mapping disappears; the price and any sibling mapping remain.
-Cache-write rates use distinct five-minute and one-hour signals, but those bindings publish no
-quantity methods: the reviewed response contract exposes only aggregate
-`cache_creation_input_tokens`, not an exact TTL split.
+Cache-write rates bind distinct five-minute and one-hour signals to
+`usage.cache_creation.ephemeral_5m_input_tokens` and
+`usage.cache_creation.ephemeral_1h_input_tokens`, plus the corresponding typed
+`usage.iterations[*].cache_creation` fields grouped by model. The prompt-caching contract establishes
+that the aggregate cache-creation count is the sum of those buckets. Reduced reviewed JSON examples
+and that partition statement establish each mapping independently; a renamed/missing bucket withholds
+only its mapping. Missing buckets remain missing, never zero, and the aggregate is never substituted
+for either TTL. The extractor version is advanced with this contract change.
 OTel aggregate token attributes are not attached to these Anthropic-owned signals because they
 cannot preserve both iteration ownership and cache-write TTL; a downstream integration may use
 OTel only after proving those distinctions remain available.

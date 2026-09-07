@@ -79,3 +79,10 @@ after each test, including failures.
 Run `vp check`, `vp test --run`, `vp run collect:fixtures`, and `vp run build` before handoff. The
 scheduled refresh may run only the generated-data project because code-only behavior and reviewed
 fixtures are validated on pushes and pull requests.
+
+For calculator or package changes, also run `vp run package:build` and `vp run package:check`.
+Synthetic language-neutral fixtures exercise exact calculation results and stable errors. Package
+checks pack an allowlisted artifact, reject frontend/collection/transport dependencies and real
+provider data, and execute the same vectors in Node and a browser-like ESM context with network
+access blocked. `tests/pricing-calculator-data.test.ts` belongs to the generated project and verifies
+all provider exports against the canonical pair. `vp run test:data` runs that project explicitly.
