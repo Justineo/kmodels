@@ -25,17 +25,18 @@ import type {
   PriceSelectorSource,
   RawPriceObservation,
   UnitExpression,
-  UsageQuantityMethod,
   UsageSignal,
 } from "./pricing-schema.ts";
 import {
   calculatedQuantityMethods,
+  directQuantityMethods,
   indexPricingInputs,
   includePricingInputSourceRefs,
+  mergeQuantityMethods,
   pricingInputFacts,
   pricingInputObservation,
-  uniquePricingInputFacts,
   usageInputSources,
+  type BoundQuantityMethods,
   type PricingInputIndex,
 } from "./pricing-input.ts";
 import type { SourcePricingInputFact } from "./pricing-source.ts";
@@ -513,45 +514,34 @@ function hasMeter(meters: readonly PriceMeter[], value: string): boolean {
 function quantityMethods(
   spec: ModelSignalSpec,
   inputIndex: PricingInputIndex,
-): { methods: UsageQuantityMethod[]; facts: SourcePricingInputFact[] } {
-  const methods: UsageQuantityMethod[] = [];
-  const facts: SourcePricingInputFact[] = [];
-  const direct = pricingInputFacts(inputIndex, spec.directKeys);
-  if (direct.length > 0) {
-    methods.push({ input_sources: usageInputSources(spec.signal, direct) });
-    facts.push(...direct);
-  }
-  if (spec.derivedUncached === true) {
-    const total = pricingInputFacts(inputIndex, ["responses.usage.input_tokens"]);
-    const cached = pricingInputFacts(inputIndex, ["responses.usage.cached_input_tokens"]);
-    const written = pricingInputFacts(inputIndex, ["responses.usage.cache_write_tokens"]);
-    const totalSignal = standardSignal("input_tokens");
-    const cachedSignal = standardSignal("cached_input_tokens");
-    const writtenSignal = standardSignal("cache_write_tokens");
-    const derived = calculatedQuantityMethods(
-      {
-        nodes: [
-          { op: "signal", signal: totalSignal },
-          { op: "signal", signal: cachedSignal },
-          { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
-          { op: "signal", signal: writtenSignal },
-          { op: "subtract_floor_zero", minuend: 2, subtrahend: 3 },
-        ],
-        result: 4,
-      },
-      [
-        { signal: totalSignal, facts: total },
-        { signal: cachedSignal, facts: cached },
-        { signal: writtenSignal, facts: written },
+): BoundQuantityMethods {
+  const direct = directQuantityMethods(spec.signal, spec.directKeys, inputIndex);
+  if (spec.derivedUncached !== true) return mergeQuantityMethods([direct]);
+
+  const total = pricingInputFacts(inputIndex, ["responses.usage.input_tokens"]);
+  const cached = pricingInputFacts(inputIndex, ["responses.usage.cached_input_tokens"]);
+  const written = pricingInputFacts(inputIndex, ["responses.usage.cache_write_tokens"]);
+  const totalSignal = standardSignal("input_tokens");
+  const cachedSignal = standardSignal("cached_input_tokens");
+  const writtenSignal = standardSignal("cache_write_tokens");
+  const derived = calculatedQuantityMethods(
+    {
+      nodes: [
+        { op: "signal", signal: totalSignal },
+        { op: "signal", signal: cachedSignal },
+        { op: "subtract_floor_zero", minuend: 0, subtrahend: 1 },
+        { op: "signal", signal: writtenSignal },
+        { op: "subtract_floor_zero", minuend: 2, subtrahend: 3 },
       ],
-    );
-    methods.push(...derived.methods);
-    facts.push(...derived.facts);
-  }
-  return {
-    methods: methods.sort(compareCanonical),
-    facts: uniquePricingInputFacts(facts),
-  };
+      result: 4,
+    },
+    [
+      { signal: totalSignal, facts: total },
+      { signal: cachedSignal, facts: cached },
+      { signal: writtenSignal, facts: written },
+    ],
+  );
+  return mergeQuantityMethods([direct, derived]);
 }
 
 function selectorSources(

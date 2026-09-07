@@ -783,6 +783,18 @@ async function collectProvider(
   const pricingSources: SourceGroup[] = [];
   const omittedPricingDependencies = new Set<string>();
   const collectedSources: SourceRecord[] = [];
+  function capturePricingInputs(): PricingReplaySource[] | undefined {
+    try {
+      return capturePricingReplaySources(pricingSources, collectedSources);
+    } catch (error) {
+      warnings.push({
+        code: "pricing_replay_input_invalid",
+        provider_id: manifest.provider.id,
+        message: message(error),
+      });
+      return undefined;
+    }
+  }
 
   try {
     const sourceFetches = new Map(
@@ -1102,15 +1114,7 @@ async function collectProvider(
         pricingFailure = "source_unavailable";
         throw new Error(`Pricing source bundle is incomplete at ${missingPricingSource.id}`);
       }
-      try {
-        pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
-      } catch (error) {
-        warnings.push({
-          code: "pricing_replay_input_invalid",
-          provider_id: manifest.provider.id,
-          message: message(error),
-        });
-      }
+      pricingReplaySources = capturePricingInputs();
       pricing = assembleParsedProviderPricing(
         manifest.provider.id,
         observedAt,
@@ -1181,15 +1185,7 @@ async function collectProvider(
       .every(({ id }) => fetchedPricingSourceIds.has(id));
     if (hasPrevious && omittedPricingDependencies.size === 0 && hasCompletePricingBundle) {
       try {
-        try {
-          pricingReplaySources = capturePricingReplaySources(pricingSources, collectedSources);
-        } catch (error) {
-          warnings.push({
-            code: "pricing_replay_input_invalid",
-            provider_id: manifest.provider.id,
-            message: message(error),
-          });
-        }
+        pricingReplaySources = capturePricingInputs();
         pricing = assembleParsedProviderPricing(
           manifest.provider.id,
           observedAt,

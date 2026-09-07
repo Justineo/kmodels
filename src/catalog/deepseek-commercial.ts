@@ -14,8 +14,8 @@ import {
   emptyQuantityMethods as emptyMethods,
   includePricingInputSourceRefs,
   indexPricingInputs,
+  mergeQuantityMethods,
   pricingInputObservation,
-  uniquePricingInputFacts,
   type BoundQuantityMethods as MethodsAndFacts,
   type PricingInputIndex,
 } from "./pricing-input.ts";
@@ -221,10 +221,7 @@ function uncachedInputMethods(
     inputIndex,
   );
   const derived = paths.has("/responses") ? responsesUncachedInput(inputIndex) : emptyMethods();
-  return {
-    methods: [...direct.methods, ...derived.methods].sort(compareCanonicalValues),
-    facts: uniquePricingInputFacts([...direct.facts, ...derived.facts]),
-  };
+  return mergeQuantityMethods([direct, derived]);
 }
 
 function responsesUncachedInput(inputIndex: PricingInputIndex): MethodsAndFacts {
