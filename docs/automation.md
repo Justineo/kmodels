@@ -42,6 +42,12 @@ Status: implemented
   not emit another `push` workflow run. Void accepts the dispatch workflow's
   GitHub OIDC token; deployment always checks out the latest `main`, while
   ordinary human-authenticated pushes retain their direct deployment trigger.
+- If a refresh push is rejected and a fresh fetch shows that `main` has moved
+  from the collection checkout, publication is skipped with a warning and job
+  summary. The next hourly refresh collects against the new code. Generated
+  data is never rebased onto code it was not validated with, and a skipped
+  publication does not dispatch deployment. Push failures with an unchanged
+  remote, and failures to check the remote, still fail the job.
 - The collector owns failure classification and the safe public status
   projection. The workflow renders its structured report into the GitHub job
   summary, emits warnings for retained or withheld providers, and keeps the
