@@ -403,6 +403,25 @@ describe("local canonical pricing compilation", () => {
     expect(compiled.candidate.pricing).toEqual(current.pricing);
   });
 
+  it("preserves an obsolete snapshot when a newly adopted topology adds a feature", async () => {
+    const { current, snapshot, manifest } = xaiReplayCase("fresh", false);
+    const source = manifest.sources[0];
+    if (source === undefined) throw new Error("Missing replay source");
+    const updated: ProviderManifest = {
+      ...manifest,
+      sources: [
+        {
+          ...source,
+          extractorVersion: "new-pricing-v2",
+        },
+      ],
+    };
+    const compiled = await compilePricingSnapshot(current, snapshot, [updated]);
+    expect(compiled.replayedProviders).toEqual([]);
+    expect(compiled.preservedProviders).toEqual(["xai"]);
+    expect(compiled.candidate.pricing).toEqual(current.pricing);
+  });
+
   it("rejects replay input bound to another catalog core", async () => {
     const current = candidate("1");
     const snapshot = {

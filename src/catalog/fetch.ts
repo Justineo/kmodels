@@ -2037,15 +2037,24 @@ export function normalizeVercelPricingScript(body: string): string | undefined {
     setVercelPricingDetail(models, slug, "video_generation", items);
   }
 
-  const imageRegistry = new RegExp(
-    String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{imageCost:"(${vercelDecimalPattern})",imageDimensionQualityPricing:\[([^\]]+)\]\}`,
-    "gu",
+  const imageRegistries = [false, true].map(
+    (wrapped) =>
+      new RegExp(
+        String.raw`(?:"([a-z0-9][a-z0-9._-]*)"|([a-z][a-z0-9_]*)):\{${wrapped ? "model:\\{" : ""}imageCost:"(${vercelDecimalPattern})",imageDimensionQualityPricing:\[([^\]]+)\]\}${wrapped ? "\\}" : ""}`,
+        "gu",
+      ),
   );
   const imageItem = new RegExp(
     String.raw`\{size:"([^"]+)",quality:"([^"]+)",cost:"(${vercelDecimalPattern})"\}`,
     "gu",
   );
-  for (const registry of body.matchAll(imageRegistry)) {
+  const imageRegistryMatches = imageRegistries
+    .flatMap((pattern) => [...body.matchAll(pattern)])
+    .sort((left, right) => left.index - right.index);
+  let imageRegistryEnd = 0;
+  for (const registry of imageRegistryMatches) {
+    if (registry.index < imageRegistryEnd) continue;
+    imageRegistryEnd = registry.index + registry[0].length;
     const slug = registry[1] ?? registry[2];
     const primary = registry[3];
     const rawItems = registry[4];

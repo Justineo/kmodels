@@ -791,7 +791,11 @@ function validateOfferSemantics(
 ): void {
   const rates = offer.terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
   const baseRaw = offer.terms.flatMap(rawVariants).filter(({ impact }) => impact === "base_price");
-  if (offer.states.length === 0 && baseRaw.length === 0)
+  const hasAdjustment = offer.terms.some(
+    (term) =>
+      (term.kind === "allowance" || term.kind === "contribution") && term.variants.length > 0,
+  );
+  if (offer.states.length === 0 && baseRaw.length === 0 && !hasAdjustment)
     fail(path, "offer has neither a state nor a base-price raw fact");
 
   for (let left = 0; left < offer.states.length; left += 1) {

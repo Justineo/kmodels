@@ -2,7 +2,7 @@ import { z } from "zod";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
 import { baseModel } from "./model.ts";
-import { publishedRate, scaleDecimal } from "./pricing.ts";
+import { decimalsEqual, publishedRate, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourcePriceFactKey,
@@ -154,6 +154,12 @@ const reasoningOptionSchema = z
   .strip();
 
 const videoInputLimitSchema = z.record(z.string(), z.unknown());
+const videoInputPricingSchema = z
+  .object({
+    image_input_cost_per_image_usd: decimal.optional(),
+    video_input_cost_per_second_usd: decimal.optional(),
+  })
+  .strip();
 
 const videoCapabilitiesSchema = z
   .object({
@@ -164,6 +170,7 @@ const videoCapabilitiesSchema = z
     generate_audio: z.unknown().optional(),
     supported_fps: z.array(z.number().positive()).min(1),
     max_sample_count: z.number().int().positive().optional(),
+    pricing: videoInputPricingSchema.optional(),
     input_limits: z
       .object({
         text: videoInputLimitSchema.optional(),
@@ -583,13 +590,33 @@ function endpointUsagePrice(item: Item, value: EndpointPrice): TokenPrice {
   };
 }
 
-function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): SourcePriceFact[] {
+function videoConditions(variants: z.infer<typeof videoPriceSchema>[]) {
+  const dimensions = {
+    resolution: variants.some(({ resolution }) => resolution !== undefined),
+    quality: variants.some(({ mode }) => mode !== undefined),
+    voice_control: variants.some(({ voice_control }) => voice_control !== undefined),
+  };
+  return (variant: z.infer<typeof videoPriceSchema>): SourcePriceFact["conditions"] => ({
+    resolution: dimensions.resolution ? (variant.resolution ?? "default") : undefined,
+    quality: dimensions.quality ? (variant.mode ?? "default") : undefined,
+    audio: variant.audio,
+    voice_control: dimensions.voice_control ? (variant.voice_control ?? false) : undefined,
+  });
+}
+
+function endpointRates(
+  item: Item,
+  endpoint: Endpoint,
+  sourceId: string,
+  fastSlug = false,
+): SourcePriceFact[] {
   const rates: SourcePriceFact[] = [];
   const value = endpoint.pricing;
   const regions = endpoint.inference_regions ?? [];
   const hasRegionalPricing =
     regions.length > 0 || Object.keys(item.pricing.regional ?? {}).length > 0;
   const hasFast =
+    fastSlug ||
     item.pricing.fast !== undefined ||
     Object.values(item.pricing.regional ?? {}).some(({ fast }) => fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
@@ -681,16 +708,12 @@ function endpointRates(item: Item, endpoint: Endpoint, sourceId: string): Source
     );
   }
 
-  const hasVoiceControl =
-    value.video_duration_pricing?.some(({ voice_control }) => voice_control !== undefined) === true;
+  const durationConditions = videoConditions(value.video_duration_pricing ?? []);
   for (const variant of value.video_duration_pricing ?? [])
     rates.push(
       publishedRate("video_generation", variant.cost_per_second, "second", sourceId, "second", {
         ...baseConditions,
-        resolution: variant.resolution,
-        quality: variant.mode,
-        audio: variant.audio,
-        voice_control: hasVoiceControl ? (variant.voice_control ?? false) : undefined,
+        ...durationConditions(variant),
       }),
     );
   rates.push(...videoTokenRates(value.video_token_pricing, sourceId, baseConditions));
@@ -817,7 +840,11 @@ function modelPageRates(
       const expectedCount = alternatives === undefined ? undefined : Number(alternatives) + 1;
       if (
         detailedRates.some((rate) => rate.price === amount) &&
-        (expectedCount === undefined || detailedRates.length === expectedCount)
+        (expectedCount === undefined ||
+          detailedRates.length === expectedCount ||
+          (item.type === "video" &&
+            detailedRates.filter(({ conditions }) => conditions.video_input === false).length ===
+              expectedCount))
       ) {
         rates.push(...detailedRates);
         continue;
@@ -930,7 +957,7 @@ function routes(item: Item, endpoints: readonly Endpoint[], sourceId: string): M
   }));
 }
 
-function pricing(item: Item, sourceId: string): SourcePriceFact[] {
+function pricing(item: Item, sourceId: string, fastSlug = false): SourcePriceFact[] {
   const rates: SourcePriceFact[] = [];
   const value = item.pricing;
   const transcriptionAudioPrice =
@@ -952,7 +979,7 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
     value.fast !== undefined || regional.some(([, prices]) => prices.fast !== undefined);
   const baseConditions: SourcePriceFact["conditions"] = {
     region: regional.length === 0 ? undefined : "default",
-    speed: hasFast ? "standard" : undefined,
+    speed: fastSlug ? "fast" : hasFast ? "standard" : undefined,
   };
   if (transcriptionAudioPrice !== undefined)
     rates.push(tokenRate("input_audio", transcriptionAudioPrice, sourceId, baseConditions));
@@ -970,7 +997,7 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
   for (const [region, prices] of regional) {
     addUsageRates(rates, prices, sourceId, inputMeter, outputMeter, {
       region,
-      speed: hasFast ? "standard" : undefined,
+      speed: fastSlug ? "fast" : hasFast ? "standard" : undefined,
     });
     if (prices.fast !== undefined)
       addUsageRates(rates, prices.fast, sourceId, inputMeter, outputMeter, {
@@ -1025,18 +1052,15 @@ function pricing(item: Item, sourceId: string): SourcePriceFact[] {
         imageConditions(variant),
       ),
     );
-  const hasVoiceControl =
-    value.video_duration_pricing?.some(({ voice_control }) => voice_control !== undefined) === true;
+  const durationConditions = videoConditions(value.video_duration_pricing ?? []);
   for (const variant of value.video_duration_pricing ?? [])
     rates.push(
       publishedRate("video_generation", variant.cost_per_second, "second", sourceId, "second", {
-        resolution: variant.resolution,
-        quality: variant.mode,
-        audio: variant.audio,
-        voice_control: hasVoiceControl ? (variant.voice_control ?? false) : undefined,
+        ...durationConditions(variant),
       }),
     );
   rates.push(...videoTokenRates(value.video_token_pricing, sourceId));
+  rates.push(...videoInputRates(item.video_capabilities?.pricing, sourceId));
   if (value.speech_input_character_cost !== undefined)
     rates.push(
       publishedRate(
@@ -1105,6 +1129,8 @@ function model(
   endpointValues: readonly Endpoint[],
   page: ModelPageDocument | undefined,
   pageDetails: ModelPagePricingDetail | undefined,
+  fastSlug = false,
+  videoInputs?: z.infer<typeof videoInputPricingSchema>,
 ): ProviderModel {
   const creator = item.id.split("/")[0];
   if (creator !== item.owned_by) throw new Error(`Vercel owner mismatch for ${item.id}`);
@@ -1120,10 +1146,13 @@ function model(
   const realtimeTag = tags.find(
     (tag) => tag === "websocket-realtime" || tag === "websocket-transcription",
   );
-  const catalogRates = pricing(item, input.source.id);
+  const catalogRates = [
+    ...pricing(item, input.source.id, fastSlug),
+    ...videoInputRates(videoInputs, input.source.id),
+  ];
   const routeRateGroups = endpointValues.map((endpoint) => ({
     endpoint,
-    rates: endpointRates(item, endpoint, input.source.id),
+    rates: endpointRates(item, endpoint, input.source.id, fastSlug),
   }));
   const routeRates = routeRateGroups.flatMap(({ rates: values }) => values);
   const pagePricing =
@@ -1267,6 +1296,66 @@ function model(
   };
 }
 
+function videoInputRates(
+  prices: z.infer<typeof videoInputPricingSchema> | undefined,
+  sourceId: string,
+): SourcePriceFact[] {
+  const rates: SourcePriceFact[] = [];
+  if (prices?.image_input_cost_per_image_usd !== undefined)
+    rates.push(
+      publishedRate(
+        "input_image",
+        prices.image_input_cost_per_image_usd,
+        "image",
+        sourceId,
+        "image_input_cost_per_image_usd",
+      ),
+    );
+  if (prices?.video_input_cost_per_second_usd !== undefined)
+    rates.push(
+      publishedRate(
+        "input_video",
+        prices.video_input_cost_per_second_usd,
+        "second",
+        sourceId,
+        "video_input_cost_per_second_usd",
+      ),
+    );
+  return rates;
+}
+
+function isFastSlug(
+  item: Item,
+  byId: ReadonlyMap<string, Item>,
+  endpoints: readonly Endpoint[],
+): boolean {
+  if (!item.id.endsWith("-fast") || !item.tags?.includes("fast")) return false;
+  const base = byId.get(item.id.slice(0, -5));
+  if (base === undefined || !base.tags?.includes("fast")) return false;
+  const matches = (left: TokenPrice, right: TokenPrice) => {
+    const keys = ["input", "output", "input_cache_read", "input_cache_write"] as const;
+    return (
+      keys.some((key) => right[key] !== undefined) &&
+      keys.every((key) => {
+        const value = right[key];
+        const expected = left[key];
+        return value === undefined || (expected !== undefined && decimalsEqual(value, expected));
+      })
+    );
+  };
+  // Some fast-slug endpoint documents describe the underlying standard route. Only
+  // separate those prices after matching the independently listed base model.
+  return endpoints.every(
+    (endpoint) =>
+      matches(base.pricing, endpointTokenPrice(endpoint.pricing)) &&
+      (endpoint.inference_regions ?? []).every((region) => {
+        if (region.pricing === undefined) return true;
+        const prices = base.pricing.regional?.[region.provider_region ?? region.geo_region];
+        return prices !== undefined && matches(prices, endpointTokenPrice(region.pricing));
+      }),
+  );
+}
+
 export function parseVercelCatalog(input: Input): ProviderModel[] {
   if (input.source.extractor.kind !== "vercel-catalog")
     throw new Error("Vercel catalog used the wrong extractor");
@@ -1292,11 +1381,15 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
     ...(input.onContractFinding === undefined ? {} : { onFinding: input.onContractFinding }),
   });
   reportPricingExtensions(list.data, pricingKeys, input);
-  if (!bundled.success) return parsed.map((item) => model(item, input, [], undefined, undefined));
+  const byId = new Map(parsed.map((item) => [item.id, item]));
+  if (!bundled.success)
+    return parsed.map((item) =>
+      model(item, input, [], undefined, undefined, isFastSlug(item, byId, [])),
+    );
   if (bundled.data.index.url !== input.source.url)
     throw new Error("Vercel bundle index URL changed");
-  const byId = new Map(parsed.map((item) => [item.id, item]));
   const endpoints = new Map<string, Endpoint[]>();
+  const videoInputs = new Map<string, z.infer<typeof videoInputPricingSchema>>();
   const pages = new Map<string, ModelPageDocument>();
   const pagePricingDetails = new Map<string, ModelPagePricingDetail>();
   const documentation = new Map<string, string>();
@@ -1344,6 +1437,10 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       )
         continue;
       endpoints.set(id, endpointDocument.data.endpoints);
+      const capabilities = z
+        .object({ pricing: videoInputPricingSchema })
+        .safeParse(endpointDocument.data.capabilities);
+      if (capabilities.success) videoInputs.set(id, capabilities.data.pricing);
       continue;
     }
     const pageMatch = url.pathname.match(/^\/ai-gateway\/models\/([^/]+)$/);
@@ -1387,6 +1484,8 @@ export function parseVercelCatalog(input: Input): ProviderModel[] {
       endpoints.get(item.id) ?? [],
       slug === undefined ? undefined : pages.get(slug),
       slug === undefined ? undefined : pagePricingDetails.get(slug),
+      isFastSlug(item, byId, endpoints.get(item.id) ?? []),
+      videoInputs.get(item.id),
     );
   });
   const commercialFacts = vercelCommercialFacts({

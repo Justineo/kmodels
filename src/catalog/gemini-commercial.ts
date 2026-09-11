@@ -5,6 +5,7 @@ import type {
   AtomicProviderPricing,
   AtomicRateVariant,
   AtomicRawVariant,
+  AtomicAllowanceTerm,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { uniqueCanonicalValues as uniqueCanonical } from "./canonical-value.ts";
@@ -17,7 +18,7 @@ import {
   standardSignal,
   withApplicability,
 } from "./pricing-commercial-assembly.ts";
-import { pricingBookId, pricingOfferId } from "./pricing-identifiers.ts";
+import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import type {
   ChargeBinding,
   PriceApplicability,
@@ -68,8 +69,154 @@ export function applyGeminiCommercialTopology(
     }
     return migrated;
   });
-  for (const book of books) bindGroundingRelations(book, modelOffers);
+  for (const book of books) {
+    bindGroundingRelations(book, modelOffers);
+    bindGroundingAllowances(book, input.provider_id);
+  }
   return { ...input, books };
+}
+
+function groundingAllowance(
+  fragment: string,
+  modelRef: string,
+):
+  | { key: string; quantity: string; reset: "monthly" | "daily"; unit: "search_unit" | "request" }
+  | undefined {
+  const monthly = fragment.match(
+    /^([\d,]+) free search requests per month \(shared across all Gemini 3\.x models\), then /i,
+  );
+  if (monthly?.[1] !== undefined)
+    return {
+      key: "gemini-3-monthly",
+      quantity: monthly[1].replaceAll(",", ""),
+      reset: "monthly",
+      unit: "search_unit",
+    };
+  const maps = fragment.match(
+    /^([\d,]+) (?:prompts|requests) per month \(free, shared across Gemini 3\), then /i,
+  );
+  if (maps?.[1] !== undefined)
+    return {
+      key: "gemini-3-monthly",
+      quantity: maps[1].replaceAll(",", ""),
+      reset: "monthly",
+      unit: "request",
+    };
+  const daily = fragment.match(
+    /^([\d,]+) RPD \(free(?:, limit shared with (Flash|Flash-Lite) RPD)?\), then /i,
+  );
+  if (daily?.[1] === undefined) return;
+  const shared = daily[2] !== undefined;
+  if (shared && !["gemini/gemini-2.5-flash", "gemini/gemini-2.5-flash-lite"].includes(modelRef))
+    return;
+  return {
+    key: shared ? "gemini-2.5-flash-shared-daily" : `${modelRef}-daily`,
+    quantity: daily[1].replaceAll(",", ""),
+    reset: "daily",
+    unit: "request",
+  };
+}
+
+function bindGroundingAllowances(book: AtomicPricingBook, providerId: string): void {
+  if (
+    book.scope.kind !== "provider_resource" ||
+    !["google-search", "google-maps"].includes(book.scope.resource_key)
+  )
+    return;
+  const groups = new Map<
+    string,
+    Array<{
+      offer: AtomicPricingOffer;
+      term: Extract<AtomicPricingTerm, { kind: "raw" }>;
+      raw: AtomicRawVariant;
+      rule: NonNullable<ReturnType<typeof groundingAllowance>>;
+      targets: string[];
+    }>
+  >();
+  const bookId = pricingBookId(providerId, book.book_key);
+  for (const offer of book.offers) {
+    const modelRef = offer.model_refs?.length === 1 ? offer.model_refs[0] : undefined;
+    if (modelRef === undefined) continue;
+    for (const term of offer.terms) {
+      if (term.kind !== "raw" || term.term_key !== "grounding-allowance") continue;
+      for (const raw of term.variants) {
+        const fragment = raw.observation.raw["fragment"];
+        const rule =
+          typeof fragment === "string" ? groundingAllowance(fragment, modelRef) : undefined;
+        if (rule === undefined || raw.possible_scope === undefined) continue;
+        const targets = offer.terms.flatMap((candidate) =>
+          candidate.kind === "rate" &&
+          candidate.variants.some(
+            ({ price }) =>
+              canonicalJson(price.per) === canonicalJson(groundingAllowanceUnit(rule.unit)),
+          )
+            ? [pricingTermId(pricingOfferId(bookId, offer.offer_key), "rate", candidate.term_key)]
+            : [],
+        );
+        if (targets.length === 0) continue;
+        const group = groups.get(rule.key) ?? [];
+        group.push({ offer, term, raw, rule, targets });
+        groups.set(rule.key, group);
+      }
+    }
+  }
+  for (const [key, group] of groups) {
+    const first = group[0];
+    if (first === undefined || group.some(({ rule }) => rule.quantity !== first.rule.quantity))
+      continue;
+    const applicability = canonicalizeApplicability({
+      any_of: group.flatMap(({ raw }) => raw.possible_scope?.any_of ?? []),
+    });
+    const targets = [...new Set(group.flatMap(({ targets }) => targets))].sort();
+    const allowance: AtomicAllowanceTerm = {
+      term_key: "free-grounding-usage",
+      kind: "allowance",
+      source_refs: [...new Set(group.map(({ raw }) => raw.observation.source_ref))].sort(),
+      variants: group.map(({ raw }) => ({
+        benefit: {
+          kind: "quantity",
+          quantity: {
+            value: { numerator: first.rule.quantity, denominator: "1" },
+            unit: groundingAllowanceUnit(first.rule.unit),
+          },
+        },
+        target: { kind: "rate_terms", term_refs: targets },
+        reset: { namespace: "kmodels", value: first.rule.reset },
+        applicability,
+        observation: { ...raw.observation, establishes_applicability: applicability },
+      })),
+      raw_variants: [],
+    };
+    book.offers.push({
+      offer_key: `allowance:${key}`,
+      name: "Shared grounding allowance",
+      model_refs: [...new Set(group.flatMap(({ offer }) => offer.model_refs ?? []))].sort(),
+      billing_mode: { namespace: "kmodels", value: "usage" },
+      states: [],
+      terms: [allowance],
+      relations: [],
+      source_refs: allowance.source_refs,
+    });
+    for (const { offer, term, raw } of group) {
+      term.variants = term.variants.filter((variant) => variant !== raw);
+      if (term.variants.length === 0)
+        offer.terms = offer.terms.filter((candidate) => candidate !== term);
+    }
+  }
+}
+
+function groundingAllowanceUnit(unit: "request" | "search_unit"): UnitExpression {
+  return {
+    factors: [
+      {
+        unit:
+          unit === "request"
+            ? { namespace: "kmodels", value: "request" }
+            : { namespace: "provider", provider_id: "gemini", value: "search_unit" },
+        power: 1,
+      },
+    ],
+  };
 }
 
 function splitModelBook(

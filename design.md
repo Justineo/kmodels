@@ -14,6 +14,11 @@ This index points to the repository's current decisions. Detailed documents are 
 
 ## Domain topics
 
+- [Pricing research](docs/pricing-research.md): DBU conversion, Grok Priority, OCR billing, and
+  source evidence for session, geography, search, and grounding rules.
+
+- [Price-book completeness assessment](docs/pricing-raw-audit.md): accepted refresh coverage,
+  pricing dimensions, raw and omitted rules, and informational provenance.
 - [Catalog semantics](docs/catalog.md): product boundary, identity, taxonomy, lifecycle, evidence, and public fields.
 - [Invocation addressing](docs/invocation-addressing.md): static identifiers, positive deployment
   tuples, evidence limits, and UI projection.
@@ -49,5 +54,6 @@ This index points to the repository's current decisions. Detailed documents are 
 - [Alibaba Cloud Model Studio](docs/providers/dashscope.md)
 - [DeepSeek](docs/providers/deepseek.md)
 - [Kimi](docs/providers/kimi.md)
+- [Perplexity](docs/providers/perplexity.md)
 - [Cerebras](docs/providers/cerebras.md)
 - [Ollama](docs/providers/ollama.md)

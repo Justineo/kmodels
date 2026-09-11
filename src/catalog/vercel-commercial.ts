@@ -176,6 +176,29 @@ function modelBinding(
       variant,
     );
   }
+  if (
+    meter.namespace === "kmodels" &&
+    meter.value === "input_image" &&
+    isStandardUnit(variant.price.per, "image")
+  )
+    return quantityBinding(standardSignal("processed_images"), "job", emptyMethods(), variant);
+  if (
+    meter.namespace === "kmodels" &&
+    meter.value === "input_video" &&
+    isStandardUnit(variant.price.per, "second")
+  )
+    return quantityBinding(
+      providerSignal(
+        input,
+        "billable_video_input_seconds",
+        "Billable input video duration supplied to a video generation job",
+        variant.price.per,
+        "outcome",
+      ),
+      "job",
+      emptyMethods(),
+      variant,
+    );
   if (meter.namespace === "kmodels" && meter.value === "image_generation") {
     if (isStandardUnit(variant.price.per, "image")) {
       const signal = standardSignal("generated_images");

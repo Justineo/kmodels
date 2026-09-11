@@ -6,8 +6,12 @@ Status: current
 
 The exhaustive global catalog and current public rates come from the official
 [Models & Pricing](https://api-docs.deepseek.com/quick_start/pricing/) table. A valid model column
-creates one exact callable ID; names found only in footnotes, integrations, wildcard routing, old
-pages, or release history do not create current rows. The current table is also authoritative over
+creates one exact callable ID. A current first-party footnote can additionally establish a legacy
+request ID only when it explicitly says the ID is still accepted, identifies its current table
+target, and binds its billing to that target. Such IDs retain exact rows with `legacy` status,
+replacement IDs, and target rates with explicit derivation evidence. A dated future redirect does
+not apply early. Other names in integrations, wildcard routing, old pages, or release history do
+not create current rows. The current table is also authoritative over
 orphaned `pricing-details-*` pages that still describe retired models.
 
 The fetch bundle contains only companions that contribute a current catalog or rate-book field:
@@ -60,8 +64,9 @@ not invent a cache-write or storage charge. Thinking tokens are part of output, 
 changes quantity rather than rate. FIM, Responses, and Anthropic compatibility do not create new
 offers when they use the same model rates.
 
-`deepseek-v4-flash-vision-exp` owns the same explicit Peak/Off-peak token rates published in its
-model column. Images are converted to tokens from their dimensions and included with text input
+`deepseek-flash` is the current Flash identity. The explicitly accepted legacy IDs
+`deepseek-v4-flash` and `deepseek-v4-flash-vision-exp` route to it and use its current rates, rather
+than retaining the retired underlying models' prices. Images are converted to tokens from their dimensions and included with text input
 tokens, so the price book does not duplicate that aggregate input usage as a second image rate. The
 Vision guide establishes image input in the model catalog, while verified Chat Completions and
 Responses usage counters remain the charge bindings for the combined billable input-token totals.

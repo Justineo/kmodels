@@ -1109,6 +1109,22 @@ function applyPricing(
             return [];
           });
           for (const model of selectedModels) {
+            const allowanceText = text(cells.eq(2).text());
+            if (
+              /Grounding with Google (?:Search|Maps)/i.test(row) &&
+              /\b(?:free|RPD)\b/i.test(allowanceText)
+            )
+              model.raw_price_facts.push({
+                term_key: "grounding-allowance",
+                impact: "allowance",
+                reason: "unsupported_structure",
+                conditions: {
+                  ...conditions(tier, "paid_tier", "", row),
+                  operation: /Maps/i.test(row) ? "google_maps" : "google_search",
+                },
+                source_ref: sourceId,
+                raw: { label: row, fragment: allowanceText },
+              });
             for (const fragment of parsed.unknownUnits)
               preserveRawPricing(
                 model,
@@ -1875,6 +1891,46 @@ export function parseGeminiPricing(input: Input): ProviderModel[] {
     }),
   );
   applyPricing(models, input.source.id, bundle.index.body, input.onPricingReconciliation);
+  const mapsGuide =
+    bundle.documents.find(
+      ({ url }) => url === "https://ai.google.dev/gemini-api/docs/maps-grounding",
+    )?.body ?? "";
+  const mapsRequestBilling =
+    /A request is only billed if the prompt successfully returns at least one Google Maps grounded result, regardless of how many individual search queries the model performed internally to get that result\./.test(
+      text(load(mapsGuide)("body").text()),
+    );
+  for (const model of models.values()) {
+    const monthlySearch = model.raw_price_facts.some(
+      (fact) =>
+        fact.conditions.operation === "google_search" &&
+        typeof fact.raw.fragment === "string" &&
+        /^([\d,]+) free search requests per month \(shared across all Gemini 3\.x models\)/.test(
+          fact.raw.fragment,
+        ),
+    );
+    model.price_facts = model.price_facts.map((rate) => {
+      if (rate.meter !== "tool_call") return rate;
+      if (
+        mapsRequestBilling &&
+        rate.conditions.operation === "google_maps" &&
+        rate.unit === "thousand_search_units"
+      )
+        return {
+          ...rate,
+          unit: "thousand_requests",
+          derived: true,
+          derivation:
+            "Maps grounding guide: billed once per request that returns at least one grounded result, regardless of internal search queries",
+        };
+      if (
+        monthlySearch &&
+        rate.conditions.operation === "google_search" &&
+        rate.unit === "thousand_requests"
+      )
+        return { ...rate, unit: "thousand_search_units" };
+      return rate;
+    });
+  }
   extractGeminiCommercialFacts(models, input.source.id);
   const pricingInputs = extractPricingInputs(
     bundle,

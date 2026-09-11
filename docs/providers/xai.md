@@ -39,9 +39,10 @@ dynamic product documentation as a refresh dependency.
 - The public Models page embeds `globalThis.__XAI_PUBLIC_MODELS__`. Statically extract
   this first-party payload; never execute it. It supplies public model/service identity,
   version, aliases, regions, capabilities, and exact fixed-point rates.
-- The fixed `llms.txt` companion supplies the dedicated pricing section, release notes,
+- The fixed `llms-full.txt` companion supplies the dedicated pricing section, release notes,
   lifecycle redirects, Batch and Priority terms, endpoint examples, Voice model IDs,
-  and paid-tool semantics.
+  and paid-tool semantics. `llms.txt` is only a link index and cannot replace the complete
+  sectioned document; the missing pricing sections would discard provider-resource evidence.
 - The dedicated pricing table owns a current public amount when its model and
   applicability match exactly. Conflicts with the embedded payload or Models summary
   are retained as warnings; they do not discard the model or unrelated rates.
@@ -104,7 +105,7 @@ allowances, or commercial-plan topology.
 
 ## Charge signals
 
-The `llms.txt` source contributes a reviewed, field-local contract for 54 pricing
+The `llms-full.txt` source contributes a reviewed, field-local contract for 54 pricing
 inputs. Each fact records its request, response, terminal stream event, or Batch result
 channel; locator; reduction; availability; and source observation. The compiler binds
 only the facts whose local contract is still present. Drift in one documented field

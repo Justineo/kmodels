@@ -9,6 +9,7 @@ import { decimalsEqual, multiplyDecimal, scaleDecimal } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import {
   sourcePriceFactKey,
+  sourcePriceMeters,
   type ParsedProviderModel as ProviderModel,
   type SourcePriceFact,
 } from "./pricing-source.ts";
@@ -583,6 +584,118 @@ function add(
   rates.set(id, modelRates);
 }
 
+/** Named tiers remain selectors when the pricing page does not publish a token threshold. */
+function tieredVariants(
+  value: SourcePriceFact,
+  label: string,
+  qualifier: string,
+  column: string,
+  notes: string[],
+  cacheAlternatives: boolean,
+): SourcePriceFact[] | undefined {
+  const conditions = { ...value.conditions };
+  if (/^(Short|Long) context$/.test(qualifier))
+    conditions.context_tier = qualifier.startsWith("Short") ? "short" : "long";
+  else if (/^(Text|Image|Audio) tokens$/.test(qualifier))
+    conditions.modality = qualifier.split(" ")[0]?.toLowerCase();
+  else if (qualifier !== "") return;
+  if (column.startsWith("Cache write") && cacheAlternatives)
+    conditions.cache_retention = column === "Cache write (1hr)" ? "1h" : "default";
+  const modalityMeter =
+    conditions.modality === undefined
+      ? value.meter
+      : sourcePriceMeters.find(
+          (meter) => meter === value.meter.replace(/_text$/, `_${conditions.modality}`),
+        );
+  if (modalityMeter === undefined) return;
+  value = { ...value, meter: modalityMeter };
+  let variants = [{ ...value, conditions }];
+  const marker = label.match(/\*+/)?.[0];
+  if (marker !== undefined) {
+    const candidates = notes.filter((note) => note.match(/^\*+/)?.[0] === marker);
+    // A family note is local to its table section; a named note must match this row.
+    const note = candidates.filter((note) => {
+      const family = note.match(/DBU rates for these (.+?) models/)?.[1];
+      if (family !== undefined)
+        return identity(family).every((part) => identity(label).includes(part));
+      const named = note
+        .replace(/^\*+\s*(?:NOTE:\s*)?(?:The\s+)?/, "")
+        .match(/^(.+?) (?:DBU )?rates shown here/)?.[1];
+      return (
+        named !== undefined &&
+        alternatives(named.replace(/,\s*and\s+/g, ", ")).some((name) =>
+          identity(name).every((part) => identity(label).includes(part)),
+        )
+      );
+    });
+    const selected = note.length === 1 ? note[0] : undefined;
+    if (selected === undefined) return;
+    const discount = selected.match(
+      /do not include a promotional discount of (\d+)%.*?expires on ([A-Z][a-z]+ \d{1,2}, \d{4})/,
+    );
+    const through = selected.match(/in effect through ([A-Z][a-z]+ \d{1,2}, \d{4})/);
+    const until = date(discount?.[2] ?? through?.[1] ?? "");
+    if (until === undefined) return;
+    let currentFactor = "1";
+    let futureFactor: string;
+    if (discount?.[1] !== undefined) {
+      const percent = Number(discount[1]);
+      if (percent <= 0 || percent >= 100) return;
+      currentFactor = scaleDecimal(String(100 - percent), -2);
+      futureFactor = "1";
+    } else {
+      const increases = selected.match(
+        /input, cache, and Batch rates will be (\d+)% higher.*?output rates will be (\d+)% higher/,
+      );
+      const percent = increases?.[column === "Output" ? 2 : 1];
+      if (percent !== undefined) futureFactor = scaleDecimal(String(100 + Number(percent)), -2);
+      else if (/reflect a 50% promotion.*?standard rates, twice those shown/.test(selected))
+        futureFactor = "2";
+      else return;
+    }
+    variants = [
+      promotional(
+        { ...value, conditions },
+        currentFactor,
+        until,
+        `Published DBU rate × ${currentFactor}; ${selected}`,
+      ),
+      {
+        ...value,
+        conditions: { ...conditions, effective_from: nextDate(until) },
+        price: multiplyDecimal(value.price, futureFactor),
+        derived: true,
+        derivation: `Published DBU rate × ${futureFactor}; ${selected}`,
+      },
+    ];
+  }
+  if (label.includes("⌖")) {
+    const uplift = [
+      ...new Set(
+        notes.flatMap(
+          (note) => note.match(/regional processing.*?(\d+)% uplift applied/)?.[1] ?? [],
+        ),
+      ),
+    ];
+    if (uplift.length !== 1) return;
+    const factor = scaleDecimal(String(100 + Number(uplift[0])), -2);
+    variants = variants.flatMap((variant) => [
+      {
+        ...variant,
+        conditions: { ...variant.conditions, deployment_scope: "non_regional_processing" },
+      },
+      {
+        ...variant,
+        conditions: { ...variant.conditions, deployment_scope: "regional_processing" },
+        price: multiplyDecimal(variant.price, factor),
+        derived: true,
+        derivation: `${variant.derivation ?? "Published DBU rate"}; regional processing × ${factor}`,
+      },
+    ]);
+  }
+  return variants;
+}
+
 function tieredPrices(
   inputModels: ProviderModel[],
   body: string,
@@ -596,16 +709,24 @@ function tieredPrices(
   if (!/Pay Per Token \(DBU Per 1M Tokens\)/.test(tables.find("thead").text())) return undefined;
   const models = inputModels.map<ProviderModel>((model) => ({ ...model, raw_price_facts: [] }));
   const rates = new Map<string, Map<string, SourcePriceFact>>();
-  const notes = $("main p, main li")
+  const pageNotes = $("main p, main li")
     .filter((_index, element) => $(element).closest("table").length === 0)
     .map((_index, element) => text($(element).text()))
     .get()
-    .filter((value) => /⌖|promotion|discount|token modalities/i.test(value))
-    .join("\n");
+    .filter((value) => /⌖|promotion|discount|token modalities/i.test(value));
   const exactPriority = new Set<string>();
   let tokenTables = 0;
   tables.each((_index, element) => {
     const table = $(element);
+    const section = table.closest(".rich-text-body");
+    const notes =
+      section.length === 0
+        ? pageNotes
+        : section
+            .find("p, li")
+            .filter((_index, node) => $(node).closest("table").length === 0)
+            .map((_index, node) => text($(node).text()))
+            .get();
     const headers = table
       .find("thead th")
       .map((_index, cell) => text($(cell).text()))
@@ -648,8 +769,6 @@ function tieredPrices(
         continue;
       }
       const context = qualifier ? (row[1] ?? "") : "";
-      // New annotations and row qualifiers must not become unconditional rates.
-      const conditional = /[*⌖]/.test(label) || context !== "";
       let added = 0;
       let raw = 0;
       for (const model of targets) {
@@ -670,11 +789,26 @@ function tieredPrices(
                 : column === "Cache read"
                   ? "cache_read_text"
                   : "cache_write_text";
-          if (
-            conditional ||
-            (column.startsWith("Cache write") && columns.includes("Cache write (1hr)")) ||
-            decimal(amount) === undefined
-          ) {
+          const value = rate(
+            meter,
+            amount,
+            "million_tokens",
+            sourceId,
+            `DBU / 1M ${column} tokens`,
+            conditions,
+          );
+          const variants =
+            value === undefined
+              ? undefined
+              : tieredVariants(
+                  value,
+                  label,
+                  context,
+                  column,
+                  notes,
+                  columns.includes("Cache write (1hr)"),
+                );
+          if (variants === undefined) {
             raw += 1;
             model.raw_price_facts.push({
               term_key: `${meter}_${index}`,
@@ -692,19 +826,11 @@ function tieredPrices(
                   { dimension: "service_tier", value: tier },
                   ...(context === "" ? [] : [{ dimension: "row_qualifier", value: context }]),
                 ],
-                ...(notes === "" ? {} : { fragment: notes }),
+                ...(notes.length === 0 ? {} : { fragment: notes.join("\n") }),
               },
             });
           } else {
-            const value = rate(
-              meter,
-              amount,
-              "million_tokens",
-              sourceId,
-              `DBU / 1M ${column} tokens`,
-              conditions,
-            );
-            if (value !== undefined) add(rates, model.model_id, value);
+            for (const variant of variants) add(rates, model.model_id, variant);
           }
           added += 1;
           if (tier === "Priority") exactPriority.add(model.model_id);

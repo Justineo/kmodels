@@ -47,6 +47,7 @@ import {
 } from "./kimi.ts";
 import { parseMistralApi, parseMistralCatalog, parseMistralPricing } from "./mistral.ts";
 import { parseOllamaCloud, parseOllamaLibrary } from "./ollama.ts";
+import { parsePerplexityCatalog } from "./perplexity.ts";
 import { linkedBundleSchema } from "./bundle.ts";
 import { modelIdSchema } from "./identity.ts";
 import { baseModel } from "./model.ts";
@@ -493,6 +494,7 @@ interface OpenAiPricingTable {
 const openAiPricingSections = new Set([
   "Flagship models",
   "Cyber models",
+  "GPT-Live sessions",
   "Realtime and audio generation models",
   "Image generation models",
   "Video generation models",
@@ -800,7 +802,8 @@ function openAiAmount(
     onUnsupported?.(value);
     return;
   }
-  const rawUnit = match[2] ?? (defaultUnit === "second" ? "second" : "1M tokens");
+  const rawUnit =
+    match[2] ?? (defaultUnit === "second" || defaultUnit === "minute" ? defaultUnit : "1M tokens");
   return {
     price: match[1],
     unit:
@@ -1017,6 +1020,12 @@ function openAiGlobalRates(
   onUnsupported: (sample: string) => void,
 ): SourcePriceFact[] | undefined {
   const headers = table.headers.join("|");
+  if (table.section === "GPT-Live sessions" && headers === "Model|Price per minute") {
+    const amount = openAiAmount(row[1] ?? "", "minute", onUnsupported);
+    return amount === undefined || amount === "free"
+      ? []
+      : [openAiGlobalRate("session_runtime", amount, sourceId, {})];
+  }
   if (headers.startsWith("Model|Short context input|"))
     return openAiTokenTableRates(table, row, sourceId, onUnsupported);
   if (
@@ -1511,6 +1520,15 @@ function parseOpenAiAccounting(input: ParseInput): ProviderModel[] {
 }
 
 function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
+  let containerChangelog = "";
+  if (input.body.trimStart().startsWith("{")) {
+    const bundle = linkedBundleSchema.parse(parseJson(input.body));
+    const documents = bundle.documents.filter(
+      ({ url }) => url === "https://developers.openai.com/api/docs/changelog.md",
+    );
+    if (documents.length === 1) containerChangelog = documents[0]?.body ?? "";
+    input = { ...input, body: bundle.index.body };
+  }
   if (input.catalogModels === undefined)
     throw new Error("OpenAI pricing requires the collected catalog");
   const exact = new Map(input.catalogModels.map((model) => [model.model_id, model]));
@@ -1771,6 +1789,9 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       sample: `${aliasId} -> ${targetId}`,
     });
   }
+  const fastEuRestriction = input.body
+    .replace(/\s+/g, " ")
+    .match(/Fast mode is unavailable for GPT-6 Astra with EU data residency\./)?.[0];
   const hasRegionalUplift = /Regional processing .*10% uplift/i.test(input.body);
   const modelIds = new Set([
     ...rates.keys(),
@@ -1791,7 +1812,21 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       if (target === undefined) throw new Error("OpenAI pricing lost its catalog binding");
       const modelRates = rates.get(modelId);
       const rawPriceFacts = [...(conflicts.get(modelId)?.values() ?? [])];
-      const priceFacts = [...(modelRates?.values() ?? [])];
+      const restricted = fastEuRestriction !== undefined && target.model_id === "gpt-6-astra";
+      if (restricted)
+        rawPriceFacts.push({
+          term_key: "fast_eu_not_supported",
+          impact: "informational",
+          reason: "unsupported_structure",
+          conditions: { service_tier: "fast", eu_data_residency: true },
+          source_ref: input.source.id,
+          raw: { fragment: fastEuRestriction },
+        });
+      const priceFacts = [...(modelRates?.values() ?? [])].map((rate) =>
+        restricted && rate.conditions.service_tier === "fast"
+          ? { ...rate, conditions: { ...rate.conditions, eu_data_residency: false } }
+          : rate,
+      );
       const publishedRates =
         hasRegionalUplift && openAiRegionalUpliftEligible(target)
           ? openAiRegionalProcessingRates(priceFacts)
@@ -1815,6 +1850,78 @@ function parseOpenAiPricing(input: ParseInput): ProviderModel[] {
       };
     })
     .sort((left, right) => left.uid.localeCompare(right.uid));
+  const fixedSearchContent = input.body.match(
+    /For gpt-4o-mini and gpt-4\.1-mini with the non-preview web search tool, search content tokens are billed as a fixed block of 8,000 input tokens per call\./,
+  )?.[0];
+  if (fixedSearchContent !== undefined)
+    for (const model of output) {
+      if (!["gpt-4o-mini", "gpt-4.1-mini"].includes(model.model_id)) continue;
+      commercialFacts.push({
+        source_ref: input.source.id,
+        book_key: `service:web-search-content:${model.model_id}`,
+        book_name: `Web Search fixed content (${model.model_id})`,
+        resource_kind: "service",
+        resource_key: `web-search-content:${model.model_id}`,
+        model_refs: [model.uid],
+        offer_key: "current",
+        offer_name: "Non-preview search content blocks",
+        billing_mode: "usage",
+        pricing_state: "numeric",
+        price_facts: [],
+        raw_price_facts: [
+          {
+            term_key: "fixed-search-content",
+            impact: "base_price",
+            reason: "unsupported_structure",
+            conditions: { operation: "search" },
+            source_ref: input.source.id,
+            raw: { label: "Fixed search content block", fragment: fixedSearchContent },
+          },
+        ],
+      });
+    }
+  const minuteBilling = containerChangelog.match(
+    /Starting ([A-Z][a-z]+ \d{1,2}, \d{4}), eligible container sessions will be billed per minute with a (\d+)-minute minimum, instead of being billed at the full 20-minute session rate\. The underlying per-minute rate will remain the same\./,
+  );
+  const effectiveFrom =
+    minuteBilling?.[1] === undefined ? undefined : openAiShutdownDate(minuteBilling[1]);
+  const minimum = minuteBilling?.[2];
+  if (
+    minuteBilling !== null &&
+    effectiveFrom !== undefined &&
+    minimum !== undefined &&
+    containerBilling?.match(/(\d+)-minute minimum/)?.[1] === minimum
+  ) {
+    for (const fact of commercialFacts) {
+      if (fact.resource_key !== "containers") continue;
+      fact.price_facts = fact.price_facts.flatMap((rate): SourcePriceFact[] =>
+        rate.unit !== "container_session"
+          ? [rate]
+          : [
+              {
+                ...rate,
+                conditions: { ...rate.conditions, account_eligibility: "session_block_billing" },
+              },
+              {
+                ...rate,
+                price: multiplyDecimal(rate.price, "0.05"),
+                unit: "minute",
+                conditions: {
+                  ...rate.conditions,
+                  account_eligibility: "minute_billing",
+                  effective_from: effectiveFrom,
+                },
+                derived: true,
+                derivation: `Unchanged per-minute rate = published 20-minute session price / 20; ${minuteBilling[0]}`,
+                raw_unit: `per minute; minimum ${minimum} minutes per session`,
+              },
+            ],
+      );
+      fact.raw_price_facts = fact.raw_price_facts.filter(
+        ({ term_key }) => term_key !== "billing-minimum",
+      );
+    }
+  }
   if (commercialFacts.length > 0) {
     const carrier = output[0];
     if (carrier === undefined) throw new Error("OpenAI commercial pricing has no replay carrier");
@@ -2440,6 +2547,8 @@ function parseSourceBody(input: ParseInput): ProviderModel[] {
       return parseDeepseekUpdates(input);
     case "deepseek-api":
       return parseDeepseekApi(input);
+    case "perplexity-catalog":
+      return parsePerplexityCatalog(input);
     case "kimi-openapi":
       return parseKimiOpenApi(input);
     case "kimi-catalog":

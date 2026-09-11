@@ -32,6 +32,12 @@ export type ValidationResult =
 
 type CountedField = "service_families" | "api_endpoints" | "routes" | "availability";
 
+export interface ProviderCountDecrease {
+  field: "models" | CountedField;
+  previous: number;
+  current: number;
+}
+
 function count(models: ProviderModel[], field: CountedField): number {
   return models.reduce((total, model) => total + (model[field]?.length ?? 0), 0);
 }
@@ -44,26 +50,19 @@ function invalid(
   return { ok: false, issue: { code, message, ...detail } };
 }
 
-function dropped(
-  code: ProviderValidationIssueCode,
-  label: string,
-  previous: number,
-  current: number,
-  minimumRatio: number,
-): ValidationResult | undefined {
-  return previous > 0 && current < previous * minimumRatio
-    ? invalid(code, `${label} dropped by more than ${Math.round((1 - minimumRatio) * 100)}%`, {
-        previous,
-        current,
-        minimum_ratio: minimumRatio,
-      })
-    : undefined;
-}
-
-export function validateProvider(
+export function providerCountDecreases(
   models: ProviderModel[],
   previous: ProviderModel[],
-): ValidationResult {
+): ProviderCountDecrease[] {
+  const fields = ["models", "service_families", "api_endpoints", "routes", "availability"] as const;
+  return fields.flatMap((field) => {
+    const before = field === "models" ? previous.length : count(previous, field);
+    const after = field === "models" ? models.length : count(models, field);
+    return after < before ? [{ field, previous: before, current: after }] : [];
+  });
+}
+
+export function validateProvider(models: ProviderModel[]): ValidationResult {
   if (models.length === 0) return invalid("empty_candidate", "candidate catalog is empty");
   const uids = new Set<string>();
   for (const model of models) {
@@ -120,19 +119,6 @@ export function validateProvider(
         });
       availability.add(key);
     }
-  }
-
-  const modelDrop = dropped("model_count_drop", "model count", previous.length, models.length, 0.9);
-  if (modelDrop !== undefined) return modelDrop;
-  const countedFields = [
-    ["service_families", "service_family_count_drop", "service-family count"],
-    ["api_endpoints", "api_endpoint_count_drop", "API endpoint count"],
-    ["routes", "route_count_drop", "route count"],
-    ["availability", "availability_count_drop", "availability count"],
-  ] as const satisfies readonly (readonly [CountedField, ProviderValidationIssueCode, string])[];
-  for (const [field, code, label] of countedFields) {
-    const fieldDrop = dropped(code, label, count(previous, field), count(models, field), 0.8);
-    if (fieldDrop !== undefined) return fieldDrop;
   }
 
   return { ok: true };

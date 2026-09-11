@@ -36,12 +36,20 @@ describe("provider pricing validation", () => {
     };
 
     const providerIds = pricing.data.provider_snapshots.map(({ provider_id }) => provider_id);
-    expect(providerIds).toEqual([...adoptedTopologies.keys()]);
+    expect(providerIds.every((id) => adoptedTopologies.has(id))).toBe(true);
     for (const providerId of providerIds) {
       const partition = providerPartition(pricing.data, providerId, modelProvider);
       if (partition === undefined)
         throw new Error(`Provider ${providerId} has no pricing partition`);
-      validateAdoptedTopology(partition);
+      const configured = manifests.find(({ provider }) => provider.id === providerId);
+      const obsolete = catalog.sources
+        .filter(({ provider_id }) => provider_id === providerId)
+        .some(
+          (source) =>
+            configured?.sources.find(({ id }) => id === source.id)?.extractorVersion !==
+            source.extractor_version,
+        );
+      if (!obsolete) validateAdoptedTopology(partition);
     }
   });
 
@@ -94,7 +102,8 @@ describe("provider pricing validation", () => {
         modelProvider,
       );
       if (partition === undefined) throw new Error(`Missing compiled partition for ${providerId}`);
-      expect(() => validateAdoptedTopology(partition), providerId).not.toThrow();
+      if (compiled.replayedProviders.includes(providerId))
+        expect(() => validateAdoptedTopology(partition), providerId).not.toThrow();
     }
     for (const providerId of compiled.preservedProviders)
       expect(providerPartition(compiled.candidate.pricing.data, providerId, modelProvider)).toEqual(

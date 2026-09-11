@@ -1055,7 +1055,7 @@ async function collectProvider(
       .map(normalizeDeliveryModes);
     const freshModels = candidate.map(publishedModel);
     candidateModels = freshModels;
-    const validation = validateProvider(freshModels, comparableOldModels);
+    const validation = validateProvider(freshModels);
     if (!validation.ok) {
       validationIssue = validation.issue;
       throw new Error(validation.issue.message);

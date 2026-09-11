@@ -16,7 +16,7 @@ Status: implemented
 - Repair runs are serialized. After an active run finishes, any queued run checks for an open pull
   request labeled `catalog-repair` and exits before inference when one exists. A repair changes only
   the smallest reproducible parser contract, reviewed fixture, regression test, extractor version,
-  and provider guide. It never changes generated `data/`, weakens a drift guard, or guesses a price.
+  and provider guide. It never changes generated `data/`, weakens source-integrity validation, or guesses a price.
   Repair inference uses GPT-5.6 Luna with high reasoning effort to keep the recurring task
   cost-efficient while retaining deeper analysis for source-drift diagnosis.
   Successful repairs are proposed as one labeled draft pull request for human review; there is no
@@ -69,9 +69,10 @@ Status: implemented
 - A recognized source-contract mismatch warns on its first occurrence with bounded path,
   mismatch kind, affected/observed counts, fingerprint, and public sample IDs
   when available. A second consecutive source failure adds persistence and,
-  when available, last-success staleness. Unclassified parser failures and abrupt count loss
-  remain `possible_structural_change`; automation never upgrades that heuristic
-  into a factual schema-change claim.
+  when available, last-success staleness. Unclassified parser failures remain
+  `possible_structural_change`. Published count decreases are separate diagnostics, never
+  structural failures or repair triggers by themselves; automation does not infer schema drift
+  from a change in catalog size.
 - Collection starts every provider concurrently because provider fetch, failure,
   validation, and publication boundaries are independent. Total collection time
   therefore approaches the slowest provider instead of accumulating behind a

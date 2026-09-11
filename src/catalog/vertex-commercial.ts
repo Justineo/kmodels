@@ -1,3 +1,4 @@
+import { bindVertexGroundingAllowances } from "./vertex-grounding-allowances.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { uniqueCanonicalValues as uniqueCanonical } from "./canonical-value.ts";
 import type {
@@ -81,6 +82,7 @@ export function applyVertexCommercialTopology(
         : [];
     })
     .map(includePricingInputSourceRefs);
+  bindVertexGroundingAllowances(books);
   for (const book of books) bindServiceRelations(book, modelOffers);
   return { ...input, books };
 }

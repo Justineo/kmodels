@@ -28,6 +28,13 @@ The following are outside the rate-book boundary and are not preserved as raw or
   official price is part of an index query whose base compute/storage cost cannot be reconstructed
   from that request alone, so publishing only the surcharge would understate the operation.
 
+The [pricing research](../pricing-research.md) establishes the calculation path: sum each
+billable token partition times its applicable DBU rate, then multiply by the effective price for
+the matching SKU/cloud/currency/date. Databricks Labs publishes this same conversion method. Its
+reviewed pricing export includes a $0.07/DBU Gemini SKU, which makes the current 20%-discounted
+image schedule approximately equal to the delegated Google USD rates. This is a conditional
+explanation, not proof of a universal conversion or of post-promotion precedence.
+
 DBU remains the denomination exactly as Databricks publishes it. Kmodels does not apply a universal
 DBU-to-USD multiplier. A Gateway can accumulate DBU usage from request results; currency settlement
 remains account-specific and outside this public rate book.
@@ -76,13 +83,19 @@ dependency.
   Provisioned Throughput and Batch Inference tables. Read the reviewed token headers and their
   column order, including the optional row qualifier and one-hour cache-write column; discard
   hourly compute tables. Comma-separated version labels expand to exact catalog matches.
-- Unqualified token cells normalize to numeric rates. New regional-uplift and promotion markers,
-  context/modality row qualifiers, and cache-write duration alternatives retain their published
-  amounts, column labels, tier, qualifiers, and pricing notes as raw facts until their complete
-  applicability can be normalized. Never strip a footnote marker and publish an unconditional
-  rate. An observed Priority amount, including a raw conditional amount, suppresses the fallback
-  claim that no Priority amount was published. Stage a complete tiered page before applying it so
-  a changed table cannot leave a partially interpreted page behind.
+- Token cells normalize with their complete published applicability. Regional-processing markers
+  expand into mutually exclusive regional and non-regional variants with the documented DBU
+  uplift. Promotion markers bind only to the matching note in their table section; inclusive end
+  dates and subsequent list prices remain separate variants. Input/cache and output increases are
+  applied separately with exact decimal arithmetic.
+- Short/long context rows retain the provider's named tier when the page gives no numeric threshold.
+  Text/image/audio rows use distinct meters and quantities. Cache-write alternatives use the
+  provider-owned `cache_retention` selector (`default` or `1h`); an unspecified default never implies
+  five minutes. These selectors and subset quantities may be caller-supplied.
+- Unknown qualifiers, unmatched or changed promotion notes, and malformed amounts retain the
+  smallest raw cell with its label, tier, qualifiers, and local notes. Observed Priority amounts
+  suppress the fallback claim that no Priority amount was published. Stage a complete tiered page
+  before applying it so a changed table cannot leave a partially interpreted page behind.
 - The reviewed combined-table layout remains supported by deterministic fixtures. Its open-model
   rows publish only input, output, cache-read, and embedding rates. Capacity columns are
   recognized as out of scope and discarded. Its proprietary-model rows publish only input,
@@ -105,8 +118,9 @@ dependency.
   has not yet listed that endpoint. In that case Kmodels retains only the published
   `service_tier=priority` condition; it does not invent region, routing, or fallback conditions.
 - Reviewed combined-table promotion percentages, validity dates, launch targets, and referenced
-  Standard-rate families are parsed from first-party footnotes. New tiered-table annotations use
-  the raw fallback above. Model IDs, rates, and dates are not hard-coded.
+  Standard-rate families are parsed from first-party footnotes. Tiered tables also recognize
+  explicit discounts, post-promotion percentages, and the documented two-times list-price rule.
+  Model IDs, rates, and dates are not hard-coded.
 - Blank, `-`, `n/a`, and `Coming soon` cells publish no numeric rate. One malformed amount loses only
   that numeric amount; tiered tables retain its raw evidence. A malformed pricing page loses only that page; catalog identity and the independent
   pricing page survive.
@@ -141,9 +155,9 @@ because the reference limits them to responses where caching is active.
 The same fields do not become cache acquisition paths for OpenAI, Google, Grok, or open-model rows:
 the official reference qualifies the top-level cache fields specifically to hosted Claude
 endpoints. Their cache rates retain quantity semantics but remain without an acquisition method.
-Likewise, the aggregate usage object does not split text and image tokens. A model with separate
-text/image input or output rates therefore keeps those modality quantities unbound instead of
-charging the aggregate count more than once.
+Likewise, the aggregate usage object does not split modality or cache-retention subsets. Separate
+text/image/audio and default/one-hour cache-write rates use provider-owned subset quantities without
+an acquisition method. They never bind the aggregate response count to every partition.
 
 `usage.prompt_tokens` also resolves context-length conditions. Numeric Standard and Priority
 variants use `served_service_tier`. The documented response `service_tier` only echoes whether

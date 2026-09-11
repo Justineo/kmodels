@@ -53,6 +53,11 @@ after each test, including failures.
   a live data refresh merely to validate code changes.
   A current replay rejected by the adopted-topology gate may preserve only an already-retained,
   valid accepted partition with an explicit compilation failure report; fresh failures still abort.
+  An obsolete extractor preserves the already validated snapshot under its collected topology;
+  new topology requirements apply to current replays and fresh collection. Registering a provider
+  does not require a live refresh during code validation. Generated tests require every published
+  provider to remain configured, covered, and internally valid; fixture tests validate newly
+  registered adapters and features before their first authorized collection.
 - Exercise applicability budgets on both sides of the boundary. Equal-value claims that exceed one
   applicability must remain normalized as deterministic bounded shards with complete observations;
   a selector-limit raw fallback is reserved for a single indivisible claim that is itself too large.
