@@ -88,6 +88,15 @@ const attemptSchema = z.object({
 
 const providerSchema = z.object({
   provider_id: z.string(),
+  count_decreases: z
+    .array(
+      z.object({
+        field: z.enum(["models", "service_families", "api_endpoints", "routes", "availability"]),
+        previous: z.number().int().nonnegative(),
+        current: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
   status: z.enum(["fresh", "stale", "unavailable", "not_configured", "removed"]),
   publication: z.enum(["accepted", "retained", "withheld", "not_configured", "removed"]).optional(),
   pricing_publication: z
@@ -177,6 +186,7 @@ const pricingDisplay: Record<string, string> = {
   unchanged: "🟰",
 };
 const signalDisplay: Record<string, string> = {
+  catalog_count_decrease: "↘️",
   drift_guard_triggered: "🛡️",
   breaking_contract_mismatch: "⚠️",
   unreviewed_extension: "🧩",
@@ -479,7 +489,8 @@ const legend = [
   "",
   "| Icon | Signal | Meaning |",
   "| --- | --- | --- |",
-  "| 🛡️ | Drift guard | Abrupt model-count drop rejected |",
+  "| ↘️ | Count decrease | Accepted count decrease; diagnostic only |",
+  "| 🛡️ | Drift guard | Historical count-based rejection from an older collector |",
   "| ⚠️ | Contract mismatch | Owned source field or value became uninterpretable |",
   "| 🧩 | Unreviewed extension | Fresh data accepted after unrelated extension was stripped |",
   "| 📉 | Coverage regression | Reviewed item or field coverage fell below threshold |",
@@ -757,6 +768,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
       provider.models.changed === 0 &&
       failedSources.length === 0 &&
       findingSources.length === 0 &&
+      (provider.count_decreases?.length ?? 0) === 0 &&
       provider.attempt?.validation_issue === undefined &&
       provider.attempt?.pricing?.outcome !== "failed" &&
       (provider.pricing_coverage?.unknown_models ?? 0) === 0 &&
@@ -764,6 +776,12 @@ export function refreshReport(value: unknown): RefreshReportOutput {
     )
       continue;
     const detailRows: ProviderDetailRow[] = [];
+    for (const change of provider.count_decreases ?? [])
+      detailRows.push([
+        "Count decrease",
+        `\`${change.field}\``,
+        `${change.previous} → ${change.current} · published; diagnostic only`,
+      ]);
     const detailNotes: string[] = [];
     const pricingCoverage = provider.pricing_coverage;
     if (pricingCoverage !== undefined && pricingCoverage.unknown_models > 0) {
@@ -829,6 +847,7 @@ export function refreshReport(value: unknown): RefreshReportOutput {
           .filter(
             (signal) =>
               ![
+                "catalog_count_decrease",
                 "breaking_contract_mismatch",
                 "unreviewed_extension",
                 "persistent_source_failure",

@@ -667,7 +667,7 @@ function section(body: string, pathname: string): string {
   const marker = `===${pathname}===`;
   const start = body.indexOf(marker);
   if (start < 0 || body.indexOf(marker, start + marker.length) >= 0)
-    throw new Error(`xAI llms.txt requires one ${pathname} section`);
+    throw new Error(`xAI llms-full.txt requires one ${pathname} section`);
   const end = body.indexOf("\n\n===", start + marker.length);
   return body.slice(start + marker.length, end < 0 ? undefined : end).trim();
 }
@@ -2165,7 +2165,7 @@ function redirectedModels(models: ProviderModel[]): ProviderModel[] {
 
 export function parseXaiCatalog(input: ParseInput): ProviderModel[] {
   const bundle = linkedBundleSchema.parse(JSON.parse(input.body));
-  const llms = companion(bundle, "/llms.txt");
+  const llms = companion(bundle, "/llms-full.txt");
   const current = currentModels(
     input,
     embeddedModels(input, bundle.index.body),

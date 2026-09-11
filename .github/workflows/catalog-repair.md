@@ -88,10 +88,11 @@ a code-repairable problem. If one or more candidates share one coherent root cau
    structural findings and regressions rather than trying to prove their root cause in advance. A
    transport failure, missing credential, ordinary unknown pricing coverage, or a price the provider
    does not publish is not repairable.
-3. Make the smallest parser change. Preserve strict identity joins, scope boundaries, drift guards,
+3. Make the smallest parser change. Preserve strict identity joins, scope boundaries, source-integrity validation,
    and exact decimal price handling. Never infer a price from another model, family, provider, region,
-   or service; never convert missing pricing to free or not-applicable; never lower a count or coverage
-   threshold merely to admit the new source.
+   or service; never convert missing pricing to free or not-applicable; never weaken a source-coverage
+   contract merely to admit the new source. A published count decrease alone is diagnostic and does
+   not require repair; assess completeness against the current source and its authoritative scope.
 4. Add or update a reviewed deterministic fixture and regression test, increment the affected
    extractor version, and update the relevant provider guide with the current rule and rationale.
 5. Do not run the live collector and do not modify anything under `data/`.

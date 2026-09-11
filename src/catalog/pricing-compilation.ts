@@ -381,11 +381,16 @@ export async function compilePricingSnapshot(
   const replayedProviders: string[] = [];
   const preservedProviders: string[] = [];
   const replayFailures: PricingCompilationResult["replayFailures"] = [];
-  const acceptedPartition = (providerId: string): ProviderPricingPartition => {
+  const acceptedPartition = (
+    providerId: string,
+    currentTopology = true,
+  ): ProviderPricingPartition => {
     const partition = providerPartition(current.pricing.data, providerId, modelProvider);
     if (partition === undefined)
       throw new Error(`Pricing provider ${providerId} has no accepted partition`);
-    if (adoptedTopologies.has(providerId)) validateAdoptedTopology(partition);
+    // An accepted, validated snapshot keeps its collected topology when its
+    // extractor is obsolete. Enforce the current adoption gate on new replays.
+    if (currentTopology && adoptedTopologies.has(providerId)) validateAdoptedTopology(partition);
     return partition;
   };
 
@@ -395,7 +400,7 @@ export async function compilePricingSnapshot(
     const manifest = manifestByProvider.get(providerId);
     if (manifest === undefined) throw new Error(`Pricing provider ${providerId} is not configured`);
     if (replay === undefined || !replayUsesCurrentExtractors(replay, manifest)) {
-      partitions.set(providerId, acceptedPartition(providerId));
+      partitions.set(providerId, acceptedPartition(providerId, replay === undefined));
       preservedProviders.push(providerId);
       continue;
     }

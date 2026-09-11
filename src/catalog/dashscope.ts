@@ -1131,6 +1131,16 @@ interface PriceSegment {
 }
 
 function priceSegments(cell: Cell): PriceSegment[] {
+  const hourly = cell.text.match(/^Busy hours:\s*\$?([\d,.]+)\s*Idle hours:\s*\$?([\d,.]+)$/i);
+  if (hourly !== null) {
+    const busy = decimal(hourly[1] ?? "");
+    const idle = decimal(hourly[2] ?? "");
+    if (busy !== undefined && idle !== undefined)
+      return [
+        { price: busy, label: "Busy hours" },
+        { price: idle, label: "Idle hours" },
+      ];
+  }
   const parts = cell.parts.length === 0 ? [cell.text] : cell.parts;
   const pricedParts = parts.filter((part) =>
     /\$[\d,.]+|^(?:Free|Free trial|Limited-time free)$/i.test(part.trim()),

@@ -10,6 +10,9 @@ import {
   scaleDecimal,
 } from "../src/catalog/adapters.ts";
 import { assembleParsedProviderPricing } from "../src/catalog/pricing-adapter.ts";
+import type { ProviderPricingPartition } from "../src/catalog/pricing-assembly.ts";
+import { evaluateRateCost } from "../src/catalog/pricing-calculation.ts";
+import { addRationals } from "../src/catalog/pricing-rational.ts";
 import { decimalsEqual, publishedRate } from "../src/catalog/pricing.ts";
 import {
   curlResponse,
@@ -40,11 +43,55 @@ import {
 } from "../src/catalog/schema.ts";
 import type { SourceContractEvidence } from "../src/catalog/source-contract.ts";
 import { normalizeModelTasks } from "../src/catalog/task.ts";
-import { reconcileCatalog, validateProvider } from "../src/catalog/validation.ts";
+import {
+  providerCountDecreases,
+  reconcileCatalog,
+  validateProvider,
+} from "../src/catalog/validation.ts";
 import { vercelCommercialFacts } from "../src/catalog/vercel-commercial-source.ts";
 import { extractVercelPricingInputs } from "../src/catalog/vercel-accounting.ts";
 
 const observedAt = "2026-07-21T00:00:00.000Z";
+
+function validateParsedPricing(
+  value: ProviderManifest,
+  source: SourceManifest,
+  models: ProviderModel[],
+  partition: ProviderPricingPartition | undefined,
+): void {
+  if (partition === undefined) throw new Error("Missing parsed pricing partition");
+  validatePricingCatalog(
+    {
+      provider_vocabularies: [partition.vocabulary],
+      provider_snapshots: [partition.snapshot],
+      model_dispositions: partition.model_dispositions,
+      books: partition.books,
+    },
+    {
+      providers: [provider(value)],
+      models,
+      sources: [
+        {
+          id: source.id,
+          provider_id: value.provider.id,
+          url: source.url,
+          source: source.source ?? [source.type],
+          stability: source.stability,
+          scope: source.scope ?? "global",
+          exhaustive: source.exhaustive ?? false,
+          role: source.role ?? "catalog",
+          field_paths: source.fields,
+          ...(source.pricingEvidence === undefined
+            ? {}
+            : { pricing_evidence: source.pricingEvidence }),
+          observed_at: observedAt,
+          content_hash: "1".repeat(64),
+          extractor_version: source.extractorVersion,
+        },
+      ],
+    },
+  );
+}
 
 const azureApiFixtureSchema = z
   .object({
@@ -746,7 +793,7 @@ async function xaiCatalog(
   const body = JSON.stringify({
     index: { url: source.url, body: edit(await fixture(index)) },
     documents: [
-      { url: "https://docs.x.ai/llms.txt", body: editLlms(await fixture("xai/llms.txt")) },
+      { url: "https://docs.x.ai/llms-full.txt", body: editLlms(await fixture("xai/llms.txt")) },
     ],
   });
   return parseSource({
@@ -1324,7 +1371,7 @@ async function vertexModels(
     extractor: {
       kind: "vertex-catalog",
       minModels: 1,
-      maxModels: 5,
+      maxModels: 20,
       minModelDocuments,
       maxModelDocuments: 5,
     },
@@ -4808,6 +4855,72 @@ describe("HTTP transport boundary", () => {
 });
 
 describe("OpenAI adapters", () => {
+  it("calculates eligible container sessions using unchanged per-minute prices and the published minimum", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const pricing =
+      (await fixture("openai/pricing.md")) +
+      "\nEligible container sessions will be billed by the minute, with a 5-minute minimum per session.\n";
+    const changelog = await fixture("openai/container-billing.md");
+    const catalogModels = [openAiModel("gpt-5", ["text_generation"])];
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify({
+        index: { url: source.url, body: pricing },
+        documents: [
+          { url: "https://developers.openai.com/api/docs/changelog.md", body: changelog },
+        ],
+      }),
+      observedAt,
+      catalogModels,
+    });
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    const book = partition?.books.find(({ book_key }) => book_key === "service:containers");
+    expect(
+      book?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "raw")),
+    ).toEqual([]);
+    const minute = book?.offers
+      .flatMap(({ terms }) => terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])))
+      .find(
+        (variant) =>
+          variant.price.value.numerator === "1" && variant.price.value.denominator === "40000",
+      );
+    if (minute === undefined) throw new Error("Missing one-GiB minute rate");
+    expect(
+      evaluateRateCost(minute, [
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "openai",
+            value: "container_session_seconds_before_minimum",
+          },
+          value: { numerator: "120", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "400" } });
+    expect(
+      evaluateRateCost(minute, [
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "openai",
+            value: "container_session_seconds_before_minimum",
+          },
+          value: { numerator: "480", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "250" } });
+  });
+
   it("combines the complete model index with rich model pages", async () => {
     const models = await parsed("openai", "openai/catalog.json");
     const model = models.find((candidate) => candidate.model_id === "gpt-5.4");
@@ -5505,6 +5618,144 @@ describe("OpenAI adapters", () => {
       true,
     );
     expect(() => sourcePricingReconciliation(models, reconciliation, true)).not.toThrow();
+  });
+
+  it("prices GPT-Live session seconds without minute rounding", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("openai/live-session-pricing.md"),
+      observedAt,
+      catalogModels: [openAiModel("gpt-live-1", ["speech_to_speech"])],
+    });
+    expect(models[0]?.price_facts).toEqual([
+      expect.objectContaining({
+        meter: "session_runtime",
+        price: "0.05",
+        unit: "minute",
+        raw_unit: "per minute",
+      }),
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    const rate = partition?.books
+      .find(({ book_key }) => book_key === "model:openai/gpt-live-1")
+      ?.offers.flatMap(({ terms }) =>
+        terms.flatMap((term) => (term.kind === "rate" ? term.variants : [])),
+      )[0];
+    if (rate === undefined) throw new Error("Missing live session rate");
+    expect(rate.charge_binding?.aggregation).toBe("session");
+    expect(
+      evaluateRateCost(rate, [
+        {
+          signal: { namespace: "kmodels", value: "active_seconds" },
+          value: { numerator: "90", denominator: "1" },
+        },
+      ]),
+    ).toMatchObject({ kind: "resolved", amount: { numerator: "3", denominator: "40" } });
+  });
+
+  it("publishes Fast with EU residency as unsupported and keeps the numeric region scopes disjoint", () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const model = {
+      ...openAiModel("gpt-6-astra", ["text_generation"]),
+      release_date: "2026-09-04",
+      availability: [
+        { region: "Europe (EEA + Switzerland)", deployment_type: "regional_processing" },
+      ],
+    } satisfies ProviderModel;
+    const body = [
+      "Flagship models",
+      "Standard",
+      "| Model | Short context input | Short context output |",
+      "| --- | --- | --- |",
+      "| gpt-6-astra | $5 | $30 |",
+      "Fast mode",
+      "| Model | Short context input | Short context output |",
+      "| --- | --- | --- |",
+      "| gpt-6-astra | $10 | $60 |",
+      "Fast mode is unavailable for GPT-6 Astra with EU data residency. Use Standard processing for those requests.",
+      "Regional processing (data residency) endpoints are charged a 10% uplift.",
+    ].join("\n");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body,
+      observedAt,
+      catalogModels: [model],
+    });
+    const partition = assembleParsedProviderPricing(
+      "openai",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    const offer = partition?.books[0]?.offers.find(({ offer_key }) => offer_key === "sync");
+    expect(offer?.states.filter(({ state }) => state === "not_supported")).toEqual([
+      expect.objectContaining({
+        applicability: {
+          any_of: [
+            {
+              all_of: expect.arrayContaining([
+                expect.objectContaining({
+                  kind: "boolean",
+                  dimension: {
+                    namespace: "provider",
+                    provider_id: "openai",
+                    value: "eu_data_residency",
+                  },
+                  value: true,
+                }),
+                expect.objectContaining({
+                  kind: "categorical",
+                  dimension: { namespace: "kmodels", value: "served_service_tier" },
+                  values: [expect.objectContaining({ value: "fast" })],
+                }),
+              ]),
+            },
+          ],
+        },
+      }),
+    ]);
+    const rates = models[0]?.price_facts ?? [];
+    expect(rates.filter(({ conditions }) => conditions.service_tier === "fast")).toHaveLength(4);
+    expect(
+      rates
+        .filter(({ conditions }) => conditions.service_tier === "fast")
+        .every(({ conditions }) => conditions.eu_data_residency === false),
+    ).toBe(true);
+    expect(
+      rates
+        .filter(({ conditions }) => conditions.service_tier === "standard")
+        .every(({ conditions }) => conditions.eu_data_residency === undefined),
+    ).toBe(true);
+    expect(offer?.terms.some((term) => term.kind === "raw")).toBe(false);
+    const ordinary = parseSource({
+      provider: provider(value),
+      source,
+      body: body.replace("Fast mode is unavailable for GPT-6 Astra with EU data residency.", ""),
+      observedAt,
+      catalogModels: [model],
+    });
+    expect(ordinary[0]?.raw_price_facts).toEqual([]);
+    expect(
+      ordinary[0]?.price_facts.every(
+        ({ conditions }) => conditions.eu_data_residency === undefined,
+      ),
+    ).toBe(true);
   });
 
   it("derives disjoint regional-processing rates from exact release eligibility", () => {
@@ -6912,7 +7163,7 @@ describe("Gemini adapters", () => {
       endpoints: ["interactions.create /v1beta/interactions"],
       input: "1.50",
       free: "0",
-      searchUnit: "thousand_requests",
+      searchUnit: "thousand_search_units",
       cached: "0.15",
       resources: expect.arrayContaining(["google-maps", "google-search"]),
     });
@@ -6971,7 +7222,7 @@ describe("Gemini adapters", () => {
     );
   });
 
-  it("uses generation-specific grounding units and reconciles every pricing claim", async () => {
+  it("uses explicit grounding units and reconciles every pricing claim", async () => {
     const reconciliation: PricingReconciliationItem[] = [];
     const models = await geminiCatalog({}, (item) => reconciliation.push(item));
     const legacy = models.find((model) => model.model_id === "gemini-test-preview");
@@ -7000,11 +7251,122 @@ describe("Gemini adapters", () => {
         "excluded",
       ]),
     }).toEqual({
-      legacy: "thousand_requests",
+      legacy: "thousand_search_units",
       current: "thousand_search_units",
       maps: "thousand_search_units",
       reconciliation: expect.objectContaining({ normalized: 38, explicit_non_numeric: 9 }),
     });
+  });
+
+  it("shares grounding allowances across exact target rates and preserves incompatible units", async () => {
+    const value = manifest("gemini");
+    const source = value.sources.find(({ id }) => id === "gemini-pricing");
+    if (source === undefined) throw new Error("Missing Gemini pricing source");
+    const ids = [
+      "gemini-3-test-a",
+      "gemini-3-test-b",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-robotics-er-2-preview",
+    ];
+    const catalogModels = ids.map((id) =>
+      baseModel({ providerId: "gemini", id, name: id, sourceId: source.id, observedAt }),
+    );
+    const body = await fixture("gemini/allowances.html");
+    const assemble = (text: string, mapsGuide?: string) => {
+      const models = parseSource({
+        provider: provider(value),
+        source,
+        body: JSON.stringify({
+          index: { url: source.url, body: text },
+          documents:
+            mapsGuide === undefined
+              ? []
+              : [{ url: "https://ai.google.dev/gemini-api/docs/maps-grounding", body: mapsGuide }],
+        }),
+        observedAt,
+        catalogModels,
+      });
+      const partition = assembleParsedProviderPricing(
+        "gemini",
+        observedAt,
+        [{ source, models }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+      validateParsedPricing(value, source, models, partition);
+      return partition;
+    };
+    const partition = assemble(body);
+    const search = partition?.books.find(({ book_key }) => book_key === "service:google-search");
+    const allowances = search?.offers.flatMap(({ terms }) =>
+      terms.filter((term) => term.kind === "allowance"),
+    );
+    expect(allowances).toHaveLength(2);
+    for (const term of allowances ?? []) {
+      expect(term.variants).toHaveLength(1);
+      expect(term.variants[0]?.target).toMatchObject({
+        kind: "rate_terms",
+        term_refs: expect.any(Array),
+      });
+      const target = term.variants[0]?.target;
+      if (target?.kind !== "rate_terms") throw new Error("Missing allowance targets");
+      expect(target.term_refs).toHaveLength(2);
+    }
+    expect(
+      allowances
+        ?.flatMap(({ variants }) =>
+          variants.map(({ reset, benefit }) => [
+            reset.value,
+            benefit.kind === "quantity" ? benefit.quantity.value.numerator : undefined,
+          ]),
+        )
+        .sort(),
+    ).toEqual([
+      ["daily", "1500"],
+      ["monthly", "5000"],
+    ]);
+    const maps = partition?.books.find(({ book_key }) => book_key === "service:google-maps");
+    expect(
+      maps?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "raw")).length,
+    ).toBe(2);
+    expect(
+      maps?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "allowance")),
+    ).toEqual([]);
+    const mapsGuide = await fixture("gemini/maps-grounding.html");
+    const clarified = assemble(body, mapsGuide);
+    const clarifiedMaps = clarified?.books.find(
+      ({ book_key }) => book_key === "service:google-maps",
+    );
+    expect(
+      clarifiedMaps?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "raw")),
+    ).toEqual([]);
+    expect(
+      clarifiedMaps?.offers.flatMap(({ terms }) =>
+        terms.filter((term) => term.kind === "allowance"),
+      ),
+    ).toHaveLength(1);
+    const robotics = assemble(
+      body.replaceAll("gemini-3-test-a", "gemini-robotics-er-2-preview"),
+      mapsGuide,
+    );
+    // Membership is established by the explicit allowance cell, independently of a model-name prefix.
+    expect(
+      robotics?.books
+        .find(({ book_key }) => book_key === "service:google-search")
+        ?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "raw")),
+    ).toEqual([]);
+    const conflicting = assemble(
+      body.replace(
+        "1,500 RPD (free, limit shared with Flash RPD)",
+        "2,000 RPD (free, limit shared with Flash RPD)",
+      ),
+    );
+    expect(
+      conflicting?.books
+        .find(({ book_key }) => book_key === "service:google-search")
+        ?.offers.flatMap(({ terms }) => terms.filter((term) => term.kind === "allowance")).length,
+    ).toBe(1);
   });
 
   it("publishes localized GenerateContent, embedding, Batch, and Interactions inputs", async () => {
@@ -7409,11 +7771,63 @@ describe("Gemini adapters", () => {
 });
 
 describe("Vertex AI adapters", () => {
+  it("resolves OCR page alternatives from the exact model billing companion", async () => {
+    const value = manifest("vertex");
+    const source = value.sources.find(({ id }) => id === "vertex-pricing");
+    if (source === undefined) throw new Error("Missing Agent Platform pricing source");
+    expect(source.linkedDocuments?.documents).toContainEqual(
+      expect.objectContaining({ id: "mistral-ocr-billing" }),
+    );
+    const catalogModels = [
+      {
+        ...baseModel({
+          providerId: "vertex",
+          id: "mistral-ocr-2505",
+          name: "Mistral OCR (25.05)",
+          sourceId: source.id,
+          observedAt,
+        }),
+        tasks: ["ocr"] satisfies ModelTask[],
+      },
+    ];
+    const index =
+      '<main><div class="devsite-article-body"><h3>Mistral AI models</h3><table><tr><th>Model</th><th>Pricing</th></tr><tr><td>Mistral OCR (25.05)</td><td>Input: $0.0005 / million tokens (or $0.0005/page) Output: $0.0005 / million tokens (or $0.0005/page)</td></tr></table></div></main>';
+    const companion = await fixture("vertex/mistral-ocr-billing.html");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: JSON.stringify({
+        index: { url: source.url, body: index },
+        documents: [
+          {
+            url: "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/mistral/mistral-ocr",
+            body: companion,
+          },
+        ],
+      }),
+      observedAt,
+      catalogModels,
+    });
+    expect(models[0]?.raw_price_facts).toEqual([]);
+    expect(models[0]?.price_facts.map(({ meter, price, unit }) => [meter, price, unit])).toEqual([
+      ["input_text", "0.0005", "million_tokens"],
+      ["output_text", "0.0005", "million_tokens"],
+    ]);
+    const partition = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+  });
+
   it("uses the live HTML transport path for Agent Platform pricing", () => {
     const pricing = manifest("vertex").sources.find(({ id }) => id === "vertex-pricing");
     expect(pricing).toMatchObject({
       url: "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing.html",
-      extractorVersion: "vertex-pricing-v3",
+      extractorVersion: "vertex-pricing-v6",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
     });
     expect(pricing?.linkedDocuments?.documents?.map(({ id }) => id)).toEqual(
@@ -7827,6 +8241,57 @@ describe("Vertex AI adapters", () => {
         .filter(({ meter }) => meter === "output_video")
         .map(({ price, unit }) => [price, unit])
         .sort(),
+    ).toEqual([
+      ["0.10", "second"],
+      ["17.50", "million_tokens"],
+    ]);
+    const tokenHeader = (
+      await vertexCatalog({
+        "pricing.html": pricing.replace(
+          "<th>Model</th><th>Type</th><th>Price</th>",
+          "<th>Model</th><th>Type</th><th>Price (/1M tokens)</th>",
+        ),
+      })
+    ).find(({ model_id }) => model_id === "gemini-test");
+    if (tokenHeader === undefined) throw new Error("Missing video pricing model");
+    const videoRates = tokenHeader.price_facts.filter(({ meter }) => meter === "output_video");
+    const value = manifest("vertex");
+    const source = value.sources.find(({ id }) => id === videoRates[0]?.source_ref);
+    if (source === undefined) throw new Error("Missing video pricing source");
+    const isolated: ProviderModel = {
+      ...baseModel({
+        providerId: "vertex",
+        id: "gemini-test",
+        name: "Gemini Test",
+        sourceId: source.id,
+        observedAt,
+      }),
+      pricing_state: "numeric",
+      price_facts: videoRates,
+    };
+    const partition = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [{ source, models: [isolated] }],
+      [isolated],
+    );
+    validateParsedPricing(value, source, [isolated], partition);
+    const videoTerms = partition?.books.flatMap(({ offers }) =>
+      offers.flatMap(({ terms }) => terms),
+    );
+    expect(
+      videoTerms?.every((term) => term.kind === "rate" && term.raw_variants.length === 0),
+    ).toBe(true);
+    expect(
+      videoRates
+        .map(({ conditions }) => conditions.billing_unit)
+        .sort((left, right) => String(left).localeCompare(String(right))),
+    ).toEqual(["second", "token"]);
+    expect(
+      tokenHeader.price_facts
+        .filter(({ meter }) => meter === "output_video")
+        .map(({ price, unit }) => [price, unit])
+        .sort((left, right) => left.join().localeCompare(right.join())),
     ).toEqual([
       ["0.10", "second"],
       ["17.50", "million_tokens"],
@@ -8440,7 +8905,7 @@ describe("Vertex AI adapters", () => {
           unit: "thousand_search_units",
         },
       ],
-      allowances: 0,
+      allowances: 4,
       nativeAudio: [
         { service: "grounded-generation", unit: "thousand_requests" },
         { service: "google-maps", unit: "thousand_requests" },
@@ -8454,6 +8919,111 @@ describe("Vertex AI adapters", () => {
       }),
       problems: [],
     });
+  });
+
+  it("shares Vertex grounding pools across models and services and retains unrecognized allowances", async () => {
+    const ids = [
+      "gemini-3-test",
+      "gemini-3-other",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-2.5-pro",
+      "gemini-2.0-flash",
+    ];
+    const labels = [
+      "Gemini 3 Test",
+      "Gemini 3 Other",
+      "Gemini 2.5 Flash",
+      "Gemini 2.5 Flash-Lite",
+      "Gemini 2.5 Pro",
+      "Gemini 2.0 Flash",
+    ];
+    const card = `<main><div class="devsite-article-body">${ids.map((id, index) => `<h1>${labels[index]}</h1><table><tr><th>Model ID</th><td><code>${id}</code></td></tr><tr><th>Modalities</th><td>Inputs: Text Outputs: Text</td></tr></table>`).join("")}</div></main>`;
+    const supported = `<main><h2>Supported models</h2><ul>${labels.map((label) => `<li>${label}</li>`).join("")}</ul></main>`;
+    const pricing = await fixture("vertex/grounding-allowances.html");
+    const parse = (pricing: string) =>
+      vertexCatalog({
+        "model.html": card,
+        "pricing.html": pricing,
+        "grounding-search.html": supported,
+        "grounding-maps.html": supported,
+        "grounding-data.html": supported,
+      });
+    const models = await parse(pricing);
+    const value = manifest("vertex");
+    const source = value.sources.find(({ id }) => id === "vertex-pricing");
+    if (source === undefined) throw new Error("Missing Vertex model source");
+    const partition = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    const pools =
+      partition?.books.flatMap(({ offers }) =>
+        offers.filter(({ offer_key }) => offer_key.startsWith("allowance:")),
+      ) ?? [];
+    expect(pools).toHaveLength(5);
+    const pool = (key: string) =>
+      pools
+        .find(({ offer_key }) => offer_key === `allowance:${key}`)
+        ?.terms.flatMap((term) => (term.kind === "allowance" ? term.variants : []))[0];
+    expect(pool("gemini-3-web-monthly")).toMatchObject({
+      benefit: { kind: "quantity", quantity: { value: { numerator: "5000", denominator: "1" } } },
+      reset: { value: "monthly" },
+    });
+    expect(pool("gemini-3-web-monthly")?.target).toMatchObject({
+      kind: "rate_terms",
+      term_refs: expect.any(Array),
+    });
+    const web = pool("gemini-3-web-monthly")?.target;
+    expect(web?.kind === "rate_terms" ? web.term_refs.length : undefined).toBe(4);
+    expect(pool("google-search-flash-daily")).toMatchObject({
+      benefit: { quantity: { value: { numerator: "1500" } } },
+      reset: { value: "daily" },
+    });
+    expect(
+      pools.find(({ offer_key }) => offer_key === "allowance:google-search-flash-daily")
+        ?.model_refs,
+    ).toHaveLength(3);
+    expect(pool("google-search-pro-daily")).toMatchObject({
+      benefit: { quantity: { value: { numerator: "10000" } } },
+    });
+    expect(
+      pools.find(({ offer_key }) => offer_key === "allowance:google-maps-flash-daily")?.model_refs,
+    ).toEqual(["vertex/gemini-2.0-flash"]);
+    expect(pool("google-maps-pro-daily")).toBeUndefined();
+    expect(
+      models
+        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        .flatMap(({ raw_price_facts }) => raw_price_facts)
+        .some(({ term_key }) => term_key === "grounding_billing_rule"),
+    ).toBe(true);
+    const driftedModels = await parse(
+      pricing.replaceAll(
+        /aggregated across all Gemini 3\s+models/g,
+        "with a new unspecified sharing rule",
+      ),
+    );
+    const drifted = assembleParsedProviderPricing(
+      "vertex",
+      observedAt,
+      [{ source, models: driftedModels }],
+      driftedModels,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, driftedModels, drifted);
+    expect(
+      drifted?.books
+        .flatMap(({ offers }) =>
+          offers.flatMap(({ terms }) =>
+            terms.flatMap((term) => (term.kind === "raw" ? term.variants : [])),
+          ),
+        )
+        .some(({ impact }) => impact === "allowance"),
+    ).toBe(true);
   });
 
   it("parses labeled lifecycle dates, quota limits, and endpoint replacements", async () => {
@@ -9408,7 +9978,7 @@ describe("Anthropic adapters", () => {
 describe("Databricks adapters", () => {
   it("classifies fixed companions by claim and pricing dependency", () => {
     const source = manifest("databricks").sources.find(({ id }) => id === "databricks-models");
-    expect(source?.extractorVersion).toBe("databricks-catalog-v12");
+    expect(source?.extractorVersion).toBe("databricks-catalog-v13");
     expect(source?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     const companions = new Map(
       source?.linkedDocuments?.documents?.map((document) => [document.id, document]),
@@ -10092,26 +10662,32 @@ describe("Databricks adapters", () => {
     );
     const sol = models.find(({ model_id }) => model_id === "databricks-gpt-5-6-sol");
     expect(sol).toBeDefined();
-    expect(sol?.price_facts).toEqual([]);
-    expect(sol?.raw_price_facts).toHaveLength(12);
-    expect(sol?.raw_price_facts).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          reason: "unknown_applicability",
-          conditions: { service_tier: "priority" },
-          raw: expect.objectContaining({
-            amount: "114.286",
-            denomination: "DBU",
-            meter: "Input",
-            fragment: expect.stringContaining("10% uplift"),
-            conditions: expect.arrayContaining([
-              { dimension: "row_qualifier", value: "Short context" },
-            ]),
-          }),
+    expect(sol?.raw_price_facts).toEqual([]);
+    expect(sol?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "114.286",
+        conditions: expect.objectContaining({
+          service_tier: "priority",
+          context_tier: "short",
+          deployment_scope: "non_regional_processing",
+          promotion: true,
+          effective_until: "2026-11-21",
         }),
-      ]),
+      }),
     );
-    expect(sol?.raw_price_facts.some(({ reason }) => reason === "unknown_amount")).toBe(false);
+    expect(sol?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "157.14325",
+        conditions: expect.objectContaining({
+          service_tier: "priority",
+          context_tier: "short",
+          deployment_scope: "regional_processing",
+          effective_from: "2026-11-22",
+        }),
+      }),
+    );
     const claude = models.find(({ model_id }) => model_id === "databricks-claude-sonnet-4");
     expect(claude).toBeDefined();
     expect(claude?.price_facts).toContainEqual(
@@ -10120,15 +10696,69 @@ describe("Databricks adapters", () => {
         price: "4.286",
       }),
     );
-    expect(claude?.raw_price_facts).toContainEqual(
+    expect(claude?.price_facts).toContainEqual(
       expect.objectContaining({
-        raw: expect.objectContaining({ amount: "53.571", meter: "Cache write" }),
+        meter: "cache_write_text",
+        price: "53.571",
+        conditions: { service_tier: "standard", cache_retention: "default" },
       }),
     );
     expect(items.filter(({ reason_code }) => reason_code.endsWith("pricing_rejected"))).toEqual([]);
     expect(
       models.flatMap(({ price_facts }) => price_facts).every(({ unit }) => unit !== "hour"),
     ).toBe(true);
+  });
+
+  it("normalizes scoped DBU promotions and modality quantities without binding aggregate tokens", async () => {
+    const body = await fixture("databricks/pricing-partner-modalities.html");
+    const models = await databricksCatalog({
+      "pricing-partner.html": body,
+      "google-image-pricing.html": "<main></main>",
+    });
+    const value = manifest("databricks");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Databricks source");
+    const image = models.find(({ model_id }) => model_id === "databricks-gemini-3-1-flash-image");
+    expect(image?.raw_price_facts).toEqual([]);
+    expect(image?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "output_image",
+        price: "942.8584",
+        conditions: expect.objectContaining({
+          modality: "image",
+          deployment_scope: "regional_processing",
+          promotion: true,
+        }),
+      }),
+    );
+    const partition = assembleParsedProviderPricing(
+      "databricks",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    const terms =
+      partition?.books
+        .find(({ book_key }) => book_key === "model:databricks/databricks-gemini-3-1-flash-image")
+        ?.offers.flatMap(({ terms }) => terms) ?? [];
+    const rates = terms.flatMap((term) => (term.kind === "rate" ? term.variants : []));
+    expect(rates.length).toBeGreaterThan(0);
+    expect(
+      rates.every(
+        ({ charge_binding }) =>
+          charge_binding?.signal.namespace === "provider" &&
+          charge_binding.quantity_methods === undefined,
+      ),
+    ).toBe(true);
+    const drift = await databricksCatalog({
+      "pricing-partner.html": body.replace("discount of 20%", "discount of an unpublished amount"),
+    });
+    expect(
+      drift.find(({ model_id }) => model_id === "databricks-gemini-3-5-flash")?.raw_price_facts
+        .length,
+    ).toBeGreaterThan(0);
   });
 
   it("rejects an unrecognized tiered table without publishing a partial page", async () => {
@@ -10877,7 +11507,10 @@ describe("xAI adapter", () => {
 
   it("cross-checks independent official prices and model API schemas", async () => {
     const value = manifest("xai");
-    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v12");
+    expect(value.sources[0]?.extractorVersion).toBe("xai-catalog-v13");
+    expect(value.sources[0]?.linkedDocuments?.documents?.map(({ url }) => url)).toEqual([
+      "https://docs.x.ai/llms-full.txt",
+    ]);
     expect(value.sources[0]?.fields).toEqual(expect.arrayContaining(["pricing", "pricing_inputs"]));
     expect(value.sources.find(({ id }) => id === "xai-api")?.extractorVersion).toBe("xai-api-v2");
     const priceItems: PricingReconciliationItem[] = [];
@@ -12548,7 +13181,312 @@ describe("document adapter", () => {
   });
 });
 
+describe("OpenAI fixed search content", () => {
+  it.each([false, true])(
+    "preserves unrecognized fixed-content evidence alongside normalized rules: %s",
+    async (includeKnown) => {
+      const value = manifest("openai");
+      const source = value.sources.find(({ id }) => id === "openai-pricing");
+      if (source === undefined) throw new Error("Missing OpenAI pricing source");
+      const models = parseSource({
+        provider: provider(value),
+        source,
+        body: await fixture("openai/fixed-search.md"),
+        observedAt,
+        catalogModels: [],
+      });
+      const fact = models
+        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        .find(({ resource_key }) => resource_key === "web-search-content:gpt-4o-mini");
+      const known = fact?.raw_price_facts[0];
+      if (fact === undefined || known === undefined) throw new Error("Missing fixed-content fact");
+      const fragment = "Fixed content block size is not published.";
+      fact.raw_price_facts = [
+        ...(includeKnown ? [known] : []),
+        { ...known, raw: { ...known.raw, fragment } },
+      ];
+      const partition = assembleParsedProviderPricing(
+        "openai",
+        observedAt,
+        [{ source, models }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+      validateParsedPricing(value, source, models, partition);
+      const term = partition?.books.find(
+        ({ book_key }) => book_key === "service:web-search-content:gpt-4o-mini",
+      )?.offers[0]?.terms[0];
+      expect(term?.kind).toBe(includeKnown ? "contribution" : "raw");
+      if (term === undefined) throw new Error("Missing fixed-content term");
+      const raw = term.kind === "raw" ? term.variants : term.raw_variants;
+      expect(raw).toHaveLength(1);
+      expect(raw[0]?.observations).toEqual([
+        expect.objectContaining({ raw: expect.objectContaining({ fragment }) }),
+      ]);
+      if (term.kind === "contribution") expect(term.variants).toHaveLength(1);
+    },
+  );
+
+  it("contributes fixed tokens to the model rate without copying prices or requiring a runtime locator", async () => {
+    const value = manifest("openai");
+    const source = value.sources.find(({ id }) => id === "openai-pricing");
+    if (source === undefined) throw new Error("Missing OpenAI pricing source");
+    const body = await fixture("openai/fixed-search.md");
+    const parse = (text: string) =>
+      parseSource({ provider: provider(value), source, body: text, observedAt, catalogModels: [] });
+    const models = parse(body);
+    const facts = models.flatMap(({ commercial_facts }) => commercial_facts ?? []);
+    expect(
+      facts
+        .filter(({ resource_key }) => resource_key.startsWith("web-search-content:"))
+        .map(({ model_refs }) => model_refs),
+    ).toEqual([["openai/gpt-4.1-mini"], ["openai/gpt-4o-mini"]]);
+    const assemble = (models: ProviderModel[]) =>
+      assembleParsedProviderPricing(
+        "openai",
+        observedAt,
+        [{ source, models }],
+        models,
+        value.pricingCategoricalLabels,
+      );
+    const cost = (text: string) => {
+      const models = parse(text);
+      const partition = assemble(models);
+      validateParsedPricing(value, source, models, partition);
+      const term = partition?.books.find(
+        ({ book_key }) => book_key === "service:web-search-content:gpt-4o-mini",
+      )?.offers[0]?.terms[0];
+      if (term?.kind !== "contribution" || term.variants[0] === undefined)
+        throw new Error("Missing fixed search rate binding");
+      const contribution = term.variants[0];
+      const binding = contribution.charge_bindings[0];
+      const target = partition?.books
+        .flatMap(({ offers }) => offers.flatMap(({ terms }) => terms))
+        .find(({ id }) => contribution.target_rate_refs.includes(id));
+      if (binding === undefined || target?.kind !== "rate" || target.variants[0] === undefined)
+        throw new Error("Missing referenced model input rate");
+      return evaluateRateCost({ ...target.variants[0], charge_binding: binding }, [
+        {
+          signal: {
+            namespace: "provider",
+            provider_id: "openai",
+            value: "fixed_search_content_calls",
+          },
+          value: { numerator: "2", denominator: "1" },
+        },
+      ]);
+    };
+    expect(cost(body)).toEqual({
+      kind: "resolved",
+      amount: { numerator: "3", denominator: "1250" },
+      denomination: { kind: "fiat", currency: "USD" },
+    });
+    expect(cost(body.replace("$0.15", "$0.25"))).toMatchObject({
+      amount: { numerator: "1", denominator: "250" },
+    });
+    expect(
+      parse(body.replace("8,000", "9,000"))
+        .flatMap(({ commercial_facts }) => commercial_facts ?? [])
+        .some(({ resource_key }) => resource_key.startsWith("web-search-content:")),
+    ).toBe(false);
+  });
+});
+
+describe("Perplexity adapter", () => {
+  async function catalog(edit: (text: string) => string = (text) => text) {
+    const value = manifest("perplexity");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Perplexity source");
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      observedAt,
+      body: JSON.stringify({
+        index: { url: source.url, body: edit(await fixture("perplexity/pricing.md")) },
+        documents: [
+          {
+            url: "https://docs.perplexity.ai/docs/sonar/models.md",
+            body: await fixture("perplexity/models.md"),
+          },
+        ],
+      }),
+    });
+    const partition = assembleParsedProviderPricing(
+      "perplexity",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    if (partition === undefined) throw new Error("Missing Perplexity pricing");
+    validateParsedPricing(value, source, models, partition);
+    return { models, partition };
+  }
+
+  it("calculates every Deep Research component and retains all Pro Search context prices", async () => {
+    const { models, partition } = await catalog();
+    expect(models).toHaveLength(8);
+    const deep = partition.books.find(
+      ({ book_key }) => book_key === "model:perplexity/sonar-deep-research",
+    );
+    if (deep === undefined) throw new Error("Missing Deep Research book");
+    const counts: Record<string, string> = {
+      input_text: "1000",
+      output_text: "2000",
+      citation_tokens: "500",
+      reasoning_tokens: "300",
+      web_search: "4",
+    };
+    let total = { numerator: "0", denominator: "1" };
+    for (const term of deep.offers.flatMap(({ terms }) => terms)) {
+      if (term.kind !== "rate") throw new Error("Unnormalized Deep Research rate");
+      const variant = term.variants[0];
+      const count = counts[term.meter.value];
+      if (variant?.charge_binding === undefined || count === undefined)
+        throw new Error("Missing component usage binding");
+      const result = evaluateRateCost(variant, [
+        { signal: variant.charge_binding.signal, value: { numerator: count, denominator: "1" } },
+      ]);
+      if (result.kind !== "resolved") throw new Error("Unresolved Deep Research rate");
+      total = addRationals(total, result.amount);
+    }
+    expect(total).toEqual({ numerator: "399", denominator: "10000" });
+    const pro = models.find(({ model_id }) => model_id === "sonar-pro");
+    expect(
+      pro?.price_facts
+        .filter(
+          ({ meter, conditions }) => meter === "web_search" && conditions.search_effort === "pro",
+        )
+        .map(({ price, conditions }) => [conditions.context_tier, price]),
+    ).toEqual([
+      ["low", "14"],
+      ["medium", "18"],
+      ["high", "22"],
+    ]);
+    expect(partition.books.some(({ book_key }) => book_key === "service:search")).toBe(true);
+    expect(partition.books.some(({ book_key }) => book_key === "service:agent-sandbox")).toBe(true);
+    for (const term of partition.books.flatMap(({ offers }) =>
+      offers.flatMap(({ terms }) => terms),
+    )) {
+      expect(term.kind).toBe("rate");
+      if (term.kind === "rate") expect(term.raw_variants).toEqual([]);
+    }
+  });
+
+  it("preserves an unresolved price cell without losing sibling rates or model identity", async () => {
+    const { models, partition } = await catalog((text) =>
+      text.replace("\\$0.004", "Contact sales"),
+    );
+    const model = models.find(({ model_id }) => model_id === "pplx-embed-v1-0.6b");
+    expect(model?.raw_price_facts).toContainEqual(
+      expect.objectContaining({ impact: "base_price", reason: "unknown_amount" }),
+    );
+    expect(
+      partition.books.find(({ book_key }) => book_key === "model:perplexity/sonar-deep-research"),
+    ).toBeDefined();
+    expect(models).toHaveLength(8);
+  });
+
+  it("preserves independently priced services when their amount cells drift", async () => {
+    const { partition } = await catalog((text) =>
+      text.replace("\\$0.0005 per invocation", "Contact sales").replace("\\$5.00", "Contact sales"),
+    );
+    for (const key of ["service:search", "service:agent-fetch-url"]) {
+      const book = partition.books.find(({ book_key }) => book_key === key);
+      expect(book?.offers.flatMap(({ terms }) => terms)).toContainEqual(
+        expect.objectContaining({
+          kind: "raw",
+          variants: [expect.objectContaining({ impact: "base_price", reason: "unknown_amount" })],
+        }),
+      );
+    }
+    expect(
+      partition.books.find(({ book_key }) => book_key === "service:agent-web-search")?.offers[0]
+        ?.terms[0]?.kind,
+    ).toBe("rate");
+  });
+});
+
 describe("Vercel adapter", () => {
+  it("reads the reviewed nested image-price registry without executing JavaScript", () => {
+    const direct =
+      '"flux-fast-schnell":{imageCost:"0.001",imageDimensionQualityPricing:[{size:"≤640px",quality:"Up to 2 steps",cost:"0.001"},{size:"≤640px",quality:"Up to 4 steps",cost:"0.0015"}]}';
+    const nested = direct.replace(":{imageCost:", ":{model:{imageCost:") + "}";
+    expect(normalizeVercelPricingScript(nested)).toBe(normalizeVercelPricingScript(direct));
+    expect(normalizeVercelPricingScript(nested)).toBeDefined();
+    expect(
+      normalizeVercelPricingScript(nested.replace('cost:"0.0015"', "cost:calculatePrice()")),
+    ).toBeUndefined();
+  });
+  it("normalizes default video variants, media inputs, and verified fast-slug fallback prices", async () => {
+    const models = await vercelCatalog("vercel/price-boundaries.json");
+    const fast = models.find(({ model_id }) => model_id === "openai/gpt-5.4-fast");
+    expect(
+      fast?.price_facts
+        .filter(({ meter, conditions }) => meter === "input_text" && conditions.speed === "fast")
+        .map(({ price, conditions }) => [price, conditions.region]),
+    ).toEqual([
+      ["5", "default"],
+      ["5.5", "us"],
+    ]);
+    expect(fast?.price_facts).toContainEqual(
+      expect.objectContaining({
+        meter: "input_text",
+        price: "2.5",
+        conditions: expect.objectContaining({
+          speed: "standard",
+          route_provider: "openai",
+          context_max_tokens: 271999,
+        }),
+      }),
+    );
+    const video = models.find(({ model_id }) => model_id === "minimax/minimax-h3");
+    expect(
+      video?.price_facts
+        .filter(({ meter }) => meter === "video_generation")
+        .map(({ price, conditions }) => [price, conditions.resolution]),
+    ).toEqual([
+      ["0.065", "2k"],
+      ["0.04", "768p"],
+      ["0.065", "default"],
+    ]);
+    expect(video?.price_facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ meter: "input_image", price: "0.02", unit: "image" }),
+        expect.objectContaining({ meter: "input_video", price: "0.065", unit: "second" }),
+      ]),
+    );
+    const value = manifest("vercel");
+    const source = value.sources[0];
+    if (source === undefined) throw new Error("Missing Vercel source");
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    if (partition === undefined) throw new Error("Missing Vercel pricing");
+    for (const book of partition.books)
+      for (const offer of book.offers)
+        for (const term of offer.terms) {
+          expect(term.kind).not.toBe("raw");
+          if (term.kind !== "raw") expect(term.raw_variants).toEqual([]);
+        }
+  });
+
+  it("does not reclassify a fast endpoint whose prices disagree with the independent base model", async () => {
+    const models = await vercelCatalog("vercel/price-boundaries.json", (body) => {
+      const bundle = linkedBundle(body);
+      const doc = bundle.documents.find(({ url }) => url.includes("gpt-5.4-fast/endpoints"));
+      if (doc === undefined) throw new Error("Missing fast endpoint fixture");
+      doc.body = doc.body.replace('"prompt":"0.0000025"', '"prompt":"0.000009"');
+      return JSON.stringify(bundle);
+    });
+    const fast = models.find(({ model_id }) => model_id === "openai/gpt-5.4-fast");
+    expect(fast).toBeDefined();
+    expect(fast?.price_facts.some(({ conditions }) => conditions.speed === "fast")).toBe(false);
+  });
   it("extracts first-party usage and selector inputs with field-local drift", () => {
     const restPath = "/docs/ai-gateway/sdks-and-apis/rest-api.md";
     const documents = new Map(
@@ -12615,6 +13553,33 @@ describe("Vercel adapter", () => {
         ],
       }),
     ]);
+  });
+
+  it("preserves search prices across Markdown quotation and soft line wraps", async () => {
+    const path = "/docs/ai-gateway/models-and-providers/web-search.md";
+    const body = await fixture("vercel/search-pricing-wrapped.md");
+    const parse = (body: string) =>
+      vercelCommercialFacts({
+        documents: new Map([[path, body]]),
+        sourceId: "vercel-models",
+        modelRefs: ["vercel/acme/text-1"],
+      });
+    const facts = parse(body);
+    expect(facts).toHaveLength(9);
+    expect(facts).toEqual(parse(body.replace(/^> ?/gm, "").replace(/\s+/g, " ")));
+    expect(
+      facts
+        .filter(({ resource_key }) => resource_key === "tako-search")
+        .flatMap(({ price_facts }) => price_facts.map(({ price }) => price)),
+    ).toEqual(["7", "7", "12"]);
+    expect(
+      facts
+        .filter(({ resource_key }) => resource_key === "parallel-search")
+        .flatMap(({ price_facts }) => price_facts.map(({ price }) => price)),
+    ).toEqual(["5", "1"]);
+    expect(
+      facts.find(({ offer_key }) => offer_key === "data-export")?.raw_price_facts[0]?.reason,
+    ).toBe("unknown_amount");
   });
 
   it("keeps valid commercial siblings when one first-party claim drifts", () => {
@@ -12763,6 +13728,43 @@ describe("Vercel adapter", () => {
         },
       },
     });
+  });
+
+  it("expands video editing variants beyond the default-mode page alternative count", async () => {
+    const value = manifest("vercel");
+    const configured = value.sources[0];
+    if (configured === undefined) throw new Error("Missing Vercel source");
+    const source: SourceManifest = {
+      ...configured,
+      extractor: { kind: "vercel-catalog", minModels: 1, maxModels: 2 },
+    };
+    const models = parseSource({
+      provider: provider(value),
+      source,
+      body: await fixture("vercel/flux-video-variants.json"),
+      observedAt,
+    });
+    expect(models[0]?.raw_price_facts).toEqual([]);
+    expect(models[0]?.price_facts.filter(({ meter }) => meter === "video_generation")).toHaveLength(
+      6,
+    );
+    const partition = assembleParsedProviderPricing(
+      "vercel",
+      observedAt,
+      [{ source, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, source, models, partition);
+    expect(
+      partition?.books.flatMap(({ offers }) =>
+        offers.flatMap(({ terms }) =>
+          terms.flatMap((term) =>
+            term.kind === "raw" ? term.variants : term.kind === "rate" ? term.raw_variants : [],
+          ),
+        ),
+      ),
+    ).toEqual([]);
   });
 
   it("joins route-specific endpoint prices and model-page fallbacks from one official bundle", async () => {
@@ -15837,11 +16839,64 @@ describe("DeepSeek adapters", () => {
     return configured;
   }
 
+  it("keeps explicitly accepted legacy request IDs with the current redirect target's rates", async () => {
+    const catalog = await fixture("deepseek/redirects.html");
+    const vision = (await fixture("deepseek/vision.html"))
+      .replace("deepseek-v4-flash-vision-exp", "deepseek-flash")
+      .replace(
+        "analyze charts, and more.",
+        "analyze charts, and more. The legacy model name <code>deepseek-v4-flash-vision-exp</code> is still accepted, but its requests are served by the latest Flash model.",
+      );
+    const models = await deepseekCatalog({
+      catalog,
+      vision,
+      observedAt: "2026-09-11T00:00:00.000Z",
+    });
+    const target = models.find(({ model_id }) => model_id === "deepseek-flash");
+    if (target === undefined) throw new Error("Missing redirected Flash target");
+    expect(target.modalities.input).toEqual(["text", "image"]);
+    for (const id of ["deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]) {
+      const legacy = models.find(({ model_id }) => model_id === id);
+      if (legacy === undefined) throw new Error(`Missing accepted legacy ID ${id}`);
+      expect(legacy).toMatchObject({ status: "legacy", replacement_model_ids: [target.model_id] });
+      expect(
+        legacy.price_facts.map(({ meter, price, currency, conditions }) => ({
+          meter,
+          price,
+          currency,
+          conditions,
+        })),
+      ).toEqual(
+        target.price_facts.map(({ meter, price, currency, conditions }) => ({
+          meter,
+          price,
+          currency,
+          conditions,
+        })),
+      );
+      expect(legacy.price_facts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ meter: "input_text", price: "0.15", derived: true }),
+          expect.objectContaining({ meter: "output_text", price: "0.6", derived: true }),
+        ]),
+      );
+    }
+    expect(models.find(({ model_id }) => model_id === "deepseek-v4-pro")?.status).toBe("active");
+    const unknownBilling = await deepseekCatalog({
+      catalog: catalog.replace("and billed at the Flash price", "with unpublished billing"),
+      observedAt: "2026-09-11T00:00:00.000Z",
+    });
+    expect(unknownBilling.map(({ model_id }) => model_id)).toEqual([
+      "deepseek-flash",
+      "deepseek-v4-pro",
+    ]);
+  });
+
   it("reads the current callable catalog without a product-name allowlist", async () => {
     expect(manifest("deepseek")).not.toHaveProperty("supersededModelIds");
     const catalogSource = source("deepseek-catalog");
     expect(catalogSource).toMatchObject({
-      extractorVersion: "deepseek-catalog-v15",
+      extractorVersion: "deepseek-catalog-v16",
       fields: expect.arrayContaining(["api_endpoints", "pricing_inputs"]),
       linkedDocuments: {
         minDocuments: 0,
@@ -17382,6 +18437,40 @@ describe("DashScope adapters", () => {
     ]);
   });
 
+  it("retains both time-of-day prices when the labeled busy price omits its dollar sign", async () => {
+    const pricingSource = source("dashscope-pricing");
+    const body = (await fixture("dashscope/pricing.html")).replace(
+      "<td>$0.3</td>",
+      "<td><p>Busy hours: 1.272</p><p>Idle hours: $0.636</p></td>",
+    );
+    const models = parse(pricingSource, await pricingBundle(Promise.resolve(body)));
+    const model = models.find(({ model_id }) => model_id === "qwen-mt-lite");
+    expect(
+      model?.price_facts
+        .filter(({ meter }) => meter === "output_text")
+        .map(({ price, conditions }) => [price, conditions.operation]),
+    ).toEqual([
+      ["1.272", "busy_hours"],
+      ["0.636", "idle_hours"],
+    ]);
+    const value = manifest("dashscope");
+    const partition = assembleParsedProviderPricing(
+      "dashscope",
+      observedAt,
+      [{ source: pricingSource, models }],
+      models,
+      value.pricingCategoricalLabels,
+    );
+    validateParsedPricing(value, pricingSource, models, partition);
+    expect(
+      partition?.books
+        .find(({ book_key }) => book_key === "model:dashscope/qwen-mt-lite")
+        ?.offers.flatMap(({ terms }) =>
+          terms.flatMap((term) => (term.kind === "rate" ? term.raw_variants : [])),
+        ),
+    ).toEqual([]);
+  });
+
   it("skips one malformed sparse price row without rejecting sibling prices", async () => {
     const findings: SourceContractEvidence[] = [];
     const body = (await fixture("dashscope/pricing.md")).replace(
@@ -17783,14 +18872,14 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v13",
+      extractorVersion: "dashscope-pricing-v14",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
           expect.objectContaining({ id: "web-search", optional: true }),
           expect.objectContaining({ id: "image-search", optional: true }),
           expect.objectContaining({ id: "text-to-image-search", optional: true }),
-          expect.objectContaining({ id: "chat-accounting", optional: true }),
+          expect.objectContaining({ id: "chat-accounting", optional: true, claimLocal: true }),
           expect.objectContaining({ id: "native-accounting", optional: true }),
           expect.objectContaining({ id: "anthropic-accounting", optional: true }),
           expect.objectContaining({ id: "responses-accounting", optional: true }),
@@ -17801,7 +18890,7 @@ describe("DashScope adapters", () => {
           expect.objectContaining({ id: "music-accounting", optional: true }),
           expect.objectContaining({ id: "asr-accounting", optional: true }),
           expect.objectContaining({ id: "asr-stream-accounting", optional: true }),
-          expect.objectContaining({ id: "base-url", optional: true }),
+          expect.objectContaining({ id: "base-url", optional: true, claimLocal: true }),
         ],
       },
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
@@ -17934,6 +19023,10 @@ describe("Kimi adapters", () => {
       extractor: { minModels: 4 },
       extractorVersion: "kimi-pricing-v7",
       fields: expect.arrayContaining(["pricing", "pricing_inputs"]),
+    });
+    expect(source("kimi-releases")).toMatchObject({
+      optional: true,
+      retainOmittedFacts: true,
     });
     expect(source("kimi-releases").linkedDocuments?.documents).toEqual(
       expect.arrayContaining([
@@ -19961,7 +21054,7 @@ describe("provider drift validation", () => {
     ]);
   });
 
-  it("quarantines large deletions", async () => {
+  it("accepts large source-authoritative deletions and reports count decreases separately", async () => {
     const model = (await vercelCatalog("vercel/pricing.json"))[0];
     if (model === undefined) throw new Error("Missing fixture model");
     const second = {
@@ -19970,36 +21063,34 @@ describe("provider drift validation", () => {
       uid: "vercel/acme/text-2",
       name: "Text Two",
     };
-    expect(validateProvider([model], [model, second])).toEqual({
-      ok: false,
-      issue: {
-        code: "model_count_drop",
-        message: "model count dropped by more than 10%",
-        previous: 2,
-        current: 1,
-        minimum_ratio: 0.9,
-      },
+    expect(validateProvider([model])).toEqual({ ok: true });
+    expect(providerCountDecreases([model], [model, second])).toContainEqual({
+      field: "models",
+      previous: 2,
+      current: 1,
     });
+    expect(validateProvider([]).issue?.code).toBe("empty_candidate");
   });
 
-  it("rejects duplicate or abruptly missing structured evidence", async () => {
+  it("rejects invalid structured evidence while accepting fewer observed facts", async () => {
     const model = (await huggingFaceMapping("huggingface/normal.json")).find(
       ({ model_id }) => model_id === "org/model-1",
     );
     const route = model?.routes?.[0];
     if (model === undefined || route === undefined) throw new Error("Missing routed fixture model");
-    expect(validateProvider([{ ...model, routes: [route, route] }], []).issue?.code).toBe(
+    expect(validateProvider([{ ...model, routes: [route, route] }]).issue?.code).toBe(
       "duplicate_route",
     );
     expect(
-      validateProvider(
-        [{ ...model, routes: [{ ...route, source_ref: "unreferenced-source" }] }],
-        [],
-      ).issue?.code,
+      validateProvider([{ ...model, routes: [{ ...route, source_ref: "unreferenced-source" }] }])
+        .issue?.code,
     ).toBe("missing_route_source");
-    expect(validateProvider([{ ...model, routes: [] }], [model]).issue?.code).toBe(
-      "route_count_drop",
-    );
+    expect(validateProvider([{ ...model, routes: [] }])).toEqual({ ok: true });
+    expect(providerCountDecreases([{ ...model, routes: [] }], [model])).toContainEqual({
+      field: "routes",
+      previous: model.routes?.length,
+      current: 0,
+    });
 
     const bedrock = (await parsed("amazon-bedrock", "document/bedrock.json")).find(
       ({ model_id }) => model_id === "anthropic.claude-haiku-4-5-20251001-v1:0",
@@ -20009,18 +21100,13 @@ describe("provider drift validation", () => {
     if (bedrock === undefined || endpoint === undefined || availability === undefined)
       throw new Error("Missing Bedrock route evidence");
     expect(
-      validateProvider([{ ...bedrock, api_endpoints: [endpoint, endpoint] }], []).issue?.code,
+      validateProvider([{ ...bedrock, api_endpoints: [endpoint, endpoint] }]).issue?.code,
     ).toBe("duplicate_api_endpoint");
     expect(
-      validateProvider([{ ...bedrock, availability: [availability, availability] }], []).issue
-        ?.code,
+      validateProvider([{ ...bedrock, availability: [availability, availability] }]).issue?.code,
     ).toBe("duplicate_availability");
-    expect(validateProvider([{ ...bedrock, api_endpoints: [] }], [bedrock]).issue?.code).toBe(
-      "api_endpoint_count_drop",
-    );
-    expect(validateProvider([{ ...bedrock, availability: [] }], [bedrock]).issue?.code).toBe(
-      "availability_count_drop",
-    );
+    expect(validateProvider([{ ...bedrock, api_endpoints: [] }])).toEqual({ ok: true });
+    expect(validateProvider([{ ...bedrock, availability: [] }])).toEqual({ ok: true });
 
     const azure = (await azureCatalog()).find(
       ({ model_id }) => model_id === "Cohere-embed-v3-english",
@@ -20028,11 +21114,9 @@ describe("provider drift validation", () => {
     const family = azure?.service_families?.[0];
     if (azure === undefined || family === undefined)
       throw new Error("Missing Azure service-family evidence");
-    expect(
-      validateProvider([{ ...azure, service_families: [family, family] }], []).issue?.code,
-    ).toBe("duplicate_service_family");
-    expect(validateProvider([{ ...azure, service_families: undefined }], [azure]).issue?.code).toBe(
-      "service_family_count_drop",
+    expect(validateProvider([{ ...azure, service_families: [family, family] }]).issue?.code).toBe(
+      "duplicate_service_family",
     );
+    expect(validateProvider([{ ...azure, service_families: undefined }])).toEqual({ ok: true });
   });
 });

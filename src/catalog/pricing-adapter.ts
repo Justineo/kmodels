@@ -40,6 +40,7 @@ import { applyCerebrasCommercialTopology } from "./cerebras-commercial.ts";
 import { applyCohereCommercialTopology } from "./cohere-commercial.ts";
 import { applyDatabricksCommercialTopology } from "./databricks-commercial.ts";
 import { applyDashscopeCommercialTopology } from "./dashscope-commercial.ts";
+import { applyPerplexityCommercialTopology } from "./perplexity-commercial.ts";
 import { applyDeepseekCommercialTopology } from "./deepseek-commercial.ts";
 import { applyGeminiCommercialTopology } from "./gemini-commercial.ts";
 import { applyHuggingFaceCommercialTopology } from "./huggingface-commercial.ts";
@@ -263,6 +264,8 @@ function applyCommercialTopology(
       return applyOllamaCommercialTopology(input, publishedModels, pricingInputs);
     case "openai":
       return applyOpenAiCommercialTopology(input, publishedModels, pricingInputs);
+    case "perplexity":
+      return applyPerplexityCommercialTopology(input);
     case "vercel":
       return applyVercelCommercialTopology(input, pricingInputs);
     case "vertex":
@@ -1153,6 +1156,35 @@ function rateApplicability(
   conditions: SourcePriceFact["conditions"],
 ): PriceApplicability {
   const predicates: PriceCondition[] = [];
+  const providerDimensions = [
+    {
+      key: "billing_unit",
+      definition:
+        "Applicable billing measure among explicitly published alternative denominations of the same output; select one, never add alternatives",
+      resolution_phase: "outcome",
+    },
+    {
+      key: "cache_retention",
+      definition:
+        "Published cache-write retention option; default does not imply an undocumented duration",
+      resolution_phase: "request",
+    },
+  ] as const;
+  for (const atom of providerDimensions) {
+    const value = conditions[atom.key];
+    if (value === undefined) continue;
+    const dimension: PriceDimension = {
+      namespace: "provider",
+      provider_id: context.providerId,
+      value: atom.key,
+    };
+    addAtom(context, { kind: "dimension", ...atom });
+    predicates.push({
+      kind: "categorical",
+      dimension,
+      values: [providerCategorical(context, dimension, value)],
+    });
+  }
   const categorical = [
     "region",
     "endpoint",
@@ -1199,6 +1231,23 @@ function rateApplicability(
       value: key === "audio" ? "request_audio" : key,
     };
     predicates.push({ kind: "boolean", dimension, value });
+  }
+  if (conditions.eu_data_residency !== undefined) {
+    addAtom(context, {
+      kind: "dimension",
+      key: "eu_data_residency",
+      definition: "Whether the request uses OpenAI EU data residency",
+      resolution_phase: "request",
+    });
+    predicates.push({
+      kind: "boolean",
+      dimension: {
+        namespace: "provider",
+        provider_id: context.providerId,
+        value: "eu_data_residency",
+      },
+      value: conditions.eu_data_residency,
+    });
   }
   const tokenRange = contextTokenRange(
     conditions.context_min_tokens,
@@ -1320,6 +1369,12 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
         "One Vercel AI Gateway trace delivered to one configured drain",
       );
     case "tool_call":
+      if (context.providerId === "perplexity" && context.bookKey.startsWith("service:agent-"))
+        return providerMeter(
+          context,
+          "tool_call",
+          "One invocation of the independently priced Perplexity Agent API tool",
+        );
       // A source operation name does not establish service ownership or a shared meter.
       // Provider migrations move exact operations into provider-resource books.
       return;
@@ -1332,6 +1387,8 @@ function canonicalMeter(context: AdapterContext, rate: SourcePriceFact): PriceMe
         "One provider-published realtime client message",
       );
     case "cache_read_audio":
+    case "citation_tokens":
+    case "reasoning_tokens":
     case "cache_write_audio":
     case "cache_read_image":
     case "cache_write_image":

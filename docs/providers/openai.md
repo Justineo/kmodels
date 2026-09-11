@@ -11,7 +11,7 @@ can be selected from a proxied request or attributed from its response or asynch
 - text, cached input, cache write, audio, image, embedding, transcription-duration, generated
   image, and generated video rates;
 - Web Search and File Search calls;
-- Hosted Shell and Code Interpreter container sessions; and
+- GPT-Live active session time, Hosted Shell and Code Interpreter container sessions; and
 - inference through a fine-tuned model, including the published data-sharing selector.
 
 It does not publish fine-tuning training, vector-store or ChatKit retained storage, capacity,
@@ -149,26 +149,47 @@ Video result sizes are likewise normalized to the pricing table's size classes: 
 `1920x1080` select `1080p`. An unreviewed size remains unmapped instead of being guessed from its
 dimensions.
 
+GPT-6 Astra Fast explicitly excludes EU data residency when the pricing page publishes that
+restriction. Its Fast numeric variants require the provider-owned boolean `eu_data_residency=false`;
+the same offer publishes `not_supported` for Fast with `eu_data_residency=true`. Standard is
+unaffected. This is independent of the regional-processing uplift and is not inferred for another
+model or when the declaration is absent.
+
 ## Direct provider services
+
+The reviewed GPT-Live `Model | Price per minute` table publishes the exact model session-runtime
+rate. It normalizes to seconds and binds active seconds at session scope; 90 seconds at $0.05 per
+minute costs $0.075. Backend model and tool calls are separately priced components, so the session
+fee alone is not the complete workflow cost. No whole-minute rounding is introduced.
 
 Web Search and File Search calls are separate service books because they have their own event rates.
 Their provider-owned charge signals map to Organization Usage `num_requests`, rather than assuming
 that emitted or successful tool-call events have the same billing semantics. Those mappings are
 reconciliation-only; a request-time calculator still needs an equally authoritative per-request
 counter if it cannot wait for the account report.
-Web Search content tokens are additional model input usage. Kmodels does not create a contribution
-edge merely to repeat that prose: ordinary input-token accounting already prices provider-reported
-content tokens when they are included in input usage. The current fixed 8,000-token rule for the
-non-preview tool on `gpt-4o-mini` and `gpt-4.1-mini` remains a visible accounting limitation until
-the exact billable block can be bound without double-counting response input tokens.
+Web Search content normally uses the model input-token rate. For the non-preview tool on
+`gpt-4o-mini` and `gpt-4.1-mini`, the pricing page explicitly charges a fixed 8,000-input-token
+block per call. A model-specific `web-search-content:<model>` service contributes
+`8,000 tokens × billable call instances` to the exact synchronous model input rate term. The
+contribution references that term rather than copying its price, so its tier and other conditions
+remain authoritative. The ordinary
+search call fee remains independently payable. No block is inferred for another model or the
+preview tool. An unresolved target input rate leaves the fixed-block rule raw.
 
-Container prices remain a separate code-execution service with memory as applicability. The
-published table states a 20-minute session schedule while the current prose states per-minute
-billing with a five-minute minimum for eligible sessions. The numeric schedule binds to a
-provider-owned count of billed 20-minute session blocks, which makes the calculator's required input
-explicit but intentionally has no source mapping. The five-minute eligible-session minimum remains
-a `base_price` raw term; Kmodels does not invent proration or reuse the Code Interpreter account
-counter for Hosted Shell.
+The fixed-content charge takes the number of billable calls whose content blocks are excluded
+from separately priced model input usage. Consumers either exclude these blocks from ordinary
+input usage and add this charge, or supply final billable input tokens including the blocks and
+do not add the fixed-content charge again. A runtime locator is not required to publish or evaluate
+this exact price rule; Kmodels does not assume an aggregate usage field supplies that partition.
+
+Container prices remain a separate code-execution service with memory as applicability. The pricing
+bundle includes the official changelog, whose June 2, 2026 announcement explicitly preserves the
+underlying per-minute price while introducing a five-minute minimum for eligible sessions. When
+both claims agree, the published 20-minute price divides by 20 and a session-level minimum applies
+to the provider-billed duration. Minute billing and session-block billing are mutually exclusive
+eligibility variants. The caller supplies eligibility and provider-billed duration at the provider's
+minute granularity; no wall-clock rounding or acquisition field is invented. The legacy variant
+still uses billed 20-minute blocks. If the companion is absent or disagrees, the minimum stays raw.
 
 Fine-tuned input, cached-input, and output rates form a direct `fine-tuned-inference:<base>` service.
 Standard and Batch are split into the same synchronous/result-item mechanisms used by ordinary
@@ -199,9 +220,10 @@ appear as plans, standalone offers, or advanced raw details.
 
 A Gateway can calculate the public-list portion of a request from the returned model, served tier,
 token/cache and modality breakdown, generated quantity or duration, and the published quantity
-methods. Batch output-file locations, container proration, regional deployment scope,
-account-eligibility selectors, and the fixed Web Search content-token block remain explicit required
-inputs or localized raw limitations where the reviewed contracts do not yet prove an exact mapping.
+methods. Fixed Web Search content contributes 8,000 input tokens per eligible call using the
+referenced model input rate. Batch output-file locations, regional deployment scope, and
+account-eligibility selectors remain explicit required inputs. Container proration remains a
+localized raw limitation where the reviewed contracts do not prove an exact rule.
 Organization Usage may calculate or compare grouped public-list cost later; actual spend, discounts,
 credits, and invoice reconciliation remain outside Kmodels.
 

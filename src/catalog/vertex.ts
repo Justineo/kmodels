@@ -1153,8 +1153,15 @@ function pricingEvidence(documents: LinkedDocument[]): PricingEvidence {
   return { pageTokenEquivalences };
 }
 
-function money(value: string): { price: string; scope?: string; serviceTier?: string }[] {
-  const results: { price: string; scope?: string; serviceTier?: string }[] = [];
+function money(
+  value: string,
+): { price: string; scope?: string; serviceTier?: string; unit?: SourcePriceFact["unit"] }[] {
+  const results: {
+    price: string;
+    scope?: string;
+    serviceTier?: string;
+    unit?: SourcePriceFact["unit"];
+  }[] = [];
   for (const match of value.matchAll(
     /(?:(Batch|Flex|Online)(?: requests?)?:\s*)?\$(\d+(?:\.\d+)?)(?:\s*\((Global|Non-global)\))?/gi,
   )) {
@@ -1167,6 +1174,9 @@ function money(value: string): { price: string; scope?: string; serviceTier?: st
           : match[1].toLowerCase();
     results.push({
       price: match[2],
+      ...(/^\s*\/\s*(?:seconds?|sec)\b/i.test(value.slice(match.index + match[0].length))
+        ? { unit: "second" }
+        : {}),
       ...(match[3] === undefined ? {} : { scope: match[3].toLowerCase() }),
       ...(serviceTier === undefined ? {} : { serviceTier }),
     });
@@ -1423,10 +1433,14 @@ function tokenTables(
                     publishedRate(
                       rateMeter,
                       item.price,
-                      "million_tokens",
+                      item.unit ?? "million_tokens",
                       sourceId,
                       `${header}; ${descriptor}; ${raw}`,
                       {
+                        ...(prices.some(({ unit }) => unit === "second") &&
+                        prices.some(({ unit }) => unit === undefined)
+                          ? { billing_unit: item.unit === "second" ? "second" : "token" }
+                          : {}),
                         service_tier: serviceTier,
                         deployment_scope: item.scope ?? deploymentScope(scope),
                         region:
@@ -1907,7 +1921,21 @@ function inlineUnitTables(
         for (const model of current)
           for (const meter of rateMeters) {
             for (const { price, unit } of prices)
-              addRate(model, publishedRate(meter, price, unit, sourceId, raw), reconcile);
+              addRate(
+                model,
+                publishedRate(
+                  meter,
+                  price,
+                  unit,
+                  sourceId,
+                  raw,
+                  prices.some(({ unit }) => unit === "second") &&
+                    prices.some(({ unit }) => unit === "million_tokens")
+                    ? { billing_unit: unit === "second" ? "second" : "token" }
+                    : {},
+                ),
+                reconcile,
+              );
           }
       });
   });
@@ -1934,6 +1962,8 @@ function geminiPricingGeneration(
 function groundingOperations(label: string): string[] {
   if (/Web Search and Image Search.*Web Grounding/i.test(label))
     return ["google_search", "google_image_search", "web_grounding_enterprise"];
+  if (/Google Search.*Web Grounding/i.test(label))
+    return ["google_search", "web_grounding_enterprise"];
   if (/Web Grounding/i.test(label)) return ["web_grounding_enterprise"];
   if (/Google Maps/i.test(label)) return ["google_maps"];
   if (/your data/i.test(label)) return ["grounding_with_your_data"];
@@ -2072,7 +2102,7 @@ function googleGroundingTables(
               ),
               reconcile,
             );
-            if (/at no (?:additional )?charge|at no charge/i.test(fragment))
+            if (/at no (?:additional )?charge|at no extra cost/i.test(fragment))
               groundingNote(
                 model,
                 sourceId,

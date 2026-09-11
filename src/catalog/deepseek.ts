@@ -4,7 +4,7 @@ import { extractDeepseekPricingInputs } from "./deepseek-accounting.ts";
 import { htmlTables, htmlText, type HtmlTable } from "./html.ts";
 import { modelIdSchema } from "./identity.ts";
 import type { SourceManifest } from "./manifests.ts";
-import { baseModel } from "./model.ts";
+import { baseModel, modelUid } from "./model.ts";
 import { publishedRate } from "./pricing.ts";
 import type { PricingReconciliationItem } from "./pricing-reconciliation.ts";
 import { canonicalizeInstant } from "./pricing-time.ts";
@@ -320,12 +320,13 @@ function visionClaims(input: Input, body: string | undefined): VisionClaims {
         /model accepts images alongside text/i.test(htmlText($(paragraph).text())),
       );
     if (introductions.length !== 1) throw new Error("expected one image-input model claim");
-    const parsed = $(introductions[0])
-      .find("code")
-      .toArray()
-      .map((code) => exactId(htmlText($(code).text())))
-      .filter((id): id is string => id !== undefined);
-    if (parsed.length !== 1) throw new Error("expected one exact vision model ID");
+    const introduction = $(introductions[0]);
+    const id = exactId(htmlText(introduction.find("code").first().text()));
+    if (
+      id === undefined ||
+      !htmlText(introduction.text()).startsWith(`The ${id} model accepts images alongside text`)
+    )
+      throw new Error("expected one exact vision model ID");
     const tokenUsage = $("article h2")
       .toArray()
       .filter((heading) => htmlText($(heading).text()) === "Token Usage")
@@ -336,7 +337,7 @@ function visionClaims(input: Input, body: string | undefined): VisionClaims {
       !/billed together with your text tokens/i.test(tokenUsage[0] ?? "")
     )
       throw new Error("image token billing claim changed");
-    return new Set(parsed);
+    return new Set([id]);
   });
   return { modelIds: ids ?? new Set() };
 }
@@ -507,6 +508,7 @@ const catalogRows = new Set([
   "Anthropic API",
   "Chat Prefix Completion（Beta）",
   "FIM Completion（Beta）",
+  "Vision",
   ...priceRows.map(([, label]) => label),
   "Concurrency Limit",
 ]);
@@ -951,6 +953,67 @@ function bounded(input: Input, models: ProviderModel[]): ProviderModel[] {
   return models.sort((left, right) => left.model_id.localeCompare(right.model_id));
 }
 
+function attachLegacyRedirects(input: Input, body: string, models: ProviderModel[]): void {
+  const $ = load(body);
+  const byId = new Map(models.map((item) => [item.model_id, item]));
+  for (const paragraph of $("article p").toArray()) {
+    const text = htmlText($(paragraph).text());
+    if (!/\blegacy names\b/i.test(text)) continue;
+    const redirect = claim(input, "legacy_redirect_contract_drift", "legacy model names", () => {
+      const match =
+        /^\(\d+\) Use (\S+) as the model name\. The legacy names (.+?) are still accepted, but the corresponding models have been retired, their requests are served by the (.+?) model and billed at the (.+?) price\.$/.exec(
+          text,
+        );
+      const target = match?.[1] === undefined ? undefined : byId.get(match[1]);
+      const label = match?.[4];
+      if (
+        target === undefined ||
+        target.name !== match?.[3] ||
+        label === undefined ||
+        !target.name.endsWith(`-${label}`)
+      )
+        throw new Error("expected an exact current model and explicit same-price redirect");
+      const ids = $(paragraph)
+        .find("code")
+        .toArray()
+        .map((code) => exactId(htmlText($(code).text())));
+      const legacyIds = ids.slice(1).filter((id): id is string => id !== undefined);
+      if (
+        ids[0] !== target.model_id ||
+        legacyIds.length === 0 ||
+        legacyIds.length !== ids.length - 1 ||
+        new Set(ids).size !== ids.length ||
+        legacyIds.some((id) => byId.has(id)) ||
+        match?.[2] !== legacyIds.join(" and ")
+      )
+        throw new Error("expected distinct legacy IDs bound only by the redirect notice");
+      return { target, legacyIds };
+    });
+    if (redirect === undefined) continue;
+    for (const id of redirect.legacyIds) {
+      const legacy = structuredClone(redirect.target);
+      legacy.model_id = id;
+      legacy.uid = modelUid(input.provider.id, id);
+      legacy.status = "legacy";
+      legacy.aliases = [];
+      legacy.replacement_model_ids = [redirect.target.model_id];
+      legacy.price_facts = legacy.price_facts.map((rate) => ({
+        ...rate,
+        derived: true,
+        derivation: `Official legacy ID ${id} is served by ${redirect.target.model_id} and billed at its current rate.`,
+      }));
+      models.push(legacy);
+      byId.set(id, legacy);
+      diagnostic(
+        input,
+        "normalized",
+        "legacy_redirect_bound",
+        `${id} → ${redirect.target.model_id}`,
+      );
+    }
+  }
+}
+
 export function parseDeepseekCatalog(input: Input): ProviderModel[] {
   const bundle = bundleSchema.parse(JSON.parse(input.body));
   const chat = chatClaims(input, companion(input, bundle, "/api/create-chat-completion"));
@@ -1062,6 +1125,7 @@ export function parseDeepseekCatalog(input: Input): ProviderModel[] {
     models,
     scheduled?.layout === "separate" ? scheduled.effectiveFrom : undefined,
   );
+  attachLegacyRedirects(input, bundle.index.body, models);
   const pricingInputs = extractDeepseekPricingInputs(
     bundle.documents,
     input.source.id,

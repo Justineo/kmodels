@@ -1585,6 +1585,8 @@ function enrollmentLabel(state: PricingOffer["enrollment"][number]["state"]): st
 
 function stateLabel(state: PricingOffer["states"][number]["state"]): string {
   switch (state) {
+    case "not_supported":
+      return "Not supported";
     case "numeric":
       return "Metered pricing";
     case "free":

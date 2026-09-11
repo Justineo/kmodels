@@ -41,7 +41,9 @@ describe("generated static catalog", () => {
     const providerIds = catalog.providers.map(({ id }) => id);
     const configuredProviderIds = manifests.map(({ provider }) => provider.id);
     const coverageProviderIds = catalog.coverage.map(({ provider_id }) => provider_id);
-    expectUniqueValues(providerIds, configuredProviderIds, "providers");
+    // Registering a source does not retroactively collect it into an accepted snapshot.
+    expect(providerIds.every((id) => configuredProviderIds.includes(id))).toBe(true);
+    expect(new Set(providerIds).size).toBe(providerIds.length);
     expectUniqueValues(coverageProviderIds, providerIds, "provider coverage");
 
     const sourceIds = new Set(catalog.sources.map((source) => source.id));

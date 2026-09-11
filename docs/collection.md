@@ -69,7 +69,11 @@ Status: implemented
   bundle incomplete so publication retains the previous compatible pricing partition.
   This keeps pricebook completeness independent from catalog availability without
   silently replacing a previously broad pricebook with a partial one.
-- A missing fixed optional companion is likewise a bundle-level omission. A missing document
+- A missing fixed optional companion is a bundle-level omission unless the manifest explicitly
+  marks it `claimLocal`. Use claim-local companions when an adapter can isolate their absence to
+  particular capabilities, usage locators, or selector mappings without weakening independent
+  identity or price evidence. Accounting-only omissions must not freeze independently verified
+  rates. Required price-bearing inputs still protect their complete pricing partition. A missing document
   discovered from a bounded index is claim-local: report the partial source, refresh surviving
   claims, and do not reject independently observed pricing merely because one discovered card was
   unavailable. Providers may conservatively retain source-owned catalog enrichment for such a
@@ -130,11 +134,24 @@ Status: implemented
 
 - Validate candidate catalogs per provider.
 - A lossy source grammar must validate the admitted share of its in-scope rows; a plausible output-model count alone is not a completeness check.
-- Quarantine empty successful responses; duplicate IDs, service families, endpoints, routes, or availability pairs; unresolved route provenance; invalid prices; model drops over 10%; service-family, price-rate, endpoint, route, or availability drops over 20%; and non-promotional price changes over 50%.
-- A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has been reviewed. Those rows are excluded from the old comparison baseline and are not preserved, while every unlisted deletion remains protected by the normal drift guard.
-- `KMODELS_REBUILD_PROVIDER` may remove the old comparison baseline for one reviewed parser migration. Every other provider still validates against its previous catalog.
+- Reject malformed or incomplete source envelopes, pagination failures, invalid identities,
+  duplicate IDs or structured facts, unresolved route provenance, and invalid prices. An empty
+  candidate without an explicit authoritative empty-catalog contract remains unpublishable; a
+  successful HTTP response alone does not establish that the provider has no models.
+- Model, service-family, endpoint, route, availability, and price counts are observations, not
+  invariants. Neither a count decrease nor a large numeric price change independently rejects a
+  valid candidate. Validate extraction against the current source's own structure and in-scope
+  denominator, not the previous snapshot's population or amounts. Publication follows exact
+  source scope, exhaustiveness, and lifecycle evidence even when the change is large.
+- Reports record published count decreases with their previous/current values as diagnostics,
+  independently of validation failures. A decrease does not assert parser drift or start repair
+  inference by itself. Existing structural and source-coverage failures remain repair candidates.
+- A manifest may name exact superseded IDs or ID kinds after authoritative current evidence has
+  been reviewed. Those rows are excluded from reconciliation and are not preserved; all other
+  removals follow source authority and exhaustiveness rather than a percentage guard.
+- `KMODELS_REBUILD_PROVIDER` may remove the old reconciliation baseline for one reviewed parser migration. Every other provider still reconciles against its previous accepted catalog.
 - Catalog publication is failure-closed and provider-atomic across required catalog inputs. A
-  rejected or suspicious provider keeps its last validated catalog; optional or credential-scoped
+  provider whose required evidence fails keeps its last validated catalog; optional or credential-scoped
   inventory sources may be skipped, and providers do not block one another. Pricing has a separate
   provider-atomic publication decision, so valid fresh catalog data may advance while failed pricing
   retains its previous accepted partition.
@@ -158,8 +175,9 @@ Status: implemented
   provider remains the last accepted partition. Reports never make a rejected candidate look like
   a successful no-op.
 - Source attempts use finite outcomes: changed, unchanged, fetch failed, parse failed, or skipped
-  because configuration is absent. Provider drift guards use finite issue codes plus the measured
-  previous value, candidate value, and threshold where applicable.
+  because configuration is absent. Provider validation failures use finite issue codes. Published
+  count decreases use separate field-level previous/current diagnostics and never appear as a
+  rejected candidate or a structural mismatch merely because of their magnitude.
 - A pricing source reports two independent observations. Extraction counts the parsed model records,
   pricing states, normalized facts, and raw facts that left the adapter. Reconciliation accounts for
   the adapter's pricing-input denominator: every reviewed source item is normalized, preserved raw,

@@ -209,6 +209,11 @@ when Alibaba publishes both an exact rate and a countable trigger.
 
 ## Conflicts and unknowns
 
+Explicit Busy hours / Idle hours pairs retain both operation labels even when one amount omits
+its dollar sign inside a currency-qualified pricing table. Recognizing that complete two-price
+shape prevents the remaining amount from becoming an unconditional rate that conflicts with other
+regions or time bands. Arbitrary unlabeled numbers are not treated as prices.
+
 The current public price book owns public PAYG amounts and applicability. A more specific official
 operation guide may own its exact meter or eligibility, but account-scoped API observations without
 complete currency and conditions cannot replace the public row.
@@ -228,7 +233,9 @@ All public DashScope sources are independently optional and retain their last ve
 facts when temporarily unavailable or non-exhaustively omitted. The pricing page is nevertheless a
 required dependency for adopting a fresh DashScope pricing partition. Cache, tool, protocol, media,
 and regional companions are optional fetches. A missing price-bearing companion is reported for
-source-fact retention; a missing accounting field suppresses only that input contract and leaves its
+source-fact retention. Fixed accounting and base-URL companions are explicitly claim-local, so
+losing a whole accounting document has the same boundary as losing one field: it suppresses only
+the dependent input or selector contract and leaves its
 rate and verified siblings intact.
 
 Within a fetched source, table/card/row/plan failures are localized. Unknown object fields and new

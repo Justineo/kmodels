@@ -2,6 +2,14 @@
 
 Status: current
 
+The pricing bundle includes the Mistral OCR model page's explicit page/token equivalence. Its
+parenthetical page prices normalize only when both input and output amounts exactly equal their
+published token prices times the documented per-page token counts. For Mistral OCR (25.05), one
+page represents one million input and one million output billing tokens; both directions apply.
+This is not ordinary text tokenization. DeepSeek-OCR's parenthetical page alternatives remain raw
+because its model page does not publish an equivalent conversion contract. Missing runtime usage
+locators do not by themselves invalidate an established rate or equivalence.
+
 ## Boundary
 
 Kmodels catalogs models that Google exposes as managed APIs on Gemini Enterprise Agent Platform or
@@ -16,7 +24,7 @@ The price book covers public costs attributable to one proxied inference request
 - independently metered request components such as grounding, Maps, and Claude web search.
 
 Training, retained cache storage, Provisioned Throughput, savings plans, agents, CodeMender,
-AlphaEvolve, model optimization, account allowances, billing export, and settlement are outside
+AlphaEvolve, model optimization, account credits, billing export, and settlement are outside
 this boundary. Cache-read inference is in scope; cache storage over time is not.
 
 Kmodels publishes a price book and calculation-input contracts. It does not own the runtime request
@@ -64,7 +72,32 @@ replacement.
   independent applicability dimensions.
 - Page alternatives are ignored only when a model card gives an exact token equivalence. Otherwise
   the token rate stays normalized and the unresolved alternative remains bounded raw evidence.
+- A price cell's explicit denominator overrides a token column heading for that amount. A video
+  cell containing both a per-second price and a per-million-token price retains those distinct
+  units. The parser does not reinterpret the per-second amount as a conflicting token price or
+  charge both alternative measures of the same output. A provider-owned `billing_unit` selector
+  separates the alternatives; consumers supply the applicable token or second billing basis.
 - Explicit `N/A` cells are local non-numeric evidence and do not reject another meter or model.
+
+## Grounding prices and allowances
+
+A combined Google Search / Web Grounding for Enterprise label applies to both services. Published
+Gemini 3 monthly web-query allowances share one pool across the matched models and web services;
+Maps has a separate monthly pool. Reviewed Gemini 2.0/2.5 Flash and Flash-Lite daily prompt
+allowances share their published Search pool; Pro uses its separately published daily quantity.
+The Maps daily benefit appears in the Gemini 2.0 section and is not inherited by 2.5 models.
+The current accepted catalog therefore has four pools: monthly web, monthly Maps, daily Search
+Flash/Flash-Lite and daily Search Pro. The Live 2.5 Flash allowance remains raw because the clause
+names Flash and Flash-Lite without explicitly binding Live. Query and grounded-prompt units
+are never interchangeable.
+
+The allowance targets exact rate terms, including cross-service targets, instead of granting the
+full allowance separately to each model. Consumers supply already-consumed shared usage when
+evaluating a marginal charge. Only reviewed sharing/reset wording and matching rate units
+normalize; unrecognized allowance clauses retain bounded raw evidence. Grounding billing-rule
+notes remain informational evidence instead of being silently discarded.
+
+See the [pricing research](../pricing-research.md) for the unresolved DeepSeek-OCR billing contract.
 
 ## Calculation inputs
 

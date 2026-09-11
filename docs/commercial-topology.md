@@ -93,10 +93,16 @@ provider snapshot
 ```
 
 - A **book** owns one admitted model or one separately priced request service.
-- An **offer** is one selectable invocation mechanism, such as on-demand, Batch, or a service call.
+- An **offer** is one selectable invocation mechanism, such as on-demand, Batch, or a service call,
+  or an independently scoped adjustment to exact referenced rates.
 - A **term** is one rate, exact price state, allowance that applies directly to admitted request
   usage, contribution, or bounded raw fact.
 - A **variant** holds the exact rate or state under one applicability and validity scope.
+
+An offer containing a normalized allowance or contribution may omit a base-price state when it
+only adjusts referenced rates. This represents a shared quota or a fixed quantity contribution
+without fabricating a free or numeric base charge. Exact reference and unit validation still
+applies; an empty offer remains invalid, and every direct rate still requires numeric coverage.
 
 Provider differences do not create provider-specific pricing models. They appear only as
 provider-owned vocabulary where a shared semantic would be false: dimension values, meters, usage

@@ -128,6 +128,10 @@ the required information and the consequence of absence explicit.
 
 ## Refresh and comparator policy
 
+The release-date overlay is optional and retains its last verified dates if its source bundle
+fails. A research or changelog link failure cannot freeze the independent current model catalogs
+or regional price books. Its old observation time and failure remain visible in source diagnostics.
+
 Regional OpenAPI, catalogs, model-price pages, Batch, web search, Formula, Files, lifecycle sources,
 and `llms.txt` discovery are independent claim groups. A missing page, changed field, malformed row,
 new Formula URI, or one-region drift suppresses only the dependent fact and cannot erase sibling

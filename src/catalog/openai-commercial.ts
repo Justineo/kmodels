@@ -5,10 +5,12 @@ import type {
   AtomicProviderPricing,
   AtomicRateTerm,
   AtomicRateVariant,
+  AtomicContributionTerm,
 } from "./pricing-assembly.ts";
 import { canonicalJson } from "./canonical-json.ts";
 import { compareUtf8, uniqueCanonicalValues as uniqueCanonical } from "./canonical-value.ts";
 import { canonicalizeApplicability } from "./pricing-canonical.ts";
+import { pricingBookId, pricingOfferId, pricingTermId } from "./pricing-identifiers.ts";
 import {
   addAtom,
   isStandardUnit,
@@ -66,13 +68,155 @@ export function applyOpenAiCommercialTopology(
         : bindResourceBook(book, input, inputIndex),
     )
     .map(includePricingInputSourceRefs);
+  for (const book of books) {
+    bindFixedSearchContent(book, books, input);
+    bindUnsupportedFastEu(book);
+  }
   return { ...input, books };
+}
+
+function bindUnsupportedFastEu(book: AtomicPricingBook): void {
+  if (book.book_key !== "model:openai/gpt-6-astra") return;
+  for (const offer of book.offers)
+    offer.terms = offer.terms.filter((term) => {
+      if (term.kind !== "raw" || term.term_key !== "fast_eu_not_supported") return true;
+      for (const variant of term.variants) {
+        if (variant.possible_scope === undefined) return true;
+        offer.states.push({
+          state: "not_supported",
+          applicability: variant.possible_scope,
+          observation: {
+            ...variant.observation,
+            establishes_applicability: variant.possible_scope,
+          },
+        });
+      }
+      return false;
+    });
+}
+
+function bindFixedSearchContent(
+  book: AtomicPricingBook,
+  books: readonly AtomicPricingBook[],
+  input: AtomicProviderPricing,
+): void {
+  if (
+    book.scope.kind !== "provider_resource" ||
+    !book.scope.resource_key.startsWith("web-search-content:") ||
+    book.scope.model_refs.length !== 1
+  )
+    return;
+  const ref = book.scope.model_refs[0];
+  const model = books.find(
+    (candidate) =>
+      candidate.scope.kind === "models" &&
+      candidate.scope.model_refs.length === 1 &&
+      candidate.scope.model_refs[0] === ref,
+  );
+  const offer = model?.offers.find(({ offer_key }) => offer_key === "sync");
+  const rate = offer?.terms.find(
+    (term) =>
+      term.kind === "rate" &&
+      term.meter.namespace === "kmodels" &&
+      term.meter.value === "input_text",
+  );
+  if (
+    model === undefined ||
+    offer === undefined ||
+    rate?.kind !== "rate" ||
+    !rate.variants.some(({ price }) => isStandardUnit(price.per, "token"))
+  )
+    return;
+  const target = pricingTermId(
+    pricingOfferId(pricingBookId(input.provider_id, model.book_key), offer.offer_key),
+    "rate",
+    rate.term_key,
+  );
+  for (const service of book.offers) {
+    service.terms = service.terms.map((term): AtomicPricingTerm => {
+      if (term.kind !== "raw" || term.term_key !== "fixed-search-content") return term;
+      const calls: UsageSignal = {
+        namespace: "provider",
+        provider_id: input.provider_id,
+        value: "fixed_search_content_calls",
+      };
+      const tokens: UsageSignal = {
+        namespace: "provider",
+        provider_id: input.provider_id,
+        value: "fixed_search_content_tokens",
+      };
+      addAtom(input, {
+        kind: "usage_signal",
+        key: calls.value,
+        definition:
+          "Count of billable non-preview Web Search call instances whose fixed content blocks are excluded from separately priced model input usage",
+        unit: { factors: [{ unit: { namespace: "kmodels", value: "item" }, power: 1 }] },
+        resolution_phase: "outcome",
+      });
+      addAtom(input, {
+        kind: "usage_signal",
+        key: tokens.value,
+        definition:
+          "Fixed Web Search content tokens contributed to the compatible model input rate",
+        unit: tokenUnit,
+        resolution_phase: "outcome",
+      });
+      const contribution: AtomicContributionTerm = {
+        kind: "contribution",
+        term_key: term.term_key,
+        source_refs: term.source_refs,
+        raw_variants: [],
+        variants: [],
+      };
+      for (const raw of term.variants) {
+        const applicability = raw.possible_scope;
+        if (
+          applicability === undefined ||
+          raw.observation.raw["fragment"] !==
+            "For gpt-4o-mini and gpt-4.1-mini with the non-preview web search tool, search content tokens are billed as a fixed block of 8,000 input tokens per call."
+        ) {
+          contribution.raw_variants.push(raw);
+          continue;
+        }
+        contribution.variants.push({
+          target_rate_refs: [target],
+          applicability,
+          observation: { ...raw.observation, establishes_applicability: applicability },
+          charge_bindings: [
+            {
+              signal: tokens,
+              aggregation: "request",
+              quantity_methods: [
+                {
+                  calculation: {
+                    nodes: [
+                      { op: "signal", signal: calls },
+                      {
+                        op: "constant",
+                        value: { numerator: "8000", denominator: "1" },
+                        unit: tokenUnit,
+                      },
+                      { op: "product", inputs: [0, 1] },
+                    ],
+                    result: 2,
+                  },
+                },
+              ],
+              observations: [raw.observation],
+            },
+          ],
+        });
+      }
+      return contribution.variants.length === 0 ? term : contribution;
+    });
+  }
 }
 
 function admittedBook(book: AtomicPricingBook): boolean {
   return (
     book.scope.kind === "models" ||
     ["containers", "file-search", "web-search"].includes(book.scope.resource_key) ||
+    book.scope.resource_key.startsWith("web-search-content:") ||
     book.scope.resource_key.startsWith("fine-tuned-inference:")
   );
 }
@@ -354,7 +498,12 @@ function modelChargeBinding(
     partition === "batch" ? { methods: [], facts: [] } : quantityMethods(spec, inputIndex);
   return {
     signal: spec.signal,
-    aggregation: partition === "batch" ? "result_item" : "request",
+    aggregation:
+      partition === "batch"
+        ? "result_item"
+        : meter.namespace === "kmodels" && meter.value === "session_runtime"
+          ? "session"
+          : "request",
     ...(quantity.methods.length === 0 ? {} : { quantity_methods: quantity.methods }),
     observations: uniqueObservations([
       rawEvidence(variant.observation),
@@ -416,6 +565,8 @@ function modelSignal(
           ]);
     return;
   }
+  if (meter.value === "session_runtime" && isStandardUnit(unit, "second"))
+    return standard("active_seconds", []);
   if (meter.value === "input_text" && isStandardUnit(unit, "token")) {
     const partitioned = hasMeter(rateMeters, "input_audio") || hasMeter(rateMeters, "input_image");
     return model?.tasks.includes("image_generation")
@@ -676,6 +827,54 @@ function resourceChargeBinding(
     term.meter.value === "container_runtime"
   )
     return (variant) => {
+      if (isStandardUnit(variant.price.per, "second")) {
+        const unit = variant.observation.raw["unit"];
+        const minutes =
+          typeof unit === "string"
+            ? unit.match(/minimum (\d+) minutes per session/)?.[1]
+            : undefined;
+        if (minutes === undefined) throw new Error("Container minute rate has no billing minimum");
+        const beforeMinimum = "container_session_seconds_before_minimum";
+        const billed = "container_session_billable_seconds";
+        for (const [key, definition] of [
+          [
+            beforeMinimum,
+            "Provider-billed session minutes expressed in seconds before the session minimum; caller supplies billing granularity, not wall-clock time",
+          ],
+          [billed, "Provider-billed container session seconds after the published minimum"],
+        ] as const) {
+          addAtom(input, {
+            kind: "usage_signal",
+            key,
+            definition,
+            unit: variant.price.per,
+            resolution_phase: "outcome",
+          });
+        }
+        return {
+          signal: { namespace: "provider", provider_id: "openai", value: billed },
+          aggregation: "session",
+          quantity_methods: [
+            {
+              calculation: {
+                nodes: [
+                  {
+                    op: "signal",
+                    signal: { namespace: "provider", provider_id: "openai", value: beforeMinimum },
+                  },
+                  {
+                    op: "minimum",
+                    input: 0,
+                    value: { numerator: String(BigInt(minutes) * 60n), denominator: "1" },
+                  },
+                ],
+                result: 1,
+              },
+            },
+          ],
+          observations: [rawEvidence(variant.observation)],
+        };
+      }
       const key = "container_session_blocks";
       addAtom(input, {
         kind: "usage_signal",
@@ -699,7 +898,7 @@ function resourceChargeBinding(
       ["organization.file_search_calls.num_requests"],
       inputIndex,
     );
-  if (resourceKey.startsWith("web-search") && isUnitTerm(term, "event"))
+  if (resourceKey === "web-search" && isUnitTerm(term, "event"))
     return providerBinding(
       input,
       "web_search_calls",

@@ -271,9 +271,10 @@ Raw variants carry a commercial impact:
 - `allowance`: may change benefits and blocks a complete allowance summary;
 - `informational`: retained for audit but excluded from commercial equality.
 
-Only an explicit offer state, a normalized rate, or a `base_price` raw fact establishes an offer.
-Allowance and informational raw facts may annotate an established offer, but cannot create an
-otherwise empty offer or imply that an unknown price is available.
+An explicit offer state, a normalized rate, a normalized allowance or contribution, or a
+`base_price` raw fact establishes an offer. Normalized benefits and contributions must reference
+valid targets. Allowance and informational **raw** facts may annotate an established offer, but
+cannot create an otherwise empty offer or imply that an unknown price is available.
 
 ## Public semantics
 
@@ -386,7 +387,8 @@ States are applicability-qualified and may retain source-published validity:
 - `included`: another exact public entitlement covers the marginal charge;
 - `externally_billed`: the provider does not own the economic charge;
 - `custom_quote`: a public offer exists but requires a quote;
-- `not_published`: a public offer exists but no public price is published.
+- `not_published`: a public offer exists but no public price is published;
+- `not_supported`: first-party evidence explicitly prohibits this applicability combination.
 
 An offer state is not inferred from absence. Conflicting possibly overlapping
 states are downgraded with the affected commercial facts rather than allowing a

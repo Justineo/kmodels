@@ -102,6 +102,7 @@ export type Extractor =
   | { kind: "deepseek-catalog"; minModels: number; maxModels: number }
   | { kind: "deepseek-updates"; minModels: number; maxModels: number }
   | { kind: "deepseek-api"; minModels: number; maxModels: number }
+  | { kind: "perplexity-catalog"; minModels: number; maxModels: number }
   | { kind: "kimi-openapi"; baseUrl: string; minModels: number; maxModels: number }
   | { kind: "kimi-catalog"; minModels: number; maxModels: number }
   | {
@@ -682,7 +683,7 @@ export const manifests = [
         format: "markdown",
         stability: "semi_structured",
         extractor: { kind: "openai-pricing" },
-        extractorVersion: "openai-pricing-v9",
+        extractorVersion: "openai-pricing-v12",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing"],
         allowedHosts: ["developers.openai.com"],
@@ -690,6 +691,22 @@ export const manifests = [
         scope: "global",
         exhaustive: false,
         role: "supplement",
+        linkedDocuments: {
+          path: /^$/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 1,
+          documents: fixedDocuments([
+            [
+              "container-billing-changelog",
+              "https://developers.openai.com/api/docs/changelog.md",
+              1,
+              "markdown",
+              true,
+              true,
+            ],
+          ]),
+        },
       },
       {
         id: "openai-accounting",
@@ -1147,7 +1164,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "databricks-catalog", minModels: 40, maxModels: 80 },
-        extractorVersion: "databricks-catalog-v12",
+        extractorVersion: "databricks-catalog-v13",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: [
           "model_id",
@@ -1287,7 +1304,7 @@ export const manifests = [
         format: "json",
         stability: "documented",
         extractor: { kind: "vercel-catalog", minModels: 250, maxModels: 600 },
-        extractorVersion: "vercel-catalog-v18",
+        extractorVersion: "vercel-catalog-v21",
         pricingEvidence: firstPartyPricing("model_catalog", "exact_id", "current_snapshot"),
         fields: [
           "model_id",
@@ -1869,7 +1886,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "gemini-pricing" },
-        extractorVersion: "gemini-pricing-v3",
+        extractorVersion: "gemini-pricing-v5",
         pricingEvidence: firstPartyPricing("price_book", "exact_or_documented_alias"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         headers: [{ name: "Accept-Language", value: "en-US,en;q=0.9" }],
@@ -1904,6 +1921,14 @@ export const manifests = [
             ],
             ["video", "https://ai.google.dev/gemini-api/docs/video", 4, "html", true, true],
             ["batch-api", "https://ai.google.dev/api/batch-api", 4, "html", true, true],
+            [
+              "maps-grounding",
+              "https://ai.google.dev/gemini-api/docs/maps-grounding",
+              1,
+              "html",
+              true,
+              true,
+            ],
             ["embeddings-api", "https://ai.google.dev/api/embeddings", 4, "html", true, true],
           ]),
         },
@@ -2187,7 +2212,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "vertex-pricing" },
-        extractorVersion: "vertex-pricing-v3",
+        extractorVersion: "vertex-pricing-v6",
         pricingEvidence: firstPartyPricing("price_book", "reviewed_unique_join"),
         fields: ["model_id", "tasks", "pricing", "pricing_inputs"],
         allowedHosts: ["cloud.google.com", "docs.cloud.google.com", "aiplatform.googleapis.com"],
@@ -2205,6 +2230,14 @@ export const manifests = [
           concurrency: 4,
           maxDocumentBytes: mebibytes(4),
           documents: fixedDocuments([
+            [
+              "mistral-ocr-billing",
+              "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/partner-models/mistral/mistral-ocr",
+              2,
+              "html",
+              true,
+              true,
+            ],
             [
               "discovery",
               "https://aiplatform.googleapis.com/$discovery/rest?version=v1beta1",
@@ -3035,7 +3068,7 @@ export const manifests = [
         format: "mixed",
         stability: "semi_structured",
         extractor: { kind: "xai-catalog", minModels: 10, maxModels: 50 },
-        extractorVersion: "xai-catalog-v12",
+        extractorVersion: "xai-catalog-v13",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3070,7 +3103,7 @@ export const manifests = [
           documents: [
             {
               id: "llms",
-              url: "https://docs.x.ai/llms.txt",
+              url: "https://docs.x.ai/llms-full.txt",
               maxResponseBytes: mebibytes(3),
             },
           ],
@@ -3421,7 +3454,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v13",
+        extractorVersion: "dashscope-pricing-v14",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -3518,7 +3551,11 @@ export const manifests = [
               1,
             ],
             ["base-url", "https://www.alibabacloud.com/help/en/model-studio/base-url.md", 1],
-          ]),
+          ]).map((document) =>
+            document.id.endsWith("-accounting") || document.id === "base-url"
+              ? { ...document, claimLocal: true }
+              : document,
+          ),
         },
         optional: true,
         pricingRequired: true,
@@ -3944,7 +3981,7 @@ export const manifests = [
         format: "html",
         stability: "semi_structured",
         extractor: { kind: "deepseek-catalog", minModels: 1, maxModels: 100 },
-        extractorVersion: "deepseek-catalog-v15",
+        extractorVersion: "deepseek-catalog-v16",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
@@ -4165,6 +4202,8 @@ export const manifests = [
         extractor: { kind: "kimi-releases", minModels: 8, maxModels: 25 },
         extractorVersion: "kimi-releases-v2",
         fields: ["release_date"],
+        optional: true,
+        retainOmittedFacts: true,
         allowedHosts: ["platform.kimi.com", "www.kimi.com"],
         maxResponseBytes: mebibytes(6),
         scope: "global",
@@ -4226,5 +4265,43 @@ export const manifests = [
       fields: ["limits.context_tokens", "pricing", "release_date", "updated_date"],
       statuses: ["active", "legacy", "deprecated", "unknown"],
     },
+  },
+  {
+    provider: {
+      id: "perplexity",
+      name: "Perplexity",
+      kind: "hosted",
+      homepage: "https://www.perplexity.ai/",
+      docs_url: "https://docs.perplexity.ai/docs/getting-started/pricing",
+      catalog_scope: "global",
+    },
+    sources: [
+      {
+        id: "perplexity-pricing",
+        url: "https://docs.perplexity.ai/docs/getting-started/pricing.md",
+        type: "website",
+        access: "public",
+        format: "markdown",
+        stability: "semi_structured",
+        extractor: { kind: "perplexity-catalog", minModels: 1, maxModels: 100 },
+        extractorVersion: "perplexity-pricing-v1",
+        pricingEvidence: firstPartyPricing("price_book", "exact_id"),
+        fields: ["model_id", "name", "tasks", "modalities", "pricing"],
+        allowedHosts: ["docs.perplexity.ai"],
+        maxResponseBytes: mebibytes(2),
+        scope: "global",
+        exhaustive: false,
+        role: "catalog",
+        linkedDocuments: {
+          path: /$a/,
+          minDocuments: 0,
+          maxDocuments: 0,
+          concurrency: 2,
+          documents: fixedDocuments([
+            ["sonar-models", "https://docs.perplexity.ai/docs/sonar/models.md", 1, "markdown"],
+          ]),
+        },
+      },
+    ],
   },
 ] satisfies ProviderManifest[];
