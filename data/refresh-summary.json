@@ -1,8 +1,8 @@
 {
-  "catalog_version": "70a7d1fe5cfe4dbf2a46b6ccf524b424b306a9c09e8dfe5091c77bbd6f63b5a6",
-  "generated_at": "2026-09-12T07:03:53.803Z",
+  "catalog_version": "ed21e2df477f52e519f6adb57c8a14dfb64c53e0dea40d4fa92a7c11009e8103",
+  "generated_at": "2026-09-12T08:04:41.093Z",
   "outcome": "changed",
-  "previous_catalog_version": "37dff72fac8d9c81e4ac9e4c842ca083c66487785f9b28ef9ecbd33bee175399",
+  "previous_catalog_version": "70a7d1fe5cfe4dbf2a46b6ccf524b424b306a9c09e8dfe5091c77bbd6f63b5a6",
   "providers": [
     {
       "attempt": {
@@ -1115,7 +1115,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 25,
+            "consecutive_failures": 26,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -2005,7 +2005,7 @@
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1860,
+              "diagnostic_count": 1859,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -2054,15 +2054,15 @@
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1860,
+                "unbound": 1859,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8350,
+              "observed_items": 8349,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
                 "hf_inference_compute_price_unbound": 1460,
-                "partner_route_price_not_published": 400,
+                "partner_route_price_not_published": 399,
                 "single_partner_inventory_without_product_evidence": 6419
               },
               "unit": "reviewed source pricing item"
@@ -2303,45 +2303,89 @@
       },
       "count_decreases": [
         {
-          "current": 1644,
-          "field": "models",
-          "previous": 1645
-        },
-        {
-          "current": 1860,
+          "current": 1859,
           "field": "routes",
-          "previous": 1862
+          "previous": 1860
         }
       ],
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 1,
+        "changed": 2,
         "changed_fields": {
-          "capabilities": 1
+          "capabilities": 1,
+          "routes": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.structured_output",
-                "previous": true
+                "previous": "unknown"
               }
             ],
             "fields": [
               "capabilities"
             ],
-            "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
+            "model_ref": "huggingface/Qwen/Qwen3-32B"
+          },
+          {
+            "field_changes": [
+              {
+                "current": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-4b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "fal-ai",
+                    "provider_model_id": "fal-ai/flux-2/klein/4b/base/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "replicate",
+                    "provider_model_id": "black-forest-labs/flux-2-klein-4b-base",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  },
+                  {
+                    "provider": "wavespeed",
+                    "provider_model_id": "wavespeed-ai/flux-2-klein-base-4b/edit",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "image-to-image"
+                  }
+                ]
+              }
+            ],
+            "fields": [
+              "routes"
+            ],
+            "model_ref": "huggingface/black-forest-labs/FLUX.2-klein-base-4B"
           }
         ],
         "current": 1644,
-        "previous": 1645,
-        "removed": 1,
-        "removed_model_refs": [
-          "huggingface/stabilityai/stable-diffusion-3.5-medium"
-        ],
-        "unchanged": 1643
+        "previous": 1644,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1642
       },
       "pricing": {
         "commercial_hash": "9deeef4b6b501e8c02b10710e4a6d5fde4ddfba3b72e3f9daa08c683026d07b3",
@@ -2352,7 +2396,7 @@
         "current_models": 1644,
         "delta": {
           "resolved_models": 0,
-          "unknown_models": -1
+          "unknown_models": 0
         },
         "normalized_rate_models": 133,
         "not_applicable_models": 0,
@@ -2743,14 +2787,14 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 25,
+            "consecutive_failures": 26,
             "last_success_at": "2026-09-11T05:50:05.136Z",
             "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
             "outcome": "fetch_failed",
             "source_id": "kimi-releases"
           },
           {
-            "consecutive_failures": 30,
+            "consecutive_failures": 31,
             "last_success_at": "2026-09-04T09:22:19.909Z",
             "message": "HTTP 401",
             "outcome": "fetch_failed",
@@ -4086,7 +4130,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 11,
+            "consecutive_failures": 12,
             "last_success_at": "2026-09-11T20:04:00.366Z",
             "message": "xAI language model differs across public clusters",
             "outcome": "parse_failed",
@@ -4155,7 +4199,7 @@
     "accepted": 18,
     "added_models": 0,
     "added_sources": 0,
-    "changed_models": 1,
+    "changed_models": 2,
     "changed_sources": 22,
     "models": 3648,
     "pricing_accepted": 18,
@@ -4164,7 +4208,7 @@
     "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 19,
-    "removed_models": 1,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
