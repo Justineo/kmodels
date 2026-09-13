@@ -1,8 +1,8 @@
 {
-  "catalog_version": "fb33979a87c1866e1abfa4dd27af5584a74f8bfad38fe9dbf29cc77408f5ed2f",
-  "generated_at": "2026-09-13T01:19:53.391Z",
+  "catalog_version": "74a19d63525e721edca363c5661445af9d207cb80d6fffc3d005d52f0aa3aa52",
+  "generated_at": "2026-09-13T02:05:39.330Z",
   "outcome": "changed",
-  "previous_catalog_version": "d1a9a8dd19517ee62f2338e636c86ae9e41977e0c8ad157810ea6634c05f4c12",
+  "previous_catalog_version": "fb33979a87c1866e1abfa4dd27af5584a74f8bfad38fe9dbf29cc77408f5ed2f",
   "providers": [
     {
       "attempt": {
@@ -337,9 +337,7 @@
       "attempt": {
         "outcome": "accepted",
         "pricing": {
-          "failure_code": "source_unavailable",
-          "message": "Optional commercial source bundle is incomplete at azure-retail-prices",
-          "outcome": "failed"
+          "outcome": "accepted"
         },
         "sources": [
           {
@@ -357,10 +355,87 @@
             "source_id": "azure-portal-models"
           },
           {
-            "consecutive_failures": 1,
-            "last_success_at": "2026-09-13T00:11:04.047Z",
-            "message": "Azure Retail Prices HTTP 429",
-            "outcome": "fetch_failed",
+            "content_changed": false,
+            "extractor_changed": false,
+            "outcome": "unchanged",
+            "parsed_models": 115,
+            "pricing_extraction": {
+              "custom_quote_models": 0,
+              "free_models": 0,
+              "model_records": 115,
+              "normalized_facts": 20609,
+              "not_applicable_models": 0,
+              "not_published_models": 0,
+              "numeric_models": 115,
+              "raw_facts": 0,
+              "raw_models": 0,
+              "unknown_models": 0
+            },
+            "pricing_reconciliation": {
+              "basis": "source_item",
+              "diagnostic_count": 7834,
+              "diagnostics": [
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / Grok 4.2 Inp Dzone / Grok 4.2 Inp Dzone Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / Grok 4.2 Inp glbl / Grok 4.2 Inp glbl Tokens"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "retail_version_not_unique",
+                  "sample": "Azure OpenAI Media / gpt-realtime-2 Image cd inp Gl / gpt-realtime-2 Image cd inp Gl 1M Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Kimi / K2 Thinking Inp DZ / K2 Thinking Inp DZ Tokens"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "retail_version_not_unique",
+                  "sample": "Azure OpenAI Media / gpt-live-transcribe Gl / gpt-live-transcribe Gl Unit"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure BFL Flux Models / Flex Ref / Flex Ref Megapixel"
+                },
+                {
+                  "disposition": "ambiguous",
+                  "reason_code": "retail_version_not_unique",
+                  "sample": "Azure OpenAI / gpt-4-8K-Inp-glbl / gpt-4-8K-Inp-glbl Tokens"
+                },
+                {
+                  "disposition": "unbound",
+                  "reason_code": "retail_identity_not_unique",
+                  "sample": "Azure Grok Models / 4.3 Outp DZ L / 4.3 Outp DZ L Tokens"
+                }
+              ],
+              "disposition_counts": {
+                "ambiguous": 2034,
+                "excluded": 4968,
+                "explicit_non_numeric": 0,
+                "normalized": 20785,
+                "raw": 0,
+                "unbound": 5786,
+                "unresolved": 0,
+                "unsupported": 14
+              },
+              "observed_items": 33587,
+              "reason_counts": {
+                "non_base_consumption_row": 4968,
+                "retail_identity_not_unique": 5786,
+                "retail_meter_or_unit_unsupported": 14,
+                "retail_row_bound": 20785,
+                "retail_version_not_unique": 2034
+              },
+              "unit": "reviewed source pricing item"
+            },
             "source_id": "azure-retail-prices"
           },
           {
@@ -589,7 +664,7 @@
         "unknown_model_refs_omitted": 50,
         "unknown_models": 70
       },
-      "pricing_publication": "retained",
+      "pricing_publication": "accepted",
       "provider_id": "azure",
       "publication": "accepted",
       "signals": [],
@@ -622,7 +697,6 @@
         "catalog_api_set_mismatch": 1,
         "missing_field": 3,
         "scope_limited": 1,
-        "source_fetch_failed": 1,
         "source_partial_retention": 1
       }
     },
@@ -883,9 +957,9 @@
             "source_id": "cohere-models"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 15,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -1017,13 +1091,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "cohere-pricing"
+          }
+        ],
         "current": 3,
         "previous": 3,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 3
+        "unchanged": 2
       },
       "status": "fresh",
       "warning_codes": {
@@ -1041,7 +1122,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 43,
+            "consecutive_failures": 44,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -1382,2838 +1463,19 @@
       "models": {
         "added": 0,
         "added_model_refs": [],
-        "changed": 64,
-        "changed_fields": {
-          "availability": 64
-        },
-        "changed_models": [
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/glm-5.2-fast-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-flash-2025-07-28"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-mt-image-2.0"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-2025-01-25"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-2025-04-28"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-2025-07-14"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-2025-07-28"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-2025-09-11"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-2025-12-01"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-plus-latest"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-vl-max"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-vl-ocr"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-vl-ocr-2025-11-20"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-vl-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-voice-design"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen-voice-enrollment"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-14b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-235b-a22b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-235b-a22b-instruct-2507"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-235b-a22b-thinking-2507"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-30b-a3b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-30b-a3b-instruct-2507"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-30b-a3b-thinking-2507"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-32b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-8b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-30b-a3b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-480b-a35b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-flash-2025-07-28"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-next"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-plus-2025-07-22"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-coder-plus-2025-09-23"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-max"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-max-2025-09-23"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-max-2026-01-23"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-max-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-next-80b-a3b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-next-80b-a3b-thinking"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-omni-30b-a3b-captioner"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-235b-a22b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-235b-a22b-thinking"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-30b-a3b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-30b-a3b-thinking"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-32b-thinking"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-8b-instruct"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-8b-thinking"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-flash-2025-10-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-flash-2026-01-22"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3-vl-plus-2025-12-19"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.5-flash-2026-02-23"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.5-plus-2026-02-15"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.6-27b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.6-35b-a3b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.6-flash"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.6-max-preview"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.6-plus"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Japan (Tokyo)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.7-max"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Germany (Frankfurt)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Hong Kong (China)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "US (Virginia)"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.7-max-2026-06-08"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.8-2.4t-a95b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/qwen3.8-27b"
-          },
-          {
-            "field_changes": [
-              {
-                "current": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  }
-                ],
-                "path": "availability",
-                "previous": [
-                  {
-                    "deployment_type": "model_api",
-                    "region": "China (Beijing)"
-                  },
-                  {
-                    "deployment_type": "model_api",
-                    "region": "Singapore"
-                  }
-                ]
-              }
-            ],
-            "fields": [
-              "availability"
-            ],
-            "model_ref": "dashscope/wan2.7-r2v"
-          }
-        ],
+        "changed": 0,
+        "changed_fields": {},
+        "changed_models": [],
         "current": 381,
         "previous": 381,
         "removed": 0,
         "removed_model_refs": [],
-        "unchanged": 317
+        "unchanged": 381
       },
       "pricing": {
         "commercial_hash": "7933302f74005c641b713a1ba69384426ea01ab701dcf7bb46bd2211e0de5039",
-        "outcome": "commercial",
-        "previous_commercial_hash": "8e69ebeacd5d5fcfe5a370dfb99a7cbdc262b4fd6f1476d3ad4af9a71892e4bd"
+        "outcome": "provenance_only",
+        "previous_commercial_hash": "7933302f74005c641b713a1ba69384426ea01ab701dcf7bb46bd2211e0de5039"
       },
       "pricing_coverage": {
         "current_models": 380,
@@ -4734,22 +1996,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1586,
+            "parsed_models": 1588,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 1586,
+              "model_records": 1588,
               "normalized_facts": 0,
               "not_applicable_models": 0,
               "not_published_models": 0,
               "numeric_models": 0,
               "raw_facts": 0,
               "raw_models": 0,
-              "unknown_models": 1586
+              "unknown_models": 1588
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 1839,
+              "diagnostic_count": 1846,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -4794,20 +2056,20 @@
               ],
               "disposition_counts": {
                 "ambiguous": 0,
-                "excluded": 6494,
+                "excluded": 6492,
                 "explicit_non_numeric": 0,
                 "normalized": 0,
                 "raw": 0,
-                "unbound": 1839,
+                "unbound": 1846,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 8333,
+              "observed_items": 8338,
               "reason_counts": {
                 "dynamic_lora_tag_filter_not_model_identity": 71,
-                "hf_inference_compute_price_unbound": 1444,
-                "partner_route_price_not_published": 395,
-                "single_partner_inventory_without_product_evidence": 6423
+                "hf_inference_compute_price_unbound": 1445,
+                "partner_route_price_not_published": 401,
+                "single_partner_inventory_without_product_evidence": 6421
               },
               "unit": "reviewed source pricing item"
             },
@@ -4817,22 +2079,22 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 141,
+            "parsed_models": 143,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 141,
-              "normalized_facts": 432,
+              "model_records": 143,
+              "normalized_facts": 440,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 114,
-              "raw_facts": 115,
-              "raw_models": 106,
+              "numeric_models": 116,
+              "raw_facts": 117,
+              "raw_models": 108,
               "unknown_models": 27
             },
             "pricing_reconciliation": {
               "basis": "source_item",
-              "diagnostic_count": 116,
+              "diagnostic_count": 118,
               "diagnostics": [
                 {
                   "disposition": "unbound",
@@ -4879,19 +2141,19 @@
                 "ambiguous": 1,
                 "excluded": 1,
                 "explicit_non_numeric": 0,
-                "normalized": 217,
+                "normalized": 221,
                 "raw": 0,
-                "unbound": 115,
+                "unbound": 117,
                 "unresolved": 0,
                 "unsupported": 0
               },
-              "observed_items": 334,
+              "observed_items": 340,
               "reason_counts": {
                 "auto_routing_policy_conflict": 1,
                 "pricing_input_contract_bound": 1,
                 "response_exact_cost_not_documented": 1,
-                "route_price_normalized": 216,
-                "route_price_not_published": 115
+                "route_price_normalized": 220,
+                "route_price_not_published": 117
               },
               "unit": "reviewed source pricing item"
             },
@@ -4901,15 +2163,15 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 72,
+            "parsed_models": 73,
             "pricing_extraction": {
               "custom_quote_models": 0,
               "free_models": 0,
-              "model_records": 72,
-              "normalized_facts": 147,
+              "model_records": 73,
+              "normalized_facts": 149,
               "not_applicable_models": 0,
               "not_published_models": 0,
-              "numeric_models": 72,
+              "numeric_models": 73,
               "raw_facts": 0,
               "raw_models": 0,
               "unknown_models": 0
@@ -4936,9 +2198,9 @@
               ],
               "disposition_counts": {
                 "ambiguous": 3,
-                "excluded": 21868,
+                "excluded": 21867,
                 "explicit_non_numeric": 0,
-                "normalized": 69,
+                "normalized": 70,
                 "raw": 0,
                 "unbound": 0,
                 "unresolved": 0,
@@ -4946,8 +2208,8 @@
               },
               "observed_items": 21940,
               "reason_counts": {
-                "featherless_model_not_hf_route": 21867,
-                "featherless_price_normalized": 69,
+                "featherless_model_not_hf_route": 21866,
+                "featherless_price_normalized": 70,
                 "featherless_price_unit_conflict": 3,
                 "invalid_featherless_model_id": 1
               },
@@ -5041,102 +2303,37 @@
             "content_changed": true,
             "extractor_changed": false,
             "outcome": "changed",
-            "parsed_models": 1444,
+            "parsed_models": 1445,
             "source_id": "huggingface-hub"
           }
         ]
       },
-      "count_decreases": [
-        {
-          "current": 1632,
-          "field": "models",
-          "previous": 1648
-        },
-        {
-          "current": 282,
-          "field": "api_endpoints",
-          "previous": 286
-        },
-        {
-          "current": 1839,
-          "field": "routes",
-          "previous": 1860
-        }
-      ],
       "models": {
-        "added": 48,
+        "added": 2,
         "added_model_refs": [
-          "huggingface/Aniemore/rubert-tiny2-russian-emotion-detection",
-          "huggingface/BMRetriever/BMRetriever-410M",
-          "huggingface/ChrisLalk/German-Emotions",
-          "huggingface/Hate-speech-CNERG/indic-abusive-allInOne-MuRIL",
-          "huggingface/HooshvareLab/bert-fa-base-uncased-sentiment-deepsentipers-binary",
-          "huggingface/JasperLS/gelectra-base-injection",
-          "huggingface/LazarusNLP/NusaBERT-base",
-          "huggingface/Metric-AI/armenian-text-embeddings-2-large",
-          "huggingface/NYTK/named-entity-recognition-nerkor-hubert-hungarian",
-          "huggingface/PlanTL-GOB-ES/roberta-base-biomedical-clinical-es",
-          "huggingface/Roboflow/rf-detr-seg-nano",
-          "huggingface/albert/albert-xxlarge-v1",
-          "huggingface/alexyalunin/RuBioBERT",
-          "huggingface/bardsai/twitter-sentiment-pl-base",
-          "huggingface/ckiplab/bert-base-chinese-pos",
-          "huggingface/clarin-pl/FastPDN",
-          "huggingface/codefuse-ai/F2LLM-0.6B",
-          "huggingface/corrius/cross-encoder-mmarco-mMiniLMv2-L12-H384-v1",
-          "huggingface/ethanyt/guwenbert-base",
-          "huggingface/facebook/mask2former-swin-large-cityscapes-panoptic",
-          "huggingface/garak-llm/garak-refusal-detector",
-          "huggingface/google/electra-large-generator",
-          "huggingface/google/mobilenet_v2_1.4_224",
-          "huggingface/gravitee-io/distilbert-multilingual-toxicity-classifier",
-          "huggingface/huggingface/CodeBERTa-language-id",
-          "huggingface/ibm-granite/granite-guardian-hap-38m",
-          "huggingface/imvladikon/alephbertgimmel-base-512",
-          "huggingface/jeffwan/mmarco-mMiniLMv2-L12-H384-v1",
-          "huggingface/jhu-clsp/ettin-encoder-1b",
-          "huggingface/logasanjeev/bert-emotion-classifier",
-          "huggingface/mfaytin/mask2former-satellite",
-          "huggingface/microsoft/infoxlm-large",
-          "huggingface/mlsa-iai-msu-lab/sci-rus-tiny3.5",
-          "huggingface/moussaKam/AraBART",
-          "huggingface/nafisehNik/mt5-persian-summary",
-          "huggingface/neulab/codebert-java",
-          "huggingface/nlpie/bio-tinybert",
-          "huggingface/nomic-ai/modernbert-embed-base-unsupervised",
-          "huggingface/nreimers/mMiniLMv2-L6-H384-distilled-from-XLMR-Large",
-          "huggingface/nuvocare/WikiMedical_sent_biobert",
-          "huggingface/pczarnik/herbert-base-ner",
-          "huggingface/prithivMLmods/Gender-Classifier-Mini",
-          "huggingface/richinfoai/ritrieve_zh_v1",
-          "huggingface/seara/rubert-base-cased-russian-emotion-detection-ru-go-emotions",
-          "huggingface/setu4993/LEALLA-base",
-          "huggingface/tue-mps/coco_instance_eomt_large_640",
-          "huggingface/vraj33/ai-text-detector-deberta",
-          "huggingface/yanekyuk/bert-uncased-keyword-extractor"
+          "huggingface/Helsinki-NLP/opus-mt-en-ar",
+          "huggingface/Qwen/Qwen3-4B-Instruct-2507"
         ],
-        "changed": 5,
+        "changed": 4,
         "changed_fields": {
           "api_endpoints": 1,
-          "capabilities": 1,
+          "capabilities": 2,
           "delivery_modes": 1,
           "limits": 1,
           "routes": 4,
-          "source_refs": 1,
-          "updated_date": 1
+          "source_refs": 1
         },
         "changed_models": [
           {
             "field_changes": [
               {
-                "path": "delivery_modes",
-                "previous": [
+                "current": [
                   "streaming"
-                ]
+                ],
+                "path": "delivery_modes"
               },
               {
-                "path": "api_endpoints",
-                "previous": [
+                "current": [
                   {
                     "name": "Chat Completions",
                     "path": "/v1/chat/completions"
@@ -5145,20 +2342,11 @@
                     "name": "Responses",
                     "path": "/v1/responses"
                   }
-                ]
+                ],
+                "path": "api_endpoints"
               },
               {
                 "current": [
-                  {
-                    "provider": "featherless-ai",
-                    "provider_model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
-                  }
-                ],
-                "path": "routes",
-                "previous": [
                   {
                     "provider": "featherless-ai",
                     "provider_model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
@@ -5173,28 +2361,38 @@
                     "status": "live",
                     "task": "conversational"
                   }
+                ],
+                "path": "routes",
+                "previous": [
+                  {
+                    "provider": "featherless-ai",
+                    "provider_model_id": "Qwen/Qwen2.5-Coder-32B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
+                  }
                 ]
               },
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.streaming",
-                "previous": true
+                "previous": "unknown"
               },
               {
-                "current": "unknown",
+                "current": true,
                 "path": "capabilities.structured_output",
-                "previous": true
+                "previous": "unknown"
               },
               {
                 "current": [
                   "huggingface-hf-inference",
-                  "huggingface-featherless"
+                  "huggingface-featherless",
+                  "huggingface-router"
                 ],
                 "path": "source_refs",
                 "previous": [
                   "huggingface-hf-inference",
-                  "huggingface-featherless",
-                  "huggingface-router"
+                  "huggingface-featherless"
                 ]
               }
             ],
@@ -5210,23 +2408,17 @@
           {
             "field_changes": [
               {
-                "current": "2026-09-13",
-                "path": "updated_date",
-                "previous": "2026-09-12"
-              }
-            ],
-            "fields": [
-              "updated_date"
-            ],
-            "model_ref": "huggingface/Sachin21112004/distilbart-news-summarizer"
-          },
-          {
-            "field_changes": [
-              {
                 "current": [
                   {
                     "provider": "fal-ai",
                     "provider_model_id": "fal-ai/flux/schnell",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "text-to-image"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "black-forest-labs/FLUX.1-schnell",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "text-to-image"
@@ -5244,13 +2436,6 @@
                   {
                     "provider": "fal-ai",
                     "provider_model_id": "fal-ai/flux/schnell",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "text-to-image"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "black-forest-labs/FLUX.1-schnell",
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "text-to-image"
@@ -5294,6 +2479,13 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "meta-llama/Llama-3.1-8B-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
                   }
                 ],
                 "path": "routes",
@@ -5318,19 +2510,18 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "meta-llama/Llama-3.1-8B-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
                   }
                 ]
+              },
+              {
+                "current": true,
+                "path": "capabilities.structured_output",
+                "previous": "unknown"
               }
             ],
             "fields": [
-              "routes"
+              "routes",
+              "capabilities"
             ],
             "model_ref": "huggingface/meta-llama/Llama-3.1-8B-Instruct"
           },
@@ -5351,6 +2542,13 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
+                  },
+                  {
+                    "provider": "nscale",
+                    "provider_model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+                    "source_ref": "huggingface-hf-inference",
+                    "status": "live",
+                    "task": "conversational"
                   }
                 ],
                 "path": "routes",
@@ -5368,20 +2566,13 @@
                     "source_ref": "huggingface-hf-inference",
                     "status": "live",
                     "task": "conversational"
-                  },
-                  {
-                    "provider": "nscale",
-                    "provider_model_id": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
-                    "source_ref": "huggingface-hf-inference",
-                    "status": "live",
-                    "task": "conversational"
                   }
                 ]
               },
               {
-                "current": 327680,
+                "current": 890000,
                 "path": "limits.context_tokens",
-                "previous": 890000
+                "previous": 327680
               }
             ],
             "fields": [
@@ -5391,91 +2582,26 @@
             "model_ref": "huggingface/meta-llama/Llama-4-Scout-17B-16E-Instruct"
           }
         ],
-        "current": 1632,
-        "previous": 1648,
-        "removed": 64,
-        "removed_model_refs": [
-          "huggingface/Ahmed9275/Vit-Cifar100",
-          "huggingface/Aremaki/sentence-camembert-bio",
-          "huggingface/BM-K/KoSimCSE-bert-multitask",
-          "huggingface/HIT-TMG/KaLM-embedding-multilingual-mini-instruct-v1.5",
-          "huggingface/Helsinki-NLP/opus-mt-de-hu",
-          "huggingface/Helsinki-NLP/opus-mt-ko-es",
-          "huggingface/Helsinki-NLP/opus-mt-tc-big-en-it",
-          "huggingface/IRIIS-RESEARCH/RoBERTa_Nepali_125M",
-          "huggingface/Luyu/co-condenser-marco",
-          "huggingface/MarieAngeA13/Sentiment-Analysis-BERT",
-          "huggingface/Minej/bert-base-personality",
-          "huggingface/NbAiLab/nb-sbert-v2-large",
-          "huggingface/OpenMed/OpenMed-PII-Portuguese-SnowflakeMed-Large-568M-v1",
-          "huggingface/PlanTL-GOB-ES/bsc-bio-ehr-es",
-          "huggingface/Qwen/Qwen3-4B-Instruct-2507",
-          "huggingface/Seethal/sentiment_analysis_generic_dataset",
-          "huggingface/Skywork/Skywork-Reward-V2-Qwen3-0.6B",
-          "huggingface/ThakiCloud/SKILLRET-Embedding-0.6B",
-          "huggingface/VRLLab/TurkishBERTweet",
-          "huggingface/YituTech/conv-bert-small",
-          "huggingface/albert/albert-large-v1",
-          "huggingface/alibayram/embeddingmagibu-200m",
-          "huggingface/amahdaouy/DomURLs_BERT",
-          "huggingface/amaye15/Beit-Base-Image-Orientation-Fixer",
-          "huggingface/anass1209/resume-job-matcher-all-MiniLM-L6-v2",
-          "huggingface/apple/mobilevit-x-small",
-          "huggingface/aubmindlab/bert-large-arabertv2",
-          "huggingface/cahya/bert-base-indonesian-522M",
-          "huggingface/cardiffnlp/twitter-roberta-base-2021-124m",
-          "huggingface/cardiffnlp/twitter-roberta-base-emotion-latest",
-          "huggingface/cardiffnlp/twitter-roberta-base-hate",
-          "huggingface/cisco-ai/SecureBERT2.0-NER",
-          "huggingface/classla/xlm-roberta-base-multilingual-text-genre-classifier",
-          "huggingface/climatebert/netzero-reduction",
-          "huggingface/deepset/bert-small-mm_retrieval-question_encoder",
-          "huggingface/deepset/gbert-base-germandpr-question_encoder",
-          "huggingface/dell-research-harvard/lt-wikidata-comp-en",
-          "huggingface/dennisjooo/Birds-Classifier-EfficientNetB2",
-          "huggingface/facebook/convnext-base-384",
-          "huggingface/facebook/convnextv2-large-22k-384",
-          "huggingface/facebook/convnextv2-pico-1k-224",
-          "huggingface/hfmlsoc/ncii-light-guard-v01",
-          "huggingface/indiejoseph/bert-base-cantonese",
-          "huggingface/khyentsevision/minilm-bo-en-sim",
-          "huggingface/lightonai/mLateOn-unsupervised",
-          "huggingface/magibu/embeddingmagibu-200m",
-          "huggingface/mainguyen9/vietlegal-harrier-0.6b",
-          "huggingface/mlsa-iai-msu-lab/sci-rus-tiny",
-          "huggingface/mrm8488/codebert-base-finetuned-detect-insecure-code",
-          "huggingface/nasa-impact/nasa-smd-ibm-st-v2",
-          "huggingface/nasa-impact/nasa-smd-ibm-v0.1",
-          "huggingface/nickmuchi/deberta-v3-base-finetuned-finance-text-classification",
-          "huggingface/opensearch-project/opensearch-neural-sparse-encoding-v1",
-          "huggingface/pierreguillou/bert-base-cased-squad-v1.1-portuguese",
-          "huggingface/prithivMLmods/Realistic-Gender-Classification",
-          "huggingface/rizzoaiacademy/rizzo-pii-0.3B",
-          "huggingface/sayed0am/arabic-english-bge-m3",
-          "huggingface/sentence-transformers/facebook-dpr-question_encoder-multiset-base",
-          "huggingface/sentence-transformers/paraphrase-albert-base-v2",
-          "huggingface/shibing624/bert4ner-base-chinese",
-          "huggingface/sshleifer/distilbart-xsum-12-3",
-          "huggingface/symanto/sn-xlm-roberta-base-snli-mnli-anli-xnli",
-          "huggingface/watersplash/waste-classification",
-          "huggingface/youscan/ukr-roberta-base"
-        ],
-        "unchanged": 1579
+        "current": 1634,
+        "previous": 1632,
+        "removed": 0,
+        "removed_model_refs": [],
+        "unchanged": 1628
       },
       "pricing": {
-        "commercial_hash": "3b9164c1ebe71e5a0964f5dc5c1790636c5f4af6a0717f1a13ed93a102688104",
+        "commercial_hash": "7603605f3d5b2890654f2c927991cbfc4a1eb2bb6d094a5eea19773e5b414690",
         "outcome": "commercial",
-        "previous_commercial_hash": "7603605f3d5b2890654f2c927991cbfc4a1eb2bb6d094a5eea19773e5b414690"
+        "previous_commercial_hash": "3b9164c1ebe71e5a0964f5dc5c1790636c5f4af6a0717f1a13ed93a102688104"
       },
       "pricing_coverage": {
-        "current_models": 1632,
+        "current_models": 1634,
         "delta": {
-          "resolved_models": -1,
-          "unknown_models": -15
+          "resolved_models": 1,
+          "unknown_models": 1
         },
-        "normalized_rate_models": 134,
+        "normalized_rate_models": 135,
         "not_applicable_models": 0,
-        "offer_models": 146,
+        "offer_models": 147,
         "raw_fact_models": 18,
         "unknown_model_refs": [
           "huggingface/51la5/roberta-large-NER",
@@ -5499,15 +2625,13 @@
           "huggingface/BAAI/bge-base-zh-v1.5",
           "huggingface/BAAI/bge-large-en"
         ],
-        "unknown_model_refs_omitted": 1466,
-        "unknown_models": 1486
+        "unknown_model_refs_omitted": 1467,
+        "unknown_models": 1487
       },
       "pricing_publication": "accepted",
       "provider_id": "huggingface",
       "publication": "accepted",
-      "signals": [
-        "catalog_count_decrease"
-      ],
+      "signals": [],
       "sources": {
         "added": 0,
         "added_source_ids": [],
@@ -5868,14 +2992,14 @@
             "source_id": "kimi-international-pricing"
           },
           {
-            "consecutive_failures": 43,
+            "consecutive_failures": 44,
             "last_success_at": "2026-09-11T05:50:05.136Z",
             "message": "Linked document kimi-releases/research failed: Redirect left the reviewed host allowlist",
             "outcome": "fetch_failed",
             "source_id": "kimi-releases"
           },
           {
-            "consecutive_failures": 48,
+            "consecutive_failures": 49,
             "last_success_at": "2026-09-04T09:22:19.909Z",
             "message": "HTTP 401",
             "outcome": "fetch_failed",
@@ -6523,7 +3647,7 @@
             "source_id": "openai-data-residency"
           },
           {
-            "content_changed": false,
+            "content_changed": true,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -6540,7 +3664,7 @@
               "observed_items": 1
             },
             "extractor_changed": false,
-            "outcome": "unchanged",
+            "outcome": "changed",
             "parsed_models": 98,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -6740,13 +3864,20 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 0,
-        "changed_sources": [],
+        "changed": 1,
+        "changed_sources": [
+          {
+            "content_changed": true,
+            "extractor_changed": false,
+            "field_paths_changed": false,
+            "source_id": "openai-overview"
+          }
+        ],
         "current": 8,
         "previous": 8,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 8
+        "unchanged": 7
       },
       "status": "fresh",
       "warning_codes": {
@@ -6861,7 +3992,7 @@
         },
         "sources": [
           {
-            "content_changed": true,
+            "content_changed": false,
             "contract_finding": {
               "diagnostic_count": 1,
               "diagnostics": [
@@ -6878,7 +4009,7 @@
               "observed_items": 1
             },
             "extractor_changed": false,
-            "outcome": "changed",
+            "outcome": "unchanged",
             "parsed_models": 374,
             "pricing_extraction": {
               "custom_quote_models": 0,
@@ -6970,20 +4101,13 @@
       "sources": {
         "added": 0,
         "added_source_ids": [],
-        "changed": 1,
-        "changed_sources": [
-          {
-            "content_changed": true,
-            "extractor_changed": false,
-            "field_paths_changed": false,
-            "source_id": "vercel-models"
-          }
-        ],
+        "changed": 0,
+        "changed_sources": [],
         "current": 1,
         "previous": 1,
         "removed": 0,
         "removed_source_ids": [],
-        "unchanged": 0
+        "unchanged": 1
       },
       "status": "fresh",
       "warning_codes": {
@@ -7211,7 +4335,7 @@
         },
         "sources": [
           {
-            "consecutive_failures": 29,
+            "consecutive_failures": 30,
             "last_success_at": "2026-09-11T20:04:00.366Z",
             "message": "xAI language model differs across public clusters",
             "outcome": "parse_failed",
@@ -7278,18 +4402,18 @@
   "schema_version": 2,
   "totals": {
     "accepted": 18,
-    "added_models": 48,
+    "added_models": 2,
     "added_sources": 0,
-    "changed_models": 69,
-    "changed_sources": 23,
-    "models": 3637,
-    "pricing_accepted": 17,
+    "changed_models": 4,
+    "changed_sources": 24,
+    "models": 3639,
+    "pricing_accepted": 18,
     "pricing_not_observed": 0,
     "pricing_removed": 0,
-    "pricing_retained": 2,
+    "pricing_retained": 1,
     "pricing_withheld": 0,
     "providers": 19,
-    "removed_models": 64,
+    "removed_models": 0,
     "removed_sources": 0,
     "retained": 1,
     "withheld": 0
