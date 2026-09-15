@@ -25,6 +25,17 @@ Status: implemented
   ordinary GitHub CLI OAuth token is not an acceptable substitute.
 - Agentic workflow Markdown is the reviewed source and `gh aw compile` produces the matching
   `.lock.yml`; generated lock files are not reformatted or edited by hand.
+- Catalog repair installs the `package.json`-pinned Vite+ with its official installer into
+  `VP_HOME=/tmp/kmodels-vite-plus`, which is shared by preparation steps and the AWF sandbox and
+  stays outside the framework's log-redaction and artifact directories.
+  The setup action's `~/.vite-plus` installation is outside AWF's mounted home subdirectories.
+  Vite+ installs the Node.js version from `.node-version` and the frozen dependency graph before
+  inference. Repair scripts use `vp node`, and validation uses global `vp`, so the sandbox's
+  tool-cache PATH scan cannot select a different Node.js version for project commands.
+  The agent checks its prepared environment before diagnosis, runs validation sequentially after
+  reviewing the diff, and reuses results unless a relevant change requires another check. An
+  unavailable toolchain or blocked validation produces a structured incomplete report without a
+  pull request. A repair pull request requires every repository validation command to pass.
 - Vite+ (`vp`) is the project command entry point. The pinned pnpm version and
   `pnpm-lock.yaml` remain authoritative underneath it, and CI installs the
   lockfile frozen.

@@ -15,6 +15,9 @@ engine:
   model: gpt-5.6-luna
   args: ["--effort=high"]
 
+env:
+  VP_HOME: /tmp/kmodels-vite-plus
+
 concurrency:
   group: catalog-repair
   cancel-in-progress: false
@@ -23,10 +26,13 @@ tools:
   edit:
   web-fetch:
   bash:
-    - "git:diff"
-    - "git:status"
-    - "node:*"
+    - "git diff:*"
+    - "git status:*"
+    - "command:*"
+    - "find:*"
     - "rg:*"
+    - "sed:*"
+    - "test:*"
     - "vp:*"
 
 safe-outputs:
@@ -37,6 +43,9 @@ safe-outputs:
     max: 1
     if-no-changes: ignore
     fallback-as-issue: false
+  report-incomplete:
+    max: 1
+    create-issue: false
 
 steps:
   - name: Check for an existing repair
@@ -51,26 +60,27 @@ steps:
         echo "blocked=false" >> "$GITHUB_OUTPUT"
       fi
 
-  - name: Set up pnpm
+  - name: Install Vite+ in the shared sandbox directory
     if: steps.repair_dedupe.outputs.blocked != 'true'
-    uses: pnpm/action-setup@v6
+    run: |
+      set -euo pipefail
+      VP_VERSION="$(node -p 'require("./package.json").devDependencies["vite-plus"]')"
+      export VP_VERSION
+      curl --fail --silent --show-error --location --retry 3 https://viteplus.dev/install.sh | bash
+      echo "$VP_HOME/bin" >> "$GITHUB_PATH"
 
-  - name: Set up Vite+
+  - name: Install the project runtime and dependencies
     if: steps.repair_dedupe.outputs.blocked != 'true'
-    uses: voidzero-dev/setup-vp@v1
-    with:
-      node-version: 24.18.0
-      cache: true
-
-  - name: Install dependencies
-    if: steps.repair_dedupe.outputs.blocked != 'true'
-    run: vp install --frozen-lockfile
+    run: |
+      vp env install
+      vp install --frozen-lockfile
+      vp env doctor
 
   - name: Check whether repair work is needed
     if: steps.repair_dedupe.outputs.blocked != 'true'
     env:
       KMODELS_CATALOG_REPAIR_CONTEXT: /tmp/gh-aw/agent/catalog-repair-context.md
-    run: node scripts/catalog-repair.ts
+    run: vp node scripts/catalog-repair.ts
 ---
 
 # Review and repair a catalog collection problem
@@ -78,10 +88,15 @@ steps:
 Read `design.md`, `AGENTS.md`, `/tmp/gh-aw/agent/catalog-repair-context.md`, the latest
 `data/refresh-summary.json`, and only the provider guides relevant to the listed candidates.
 
+The preparation steps installed the pinned Vite+ and Node.js in the shared `VP_HOME`, and installed
+the frozen project dependencies. Start with `vp env doctor` and `vp node --version`. Use `vp node`
+for Node.js scripts so they use `.node-version`; use the global `vp` command for all checks.
+If the prepared toolchain is unavailable, report the failure with `report_incomplete` and stop.
+
 Review every candidate emitted by `scripts/catalog-repair.ts` enough to decide whether it represents
 a code-repairable problem. If one or more candidates share one coherent root cause, repair that cause:
 
-1. For a public source, fetch its exact reviewed `source_url`. For an authenticated source, use only
+1. For a public source, use `web-fetch` to fetch its exact reviewed `source_url`. For an authenticated source, use only
    the sanitized refresh evidence, existing fixtures, and parser contract; never request or expose a
    credential. Reproduce the parser, contract, provider-validation, or pricing-validation problem.
 2. Decide whether a deterministic code repair is possible. The gate deliberately presents all new
@@ -96,7 +111,11 @@ a code-repairable problem. If one or more candidates share one coherent root cau
 4. Add or update a reviewed deterministic fixture and regression test, increment the affected
    extractor version, and update the relevant provider guide with the current rule and rationale.
 5. Do not run the live collector and do not modify anything under `data/`.
-6. Run `vp check`, `vp test --run`, `vp run collect:fixtures`, and `vp run build`.
+6. Review the diff, then run `vp check`, `vp test --run`, `vp run collect:fixtures`, and
+   `vp run build`. Keep one validation run active at a time. Reuse completed results during final
+   review; rerun a check only after a relevant code change or a diagnosed failure has been fixed.
+   If validation is blocked by the environment, report the exact failed command and reason with
+   `report_incomplete` and stop. All required checks must pass before creating a pull request.
 
 If the failure cannot be reproduced or cannot be repaired without guessing provider intent or an
 unpublished price, make no changes and do not create a pull request. Otherwise create one small draft
