@@ -1274,7 +1274,8 @@ function decimalBuckets(
   const partition = isWholeNumberDimension(dimension)
     ? integerPartition(ranges)
     : continuousPartition(ranges);
-  return partition?.map((range) => ({
+  if (partition === undefined || partition.length < 2) return undefined;
+  return partition.map((range) => ({
     key: canonicalJsonKey(range),
     label: decimalBucketLabel(range),
     ...range,
@@ -1282,27 +1283,36 @@ function decimalBuckets(
 }
 
 function integerPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] | undefined {
-  const normalized = ranges.flatMap((range) => {
-    const lower = integerLower(range.lower);
-    const upper = integerUpper(range.upper);
-    return upper !== undefined && upper < lower
-      ? []
-      : [{ lower, ...(upper === undefined ? {} : { upper }) }];
-  });
-  if (normalized.length !== ranges.length) return undefined;
-  normalized.sort((left, right) =>
-    left.lower < right.lower ? -1 : left.lower > right.lower ? 1 : 0,
-  );
-  if (normalized[0]?.lower !== 0n || normalized.at(-1)?.upper !== undefined) return undefined;
-  for (let index = 1; index < normalized.length; index++) {
-    const previousUpper = normalized[index - 1]?.upper;
-    if (previousUpper === undefined || normalized[index]?.lower !== previousUpper + 1n)
-      return undefined;
-  }
-  return normalized.map(({ lower, upper }) => ({
-    lower: { value: String(lower), inclusive: true },
-    ...(upper === undefined ? {} : { upper: { value: String(upper), inclusive: true } }),
+  const normalized = ranges.map((range) => ({
+    lower: integerLower(range.lower),
+    upper: integerUpper(range.upper),
   }));
+  if (normalized.some(({ lower, upper }) => upper !== undefined && upper < lower)) return undefined;
+  // Split at every predicate boundary, including boundaries inside wider regional
+  // bands. Each choice is then wholly contained in or disjoint from every rule.
+  const boundaries = [
+    ...new Set(
+      normalized.flatMap(({ lower, upper }) =>
+        upper === undefined ? [lower] : [lower, upper + 1n],
+      ),
+    ),
+  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const partition: WebsiteDecimalRange[] = [];
+  for (const [index, lower] of boundaries.entries()) {
+    const next = boundaries[index + 1];
+    const covered = normalized.some(
+      (range) => range.lower <= lower && (range.upper === undefined || lower <= range.upper),
+    );
+    if (!covered) {
+      if (next !== undefined) return undefined;
+      continue;
+    }
+    partition.push({
+      lower: { value: String(lower), inclusive: true },
+      ...(next === undefined ? {} : { upper: { value: String(next - 1n), inclusive: true } }),
+    });
+  }
+  return partition;
 }
 
 function integerLower(bound: WebsiteDecimalRange["lower"]): bigint {
@@ -1324,9 +1334,7 @@ function decimalParts(value: string): { integer: bigint; fractional: boolean } {
 
 function continuousPartition(ranges: WebsiteDecimalRange[]): WebsiteDecimalRange[] | undefined {
   const sorted = [...ranges].sort(compareRangeLower);
-  const first = sorted[0];
-  if (first === undefined || !rangeIncludesZero(first) || sorted.at(-1)?.upper !== undefined)
-    return undefined;
+  if (sorted.length === 0) return undefined;
   for (let index = 1; index < sorted.length; index++) {
     const previousUpper = sorted[index - 1]?.upper;
     const lower = sorted[index]?.lower;
@@ -1357,16 +1365,6 @@ function compareRangeLower(left: WebsiteDecimalRange, right: WebsiteDecimalRange
   return compareRationals(
     rationalFromDecimal(left.lower.value),
     rationalFromDecimal(right.lower.value),
-  );
-}
-
-function rangeIncludesZero(range: WebsiteDecimalRange): boolean {
-  if (range.lower !== undefined && (range.lower.value !== "0" || !range.lower.inclusive))
-    return false;
-  return (
-    range.upper === undefined ||
-    compareRationals(rationalFromDecimal(range.upper.value), rationalFromDecimal("0")) > 0 ||
-    (range.upper.value === "0" && range.upper.inclusive)
   );
 }
 

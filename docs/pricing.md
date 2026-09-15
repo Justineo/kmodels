@@ -893,8 +893,8 @@ allowance summary incomplete.
 
 Numeric selectors preserve their canonical domain. Dimensions containing only
 inclusive singleton ranges become discrete choices. When the distinct range
-predicates are mutually exclusive and together cover the dimension's complete
-non-negative domain, the detail projection emits ordered range choices instead
+predicates form a contiguous domain, including a finite published domain,
+the detail projection emits ordered range choices instead
 of asking for an arbitrary representative number. Token counts and cache TTLs
 are partitioned over whole numbers; other numeric dimensions are partitioned
 over continuous decimals. Range-choice labels preserve the exact mathematical
@@ -902,8 +902,12 @@ operators (`<`, `≤`, `>`, and `≥`) rather than paraphrasing their boundary
 semantics. A selected range retains its exact bounds. The
 applicability evaluator resolves a predicate only when that full selected range
 is contained in or disjoint from it, while a partial overlap stays unresolved.
-Ranges with a gap or overlap remain exact-value inputs and reject out-of-range
-values. The UI never widens an exact price condition into a neighboring interval.
+Overlapping integer predicates (including bands from different regions) are split
+at every lower bound and immediately after every upper bound. Each resulting
+choice is contained in or disjoint from every original predicate; shared inclusive
+endpoints remain separate singleton choices. Gaps and overlapping continuous
+decimal ranges remain exact-value inputs and reject out-of-range values. The UI
+never widens an exact price condition into a neighboring interval.
 
 The compact detail and shared-offer payloads contain display-ready values, selectors, charge drivers,
 and invocation billing context, not audit observations.

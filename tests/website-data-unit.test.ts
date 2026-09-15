@@ -18,6 +18,7 @@ import type {
   UsageInputSource,
 } from "../src/catalog/pricing-schema.ts";
 import { websiteModelDetail } from "../src/catalog/website-data.ts";
+import { evaluateApplicability } from "../src/catalog/pricing-presentation.ts";
 
 const providerId = "test";
 const modelId = "model";
@@ -526,7 +527,7 @@ describe("website data projection", () => {
     });
   });
 
-  it("uses range choices only for a complete non-overlapping numeric partition", () => {
+  it("uses range choices for contiguous numeric domains, including finite domains", () => {
     const partition = numericDetail([
       { upper: { value: "10", inclusive: true } },
       { lower: { value: "10", inclusive: false } },
@@ -554,6 +555,61 @@ describe("website data projection", () => {
       { lower: { value: "20", inclusive: true } },
     ]);
     expect(gap.pricing?.offers[0]?.selectors[0]).toMatchObject({ kind: "decimal_range" });
+    const finite = numericDetail([
+      { upper: { value: "10", inclusive: true } },
+      { lower: { value: "10", inclusive: false }, upper: { value: "20", inclusive: true } },
+    ]);
+    expect(finite.pricing?.offers[0]?.selectors[0]).toMatchObject({
+      kind: "decimal_buckets",
+      values: [{ label: "≤ 10" }, { label: "> 10 and ≤ 20" }],
+    });
+  });
+
+  it("splits overlapping regional token bands into choices that resolve every predicate", () => {
+    const dimension = { namespace: "kmodels", value: "context_tokens" } as const;
+    const unit: UnitExpression = {
+      factors: [{ unit: { namespace: "kmodels", value: "token" }, power: 1 }],
+    };
+    for (const minimum of ["128000", "128001"]) {
+      const conditions: DecimalCondition[] = [
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "1", inclusive: true },
+          upper: { value: "128000", inclusive: true },
+        },
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: "1", inclusive: true },
+          upper: { value: "256000", inclusive: true },
+        },
+        {
+          kind: "decimal_range",
+          dimension,
+          unit,
+          lower: { value: minimum, inclusive: true },
+          upper: { value: "256000", inclusive: true },
+        },
+      ];
+      const selector = detail(conditions).pricing?.offers[0]?.selectors[0];
+      expect(selector?.kind).toBe("decimal_buckets");
+      if (selector?.kind !== "decimal_buckets") throw new Error("Missing range choices");
+      expect(selector.values.length).toBe(minimum === "128000" ? 3 : 2);
+      expect(selector.values[0]?.lower).toEqual({ value: "1", inclusive: true });
+      expect(selector.values.at(-1)?.upper).toEqual({ value: "256000", inclusive: true });
+      for (const bucket of selector.values) {
+        for (const condition of conditions) {
+          expect(
+            evaluateApplicability({ any_of: [{ all_of: [condition] }] }, [
+              { kind: "decimal_range", dimension, unit, ...bucket },
+            ]).state,
+          ).not.toBe("missing");
+        }
+      }
+    }
   });
 
   it("projects a retained provider failure without audit details", () => {

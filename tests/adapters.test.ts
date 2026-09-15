@@ -18398,7 +18398,7 @@ describe("DashScope adapters", () => {
     const plus = models.find(({ model_id }) => model_id === "qwen3.7-plus");
     expect(
       plus?.price_facts
-        .filter(({ conditions }) => conditions.context_min_tokens === 256_000)
+        .filter(({ conditions }) => conditions.context_min_tokens === 256_001)
         .map(({ meter, price, conditions }) => ({
           meter,
           price,
@@ -18872,7 +18872,7 @@ describe("DashScope adapters", () => {
     expect(source("dashscope-pricing")).toMatchObject({
       url: "https://www.alibabacloud.com/help/en/model-studio/model-pricing",
       format: "html",
-      extractorVersion: "dashscope-pricing-v14",
+      extractorVersion: "dashscope-pricing-v15",
       linkedDocuments: {
         documents: [
           expect.objectContaining({ id: "context-cache", optional: true }),
