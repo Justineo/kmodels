@@ -154,9 +154,11 @@ services → pricing notes`. The first mechanism in
   validity remains visible. A single offer state stays in the offer
   summary; state detail appears only when the offer has multiple possible outcomes.
   Numeric context preserves its published domain: singleton predicates become
-  choices, and complete non-overlapping range partitions become ordered range
+  choices, and contiguous finite or unbounded domains become ordered range
   choices whose labels retain the exact `<`, `≤`, `>`, and `≥` boundary
-  operators. Ranges with gaps or overlaps continue to accept an exact value and
+  operators. Overlapping integer bands are split at every predicate boundary so
+  each choice resolves every original condition without guessing a representative
+  value. Ranges with gaps or continuous-decimal overlaps accept an exact value and
   reject invalid or non-integral count/TTL input.
 - The model rate matrix shows only the meter, rate, unit, and unresolved validity qualification. Driver metadata
   remains in the provider inspector and canonical audit; a missing driver never hides a rate.

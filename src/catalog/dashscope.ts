@@ -1104,13 +1104,14 @@ function priceConditions(table: Table, row: Cell[], header: string): SourcePrice
     ?.replace(/,/g, "")
     .match(/(?:(\d+(?:\.\d+)?[KM]?)<)?Token≤(\d+(?:\.\d+)?[KM]?)/i);
   const mode = value(table, row, /^Mode(?:$| \/)/i);
+  const exclusiveMinimum = tokenCount(range?.[1]);
   const subheading = header.split(" / ").at(-1);
   const operation = mode ?? (/thinking mode/i.test(subheading ?? "") ? subheading : undefined);
   const resolution = value(table, row, /^(?:Output (?:image|video) )?resolution|^Max resolution/i);
   return {
     ...(region === undefined ? {} : { region }),
     ...(deployment === undefined ? {} : { deployment_scope: deployment }),
-    ...(range?.[1] === undefined ? {} : { context_min_tokens: tokenCount(range[1]) }),
+    ...(exclusiveMinimum === undefined ? {} : { context_min_tokens: exclusiveMinimum + 1 }),
     ...(range?.[2] === undefined ? {} : { context_max_tokens: tokenCount(range[2]) }),
     ...(tier === undefined || /No tiered|flat-rate/i.test(tier) ? {} : { context_tier: tier }),
     ...(operation === undefined

@@ -131,6 +131,8 @@ exact applicability rather than expanding a Cartesian product or choosing a defa
 
 For token-priced models, total request input selects the published context band and the selected
 band applies to the request. Input, output, cache-read, and cache-write terms retain separate meters.
+Published `L<Token≤U` bands use inclusive integer bounds `L + 1` through `U`;
+the strict lower bound must not overlap the preceding tier, including at zero.
 Published Batch rows are moved to the Batch offer and lose the source-native `service_tier=batch`
 condition because the offer identity already carries that distinction.
 

@@ -3454,7 +3454,7 @@ export const manifests = [
         format: "html",
         stability: "documented",
         extractor: { kind: "dashscope-pricing", minModels: 240, maxModels: 500 },
-        extractorVersion: "dashscope-pricing-v14",
+        extractorVersion: "dashscope-pricing-v15",
         pricingEvidence: firstPartyPricing("price_book", "exact_id"),
         fields: [
           "model_id",
