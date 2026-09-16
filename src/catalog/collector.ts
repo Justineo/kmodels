@@ -1368,7 +1368,22 @@ export async function collect(options: CollectionOptions = {}): Promise<Catalog>
     composed.catalog,
     previous === undefined ? emptyPricingCatalog() : acceptedPricing,
     composed.pricing,
-    results.map(({ attempt }) => attempt),
+    results.map(({ attempt, models }): ProviderRefreshAttempt => {
+      const retention = composed.catalog.warnings.find(
+        (warning) =>
+          warning.code === "retained_pricing_core_mismatch" &&
+          "provider_id" in warning &&
+          warning.provider_id === attempt.provider_id,
+      );
+      return retention === undefined
+        ? attempt
+        : {
+            ...attempt,
+            outcome: "rejected",
+            candidate_models: models,
+            failure: { code: retention.code, message: retention.message },
+          };
+    }),
   );
   const [candidate] = await Promise.all([candidatePromise, ...stateWrites]);
   const pricingCompilation = createPricingCompilationSnapshot(
