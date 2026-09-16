@@ -154,7 +154,10 @@ Status: implemented
   provider whose required evidence fails keeps its last validated catalog; optional or credential-scoped
   inventory sources may be skipped, and providers do not block one another. Pricing has a separate
   provider-atomic publication decision, so valid fresh catalog data may advance while failed pricing
-  retains its previous accepted partition.
+  retains its previous accepted partition, provided its references still resolve in the fresh
+  catalog. Otherwise both accepted provider slices are retained with stale catalog coverage and
+  a `retained_pricing_core_mismatch` diagnostic; other providers continue to publish. The report
+  records the rejected catalog candidate separately from the retained publication.
 - The collector classifies a retained pricing attempt with one finite public
   code: required source unavailable, reviewed source format changed, pricing
   validation failed, provider refresh failed, or no complete pricing snapshot

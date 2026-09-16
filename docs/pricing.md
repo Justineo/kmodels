@@ -998,7 +998,12 @@ For each provider:
   records the current attempt and reviewed failure category plus its sanitized diagnostic reason in
   the refresh summary; an independently
   valid fresh catalog slice may still advance
-  when the retained pricing partition remains compatible with it;
+  when the retained pricing partition remains compatible with it. If the fresh slice removes a
+  provider, model, or source referenced by retained pricing, publication also retains that
+  provider's accepted catalog slice, including its source records. Coverage is stale with the
+  current attempt time, the previous successful sync time, and the exact unresolved reference;
+  the refresh report preserves the rejected candidate delta and original pricing failure.
+  Unreferenced catalog removals and other providers continue to advance;
 - a validated fresh-empty transition removes pricing while keeping the
   provider;
 - intentional provider removal removes both sides;
